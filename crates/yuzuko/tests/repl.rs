@@ -30,6 +30,10 @@ fn scratch(name: &str) -> PathBuf {
   dir
 }
 
+fn printed_line(text: &str, line: &str) -> bool {
+  text.lines().any(|item| item == line)
+}
+
 fn printed_id(text: &str, prefix: &str) -> bool {
   text.lines().any(|line| {
     let Some(rest) = line.trim().strip_prefix(prefix) else {
@@ -96,9 +100,33 @@ fn pipe_repl(dir: &Path, input: &str) -> Output {
 }
 
 #[test]
-fn usage_without_a_command_is_not_a_repl() {
-  let output = Command::new(bin()).output().expect("spawn yuzuko");
-  assert_ne!(output.status.code(), Some(0));
+fn yuzuko_without_a_command_starts_the_repl() {
+  let dir = scratch("bare");
+  let mut child = Command::new(bin())
+    .current_dir(&dir)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn yuzuko");
+  child.stdin.take().unwrap().write_all(b"1 + 1\n").unwrap();
+  let output = child.wait_with_output().expect("repl output");
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert!(
+    text(&output.stdout).contains('2'),
+    "stdout: {}\nstderr: {}",
+    text(&output.stdout),
+    text(&output.stderr)
+  );
+}
+
+#[test]
+fn help_prints_usage_without_a_session() {
+  let output = Command::new(bin())
+    .arg("--help")
+    .output()
+    .expect("spawn yuzuko --help");
+  assert_eq!(output.status.code(), Some(0));
   let stderr = text(&output.stderr);
   assert!(stderr.contains("yuzuko run <entry.ts>"), "{stderr}");
   assert!(stderr.contains("yuzuko repl"), "{stderr}");
@@ -107,7 +135,6 @@ fn usage_without_a_command_is_not_a_repl() {
     "stdout started a repl: {}",
     text(&output.stdout)
   );
-  assert!(!stderr.contains("panicked"), "{stderr}");
 }
 
 #[test]
@@ -311,7 +338,7 @@ fn terminal_session_completes_and_recalls_history() {
   pty.wait_until(|text| text.contains("> "), step);
 
   pty.send(b"console.log(\"repl-log\")\n");
-  pty.wait_until(|text| text.matches("repl-log").count() >= 2, step);
+  pty.wait_until(|text| printed_line(text, "repl-log"), step);
 
   pty.send(b"\"yuzuko:\" + typeof Yuzuko\n");
   pty.wait_until(|text| text.contains("yuzuko:object"), step);
@@ -337,18 +364,18 @@ fn terminal_session_completes_and_recalls_history() {
   pty.wait_until(|text| text.contains("repl-import-mark"), step);
 
   pty.send(b"queueMicrotask(() => console.log(\"repl-micro\"))\n");
-  pty.wait_until(|text| text.matches("repl-micro").count() >= 2, step);
+  pty.wait_until(|text| printed_line(text, "repl-micro"), step);
 
   pty.send(b"setTimeout(() => console.log(\"repl-timer\"), 0)\n");
-  pty.wait_until(|text| text.matches("repl-timer").count() >= 2, step);
+  pty.wait_until(|text| printed_line(text, "repl-timer"), step);
 
   pty.send(
     b"await new Promise((r) => setTimeout(() => r(\"zero-await\"), 0))\n",
   );
-  pty.wait_until(|text| text.matches("zero-await").count() >= 2, step);
+  pty.wait_until(|text| printed_line(text, "zero-await"), step);
 
   pty.send(b"throw new Error(\"repl-boom\")\n");
-  pty.wait_until(|text| text.matches("repl-boom").count() >= 2, step);
+  pty.wait_until(|text| text.contains("Error: repl-boom"), step);
   let before = pty.text.len();
   pty.send(b"1\n");
   pty.wait_until(|text| text[before..].contains("\n1\n"), step);
@@ -409,8 +436,11 @@ fn terminal_session_completes_and_recalls_history() {
     Duration::from_secs(1),
   );
   assert_eq!(
-    pty.text[before..].matches("later-timer").count(),
-    1,
+    pty.text[before..]
+      .lines()
+      .filter(|line| *line == "later-timer")
+      .count(),
+    0,
     "delayed timeout ran\n{}",
     &pty.text[before..]
   );
@@ -420,7 +450,16 @@ fn terminal_session_completes_and_recalls_history() {
     |text| text[before..].contains("\n2\n"),
     Duration::from_secs(1),
   );
-  assert_eq!(pty.text.matches("later-timer").count(), 1, "{}", pty.text);
+  assert_eq!(
+    pty
+      .text
+      .lines()
+      .filter(|line| *line == "later-timer")
+      .count(),
+    0,
+    "{}",
+    pty.text
+  );
 
   let before = pty.text.len();
   pty.send(
@@ -431,8 +470,11 @@ fn terminal_session_completes_and_recalls_history() {
     Duration::from_secs(1),
   );
   assert_eq!(
-    pty.text[before..].matches("later-interval").count(),
-    1,
+    pty.text[before..]
+      .lines()
+      .filter(|line| *line == "later-interval")
+      .count(),
+    0,
     "delayed interval ran\n{}",
     &pty.text[before..]
   );
@@ -443,8 +485,12 @@ fn terminal_session_completes_and_recalls_history() {
     Duration::from_secs(1),
   );
   assert_eq!(
-    pty.text.matches("later-interval").count(),
-    1,
+    pty
+      .text
+      .lines()
+      .filter(|line| *line == "later-interval")
+      .count(),
+    0,
     "{}",
     pty.text
   );
@@ -453,4 +499,55 @@ fn terminal_session_completes_and_recalls_history() {
   let code = pty.wait_exit();
   assert_eq!(code, 0, "{}", pty.text);
   assert!(!pty.text.contains("panicked"), "{}", pty.text);
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_cursor_keys_edit_before_submit() {
+  let dir = scratch("keys");
+  let mut pty = Pty::spawn(&dir);
+  let step = Duration::from_secs(15);
+  pty.wait_until(|text| text.contains("> "), step);
+
+  pty.send(b"12\x1b[D+\n");
+  pty.wait_until(
+    |text| text.contains("\x1b[J> 12\x1b[3C") && text.contains("\n3\n"),
+    step,
+  );
+
+  let before = pty.text.len();
+  pty.send(b"12\x013\n");
+  pty.wait_until(|text| text[before..].contains("\n312\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"12\x01\x053\n");
+  pty.wait_until(|text| text[before..].contains("\n123\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"15\x02+\x06\n");
+  pty.wait_until(|text| text[before..].contains("\n6\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"9+1\x1bb\x7f\n");
+  pty.wait_until(|text| text[before..].contains("\n91\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"99\x157\n");
+  pty.wait_until(|text| text[before..].contains("\n7\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"12\x01\x0b4\n");
+  pty.wait_until(|text| text[before..].contains("\n4\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"12\x15\x197\n");
+  pty.wait_until(|text| text[before..].contains("\n127\n"), step);
+
+  let before = pty.text.len();
+  pty.send(b"99 1\x17\n");
+  pty.wait_until(|text| text[before..].contains("\n99\n"), step);
+
+  pty.send(b"\x04");
+  let code = pty.wait_exit();
+  assert_eq!(code, 0, "{}", pty.text);
 }

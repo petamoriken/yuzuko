@@ -7193,6 +7193,7 @@ dependencies = [
  "oxc_semantic",
  "oxc_span",
  "oxc_transformer",
+ "unicode-width",
  "url",
  "v8",
  "yuzuko_macros",

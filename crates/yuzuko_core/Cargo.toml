@@ -15,6 +15,7 @@ oxc_semantic.workspace = true
 oxc_span.workspace = true
 oxc_transformer.workspace = true
 libc.workspace = true
+unicode-width = "0.2"
 url.workspace = true
 v8.workspace = true
 yuzuko_macros.workspace = true

@@ -44,8 +44,7 @@ fn main() -> ExitCode {
 
 fn dispatch(args: Vec<String>) -> Result<u8, yuzuko_core::RuntimeError> {
   let Some(command) = args.first().map(String::as_str) else {
-    usage();
-    return Ok(2);
+    return repl_command(&[]);
   };
   match command {
     "run" => run_command(&args[1..]),
