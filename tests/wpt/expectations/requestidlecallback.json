@@ -1,0 +1,52 @@
+{
+  "requestidlecallback/basic.html": true,
+  "requestidlecallback/callback-exception.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-idle-periods.html": {
+    "expectedFailures": [
+      "Check that if an idle callback calls requestIdleCallback the new callback doesn't run in the current idle period."
+    ]
+  },
+  "requestidlecallback/callback-iframe-different-origin.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-iframe.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-invoked.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-multiple-calls.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-removed-frame.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-suspended.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "requestidlecallback/callback-timeRemaining-cross-realm-method.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-timeout-when-busy.html": true,
+  "requestidlecallback/callback-timeout.html": {
+    "ignore": true
+  },
+  "requestidlecallback/callback-xhr-sync.html": false,
+  "requestidlecallback/cancel-invoked.html": {
+    "ignore": true
+  },
+  "requestidlecallback/deadline-after-expired-timer.html": true,
+  "requestidlecallback/deadline-max-rAF-dynamic.html": false,
+  "requestidlecallback/deadline-max-rAF.html": {
+    "expectedFailures": [
+      "Check that the deadline is less than 16ms when there is a pending animation frame."
+    ]
+  },
+  "requestidlecallback/deadline-max-timeout-dynamic.html": true,
+  "requestidlecallback/deadline-max.html": true,
+  "requestidlecallback/idlharness.window.js": true
+}

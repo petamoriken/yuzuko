@@ -1,0 +1,30 @@
+[package]
+name = "yuzuko_canvas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cssparser = "0.36"
+flate2.workspace = true
+fontique = "0.11"
+half.workspace = true
+image-webp.workspace = true
+jpeg-encoder = "0.6"
+kurbo = "0.13"
+parley = "0.11"
+png.workspace = true
+skrifa = "0.44"
+unicode-segmentation = "1.13"
+v8.workspace = true
+vello.workspace = true
+brotli = "7"
+vello_cpu.workspace = true
+wgpu.workspace = true
+yuzuko_core.workspace = true
+yuzuko_dom.workspace = true
+yuzuko_image.workspace = true
+yuzuko_macros.workspace = true
+yuzuko_window.workspace = true
+yuzuko_winter.workspace = true

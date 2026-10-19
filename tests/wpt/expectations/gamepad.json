@@ -1,0 +1,49 @@
+{
+  "gamepad/events-manual.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-default-permissions-policy.https.sub.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-dual-rumble-effect-manual.https.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-grants-user-activation-manual.tentative.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-permissions-policy-event-listener.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-supported-by-permissions-policy.html": {
+    "ignore": true
+  },
+  "gamepad/gamepad-trigger-rumble-effect-manual.https.html": {
+    "ignore": true
+  },
+  "gamepad/getgamepads-polling-manual.html": false,
+  "gamepad/idlharness-extensions.https.window.js": true,
+  "gamepad/idlharness-manual.html": {
+    "expectedFailures": [
+      "idl_test setup"
+    ]
+  },
+  "gamepad/idlharness.window.js": {
+    "expectedFailures": [
+      "HTMLBodyElement interface: attribute ongamepadconnected",
+      "HTMLBodyElement interface: attribute ongamepaddisconnected",
+      "HTMLFrameSetElement interface: attribute ongamepadconnected",
+      "HTMLFrameSetElement interface: attribute ongamepaddisconnected",
+      "Window interface: attribute ongamepadconnected",
+      "Window interface: attribute ongamepaddisconnected"
+    ]
+  },
+  "gamepad/not-fully-active.html": {
+    "ignore": true
+  },
+  "gamepad/permissions-policy-gamepad.html": {
+    "ignore": true
+  },
+  "gamepad/timestamp-manual.html": {
+    "ignore": true
+  }
+}

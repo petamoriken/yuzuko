@@ -1,0 +1,182 @@
+{
+  "clipboard-apis/async-clipboard-cached-getType-permission-revocation.tentative.https.html": false,
+  "clipboard-apis/async-clipboard-cached-getType-reject.tentative.https.html": false,
+  "clipboard-apis/async-clipboard-read-unsanitized-null.https.html": false,
+  "clipboard-apis/async-clipboard-stale-getType-reject.tentative.https.html": false,
+  "clipboard-apis/async-custom-formats-write-fail.tentative.https.html": false,
+  "clipboard-apis/async-custom-formats-write-read-web-prefix.tentative.https.html": false,
+  "clipboard-apis/async-custom-formats-write-read-without-web-prefix.tentative.https.html": false,
+  "clipboard-apis/async-custom-formats-write-read.tentative.https.html": false,
+  "clipboard-apis/async-html-script-removal.https.html": false,
+  "clipboard-apis/async-navigator-clipboard-basics.https.html": false,
+  "clipboard-apis/async-navigator-clipboard-change-event.tentative.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-navigator-clipboard-read-resource-load.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-navigator-clipboard-read-sanitize.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-navigator-clipboard-write-domstring.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-navigator-clipboard-write-multiple.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-promise-write-blobs-read-blobs.https.html": false,
+  "clipboard-apis/async-svg-read-write.tentative.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/async-unsanitized-html-formats-write-read.tentative.https.html": false,
+  "clipboard-apis/async-unsanitized-plaintext-formats-write-read.tentative.https.html": false,
+  "clipboard-apis/async-unsanitized-standard-html-read-fail.tentative.https.html": false,
+  "clipboard-apis/async-write-blobs-read-blobs.https.html": false,
+  "clipboard-apis/async-write-html-read-html.https.html": false,
+  "clipboard-apis/async-write-image-read-image.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/clipboard-copy-selection-line-break.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/clipboard-events-synthetic.html": {
+    "ignore": true
+  },
+  "clipboard-apis/clipboard-file-manual.html": {
+    "ignore": true
+  },
+  "clipboard-apis/clipboard-item.https.html": {
+    "expectedFailures": [
+      "ClipboardItem() succeeds with multiple valid type strings",
+      "ClipboardItem() succeeds with valid type strings",
+      "getType(DOMString unsupported type) converts DOMString to Blob",
+      "getType(DOMString unsupported type) succeeds with correct output",
+      "getType(DOMString valid type) converts DOMString to Blob",
+      "getType(DOMString web custom format type) converts DOMString to Blob",
+      "getType(DOMString web custom format type) succeeds with correct output",
+      "supports(image/svg+xml) returns true",
+      "supports(text/html) returns true",
+      "supports(text/uri-list) returns true",
+      "supports(web foo/bar) returns true",
+      "supports(web text/html) returns true",
+      "types() returns correct values"
+    ]
+  },
+  "clipboard-apis/data-transfer-file-list-change-reference-updates.html": {
+    "ignore": true
+  },
+  "clipboard-apis/dataTransfer-clearData.html": false,
+  "clipboard-apis/detached-iframe/clipboard-on-detached-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/detached-iframe/paste-on-detaching-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/detached-iframe/read-on-detaching-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/detached-iframe/write-on-detaching-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/detached-iframe/write-read-on-detached-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/detached-iframe/writeText-readText-on-detached-iframe.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/downloadurl-list-custom-clipboard-data.tentative.https.html": {
+    "ignore": true
+  },
+  "clipboard-apis/drag-multiple-urls.html": {
+    "ignore": true
+  },
+  "clipboard-apis/events/copy-event.html": {
+    "ignore": true
+  },
+  "clipboard-apis/events/cut-event-manual.html": {
+    "ignore": true
+  },
+  "clipboard-apis/events/paste-event-manual.html": {
+    "ignore": true
+  },
+  "clipboard-apis/idlharness.https.window.js": {
+    "expectedFailures": [
+      "ClipboardChangeEvent interface object length",
+      "ClipboardChangeEvent interface object name",
+      "ClipboardChangeEvent interface: attribute changeId",
+      "ClipboardChangeEvent interface: attribute types",
+      "ClipboardChangeEvent interface: existence and properties of interface object",
+      "ClipboardChangeEvent interface: existence and properties of interface prototype object",
+      "ClipboardChangeEvent interface: existence and properties of interface prototype object's \"constructor\" property",
+      "ClipboardChangeEvent interface: existence and properties of interface prototype object's @@unscopables property"
+    ]
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-disabled-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-disabled-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-attribute-cross-origin-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-attribute-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-cross-origin-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-cross-origin.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-disabled-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-disabled-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-attribute-cross-origin-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-attribute-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-cross-origin-tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-cross-origin.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html.headers": {
+    "ignore": true
+  },
+  "clipboard-apis/permissions/readText-denied.https.html": false,
+  "clipboard-apis/permissions/readText-granted.https.html": false,
+  "clipboard-apis/permissions/writeText-denied.https.html": false,
+  "clipboard-apis/permissions/writeText-granted.https.html": false,
+  "clipboard-apis/text-write-read/async-write-read.https.html": false,
+  "clipboard-apis/text-write-read/async-write-readText.https.html": false,
+  "clipboard-apis/text-write-read/async-writeText-read.https.html": false,
+  "clipboard-apis/text-write-read/async-writeText-readText.https.html": false
+}

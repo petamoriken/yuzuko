@@ -1,0 +1,22 @@
+{
+  "compression/compression-bad-chunks.any.js": true,
+  "compression/compression-constructor-error.any.js": true,
+  "compression/compression-including-empty-chunk.any.js": true,
+  "compression/compression-large-flush-output.any.js": true,
+  "compression/compression-multiple-chunks.any.js": true,
+  "compression/compression-output-length.any.js": true,
+  "compression/compression-stream.any.js": true,
+  "compression/compression-with-detach.any.js": true,
+  "compression/decompression-bad-chunks.any.js": true,
+  "compression/decompression-brotli-large-window.tentative.any.js": true,
+  "compression/decompression-buffersource.any.js": true,
+  "compression/decompression-constructor-error.any.js": true,
+  "compression/decompression-correct-input.any.js": true,
+  "compression/decompression-corrupt-input.any.js": true,
+  "compression/decompression-empty-input.any.js": true,
+  "compression/decompression-extra-input.any.js": true,
+  "compression/decompression-split-chunk.any.js": true,
+  "compression/decompression-uint8array-output.any.js": true,
+  "compression/decompression-with-detach.any.js": true,
+  "compression/idlharness.https.any.js": true
+}

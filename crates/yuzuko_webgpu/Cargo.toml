@@ -1,0 +1,16 @@
+[package]
+name = "yuzuko_webgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pollster.workspace = true
+v8.workspace = true
+wgpu.workspace = true
+yuzuko_core.workspace = true
+yuzuko_image.workspace = true
+yuzuko_macros.workspace = true
+yuzuko_window.workspace = true
+yuzuko_winter.workspace = true

@@ -1,0 +1,674 @@
+{
+  "websockets/Close-1000-reason.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(1000, reason) - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-1000-verify-code.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(1000, reason) - event.code == 1000 and event.reason = 'Clean Close'"
+    ]
+  },
+  "websockets/Close-1000.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(1000) - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-1005-verify-code.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close() - return close code is 1005 - Connection should be closed"
+    ]
+  },
+  "websockets/Close-1005.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(1005) - see '7.1.5.  The WebSocket Connection Close Code' in http://www.ietf.org/rfc/rfc6455.txt"
+    ]
+  },
+  "websockets/Close-2999-reason.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(2999, reason) - INVALID_ACCESS_ERR is thrown"
+    ]
+  },
+  "websockets/Close-3000-reason.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(3000, reason) - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-3000-verify-code.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(3000, reason) - verify return code is 3000 - Connection should be closed"
+    ]
+  },
+  "websockets/Close-4999-reason.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(4999, reason) - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-Reason-124Bytes.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(code, 'reason more than 123 bytes') - SYNTAX_ERR is thrown"
+    ]
+  },
+  "websockets/Close-delayed.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close should not emit until handshake completes - Connection should be closed"
+    ]
+  },
+  "websockets/Close-onlyReason.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(only reason) - INVALID_ACCESS_ERR is thrown"
+    ]
+  },
+  "websockets/Close-readyState-Closed.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-readyState-Closing.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - readyState should be in CLOSING state just before onclose is called"
+    ]
+  },
+  "websockets/Close-reason-unpaired-surrogates.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Close the Connection - close(reason with unpaired surrogates) - connection should get closed"
+    ]
+  },
+  "websockets/Close-server-initiated-close.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Server initiated Close - Client sends back a CLOSE - readyState should be in CLOSED state and wasClean is TRUE - Connection should be closed"
+    ]
+  },
+  "websockets/Close-undefined.any.js": {
+    "expectedFailures": [
+      "Close-undefined"
+    ]
+  },
+  "websockets/Create-asciiSep-protocol-string.any.js": true,
+  "websockets/Create-blocked-port.any.js": {
+    "expectedFailures": [
+      "Basic check"
+    ]
+  },
+  "websockets/Create-extensions-empty.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - wsocket.extensions should be set to '' after connection is established - Connection should be closed"
+    ]
+  },
+  "websockets/Create-http-urls.any.js": {
+    "expectedFailures": [
+      "WebSocket: ensure both HTTP schemes are supported"
+    ]
+  },
+  "websockets/Create-invalid-urls.any.js": true,
+  "websockets/Create-non-absolute-url.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a non absolute URL: ",
+      "Create WebSocket - Pass a non absolute URL: 123",
+      "Create WebSocket - Pass a non absolute URL: ?",
+      "Create WebSocket - Pass a non absolute URL: null",
+      "Create WebSocket - Pass a non absolute URL: test"
+    ]
+  },
+  "websockets/Create-nonAscii-protocol-string.any.js": true,
+  "websockets/Create-on-worker-shutdown.any.js": false,
+  "websockets/Create-protocol-with-space.any.js": true,
+  "websockets/Create-protocols-repeated-case-insensitive.any.js": true,
+  "websockets/Create-protocols-repeated.any.js": true,
+  "websockets/Create-url-with-space.any.js": true,
+  "websockets/Create-url-with-windows-1252-encoding.html": {
+    "expectedFailures": [
+      "URL's percent-encoding is always in UTF-8 for WebSocket"
+    ]
+  },
+  "websockets/Create-valid-url-array-protocols.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a valid URL and array of protocol strings - Connection should be closed"
+    ]
+  },
+  "websockets/Create-valid-url-binaryType-blob.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - wsocket.binaryType should be set to 'blob' after connection is established - Connection should be closed"
+    ]
+  },
+  "websockets/Create-valid-url-protocol-empty.any.js": true,
+  "websockets/Create-valid-url-protocol-setCorrectly.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a valid URL and protocol string - Connection should be closed"
+    ]
+  },
+  "websockets/Create-valid-url-protocol-string.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a valid URL and protocol string - Connection should be closed"
+    ]
+  },
+  "websockets/Create-valid-url-protocol.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a valid URL and a protocol string - Connection should be closed"
+    ]
+  },
+  "websockets/Create-valid-url.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - Pass a valid URL - Connection should be closed"
+    ]
+  },
+  "websockets/Send-0byte-data.any.js": {
+    "expectedFailures": [
+      "Send 0 byte data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-65K-data.any.js": {
+    "expectedFailures": [
+      "Send 65K data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-before-open.any.js": true,
+  "websockets/Send-binary-65K-arraybuffer.any.js": {
+    "expectedFailures": [
+      "Send 65K binary data on a WebSocket - ArrayBuffer - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybuffer.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBuffer - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-float16.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Float16Array - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-float32.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Float32Array - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-float64.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Float64Array - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-int16-offset.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Int16Array with offset - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-int32.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Int32Array - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-int8.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Int8Array - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-uint16-offset-length.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Uint16Array with offset and length - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-uint32-offset.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Uint32Array with offset - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-uint8-offset-length.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Uint8Array with offset and length - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-arraybufferview-uint8-offset.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - ArrayBufferView - Uint8Array with offset - Connection should be closed"
+    ]
+  },
+  "websockets/Send-binary-blob.any.js": {
+    "expectedFailures": [
+      "Send binary data on a WebSocket - Blob - Connection should be closed"
+    ]
+  },
+  "websockets/Send-data.any.js": {
+    "expectedFailures": [
+      "Send data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-data.worker.js": {
+    "expectedFailures": [
+      "Send data on a WebSocket in a Worker"
+    ]
+  },
+  "websockets/Send-null.any.js": {
+    "expectedFailures": [
+      "Send null data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-paired-surrogates.any.js": {
+    "expectedFailures": [
+      "Send paired surrogates data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-unicode-data.any.js": {
+    "expectedFailures": [
+      "Send unicode data on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/Send-unpaired-surrogates.any.js": {
+    "expectedFailures": [
+      "Send unpaired surrogates on a WebSocket - Connection should be closed"
+    ]
+  },
+  "websockets/back-forward-cache-closes-open-websocket-connection.tentative.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-closes-open-websocket-connection"
+    ]
+  },
+  "websockets/back-forward-cache-with-closed-websocket-connection-ccns.tentative.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-with-closed-websocket-connection-ccns"
+    ]
+  },
+  "websockets/back-forward-cache-with-closed-websocket-connection.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-with-closed-websocket-connection"
+    ]
+  },
+  "websockets/back-forward-cache-with-open-websocket-connection-and-close-it-in-pagehide.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-with-open-websocket-connection-and-close-it-in-pagehide"
+    ]
+  },
+  "websockets/back-forward-cache-with-open-websocket-connection-ccns.tentative.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-with-open-websocket-connection-ccns"
+    ]
+  },
+  "websockets/back-forward-cache-with-open-websocket-connection.window.js": {
+    "expectedFailures": [
+      "back-forward-cache-with-open-websocket-connection"
+    ]
+  },
+  "websockets/basic-auth.any.js": {
+    "expectedFailures": [
+      "HTTP basic authentication should work with WebSockets"
+    ]
+  },
+  "websockets/binary/001.html": true,
+  "websockets/binary/002.html": true,
+  "websockets/binary/004.html": true,
+  "websockets/binary/005.html": true,
+  "websockets/binaryType-wrong-value.any.js": {
+    "expectedFailures": [
+      "Create WebSocket - set binaryType to something other than blob or arraybuffer - SYNTAX_ERR is returned - Connection should be closed"
+    ]
+  },
+  "websockets/bufferedAmount-unchanged-by-sync-xhr.any.js": {
+    "expectedFailures": [
+      "bufferedAmount should not be updated during a sync XHR"
+    ]
+  },
+  "websockets/close-invalid.any.js": true,
+  "websockets/closing-handshake/002.html": true,
+  "websockets/closing-handshake/003.html": true,
+  "websockets/closing-handshake/004.html": true,
+  "websockets/constants.sub.js": {
+    "ignore": true
+  },
+  "websockets/constructor.any.js": true,
+  "websockets/constructor/001.html": true,
+  "websockets/constructor/004.html": true,
+  "websockets/constructor/005.html": true,
+  "websockets/constructor/006.html": {
+    "ignore": true
+  },
+  "websockets/constructor/007.html": true,
+  "websockets/constructor/008.html": true,
+  "websockets/constructor/009.html": true,
+  "websockets/constructor/010.html": true,
+  "websockets/constructor/011.html": true,
+  "websockets/constructor/012.html": true,
+  "websockets/constructor/013.html": true,
+  "websockets/constructor/014.html": {
+    "expectedFailures": [
+      "014"
+    ]
+  },
+  "websockets/constructor/016.html": {
+    "ignore": true
+  },
+  "websockets/constructor/017.html": true,
+  "websockets/constructor/018.html": true,
+  "websockets/constructor/019.html": true,
+  "websockets/constructor/020.html": true,
+  "websockets/constructor/021.html": true,
+  "websockets/constructor/022.html": true,
+  "websockets/constructor/option-bag.any.js": {
+    "expectedFailures": [
+      "Empty option bag should be accepted",
+      "Option bag with protocols array should be accepted"
+    ]
+  },
+  "websockets/constructor/target-address-space.any.js": {
+    "expectedFailures": [
+      "WebSocket constructor with matching targetAddressSpace 'loopback' succeeds"
+    ]
+  },
+  "websockets/constructor/third-param-ignored.any.js": {
+    "expectedFailures": [
+      "a third parameter to the constructor should be ignored",
+      "protocol sequence should work with ignored third parameter",
+      "protocol string should work with ignored third parameter"
+    ]
+  },
+  "websockets/cookies/001.html": {
+    "ignore": true
+  },
+  "websockets/cookies/002.html": {
+    "ignore": true
+  },
+  "websockets/cookies/003.html": {
+    "ignore": true
+  },
+  "websockets/cookies/004.html": {
+    "ignore": true
+  },
+  "websockets/cookies/005.html": {
+    "ignore": true
+  },
+  "websockets/cookies/006.html": {
+    "ignore": true
+  },
+  "websockets/cookies/007.html": {
+    "ignore": true
+  },
+  "websockets/cookies/cross-origin-cookie-set.html": {
+    "expectedFailures": [
+      "Cookie should be set"
+    ]
+  },
+  "websockets/cookies/third-party-cookie-accepted.https.html": {
+    "expectedFailures": [
+      "Test that third-party cookies are accepted for WebSockets."
+    ]
+  },
+  "websockets/eventhandlers.any.js": true,
+  "websockets/extended-payload-length.html": true,
+  "websockets/idlharness.any.js": true,
+  "websockets/interfaces/CloseEvent/clean-close.html": true,
+  "websockets/interfaces/CloseEvent/constructor.html": true,
+  "websockets/interfaces/CloseEvent/historical.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-arraybuffer.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-blob.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-defineProperty-getter.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-defineProperty-setter.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-deleting.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-getting.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-initial.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-large.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-readonly.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-unicode.html": true,
+  "websockets/interfaces/WebSocket/close/close-basic.html": true,
+  "websockets/interfaces/WebSocket/close/close-connecting-async.any.js": true,
+  "websockets/interfaces/WebSocket/close/close-connecting.html": true,
+  "websockets/interfaces/WebSocket/close/close-multiple.html": true,
+  "websockets/interfaces/WebSocket/close/close-nested.html": true,
+  "websockets/interfaces/WebSocket/close/close-replace.html": true,
+  "websockets/interfaces/WebSocket/close/close-return.html": true,
+  "websockets/interfaces/WebSocket/constants/001.html": true,
+  "websockets/interfaces/WebSocket/constants/002.html": true,
+  "websockets/interfaces/WebSocket/constants/003.html": true,
+  "websockets/interfaces/WebSocket/constants/004.html": true,
+  "websockets/interfaces/WebSocket/constants/005.html": true,
+  "websockets/interfaces/WebSocket/constants/006.html": true,
+  "websockets/interfaces/WebSocket/events/001.html": true,
+  "websockets/interfaces/WebSocket/events/002.html": true,
+  "websockets/interfaces/WebSocket/events/003.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/events/004.html": true,
+  "websockets/interfaces/WebSocket/events/006.html": true,
+  "websockets/interfaces/WebSocket/events/007.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/events/008.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/events/009.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/events/010.html": true,
+  "websockets/interfaces/WebSocket/events/011.html": true,
+  "websockets/interfaces/WebSocket/events/012.html": true,
+  "websockets/interfaces/WebSocket/events/013.html": {
+    "expectedFailures": [
+      "onclose",
+      "onerror",
+      "onmessage",
+      "onopen"
+    ]
+  },
+  "websockets/interfaces/WebSocket/events/014.html": true,
+  "websockets/interfaces/WebSocket/events/015.html": {
+    "expectedFailures": [
+      "015"
+    ]
+  },
+  "websockets/interfaces/WebSocket/events/016.html": true,
+  "websockets/interfaces/WebSocket/events/017.html": true,
+  "websockets/interfaces/WebSocket/events/018.html": true,
+  "websockets/interfaces/WebSocket/events/019.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/events/020.html": true,
+  "websockets/interfaces/WebSocket/extensions/001.html": true,
+  "websockets/interfaces/WebSocket/protocol/protocol-initial.html": true,
+  "websockets/interfaces/WebSocket/readyState/001.html": true,
+  "websockets/interfaces/WebSocket/readyState/002.html": true,
+  "websockets/interfaces/WebSocket/readyState/003.html": true,
+  "websockets/interfaces/WebSocket/readyState/004.html": true,
+  "websockets/interfaces/WebSocket/readyState/005.html": true,
+  "websockets/interfaces/WebSocket/readyState/006.html": true,
+  "websockets/interfaces/WebSocket/readyState/007.html": true,
+  "websockets/interfaces/WebSocket/readyState/008.html": true,
+  "websockets/interfaces/WebSocket/send/001.html": true,
+  "websockets/interfaces/WebSocket/send/002.html": true,
+  "websockets/interfaces/WebSocket/send/003.html": true,
+  "websockets/interfaces/WebSocket/send/004.html": true,
+  "websockets/interfaces/WebSocket/send/005.html": true,
+  "websockets/interfaces/WebSocket/send/006.html": true,
+  "websockets/interfaces/WebSocket/send/007.html": {
+    "expectedFailures": [
+      "007"
+    ]
+  },
+  "websockets/interfaces/WebSocket/send/008.html": {
+    "expectedFailures": [
+      "008"
+    ]
+  },
+  "websockets/interfaces/WebSocket/send/009.html": true,
+  "websockets/interfaces/WebSocket/send/010.html": {
+    "ignore": true
+  },
+  "websockets/interfaces/WebSocket/send/011.html": true,
+  "websockets/interfaces/WebSocket/send/012.html": true,
+  "websockets/interfaces/WebSocket/url/001.html": true,
+  "websockets/interfaces/WebSocket/url/002.html": true,
+  "websockets/interfaces/WebSocket/url/003.html": true,
+  "websockets/interfaces/WebSocket/url/004.html": true,
+  "websockets/interfaces/WebSocket/url/005.html": true,
+  "websockets/interfaces/WebSocket/url/006.html": true,
+  "websockets/interfaces/WebSocket/url/resolve.html": true,
+  "websockets/keeping-connection-open/001.html": true,
+  "websockets/mixed-content.https.any.js": {
+    "expectedFailures": [
+      "opening an insecure WebSocket in a secure context should fail"
+    ]
+  },
+  "websockets/multi-globals/message-received.html": {
+    "ignore": true
+  },
+  "websockets/multi-globals/url-parsing/current/current.html": {
+    "ignore": true
+  },
+  "websockets/multi-globals/url-parsing/incumbent/incumbent.html": {
+    "ignore": true
+  },
+  "websockets/multi-globals/url-parsing/url-parsing.html": {
+    "ignore": true
+  },
+  "websockets/opening-handshake/001.html": true,
+  "websockets/opening-handshake/002.html": true,
+  "websockets/opening-handshake/003-sets-origin.worker.js": {
+    "expectedFailures": [
+      "origin set in a Worker"
+    ]
+  },
+  "websockets/opening-handshake/003.html": true,
+  "websockets/opening-handshake/005.html": {
+    "expectedFailures": [
+      "005"
+    ]
+  },
+  "websockets/opening-handshake/006.html": true,
+  "websockets/opening-handshake/received-301-code.html": {
+    "expectedFailures": [
+      "Websockets - Received 301 code"
+    ]
+  },
+  "websockets/referrer.any.js": true,
+  "websockets/remove-own-iframe-during-onerror.window.js": {
+    "expectedFailures": [
+      "removing an iframe from within an onerror handler should work"
+    ]
+  },
+  "websockets/security/001.html": true,
+  "websockets/security/002.html": {
+    "expectedFailures": [
+      "002"
+    ]
+  },
+  "websockets/send-data-isolation.sub.html": {
+    "ignore": true
+  },
+  "websockets/send-many-64K-messages-with-backpressure.any.js": {
+    "expectedFailures": [
+      "sending 50 messages of size 65536 with backpressure applied should not hang"
+    ]
+  },
+  "websockets/stream/tentative/abort.any.js": {
+    "expectedFailures": [
+      "abort after connect should do nothing"
+    ]
+  },
+  "websockets/stream/tentative/backpressure-receive.any.js": {
+    "expectedFailures": [
+      "backpressure should be applied to received messages"
+    ]
+  },
+  "websockets/stream/tentative/backpressure-send.any.js": {
+    "expectedFailures": [
+      "backpressure should be applied to sent messages"
+    ]
+  },
+  "websockets/stream/tentative/close.any.js": {
+    "expectedFailures": [
+      "aborting the writable should result in a clean close",
+      "aborting the writable with a DOMException not set code or reason",
+      "aborting the writable with a code and reason should use them",
+      "aborting the writable with a code should send that code",
+      "aborting the writable with a reason but no code should default the close code",
+      "aborting the writable with attributes not wrapped in a WebSocketError should be ignored",
+      "canceling the readable should result in a clean close",
+      "canceling the readable with a DOMException not set code or reason",
+      "canceling the readable with a code and reason should use them",
+      "canceling the readable with a code should send that code",
+      "canceling the readable with a reason but no code should default the close code",
+      "canceling the readable with attributes not wrapped in a WebSocketError should be ignored",
+      "close code should be sent to server and reflected back",
+      "close() with an overlong reason should throw",
+      "close() with invalid code 1001 should throw",
+      "close() with invalid code 2999 should throw",
+      "close() with invalid code 5000 should throw",
+      "close() with invalid code 999 should throw",
+      "close(true) should throw a TypeError",
+      "closing the writable should result in a clean close",
+      "incomplete closing handshake should be considered unclean close",
+      "no close argument should send empty Close frame",
+      "unspecified close code should send empty Close frame",
+      "unspecified close code with empty reason should send empty Close frame",
+      "unspecified close code with non-empty reason should set code to 1000",
+      "writer close() promise should not resolve until handshake completes"
+    ]
+  },
+  "websockets/stream/tentative/constructor.any.js": {
+    "expectedFailures": [
+      "constructing with a valid URL should work",
+      "setting a protocol in the constructor should work",
+      "wss.opened should resolve to the right types"
+    ]
+  },
+  "websockets/stream/tentative/read.any.js": {
+    "expectedFailures": [
+      "read type for binary messages is Uint8Array"
+    ]
+  },
+  "websockets/stream/tentative/remote-close.any.js": {
+    "expectedFailures": [
+      "UTF-8 reason should work",
+      "abrupt close should give an error",
+      "clean close should be clean",
+      "close frame with no body should result in status code 1005",
+      "close with unwritten data should not be considered clean",
+      "reason should be passed through",
+      "remote code and reason should be used"
+    ]
+  },
+  "websockets/stream/tentative/websocket-error.any.js": true,
+  "websockets/stream/tentative/write.any.js": {
+    "expectedFailures": [
+      "Garbage collecting a WebSocket stream doesn't crash while write promise is pending",
+      "a write that was incomplete at close time should reject",
+      "garbage collection after close with a pending write promise should not crash",
+      "writing a resizable ArrayBuffer should be rejected",
+      "writing a value that cannot be stringified should cause a rejection",
+      "writing a view on a shared buffer should be rejected"
+    ]
+  },
+  "websockets/unload-a-document/001-1.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/001-2.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/001.html": {
+    "expectedFailures": [
+      "001"
+    ]
+  },
+  "websockets/unload-a-document/002-1.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/002-2.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/002.html": {
+    "expectedFailures": [
+      "002"
+    ]
+  },
+  "websockets/unload-a-document/003.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/004.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/005-1.html": {
+    "ignore": true
+  },
+  "websockets/unload-a-document/005.html": {
+    "expectedFailures": [
+      "005"
+    ]
+  }
+}

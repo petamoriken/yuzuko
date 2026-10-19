@@ -1,0 +1,13 @@
+.DS_Store
+
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+.env
+.env.*
+!.env.example

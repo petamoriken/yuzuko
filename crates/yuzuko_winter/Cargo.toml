@@ -1,0 +1,55 @@
+[package]
+name = "yuzuko_winter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes = "1.12.1"
+encoding_rs.workspace = true
+flate2 = { workspace = true, default-features = false, features = ["zlib-rs"] }
+getrandom = "0.3"
+rustls.workspace = true
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["client", "http1"] }
+hyper-rustls = { version = "0.27.10", default-features = false, features = [
+  "http1",
+  "ring",
+  "tls12",
+  "webpki-tokio",
+] }
+hyper-util = { version = "0.1.21", features = ["tokio", "http1", "client-legacy"] }
+tokio-rustls = "0.26.6"
+webpki-roots.workspace = true
+tokio = { version = "1.53.3", features = [
+  "io-util",
+  "macros",
+  "net",
+  "rt",
+  "sync",
+  "time",
+] }
+url.workspace = true
+v8.workspace = true
+yuzuko_core.workspace = true
+yuzuko_macros.workspace = true
+urlpattern = "0.6.0"
+sha1 = "0.11.0"
+sha2 = "0.11.1"
+hmac = "0.13.0"
+aes-gcm = { version = "0.11.1", features = ["hazmat"] }
+pbkdf2 = "0.13.0"
+regex = "1"
+hkdf = "0.13.0"
+rsa = { version = "0.9.8", features = ["sha1", "sha2"] }
+sha1_10 = { package = "sha1", version = "0.10.6", features = ["oid"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "pkcs8", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "pkcs8", "std"] }
+p521 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "pkcs8", "std"] }
+ed25519-dalek = { workspace = true, features = ["alloc", "pkcs8", "rand_core"] }
+x25519-dalek = { version = "3.0.0", default-features = false, features = ["static_secrets"] }
+brotli = "9.0.0"
+ruzstd = "0.9.1"
+ed448-goldilocks = { version = "0.14.0-pre.15", default-features = false, features = ["signing", "pkcs8"] }
+x448 = { version = "0.14.0-pre.12", default-features = false }

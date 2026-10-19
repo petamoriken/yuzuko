@@ -1,0 +1,13 @@
+{
+  "urlpattern/urlpattern-compare.tentative.any.js": true,
+  "urlpattern/urlpattern-compare.tentative.https.any.js": true,
+  "urlpattern/urlpattern-constructor.any.js": true,
+  "urlpattern/urlpattern-detached-frame-regexp.html": {
+    "ignore": true
+  },
+  "urlpattern/urlpattern-empty-regexp-group.html": true,
+  "urlpattern/urlpattern-generate.tentative.any.js": true,
+  "urlpattern/urlpattern-hasregexpgroups.any.js": true,
+  "urlpattern/urlpattern.any.js": true,
+  "urlpattern/urlpattern.https.any.js": true
+}

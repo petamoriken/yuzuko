@@ -1,0 +1,676 @@
+{
+  "pointerevents/bugs/drag_on_added_range_input.html": {
+    "ignore": true
+  },
+  "pointerevents/bugs/events_after_lostpointercapture_remove_setcapture_node.html": {
+    "ignore": true
+  },
+  "pointerevents/capturing_boundary_event_handler_at_ua_shadowdom.html": {
+    "ignore": true
+  },
+  "pointerevents/coalesced_events_attributes.https.html": {
+    "ignore": true
+  },
+  "pointerevents/coalesced_events_attributes_on_redispatch.https.html": {
+    "ignore": true
+  },
+  "pointerevents/coalesced_events_attributes_under_load.https.optional.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_compat-mouse-events-when-removing-nodes.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse-on-object.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse-pointer-on-scrollbar.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse-pointer-preventdefault-passive.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse-pointer-preventdefault.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse-pointer-updown-events.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse_target_after_pointer_target_host_of_shadow_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse_target_after_pointer_target_root_element_in_shadow_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouse_target_after_pointer_target_slot_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_mouseevent_key_pressed.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_preventdefault_pointerdown_dblclick.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_touch-action-verification.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_touch-action_two-finger_interaction.html": {
+    "ignore": true
+  },
+  "pointerevents/compat/pointerevent_touch_target_after_pointerdown_target_removed.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/crashtests/longpress-crash.html": {
+    "ignore": true
+  },
+  "pointerevents/idlharness.https.window.js": {
+    "expectedFailures": [
+      "Document interface: attribute ongotpointercapture",
+      "Document interface: attribute onlostpointercapture",
+      "Document interface: attribute onpointercancel",
+      "Document interface: attribute onpointerdown",
+      "Document interface: attribute onpointerenter",
+      "Document interface: attribute onpointerleave",
+      "Document interface: attribute onpointermove",
+      "Document interface: attribute onpointerout",
+      "Document interface: attribute onpointerover",
+      "Document interface: attribute onpointerrawupdate",
+      "Document interface: attribute onpointerup",
+      "Document interface: document must inherit property \"ongotpointercapture\" with the proper type",
+      "Document interface: document must inherit property \"onlostpointercapture\" with the proper type",
+      "Document interface: document must inherit property \"onpointercancel\" with the proper type",
+      "Document interface: document must inherit property \"onpointerdown\" with the proper type",
+      "Document interface: document must inherit property \"onpointerenter\" with the proper type",
+      "Document interface: document must inherit property \"onpointerleave\" with the proper type",
+      "Document interface: document must inherit property \"onpointermove\" with the proper type",
+      "Document interface: document must inherit property \"onpointerout\" with the proper type",
+      "Document interface: document must inherit property \"onpointerover\" with the proper type",
+      "Document interface: document must inherit property \"onpointerrawupdate\" with the proper type",
+      "Document interface: document must inherit property \"onpointerup\" with the proper type",
+      "Element interface: calling hasPointerCapture(long) on document.body with too few arguments must throw TypeError",
+      "Element interface: calling releasePointerCapture(long) on document.body with too few arguments must throw TypeError",
+      "Element interface: calling setPointerCapture(long) on document.body with too few arguments must throw TypeError",
+      "Element interface: document.body must inherit property \"hasPointerCapture(long)\" with the proper type",
+      "Element interface: document.body must inherit property \"releasePointerCapture(long)\" with the proper type",
+      "Element interface: document.body must inherit property \"setPointerCapture(long)\" with the proper type",
+      "Element interface: operation hasPointerCapture(long)",
+      "Element interface: operation releasePointerCapture(long)",
+      "Element interface: operation setPointerCapture(long)",
+      "HTMLElement interface: attribute ongotpointercapture",
+      "HTMLElement interface: attribute onlostpointercapture",
+      "HTMLElement interface: attribute onpointercancel",
+      "HTMLElement interface: attribute onpointerdown",
+      "HTMLElement interface: attribute onpointerenter",
+      "HTMLElement interface: attribute onpointerleave",
+      "HTMLElement interface: attribute onpointermove",
+      "HTMLElement interface: attribute onpointerout",
+      "HTMLElement interface: attribute onpointerover",
+      "HTMLElement interface: attribute onpointerrawupdate",
+      "HTMLElement interface: attribute onpointerup",
+      "MouseEvent interface object length",
+      "MouseEvent interface: attribute layerX",
+      "MouseEvent interface: attribute layerY",
+      "MouseEvent interface: calling initMouseEvent(DOMString, optional boolean, optional boolean, optional Window?, optional long, optional long, optional long, optional long, optional long, optional boolean, optional boolean, optional boolean, optional boolean, optional short, optional EventTarget?) on new PointerEvent(\"type\") with too few arguments must throw TypeError",
+      "MouseEvent interface: new PointerEvent(\"type\") must inherit property \"initMouseEvent(DOMString, optional boolean, optional boolean, optional Window?, optional long, optional long, optional long, optional long, optional long, optional boolean, optional boolean, optional boolean, optional boolean, optional short, optional EventTarget?)\" with the proper type",
+      "MouseEvent interface: new PointerEvent(\"type\") must inherit property \"layerX\" with the proper type",
+      "MouseEvent interface: new PointerEvent(\"type\") must inherit property \"layerY\" with the proper type",
+      "MouseEvent interface: operation initMouseEvent(DOMString, optional boolean, optional boolean, optional Window?, optional long, optional long, optional long, optional long, optional long, optional boolean, optional boolean, optional boolean, optional boolean, optional short, optional EventTarget?)",
+      "Navigator interface: attribute maxTouchPoints",
+      "Navigator interface: navigator must inherit property \"maxTouchPoints\" with the proper type",
+      "PointerEvent interface object length",
+      "WheelEvent interface object length",
+      "WheelEvent interface: attribute momentum",
+      "WheelEvent interface: constant DOM_DELTA_LINE on interface object",
+      "WheelEvent interface: constant DOM_DELTA_LINE on interface prototype object",
+      "WheelEvent interface: constant DOM_DELTA_PAGE on interface object",
+      "WheelEvent interface: constant DOM_DELTA_PAGE on interface prototype object",
+      "WheelEvent interface: constant DOM_DELTA_PIXEL on interface object",
+      "WheelEvent interface: constant DOM_DELTA_PIXEL on interface prototype object",
+      "Window interface: attribute ongotpointercapture",
+      "Window interface: attribute onlostpointercapture",
+      "Window interface: attribute onpointercancel",
+      "Window interface: attribute onpointerdown",
+      "Window interface: attribute onpointerenter",
+      "Window interface: attribute onpointerleave",
+      "Window interface: attribute onpointermove",
+      "Window interface: attribute onpointerout",
+      "Window interface: attribute onpointerover",
+      "Window interface: attribute onpointerrawupdate",
+      "Window interface: attribute onpointerup",
+      "Window interface: window must inherit property \"ongotpointercapture\" with the proper type",
+      "Window interface: window must inherit property \"onlostpointercapture\" with the proper type",
+      "Window interface: window must inherit property \"onpointercancel\" with the proper type",
+      "Window interface: window must inherit property \"onpointerdown\" with the proper type",
+      "Window interface: window must inherit property \"onpointerenter\" with the proper type",
+      "Window interface: window must inherit property \"onpointerleave\" with the proper type",
+      "Window interface: window must inherit property \"onpointermove\" with the proper type",
+      "Window interface: window must inherit property \"onpointerout\" with the proper type",
+      "Window interface: window must inherit property \"onpointerover\" with the proper type",
+      "Window interface: window must inherit property \"onpointerrawupdate\" with the proper type",
+      "Window interface: window must inherit property \"onpointerup\" with the proper type"
+    ]
+  },
+  "pointerevents/inheritance.html": {
+    "expectedFailures": [
+      "Property touch-action does not inherit",
+      "Property touch-action has initial value auto"
+    ]
+  },
+  "pointerevents/mouse-pointer-boundary-events-for-shadowdom.html": {
+    "ignore": true
+  },
+  "pointerevents/parsing/touch-action-computed.html": {
+    "expectedFailures": [
+      "Property touch-action value 'auto'",
+      "Property touch-action value 'manipulation'",
+      "Property touch-action value 'none'",
+      "Property touch-action value 'pan-x pan-y'",
+      "Property touch-action value 'pan-x'",
+      "Property touch-action value 'pan-y'"
+    ]
+  },
+  "pointerevents/parsing/touch-action-invalid.html": {
+    "expectedFailures": [
+      "e.style['touch-action'] = \"auto none\" should not set the property value",
+      "e.style['touch-action'] = \"manipulation pan-x\" should not set the property value",
+      "e.style['touch-action'] = \"pan-y pan-x pan-y\" should not set the property value"
+    ]
+  },
+  "pointerevents/parsing/touch-action-valid.html": {
+    "expectedFailures": [
+      "e.style['touch-action'] = \"auto\" should set the property value",
+      "e.style['touch-action'] = \"manipulation\" should set the property value",
+      "e.style['touch-action'] = \"none\" should set the property value",
+      "e.style['touch-action'] = \"pan-x\" should set the property value",
+      "e.style['touch-action'] = \"pan-y pan-x\" should set the property value",
+      "e.style['touch-action'] = \"pan-y\" should set the property value"
+    ]
+  },
+  "pointerevents/persistentDeviceId/get-persistendeviceid-from-pointer-event.tentative.html": false,
+  "pointerevents/persistentDeviceId/get-persistendeviceid-from-pointer-mouse-event.tentative.html": false,
+  "pointerevents/persistentDeviceId/persistentdeviceid-is-unique-manual.tentative.html": false,
+  "pointerevents/persistentDeviceId/pointer-event-has-persistentdeviceid-from-pointer-event-init.tentative.html": true,
+  "pointerevents/pointer-events-none-skip-scroll-in-iframe.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer-events-none-skip-scroll-scrollbar.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer-events-none-skip-scroll-will-change-in-iframe.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer-events-none-skip-scroll-will-change-scrollbar.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer-events-none-skip-scroll-will-change.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer-events-none-skip-scroll.html": {
+    "ignore": true
+  },
+  "pointerevents/pointer_boundary_events_after_removing_last_over_element_through_innerhtml.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent-boundary-event-target-when-hover-generates-content-under-pointer.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent-drag-interaction.html": false,
+  "pointerevents/pointerevent_after_target_appended.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_after_target_appended_interleaved.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_after_target_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_after_target_removed_from_slot.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_after_target_removed_interleaved.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_attributes.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_attributes.optional.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_auxclick_is_a_pointerevent.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_at_implicit_release_hoverable_pointers.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_attributes_during_drag.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_before_pointerrawupdate.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_in_capturing.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_modifier_no_pointer_movement.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_on_image_map.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_bubble_ancestors_none.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_bubble_display_none.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_bubble_mousedown_mouseup_different_target.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_implicit_release_on_parent_doc_while_subdoc_captures-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_implicit_release_on_subdoc_while_parent_doc_captures-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_mouse_and_release_and_capture_again.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_suppressing_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_capture_touch_and_release_at_got_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_change-touch-action-onpointerdown_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_click_during_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_click_during_parent_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_click_is_a_pointerevent.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_click_is_a_pointerevent_multiple_clicks.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_click_on_chorded_mouse_button.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_coalesced_movement.https.html": false,
+  "pointerevents/pointerevent_constructor.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_constructor.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_contextmenu_is_a_pointerevent.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_disabled_form_control.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_element_haspointercapture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_element_haspointercapture_release_pending_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_fractional_coordinates.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_fractional_coordinates_untrusted.html": false,
+  "pointerevents/pointerevent_hit_test_scroll.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_hit_test_scroll_visible_descendant.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_iframe-touch-action-none_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_lostpointercapture_for_disconnected_node.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_lostpointercapture_for_disconnected_node_in_shadow_dom.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_lostpointercapture_for_disconnected_shadow_host.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_lostpointercapture_is_first.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_lostpointercapture_remove_setcapture_node.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_mouse_capture_change_hover.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_mouse_pointercapture_inactivate_pointer.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_movementxy.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_multi_touch_pointerdown_prevented.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_multiple_pointerover_no_pointer_movement.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_multiple_primary_pointers_boundary_events-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_on_event_handlers.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerId_scope.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointer_boundary_events_after_reappending_last_over_target.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointer_boundary_events_after_removing_last_over_element.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointercancel_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointercapture-in-custom-element.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointercapture-in-shadow-dom.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointercapture-not-lost-in-chorded-buttons.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointercapture_in_frame.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerenter_does_not_bubble.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerleave_after_pointercancel_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerleave_descendant_over.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerleave_descendants.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerleave_does_not_bubble.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerleave_pen-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointermove.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointermove_after_pointerup_target_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointermove_isprimary_same_as_pointerdown.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointermove_on_chorded_mouse_button.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerout_after_pointercancel_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerout_no_pointer_movement.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerout_pen.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerout_received_once.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_after_adoption_from_child.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_after_adoption_from_parent.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_changes_pointer_capture.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_coalesced_events_attributes.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_flush_pointercapture.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_pointerrawupdate_remove_target.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_predicted_coalesced_targets-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_range_input.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_events_to_original_target.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_invalid_pointerid.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_onpointercancel_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_onpointerup_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_pointerup_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_pointerup_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_releasepointercapture_release_right_after_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_root_computed_style.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_root_hit_test.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_sequence_at_implicit_release_on_click.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_sequence_at_implicit_release_on_drag.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_disconnected.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_inactive_button_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_invalid_pointerid.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_override_pending_capture_element.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_pointerup_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_pointerup_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_relatedtarget.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_setpointercapture_to_same_element_twice.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_suppress_compat_events_on_click.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_suppress_compat_events_on_drag_mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_target_at_clicking_link_in_image_map.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_tiltX_tiltY_to_azimuth_altitude.html": true,
+  "pointerevents/pointerevent_to_slotted_target.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-auto-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-button-none-test_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-illegal.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_child-auto-child-none_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_child-none_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_child-pan-x-child-pan-x_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_child-pan-x-child-pan-y_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_highest-parent-none_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-inherit_parent-none_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-keyboard.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-modified_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-mouse.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-none-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-none-on-body-when-style-propagates-to-viewport_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-overflow-hidden_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-down-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-left-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-right-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-up-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-x-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-x-pan-y-pan-y_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-x-pan-y_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-pan-y-css_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-rotated-divs_touch-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-single-axis_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-span-none-test_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-svg-none-test_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-table-none-test_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-action-verification.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-adjustment_click_target.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_touch-propagates-when-target-is-video_touch.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_coordinates_when_locked.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_getCoalescedEvents_when_pointerlocked.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_getPredictedEvents_when_pointerlocked-manual.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_movementxy_with_pointerlock.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_pointerlock_after_pointercapture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_pointerlock_supercedes_capture.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_pointermove_in_pointerlock.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_pointermove_on_chorded_mouse_button_when_locked.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerlock/pointerevent_pointerrawupdate_in_pointerlock.https.html": {
+    "ignore": true
+  },
+  "pointerevents/pointermove_after_pointerover_target_removed.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerup_after_pointerdown_target_removed.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerup_button_value_matches_corresponding_pointerdown.html": {
+    "ignore": true
+  },
+  "pointerevents/predicted_events_attributes.html": {
+    "ignore": true
+  },
+  "pointerevents/touch-action-with-swipe-dir-change.html": {
+    "ignore": true
+  },
+  "pointerevents/touch-scroll-axis-lock-with-scroll-chain.html": {
+    "ignore": true
+  }
+}

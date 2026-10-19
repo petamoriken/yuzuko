@@ -1,0 +1,250 @@
+{
+  "wasm/jsapi/constructor/compile.any.js": true,
+  "wasm/jsapi/constructor/instantiate-bad-imports.any.js": true,
+  "wasm/jsapi/constructor/instantiate.any.js": true,
+  "wasm/jsapi/constructor/multi-value.any.js": true,
+  "wasm/jsapi/constructor/toStringTag.any.js": true,
+  "wasm/jsapi/constructor/validate.any.js": true,
+  "wasm/jsapi/esm-integration/exports.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/global-exports-live-bindings.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/global-exports.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/js-wasm-cycle.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/mutable-global-sharing.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/namespace-instance.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/reserved-import-names.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/resolve-export.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/source-phase-string-builtins.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/source-phase-string-constants.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/source-phase.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/string-builtins.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/string-constants.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/v128-tdz.tentative.any.js": {
+    "expectedFailures": [
+      "v128 global exports should cause TDZ errors"
+    ]
+  },
+  "wasm/jsapi/esm-integration/wasm-import-wasm-export.tentative.any.js": true,
+  "wasm/jsapi/exception/basic.tentative.any.js": true,
+  "wasm/jsapi/exception/constructor.tentative.any.js": true,
+  "wasm/jsapi/exception/getArg.tentative.any.js": {
+    "expectedFailures": [
+      "Getting out-of-range argument"
+    ]
+  },
+  "wasm/jsapi/exception/identity.tentative.any.js": true,
+  "wasm/jsapi/exception/is.tentative.any.js": true,
+  "wasm/jsapi/exception/toString.tentative.any.js": true,
+  "wasm/jsapi/function/call.tentative.any.js": {
+    "expectedFailures": [
+      "test calling function",
+      "test constructing function"
+    ]
+  },
+  "wasm/jsapi/function/constructor.tentative.any.js": {
+    "expectedFailures": [
+      "Calling",
+      "Too few arguments",
+      "construct with JS function",
+      "fail to construct with non-callable object",
+      "fail with missing parameters",
+      "fail with missing results",
+      "fail with non-existent parameter and result type",
+      "fail with non-function object",
+      "fail with non-string parameters & results",
+      "length",
+      "name"
+    ]
+  },
+  "wasm/jsapi/function/table.tentative.any.js": {
+    "expectedFailures": [
+      "Test insertion into table"
+    ]
+  },
+  "wasm/jsapi/function/type.tentative.any.js": {
+    "expectedFailures": [
+      "Check all types",
+      "Check empty results and parameters"
+    ]
+  },
+  "wasm/jsapi/functions/entry-different-function-realm.html": {
+    "ignore": true
+  },
+  "wasm/jsapi/functions/entry.html": {
+    "ignore": true
+  },
+  "wasm/jsapi/functions/incumbent.html": {
+    "ignore": true
+  },
+  "wasm/jsapi/gc/casts.tentative.any.js": true,
+  "wasm/jsapi/gc/exported-object.tentative.any.js": true,
+  "wasm/jsapi/gc/i31.tentative.any.js": true,
+  "wasm/jsapi/global/constructor.any.js": true,
+  "wasm/jsapi/global/toString.any.js": true,
+  "wasm/jsapi/global/type.tentative.any.js": {
+    "expectedFailures": [
+      "externref, immutable",
+      "externref, mutable",
+      "f32, immutable",
+      "f32, mutable",
+      "f64, immutable",
+      "f64, mutable",
+      "funcref, immutable",
+      "funcref, mutable",
+      "i32, immutable",
+      "i32, mutable",
+      "i64, immutable",
+      "i64, mutable",
+      "key ordering"
+    ]
+  },
+  "wasm/jsapi/global/value-get-set.any.js": true,
+  "wasm/jsapi/global/valueOf.any.js": true,
+  "wasm/jsapi/idlharness.any.js": {
+    "expectedFailures": [
+      "Module interface: existence and properties of interface object",
+      "Module interface: existence and properties of interface prototype object"
+    ]
+  },
+  "wasm/jsapi/instance/constructor-bad-imports.any.js": true,
+  "wasm/jsapi/instance/constructor-caching.any.js": true,
+  "wasm/jsapi/instance/constructor.any.js": true,
+  "wasm/jsapi/instance/exports.any.js": true,
+  "wasm/jsapi/instance/toString.any.js": true,
+  "wasm/jsapi/interface.any.js": true,
+  "wasm/jsapi/js-string/basic.any.js": true,
+  "wasm/jsapi/js-string/constants.any.js": true,
+  "wasm/jsapi/js-string/imports.any.js": true,
+  "wasm/jsapi/jspi/js-promise-integration.any.js": true,
+  "wasm/jsapi/jspi/notraps.any.js": true,
+  "wasm/jsapi/jspi/rejects.any.js": true,
+  "wasm/jsapi/memory/buffer.any.js": true,
+  "wasm/jsapi/memory/constructor-shared.tentative.any.js": true,
+  "wasm/jsapi/memory/constructor-types.tentative.any.js": {
+    "expectedFailures": [
+      "Initializing with both initial and minimum",
+      "Non-zero minimum",
+      "Zero minimum"
+    ]
+  },
+  "wasm/jsapi/memory/constructor.any.js": true,
+  "wasm/jsapi/memory/grow.any.js": true,
+  "wasm/jsapi/memory/to-fixed-length-buffer-shared.any.js": true,
+  "wasm/jsapi/memory/to-fixed-length-buffer.any.js": true,
+  "wasm/jsapi/memory/to-resizable-buffer-shared.any.js": true,
+  "wasm/jsapi/memory/to-resizable-buffer.any.js": true,
+  "wasm/jsapi/memory/toString.any.js": true,
+  "wasm/jsapi/memory/type.tentative.any.js": {
+    "expectedFailures": [
+      "Non-zero initial, no maximum",
+      "None-zero maximum",
+      "Zero initial, no maximum",
+      "Zero maximum",
+      "non-shared memory",
+      "shared memory"
+    ]
+  },
+  "wasm/jsapi/module/constructor.any.js": true,
+  "wasm/jsapi/module/customSections.any.js": true,
+  "wasm/jsapi/module/exports.any.js": true,
+  "wasm/jsapi/module/imports.any.js": true,
+  "wasm/jsapi/module/moduleSource.tentative.any.js": true,
+  "wasm/jsapi/module/toString.any.js": true,
+  "wasm/jsapi/proto-from-ctor-realm.html": {
+    "ignore": true
+  },
+  "wasm/jsapi/prototypes.any.js": true,
+  "wasm/jsapi/table/constructor-types.tentative.any.js": {
+    "expectedFailures": [
+      "Initializing with both initial and minimum",
+      "Non-zero minimum",
+      "Zero minimum"
+    ]
+  },
+  "wasm/jsapi/table/constructor.any.js": true,
+  "wasm/jsapi/table/get-set.any.js": true,
+  "wasm/jsapi/table/grow.any.js": true,
+  "wasm/jsapi/table/length.any.js": true,
+  "wasm/jsapi/table/toString.any.js": true,
+  "wasm/jsapi/table/type.tentative.any.js": {
+    "expectedFailures": [
+      "Non-zero initial, no maximum",
+      "Non-zero maximum",
+      "Zero initial, no maximum",
+      "Zero maximum"
+    ]
+  },
+  "wasm/jsapi/tag/constructor.tentative.any.js": true,
+  "wasm/jsapi/tag/toString.tentative.any.js": true,
+  "wasm/jsapi/tag/type.tentative.any.js": {
+    "expectedFailures": [
+      "[]",
+      "[i32 i64 f32 f64]",
+      "[i32 i64]"
+    ]
+  },
+  "wasm/webapi/abort.any.js": true,
+  "wasm/webapi/body.any.js": true,
+  "wasm/webapi/contenttype.any.js": true,
+  "wasm/webapi/empty-body.any.js": true,
+  "wasm/webapi/esm-integration/execute-start.tentative.html": false,
+  "wasm/webapi/esm-integration/exported-names.tentative.html": false,
+  "wasm/webapi/esm-integration/invalid-bytecode.tentative.html": false,
+  "wasm/webapi/esm-integration/js-wasm-cycle-errors.tentative.html": false,
+  "wasm/webapi/esm-integration/js-wasm-cycle.tentative.html": false,
+  "wasm/webapi/esm-integration/module-parse-error.tentative.html": false,
+  "wasm/webapi/esm-integration/resolve-export.tentative.html": false,
+  "wasm/webapi/esm-integration/reuse-wasm-loaded-as-classic-script.tentative.html": false,
+  "wasm/webapi/esm-integration/script-src-allows-source-phase-wasm.tentative.html": false,
+  "wasm/webapi/esm-integration/script-src-allows-wasm.tentative.html": {
+    "ignore": true
+  },
+  "wasm/webapi/esm-integration/script-src-blocks-wasm.tentative.sub.html": {
+    "ignore": true
+  },
+  "wasm/webapi/esm-integration/scripting-disabled.tentative.html": {
+    "ignore": true
+  },
+  "wasm/webapi/esm-integration/source-phase-blocked-by-csp.tentative.html": {
+    "ignore": true
+  },
+  "wasm/webapi/esm-integration/source-phase-import-non-UTF8.tentative.html": false,
+  "wasm/webapi/esm-integration/source-phase-js-string.tentative.html": false,
+  "wasm/webapi/esm-integration/source-phase-preload.tentative.html": {
+    "ignore": true
+  },
+  "wasm/webapi/esm-integration/source-phase.tentative.html": false,
+  "wasm/webapi/esm-integration/wasm-import-wasm-export.tentative.html": false,
+  "wasm/webapi/esm-integration/wasm-import.tentative.html": false,
+  "wasm/webapi/esm-integration/wasm-js-cycle.tentative.html": false,
+  "wasm/webapi/esm-integration/wasm-to-wasm-link-error.tentative.html": false,
+  "wasm/webapi/esm-integration/worker-import-source-phase.tentative.html": true,
+  "wasm/webapi/esm-integration/worker-import.tentative.html": true,
+  "wasm/webapi/esm-integration/worker.tentative.html": true,
+  "wasm/webapi/esm-integration/worklet-import-source-phase.tentative.https.html": false,
+  "wasm/webapi/historical.any.js": {
+    "expectedFailures": [
+      "historical"
+    ]
+  },
+  "wasm/webapi/idlharness.any.js": true,
+  "wasm/webapi/instantiateStreaming-bad-imports.any.js": true,
+  "wasm/webapi/instantiateStreaming.any.js": true,
+  "wasm/webapi/invalid-args.any.js": true,
+  "wasm/webapi/invalid-code.any.js": true,
+  "wasm/webapi/modified-contenttype.any.js": true,
+  "wasm/webapi/origin.sub.any.js": {
+    "ignore": true
+  },
+  "wasm/webapi/rejected-arg.any.js": true,
+  "wasm/webapi/status.any.js": true,
+  "wasm/webapi/wasm_stream_compile_test.any.js": {
+    "expectedFailures": [
+      "compileStreaming raise error if no-cors"
+    ]
+  },
+  "wasm/webapi/wasm_stream_instantiate_test.any.js": {
+    "expectedFailures": [
+      "instantiateStreaming raise error if no-cors"
+    ]
+  }
+}

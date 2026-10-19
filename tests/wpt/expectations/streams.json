@@ -1,0 +1,231 @@
+{
+  "streams/idlharness.any.js": true,
+  "streams/piping/abort.any.js": true,
+  "streams/piping/close-propagation-backward.any.js": true,
+  "streams/piping/close-propagation-forward.any.js": true,
+  "streams/piping/crashtests/cross-piping.html": {
+    "ignore": true
+  },
+  "streams/piping/crashtests/cross-piping2.https.html": {
+    "ignore": true
+  },
+  "streams/piping/crashtests/shutdown.html": {
+    "ignore": true
+  },
+  "streams/piping/error-propagation-backward.any.js": true,
+  "streams/piping/error-propagation-forward.any.js": true,
+  "streams/piping/flow-control.any.js": true,
+  "streams/piping/general-addition.any.js": true,
+  "streams/piping/general.any.js": true,
+  "streams/piping/multiple-propagation.any.js": true,
+  "streams/piping/pipe-through.any.js": true,
+  "streams/piping/then-interception.any.js": true,
+  "streams/piping/throwing-options.any.js": true,
+  "streams/piping/transform-streams.any.js": true,
+  "streams/queuing-strategies-size-function-per-global.window.js": false,
+  "streams/queuing-strategies.any.js": true,
+  "streams/readable-byte-streams/bad-buffers-and-views.any.js": true,
+  "streams/readable-byte-streams/construct-byob-request.any.js": true,
+  "streams/readable-byte-streams/crashtests/from-cross-realm.html": {
+    "ignore": true
+  },
+  "streams/readable-byte-streams/crashtests/tee-locked-stream.any.js": true,
+  "streams/readable-byte-streams/enqueue-with-detached-buffer.any.js": true,
+  "streams/readable-byte-streams/general.any.js": true,
+  "streams/readable-byte-streams/non-transferable-buffers.any.js": true,
+  "streams/readable-byte-streams/patched-global.any.js": true,
+  "streams/readable-byte-streams/read-min.any.js": true,
+  "streams/readable-byte-streams/respond-after-enqueue.any.js": true,
+  "streams/readable-byte-streams/tee.any.js": true,
+  "streams/readable-byte-streams/templated.any.js": true,
+  "streams/readable-streams/async-iterator.any.js": true,
+  "streams/readable-streams/bad-strategies.any.js": true,
+  "streams/readable-streams/bad-underlying-sources.any.js": true,
+  "streams/readable-streams/cancel.any.js": true,
+  "streams/readable-streams/constructor.any.js": true,
+  "streams/readable-streams/count-queuing-strategy-integration.any.js": true,
+  "streams/readable-streams/crashtests/exception-during-size-while-pulling.html": {
+    "ignore": true
+  },
+  "streams/readable-streams/crashtests/from-cross-realm.https.html": {
+    "ignore": true
+  },
+  "streams/readable-streams/crashtests/garbage-collection.any.js": true,
+  "streams/readable-streams/crashtests/strategy-worker-terminate.html": {
+    "ignore": true
+  },
+  "streams/readable-streams/cross-realm-crash.window.js": {
+    "expectedFailures": [
+      "should not crash on reading from stream cancelled in destroyed realm"
+    ]
+  },
+  "streams/readable-streams/default-reader.any.js": true,
+  "streams/readable-streams/floating-point-total-queue-size.any.js": true,
+  "streams/readable-streams/from.any.js": true,
+  "streams/readable-streams/garbage-collection.any.js": true,
+  "streams/readable-streams/general.any.js": true,
+  "streams/readable-streams/global.html": {
+    "ignore": true
+  },
+  "streams/readable-streams/owning-type-message-port.tentative.any.js": true,
+  "streams/readable-streams/owning-type-video-frame.tentative.any.js": {
+    "expectedFailures": [
+      "ReadableStream of type owning should clone JS Objects with serializables when teeing",
+      "ReadableStream of type owning should clone serializable objects when teeing",
+      "ReadableStream of type owning should close serialized chunks",
+      "ReadableStream of type owning should error when trying to enqueue not serializable values",
+      "ReadableStream of type owning should transfer JS chunks with transferred values"
+    ]
+  },
+  "streams/readable-streams/owning-type.tentative.any.js": true,
+  "streams/readable-streams/patched-global.any.js": true,
+  "streams/readable-streams/read-task-handling.window.js": true,
+  "streams/readable-streams/reentrant-strategies.any.js": true,
+  "streams/readable-streams/tee-detached-context-crash.html": {
+    "ignore": true
+  },
+  "streams/readable-streams/tee.any.js": true,
+  "streams/readable-streams/templated.any.js": true,
+  "streams/transferable/audioworklet.https.html": {
+    "expectedFailures": [
+      "A ReadableStream can be transferred to an AudioWorkletProcessor",
+      "A TransformStream can be transferred to an AudioWorkletProcessor",
+      "A WritableStream can be transferred to an AudioWorkletProcessor"
+    ]
+  },
+  "streams/transferable/deserialize-error.window.js": false,
+  "streams/transferable/gc-crash.html": {
+    "ignore": true
+  },
+  "streams/transferable/readable-stream.html": {
+    "expectedFailures": [
+      "cancel should abort a pending read()",
+      "cancel should be propagated to the original",
+      "errors should be passed through",
+      "race between cancel() and close() should be benign",
+      "race between cancel() and enqueue() should be benign",
+      "race between cancel() and error() should leave sides in different states",
+      "sending one chunk through a transferred stream should work",
+      "sending ten chunks on demand should work",
+      "sending ten chunks one at a time should work",
+      "sending ten chunks through a transferred stream should work",
+      "serialization should not happen until the value is read",
+      "stream cancel should not wait for underlying source cancel",
+      "the extra queue from transferring is counted in chunks",
+      "transferring a non-serializable chunk should error both sides",
+      "transferring a stream should add one chunk to the queue size",
+      "transferring a stream should relieve backpressure"
+    ]
+  },
+  "streams/transferable/reason.html": {
+    "expectedFailures": [
+      "DOMException errors should be preserved",
+      "EvalError should be preserved",
+      "RangeError should be preserved",
+      "ReferenceError should be preserved",
+      "SyntaxError should be preserved",
+      "TypeError should be preserved",
+      "URIError should be preserved",
+      "a TypeError message should be converted to a string",
+      "a TypeError message should not be preserved if it is a getter",
+      "a TypeError message should not be preserved if it is inherited",
+      "objects that can be completely expressed in JSON should be preserved",
+      "objects that cannot be expressed in JSON should also be preserved",
+      "other attributes of a TypeError should not be preserved",
+      "reason with a simple value of '\t\r\n' should be preserved",
+      "reason with a simple value of '3' should be preserved",
+      "reason with a simple value of '7' should be preserved",
+      "reason with a simple value of 'Infinity' should be preserved",
+      "reason with a simple value of 'NaN' should be preserved",
+      "reason with a simple value of 'false' should be preserved",
+      "reason with a simple value of 'hi' should be preserved",
+      "reason with a simple value of 'null' should be preserved",
+      "reason with a simple value of 'true' should be preserved",
+      "reason with a simple value of 'undefined' should be preserved",
+      "reason with a type of 'function' should be rejected and error the stream",
+      "reason with a type of 'symbol' should be rejected and error the stream",
+      "the type and message of a TypeError should be preserved"
+    ]
+  },
+  "streams/transferable/service-worker.https.html": {
+    "ignore": true
+  },
+  "streams/transferable/shared-worker.html": {
+    "expectedFailures": [
+      "postMessage in a worker should be able to transfer a ReadableStream",
+      "worker.postMessage should be able to transfer a ReadableStream"
+    ]
+  },
+  "streams/transferable/transfer-with-messageport.window.js": {
+    "expectedFailures": [
+      "ReadableStream must not be serializable",
+      "Transferring a MessagePort with a ReadableStream should set `.ports`",
+      "Transferring a MessagePort with a ReadableStream should set `.ports`, advanced",
+      "Transferring a MessagePort with a TransformStream should set `.ports`",
+      "Transferring a MessagePort with a TransformStream should set `.ports`, advanced",
+      "Transferring a MessagePort with a WritableStream should set `.ports`",
+      "Transferring a MessagePort with a WritableStream should set `.ports`, advanced",
+      "Transferring a MessagePort with multiple streams should set `.ports`",
+      "TransformStream must not be serializable",
+      "WritableStream must not be serializable"
+    ]
+  },
+  "streams/transferable/transform-stream-members.any.js": true,
+  "streams/transferable/transform-stream.html": {
+    "expectedFailures": [
+      "a TransformStream with a locked readable should not be transferable",
+      "a TransformStream with a locked writable should not be transferable",
+      "a TransformStream with both sides locked should not be transferable",
+      "piping through transferred transforms should work",
+      "window.postMessage should be able to transfer a TransformStream"
+    ]
+  },
+  "streams/transferable/window.html": {
+    "ignore": true
+  },
+  "streams/transferable/worker.html": false,
+  "streams/transferable/writable-stream.html": {
+    "expectedFailures": [
+      "a locked WritableStream should not be transferable",
+      "abort() should work",
+      "desiredSize for a newly-transferred stream should be 1",
+      "effective queue size of a transferred writable should be 2",
+      "second write should wait for first underlying write to complete",
+      "window.postMessage should be able to transfer a WritableStream",
+      "window.postMessage should be able to transfer a {readable, writable} pair",
+      "writing a unclonable object should error the stream"
+    ]
+  },
+  "streams/transform-streams/backpressure.any.js": true,
+  "streams/transform-streams/cancel.any.js": true,
+  "streams/transform-streams/errors.any.js": true,
+  "streams/transform-streams/flush.any.js": true,
+  "streams/transform-streams/general.any.js": true,
+  "streams/transform-streams/invalid-realm.tentative.window.js": {
+    "expectedFailures": [
+      "TransformStream: write in detached realm should succeed"
+    ]
+  },
+  "streams/transform-streams/lipfuzz.any.js": true,
+  "streams/transform-streams/patched-global.any.js": true,
+  "streams/transform-streams/properties.any.js": true,
+  "streams/transform-streams/reentrant-strategies.any.js": true,
+  "streams/transform-streams/strategies.any.js": true,
+  "streams/transform-streams/terminate.any.js": true,
+  "streams/writable-streams/aborting.any.js": true,
+  "streams/writable-streams/bad-strategies.any.js": true,
+  "streams/writable-streams/bad-underlying-sinks.any.js": true,
+  "streams/writable-streams/byte-length-queuing-strategy.any.js": true,
+  "streams/writable-streams/close.any.js": true,
+  "streams/writable-streams/constructor.any.js": true,
+  "streams/writable-streams/count-queuing-strategy.any.js": true,
+  "streams/writable-streams/crashtests/garbage-collection.any.js": true,
+  "streams/writable-streams/error.any.js": true,
+  "streams/writable-streams/floating-point-total-queue-size.any.js": true,
+  "streams/writable-streams/garbage-collection.any.js": true,
+  "streams/writable-streams/general.any.js": true,
+  "streams/writable-streams/properties.any.js": true,
+  "streams/writable-streams/reentrant-strategy.any.js": true,
+  "streams/writable-streams/start.any.js": true,
+  "streams/writable-streams/write.any.js": true
+}

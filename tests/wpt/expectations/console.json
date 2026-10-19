@@ -1,0 +1,17 @@
+{
+  "console/console-count-logging.html": false,
+  "console/console-countReset-logging.html": false,
+  "console/console-is-a-namespace.any.js": true,
+  "console/console-label-conversion.any.js": true,
+  "console/console-log-large-array.any.js": true,
+  "console/console-log-symbol.any.js": true,
+  "console/console-namespace-object-class-string.any.js": true,
+  "console/console-number-format-specifiers-symbol.html": false,
+  "console/console-string-format-specifier-symbol-manual.html": {
+    "ignore": true
+  },
+  "console/console-tests-historical.any.js": true,
+  "console/console-timing-logging.html": false,
+  "console/console-timing-missing-label-warnings.tentative.html": false,
+  "console/idlharness.any.js": true
+}

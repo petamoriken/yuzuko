@@ -1,0 +1,46 @@
+{
+  "imagebitmap-renderingcontext/bitmaprenderer-as-imagesource.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/context-creation-offscreen-with-alpha.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/context-creation-offscreen.html": {
+    "expectedFailures": [
+      "Test that canvas.getContext('bitmaprenderer') returns an instance of ImageBitmapRenderingContext and ctx.canvas on a ImageBitmapRenderingContext returns the original OffscreenCanvas"
+    ]
+  },
+  "imagebitmap-renderingcontext/context-creation-with-alpha.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/context-creation.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/context-preserves-canvas.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/toBlob-origin-clean-offscreen.sub.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-ToBlob-offscreen.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-ToBlob-transferControlToOffscreen.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-TransferToImageBitmap-offscreen.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-TransferToImageBitmap-transferControlToOffscreen.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-detached.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-null-offscreen.html": {
+    "ignore": true
+  },
+  "imagebitmap-renderingcontext/transferFromImageBitmap-null.html": {
+    "ignore": true
+  }
+}

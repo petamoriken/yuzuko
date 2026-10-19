@@ -1,0 +1,57 @@
+{
+  "eventsource/dedicated-worker/eventsource-constructor-no-new.any.js": true,
+  "eventsource/dedicated-worker/eventsource-eventtarget.worker.js": true,
+  "eventsource/event-data.any.js": true,
+  "eventsource/eventsource-close.window.js": false,
+  "eventsource/eventsource-constructor-document-domain.window.js": {
+    "expectedFailures": [
+      "eventsource-constructor-document-domain"
+    ]
+  },
+  "eventsource/eventsource-constructor-empty-url.any.js": true,
+  "eventsource/eventsource-constructor-non-same-origin.window.js": false,
+  "eventsource/eventsource-constructor-stringify.window.js": false,
+  "eventsource/eventsource-constructor-url-bogus.any.js": true,
+  "eventsource/eventsource-cross-origin-redirect-origin.any.js": {
+    "expectedFailures": [
+      "MessageEvent.origin is the origin of the final URL after a cross-origin redirect"
+    ]
+  },
+  "eventsource/eventsource-cross-origin.window.js": false,
+  "eventsource/eventsource-eventtarget.any.js": true,
+  "eventsource/eventsource-onmessage-trusted.any.js": true,
+  "eventsource/eventsource-onmessage.any.js": true,
+  "eventsource/eventsource-onopen.any.js": true,
+  "eventsource/eventsource-prototype.any.js": true,
+  "eventsource/eventsource-reconnect.window.js": false,
+  "eventsource/eventsource-request-cancellation.window.js": false,
+  "eventsource/eventsource-url.any.js": true,
+  "eventsource/format-bom-2.any.js": true,
+  "eventsource/format-bom.any.js": true,
+  "eventsource/format-comments.any.js": true,
+  "eventsource/format-data-before-final-empty-line.any.js": true,
+  "eventsource/format-field-data.any.js": true,
+  "eventsource/format-field-event-empty.any.js": true,
+  "eventsource/format-field-event.any.js": true,
+  "eventsource/format-field-id-2.any.js": true,
+  "eventsource/format-field-id-3.window.js": true,
+  "eventsource/format-field-id-null.window.js": true,
+  "eventsource/format-field-id.any.js": true,
+  "eventsource/format-field-parsing.any.js": true,
+  "eventsource/format-field-retry-bogus.any.js": true,
+  "eventsource/format-field-retry-empty.any.js": true,
+  "eventsource/format-field-retry.any.js": true,
+  "eventsource/format-field-unknown.any.js": true,
+  "eventsource/format-leading-space.any.js": true,
+  "eventsource/format-mime-bogus.any.js": true,
+  "eventsource/format-mime-trailing-semicolon.any.js": true,
+  "eventsource/format-mime-valid-bogus.any.js": true,
+  "eventsource/format-newlines.any.js": true,
+  "eventsource/format-null-character.any.js": true,
+  "eventsource/format-utf-8.any.js": true,
+  "eventsource/request-accept.any.js": true,
+  "eventsource/request-cache-control.any.js": false,
+  "eventsource/request-credentials.window.js": false,
+  "eventsource/request-redirect.window.js": false,
+  "eventsource/request-status-error.window.js": false
+}

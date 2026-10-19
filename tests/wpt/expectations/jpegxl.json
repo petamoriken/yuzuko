@@ -1,0 +1,11 @@
+{
+  "jpegxl/imagedecoder-animation.https.html": {
+    "expectedFailures": [
+      "Animated JPEG XL reports multiple frames and decodes frame sequence.",
+      "Animated JXL with infinite repetition count repeats indefinitely.",
+      "Animated JXL with repetition count 0 plays exactly once.",
+      "Animated JXL with repetition count 1 plays exactly twice."
+    ]
+  },
+  "jpegxl/imagedecoder.https.html": true
+}

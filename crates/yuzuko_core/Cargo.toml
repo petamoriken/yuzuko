@@ -1,0 +1,20 @@
+[package]
+name = "yuzuko_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+oxc_allocator.workspace = true
+oxc_ast.workspace = true
+oxc_codegen.workspace = true
+oxc_parser.workspace = true
+oxc_resolver.workspace = true
+oxc_semantic.workspace = true
+oxc_span.workspace = true
+oxc_transformer.workspace = true
+libc.workspace = true
+url.workspace = true
+v8.workspace = true
+yuzuko_macros.workspace = true

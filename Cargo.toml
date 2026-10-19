@@ -1,0 +1,239 @@
+[workspace]
+members = [
+  "crates/yuzuko",
+  "crates/yuzuko_core",
+  "crates/yuzuko_dom",
+  "crates/yuzuko_macros",
+  "crates/yuzuko_winter",
+  "crates/yuzuko_window",
+  "crates/yuzuko_image",
+  "crates/yuzuko_canvas",
+  "crates/yuzuko_webgpu",
+  "crates/yuzuko_audio",
+  "crates/yuzuko_codec",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+oxc_allocator = "=0.154.0"
+oxc_ast = "=0.154.0"
+oxc_codegen = "=0.154.0"
+oxc_parser = "=0.154.0"
+oxc_semantic = "=0.154.0"
+oxc_span = "=0.154.0"
+oxc_transformer = "=0.154.0"
+oxc_resolver = "=11.24.3"
+encoding_rs = "0.8"
+url = "2"
+v8 = "152"
+libc = "0.2"
+png = "0.18"
+# vello 0.9.0 requires wgpu 29.0.3. Bump these together.
+wgpu = "29"
+vello = { version = "0.9", default-features = false, features = ["wgpu"] }
+vello_cpu = { version = "0.0.9", features = ["f32_pipeline"] }
+half = "2"
+image-webp = "0.2"
+pollster = "0.4"
+flate2 = "1"
+rustls = { version = "0.23.46", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12",
+] }
+webpki-roots = "1.0.9"
+ed25519-dalek = "3.0.0"
+symphonia = { version = "0.5", default-features = false }
+yuzuko_audio = { path = "crates/yuzuko_audio" }
+yuzuko_canvas = { path = "crates/yuzuko_canvas" }
+yuzuko_codec = { path = "crates/yuzuko_codec" }
+yuzuko_core = { path = "crates/yuzuko_core" }
+yuzuko_dom = { path = "crates/yuzuko_dom" }
+yuzuko_image = { path = "crates/yuzuko_image" }
+yuzuko_macros = { path = "crates/yuzuko_macros" }
+yuzuko_webgpu = { path = "crates/yuzuko_webgpu" }
+yuzuko_window = { path = "crates/yuzuko_window" }
+yuzuko_winter = { path = "crates/yuzuko_winter" }
+
+# The packaged binary optimizes for size. Hot crates below stay at speed.
+# `bench` matches `release`. Panic stays unwind so `catch_unwind` can turn a
+# decoder panic into `InvalidStateError`.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+
+[profile.bench]
+codegen-units = 1
+lto = true
+opt-level = "z"
+
+# Faster local release builds. The shipped binary is `release`.
+[profile.release-lite]
+inherits = "release"
+incremental = true
+codegen-units = 128
+lto = "thin"
+
+# rusty_v8 miscompiles at opt-level 0.
+[profile.dev.package.v8]
+opt-level = 1
+
+# RSA key generation is too slow to exercise at opt-level 0.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+# Speed for the runtime and the libraries on its hot path. Everything else
+# stays at opt-level "z". Repeated for `bench` so measurements match release.
+# Package overrides do not inherit across profiles.
+[profile.release.package.yuzuko]
+opt-level = 3
+[profile.release.package.yuzuko_core]
+opt-level = 3
+[profile.release.package.yuzuko_dom]
+opt-level = 3
+[profile.release.package.yuzuko_winter]
+opt-level = 3
+[profile.release.package.yuzuko_window]
+opt-level = 3
+[profile.release.package.yuzuko_image]
+opt-level = 3
+[profile.release.package.yuzuko_canvas]
+opt-level = 3
+[profile.release.package.yuzuko_webgpu]
+opt-level = 3
+[profile.release.package.yuzuko_audio]
+opt-level = 3
+[profile.release.package.yuzuko_codec]
+opt-level = 3
+[profile.release.package.v8]
+opt-level = 3
+[profile.release.package.wgpu]
+opt-level = 3
+[profile.release.package.wgpu-core]
+opt-level = 3
+[profile.release.package.wgpu-hal]
+opt-level = 3
+[profile.release.package.naga]
+opt-level = 3
+[profile.release.package.vello]
+opt-level = 3
+[profile.release.package.vello_cpu]
+opt-level = 3
+[profile.release.package.vello_encoding]
+opt-level = 3
+[profile.release.package.vello_shaders]
+opt-level = 3
+[profile.release.package.flate2]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.brotli]
+opt-level = 3
+[profile.release.package.hyper]
+opt-level = 3
+[profile.release.package.hyper-util]
+opt-level = 3
+[profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.bytes]
+opt-level = 3
+[profile.release.package.serde]
+opt-level = 3
+[profile.release.package.serde_json]
+opt-level = 3
+[profile.release.package.url]
+opt-level = 3
+[profile.release.package.rustls]
+opt-level = 3
+[profile.release.package.symphonia]
+opt-level = 3
+[profile.release.package.oxc_parser]
+opt-level = 3
+[profile.release.package.oxc_transformer]
+opt-level = 3
+[profile.release.package.oxc_resolver]
+opt-level = 3
+[profile.release.package.fontique]
+opt-level = 3
+[profile.release.package.parley]
+opt-level = 3
+
+[profile.bench.package.yuzuko]
+opt-level = 3
+[profile.bench.package.yuzuko_core]
+opt-level = 3
+[profile.bench.package.yuzuko_dom]
+opt-level = 3
+[profile.bench.package.yuzuko_winter]
+opt-level = 3
+[profile.bench.package.yuzuko_window]
+opt-level = 3
+[profile.bench.package.yuzuko_image]
+opt-level = 3
+[profile.bench.package.yuzuko_canvas]
+opt-level = 3
+[profile.bench.package.yuzuko_webgpu]
+opt-level = 3
+[profile.bench.package.yuzuko_audio]
+opt-level = 3
+[profile.bench.package.yuzuko_codec]
+opt-level = 3
+[profile.bench.package.v8]
+opt-level = 3
+[profile.bench.package.wgpu]
+opt-level = 3
+[profile.bench.package.wgpu-core]
+opt-level = 3
+[profile.bench.package.wgpu-hal]
+opt-level = 3
+[profile.bench.package.naga]
+opt-level = 3
+[profile.bench.package.vello]
+opt-level = 3
+[profile.bench.package.vello_cpu]
+opt-level = 3
+[profile.bench.package.vello_encoding]
+opt-level = 3
+[profile.bench.package.vello_shaders]
+opt-level = 3
+[profile.bench.package.flate2]
+opt-level = 3
+[profile.bench.package.miniz_oxide]
+opt-level = 3
+[profile.bench.package.brotli]
+opt-level = 3
+[profile.bench.package.hyper]
+opt-level = 3
+[profile.bench.package.hyper-util]
+opt-level = 3
+[profile.bench.package.tokio]
+opt-level = 3
+[profile.bench.package.bytes]
+opt-level = 3
+[profile.bench.package.serde]
+opt-level = 3
+[profile.bench.package.serde_json]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
+[profile.bench.package.rustls]
+opt-level = 3
+[profile.bench.package.symphonia]
+opt-level = 3
+[profile.bench.package.oxc_parser]
+opt-level = 3
+[profile.bench.package.oxc_transformer]
+opt-level = 3
+[profile.bench.package.oxc_resolver]
+opt-level = 3
+[profile.bench.package.fontique]
+opt-level = 3
+[profile.bench.package.parley]
+opt-level = 3

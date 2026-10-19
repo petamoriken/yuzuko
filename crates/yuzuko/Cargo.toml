@@ -1,0 +1,42 @@
+[package]
+name = "yuzuko"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "yuzuko"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.23"
+ed25519-dalek.workspace = true
+rustls.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url.workspace = true
+v8.workspace = true
+webpki-roots.workspace = true
+yuzuko_audio.workspace = true
+yuzuko_canvas.workspace = true
+yuzuko_codec.workspace = true
+yuzuko_core.workspace = true
+yuzuko_dom.workspace = true
+yuzuko_image.workspace = true
+yuzuko_webgpu.workspace = true
+yuzuko_window.workspace = true
+yuzuko_winter.workspace = true
+
+[dev-dependencies]
+base64 = "0.23"
+ed25519-dalek.workspace = true
+libc.workspace = true
+serde_json = "1"
+yuzuko_audio.workspace = true
+yuzuko_core.workspace = true
+yuzuko_dom.workspace = true
+yuzuko_image.workspace = true
+yuzuko_webgpu.workspace = true
+yuzuko_window.workspace = true
+yuzuko_winter.workspace = true

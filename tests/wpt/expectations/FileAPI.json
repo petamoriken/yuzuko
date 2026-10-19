@@ -1,0 +1,442 @@
+{
+  "FileAPI/Blob-methods-from-detached-frame.html": {
+    "ignore": true
+  },
+  "FileAPI/BlobURL/cross-partition-navigation.https.html": {
+    "ignore": true
+  },
+  "FileAPI/BlobURL/cross-partition-self-fetch.https.html": {
+    "expectedFailures": [
+      "Blob URL created in a cross-partition context can fetch itself in a same-partition context."
+    ]
+  },
+  "FileAPI/BlobURL/cross-partition-worker-creation.https.html": {
+    "expectedFailures": [
+      "Cross-partition Dedicated worker shouldn't be created from blob URL.",
+      "Cross-partition Shared worker shouldn't be created from blob URL."
+    ]
+  },
+  "FileAPI/BlobURL/cross-partition.https.html": {
+    "expectedFailures": [
+      "Blob URL shouldn't be fetched from a cross-partition dedicated worker",
+      "Blob URL shouldn't be fetched from a cross-partition iframe",
+      "Blob URL shouldn't be fetched from a cross-partition service worker",
+      "Blob URL shouldn't be fetched from a cross-partition shared worker",
+      "Blob URL shouldn't be revocable from a cross-partition dedicated worker",
+      "Blob URL shouldn't be revocable from a cross-partition iframe",
+      "Blob URL shouldn't be revocable from a cross-partition shared worker",
+      "Blob URL shouldn't be revocable from a service worker"
+    ]
+  },
+  "FileAPI/BlobURL/opaque-origin.html": {
+    "expectedFailures": [
+      "Blob URL created from data URL shared worker should have 'null' origin"
+    ]
+  },
+  "FileAPI/BlobURL/test2-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/FileReader/progress_event_bubbles_cancelable.html": true,
+  "FileAPI/FileReader/test_errors-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/FileReader/test_notreadableerrors-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/FileReader/test_securityerrors-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/FileReader/workers.html": false,
+  "FileAPI/FileReaderSync.worker.js": false,
+  "FileAPI/blob/Blob-array-buffer-data-isolation.html": true,
+  "FileAPI/blob/Blob-array-buffer.any.js": true,
+  "FileAPI/blob/Blob-bytes.any.js": true,
+  "FileAPI/blob/Blob-constructor-detached-buffer.any.js": {
+    "expectedFailures": [
+      "Blob from a detached ArrayBuffer should be empty",
+      "Blob from a detached ArrayBufferView mixed with string, detached part ignored",
+      "Blob from a detached ArrayBufferView should be empty",
+      "Blob from a detached ArrayBufferView with offset should be empty"
+    ]
+  },
+  "FileAPI/blob/Blob-constructor-dom.window.js": {
+    "expectedFailures": [
+      "A platform object that supports indexed properties should be treated as a sequence for the blobParts argument (overwritten 'length'.)",
+      "Passing an platform object that supports indexed properties as the blobParts array should work (attributes).",
+      "Passing an platform object that supports indexed properties as the blobParts array should work (select).",
+      "Passing platform objects for blobParts should throw a TypeError."
+    ]
+  },
+  "FileAPI/blob/Blob-constructor-endings.any.js": true,
+  "FileAPI/blob/Blob-constructor-endings.html": true,
+  "FileAPI/blob/Blob-constructor.any.js": {
+    "expectedFailures": [
+      "Blob with type \" image/gif \"",
+      "Blob with type \"A\"",
+      "Blob with type \"\\timage/gif\\t\"",
+      "Blob with type \"a\"",
+      "Blob with type \"image/gif;\"",
+      "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+    ]
+  },
+  "FileAPI/blob/Blob-in-worker.worker.js": true,
+  "FileAPI/blob/Blob-newobject.any.js": true,
+  "FileAPI/blob/Blob-slice-overflow.any.js": true,
+  "FileAPI/blob/Blob-slice.any.js": {
+    "expectedFailures": [
+      "Valid contentType (\"te xt/plain\")",
+      "Valid contentType (\"te(xt/plain\")",
+      "Valid contentType (\"te)xt/plain\")",
+      "Valid contentType (\"te,xt/plain\")",
+      "Valid contentType (\"te/xt/plain\")",
+      "Valid contentType (\"te:xt/plain\")",
+      "Valid contentType (\"te;xt/plain\")",
+      "Valid contentType (\"te<xt/plain\")",
+      "Valid contentType (\"te=xt/plain\")",
+      "Valid contentType (\"te>xt/plain\")",
+      "Valid contentType (\"te?xt/plain\")",
+      "Valid contentType (\"te@xt/plain\")",
+      "Valid contentType (\"te[xt/plain\")",
+      "Valid contentType (\"te\\\"xt/plain\")",
+      "Valid contentType (\"te\\\\xt/plain\")",
+      "Valid contentType (\"te]xt/plain\")",
+      "Valid contentType (\"text/plain;charset = UTF-8\")",
+      "Valid contentType (\"text/plain;charset=UTF-8\")",
+      "Valid contentType (\"te{xt/plain\")",
+      "Valid contentType (\"te}xt/plain\")",
+      "null type Blob slice"
+    ]
+  },
+  "FileAPI/blob/Blob-stream-byob-crash.html": {
+    "ignore": true
+  },
+  "FileAPI/blob/Blob-stream-sync-xhr-crash.html": {
+    "ignore": true
+  },
+  "FileAPI/blob/Blob-stream.any.js": true,
+  "FileAPI/blob/Blob-text.any.js": true,
+  "FileAPI/blob/Blob-textStream.any.js": {
+    "expectedFailures": [
+      "Blob.textStream() basic functionality",
+      "Blob.textStream() can be called multiple times",
+      "Blob.textStream() ignores invalid type charset (invalid-charset)",
+      "Blob.textStream() ignores type charset (UTF-16LE)",
+      "Blob.textStream() ignores type charset (iso-8859-1)",
+      "Blob.textStream() with empty blob",
+      "Blob.textStream() with multi-part blob",
+      "textStream method existence"
+    ]
+  },
+  "FileAPI/file/File-constructor-endings.any.js": true,
+  "FileAPI/file/File-constructor-endings.html": true,
+  "FileAPI/file/File-constructor.any.js": {
+    "expectedFailures": [
+      "Using type in File constructor: nonparsable",
+      "Using type in File constructor: text/plain;charset=UTF-8"
+    ]
+  },
+  "FileAPI/file/File-lastModified.html": true,
+  "FileAPI/file/Worker-read-file-constructor.worker.js": true,
+  "FileAPI/file/send-file-form-controls.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-BS-[\b].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-CR-LF-[\r\n].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-CR-[\r].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-DEL-[].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-ESC-[\u001b].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-FF-[\f].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-HT-[\t].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-LF-CR-[\n\r].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-LF-[\n].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-NUL-[\u0000].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-VT-[\u000b].txt (ASCII) in UTF-8 form"
+    ]
+  },
+  "FileAPI/file/send-file-form-iso-2022-jp.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in ISO-2022-JP form",
+      "Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in ISO-2022-JP form",
+      "Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in ISO-2022-JP form",
+      "Upload file-for-upload-in-form-☺😂.txt (Unicode) in ISO-2022-JP form",
+      "Upload file-for-upload-in-form-.txt (x-user-defined) in ISO-2022-JP form",
+      "Upload file-for-upload-in-form.txt (ASCII) in ISO-2022-JP form"
+    ]
+  },
+  "FileAPI/file/send-file-form-punctuation.html": {
+    "expectedFailures": [
+      "Upload \"file-for-upload-in-form-double-quoted.txt\" (ASCII) in UTF-8 form",
+      "Upload 'file-for-upload-in-form-single-quoted.txt' (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-AMPERSAND-[&].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-APOSTROPHE-['].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-ASTERISK-[*].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-CIRCUMFLEX-ACCENT-[^].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-COLON-[:].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-COMMA-[,].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-DOLLAR-SIGN-[$].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-EQUALS-SIGN-[=].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-EXCLAMATION-MARK-[!].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-FULL-STOP-[.].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-LEFT-CURLY-BRACKET-[{].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-LEFT-PARENTHESIS-[(].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-LEFT-SQUARE-BRACKET-[[].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-PERCENT-SIGN-[%].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-PLUS-SIGN-[+].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-QUESTION-MARK-[?].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-QUOTATION-MARK-[\"].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-REVERSE-SOLIDUS-[\\].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-RIGHT-CURLY-BRACKET-[}].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-RIGHT-PARENTHESIS-[)].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-RIGHT-SQUARE-BRACKET-[]].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-SEMICOLON-[;].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-SOLIDUS-[/].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-TILDE-[~].txt (ASCII) in UTF-8 form",
+      "Upload file-for-upload-in-form-VERTICAL-LINE-[|].txt (ASCII) in UTF-8 form"
+    ]
+  },
+  "FileAPI/file/send-file-form-utf-8.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in UTF-8 form",
+      "Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in UTF-8 form",
+      "Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in UTF-8 form",
+      "Upload file-for-upload-in-form-☺😂.txt (Unicode) in UTF-8 form",
+      "Upload file-for-upload-in-form-.txt (x-user-defined) in UTF-8 form",
+      "Upload file-for-upload-in-form.txt (ASCII) in UTF-8 form"
+    ]
+  },
+  "FileAPI/file/send-file-form-windows-1252.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in windows-1252 form",
+      "Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in windows-1252 form",
+      "Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in windows-1252 form",
+      "Upload file-for-upload-in-form-☺😂.txt (Unicode) in windows-1252 form",
+      "Upload file-for-upload-in-form-.txt (x-user-defined) in windows-1252 form",
+      "Upload file-for-upload-in-form.txt (ASCII) in windows-1252 form"
+    ]
+  },
+  "FileAPI/file/send-file-form-x-user-defined.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in x-user-defined form",
+      "Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in x-user-defined form",
+      "Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in x-user-defined form",
+      "Upload file-for-upload-in-form-☺😂.txt (Unicode) in x-user-defined form",
+      "Upload file-for-upload-in-form-.txt (x-user-defined) in x-user-defined form",
+      "Upload file-for-upload-in-form.txt (ASCII) in x-user-defined form"
+    ]
+  },
+  "FileAPI/file/send-file-form.html": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form.txt (ASCII) in UTF-8 form"
+    ]
+  },
+  "FileAPI/file/send-file-formdata-controls.any.js": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-BS-[\b].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-CR-LF-[\r\n].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-CR-[\r].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-DEL-[].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-ESC-[\u001b].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-FF-[\f].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-HT-[\t].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-LF-CR-[\n\r].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-LF-[\n].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-NUL-[\u0000].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-VT-[\u000b].txt (ASCII) in fetch with FormData"
+    ]
+  },
+  "FileAPI/file/send-file-formdata-punctuation.any.js": {
+    "expectedFailures": [
+      "Upload \"file-for-upload-in-form-double-quoted.txt\" (ASCII) in fetch with FormData",
+      "Upload 'file-for-upload-in-form-single-quoted.txt' (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-AMPERSAND-[&].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-APOSTROPHE-['].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-ASTERISK-[*].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-CIRCUMFLEX-ACCENT-[^].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-COLON-[:].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-COMMA-[,].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-DOLLAR-SIGN-[$].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-EQUALS-SIGN-[=].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-EXCLAMATION-MARK-[!].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-FULL-STOP-[.].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-LEFT-CURLY-BRACKET-[{].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-LEFT-PARENTHESIS-[(].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-LEFT-SQUARE-BRACKET-[[].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-PERCENT-SIGN-[%].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-PLUS-SIGN-[+].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-QUESTION-MARK-[?].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-QUOTATION-MARK-[\"].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-REVERSE-SOLIDUS-[\\].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-RIGHT-CURLY-BRACKET-[}].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-RIGHT-PARENTHESIS-[)].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-RIGHT-SQUARE-BRACKET-[]].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-SEMICOLON-[;].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-SOLIDUS-[/].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-TILDE-[~].txt (ASCII) in fetch with FormData",
+      "Upload file-for-upload-in-form-VERTICAL-LINE-[|].txt (ASCII) in fetch with FormData"
+    ]
+  },
+  "FileAPI/file/send-file-formdata-utf-8.any.js": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in fetch with FormData",
+      "Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in fetch with FormData",
+      "Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in fetch with FormData",
+      "Upload file-for-upload-in-form-☺😂.txt (Unicode) in fetch with FormData",
+      "Upload file-for-upload-in-form-.txt (x-user-defined) in fetch with FormData",
+      "Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData"
+    ]
+  },
+  "FileAPI/file/send-file-formdata.any.js": {
+    "expectedFailures": [
+      "Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData"
+    ]
+  },
+  "FileAPI/fileReader.any.js": true,
+  "FileAPI/filelist-section/filelist.html": {
+    "ignore": true
+  },
+  "FileAPI/filelist-section/filelist_multiple_selected_files-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/filelist-section/filelist_selected_file-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/historical.https.html": {
+    "expectedFailures": [
+      "Service worker test setup"
+    ]
+  },
+  "FileAPI/idlharness-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/idlharness.any.js": {
+    "expectedFailures": [
+      "Blob interface: new Blob([\"TEST\"]) must inherit property \"textStream()\" with the proper type",
+      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"textStream()\" with the proper type",
+      "Blob interface: operation arrayBuffer()",
+      "Blob interface: operation bytes()",
+      "Blob interface: operation text()",
+      "Blob interface: operation textStream()",
+      "File interface object length",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: attribute length",
+      "FileList interface: existence and properties of interface object",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)"
+    ]
+  },
+  "FileAPI/idlharness.html": {
+    "ignore": true
+  },
+  "FileAPI/idlharness.worker.js": false,
+  "FileAPI/progress-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/reading-data-section/Determining-Encoding.any.js": true,
+  "FileAPI/reading-data-section/FileReader-event-handler-attributes.any.js": true,
+  "FileAPI/reading-data-section/FileReader-multiple-reads.any.js": true,
+  "FileAPI/reading-data-section/filereader_abort.any.js": true,
+  "FileAPI/reading-data-section/filereader_error.any.js": true,
+  "FileAPI/reading-data-section/filereader_events.any.js": true,
+  "FileAPI/reading-data-section/filereader_file-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/reading-data-section/filereader_file_img-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/reading-data-section/filereader_readAsArrayBuffer.any.js": true,
+  "FileAPI/reading-data-section/filereader_readAsBinaryString.any.js": true,
+  "FileAPI/reading-data-section/filereader_readAsDataURL.any.js": true,
+  "FileAPI/reading-data-section/filereader_readAsDataURL.html": true,
+  "FileAPI/reading-data-section/filereader_readAsText.any.js": true,
+  "FileAPI/reading-data-section/filereader_readAsText_blob_type_charset.any.js": true,
+  "FileAPI/reading-data-section/filereader_readystate.any.js": true,
+  "FileAPI/reading-data-section/filereader_result.any.js": true,
+  "FileAPI/unicode.any.js": true,
+  "FileAPI/url/cross-global-revoke.sub.html": {
+    "ignore": true
+  },
+  "FileAPI/url/multi-global-origin-serialization.sub.html": {
+    "ignore": true
+  },
+  "FileAPI/url/sandboxed-iframe.html": {
+    "ignore": true
+  },
+  "FileAPI/url/unicode-origin.sub.html": {
+    "ignore": true
+  },
+  "FileAPI/url/url-charset.window.js": {
+    "expectedFailures": [
+      "Blob charset should override <meta charset>.",
+      "Blob charset should override any auto-detected charset."
+    ]
+  },
+  "FileAPI/url/url-format.any.js": true,
+  "FileAPI/url/url-in-tags-revoke.window.js": {
+    "expectedFailures": [
+      "Fetching a blob URL immediately before revoking it works in <script> tags.",
+      "Fetching a blob URL immediately before revoking it works in an iframe navigation.",
+      "Fetching a blob URL immediately before revoking it works in an iframe.",
+      "Fetching a blob URL immediately before revoking it works in module <script> tags.",
+      "Opening a blob URL in a new window by clicking an <a> tag works immediately before revoking the URL.",
+      "Opening a blob URL in a new window immediately before revoking it works.",
+      "Opening a blob URL in a noopener about:blank window immediately before revoking it works."
+    ]
+  },
+  "FileAPI/url/url-in-tags.window.js": false,
+  "FileAPI/url/url-lifetime.html": {
+    "ignore": true
+  },
+  "FileAPI/url/url-reload.window.js": {
+    "expectedFailures": [
+      "Reloading a blob URL succeeds even if the URL was revoked.",
+      "Reloading a blob URL succeeds."
+    ]
+  },
+  "FileAPI/url/url-with-fetch.any.js": {
+    "expectedFailures": [
+      "Revoke blob URL after creating Request, then clone Request, will fetch",
+      "Revoke blob URL after creating Request, will fetch",
+      "fetch with a fragment should succeed",
+      "fetch with method \"CUSTOM\" should fail",
+      "fetch with method \"DELETE\" should fail",
+      "fetch with method \"HEAD\" should fail",
+      "fetch with method \"OPTIONS\" should fail",
+      "fetch with method \"POST\" should fail",
+      "fetch with method \"PUT\" should fail"
+    ]
+  },
+  "FileAPI/url/url-with-xhr.any.js": {
+    "expectedFailures": [
+      "Appending a path should cause XHR to fail",
+      "Appending a query string should cause XHR to fail",
+      "Blob URLs can be used in XHR",
+      "Only exact matches should revoke URLs, using XHR",
+      "Revoke blob URL after open(), will fetch",
+      "XHR of a revoked URL should fail",
+      "XHR should return Content-Type from Blob",
+      "XHR with a fragment should succeed",
+      "XHR with method \"CUSTOM\" should fail",
+      "XHR with method \"DELETE\" should fail",
+      "XHR with method \"HEAD\" should fail",
+      "XHR with method \"OPTIONS\" should fail",
+      "XHR with method \"POST\" should fail",
+      "XHR with method \"PUT\" should fail"
+    ]
+  },
+  "FileAPI/url/url_createobjecturl_file-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/url/url_createobjecturl_file_img-manual.html": {
+    "ignore": true
+  },
+  "FileAPI/url/url_xmlhttprequest_img-ref.html": {
+    "ignore": true
+  },
+  "FileAPI/url/url_xmlhttprequest_img.html": {
+    "ignore": true
+  }
+}

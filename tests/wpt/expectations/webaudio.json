@@ -1,0 +1,889 @@
+{
+  "webaudio/historical.html": {
+    "ignore": true
+  },
+  "webaudio/idlharness.https.window.js": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/interrupt-when-created-hidden.tentative.sub.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/interrupt-when-hidden.tentative.sub.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/resume-while-hidden.tentative.sub.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/suspended-hide-show.tentative.sub.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/viewport.tentative.sub.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/processing-model/cycle-without-delay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/processing-model/delay-time-clamping.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/processing-model/feedback-delay-time.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/rendersizehint-smoke-tests.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/analysernode-rendersizehint.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/ctor-analyser.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/realtimeanalyser-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/realtimeanalyser-fft-scaling.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/realtimeanalyser-fft-sizing.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analyser-gain.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analyser-minimum.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analyser-output.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analyser-resume-after-suspended.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analyser-scale.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-analysernode-interface/test-analysernode.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffer-interface/acquire-the-content.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer-copy-channel.html": true,
+  "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer-getChannelData.html": true,
+  "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer-reuse.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer.html": true,
+  "webaudio/the-audio-api/the-audiobuffer-interface/crashtests/copyFromChannel-bufferOffset-1.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffer-interface/crashtests/copyToChannel-bufferOffset-1.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffer-interface/ctor-audiobuffer.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/active-processing.https.html": {
+    "expectedFailures": [
+      "Verify input channel count change after AudioBufferSourceNode stops"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-basic.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-channels.html": {
+    "expectedFailures": [
+      "validate .buffer: Validation of AudioBuffer in .buffer attribute setter"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-duration-loop-playbackrate.html": {
+    "expectedFailures": [
+      "loop and duration with dynamic playbackRate automation",
+      "loop and duration with non-zero start offset",
+      "loop and playbackRate 0.5 with duration 2.0",
+      "loop and playbackRate 3.0 with duration 3.0",
+      "loop and playbackRate with duration",
+      "loop and playbackRate with fractional duration"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-duration-loop.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-ended.html": false,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-grain.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-loop-continuous.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-loop-short-duration.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-multi-channels.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-null.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-one-sample-loop.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-output-channel-count.html": {
+    "expectedFailures": [
+      "A playing source outputs the buffer channel count, then one channel at the end of the buffer",
+      "A source outputs one channel after its duration has elapsed",
+      "A source that is stopped outputs one channel after the stop time",
+      "A source with a stereo buffer that was never started outputs one channel"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-playbackrate-dynamic-direction.html": {
+    "expectedFailures": [
+      "Dynamic direction switch negative to positive honors duration",
+      "Dynamic direction switch positive to negative honors duration"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-playbackrate-negative.html": {
+    "expectedFailures": [
+      "AudioBufferSourceNode clamps offset to loopStart for playbackRate < 0",
+      "AudioBufferSourceNode enters loop backwards from offset > loopEnd",
+      "AudioBufferSourceNode handles offset exactly at duration with negative rate",
+      "AudioBufferSourceNode handles out-of-bounds start offset correctly",
+      "AudioBufferSourceNode loops backwards using clamped loopStart when loopStart < 0",
+      "AudioBufferSourceNode loops backwards using entire buffer when loopEnd < 0",
+      "AudioBufferSourceNode loops backwards using entire buffer when loopStart > loopEnd"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-playbackrate-zero.html": {
+    "expectedFailures": [
+      "Subsample start with playbackRate 0 should produce sample-and-hold from exact start frame",
+      "Synthesize and verify sample-and-hold behavior when playbackRate is set to zero halfway"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-reverse-long-buffer.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-start-null-buffer.html": {
+    "expectedFailures": [
+      "start() with null buffer fires ended event immediately and ignores subsequent buffer assignment"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-start.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiosource-onended.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiosource-time-limits.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/buffer-resampling.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/ctor-audiobuffersource.html": {
+    "expectedFailures": [
+      "# AUDIT TASK RUNNER FINISHED: 1 out of 5 tasks were failed.",
+      "< [constructor options] 1 out of 7 assertions were failed.",
+      "X node2.buffer === buffer is not equal to true. Got false."
+    ]
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/looped-constant-buffer.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/note-grain-on-play.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/note-grain-on-timing.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/sample-accurate-scheduling.html": true,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/sub-sample-buffer-stitching.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/sub-sample-scheduling.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-detached-execution-context.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp-cross-realm.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-not-fully-active.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-playbackstats.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-rendersizehint.html": true,
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-constructor.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-setsinkid.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-state-change.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-state-change-after-close.http.window.js": false,
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-suspend-resume-close.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-suspend-resume.html": {
+    "expectedFailures": [
+      "Test resuming a running online context"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontextoptions.html": true,
+  "webaudio/the-audio-api/the-audiocontext-interface/callback-detached-buffer.html": true,
+  "webaudio/the-audio-api/the-audiocontext-interface/constructor-allowed-to-start.html": false,
+  "webaudio/the-audio-api/the-audiocontext-interface/context-time-monotonic-on-setsinkid.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/crashtests/currentTime-after-discard.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/processing-after-resume.https.html": {
+    "expectedFailures": [
+      "processing-after-resume"
+    ]
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/promise-methods-after-discard.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audiocontext-interface/suspend-after-construct.html": true,
+  "webaudio/the-audio-api/the-audiocontext-interface/suspend-with-navigation.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-channel-rules.html": {
+    "expectedFailures": [
+      "# AUDIT TASK RUNNER FINISHED: 1 out of 1 tasks were failed.",
+      "< [test] 45 out of 172 assertions were failed.",
+      "X connections: 1, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 1, explicit(6), speakers is not equal to 0. Got 1.",
+      "X connections: 11, explicit(4), speakers is not equal to 0. Got 2.",
+      "X connections: 11, explicit(6), speakers is not equal to 0. Got 2.",
+      "X connections: 111, explicit(4), speakers is not equal to 0. Got 3.",
+      "X connections: 111, explicit(6), speakers is not equal to 0. Got 3.",
+      "X connections: 12, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 12, explicit(6), speakers is not equal to 1. Got 2.",
+      "X connections: 122, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 122, explicit(6), speakers is not equal to 2. Got 3.",
+      "X connections: 123, clamped-max(4), speakers is not equal to 0. Got 1.",
+      "X connections: 123, explicit(1), speakers is not equal to 2.5. Got 1.8333333730697632.",
+      "X connections: 123, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 123, explicit(6), speakers is not equal to 2. Got 3.",
+      "X connections: 123, max, speakers is not equal to 0. Got 1.",
+      "X connections: 124, clamped-max(4), speakers is not equal to 0. Got 1.",
+      "X connections: 124, explicit(2), speakers is not equal to 2.5. Got 3.",
+      "X connections: 124, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 124, explicit(6), speakers is not equal to 2. Got 3.",
+      "X connections: 124, max, speakers is not equal to 0. Got 1.",
+      "X connections: 128, clamped-max(4), speakers is not equal to 0. Got 1.",
+      "X connections: 128, explicit(1), speakers is not equal to 2.5. Got 1.625.",
+      "X connections: 128, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 128, explicit(6), speakers is not equal to 2. Got 3.",
+      "X connections: 128, max, speakers is not equal to 0. Got 1.",
+      "X connections: 14, clamped-max(4), speakers is not equal to 0. Got 1.",
+      "X connections: 14, explicit(2), speakers is not equal to 1.5. Got 2.",
+      "X connections: 14, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 14, explicit(6), speakers is not equal to 1. Got 2.",
+      "X connections: 14, max, speakers is not equal to 0. Got 1.",
+      "X connections: 18, clamped-max(4), speakers is not equal to 0. Got 1.",
+      "X connections: 18, explicit(1), speakers is not equal to 2. Got 1.125.",
+      "X connections: 18, explicit(4), speakers is not equal to 0. Got 1.",
+      "X connections: 18, explicit(6), speakers is not equal to 1. Got 2.",
+      "X connections: 18, max, speakers is not equal to 0. Got 1.",
+      "X connections: 3, explicit(1), speakers is not equal to 1. Got 0.3333333432674408.",
+      "X connections: 4, explicit(2), speakers is not equal to 0.5. Got 1.",
+      "X connections: 4, explicit(6), speakers is not equal to 0. Got 1.",
+      "X connections: 5, explicit(1), speakers is not equal to 1. Got 0.20000000298023224.",
+      "X connections: 6, clamped-max(4), speakers is not equal to 0.7071067690849304. Got 0.",
+      "X connections: 6, explicit(1), speakers is not equal to 0.7071067690849304. Got 0.1666666716337204.",
+      "X connections: 6, explicit(2), speakers is not equal to 0.7071067690849304. Got 0.",
+      "X connections: 6, explicit(4), speakers is not equal to 0.7071067690849304. Got 0.",
+      "X connections: 7, explicit(1), speakers is not equal to 1. Got 0.1428571492433548.",
+      "X connections: 8, explicit(1), speakers is not equal to 1. Got 0.125."
+    ]
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-connect-method-chaining.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-connect-order.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-connect-return-value.html": true,
+  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect-audioparam.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-iframe.window.js": {
+    "expectedFailures": [
+      "Call a constructor from iframe page and then destroy the iframe"
+    ]
+  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode.html": {
+    "expectedFailures": [
+      "Basic tests for AudioNode API."
+    ]
+  },
+  "webaudio/the-audio-api/the-audionode-interface/channel-mode-interp-basic.html": true,
+  "webaudio/the-audio-api/the-audionode-interface/different-contexts.html": {
+    "expectedFailures": [
+      "Test 2: Connect AudioParam between contexts",
+      "Test 4: Disconnect AudioParam between contexts"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/adding-events.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-cancel-and-hold.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-close.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-connect-audioratesignal.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-default-value.window.js": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-exceptional-values.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-exponentialRampToValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-large-endtime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-linearRampToValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-method-chaining.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-nominal-range.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setTargetAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurve-exceptions.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurveAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-summingjunction.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-zero-duration-ramp.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/automation-rate.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/cancel-scheduled-values.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/event-insertion.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/exponentialRamp-special-cases.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-audiobuffersource-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-audioworklet-connections.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-audioworklet.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-biquad-connection.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-biquad.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-constant-source.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-delay-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-delay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-dynamics-compressor-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-gain.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-oscillator-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-oscillator.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-panner-connections.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-panner.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/k-rate-stereo-panner.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/moderate-exponentialRamp.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/nan-param.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/retrospective-exponentialRampToValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/retrospective-linearRampToValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/retrospective-setTargetAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/retrospective-setValueAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/retrospective-setValueCurveAtTime.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/set-target-conv.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/setTargetAtTime-after-event-within-block.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioparam-interface/setValueAtTime-within-block.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-addmodule-resolution.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-iterable.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-range.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-size.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam.https.html": {
+    "expectedFailures": [
+      "Verifying AudioParam in AudioWorkletNode"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-denormals.https.window.js": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-messageport-wasm.https.html": {
+    "expectedFailures": [
+      "AudioWorkletGlobalScope: global port can exchange a WebAssembly.Module",
+      "AudioWorkletProcessor: processor port can exchange a WebAssembly.Module"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-messageport.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-postmessage-sharedarraybuffer.https.html": {
+    "expectedFailures": [
+      "Executing \"Test postMessage from AudioWorkletProcessor to AudioWorkletNode\""
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-called-on-globalthis.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-constructor.https.window.js": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-dynamic.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-rendersizehint.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-suspend.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-throw-onmessage.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-creation-time.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-sample-rate.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-timing-info.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-automatic-pull.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-channel-count.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-construction.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-constructor-no-coop-coep.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-constructor-options.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-disconnected-input.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-lifetime.https.html": {
+    "expectedFailures": [
+      "Test AudioWorkletNode lifetime when process() returns false"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-onerror.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-output-channel-count.https.html": {
+    "expectedFailures": [
+      "AudioWorkletNode channel count: dynamic propagation and honoring outputChannelCount (single serialized test)."
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-malformed-process.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-options.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-param-getter-overridden.https.html": {
+    "expectedFailures": [
+      "Test if AudioWorkletProcessor with invalid parameters array getter"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-frozen-array.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-zero-outputs.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-promises.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-unconnected-outputs.https.window.js": {
+    "expectedFailures": [
+      "Test if outputs connected to AudioParam provides a non-zero length array for channels",
+      "Test if unconnected outputs provides a non-zero length array for channels"
+    ]
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/baseaudiocontext-audioworklet.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/extended-audioworkletnode-with-parameters.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/process-getter.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/process-parameters.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/processor-construction-port.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/simple-input-output.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-audioworklet-interface/suspended-context-messageport.https.html": true,
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-allpass.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-automation.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-bandpass.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-getFrequencyResponse.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-highpass.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-highshelf.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-lowpass.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-lowshelf.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-notch.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-peaking.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-tail.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquadfilter-rendersizehint.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquadfilternode-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/ctor-biquadfilter.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-biquadfilternode-interface/no-dezippering.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/active-processing.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/audiochannelmerger-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/audiochannelmerger-disconnect.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/audiochannelmerger-input-non-default.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/audiochannelmerger-input.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelmergernode-interface/ctor-channelmerger.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelsplitternode-interface/audiochannelsplitter.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-channelsplitternode-interface/ctor-channelsplitter.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-basic.html": true,
+  "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-onended-not-connected.html": true,
+  "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-onended.html": true,
+  "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-output.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-constantsourcenode-interface/ctor-constantsource.html": true,
+  "webaudio/the-audio-api/the-constantsourcenode-interface/test-constantsourcenode.html": false,
+  "webaudio/the-audio-api/the-convolvernode-interface/active-processing.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolution-mono-mono.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-cascade.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-channels.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-rendersizehint.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-response-1-chan.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-response-2-chan.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-response-4-chan.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-setBuffer-already-has-value.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-setBuffer-null.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/convolver-upmixing-1-channel-response.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/ctor-convolver.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/realtime-conv.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-convolvernode-interface/transferred-buffer-output.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/ctor-delay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delay-test.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-channel-count-1.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-max-default-delay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-max-nondefault-delay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-maxdelay.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-maxdelaylimit.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-scheduling.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/maxdelay-rounding.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-delaynode-interface/no-dezippering.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-destinationnode-interface/destination.html": true,
+  "webaudio/the-audio-api/the-dynamicscompressornode-interface/ctor-dynamicscompressor.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-dynamicscompressornode-interface/dynamicscompressor-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-gainnode-interface/ctor-gain.html": true,
+  "webaudio/the-audio-api/the-gainnode-interface/gain-basic.html": true,
+  "webaudio/the-audio-api/the-gainnode-interface/gain.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-gainnode-interface/no-dezippering.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/ctor-iirfilter.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/iir-filter-silent-block-crash.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter-getFrequencyResponse.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter-normalization-precision.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-iirfilternode-interface/test-iirfilternode.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/cors-check.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource-mediaStreamAudioDestination-stream-crash.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSourceToScriptProcessorTest.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource_closed_context-crash.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource_volumeChange.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/no-cors.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/setSinkId-with-MediaElementAudioSourceNode.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediastreamaudiodestinationnode-interface/closed-audiocontext-construction.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediastreamaudiodestinationnode-interface/ctor-mediastreamaudiodestination.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-ctor.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-from-context-with-different-rate.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-routing.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/ctor-offlineaudiocontext.html": true,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/current-time-block-size.html": true,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/decodeAudioData-oversized-resample.html": {
+    "expectedFailures": [
+      "decodeAudioData rejects when the resampled length exceeds AudioBuffer.length"
+    ]
+  },
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-close.html": false,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-detached-execution-context.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-incremental-rendering-data-integrity.html": true,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-incremental-rendering.html": false,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-rendersizehint.html": true,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-suspend-rendersizehint.https.html": true,
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/startrendering-after-discard.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-oscillatornode-interface/crashtests/stop-before-start.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-oscillatornode-interface/ctor-oscillator.html": true,
+  "webaudio/the-audio-api/the-oscillatornode-interface/detune-limiting.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-oscillatornode-interface/detune-overflow.html": true,
+  "webaudio/the-audio-api/the-oscillatornode-interface/osc-basic-waveform.html": true,
+  "webaudio/the-audio-api/the-oscillatornode-interface/sub-sample-start.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/automation-changes.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/ctor-panner.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/distance-exponential.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/distance-inverse.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/distance-linear.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/offline-hrtf-active-immediately.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-automation-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-automation-equalpower-stereo.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-automation-position.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-azimuth.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-distance-clamping.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-equalpower-stereo.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-equalpower.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-hrtf-negative-elevation.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-non-finite-distance-params.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-orientation-cone-gain-changes.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/panner-rolloff-clamping.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/pannernode-basic.window.js": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/pannernode-setposition-throws.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-pannernode-interface/test-pannernode-automation.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-periodicwave-interface/createPeriodicWaveInfiniteValuesThrows.html": true,
+  "webaudio/the-audio-api/the-periodicwave-interface/periodicWave.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-scriptprocessornode-interface/scriptprocessor-rendersizehint.https.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-scriptprocessornode-interface/simple-input-output.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-stereopanner-interface/ctor-stereopanner.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-stereopanner-interface/no-dezippering.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-stereopanner-interface/stereopannernode-basic.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-stereopanner-interface/stereopannernode-panning.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/ctor-waveshaper.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/curve-tests.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/silent-inputs.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper-copy-curve.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper-limits.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper-simple.html": {
+    "ignore": true
+  },
+  "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper.html": {
+    "ignore": true
+  }
+}

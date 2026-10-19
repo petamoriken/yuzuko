@@ -1,0 +1,3023 @@
+{
+  "fetch/api/abort/cache.https.any.js": true,
+  "fetch/api/abort/destroyed-context.html": {
+    "ignore": true
+  },
+  "fetch/api/abort/general.any.js": true,
+  "fetch/api/abort/keepalive.html": {
+    "ignore": true
+  },
+  "fetch/api/abort/request.any.js": true,
+  "fetch/api/abort/serviceworker-intercepted.https.html": {
+    "ignore": true
+  },
+  "fetch/api/basic/accept-header.any.js": {
+    "expectedFailures": [
+      "Request through fetch should have 'accept' header with value '*/*'",
+      "Request through fetch should have 'accept' header with value 'custom/*'",
+      "Request through fetch should have 'accept-language' header with value 'bzh'",
+      "Request through fetch should have a 'accept-language' header"
+    ]
+  },
+  "fetch/api/basic/block-mime-as-script.html": {
+    "ignore": true
+  },
+  "fetch/api/basic/conditional-get.any.js": {
+    "expectedFailures": [
+      "Testing conditional GET with ETags"
+    ]
+  },
+  "fetch/api/basic/error-after-response.any.js": true,
+  "fetch/api/basic/fetch-in-popup-from-iframe.html": {
+    "ignore": true
+  },
+  "fetch/api/basic/gc.any.js": true,
+  "fetch/api/basic/header-value-combining.any.js": true,
+  "fetch/api/basic/header-value-null-byte.any.js": true,
+  "fetch/api/basic/historical.any.js": true,
+  "fetch/api/basic/http-response-code.any.js": true,
+  "fetch/api/basic/integrity.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/basic/keepalive.any.js": {
+    "expectedFailures": [
+      "[keepalive] simple GET request on 'load' [no payload]; setting up",
+      "[keepalive] simple GET request on 'pagehide' [no payload]; setting up",
+      "[keepalive] simple GET request on 'unload' [no payload]; setting up",
+      "[keepalive] simple POST request on 'load' [no payload]; setting up",
+      "[keepalive] simple POST request on 'pagehide' [no payload]; setting up",
+      "[keepalive] simple POST request on 'unload' [no payload]; setting up"
+    ]
+  },
+  "fetch/api/basic/mediasource.window.js": {
+    "expectedFailures": [
+      "Cannot fetch blob: URL from a MediaSource"
+    ]
+  },
+  "fetch/api/basic/mode-no-cors.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/basic/mode-same-origin.any.js": {
+    "expectedFailures": [
+      "Fetch ../resources/top.txt with same-origin mode",
+      "Fetch /fetch/api/basic/../resources/redirect.py?location=../resources/top.txt with same-origin mode",
+      "Fetch /fetch/api/basic/../resources/redirect.py?location=http://web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
+      "Fetch /fetch/api/basic/../resources/redirect.py?location=http://www1.web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
+      "Fetch http://web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
+      "Fetch http://www1.web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode"
+    ]
+  },
+  "fetch/api/basic/referrer.any.js": {
+    "expectedFailures": [
+      "Referrer with credentials should be stripped",
+      "Referrer with fragment ID should be stripped",
+      "origin-when-cross-origin policy on a cross-origin URL",
+      "origin-when-cross-origin policy on a cross-origin URL after same-origin redirection",
+      "origin-when-cross-origin policy on a same-origin URL",
+      "origin-when-cross-origin policy on a same-origin URL after cross-origin redirection"
+    ]
+  },
+  "fetch/api/basic/request-forbidden-headers.any.js": {
+    "expectedFailures": [
+      "Accept-Charset is a forbidden request header",
+      "Accept-Encoding is a forbidden request header",
+      "Access-Control-Request-Headers is a forbidden request header",
+      "Access-Control-Request-Method is a forbidden request header",
+      "Connection is a forbidden request header",
+      "Content-Length is a forbidden request header",
+      "Cookie is a forbidden request header",
+      "Cookie2 is a forbidden request header",
+      "DNT is a forbidden request header",
+      "Date is a forbidden request header",
+      "Expect is a forbidden request header",
+      "Host is a forbidden request header",
+      "Keep-Alive is a forbidden request header",
+      "Origin is a forbidden request header",
+      "Proxy- is a forbidden request header",
+      "Proxy-Test is a forbidden request header",
+      "Referer is a forbidden request header",
+      "Sec- is a forbidden request header",
+      "Sec-Test is a forbidden request header",
+      "TE is a forbidden request header",
+      "Trailer is a forbidden request header",
+      "Transfer-Encoding is a forbidden request header",
+      "Upgrade is a forbidden request header",
+      "Via is a forbidden request header",
+      "header X-HTTP-METHOD is allowed to use value \",TRACE\",",
+      "header X-HTTP-METHOD is allowed to use value GET",
+      "header X-HTTP-METHOD is allowed to use value GETTRACE",
+      "header X-HTTP-METHOD is forbidden to use value  connect",
+      "header X-HTTP-METHOD is forbidden to use value CONNECT",
+      "header X-HTTP-METHOD is forbidden to use value GET,track ",
+      "header X-HTTP-METHOD is forbidden to use value TRACE",
+      "header X-HTTP-METHOD is forbidden to use value TRACK",
+      "header X-HTTP-METHOD is forbidden to use value connect",
+      "header X-HTTP-METHOD is forbidden to use value trace",
+      "header X-HTTP-METHOD is forbidden to use value trace,",
+      "header X-HTTP-METHOD is forbidden to use value track",
+      "header X-HTTP-METHOD-OVERRIDE is allowed to use value \",TRACE\",",
+      "header X-HTTP-METHOD-OVERRIDE is allowed to use value GET",
+      "header X-HTTP-METHOD-OVERRIDE is allowed to use value GETTRACE",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value  connect",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value CONNECT",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value GET,track ",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value TRACE",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value TRACK",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value connect",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value trace",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value trace,",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value track",
+      "header X-METHOD-OVERRIDE is allowed to use value \",TRACE\",",
+      "header X-METHOD-OVERRIDE is allowed to use value GET",
+      "header X-METHOD-OVERRIDE is allowed to use value GETTRACE",
+      "header X-METHOD-OVERRIDE is forbidden to use value  connect",
+      "header X-METHOD-OVERRIDE is forbidden to use value CONNECT",
+      "header X-METHOD-OVERRIDE is forbidden to use value GET,track ",
+      "header X-METHOD-OVERRIDE is forbidden to use value TRACE",
+      "header X-METHOD-OVERRIDE is forbidden to use value TRACK",
+      "header X-METHOD-OVERRIDE is forbidden to use value connect",
+      "header X-METHOD-OVERRIDE is forbidden to use value trace",
+      "header X-METHOD-OVERRIDE is forbidden to use value trace,",
+      "header X-METHOD-OVERRIDE is forbidden to use value track",
+      "header x-http-method is allowed to use value \",TRACE\",",
+      "header x-http-method is allowed to use value GET",
+      "header x-http-method is allowed to use value GETTRACE",
+      "header x-http-method is forbidden to use value  connect",
+      "header x-http-method is forbidden to use value CONNECT",
+      "header x-http-method is forbidden to use value GET,track ",
+      "header x-http-method is forbidden to use value TRACE",
+      "header x-http-method is forbidden to use value TRACK",
+      "header x-http-method is forbidden to use value connect",
+      "header x-http-method is forbidden to use value trace",
+      "header x-http-method is forbidden to use value trace,",
+      "header x-http-method is forbidden to use value track",
+      "header x-http-method-override is allowed to use value \",TRACE\",",
+      "header x-http-method-override is allowed to use value GET",
+      "header x-http-method-override is allowed to use value GETTRACE",
+      "header x-http-method-override is forbidden to use value  connect",
+      "header x-http-method-override is forbidden to use value CONNECT",
+      "header x-http-method-override is forbidden to use value GET,track ",
+      "header x-http-method-override is forbidden to use value TRACE",
+      "header x-http-method-override is forbidden to use value TRACK",
+      "header x-http-method-override is forbidden to use value connect",
+      "header x-http-method-override is forbidden to use value trace",
+      "header x-http-method-override is forbidden to use value trace,",
+      "header x-http-method-override is forbidden to use value track",
+      "header x-method-override is allowed to use value \",TRACE\",",
+      "header x-method-override is allowed to use value GET",
+      "header x-method-override is allowed to use value GETTRACE",
+      "header x-method-override is forbidden to use value  connect",
+      "header x-method-override is forbidden to use value CONNECT",
+      "header x-method-override is forbidden to use value GET,track ",
+      "header x-method-override is forbidden to use value TRACE",
+      "header x-method-override is forbidden to use value TRACK",
+      "header x-method-override is forbidden to use value connect",
+      "header x-method-override is forbidden to use value trace",
+      "header x-method-override is forbidden to use value trace,",
+      "header x-method-override is forbidden to use value track"
+    ]
+  },
+  "fetch/api/basic/request-head.any.js": true,
+  "fetch/api/basic/request-headers-case.any.js": true,
+  "fetch/api/basic/request-headers-nonascii.any.js": true,
+  "fetch/api/basic/request-headers.any.js": {
+    "expectedFailures": [
+      "Fetch with Chicken",
+      "Fetch with Chicken with body",
+      "Fetch with GET",
+      "Fetch with GET and mode \"cors\" does not need an Origin header",
+      "Fetch with HEAD",
+      "Fetch with POST and mode \"no-cors\" needs an Origin header",
+      "Fetch with POST and mode \"same-origin\" needs an Origin header",
+      "Fetch with POST with ArrayBuffer body",
+      "Fetch with POST with Blob body",
+      "Fetch with POST with Blob body with mime type",
+      "Fetch with POST with DataView body",
+      "Fetch with POST with Float16Array body",
+      "Fetch with POST with Float32Array body",
+      "Fetch with POST with Float64Array body",
+      "Fetch with POST with FormData body",
+      "Fetch with POST with Int8Array body",
+      "Fetch with POST with URLSearchParams body",
+      "Fetch with POST with Uint8Array body",
+      "Fetch with POST with text body",
+      "Fetch with POST without body",
+      "Fetch with PUT and mode \"same-origin\" needs an Origin header",
+      "Fetch with PUT with body",
+      "Fetch with PUT without body",
+      "Fetch with TacO and mode \"cors\" needs an Origin header",
+      "Fetch with TacO and mode \"same-origin\" needs an Origin header"
+    ]
+  },
+  "fetch/api/basic/request-referrer-redirected-worker.html": false,
+  "fetch/api/basic/request-referrer.any.js": {
+    "expectedFailures": [
+      "about:client referrer",
+      "url referrer"
+    ]
+  },
+  "fetch/api/basic/request-upload-421.any.js": true,
+  "fetch/api/basic/request-upload.any.js": true,
+  "fetch/api/basic/request-upload.h2.any.js": false,
+  "fetch/api/basic/response-null-body.any.js": true,
+  "fetch/api/basic/response-url.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/basic/scheme-about.any.js": true,
+  "fetch/api/basic/scheme-blob.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/basic/scheme-data.any.js": {
+    "expectedFailures": [
+      "Fetching [HEAD] data:,response%27s%20body is OK",
+      "Fetching [POST] data:,response%27s%20body is OK",
+      "Fetching data:,response%27s%20body is OK",
+      "Fetching data:,response%27s%20body is OK (cors)",
+      "Fetching data:,response%27s%20body is OK (same-origin)",
+      "Fetching data:image/png;base64,cmVzcG9uc2UncyBib2[...] is OK",
+      "Fetching data:text/plain;base64,cmVzcG9uc2UncyBib[...] is OK"
+    ]
+  },
+  "fetch/api/basic/scheme-others.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/basic/status.h2.any.js": {
+    "expectedFailures": [
+      "statusText over H2 for status 200 should be the empty string",
+      "statusText over H2 for status 210 should be the empty string",
+      "statusText over H2 for status 400 should be the empty string",
+      "statusText over H2 for status 404 should be the empty string",
+      "statusText over H2 for status 410 should be the empty string",
+      "statusText over H2 for status 500 should be the empty string",
+      "statusText over H2 for status 502 should be the empty string"
+    ]
+  },
+  "fetch/api/basic/stream-response.any.js": true,
+  "fetch/api/basic/stream-safe-creation.any.js": true,
+  "fetch/api/basic/text-utf8.any.js": true,
+  "fetch/api/basic/url-parsing.sub.html": {
+    "ignore": true
+  },
+  "fetch/api/body/formdata.any.js": true,
+  "fetch/api/body/mime-type.any.js": true,
+  "fetch/api/body/textstream.any.js": true,
+  "fetch/api/cors/cors-basic.any.js": {
+    "expectedFailures": [
+      "Cross domain basic usage [cors mode]",
+      "Cross domain basic usage [no-cors mode]",
+      "Cross domain basic usage [server forbid CORS]",
+      "Cross domain different port [cors mode]",
+      "Cross domain different port [no-cors mode]",
+      "Cross domain different port [server forbid CORS]",
+      "Cross domain different protocol [cors mode]",
+      "Cross domain different protocol [no-cors mode]",
+      "Same domain different port [cors mode]",
+      "Same domain different port [no-cors mode]",
+      "Same domain different port [server forbid CORS]",
+      "Same domain different protocol different port [cors mode]",
+      "Same domain different protocol different port [no-cors mode]"
+    ]
+  },
+  "fetch/api/cors/cors-cookies-redirect.any.js": {
+    "expectedFailures": [
+      "Testing credentials after cross-origin redirection with CORS and no preflight",
+      "Testing credentials after cross-origin redirection with CORS and preflight"
+    ]
+  },
+  "fetch/api/cors/cors-cookies.any.js": {
+    "expectedFailures": [
+      "Include mode: 1 cookie"
+    ]
+  },
+  "fetch/api/cors/cors-expose-star.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/cors/cors-filtering.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/cors/cors-keepalive.any.js": {
+    "expectedFailures": [
+      "[keepalive] Cross domain basic usage GET request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain basic usage GET request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain basic usage GET request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain basic usage GET request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain basic usage POST request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain basic usage POST request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain basic usage POST request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain basic usage POST request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain basic usage [cors mode, server forbid CORS]",
+      "[keepalive] Cross domain basic usage [cors mode]",
+      "[keepalive] Cross domain basic usage [no-cors mode]",
+      "[keepalive] Cross domain different port GET request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different port GET request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain different port GET request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different port GET request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain different port POST request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different port POST request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain different port POST request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different port POST request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain different port [cors mode, server forbid CORS]",
+      "[keepalive] Cross domain different port [cors mode]",
+      "[keepalive] Cross domain different port [no-cors mode]",
+      "[keepalive] Cross domain different protocol GET request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different protocol GET request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain different protocol GET request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different protocol GET request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain different protocol POST request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different protocol POST request in unload [cors mode]; setting up",
+      "[keepalive] Cross domain different protocol POST request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Cross domain different protocol POST request in unload [no-cors mode]; setting up",
+      "[keepalive] Cross domain different protocol [cors mode]",
+      "[keepalive] Cross domain different protocol [no-cors mode]",
+      "[keepalive] Same domain different port GET request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different port GET request in unload [cors mode]; setting up",
+      "[keepalive] Same domain different port GET request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different port GET request in unload [no-cors mode]; setting up",
+      "[keepalive] Same domain different port POST request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different port POST request in unload [cors mode]; setting up",
+      "[keepalive] Same domain different port POST request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different port POST request in unload [no-cors mode]; setting up",
+      "[keepalive] Same domain different port [cors mode, server forbid CORS]",
+      "[keepalive] Same domain different port [cors mode]",
+      "[keepalive] Same domain different port [no-cors mode]",
+      "[keepalive] Same domain different protocol different port GET request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different protocol different port GET request in unload [cors mode]; setting up",
+      "[keepalive] Same domain different protocol different port GET request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different protocol different port GET request in unload [no-cors mode]; setting up",
+      "[keepalive] Same domain different protocol different port POST request in unload [cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different protocol different port POST request in unload [cors mode]; setting up",
+      "[keepalive] Same domain different protocol different port POST request in unload [no-cors mode, server forbid CORS]; setting up",
+      "[keepalive] Same domain different protocol different port POST request in unload [no-cors mode]; setting up",
+      "[keepalive] Same domain different protocol different port [cors mode]",
+      "[keepalive] Same domain different protocol different port [no-cors mode]"
+    ]
+  },
+  "fetch/api/cors/cors-multiple-origins.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/api/cors/cors-no-preflight.any.js": {
+    "expectedFailures": [
+      "Cross domain different protocol [GET]",
+      "Same domain different protocol different port [GET]"
+    ]
+  },
+  "fetch/api/cors/cors-origin.any.js": {
+    "expectedFailures": [
+      "Allowed origin: \"\" [origin KO]",
+      "CORS preflight [PUT] [origin KO]",
+      "Cross domain [HEAD] [origin KO]",
+      "Cross domain [POST] [origin KO]",
+      "Cross domain different port [origin KO]",
+      "Cross domain different protocol [origin OK]",
+      "Cross domain different subdomain [origin KO]",
+      "Same domain different port [origin KO]",
+      "Same domain different protocol different port [origin OK]"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-cache-tainted.any.js": {
+    "expectedFailures": [
+      "Tainted CORS preflight cache entry is not reused for untainted requests",
+      "Untainted CORS preflight cache entry is not reused for tainted requests"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-cache.any.js": {
+    "expectedFailures": [
+      "CORS preflight cache does not reuse wildcard header entries for Authorization",
+      "CORS preflight cache reuses explicit header entries"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-not-cors-safelisted.any.js": {
+    "expectedFailures": [
+      "Need CORS-preflight for accept-language/\u0001 header",
+      "Need CORS-preflight for accept-language/@ header",
+      "Need CORS-preflight for accept/\" header",
+      "Need CORS-preflight for accept/012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678 header",
+      "Need CORS-preflight for authorization/basics header",
+      "Need CORS-preflight for content-language/\u0001 header",
+      "Need CORS-preflight for content-language/@ header",
+      "Need CORS-preflight for content-type/text/html header",
+      "Need CORS-preflight for content-type/text/plain; long=0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901 header",
+      "Need CORS-preflight for range/bytes 0- header",
+      "Need CORS-preflight for test/hi header"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-redirect.any.js": {
+    "expectedFailures": [
+      "Redirection 301 after preflight succeeded",
+      "Redirection 301 on preflight failed",
+      "Redirection 302 after preflight succeeded",
+      "Redirection 302 on preflight failed",
+      "Redirection 303 after preflight succeeded",
+      "Redirection 303 on preflight failed",
+      "Redirection 307 after preflight succeeded",
+      "Redirection 307 on preflight failed",
+      "Redirection 308 after preflight succeeded",
+      "Redirection 308 on preflight failed"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-referrer.any.js": {
+    "expectedFailures": [
+      "Referrer policy: \"\" and referrer: 'myreferrer'",
+      "Referrer policy: \"\" and referrer: default",
+      "Referrer policy: no-referrer and referrer: 'myreferrer'",
+      "Referrer policy: no-referrer and referrer: default",
+      "Referrer policy: no-referrer-when-downgrade and referrer: 'myreferrer'",
+      "Referrer policy: no-referrer-when-downgrade and referrer: default",
+      "Referrer policy: origin and referrer: 'myreferrer'",
+      "Referrer policy: origin and referrer: default",
+      "Referrer policy: origin-when-cross-origin and referrer: 'myreferrer'",
+      "Referrer policy: origin-when-cross-origin and referrer: default",
+      "Referrer policy: unsafe-url and referrer: 'myreferrer'",
+      "Referrer policy: unsafe-url and referrer: default"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-response-validation.any.js": {
+    "expectedFailures": [
+      "Preflight response with a bad Access-Control-Allow-Headers",
+      "Preflight response with a bad Access-Control-Allow-Methods"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-star.any.js": {
+    "expectedFailures": [
+      "CORS that fails with credentials: false; method: POST (allowed: *); header: Authorization,123 (allowed: *)",
+      "CORS that fails with credentials: true; method: DELETE (allowed: delete); header:  (allowed: *)",
+      "CORS that fails with credentials: true; method: GET (allowed: *); header: X-Test,1 (allowed: *)",
+      "CORS that fails with credentials: true; method: GET (allowed: get); header: X-Test,1 (allowed: *)",
+      "CORS that fails with credentials: true; method: OK (allowed: *); header: X-Test,1 (allowed: *)",
+      "CORS that fails with credentials: true; method: PATCH (allowed: patch); header:  (allowed: *)",
+      "CORS that fails with credentials: true; method: PUT (allowed: *); header:  (allowed: )",
+      "CORS that fails with credentials: true; method: PUT (allowed: put); header:  (allowed: *)",
+      "CORS that fails with credentials: true; method: delete (allowed: delete); header:  (allowed: *)",
+      "CORS that fails with credentials: true; method: patch (allowed: PATCH); header:  (allowed: *)",
+      "CORS that fails with credentials: true; method: put (allowed: put); header:  (allowed: *)",
+      "CORS that succeeds with credentials: false; method: GET (allowed: get); header: X-Test,1 (allowed: x-test)",
+      "CORS that succeeds with credentials: false; method: OK (allowed: *); header: X-Test,1 (allowed: *)",
+      "CORS that succeeds with credentials: false; method: POST (allowed: *); header: Authorization,123 (allowed: *, Authorization)",
+      "CORS that succeeds with credentials: false; method: SUPER (allowed: *); header: X-Test,1 (allowed: x-test)",
+      "CORS that succeeds with credentials: true; method: * (allowed: *); header: *,1 (allowed: *)",
+      "CORS that succeeds with credentials: true; method: DELETE (allowed: DELETE); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: GET (allowed: GET); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: GET (allowed: get); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: HEAD (allowed: HEAD); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: HEAD (allowed: head); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: PATCH (allowed: PATCH); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: POST (allowed: POST); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: POST (allowed: post); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: PUT (allowed: PUT); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: delete (allowed: DELETE); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: get (allowed: GET); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: get (allowed: get); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: head (allowed: HEAD); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: head (allowed: head); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: patch (allowed: patch); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: post (allowed: POST); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: post (allowed: post); header:  (allowed: *)",
+      "CORS that succeeds with credentials: true; method: put (allowed: PUT); header:  (allowed: *)"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-status.any.js": {
+    "expectedFailures": [
+      "Preflight answered with status 200",
+      "Preflight answered with status 201",
+      "Preflight answered with status 202",
+      "Preflight answered with status 203",
+      "Preflight answered with status 204",
+      "Preflight answered with status 205",
+      "Preflight answered with status 206",
+      "Preflight answered with status 300",
+      "Preflight answered with status 301",
+      "Preflight answered with status 302",
+      "Preflight answered with status 303",
+      "Preflight answered with status 304",
+      "Preflight answered with status 305",
+      "Preflight answered with status 306",
+      "Preflight answered with status 307",
+      "Preflight answered with status 308",
+      "Preflight answered with status 400",
+      "Preflight answered with status 401",
+      "Preflight answered with status 402",
+      "Preflight answered with status 403",
+      "Preflight answered with status 404",
+      "Preflight answered with status 405",
+      "Preflight answered with status 501",
+      "Preflight answered with status 502",
+      "Preflight answered with status 503",
+      "Preflight answered with status 504",
+      "Preflight answered with status 505"
+    ]
+  },
+  "fetch/api/cors/cors-preflight-unterminated-body.any.js": true,
+  "fetch/api/cors/cors-preflight.any.js": {
+    "expectedFailures": [
+      "\"authorization\" should not be covered by the wildcard symbol",
+      "CORS [DELETE], server allows",
+      "CORS [DELETE], server refuses",
+      "CORS [GET] [several headers], server allows",
+      "CORS [GET] [several headers], server refuses",
+      "CORS [GET] [x-test-header: allowed], server allows",
+      "CORS [GET] [x-test-header: refused], server refuses",
+      "CORS [NEW], server allows",
+      "CORS [NEW], server refuses",
+      "CORS [PATCH], server allows",
+      "CORS [PATCH], server refuses",
+      "CORS [PUT] [only safe headers], server allows",
+      "CORS [PUT] [several headers], server allows",
+      "CORS [PUT] [several headers], server refuses",
+      "CORS [PUT], server allows",
+      "CORS [PUT], server allows, check preflight has user agent",
+      "CORS [PUT], server refuses",
+      "CORS [chicken], server allows",
+      "CORS [chicken], server refuses",
+      "CORS [patcH], server allows",
+      "CORS [patcH], server refuses"
+    ]
+  },
+  "fetch/api/cors/cors-redirect-credentials.any.js": {
+    "expectedFailures": [
+      "Redirect 301 from remote to another remote with password",
+      "Redirect 301 from remote to another remote with user",
+      "Redirect 301 from remote to another remote with user and password",
+      "Redirect 301 from remote to same origin with password",
+      "Redirect 301 from remote to same origin with user",
+      "Redirect 301 from remote to same origin with user and password",
+      "Redirect 301 from remote to same remote with password",
+      "Redirect 301 from remote to same remote with user",
+      "Redirect 301 from remote to same remote with user and password",
+      "Redirect 301 from same origin to remote with password",
+      "Redirect 301 from same origin to remote with user",
+      "Redirect 301 from same origin to remote with user and password",
+      "Redirect 302 from remote to another remote with password",
+      "Redirect 302 from remote to another remote with user",
+      "Redirect 302 from remote to another remote with user and password",
+      "Redirect 302 from remote to same origin with password",
+      "Redirect 302 from remote to same origin with user",
+      "Redirect 302 from remote to same origin with user and password",
+      "Redirect 302 from remote to same remote with password",
+      "Redirect 302 from remote to same remote with user",
+      "Redirect 302 from remote to same remote with user and password",
+      "Redirect 302 from same origin to remote with password",
+      "Redirect 302 from same origin to remote with user",
+      "Redirect 302 from same origin to remote with user and password",
+      "Redirect 303 from remote to another remote with password",
+      "Redirect 303 from remote to another remote with user",
+      "Redirect 303 from remote to another remote with user and password",
+      "Redirect 303 from remote to same origin with password",
+      "Redirect 303 from remote to same origin with user",
+      "Redirect 303 from remote to same origin with user and password",
+      "Redirect 303 from remote to same remote with password",
+      "Redirect 303 from remote to same remote with user",
+      "Redirect 303 from remote to same remote with user and password",
+      "Redirect 303 from same origin to remote with password",
+      "Redirect 303 from same origin to remote with user",
+      "Redirect 303 from same origin to remote with user and password",
+      "Redirect 307 from remote to another remote with password",
+      "Redirect 307 from remote to another remote with user",
+      "Redirect 307 from remote to another remote with user and password",
+      "Redirect 307 from remote to same origin with password",
+      "Redirect 307 from remote to same origin with user",
+      "Redirect 307 from remote to same origin with user and password",
+      "Redirect 307 from remote to same remote with password",
+      "Redirect 307 from remote to same remote with user",
+      "Redirect 307 from remote to same remote with user and password",
+      "Redirect 307 from same origin to remote with password",
+      "Redirect 307 from same origin to remote with user",
+      "Redirect 307 from same origin to remote with user and password",
+      "Redirect 308 from remote to another remote with password",
+      "Redirect 308 from remote to another remote with user",
+      "Redirect 308 from remote to another remote with user and password",
+      "Redirect 308 from remote to same origin with password",
+      "Redirect 308 from remote to same origin with user",
+      "Redirect 308 from remote to same origin with user and password",
+      "Redirect 308 from remote to same remote with password",
+      "Redirect 308 from remote to same remote with user",
+      "Redirect 308 from remote to same remote with user and password",
+      "Redirect 308 from same origin to remote with password",
+      "Redirect 308 from same origin to remote with user",
+      "Redirect 308 from same origin to remote with user and password"
+    ]
+  },
+  "fetch/api/cors/cors-redirect-preflight.any.js": {
+    "expectedFailures": [
+      "Redirect 301: cors to another cors (preflight after redirection failure case)",
+      "Redirect 301: cors to another cors (preflight after redirection success case)",
+      "Redirect 301: cors to same origin (preflight after redirection failure case)",
+      "Redirect 301: cors to same origin (preflight after redirection success case)",
+      "Redirect 301: same origin to cors (preflight after redirection failure case)",
+      "Redirect 301: same origin to cors (preflight after redirection success case)",
+      "Redirect 302: cors to another cors (preflight after redirection failure case)",
+      "Redirect 302: cors to another cors (preflight after redirection success case)",
+      "Redirect 302: cors to same origin (preflight after redirection failure case)",
+      "Redirect 302: cors to same origin (preflight after redirection success case)",
+      "Redirect 302: same origin to cors (preflight after redirection failure case)",
+      "Redirect 302: same origin to cors (preflight after redirection success case)",
+      "Redirect 303: cors to another cors (preflight after redirection failure case)",
+      "Redirect 303: cors to another cors (preflight after redirection success case)",
+      "Redirect 303: cors to same origin (preflight after redirection failure case)",
+      "Redirect 303: cors to same origin (preflight after redirection success case)",
+      "Redirect 303: same origin to cors (preflight after redirection failure case)",
+      "Redirect 303: same origin to cors (preflight after redirection success case)",
+      "Redirect 307: cors to another cors (preflight after redirection failure case)",
+      "Redirect 307: cors to another cors (preflight after redirection success case)",
+      "Redirect 307: cors to same origin (preflight after redirection failure case)",
+      "Redirect 307: cors to same origin (preflight after redirection success case)",
+      "Redirect 307: same origin to cors (preflight after redirection failure case)",
+      "Redirect 307: same origin to cors (preflight after redirection success case)",
+      "Redirect 308: cors to another cors (preflight after redirection failure case)",
+      "Redirect 308: cors to another cors (preflight after redirection success case)",
+      "Redirect 308: cors to same origin (preflight after redirection failure case)",
+      "Redirect 308: cors to same origin (preflight after redirection success case)",
+      "Redirect 308: same origin to cors (preflight after redirection failure case)",
+      "Redirect 308: same origin to cors (preflight after redirection success case)"
+    ]
+  },
+  "fetch/api/cors/cors-redirect.any.js": {
+    "expectedFailures": [
+      "Redirect 301: cors to another cors",
+      "Redirect 301: cors to same cors",
+      "Redirect 301: cors to same origin",
+      "Redirect 301: same origin to cors",
+      "Redirect 302: cors to another cors",
+      "Redirect 302: cors to same cors",
+      "Redirect 302: cors to same origin",
+      "Redirect 302: same origin to cors",
+      "Redirect 303: cors to another cors",
+      "Redirect 303: cors to same cors",
+      "Redirect 303: cors to same origin",
+      "Redirect 303: same origin to cors",
+      "Redirect 307: cors to another cors",
+      "Redirect 307: cors to same cors",
+      "Redirect 307: cors to same origin",
+      "Redirect 307: same origin to cors",
+      "Redirect 308: cors to another cors",
+      "Redirect 308: cors to same cors",
+      "Redirect 308: cors to same origin",
+      "Redirect 308: same origin to cors"
+    ]
+  },
+  "fetch/api/cors/data-url-iframe.html": {
+    "ignore": true
+  },
+  "fetch/api/cors/data-url-shared-worker.html": {
+    "expectedFailures": [
+      "fetching \"top.txt\" with CORS allowing null origin should be allowed.",
+      "fetching \"top.txt\" without ACAO should be rejected.",
+      "fetching data url script should be allowed."
+    ]
+  },
+  "fetch/api/cors/data-url-worker.html": {
+    "expectedFailures": [
+      "fetching \"top.txt\" without ACAO should be rejected."
+    ]
+  },
+  "fetch/api/cors/sandboxed-iframe.html": {
+    "ignore": true
+  },
+  "fetch/api/crashtests/aborted-fetch-response.https.html": {
+    "ignore": true
+  },
+  "fetch/api/crashtests/body-window-destroy.html": {
+    "ignore": true
+  },
+  "fetch/api/crashtests/huge-fetch.any.js": true,
+  "fetch/api/crashtests/request.html": {
+    "ignore": true
+  },
+  "fetch/api/credentials/authentication-basic.any.js": {
+    "expectedFailures": [
+      "User-added Authorization header with include mode",
+      "User-added Authorization header with omit mode",
+      "User-added Authorization header with same-origin mode",
+      "User-added bogus Authorization header with omit mode"
+    ]
+  },
+  "fetch/api/credentials/authentication-redirection.any.js": {
+    "expectedFailures": [
+      "getAuthorizationHeaderValue - cross origin redirection",
+      "getAuthorizationHeaderValue - same origin redirection"
+    ]
+  },
+  "fetch/api/credentials/cookies.any.js": {
+    "expectedFailures": [
+      "Include mode: 1 cookie",
+      "Include mode: 2 cookies",
+      "Omit mode: discard cookies",
+      "Omit mode: no cookie is sent",
+      "Omit mode: no cookie is stored",
+      "Same-origin mode: 1 cookie",
+      "Same-origin mode: 2 cookies"
+    ]
+  },
+  "fetch/api/headers/header-setcookie.any.js": {
+    "expectedFailures": [
+      "Set-Cookie is a forbidden response header"
+    ]
+  },
+  "fetch/api/headers/header-values-normalize.any.js": true,
+  "fetch/api/headers/header-values.any.js": true,
+  "fetch/api/headers/headers-basic.any.js": true,
+  "fetch/api/headers/headers-casing.any.js": true,
+  "fetch/api/headers/headers-combine.any.js": true,
+  "fetch/api/headers/headers-errors.any.js": true,
+  "fetch/api/headers/headers-forbidden-override.any.js": {
+    "expectedFailures": [
+      "header X-HTTP-METHOD is forbidden to use value \ttrack",
+      "header X-HTTP-METHOD is forbidden to use value \nconnect",
+      "header X-HTTP-METHOD is forbidden to use value \rtrace",
+      "header X-HTTP-METHOD is forbidden to use value  connect",
+      "header X-HTTP-METHOD is forbidden to use value CONNECT",
+      "header X-HTTP-METHOD is forbidden to use value GET,track ",
+      "header X-HTTP-METHOD is forbidden to use value TRACE",
+      "header X-HTTP-METHOD is forbidden to use value TRACK",
+      "header X-HTTP-METHOD is forbidden to use value connect",
+      "header X-HTTP-METHOD is forbidden to use value trace",
+      "header X-HTTP-METHOD is forbidden to use value trace,",
+      "header X-HTTP-METHOD is forbidden to use value track",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value \ttrack",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value \nconnect",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value \rtrace",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value  connect",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value CONNECT",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value GET,track ",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value TRACE",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value TRACK",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value connect",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value trace",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value trace,",
+      "header X-HTTP-METHOD-OVERRIDE is forbidden to use value track",
+      "header X-METHOD-OVERRIDE is forbidden to use value \ttrack",
+      "header X-METHOD-OVERRIDE is forbidden to use value \nconnect",
+      "header X-METHOD-OVERRIDE is forbidden to use value \rtrace",
+      "header X-METHOD-OVERRIDE is forbidden to use value  connect",
+      "header X-METHOD-OVERRIDE is forbidden to use value CONNECT",
+      "header X-METHOD-OVERRIDE is forbidden to use value GET,track ",
+      "header X-METHOD-OVERRIDE is forbidden to use value TRACE",
+      "header X-METHOD-OVERRIDE is forbidden to use value TRACK",
+      "header X-METHOD-OVERRIDE is forbidden to use value connect",
+      "header X-METHOD-OVERRIDE is forbidden to use value trace",
+      "header X-METHOD-OVERRIDE is forbidden to use value trace,",
+      "header X-METHOD-OVERRIDE is forbidden to use value track",
+      "header x-http-method is forbidden to use value \ttrack",
+      "header x-http-method is forbidden to use value \nconnect",
+      "header x-http-method is forbidden to use value \rtrace",
+      "header x-http-method is forbidden to use value  connect",
+      "header x-http-method is forbidden to use value CONNECT",
+      "header x-http-method is forbidden to use value GET,track ",
+      "header x-http-method is forbidden to use value TRACE",
+      "header x-http-method is forbidden to use value TRACK",
+      "header x-http-method is forbidden to use value connect",
+      "header x-http-method is forbidden to use value trace",
+      "header x-http-method is forbidden to use value trace,",
+      "header x-http-method is forbidden to use value track",
+      "header x-http-method-override is forbidden to use value \ttrack",
+      "header x-http-method-override is forbidden to use value \nconnect",
+      "header x-http-method-override is forbidden to use value \rtrace",
+      "header x-http-method-override is forbidden to use value  connect",
+      "header x-http-method-override is forbidden to use value CONNECT",
+      "header x-http-method-override is forbidden to use value GET,track ",
+      "header x-http-method-override is forbidden to use value TRACE",
+      "header x-http-method-override is forbidden to use value TRACK",
+      "header x-http-method-override is forbidden to use value connect",
+      "header x-http-method-override is forbidden to use value trace",
+      "header x-http-method-override is forbidden to use value trace,",
+      "header x-http-method-override is forbidden to use value track",
+      "header x-method-override is forbidden to use value \ttrack",
+      "header x-method-override is forbidden to use value \nconnect",
+      "header x-method-override is forbidden to use value \rtrace",
+      "header x-method-override is forbidden to use value  connect",
+      "header x-method-override is forbidden to use value CONNECT",
+      "header x-method-override is forbidden to use value GET,track ",
+      "header x-method-override is forbidden to use value TRACE",
+      "header x-method-override is forbidden to use value TRACK",
+      "header x-method-override is forbidden to use value connect",
+      "header x-method-override is forbidden to use value trace",
+      "header x-method-override is forbidden to use value trace,",
+      "header x-method-override is forbidden to use value track"
+    ]
+  },
+  "fetch/api/headers/headers-no-cors.any.js": {
+    "expectedFailures": [
+      "\"no-cors\" Headers object cannot have accept set to , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have accept set to sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss, , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have accept-language set to , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have accept-language set to sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss, , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have accept-language/\u0001 as header",
+      "\"no-cors\" Headers object cannot have accept-language/@ as header",
+      "\"no-cors\" Headers object cannot have accept/\" as header",
+      "\"no-cors\" Headers object cannot have accept/012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678 as header",
+      "\"no-cors\" Headers object cannot have authorization/basics as header",
+      "\"no-cors\" Headers object cannot have content-language set to , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have content-language set to sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss, , sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "\"no-cors\" Headers object cannot have content-language/\u0001 as header",
+      "\"no-cors\" Headers object cannot have content-language/@ as header",
+      "\"no-cors\" Headers object cannot have content-type set to text/plain;ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss, text/plain",
+      "\"no-cors\" Headers object cannot have content-type/text/html as header",
+      "\"no-cors\" Headers object cannot have content-type/text/plain; long=0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901 as header",
+      "\"no-cors\" Headers object cannot have downlink/-1.0 as header",
+      "\"no-cors\" Headers object cannot have dpr/2 as header",
+      "\"no-cors\" Headers object cannot have ect/6g as header",
+      "\"no-cors\" Headers object cannot have range/bytes 0- as header",
+      "\"no-cors\" Headers object cannot have rtt/1.0 as header",
+      "\"no-cors\" Headers object cannot have save-data/on as header",
+      "\"no-cors\" Headers object cannot have test/hi as header",
+      "\"no-cors\" Headers object cannot have unknown/doesitmatter as header",
+      "\"no-cors\" Headers object cannot have viewport-width/100 as header",
+      "\"no-cors\" Headers object cannot have width/100 as header"
+    ]
+  },
+  "fetch/api/headers/headers-normalize.any.js": true,
+  "fetch/api/headers/headers-record.any.js": true,
+  "fetch/api/headers/headers-structure.any.js": true,
+  "fetch/api/idlharness.https.any.js": {
+    "expectedFailures": [
+      "FetchLaterResult interface object length",
+      "FetchLaterResult interface object name",
+      "FetchLaterResult interface: attribute activated",
+      "FetchLaterResult interface: existence and properties of interface object",
+      "FetchLaterResult interface: existence and properties of interface prototype object",
+      "FetchLaterResult interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FetchLaterResult interface: existence and properties of interface prototype object's @@unscopables property",
+      "Request interface: attribute credentials",
+      "Request interface: attribute destination",
+      "Request interface: attribute integrity",
+      "Request interface: attribute isHistoryNavigation",
+      "Request interface: attribute isReloadNavigation",
+      "Request interface: attribute keepalive",
+      "Request interface: attribute mode",
+      "Request interface: attribute referrer",
+      "Request interface: attribute referrerPolicy",
+      "Request interface: new Request('about:blank') must inherit property \"credentials\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"integrity\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"mode\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
+      "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
+      "Window interface: calling fetchLater(RequestInfo, optional DeferredRequestInit) on window with too few arguments must throw TypeError",
+      "Window interface: operation fetchLater(RequestInfo, optional DeferredRequestInit)",
+      "Window interface: window must inherit property \"fetchLater(RequestInfo, optional DeferredRequestInit)\" with the proper type"
+    ]
+  },
+  "fetch/api/policies/csp-blocked-worker.html": {
+    "expectedFailures": [
+      "Fetch is blocked by CSP, got a TypeError"
+    ]
+  },
+  "fetch/api/policies/csp-blocked.html": false,
+  "fetch/api/policies/referrer-no-referrer-service-worker.https.html": {
+    "ignore": true
+  },
+  "fetch/api/policies/referrer-no-referrer-worker.html": {
+    "expectedFailures": [
+      "Request's referrer is empty"
+    ]
+  },
+  "fetch/api/policies/referrer-no-referrer.html": false,
+  "fetch/api/policies/referrer-origin-service-worker.https.html": {
+    "ignore": true
+  },
+  "fetch/api/policies/referrer-origin-when-cross-origin-service-worker.https.html": {
+    "ignore": true
+  },
+  "fetch/api/policies/referrer-origin-when-cross-origin-worker.html": {
+    "expectedFailures": [
+      "Request's referrer is origin"
+    ]
+  },
+  "fetch/api/policies/referrer-origin-when-cross-origin.html": false,
+  "fetch/api/policies/referrer-origin-worker.html": {
+    "expectedFailures": [
+      "Cross-origin referrer is overridden by client origin",
+      "Request's referrer is origin"
+    ]
+  },
+  "fetch/api/policies/referrer-origin.html": false,
+  "fetch/api/policies/referrer-unsafe-url-service-worker.https.html": {
+    "ignore": true
+  },
+  "fetch/api/policies/referrer-unsafe-url-worker.html": {
+    "expectedFailures": [
+      "Request's referrer is the full url of current document/worker"
+    ]
+  },
+  "fetch/api/policies/referrer-unsafe-url.html": false,
+  "fetch/api/redirect/redirect-back-to-original-origin.any.js": {
+    "expectedFailures": [
+      "original => remote => original with mode: \"cors\"",
+      "original => remote => original with mode: \"no-cors\""
+    ]
+  },
+  "fetch/api/redirect/redirect-count.any.js": true,
+  "fetch/api/redirect/redirect-empty-location.any.js": {
+    "expectedFailures": [
+      "redirect response with empty Location, manual mode"
+    ]
+  },
+  "fetch/api/redirect/redirect-keepalive.any.js": {
+    "expectedFailures": [
+      "[keepalive][new window][unload] cross-origin redirect + preflight; setting up",
+      "[keepalive][new window][unload] cross-origin redirect; setting up",
+      "[keepalive][new window][unload] redirect to data URL; setting up",
+      "[keepalive][new window][unload] redirect to file URL; setting up",
+      "[keepalive][new window][unload] same-origin redirect + preflight; setting up",
+      "[keepalive][new window][unload] same-origin redirect; setting up"
+    ]
+  },
+  "fetch/api/redirect/redirect-keepalive.https.any.js": {
+    "expectedFailures": [
+      "[keepalive][iframe][load] mixed content redirect; setting up"
+    ]
+  },
+  "fetch/api/redirect/redirect-location-escape.tentative.any.js": true,
+  "fetch/api/redirect/redirect-location.any.js": {
+    "expectedFailures": [
+      "Redirect 301 in \"manual\" mode with data location",
+      "Redirect 301 in \"manual\" mode with invalid location",
+      "Redirect 301 in \"manual\" mode with valid location",
+      "Redirect 301 in \"manual\" mode without location",
+      "Redirect 302 in \"manual\" mode with data location",
+      "Redirect 302 in \"manual\" mode with invalid location",
+      "Redirect 302 in \"manual\" mode with valid location",
+      "Redirect 302 in \"manual\" mode without location",
+      "Redirect 303 in \"manual\" mode with data location",
+      "Redirect 303 in \"manual\" mode with invalid location",
+      "Redirect 303 in \"manual\" mode with valid location",
+      "Redirect 303 in \"manual\" mode without location",
+      "Redirect 307 in \"manual\" mode with data location",
+      "Redirect 307 in \"manual\" mode with invalid location",
+      "Redirect 307 in \"manual\" mode with valid location",
+      "Redirect 307 in \"manual\" mode without location",
+      "Redirect 308 in \"manual\" mode with data location",
+      "Redirect 308 in \"manual\" mode with invalid location",
+      "Redirect 308 in \"manual\" mode with valid location",
+      "Redirect 308 in \"manual\" mode without location"
+    ]
+  },
+  "fetch/api/redirect/redirect-method.any.js": {
+    "expectedFailures": [
+      "Redirect 301 with GET",
+      "Redirect 301 with HEAD",
+      "Redirect 301 with POST",
+      "Redirect 302 with GET",
+      "Redirect 302 with HEAD",
+      "Redirect 302 with POST",
+      "Redirect 303 with GET",
+      "Redirect 303 with HEAD",
+      "Redirect 303 with POST",
+      "Redirect 303 with TESTING",
+      "Redirect 307 with GET",
+      "Redirect 307 with HEAD",
+      "Redirect 307 with POST (blob body)",
+      "Redirect 307 with POST (string body)"
+    ]
+  },
+  "fetch/api/redirect/redirect-mode.any.js": {
+    "expectedFailures": [
+      "cross-origin redirect 301 in follow redirect and no-cors mode",
+      "cross-origin redirect 301 in manual redirect and cors mode",
+      "cross-origin redirect 301 in manual redirect and no-cors mode",
+      "cross-origin redirect 302 in follow redirect and no-cors mode",
+      "cross-origin redirect 302 in manual redirect and cors mode",
+      "cross-origin redirect 302 in manual redirect and no-cors mode",
+      "cross-origin redirect 303 in follow redirect and no-cors mode",
+      "cross-origin redirect 303 in manual redirect and cors mode",
+      "cross-origin redirect 303 in manual redirect and no-cors mode",
+      "cross-origin redirect 307 in follow redirect and no-cors mode",
+      "cross-origin redirect 307 in manual redirect and cors mode",
+      "cross-origin redirect 307 in manual redirect and no-cors mode",
+      "cross-origin redirect 308 in follow redirect and no-cors mode",
+      "cross-origin redirect 308 in manual redirect and cors mode",
+      "cross-origin redirect 308 in manual redirect and no-cors mode",
+      "manual redirect with a CORS error should be rejected",
+      "same-origin redirect 301 in manual redirect and cors mode",
+      "same-origin redirect 301 in manual redirect and no-cors mode",
+      "same-origin redirect 302 in manual redirect and cors mode",
+      "same-origin redirect 302 in manual redirect and no-cors mode",
+      "same-origin redirect 303 in manual redirect and cors mode",
+      "same-origin redirect 303 in manual redirect and no-cors mode",
+      "same-origin redirect 307 in manual redirect and cors mode",
+      "same-origin redirect 307 in manual redirect and no-cors mode",
+      "same-origin redirect 308 in manual redirect and cors mode",
+      "same-origin redirect 308 in manual redirect and no-cors mode"
+    ]
+  },
+  "fetch/api/redirect/redirect-origin.any.js": {
+    "expectedFailures": [
+      "[GET] Redirect 301 Other origin to other origin",
+      "[GET] Redirect 301 Other origin to same origin",
+      "[GET] Redirect 301 Same origin to other origin",
+      "[GET] Redirect 302 Other origin to other origin",
+      "[GET] Redirect 302 Other origin to same origin",
+      "[GET] Redirect 302 Same origin to other origin",
+      "[GET] Redirect 303 Other origin to other origin",
+      "[GET] Redirect 303 Other origin to same origin",
+      "[GET] Redirect 303 Same origin to other origin",
+      "[GET] Redirect 307 Other origin to other origin",
+      "[GET] Redirect 307 Other origin to same origin",
+      "[GET] Redirect 307 Same origin to other origin",
+      "[GET] Redirect 308 Other origin to other origin",
+      "[GET] Redirect 308 Other origin to same origin",
+      "[GET] Redirect 308 Same origin to other origin",
+      "[POST] Redirect 301 Other origin to other origin",
+      "[POST] Redirect 301 Other origin to same origin",
+      "[POST] Redirect 301 Same origin to other origin",
+      "[POST] Redirect 302 Other origin to other origin",
+      "[POST] Redirect 302 Other origin to same origin",
+      "[POST] Redirect 302 Same origin to other origin",
+      "[POST] Redirect 303 Other origin to other origin",
+      "[POST] Redirect 303 Other origin to same origin",
+      "[POST] Redirect 303 Same origin to other origin",
+      "[POST] Redirect 307 Other origin to other origin",
+      "[POST] Redirect 307 Other origin to same origin",
+      "[POST] Redirect 307 Same origin to other origin",
+      "[POST] Redirect 308 Other origin to other origin",
+      "[POST] Redirect 308 Other origin to same origin",
+      "[POST] Redirect 308 Same origin to other origin"
+    ]
+  },
+  "fetch/api/redirect/redirect-referrer-override.any.js": {
+    "expectedFailures": [
+      "Cross origin redirection, no-referrer-when-downgrade init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, no-referrer-when-downgrade init, origin redirect header ",
+      "Cross origin redirection, no-referrer-when-downgrade init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, no-referrer-when-downgrade init, strict-origin redirect header ",
+      "Cross origin redirection, no-referrer-when-downgrade init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, no-referrer-when-downgrade init, unsafe-url redirect header ",
+      "Cross origin redirection, origin init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, origin init, origin redirect header ",
+      "Cross origin redirection, origin init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, origin init, strict-origin redirect header ",
+      "Cross origin redirection, origin init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, origin init, unsafe-url redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, origin redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, strict-origin redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, origin-when-cross-origin init, unsafe-url redirect header ",
+      "Cross origin redirection, same-origin init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, same-origin init, origin redirect header ",
+      "Cross origin redirection, same-origin init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, same-origin init, strict-origin redirect header ",
+      "Cross origin redirection, same-origin init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, same-origin init, unsafe-url redirect header ",
+      "Cross origin redirection, strict-origin init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, strict-origin init, origin redirect header ",
+      "Cross origin redirection, strict-origin init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, strict-origin init, strict-origin redirect header ",
+      "Cross origin redirection, strict-origin init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, strict-origin init, unsafe-url redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, origin redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, strict-origin redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, strict-origin-when-cross-origin init, unsafe-url redirect header ",
+      "Cross origin redirection, unsafe-url init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, unsafe-url init, origin redirect header ",
+      "Cross origin redirection, unsafe-url init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, unsafe-url init, strict-origin redirect header ",
+      "Cross origin redirection, unsafe-url init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, unsafe-url init, unsafe-url redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, origin redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, same-origin redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, strict-origin redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, no-referrer-when-downgrade init, unsafe-url redirect header ",
+      "Same origin redirection, origin init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, origin init, origin redirect header ",
+      "Same origin redirection, origin init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, origin init, same-origin redirect header ",
+      "Same origin redirection, origin init, strict-origin redirect header ",
+      "Same origin redirection, origin init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, origin init, unsafe-url redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, origin redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, same-origin redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, strict-origin redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, origin-when-cross-origin init, unsafe-url redirect header ",
+      "Same origin redirection, same-origin init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, same-origin init, origin redirect header ",
+      "Same origin redirection, same-origin init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, same-origin init, same-origin redirect header ",
+      "Same origin redirection, same-origin init, strict-origin redirect header ",
+      "Same origin redirection, same-origin init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, same-origin init, unsafe-url redirect header ",
+      "Same origin redirection, strict-origin init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, strict-origin init, origin redirect header ",
+      "Same origin redirection, strict-origin init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, strict-origin init, same-origin redirect header ",
+      "Same origin redirection, strict-origin init, strict-origin redirect header ",
+      "Same origin redirection, strict-origin init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, strict-origin init, unsafe-url redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, origin redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, same-origin redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, strict-origin redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, strict-origin-when-cross-origin init, unsafe-url redirect header ",
+      "Same origin redirection, unsafe-url init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, unsafe-url init, origin redirect header ",
+      "Same origin redirection, unsafe-url init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, unsafe-url init, same-origin redirect header ",
+      "Same origin redirection, unsafe-url init, strict-origin redirect header ",
+      "Same origin redirection, unsafe-url init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, unsafe-url init, unsafe-url redirect header "
+    ]
+  },
+  "fetch/api/redirect/redirect-referrer.any.js": {
+    "expectedFailures": [
+      "Cross origin redirection, empty init, no-referrer-when-downgrade redirect header ",
+      "Cross origin redirection, empty init, origin redirect header ",
+      "Cross origin redirection, empty init, origin-when-cross-origin redirect header ",
+      "Cross origin redirection, empty init, strict-origin redirect header ",
+      "Cross origin redirection, empty init, strict-origin-when-cross-origin redirect header ",
+      "Cross origin redirection, empty init, unsafe-url redirect header ",
+      "Cross origin redirection, empty redirect header, no-referrer-when-downgrade init ",
+      "Cross origin redirection, empty redirect header, origin init ",
+      "Cross origin redirection, empty redirect header, origin-when-cross-origin init ",
+      "Cross origin redirection, empty redirect header, strict-origin init ",
+      "Cross origin redirection, empty redirect header, strict-origin-when-cross-origin init ",
+      "Cross origin redirection, empty redirect header, unsafe-url init ",
+      "Same origin redirection, empty init, no-referrer-when-downgrade redirect header ",
+      "Same origin redirection, empty init, origin redirect header ",
+      "Same origin redirection, empty init, origin-when-cross-origin redirect header ",
+      "Same origin redirection, empty init, same-origin redirect header ",
+      "Same origin redirection, empty init, strict-origin redirect header ",
+      "Same origin redirection, empty init, strict-origin-when-cross-origin redirect header ",
+      "Same origin redirection, empty init, unsafe-url redirect header ",
+      "Same origin redirection, empty redirect header, no-referrer-when-downgrade init ",
+      "Same origin redirection, empty redirect header, origin init ",
+      "Same origin redirection, empty redirect header, origin-when-cross-origin init ",
+      "Same origin redirection, empty redirect header, same-origin init ",
+      "Same origin redirection, empty redirect header, strict-origin init ",
+      "Same origin redirection, empty redirect header, strict-origin-when-cross-origin init ",
+      "Same origin redirection, empty redirect header, unsafe-url init "
+    ]
+  },
+  "fetch/api/redirect/redirect-schemes.any.js": true,
+  "fetch/api/redirect/redirect-to-dataurl.any.js": true,
+  "fetch/api/redirect/redirect-upload.h2.any.js": {
+    "expectedFailures": [
+      "Fetch upload streaming should be accepted on 303"
+    ]
+  },
+  "fetch/api/request/destination/fetch-destination-frame.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/destination/fetch-destination-iframe.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/destination/fetch-destination-no-load-event.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/destination/fetch-destination-prefetch.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/destination/fetch-destination-worker.https.html": {
+    "expectedFailures": [
+      "DedicatedWorker fetches with a \"worker\" Request.destination",
+      "Initialize global state",
+      "SharedWorker fetches with a \"sharedworker\" Request.destination"
+    ]
+  },
+  "fetch/api/request/destination/fetch-destination.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/forbidden-method.any.js": {
+    "expectedFailures": [
+      "Request() with a forbidden method CONNECT must throw.",
+      "Request() with a forbidden method TRACE must throw.",
+      "Request() with a forbidden method TRACK must throw.",
+      "Request() with a forbidden method connect must throw.",
+      "Request() with a forbidden method trace must throw.",
+      "Request() with a forbidden method track must throw."
+    ]
+  },
+  "fetch/api/request/multi-globals/construct-in-detached-frame.window.js": {
+    "expectedFailures": [
+      "creating a request from another request in a detached realm should work"
+    ]
+  },
+  "fetch/api/request/multi-globals/current/current.html": {
+    "ignore": true
+  },
+  "fetch/api/request/multi-globals/incumbent/incumbent.html": {
+    "ignore": true
+  },
+  "fetch/api/request/multi-globals/url-parsing.html": {
+    "ignore": true
+  },
+  "fetch/api/request/request-bad-port.any.js": {
+    "expectedFailures": [
+      "Request on a port that is not bad should succeed through the proxy."
+    ]
+  },
+  "fetch/api/request/request-cache-default-conditional.any.js": true,
+  "fetch/api/request/request-cache-default.any.js": {
+    "expectedFailures": [
+      "RequestCache \"default\" mode checks the cache for previously cached content and avoids going to the network if a fresh response exists with Etag and fresh response",
+      "RequestCache \"default\" mode checks the cache for previously cached content and avoids going to the network if a fresh response exists with Last-Modified and fresh response"
+    ]
+  },
+  "fetch/api/request/request-cache-force-cache.any.js": {
+    "expectedFailures": [
+      "RequestCache \"force-cache\" mode checks the cache for previously cached content and avoid revalidation for fresh responses with Etag and fresh response",
+      "RequestCache \"force-cache\" mode checks the cache for previously cached content and avoid revalidation for fresh responses with Last-Modified and fresh response",
+      "RequestCache \"force-cache\" mode checks the cache for previously cached content and avoid revalidation for stale responses with Etag and stale response",
+      "RequestCache \"force-cache\" mode checks the cache for previously cached content and avoid revalidation for stale responses with Last-Modified and stale response",
+      "RequestCache \"force-cache\" stores the response in the cache if it goes to the network with Etag and fresh response",
+      "RequestCache \"force-cache\" stores the response in the cache if it goes to the network with Last-Modified and fresh response"
+    ]
+  },
+  "fetch/api/request/request-cache-no-cache.any.js": true,
+  "fetch/api/request/request-cache-no-store.any.js": true,
+  "fetch/api/request/request-cache-only-if-cached.any.js": {
+    "expectedFailures": [
+      "RequestCache \"only-if-cached\" (with \"same-origin\") does not follow redirects across origins and rejects with Etag and fresh response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") does not follow redirects across origins and rejects with Etag and stale response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") does not follow redirects across origins and rejects with Last-Modified and fresh response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") does not follow redirects across origins and rejects with Last-Modified and stale response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") uses cached same-origin redirects to same-origin content with Etag and fresh response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") uses cached same-origin redirects to same-origin content with Etag and stale response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") uses cached same-origin redirects to same-origin content with Last-Modified and fresh response",
+      "RequestCache \"only-if-cached\" (with \"same-origin\") uses cached same-origin redirects to same-origin content with Last-Modified and stale response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and avoids revalidation for fresh responses with Etag and fresh response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and avoids revalidation for fresh responses with Last-Modified and fresh response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and avoids revalidation for stale responses with Etag and stale response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and avoids revalidation for stale responses with Last-Modified and stale response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and does not go to the network if a cached response is not found with Etag and fresh response",
+      "RequestCache \"only-if-cached\" mode checks the cache for previously cached content and does not go to the network if a cached response is not found with Last-Modified and fresh response"
+    ]
+  },
+  "fetch/api/request/request-cache-reload.any.js": {
+    "expectedFailures": [
+      "RequestCache \"reload\" mode does store the response in the cache even if a previous response is already stored with Etag and fresh response",
+      "RequestCache \"reload\" mode does store the response in the cache even if a previous response is already stored with Last-Modified and fresh response",
+      "RequestCache \"reload\" mode does store the response in the cache with Etag and fresh response",
+      "RequestCache \"reload\" mode does store the response in the cache with Last-Modified and fresh response"
+    ]
+  },
+  "fetch/api/request/request-clone-readable-stream-body.any.js": true,
+  "fetch/api/request/request-clone.sub.html": {
+    "ignore": true
+  },
+  "fetch/api/request/request-constructor-init-body-override.any.js": true,
+  "fetch/api/request/request-consume-empty.any.js": true,
+  "fetch/api/request/request-consume.any.js": true,
+  "fetch/api/request/request-disturbed.any.js": {
+    "expectedFailures": [
+      "Request construction failure should not set \"bodyUsed\""
+    ]
+  },
+  "fetch/api/request/request-error.any.js": {
+    "expectedFailures": [
+      "Bad credentials init parameter value",
+      "Bad mode init parameter value",
+      "Bad referrerPolicy init parameter value",
+      "Request with cache mode: only-if-cached and fetch mode cors",
+      "Request with cache mode: only-if-cached and fetch mode no-cors",
+      "RequestInit's cache mode is only-if-cached and mode is not same-origin",
+      "RequestInit's method is forbidden",
+      "RequestInit's mode is navigate",
+      "RequestInit's mode is no-cors and method is not simple",
+      "RequestInit's referrer is invalid"
+    ]
+  },
+  "fetch/api/request/request-headers.any.js": {
+    "expectedFailures": [
+      "Adding invalid no-cors request header \"Content-Type: KO\"",
+      "Adding invalid no-cors request header \"Empty-Value: \"",
+      "Adding invalid no-cors request header \"Potato: KO\"",
+      "Adding invalid no-cors request header \"proxy: KO\"",
+      "Adding invalid no-cors request header \"proxya: KO\"",
+      "Adding invalid no-cors request header \"sec: KO\"",
+      "Adding invalid no-cors request header \"secb: KO\"",
+      "Adding invalid request header \"ACCEPT-ENCODING: KO\"",
+      "Adding invalid request header \"Accept-Charset: KO\"",
+      "Adding invalid request header \"Accept-Encoding: KO\"",
+      "Adding invalid request header \"Access-Control-Request-Headers: KO\"",
+      "Adding invalid request header \"Access-Control-Request-Method: KO\"",
+      "Adding invalid request header \"Connection: KO\"",
+      "Adding invalid request header \"Content-Length: KO\"",
+      "Adding invalid request header \"Cookie2: KO\"",
+      "Adding invalid request header \"Cookie: KO\"",
+      "Adding invalid request header \"DNT: KO\"",
+      "Adding invalid request header \"Date: KO\"",
+      "Adding invalid request header \"Expect: KO\"",
+      "Adding invalid request header \"Host: KO\"",
+      "Adding invalid request header \"Keep-Alive: KO\"",
+      "Adding invalid request header \"Origin: KO\"",
+      "Adding invalid request header \"Proxy-: KO\"",
+      "Adding invalid request header \"Referer: KO\"",
+      "Adding invalid request header \"Sec-: KO\"",
+      "Adding invalid request header \"Set-Cookie: KO\"",
+      "Adding invalid request header \"TE: KO\"",
+      "Adding invalid request header \"Trailer: KO\"",
+      "Adding invalid request header \"Transfer-Encoding: KO\"",
+      "Adding invalid request header \"Upgrade: KO\"",
+      "Adding invalid request header \"Via: KO\"",
+      "Adding invalid request header \"accept-charset: KO\"",
+      "Adding invalid request header \"proxy-a: KO\"",
+      "Adding invalid request header \"sec-b: KO\"",
+      "Check that no-cors request constructor is filtering headers provided as init parameter",
+      "Check that no-cors request constructor is filtering headers provided as part of request parameter",
+      "Check that request constructor is filtering headers provided as init parameter"
+    ]
+  },
+  "fetch/api/request/request-init-001.sub.html": {
+    "ignore": true
+  },
+  "fetch/api/request/request-init-002.any.js": true,
+  "fetch/api/request/request-init-003.sub.html": {
+    "ignore": true
+  },
+  "fetch/api/request/request-init-contenttype.any.js": true,
+  "fetch/api/request/request-init-priority.any.js": true,
+  "fetch/api/request/request-init-stream.any.js": true,
+  "fetch/api/request/request-keepalive-quota.html": {
+    "expectedFailures": [
+      "A Keep-Alive fetch() should not be allowed if the Quota is used up.",
+      "A Keep-Alive fetch() should return only its allocated Quota upon promise resolution.",
+      "A Keep-Alive fetch() with a body over the Quota Limit should reject."
+    ]
+  },
+  "fetch/api/request/request-keepalive.any.js": {
+    "expectedFailures": [
+      "keepalive flag"
+    ]
+  },
+  "fetch/api/request/request-reset-attributes.https.html": {
+    "ignore": true
+  },
+  "fetch/api/request/request-structure.any.js": {
+    "expectedFailures": [
+      "Check cache attribute",
+      "Check credentials attribute",
+      "Check destination attribute",
+      "Check integrity attribute",
+      "Check isHistoryNavigation attribute",
+      "Check isReloadNavigation attribute",
+      "Check mode attribute",
+      "Check referrer attribute",
+      "Check referrerPolicy attribute"
+    ]
+  },
+  "fetch/api/request/url-encoding.html": true,
+  "fetch/api/response/json.any.js": true,
+  "fetch/api/response/many-empty-chunks-crash.html": {
+    "ignore": true
+  },
+  "fetch/api/response/multi-globals/current/current.html": {
+    "ignore": true
+  },
+  "fetch/api/response/multi-globals/incumbent/incumbent.html": {
+    "ignore": true
+  },
+  "fetch/api/response/multi-globals/relevant/relevant.html": {
+    "ignore": true
+  },
+  "fetch/api/response/multi-globals/url-parsing.html": {
+    "ignore": true
+  },
+  "fetch/api/response/response-arraybuffer-realm.window.js": {
+    "expectedFailures": [
+      "realm of the ArrayBuffer from Response arrayBuffer()"
+    ]
+  },
+  "fetch/api/response/response-blob-realm.any.js": {
+    "expectedFailures": [
+      "realm of the Uint8Array from Response bytes()"
+    ]
+  },
+  "fetch/api/response/response-body-read-task-handling.html": {
+    "ignore": true
+  },
+  "fetch/api/response/response-body-stashed-chunk.html": true,
+  "fetch/api/response/response-cancel-stream.any.js": true,
+  "fetch/api/response/response-clone-iframe.window.js": {
+    "expectedFailures": [
+      "clone within removed iframe should not crash"
+    ]
+  },
+  "fetch/api/response/response-clone.any.js": true,
+  "fetch/api/response/response-consume-empty.any.js": true,
+  "fetch/api/response/response-consume-stream.any.js": true,
+  "fetch/api/response/response-consume.html": {
+    "expectedFailures": [
+      "Consume response's body: from FormData to blob",
+      "Consume response's body: from URLSearchParams to blob",
+      "Consume response's body: from multipart form data blob to formData"
+    ]
+  },
+  "fetch/api/response/response-error-from-stream.any.js": true,
+  "fetch/api/response/response-error.any.js": true,
+  "fetch/api/response/response-form-data.html": {
+    "expectedFailures": [
+      "Empty form data",
+      "Validate buggy form data - cr1",
+      "Validate buggy form data - cr2",
+      "Validate buggy form data - cr3",
+      "Validate buggy form data - cr_",
+      "Validate buggy form data - dashes",
+      "Validate buggy form data - empty",
+      "Validate form data - onePartWithEpilogue",
+      "Validate form data - onePartWithTransportPadding",
+      "Validate form data - onePartWithoutEpilogue",
+      "Validate form data - twoPartsWithEpilogue",
+      "Validate form data - twoPartsWithTransportPadding",
+      "Validate form data - twoPartsWithoutEpilogue"
+    ]
+  },
+  "fetch/api/response/response-from-stream.any.js": true,
+  "fetch/api/response/response-headers-guard.any.js": true,
+  "fetch/api/response/response-init-001.any.js": true,
+  "fetch/api/response/response-init-002.any.js": true,
+  "fetch/api/response/response-init-contenttype.any.js": true,
+  "fetch/api/response/response-static-error.any.js": true,
+  "fetch/api/response/response-static-json.any.js": true,
+  "fetch/api/response/response-static-redirect.any.js": true,
+  "fetch/api/response/response-stream-bad-chunk.any.js": true,
+  "fetch/api/response/response-stream-disturbed-1.any.js": true,
+  "fetch/api/response/response-stream-disturbed-2.any.js": true,
+  "fetch/api/response/response-stream-disturbed-3.any.js": true,
+  "fetch/api/response/response-stream-disturbed-4.any.js": true,
+  "fetch/api/response/response-stream-disturbed-5.any.js": true,
+  "fetch/api/response/response-stream-disturbed-6.any.js": true,
+  "fetch/api/response/response-stream-disturbed-by-pipe.any.js": true,
+  "fetch/api/response/response-stream-with-broken-then.any.js": true,
+  "fetch/compression-dictionary/compressed-large-resources-001.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/compressed-large-resources-002.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/compressed-large-resources-dictionary-hashes.tentative.https.html": {
+    "expectedFailures": [
+      "Available-Dictionary header properly set when fetching a resource matching image-001.png as a dictionary.",
+      "Available-Dictionary header properly set when fetching a resource matching script-001.js as a dictionary.",
+      "Available-Dictionary header properly set when fetching a resource matching style-001.css as a dictionary.",
+      "Available-Dictionary header properly set when fetching a resource matching subframe-001.html as a dictionary."
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-clear-site-data-cache.tentative.https.html": {
+    "expectedFailures": [
+      "Clear-Site-Data with \"cache\" directive must unregister dictionary"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-clear-site-data-cookies.tentative.https.html": {
+    "expectedFailures": [
+      "Clear-Site-Data with \"cookies\" directive must unregister dictionary"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-clear-site-data-storage.tentative.https.html": {
+    "expectedFailures": [
+      "Clear-Site-Data with \"storage\" directive must not unregister dictionary"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-compressed-fetch-with-link-match-dest.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-compressed.tentative.https.html": {
+    "expectedFailures": [
+      "A dcb dictionary-compressed dictionary can be used as a dictionary for future requests.",
+      "A dcz dictionary-compressed dictionary can be used as a dictionary for future requests.",
+      "Decompression using Brotli-encoded dictionary works as expected",
+      "Decompression using Zstandard-encoded dictionary works as expected",
+      "Decompression using gzip-encoded dictionary works as expected"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-decompression.tentative.https.h2.html": {
+    "expectedFailures": [
+      "Decompression using Brotli with the dictionary works as expected (HTTP/2)",
+      "Decompression using Brotli with the dictionary works as expected (HTTP/2, chunked compressed data)",
+      "Decompression using Zstandard with the dictionary works as expected (HTTP/2)",
+      "Decompression using Zstandard with the dictionary works as expected (HTTP/2, chunked compressed data)"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-decompression.tentative.https.html": {
+    "expectedFailures": [
+      "Decompression of a cross origin resource works as expected",
+      "Decompression using Brotli fails when dictionary hash mismatches",
+      "Decompression using Brotli with the dictionary works as expected",
+      "Decompression using Zstandard fails when dictionary hash mismatches",
+      "Decompression using Zstandard with the dictionary works as expected"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-fetch-no-cors.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-timing-001.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-timing-002.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-imagesrcset.tentative.https.html": false,
+  "fetch/compression-dictionary/dictionary-fetch-with-link-connect-src-nonce.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-connect-src.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element-baseURL.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element-crossorigin.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element-events.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element-in-body.tentative.https.html": {
+    "expectedFailures": [
+      "<link rel=\"compression-dictionary\"> is allowed in a paragraph.",
+      "A <link rel=\"compression-dictionary\"> in body is loaded."
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element-invalid-url.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-element.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-header-in-early-hints.tentative.https.h2.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-header-in-subresources.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-header.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-integrity.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-link-referrer-and-referrerpolicy.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/compression-dictionary/dictionary-fetch-with-type-attribute.tentative.https.html": false,
+  "fetch/compression-dictionary/dictionary-insecure-context.tentative.http.html": true,
+  "fetch/compression-dictionary/dictionary-match.tentative.https.html": {
+    "expectedFailures": [
+      "Best match algorithm prioritizes dictionaries with longer match patterns",
+      "Dictionary registration with empty match-dest list acts as wildcard",
+      "Dictionary registration with matching fetch destination",
+      "Dictionary registration with unknown match-dest and empty string matches fetch destination",
+      "Dictionary with non-matching match-dest is not used",
+      "Dictionary with unknown match-dest is not used for fetch() API",
+      "Most recently fetched dictionary takes priority when match lengths are equal",
+      "match-dest presence takes priority over longer match patterns"
+    ]
+  },
+  "fetch/compression-dictionary/dictionary-registration.tentative.https.html": false,
+  "fetch/compression-dictionary/fetch-destination.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/connection-pool/network-partition-key.html": {
+    "ignore": true
+  },
+  "fetch/content-disposition/multiple-content-disposition.tentative.any.js": true,
+  "fetch/content-disposition/multiple-content-disposition.tentative.h2.window.js": true,
+  "fetch/content-encoding/br/bad-br-body.https.any.js": true,
+  "fetch/content-encoding/br/big-br-body.https.any.js": true,
+  "fetch/content-encoding/br/br-body.https.any.js": true,
+  "fetch/content-encoding/br/br-navigation.https.window.js": {
+    "expectedFailures": [
+      "Naigation to br encoded page"
+    ]
+  },
+  "fetch/content-encoding/gzip/bad-gzip-body.any.js": true,
+  "fetch/content-encoding/gzip/big-gzip-body.https.any.js": true,
+  "fetch/content-encoding/gzip/gzip-body.any.js": true,
+  "fetch/content-encoding/gzip/gzip-navigation.https.window.js": {
+    "expectedFailures": [
+      "Naigation to gzip encoded page"
+    ]
+  },
+  "fetch/content-encoding/zstd/bad-zstd-body.https.any.js": true,
+  "fetch/content-encoding/zstd/big-window-zstd-body.tentative.https.any.js": true,
+  "fetch/content-encoding/zstd/big-zstd-body.https.any.js": true,
+  "fetch/content-encoding/zstd/zstd-body.https.any.js": true,
+  "fetch/content-encoding/zstd/zstd-navigation.https.window.js": {
+    "expectedFailures": [
+      "Naigation to zstd encoded page"
+    ]
+  },
+  "fetch/content-length/api-and-duplicate-headers.any.js": true,
+  "fetch/content-length/content-length.html": {
+    "ignore": true
+  },
+  "fetch/content-length/parsing.window.js": {
+    "expectedFailures": [
+      "Input: \"Content-Length: ,30\". Expected: network error.",
+      "Input: \"Content-Length: 030, 30\". Expected: network error.",
+      "Input: \"Content-Length: 030\\r\\nContent-Length: 30\". Expected: network error.",
+      "Input: \"Content-Length: 30,\". Expected: network error.",
+      "Input: \"Content-Length: 30,30\". Expected: 30.",
+      "Input: \"Content-Length: 30,30,  30  \\r\\nContent-Length: 30  \". Expected: 30.",
+      "Input: \"Content-Length: 30,30\\r\\nContent-Length: 30,30\". Expected: 30.",
+      "Input: \"Content-Length: 30,42\". Expected: network error.",
+      "Input: \"Content-Length: 30,42\\r\\nContent-Length: 30\". Expected: network error.",
+      "Input: \"Content-Length: 30,42\\r\\nContent-Length: 30,42\". Expected: network error.",
+      "Input: \"Content-Length: 30\\r\\nContent-Length: 30,30\". Expected: 30.",
+      "Input: \"Content-Length: 30\\r\\nContent-Length: 42\". Expected: network error.",
+      "Input: \"Content-Length: 30\\r\\nContent-Length: \\t\". Expected: network error.",
+      "Input: \"Content-Length: 42,30\". Expected: network error.",
+      "Input: \"Content-Length: 42\\r\\nContent-Length: 30\". Expected: network error.",
+      "Input: \"Content-Length: \\r\\nContent-Length: 30\". Expected: network error.",
+      "Input: \"Content-Length: aaaah, nah\". Expected: network error.",
+      "Input: \"Content-Length: aaaah\\r\\nContent-Length: nah\". Expected: network error.",
+      "Input: \"Content-Length:30\\r\\nContent-Length:,\\r\\nContent-Length:30\". Expected: network error."
+    ]
+  },
+  "fetch/content-length/too-long.window.js": true,
+  "fetch/content-type/multipart-malformed.any.js": true,
+  "fetch/content-type/multipart.window.js": {
+    "expectedFailures": [
+      "multipart"
+    ]
+  },
+  "fetch/content-type/response.window.js": {
+    "expectedFailures": [
+      "<iframe>: combined response Content-Type:  text/plain",
+      "<iframe>: combined response Content-Type: */* text/html",
+      "<iframe>: combined response Content-Type: text/html */*",
+      "<iframe>: combined response Content-Type: text/html */*;charset=gbk",
+      "<iframe>: combined response Content-Type: text/html text/plain",
+      "<iframe>: combined response Content-Type: text/html;\" \" text/plain",
+      "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain",
+      "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+      "<iframe>: combined response Content-Type: text/html;\" text/plain",
+      "<iframe>: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "<iframe>: combined response Content-Type: text/html;charset=gbk text/plain text/html",
+      "<iframe>: combined response Content-Type: text/html;x=\" text/plain",
+      "<iframe>: combined response Content-Type: text/plain ",
+      "<iframe>: combined response Content-Type: text/plain */*",
+      "<iframe>: combined response Content-Type: text/plain */*;charset=gbk",
+      "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html",
+      "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain",
+      "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "<iframe>: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+      "<iframe>: separate response Content-Type:  text/plain",
+      "<iframe>: separate response Content-Type: */* text/html",
+      "<iframe>: separate response Content-Type: text/html */*",
+      "<iframe>: separate response Content-Type: text/html */*;charset=gbk",
+      "<iframe>: separate response Content-Type: text/html text/plain",
+      "<iframe>: separate response Content-Type: text/html;\" \" text/plain",
+      "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain",
+      "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+      "<iframe>: separate response Content-Type: text/html;\" text/plain",
+      "<iframe>: separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "<iframe>: separate response Content-Type: text/html;charset=gbk text/plain text/html",
+      "<iframe>: separate response Content-Type: text/html;x=\" text/plain",
+      "<iframe>: separate response Content-Type: text/plain ",
+      "<iframe>: separate response Content-Type: text/plain */*",
+      "<iframe>: separate response Content-Type: text/plain */*;charset=gbk",
+      "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html",
+      "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain",
+      "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "<iframe>: separate response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+      "Request: combined response Content-Type:  text/plain",
+      "Request: combined response Content-Type: */* text/html",
+      "Request: combined response Content-Type: text/html */*",
+      "Request: combined response Content-Type: text/html */*;charset=gbk",
+      "Request: combined response Content-Type: text/html text/plain",
+      "Request: combined response Content-Type: text/html;\" \" text/plain",
+      "Request: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "Request: combined response Content-Type: text/html;charset=gbk text/plain text/html",
+      "Request: combined response Content-Type: text/plain ",
+      "Request: combined response Content-Type: text/plain */*",
+      "Request: combined response Content-Type: text/plain */*;charset=gbk",
+      "Request: combined response Content-Type: text/plain;charset=gbk text/html",
+      "Request: combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "Request: combined response Content-Type: text/plain;charset=gbk text/plain",
+      "Request: combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "Request: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+      "Response: combined response Content-Type:  text/plain",
+      "Response: combined response Content-Type: */* text/html",
+      "Response: combined response Content-Type: text/html */*",
+      "Response: combined response Content-Type: text/html */*;charset=gbk",
+      "Response: combined response Content-Type: text/html text/plain",
+      "Response: combined response Content-Type: text/html;\" \" text/plain",
+      "Response: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "Response: combined response Content-Type: text/html;charset=gbk text/plain text/html",
+      "Response: combined response Content-Type: text/plain ",
+      "Response: combined response Content-Type: text/plain */*",
+      "Response: combined response Content-Type: text/plain */*;charset=gbk",
+      "Response: combined response Content-Type: text/plain;charset=gbk text/html",
+      "Response: combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "Response: combined response Content-Type: text/plain;charset=gbk text/plain",
+      "Response: combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "Response: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+      "fetch(): combined response Content-Type:  text/plain",
+      "fetch(): combined response Content-Type: */* text/html",
+      "fetch(): combined response Content-Type: text/html */*",
+      "fetch(): combined response Content-Type: text/html */*;charset=gbk",
+      "fetch(): combined response Content-Type: text/html text/plain",
+      "fetch(): combined response Content-Type: text/html;\" \" text/plain",
+      "fetch(): combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "fetch(): combined response Content-Type: text/html;charset=gbk text/plain text/html",
+      "fetch(): combined response Content-Type: text/html;x=\" text/plain",
+      "fetch(): combined response Content-Type: text/plain ",
+      "fetch(): combined response Content-Type: text/plain */*",
+      "fetch(): combined response Content-Type: text/plain */*;charset=gbk",
+      "fetch(): combined response Content-Type: text/plain;charset=gbk text/html",
+      "fetch(): combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "fetch(): combined response Content-Type: text/plain;charset=gbk text/plain",
+      "fetch(): combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "fetch(): combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+      "fetch(): separate response Content-Type:  text/plain",
+      "fetch(): separate response Content-Type: */* text/html",
+      "fetch(): separate response Content-Type: text/html */*",
+      "fetch(): separate response Content-Type: text/html */*;charset=gbk",
+      "fetch(): separate response Content-Type: text/html text/plain",
+      "fetch(): separate response Content-Type: text/html;\" \" text/plain",
+      "fetch(): separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+      "fetch(): separate response Content-Type: text/html;charset=gbk text/plain text/html",
+      "fetch(): separate response Content-Type: text/plain ",
+      "fetch(): separate response Content-Type: text/plain */*",
+      "fetch(): separate response Content-Type: text/plain */*;charset=gbk",
+      "fetch(): separate response Content-Type: text/plain;charset=gbk text/html",
+      "fetch(): separate response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+      "fetch(): separate response Content-Type: text/plain;charset=gbk text/plain",
+      "fetch(): separate response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+      "fetch(): separate response Content-Type: text/plain;charset=gbk;x=foo text/plain"
+    ]
+  },
+  "fetch/content-type/script.window.js": {
+    "expectedFailures": [
+      "combined text/javascript ",
+      "combined text/javascript error",
+      "combined text/javascript x/x",
+      "combined text/javascript; charset=windows-1252 text/javascript",
+      "combined text/javascript;\" x/x",
+      "combined text/javascript;charset=windows-1252  text/javascript",
+      "combined text/javascript;charset=windows-1252 error text/javascript",
+      "combined text/javascript;charset=windows-1252 x/x text/javascript",
+      "combined text/javascript;charset=windows-1252;\" \\\" x/x",
+      "combined x/x text/javascript",
+      "combined x/x;\" x/y;\\\" text/javascript;charset=windows-1252;\" text/javascript",
+      "combined x/x;charset=windows-1252 text/javascript",
+      "separate \"text/javascript\"",
+      "separate text /javascript",
+      "separate text/ javascript",
+      "separate text/javascript\f",
+      "separate text/javascript ",
+      "separate text/javascript error",
+      "separate text/javascript x/x",
+      "separate text/javascript; charset=windows-1252 text/javascript",
+      "separate text/javascript;\" x/x",
+      "separate text/javascript;\";charset=windows-1252",
+      "separate text/javascript;charset=windows-1252",
+      "separate text/javascript;charset=windows-1252  text/javascript",
+      "separate text/javascript;charset=windows-1252 error text/javascript",
+      "separate text/javascript;charset=windows-1252 x/x text/javascript",
+      "separate text/javascript;charset=windows-1252;\" \\\" x/x",
+      "separate x/x text/javascript",
+      "separate x/x;\" x/y;\\\" text/javascript;charset=windows-1252;\" text/javascript",
+      "separate x/x;charset=windows-1252 text/javascript"
+    ]
+  },
+  "fetch/corb/img-html-correctly-labeled.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-html-correctly-labeled.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-mime-types-coverage.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-png-mislabeled-as-html-nosniff.tentative.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-png-mislabeled-as-html-nosniff.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-png-mislabeled-as-html.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-png-mislabeled-as-html.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-doctype-html-mimetype-empty.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-doctype-html-mimetype-svg.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-invalid.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-labeled-as-dash.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-labeled-as-svg-xml.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg-xml-decl.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/img-svg.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/corb/preload-image-png-mislabeled-as-html-nosniff.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/response_block.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-html-correctly-labeled.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-html-js-polyglot.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-html-via-cross-origin-blob-url.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-js-mislabeled-as-html-nosniff.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-js-mislabeled-as-html.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-resource-with-json-parser-breaker.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/script-resource-with-nonsniffable-types.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/style-css-mislabeled-as-html-nosniff.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/style-css-mislabeled-as-html.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/style-css-with-json-parser-breaker.sub.html": {
+    "ignore": true
+  },
+  "fetch/corb/style-html-correctly-labeled.sub.html": {
+    "ignore": true
+  },
+  "fetch/cross-origin-resource-policy/fetch-in-iframe.html": {
+    "ignore": true
+  },
+  "fetch/cross-origin-resource-policy/fetch.any.js": {
+    "expectedFailures": [
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' redirect response header.",
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' response header after a redirection.",
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' response header.",
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-site' response header.",
+      "Valid cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-site' response header."
+    ]
+  },
+  "fetch/cross-origin-resource-policy/fetch.https.any.js": {
+    "expectedFailures": [
+      "Cross-origin cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' response header.",
+      "Cross-origin cors fetch with a 'Cross-Origin-Resource-Policy: same-site' response header.",
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' redirect response header.",
+      "Cross-origin no-cors fetch with a 'Cross-Origin-Resource-Policy: same-origin' response header after a cross-origin redirection."
+    ]
+  },
+  "fetch/cross-origin-resource-policy/iframe-loads.html": {
+    "ignore": true
+  },
+  "fetch/cross-origin-resource-policy/image-loads.html": {
+    "ignore": true
+  },
+  "fetch/cross-origin-resource-policy/scheme-restriction.any.js": true,
+  "fetch/cross-origin-resource-policy/scheme-restriction.https.window.js": {
+    "expectedFailures": [
+      "Cross-Origin-Resource-Policy does not block Mixed Content <img>"
+    ]
+  },
+  "fetch/cross-origin-resource-policy/script-loads.html": {
+    "ignore": true
+  },
+  "fetch/cross-origin-resource-policy/syntax.any.js": true,
+  "fetch/data-urls/base64.any.js": true,
+  "fetch/data-urls/navigate.window.js": {
+    "expectedFailures": [
+      "ASCII whitespace in the input is removed",
+      "Nothing fancy",
+      "Vertical tab in the input leads to an error",
+      "base64",
+      "base64 with code points that differ from base64url",
+      "base64 with incorrect padding",
+      "base64url is not supported"
+    ]
+  },
+  "fetch/data-urls/processing.any.js": true,
+  "fetch/fetch-later/activate-after.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() sends out based on activateAfter, even if document is in BFCache.",
+      "fetchLater() sends out based on activateAfter."
+    ]
+  },
+  "fetch/fetch-later/basic.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() cannot be called without request.",
+      "fetchLater() does not throw error when it is aborted before sending.",
+      "fetchLater() throws AbortError when its initial abort signal is aborted.",
+      "fetchLater() throws RangeError on negative activateAfter.",
+      "fetchLater() throws TypeError on about: scheme.",
+      "fetchLater() throws TypeError on blob: scheme.",
+      "fetchLater() throws TypeError on data: scheme.",
+      "fetchLater() throws TypeError on file:// scheme.",
+      "fetchLater() throws TypeError on ftp:// scheme.",
+      "fetchLater() throws TypeError on javascript: scheme.",
+      "fetchLater() throws TypeError on non-trustworthy http URL.",
+      "fetchLater() throws TypeError on ssh:// scheme.",
+      "fetchLater() throws TypeError on wss:// scheme.",
+      "fetchLater() throws TypeError when mutating its returned state.",
+      "fetchLater() with http://127.0.0.1 URL does not throw.",
+      "fetchLater() with http://[::1] URL does not throw.",
+      "fetchLater() with http://localhost URL does not throw.",
+      "fetchLater() with https://127.0.0.1 URL does not throw.",
+      "fetchLater() with https://[::1] URL does not throw.",
+      "fetchLater() with https://example.com URL does not throw.",
+      "fetchLater() with https://localhost URL does not throw.",
+      "fetchLater() with same-origin (https) URL does not throw.",
+      "fetchLater()'s return tells the deferred request is not yet sent."
+    ]
+  },
+  "fetch/fetch-later/basic.https.worker.js": true,
+  "fetch/fetch-later/headers/header-referrer-no-referrer-when-downgrade.https.html": {
+    "expectedFailures": [
+      "Test referer header https://web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-no-referrer.https.html": {
+    "expectedFailures": [
+      "Test referer header "
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-origin-when-cross-origin.https.html": {
+    "expectedFailures": [
+      "Test referer header https://web-platform.test:8443",
+      "Test referer header https://www1.web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-origin.https.html": {
+    "expectedFailures": [
+      "Test referer header https://www1.web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-same-origin.https.html": {
+    "expectedFailures": [
+      "Test referer header ",
+      "Test referer header https://www1.web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-strict-origin-when-cross-origin.https.html": {
+    "expectedFailures": [
+      "Test referer header https://www1.web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-strict-origin.https.html": {
+    "expectedFailures": [
+      "Test referer header https://web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/headers/header-referrer-unsafe-url.https.html": {
+    "expectedFailures": [
+      "Test referer header https://web-platform.test:8443"
+    ]
+  },
+  "fetch/fetch-later/iframe.https.window.js": {
+    "expectedFailures": [
+      "A blank iframe can trigger fetchLater."
+    ]
+  },
+  "fetch/fetch-later/new-window.https.window.js": {
+    "expectedFailures": [
+      "A blank window[target=''][features=''] can trigger fetchLater.",
+      "A blank window[target=''][features='popup'] can trigger fetchLater.",
+      "A blank window[target='_blank'][features=''] can trigger fetchLater.",
+      "A blank window[target='_blank'][features='popup'] can trigger fetchLater.",
+      "A cross-origin window[target=''][features=''] can trigger fetchLater.",
+      "A cross-origin window[target=''][features='popup'] can trigger fetchLater.",
+      "A cross-origin window[target='_blank'][features=''] can trigger fetchLater.",
+      "A cross-origin window[target='_blank'][features='popup'] can trigger fetchLater.",
+      "A same-origin window[target=''][features=''] can trigger fetchLater.",
+      "A same-origin window[target=''][features='popup'] can trigger fetchLater.",
+      "A same-origin window[target='_blank'][features=''] can trigger fetchLater.",
+      "A same-origin window[target='_blank'][features='popup'] can trigger fetchLater."
+    ]
+  },
+  "fetch/fetch-later/non-secure.window.js": true,
+  "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy-attribute-redirect.https.window.js": {
+    "expectedFailures": [
+      "Permissions policy allow=\"deferred-fetch\" allows fetchLater() from a redirected same-origin iframe.",
+      "Permissions policy allow=\"deferred-fetch\" disallows fetchLater() from a redirected cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy-attribute.https.window.js": {
+    "expectedFailures": [
+      "Permissions policy \"deferred-fetch\" can be enabled in the cross-origin iframe using allow=\"deferred-fetch\" attribute.",
+      "Permissions policy \"deferred-fetch\" can be enabled in the same-origin iframe using allow=\"deferred-fetch\" attribute."
+    ]
+  },
+  "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy.https.window.js": {
+    "expectedFailures": [
+      "Permissions policy header: \"deferred-fetch=*\" allow=\"deferred-fetch\" allows fetchLater() in the cross-origin iframe.",
+      "Permissions policy header: \"deferred-fetch=*\" allows fetchLater() in the cross-origin iframe.",
+      "Permissions policy header: \"deferred-fetch=*\" allows fetchLater() in the same-origin iframe.",
+      "Permissions policy header: \"deferred-fetch=*\" allows fetchLater() in the top-level document."
+    ]
+  },
+  "fetch/fetch-later/permissions-policy/deferred-fetch-default-permissions-policy.https.window.js": {
+    "expectedFailures": [
+      "Default \"deferred-fetch\" permissions policy [\"self\"] allows fetchLater() in the same-origin iframe.",
+      "Default \"deferred-fetch\" permissions policy [\"self\"] allows fetchLater() in the top-level document.",
+      "Default \"deferred-fetch-minimal\" permissions policy [\"*\"] allows fetchLater() in the cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/permissions-policy/deferred-fetch-supported-by-permissions-policy.window.js": {
+    "expectedFailures": [
+      "document.permissionsPolicy.features should advertise deferred-fetch."
+    ]
+  },
+  "fetch/fetch-later/policies/csp-allowed.https.window.js": false,
+  "fetch/fetch-later/policies/csp-blocked.https.window.js": false,
+  "fetch/fetch-later/policies/csp-redirect-to-blocked.https.window.js": false,
+  "fetch/fetch-later/quota/accumulated-oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "The 2nd fetchLater(same-origin) call in the top-level document is not allowed to exceed per-origin quota for its POST body of String."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/accumulated-oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "The 2nd fetchLater(same-origin) call in a default cross-origin child iframe has its owned per-origin quota for a request POST body of String."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/empty-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts an empty POST request body of ArrayBuffer in a default cross-origin iframe.",
+      "fetchLater() accepts an empty POST request body of Blob in a default cross-origin iframe.",
+      "fetchLater() accepts an empty POST request body of File in a default cross-origin iframe.",
+      "fetchLater() accepts an empty POST request body of FormData in a default cross-origin iframe.",
+      "fetchLater() accepts an empty POST request body of String in a default cross-origin iframe.",
+      "fetchLater() accepts an empty POST request body of URLSearchParams in a default cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/max-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts max payload in a parent-frame-origin POST request body of String in a default cross-origin iframe.",
+      "fetchLater() accepts max payload in a self-frame-origin POST request body of String in a default cross-origin iframe.",
+      "fetchLater() rejects max+1 payload in a parent-frame-origin POST request body of String in a default cross-origin iframe.",
+      "fetchLater() rejects max+1 payload in a self-frame-origin POST request body of String in a default cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/multiple-iframes.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() request quota are delegated to cross-origin iframes and not shared, even if they are same origin."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of ArrayBuffer in a default cross-origin iframe.",
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of Blob in a default cross-origin iframe.",
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of File in a default cross-origin iframe.",
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of FormData in a default cross-origin iframe.",
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of String in a default cross-origin iframe.",
+      "fetchLater() does not accept payload[size=8193] exceeding per-origin quota in a POST request body of URLSearchParams in a default cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/sandboxed-iframe.https.window.js": {
+    "expectedFailures": [
+      "A sandboxed iframe (without allow-same-origin) should be treated as cross-origin and have its own minimal quota."
+    ]
+  },
+  "fetch/fetch-later/quota/cross-origin-iframe/small-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts payload[size=20] in a POST request body of ArrayBuffer in a default cross-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of Blob in a default cross-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of File in a default cross-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of FormData in a default cross-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of String in a default cross-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of URLSearchParams in a default cross-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/empty-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accept a DELETE request.",
+      "fetchLater() accept a GET request.",
+      "fetchLater() accept a PUT request."
+    ]
+  },
+  "fetch/fetch-later/quota/max-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts max payload in a POST request body of String.",
+      "fetchLater() rejects max+1 payload in a POST request body of String."
+    ]
+  },
+  "fetch/fetch-later/quota/multiple-origins.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() has per-request-origin quota for its POST body of ArrayBuffer.",
+      "fetchLater() has per-request-origin quota for its POST body of Blob.",
+      "fetchLater() has per-request-origin quota for its POST body of File.",
+      "fetchLater() has per-request-origin quota for its POST body of FormData.",
+      "fetchLater() has per-request-origin quota for its POST body of String.",
+      "fetchLater() has per-request-origin quota for its POST body of URLSearchParams."
+    ]
+  },
+  "fetch/fetch-later/quota/oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of ArrayBuffer.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of Blob.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of File.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of FormData.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of String.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of URLSearchParams."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/accumulated-oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "The 2nd fetchLater(same-origin) call in a same-origin child iframe is not allowed to exceed per-origin quota for its POST body of String."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/empty-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts an empty POST request body of ArrayBuffer in same-origin iframe.",
+      "fetchLater() accepts an empty POST request body of Blob in same-origin iframe.",
+      "fetchLater() accepts an empty POST request body of File in same-origin iframe.",
+      "fetchLater() accepts an empty POST request body of FormData in same-origin iframe.",
+      "fetchLater() accepts an empty POST request body of String in same-origin iframe.",
+      "fetchLater() accepts an empty POST request body of URLSearchParams in same-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/max-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts max payload in a POST request body of String in same-origin iframe.",
+      "fetchLater() rejects max+1 payload in a POST request body of String in same-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/multiple-iframes.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() request quota are shared by same-origin iframes and root."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/oversized-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of ArrayBuffer in same-origin iframe.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of Blob in same-origin iframe.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of File in same-origin iframe.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of FormData in same-origin iframe.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of String in same-origin iframe.",
+      "fetchLater() does not accept payload[size=65537] exceeding per-origin quota in a POST request body of URLSearchParams in same-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/sandboxed-iframe.https.window.js": {
+    "expectedFailures": [
+      "A sandboxed iframe with 'allow-same-origin' should be treated as same-origin and share the parent's quota."
+    ]
+  },
+  "fetch/fetch-later/quota/same-origin-iframe/small-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts payload[size=20] in a POST request body of ArrayBuffer in same-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of Blob in same-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of File in same-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of FormData in same-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of String in same-origin iframe.",
+      "fetchLater() accepts payload[size=20] in a POST request body of URLSearchParams in same-origin iframe."
+    ]
+  },
+  "fetch/fetch-later/quota/small-payload.https.window.js": {
+    "expectedFailures": [
+      "fetchLater() accepts small payload in a POST request body of ArrayBuffer.",
+      "fetchLater() accepts small payload in a POST request body of Blob.",
+      "fetchLater() accepts small payload in a POST request body of File.",
+      "fetchLater() accepts small payload in a POST request body of FormData.",
+      "fetchLater() accepts small payload in a POST request body of String.",
+      "fetchLater() accepts small payload in a POST request body of URLSearchParams."
+    ]
+  },
+  "fetch/fetch-later/send-on-deactivate-with-background-sync.https.window.js": false,
+  "fetch/fetch-later/send-on-deactivate.https.window.js": {
+    "expectedFailures": [
+      "Call fetchLater() when BFCached with activateAfter=0 sends immediately.",
+      "fetchLater() does not send aborted request on navigating away a page w/o BFCache.",
+      "fetchLater() sends on navigating away a page w/o BFCache.",
+      "fetchLater() sends on page entering BFCache if BackgroundSync is off.",
+      "fetchLater() with activateAfter=1m sends on page entering BFCache if BackgroundSync is off."
+    ]
+  },
+  "fetch/fetch-later/send-on-discard/not-send-after-abort.https.window.js": {
+    "expectedFailures": [
+      "A discarded document does not send an already aborted fetchLater request."
+    ]
+  },
+  "fetch/fetch-later/send-on-discard/send-multiple-with-activate-after.https.window.js": {
+    "expectedFailures": [
+      "A discarded document sends all its fetchLater requests, no matter how much their activateAfter timeout remain."
+    ]
+  },
+  "fetch/fetch-later/send-on-discard/send-multiple.https.window.js": {
+    "expectedFailures": [
+      "A discarded document sends all its fetchLater requests."
+    ]
+  },
+  "fetch/h1-parsing/h1-parsing.tentative.html": {
+    "ignore": true
+  },
+  "fetch/h1-parsing/lone-cr.window.js": {
+    "expectedFailures": [
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\n\rHeader: Value\n\nBODY)",
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader\r: Value\n\nBODY)",
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader:\r Value\n\nBODY)",
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader: Value\n\r)",
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader: Value\r\n\nBody)",
+      "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader: Value\rHeader2: Value2\n\nBODY)"
+    ]
+  },
+  "fetch/h1-parsing/resources-with-0x00-in-header.window.js": {
+    "expectedFailures": [
+      "Expect network error for frame navigation to resource with 0x00 in a header",
+      "Expect network error for image with 0x00 in a header",
+      "Expect network error for script with 0x00 in a header"
+    ]
+  },
+  "fetch/h1-parsing/status-code.window.js": {
+    "expectedFailures": [
+      "HTTP/1.1 0200 BOO (network error)",
+      "HTTP/1.1 1000 BOO (network error)"
+    ]
+  },
+  "fetch/http-cache/304-update.any.js": {
+    "expectedFailures": [
+      "Content-* header",
+      "HTTP cache updates returned headers from a ETag 304",
+      "HTTP cache updates returned headers from a Last-Modified 304",
+      "HTTP cache updates stored headers from a ETag 304",
+      "HTTP cache updates stored headers from a Last-Modified 304"
+    ]
+  },
+  "fetch/http-cache/basic-auth-cache-test-ref.html": {
+    "ignore": true
+  },
+  "fetch/http-cache/basic-auth-cache-test.html": {
+    "ignore": true
+  },
+  "fetch/http-cache/cache-mode.any.js": {
+    "expectedFailures": [
+      "Fetch sends Cache-Control: max-age=0 when cache mode is no-cache",
+      "Fetch sends Cache-Control: no-cache and Pragma: no-cache when cache mode is no-store"
+    ]
+  },
+  "fetch/http-cache/cc-request.any.js": {
+    "expectedFailures": [
+      "HTTP cache does reuse stale response with Age header when request contains Cache-Control: max-stale that permits its use",
+      "HTTP cache does use aged stale response when request contains Cache-Control: max-stale that permits its use",
+      "HTTP cache generates 504 status code when nothing is in cache and request contains Cache-Control: only-if-cached"
+    ]
+  },
+  "fetch/http-cache/credentials.tentative.any.js": {
+    "expectedFailures": [
+      "same-origin: 2xAnonymous, 2xCredentialled, 1xAnonymous",
+      "same-origin: 2xCredentialled, 2xAnonymous, 1xCredentialled"
+    ]
+  },
+  "fetch/http-cache/freshness.any.js": {
+    "expectedFailures": [
+      "HTTP cache reuses a response with a future Expires",
+      "HTTP cache reuses a response with positive Cache-Control: max-age",
+      "HTTP cache reuses a response with positive Cache-Control: max-age and a past Expires",
+      "HTTP cache reuses a response with positive Cache-Control: max-age and an invalid Expires",
+      "HTTP cache stores a response with Cache-Control: no-cache, but revalidates upon use",
+      "HTTP cache stores a response with Cache-Control: no-cache, but revalidates upon use, even with max-age and Expires"
+    ]
+  },
+  "fetch/http-cache/heuristic.any.js": {
+    "expectedFailures": [
+      "HTTP cache reuses a 200 OK response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 203 Non-Authoritative Information response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 204 No Content response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 404 Not Found response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 405 Method Not Allowed response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 410 Gone response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 414 URI Too Long response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses a 501 Not Implemented response with Last-Modified based upon heuristic freshness",
+      "HTTP cache reuses an unknown response with Last-Modified based upon heuristic freshness when Cache-Control: public is present"
+    ]
+  },
+  "fetch/http-cache/invalidate.any.js": {
+    "expectedFailures": [
+      "HTTP cache does not invalidate Content-Location URL after a failed response from an unsafe request",
+      "HTTP cache does not invalidate Location URL after a failed response from an unsafe request",
+      "HTTP cache does not invalidate after a failed response from an unsafe request"
+    ]
+  },
+  "fetch/http-cache/no-vary-search.tentative.any.js": {
+    "expectedFailures": [
+      "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:",
+      "When params is set to true, URL differs only by their parameters (other than `dispatch` and `uuid`) should not be cached as different entries.",
+      "When params names a parameter and key-order is set, URLs differing only in that parameter and parameter order should be cached as the same entry.",
+      "When params names a specific parameter, URLs differing only in that parameter should be cached as the same entry.",
+      "When params names multiple parameters, URLs differing only in those parameters should be cached as the same entry.",
+      "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry."
+    ]
+  },
+  "fetch/http-cache/partial.any.js": {
+    "expectedFailures": [
+      "HTTP cache stores complete response and serves smaller ranges from it (absent last-byte-pos)",
+      "HTTP cache stores complete response and serves smaller ranges from it (byte-range-spec)",
+      "HTTP cache stores complete response and serves smaller ranges from it (suffix-byte-range-spec)",
+      "HTTP cache stores complete response and serves smaller ranges from it with only-if-cached",
+      "HTTP cache stores partial content and completes it",
+      "HTTP cache stores partial content and reuses it",
+      "HTTP cache stores partial response and serves smaller ranges from it (absent last-byte-pos)",
+      "HTTP cache stores partial response and serves smaller ranges from it (byte-range-spec)",
+      "HTTP cache stores partial response and serves smaller ranges from it (suffix-byte-range-spec)"
+    ]
+  },
+  "fetch/http-cache/post-patch.any.js": {
+    "expectedFailures": [
+      "HTTP cache uses content after PATCH request with response containing Content-Location and cache-allowing header",
+      "HTTP cache uses content after POST request with response containing Content-Location and cache-allowing header"
+    ]
+  },
+  "fetch/http-cache/pragma-no-cache-with-cache-control.html": {
+    "expectedFailures": [
+      "Response with Cache-Control: max-age=2592000, immutable and Pragma: no-cache should be cached"
+    ]
+  },
+  "fetch/http-cache/split-cache.html": {
+    "expectedFailures": [
+      "HTTP cache is not shared between cross-site top-level frames",
+      "HTTP cache is not shared between same-site frames with cross-site top-level frames",
+      "HTTP cache is shared between same-site frames with same-site top-level frames",
+      "HTTP cache is shared between same-site top-level frames"
+    ]
+  },
+  "fetch/http-cache/status.any.js": {
+    "expectedFailures": [
+      "HTTP cache avoids going to the network if it has a fresh 200 response",
+      "HTTP cache avoids going to the network if it has a fresh 203 response",
+      "HTTP cache avoids going to the network if it has a fresh 204 response",
+      "HTTP cache avoids going to the network if it has a fresh 299 response",
+      "HTTP cache avoids going to the network if it has a fresh 400 response",
+      "HTTP cache avoids going to the network if it has a fresh 404 response",
+      "HTTP cache avoids going to the network if it has a fresh 410 response",
+      "HTTP cache avoids going to the network if it has a fresh 499 response",
+      "HTTP cache avoids going to the network if it has a fresh 500 response",
+      "HTTP cache avoids going to the network if it has a fresh 502 response",
+      "HTTP cache avoids going to the network if it has a fresh 503 response",
+      "HTTP cache avoids going to the network if it has a fresh 504 response",
+      "HTTP cache avoids going to the network if it has a fresh 599 response"
+    ]
+  },
+  "fetch/http-cache/vary.any.js": {
+    "expectedFailures": [
+      "HTTP cache doesn't invalidate existing Vary response",
+      "HTTP cache doesn't pay attention to headers not listed in Vary",
+      "HTTP cache reuses Vary response when request matches",
+      "HTTP cache reuses three-way Vary response when request matches",
+      "HTTP cache reuses two-way Vary response when request matches",
+      "HTTP cache uses three-way Vary response when both request and the original request omited a variant header"
+    ]
+  },
+  "fetch/images/canvas-remote-read-remote-image-redirect.html": {
+    "ignore": true
+  },
+  "fetch/local-network-access/dedicated-worker.tentative.https.html": false,
+  "fetch/local-network-access/fetch.tentative.https.html": false,
+  "fetch/local-network-access/iframe-opener.tentative.https.html": false,
+  "fetch/local-network-access/iframe.tentative.https.window.js": false,
+  "fetch/local-network-access/navigate.tentative.https.window.js": false,
+  "fetch/local-network-access/navigate.tentative.window.js": false,
+  "fetch/local-network-access/service-worker-background-fetch.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/local-network-access/service-worker.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/local-network-access/shared-worker.tentative.https.html": false,
+  "fetch/local-network-access/websocket.tentative.https.html": false,
+  "fetch/local-network-access/webtransport.tentative.https.html": false,
+  "fetch/metadata/audio-worklet.https.html": {
+    "expectedFailures": [
+      "undefined: sec-fetch-dest",
+      "undefined: sec-fetch-mode",
+      "undefined: sec-fetch-site"
+    ]
+  },
+  "fetch/metadata/embed.https.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/fetch-preflight.https.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/metadata/fetch.https.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/audioworklet.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/css-font-face.https.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/css-font-face.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/css-images.https.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/css-images.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-a.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-a.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-area.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-area.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-audio.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-audio.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-embed.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-embed.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-frame.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-frame.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-iframe.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-iframe.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-img-environment-change.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-img-environment-change.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-img.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-img.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-input-image.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-input-image.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-link-icon.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-link-icon.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-link-prefetch.https.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-link-prefetch.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-meta-refresh.https.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-meta-refresh.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-picture.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-picture.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-script.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-script.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-video-poster.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-video-poster.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-video.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/element-video.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/fetch-via-serviceworker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/fetch.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/fetch.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/form-submission.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/form-submission.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/header-link.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/header-link.https.sub.tentative.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/header-link.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/header-refresh.https.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/header-refresh.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-json-module-import-static.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-json-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-module-import-dynamic.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-module-import-dynamic.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-module-import-static.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-text-module-import-static.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/script-text-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/serviceworker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/svg-image.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/svg-image.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/window-history.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/window-history.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/window-location.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/window-location.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/worker-dedicated-constructor.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/worker-dedicated-constructor.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/worker-dedicated-importscripts.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/generated/worker-dedicated-importscripts.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/navigation.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/object.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/paint-worklet.https.html": {
+    "expectedFailures": [
+      "The fetch metadata for paint worklet"
+    ]
+  },
+  "fetch/metadata/preload.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/redirect/multiple-redirect-https-downgrade-upgrade.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/redirect/redirect-http-upgrade.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/redirect/redirect-https-downgrade.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/report.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/report.https.sub.html.sub.headers": {
+    "ignore": true
+  },
+  "fetch/metadata/serviceworker-accessors.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/sharedworker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/style.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/text.https.html": {
+    "expectedFailures": [
+      "The fetch metadata for text module"
+    ]
+  },
+  "fetch/metadata/tools/templates/audioworklet.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/css-font-face.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/css-images.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-a.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-area.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-audio.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-embed.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-frame.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-iframe.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-img-environment-change.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-img.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-input-image.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-link-icon.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-link-prefetch.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-meta-refresh.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-picture.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-script.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-video-poster.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/element-video.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/fetch-via-serviceworker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/fetch.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/form-submission.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/header-link.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/header-refresh.optional.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/script-json-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/script-module-import-dynamic.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/script-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/script-text-module-import-static.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/serviceworker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/svg-image.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/window-history.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/window-location.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/worker-dedicated-constructor.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/tools/templates/worker-dedicated-importscripts.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/track.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/trailing-dot.https.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/metadata/unload.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/window-open.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/metadata/worker.https.sub.html": {
+    "ignore": true
+  },
+  "fetch/nosniff/image.html": {
+    "ignore": true
+  },
+  "fetch/nosniff/importscripts.html": {
+    "expectedFailures": [
+      "Test importScripts()"
+    ]
+  },
+  "fetch/nosniff/parsing-nosniff.window.js": {
+    "expectedFailures": [
+      "Content-Type-Options%3A%20nosniff",
+      "X-Content-Type-Options%3A%0D%0AX-Content-Type-Options%3A%20nosniff",
+      "X-Content-Type-Options%3A%20%22nosniFF%22",
+      "X-Content-Type-Options%3A%20%2Cnosniff",
+      "X-Content-Type-Options%3A%20%40%23%24%23%25%25%26%5E%26%5E*()()11!%2Cnosniff",
+      "X-Content-Type-Options%3A%20'NosniFF'",
+      "X-Content-Type-Options%3A%20NOSNIFF",
+      "X-Content-Type-Options%3A%20no%0D%0AX-Content-Type-Options%3A%20nosniff",
+      "X-Content-Type-Options%3A%20nosniff%0B",
+      "X-Content-Type-Options%3A%20nosniff%0B%2Cnosniff",
+      "X-Content-Type-Options%3A%20nosniff%0C",
+      "X-Content-Type-Options%3A%20nosniff%0D%0AX-Content-Type-Options%3A%20no",
+      "X-Content-Type-Options%3A%20nosniff%0D%0AX-Content-Type-Options%3A%20nosniff",
+      "X-Content-Type-Options%3A%20nosniff%2C%2C%40%23%24%23%25%25%26%5E%26%5E*()()11!",
+      "x-content-type-OPTIONS%3A%20nosniff"
+    ]
+  },
+  "fetch/nosniff/script.html": {
+    "ignore": true
+  },
+  "fetch/nosniff/stylesheet.html": {
+    "ignore": true
+  },
+  "fetch/nosniff/worker.html": {
+    "expectedFailures": [
+      "URL query: ?type=text/ecmascript",
+      "URL query: ?type=text/ecmascript;yay",
+      "URL query: ?type=text/javascript"
+    ]
+  },
+  "fetch/orb/tentative/compressed-image-sniffing.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/content-range.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/hls.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/img-mime-types-coverage.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/img-png-mislabeled-as-html.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/img-png-mislabeled-as-html.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/img-png-unlabeled.sub-ref.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/img-png-unlabeled.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/known-mime-type.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/nosniff.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/script-js-unlabeled-gzipped.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/script-unlabeled.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/script-utf16-without-bom-hint-charset.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/status.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/status.sub.html": {
+    "ignore": true
+  },
+  "fetch/orb/tentative/unknown-mime-type.sub.any.js": {
+    "ignore": true
+  },
+  "fetch/origin/assorted.window.js": {
+    "expectedFailures": [
+      "Origin header and 308 redirect",
+      "Origin header and GET cross-origin fetch cors mode with Referrer-Policy no-referrer",
+      "Origin header and GET cross-origin fetch cors mode with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and GET cross-origin fetch cors mode with Referrer-Policy origin-when-cross-origin",
+      "Origin header and GET cross-origin fetch cors mode with Referrer-Policy same-origin",
+      "Origin header and GET cross-origin fetch cors mode with Referrer-Policy unsafe-url",
+      "Origin header and GET navigation",
+      "Origin header and POST cross-origin fetch cors mode with Referrer-Policy no-referrer",
+      "Origin header and POST cross-origin fetch cors mode with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST cross-origin fetch cors mode with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST cross-origin fetch cors mode with Referrer-Policy same-origin",
+      "Origin header and POST cross-origin fetch cors mode with Referrer-Policy unsafe-url",
+      "Origin header and POST cross-origin fetch no-cors mode with Referrer-Policy no-referrer",
+      "Origin header and POST cross-origin fetch no-cors mode with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST cross-origin fetch no-cors mode with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST cross-origin fetch no-cors mode with Referrer-Policy same-origin",
+      "Origin header and POST cross-origin fetch no-cors mode with Referrer-Policy unsafe-url",
+      "Origin header and POST cross-origin navigation with Referrer-Policy no-referrer",
+      "Origin header and POST cross-origin navigation with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST cross-origin navigation with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST cross-origin navigation with Referrer-Policy same-origin",
+      "Origin header and POST cross-origin navigation with Referrer-Policy unsafe-url",
+      "Origin header and POST navigation",
+      "Origin header and POST same-origin fetch cors mode with Referrer-Policy no-referrer",
+      "Origin header and POST same-origin fetch cors mode with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST same-origin fetch cors mode with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST same-origin fetch cors mode with Referrer-Policy same-origin",
+      "Origin header and POST same-origin fetch cors mode with Referrer-Policy unsafe-url",
+      "Origin header and POST same-origin fetch no-cors mode with Referrer-Policy no-referrer",
+      "Origin header and POST same-origin fetch no-cors mode with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST same-origin fetch no-cors mode with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST same-origin fetch no-cors mode with Referrer-Policy same-origin",
+      "Origin header and POST same-origin fetch no-cors mode with Referrer-Policy unsafe-url",
+      "Origin header and POST same-origin navigation with Referrer-Policy no-referrer",
+      "Origin header and POST same-origin navigation with Referrer-Policy no-referrer-when-downgrade",
+      "Origin header and POST same-origin navigation with Referrer-Policy origin-when-cross-origin",
+      "Origin header and POST same-origin navigation with Referrer-Policy same-origin",
+      "Origin header and POST same-origin navigation with Referrer-Policy unsafe-url"
+    ]
+  },
+  "fetch/range/blob.any.js": {
+    "expectedFailures": [
+      "A blob range request with no end.",
+      "A blob range request with no start.",
+      "A blob range request with no type.",
+      "A simple blob range request with whitespace.",
+      "A simple blob range request.",
+      "Blob content with short content and a large range end",
+      "Blob content with short content and a range end matching content length",
+      "Blob range with whitespace after hyphen",
+      "Blob range with whitespace around equals sign",
+      "Blob range with whitespace before and after hyphen"
+    ]
+  },
+  "fetch/range/cache-revalidate-construct-range-response.html": true,
+  "fetch/range/data.any.js": {
+    "expectedFailures": [
+      "data: URL and Range header",
+      "data: URL and Range header with multiple ranges"
+    ]
+  },
+  "fetch/range/general.any.js": {
+    "expectedFailures": [
+      "Cross Origin Fetch with non safe range header",
+      "Privileged header not allowed for guard type: request-no-cors"
+    ]
+  },
+  "fetch/range/general.window.js": false,
+  "fetch/range/non-matching-range-response.html": {
+    "ignore": true
+  },
+  "fetch/range/sw-416.https.window.js": false,
+  "fetch/range/sw-intercept-range.https.window.js": false,
+  "fetch/range/sw-opaque.https.window.js": false,
+  "fetch/range/sw.https.window.js": false,
+  "fetch/redirect-navigate/302-found-post.html": {
+    "ignore": true
+  },
+  "fetch/redirect-navigate/preserve-fragment.html": {
+    "ignore": true
+  },
+  "fetch/redirects/data.window.js": {
+    "expectedFailures": [
+      "<img> fetch that redirects to data: URL",
+      "<script> fetch that redirects to data: URL"
+    ]
+  },
+  "fetch/redirects/subresource-fragments.html": {
+    "ignore": true
+  },
+  "fetch/security/1xx-response.any.js": true,
+  "fetch/security/canvas-tainted-serviceworker-passthrough-redirect.https.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/dangling-markup-mitigation-allowed-apis.https.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/dangling-markup-mitigation-data-url.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/dangling-markup-mitigation.tentative.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/dangling-markup-mitigation.tentative.https.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/media.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/option.html": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/service-worker.js": {
+    "ignore": true
+  },
+  "fetch/security/dangling-markup/textarea.html": {
+    "ignore": true
+  },
+  "fetch/security/embedded-credentials.tentative.sub.html": {
+    "ignore": true
+  },
+  "fetch/security/passthrough-serviceworker.js": {
+    "ignore": true
+  },
+  "fetch/security/redirect-to-url-with-credentials.https.html": {
+    "ignore": true
+  },
+  "fetch/security/stylesheet-cssrules-serviceworker-passthrough-redirect.https.html": {
+    "ignore": true
+  },
+  "fetch/stale-while-revalidate/fetch-sw.https.html": {
+    "expectedFailures": [
+      "Second fetch returns same response"
+    ]
+  },
+  "fetch/stale-while-revalidate/fetch.any.js": {
+    "expectedFailures": [
+      "Second fetch returns same response"
+    ]
+  },
+  "fetch/stale-while-revalidate/revalidate-not-blocked-by-csp.html": {
+    "ignore": true
+  },
+  "fetch/stale-while-revalidate/stale-css.html": {
+    "ignore": true
+  },
+  "fetch/stale-while-revalidate/stale-image.html": {
+    "ignore": true
+  },
+  "fetch/stale-while-revalidate/stale-script.html": {
+    "ignore": true
+  }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "yuzuko_image"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kamadak-exif = "0.6"
+half.workspace = true
+image-webp.workspace = true
+jxl-oxide = { version = "0.12", default-features = false }
+moxcms = "0.7"
+png.workspace = true
+v8.workspace = true
+yuzuko_core.workspace = true
+yuzuko_macros.workspace = true
+yuzuko_window.workspace = true
+yuzuko_winter.workspace = true
+zune-core = "0.4"
+zune-jpeg = "0.4"

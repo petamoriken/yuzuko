@@ -1,0 +1,16 @@
+[package]
+name = "yuzuko_audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+claxon = "0.4"
+hound = "3.5"
+lewton = "0.10"
+symphonia = { workspace = true, features = ["mp3"] }
+v8.workspace = true
+yuzuko_core.workspace = true
+yuzuko_dom.workspace = true
+yuzuko_macros.workspace = true

@@ -1,0 +1,575 @@
+{
+  "dom/abort/AbortSignal.any.js": true,
+  "dom/abort/abort-signal-any-crash.html": {
+    "ignore": true
+  },
+  "dom/abort/abort-signal-any.any.js": true,
+  "dom/abort/abort-signal-timeout.html": {
+    "ignore": true
+  },
+  "dom/abort/crashtests/any-on-abort.html": {
+    "ignore": true
+  },
+  "dom/abort/crashtests/timeout-close.html": {
+    "ignore": true
+  },
+  "dom/abort/event.any.js": {
+    "expectedFailures": [
+      "the abort event should have the right properties"
+    ]
+  },
+  "dom/abort/reason-constructor.html": {
+    "ignore": true
+  },
+  "dom/abort/timeout.any.js": true,
+  "dom/events/AddEventListenerOptions-once.any.js": true,
+  "dom/events/AddEventListenerOptions-passive.any.js": true,
+  "dom/events/AddEventListenerOptions-signal.any.js": true,
+  "dom/events/Body-FrameSet-Event-Handlers.html": {
+    "ignore": true
+  },
+  "dom/events/CustomEvent.html": {
+    "ignore": true
+  },
+  "dom/events/Event-cancelBubble.html": {
+    "ignore": true
+  },
+  "dom/events/Event-constants.html": {
+    "ignore": true
+  },
+  "dom/events/Event-constructors.any.js": true,
+  "dom/events/Event-defaultPrevented-after-dispatch.html": {
+    "ignore": true
+  },
+  "dom/events/Event-defaultPrevented.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-bubble-canceled.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-bubbles-false.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-bubbles-true.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-click.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-click.tentative.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-detached-click.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-detached-input-and-change.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-handlers-changed.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-listener-order.window.js": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "dom/events/Event-dispatch-multiple-cancelBubble.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-multiple-stopPropagation.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-omitted-capture.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-on-disabled-elements.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-order-at-target.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-order.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-other-document.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-propagation-stopped.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-redispatch.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-reenter.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-single-activation-behavior.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-target-moved.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-target-removed.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-throwing-multiple-globals.html": {
+    "ignore": true
+  },
+  "dom/events/Event-dispatch-throwing.html": {
+    "ignore": true
+  },
+  "dom/events/Event-init-while-dispatching.html": {
+    "ignore": true
+  },
+  "dom/events/Event-initEvent.html": {
+    "ignore": true
+  },
+  "dom/events/Event-isTrusted.any.js": true,
+  "dom/events/Event-propagation.html": {
+    "ignore": true
+  },
+  "dom/events/Event-returnValue.html": {
+    "ignore": true
+  },
+  "dom/events/Event-stopImmediatePropagation.html": {
+    "ignore": true
+  },
+  "dom/events/Event-stopPropagation-cancel-bubbling.html": {
+    "ignore": true
+  },
+  "dom/events/Event-subclasses-constructors.html": false,
+  "dom/events/Event-timestamp-cross-realm-getter.html": {
+    "ignore": true
+  },
+  "dom/events/Event-timestamp-high-resolution.html": true,
+  "dom/events/Event-timestamp-high-resolution.https.html": true,
+  "dom/events/Event-timestamp-safe-resolution.html": {
+    "expectedFailures": [
+      "Event timestamp should not have a resolution better than 5 microseconds"
+    ]
+  },
+  "dom/events/Event-type-empty.html": {
+    "ignore": true
+  },
+  "dom/events/Event-type.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-addEventListener.sub.window.js": {
+    "ignore": true
+  },
+  "dom/events/EventListener-handleEvent-cross-realm.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-handleEvent.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-incumbent-global-1.sub.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-incumbent-global-2.sub.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-incumbent-global-subframe-1.sub.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-incumbent-global-subframe-2.sub.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-incumbent-global-subsubframe.sub.html": {
+    "ignore": true
+  },
+  "dom/events/EventListener-invoke-legacy.html": {
+    "ignore": true
+  },
+  "dom/events/EventListenerOptions-capture.html": {
+    "ignore": true
+  },
+  "dom/events/EventTarget-add-listener-platform-object.html": {
+    "ignore": true
+  },
+  "dom/events/EventTarget-add-remove-listener.any.js": true,
+  "dom/events/EventTarget-addEventListener.any.js": true,
+  "dom/events/EventTarget-constructible.any.js": true,
+  "dom/events/EventTarget-dispatchEvent-returnvalue.html": {
+    "ignore": true
+  },
+  "dom/events/EventTarget-dispatchEvent.html": {
+    "ignore": true
+  },
+  "dom/events/EventTarget-removeEventListener.any.js": true,
+  "dom/events/EventTarget-this-of-listener.html": {
+    "ignore": true
+  },
+  "dom/events/EventTarget-window-constructor.html": {
+    "ignore": true
+  },
+  "dom/events/KeyEvent-initKeyEvent.html": {
+    "ignore": true
+  },
+  "dom/events/click-on-absolute-pseudo.html": {
+    "ignore": true
+  },
+  "dom/events/element-click.html": {
+    "ignore": true
+  },
+  "dom/events/event-disabled-dynamic.html": {
+    "ignore": true
+  },
+  "dom/events/event-global-event-targets.html": {
+    "ignore": true
+  },
+  "dom/events/event-global-extra.window.js": false,
+  "dom/events/event-global-is-still-set-when-coercing-beforeunload-result.html": {
+    "ignore": true
+  },
+  "dom/events/event-global-is-still-set-when-reporting-exception-onerror.html": {
+    "ignore": true
+  },
+  "dom/events/event-global-replaceable.html": {
+    "ignore": true
+  },
+  "dom/events/event-global-set-before-handleEvent-lookup.window.js": true,
+  "dom/events/event-global.html": {
+    "ignore": true
+  },
+  "dom/events/event-global.worker.js": true,
+  "dom/events/event-handler-attribute-replace-preserves-passive.html": {
+    "ignore": true
+  },
+  "dom/events/event-listener-not-fully-active-adopted-node.html": {
+    "ignore": true
+  },
+  "dom/events/event-listener-not-fully-active-callback.html": {
+    "ignore": true
+  },
+  "dom/events/event-listener-not-fully-active-navigated.html": {
+    "expectedFailures": [
+      "Targets in a document that its iframe has navigated away from",
+      "Targets in a nested iframe whose parent document is no longer fully active",
+      "Targets in a nested iframe whose parent iframe was removed"
+    ]
+  },
+  "dom/events/event-listener-not-fully-active-target.html": {
+    "expectedFailures": [
+      "Abort listeners on an AbortSignal from a removed iframe do not run",
+      "AbortSignal from a removed iframe is still aborted",
+      "Compiled event handler content attribute on an element in a removed iframe",
+      "Dispatch still happens for an EventTarget in a removed iframe, only the listeners are skipped",
+      "Document of a removed iframe",
+      "Element of a removed iframe",
+      "Event handler IDL attribute on an element in a removed iframe",
+      "EventTarget created in a removed iframe",
+      "EventTarget created in a removed iframe, with a listener added after removal",
+      "EventTarget created in a removed iframe, with an event from that iframe",
+      "It is the target's global that matters, not the event's",
+      "Removing the iframe during the capture phase skips the remaining objects in the event path",
+      "Removing the iframe from within a listener skips the remaining listeners on the same target",
+      "Window of a removed iframe",
+      "dispatchEvent() on an EventTarget in a removed iframe returns true",
+      "handleEvent is not looked up for an EventTarget in a removed iframe"
+    ]
+  },
+  "dom/events/event-src-element-nullable.html": {
+    "ignore": true
+  },
+  "dom/events/focus-event-document-move.html": {
+    "ignore": true
+  },
+  "dom/events/handler-count.html": {
+    "ignore": true
+  },
+  "dom/events/keypress-dispatch-crash.html": {
+    "ignore": true
+  },
+  "dom/events/label-default-action.html": {
+    "ignore": true
+  },
+  "dom/events/legacy-pre-activation-behavior.window.js": {
+    "expectedFailures": [
+      "Use NONE phase during legacy-pre-activation behavior"
+    ]
+  },
+  "dom/events/mouse-event-retarget.html": {
+    "expectedFailures": [
+      "offsetX is correctly adjusted"
+    ]
+  },
+  "dom/events/no-focus-events-at-clicking-editable-content-in-link.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/generic-events-stay-cancelable.html": true,
+  "dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-body.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-div.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-document.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-root.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-window.html": {
+    "ignore": true
+  },
+  "dom/events/non-cancelable-when-passive/synthetic-events-cancelable.html": {
+    "expectedFailures": [
+      "Synthetic touchcancel event with interface TouchEvent is not cancelable",
+      "Synthetic touchend event with interface TouchEvent is not cancelable",
+      "Synthetic touchmove event with interface TouchEvent is not cancelable",
+      "Synthetic touchstart event with interface TouchEvent is not cancelable"
+    ]
+  },
+  "dom/events/passive-by-default-non-node.html": true,
+  "dom/events/passive-by-default.html": {
+    "ignore": true
+  },
+  "dom/events/pointer-event-document-move.html": {
+    "ignore": true
+  },
+  "dom/events/preventDefault-during-activation-behavior.html": {
+    "ignore": true
+  },
+  "dom/events/relatedTarget.window.js": false,
+  "dom/events/remove-all-listeners.html": {
+    "ignore": true
+  },
+  "dom/events/replace-event-listener-null-browsing-context-crash.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/iframe-chains.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/save-iframe-scroll-offset-when-display-none.sub.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scroll-cross-origin-iframes.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scroll-cross-origin-iframes.sub.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scroll-event-fired-to-element.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scroll-event-fired-to-iframe.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html": {
+    "expectedFailures": [
+      "Setting and removing 'overflow' on an ancestor fires no scroll event."
+    ]
+  },
+  "dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollIntoView-in-onscroll-to-sticky.html": false,
+  "dom/events/scrolling/scrollend-event-fired-after-instant-scroll-in-microtask.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-after-snap.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-to-document.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-to-element-with-overscroll-behavior.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fired-to-window.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fires-to-iframe-inner-frame.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-fires-to-iframe-window.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-for-user-scroll.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-handler-content-attributes.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-fires-to-text-input.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html": false,
+  "dom/events/scrolling/visibility-hidden-scrolls.html": false,
+  "dom/events/scrolling/wheel-event-composed.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-no-scroll-after-prevent-default.html": false,
+  "dom/events/scrolling/wheel-event-transactions-basic.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-multiple-action-chains.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-target-display-change.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-target-elements.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-target-move.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-target-removal.html": {
+    "ignore": true
+  },
+  "dom/events/scrolling/wheel-event-transactions-target-resize.html": {
+    "ignore": true
+  },
+  "dom/events/shadow-relatedTarget.html": {
+    "ignore": true
+  },
+  "dom/events/webkit-animation-end-event.html": false,
+  "dom/events/webkit-animation-iteration-event.html": false,
+  "dom/events/webkit-animation-start-event.html": false,
+  "dom/events/webkit-transition-end-event.html": false,
+  "dom/events/window-composed-path.html": true,
+  "dom/events/window-event-restored-after-throwing-onerror.html": true
+}

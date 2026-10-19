@@ -1,0 +1,111 @@
+{
+  "mimesniff/media/media-sniff.window.js": {
+    "expectedFailures": [
+      "flac.flac loads when served with Content-Type ",
+      "flac.flac loads when served with Content-Type application/octet-stream",
+      "flac.flac loads when served with Content-Type application/pdf",
+      "flac.flac loads when served with Content-Type audio/ogg; codec=vorbis",
+      "flac.flac loads when served with Content-Type bogus/mime",
+      "flac.flac loads when served with Content-Type text/html",
+      "mp3-raw.mp3 loads when served with Content-Type ",
+      "mp3-raw.mp3 loads when served with Content-Type application/octet-stream",
+      "mp3-raw.mp3 loads when served with Content-Type application/pdf",
+      "mp3-raw.mp3 loads when served with Content-Type audio/ogg; codec=vorbis",
+      "mp3-raw.mp3 loads when served with Content-Type bogus/mime",
+      "mp3-raw.mp3 loads when served with Content-Type text/html",
+      "mp3-with-id3.mp3 loads when served with Content-Type ",
+      "mp3-with-id3.mp3 loads when served with Content-Type application/octet-stream",
+      "mp3-with-id3.mp3 loads when served with Content-Type application/pdf",
+      "mp3-with-id3.mp3 loads when served with Content-Type audio/ogg; codec=vorbis",
+      "mp3-with-id3.mp3 loads when served with Content-Type bogus/mime",
+      "mp3-with-id3.mp3 loads when served with Content-Type text/html",
+      "mp4.mp4 loads when served with Content-Type ",
+      "mp4.mp4 loads when served with Content-Type application/octet-stream",
+      "mp4.mp4 loads when served with Content-Type application/pdf",
+      "mp4.mp4 loads when served with Content-Type audio/ogg; codec=vorbis",
+      "mp4.mp4 loads when served with Content-Type bogus/mime",
+      "mp4.mp4 loads when served with Content-Type text/html",
+      "ogg.ogg loads when served with Content-Type ",
+      "ogg.ogg loads when served with Content-Type application/octet-stream",
+      "ogg.ogg loads when served with Content-Type application/pdf",
+      "ogg.ogg loads when served with Content-Type audio/ogg; codec=vorbis",
+      "ogg.ogg loads when served with Content-Type bogus/mime",
+      "ogg.ogg loads when served with Content-Type text/html",
+      "wav.wav loads when served with Content-Type ",
+      "wav.wav loads when served with Content-Type application/octet-stream",
+      "wav.wav loads when served with Content-Type application/pdf",
+      "wav.wav loads when served with Content-Type audio/ogg; codec=vorbis",
+      "wav.wav loads when served with Content-Type bogus/mime",
+      "wav.wav loads when served with Content-Type text/html",
+      "webm.webm loads when served with Content-Type ",
+      "webm.webm loads when served with Content-Type application/octet-stream",
+      "webm.webm loads when served with Content-Type application/pdf",
+      "webm.webm loads when served with Content-Type audio/ogg; codec=vorbis",
+      "webm.webm loads when served with Content-Type bogus/mime",
+      "webm.webm loads when served with Content-Type text/html"
+    ]
+  },
+  "mimesniff/mime-types/charset-parameter.window.js": {
+    "expectedFailures": [
+      "TEXT/HTML;CHARSET=GBK",
+      "text/html ; ; charset=gbk",
+      "text/html ;charset=gbk",
+      "text/html;\u000bcharset=gbk",
+      "text/html;\fcharset=gbk",
+      "text/html; charset=gbk",
+      "text/html;\";charset=gbk",
+      "text/html;';charset=gbk",
+      "text/html;0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789=x;charset=gbk",
+      "text/html;;;;charset=gbk",
+      "text/html;charset =gbk",
+      "text/html;charset=\u000bgbk",
+      "text/html;charset=\fgbk",
+      "text/html;charset= \"gbk\"",
+      "text/html;charset= \";charset=GBK",
+      "text/html;charset= gbk",
+      "text/html;charset=\" gbk\"",
+      "text/html;charset=\"\";charset=GBK",
+      "text/html;charset=\";charset=GBK",
+      "text/html;charset=\"\\ gbk\"",
+      "text/html;charset=\"\\g\\b\\k\"",
+      "text/html;charset=\"gbk",
+      "text/html;charset=\"gbk \"",
+      "text/html;charset=\"gbk\"",
+      "text/html;charset=\"gbk\"x",
+      "text/html;charset=\";charset=foo\";charset=GBK",
+      "text/html;charset=';charset=GBK",
+      "text/html;charset='gbk",
+      "text/html;charset='gbk'",
+      "text/html;charset=();charset=GBK",
+      "text/html;charset=gbk",
+      "text/html;charset=gbk\"",
+      "text/html;charset=gbk'",
+      "text/html;charset=gbk(",
+      "text/html;charset=gbk;charset=windows-1255",
+      "text/html;charset={gbk}",
+      "text/html;test;charset=gbk",
+      "text/html;test=;charset=gbk",
+      "text/html;test=ÿ;charset=gbk",
+      "text/html;x=(;charset=gbk"
+    ]
+  },
+  "mimesniff/mime-types/parsing.any.js": true,
+  "mimesniff/sniffing/html-comment.tentative.window.js": {
+    "expectedFailures": [
+      "Content starting with <!-- without space or > is sniffed as HTML"
+    ]
+  },
+  "mimesniff/sniffing/html.window.js": {
+    "expectedFailures": [
+      "HTML is not sniffed for a \"feed\": atom",
+      "HTML is not sniffed for a \"feed\": rss"
+    ]
+  },
+  "mimesniff/sniffing/mislabeled-binary-resource.tentative.window.js": {
+    "expectedFailures": [
+      "Navigation: HTML served as text/plain must not be rendered as HTML",
+      "Navigation: PNG served as text/plain must not be sniffed as image",
+      "Navigation: binary data served as text/plain should trigger download"
+    ]
+  }
+}

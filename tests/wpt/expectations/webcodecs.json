@@ -1,0 +1,1344 @@
+{
+  "webcodecs/audio-data-copyTo.any.js": {
+    "expectedFailures": [
+      "AudioData.copyTo throws RangeError when frameOffset >= frameCount",
+      "Test that AudioData.copyTo copies frameCount amount of interleaved stereo frames from frameOffset",
+      "Test that AudioData.copyTo copies frameCount amount of mono frames from frameOffset",
+      "Test that AudioData.copyTo copies frameCount amount of stereo frames from frameOffset"
+    ]
+  },
+  "webcodecs/audio-data-copyto-offset.any.js": {
+    "expectedFailures": [
+      "copyTo interleaved-to-interleaved f32 with 3 channels and frameOffset",
+      "copyTo interleaved-to-interleaved s16 with non-zero frameOffset",
+      "copyTo interleaved-to-interleaved with non-zero frameOffset",
+      "copyTo planar-to-interleaved baseline with frameOffset=0",
+      "copyTo planar-to-interleaved s16 with 3 channels and frameOffset",
+      "copyTo planar-to-interleaved with non-zero frameOffset"
+    ]
+  },
+  "webcodecs/audio-data-copyto-oversized.any.js": {
+    "expectedFailures": [
+      "copyTo interleaved-to-interleaved with oversized buffer",
+      "copyTo interleaved-to-interleaved with oversized buffer and frameOffset",
+      "copyTo interleaved-to-planar with oversized buffer",
+      "copyTo interleaved-to-planar with oversized buffer and frameOffset",
+      "copyTo planar-to-interleaved with oversized buffer",
+      "copyTo planar-to-interleaved with oversized buffer and frameOffset",
+      "copyTo planar-to-planar with oversized buffer",
+      "copyTo planar-to-planar with oversized buffer and frameOffset"
+    ]
+  },
+  "webcodecs/audio-data-serialization.any.js": {
+    "expectedFailures": [
+      "Verify closing AudioData does not propagate accross contexts.",
+      "Verify posting closed AudioData throws.",
+      "Verify transferring audio data closes them."
+    ]
+  },
+  "webcodecs/audio-data.any.js": {
+    "expectedFailures": [
+      "AudioData close",
+      "Test conversion of f32 to f32",
+      "Test conversion of f32 to s16",
+      "Test conversion of f32 to s32",
+      "Test conversion of f32 to u8",
+      "Test conversion of s16 to f32",
+      "Test conversion of s16 to s16",
+      "Test conversion of s16 to s32",
+      "Test conversion of s16 to u8",
+      "Test conversion of s32 to f32",
+      "Test conversion of s32 to s16",
+      "Test conversion of s32 to s32",
+      "Test conversion of s32 to u8",
+      "Test conversion of u8 to f32",
+      "Test conversion of u8 to s16",
+      "Test conversion of u8 to s32",
+      "Test conversion of u8 to u8",
+      "Test input array is copied on construction",
+      "Test that copyTo throws if copying from interleaved with a non-zero planeIndex",
+      "Test we can construct AudioData with a negative timestamp.",
+      "Verify AudioData constructors",
+      "Verify closing and cloning AudioData"
+    ]
+  },
+  "webcodecs/audio-data.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test construction and copyTo() using a SharedArrayBuffer",
+      "Test construction and copyTo() using a Uint8Array(SharedArrayBuffer)"
+    ]
+  },
+  "webcodecs/audio-decoder.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test isConfigSupported() and configure() using a SharedArrayBuffer",
+      "Test isConfigSupported() and configure() using a Uint8Array(SharedArrayBuffer)"
+    ]
+  },
+  "webcodecs/audio-decoder.https.any.js": {
+    "expectedFailures": [
+      "Test that AudioDecoder.configure() doesn't support config: Ambiguous codec",
+      "Test that AudioDecoder.configure() doesn't support config: Codec with MIME type",
+      "Test that AudioDecoder.configure() doesn't support config: Opus with more than two channels and with a description that is too short",
+      "Test that AudioDecoder.configure() doesn't support config: Opus with more than two channels and without description",
+      "Test that AudioDecoder.configure() doesn't support config: Possible future aac codec string",
+      "Test that AudioDecoder.configure() doesn't support config: Possible future opus codec string",
+      "Test that AudioDecoder.configure() doesn't support config: Unrecognized codec",
+      "Test that AudioDecoder.configure() doesn't support config: Video codec",
+      "Test that AudioDecoder.configure() doesn't support config: codec with spaces",
+      "Test that AudioDecoder.configure() doesn't support config: flac requires a description",
+      "Test that AudioDecoder.configure() doesn't support config: vorbis requires a description",
+      "Test that AudioDecoder.configure() rejects invalid config: Empty codec",
+      "Test that AudioDecoder.configure() rejects invalid config: Missing numberOfChannels",
+      "Test that AudioDecoder.configure() rejects invalid config: Missing sampleRate",
+      "Test that AudioDecoder.configure() rejects invalid config: Valid configuration except detached description",
+      "Test that AudioDecoder.configure() rejects invalid config: Zero channels",
+      "Test that AudioDecoder.configure() rejects invalid config: Zero sampleRate",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Ambiguous codec",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Codec with MIME type",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Possible future aac codec string",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Possible future opus codec string",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Unrecognized codec",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: Video codec",
+      "Test that AudioDecoder.isConfigSupported() doesn't support config: codec with spaces",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Empty codec",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing codec",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing numberOfChannels",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing sampleRate",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Valid configuration except detached description",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Zero channels",
+      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Zero sampleRate",
+      "Verify unconfigured AudioDecoder operations"
+    ]
+  },
+  "webcodecs/audio-encoder-codec-specific.https.any.js": {
+    "expectedFailures": [
+      "Test Opus valid frame durations.",
+      "Test the AAC bitrateMode flag works.",
+      "Test the Opus DTX flag works.",
+      "Test the Opus bitrateMode flag works."
+    ]
+  },
+  "webcodecs/audio-encoder-config.https.any.js": {
+    "expectedFailures": [
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"bitrate\":128000,\"bitrateMode\":\"constant\",\"bogus\":123}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"bitrate\":128000,\"bitrateMode\":\"variable\",\"bogus\":123}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"opus\":{\"complexity\":5,\"signal\":\"music\",\"application\":\"audio\",\"frameDuration\":20000,\"packetlossperc\":10,\"useinbandfec\":true}}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"opus\":{\"format\":\"opus\",\"signal\":\"voice\",\"application\":\"lowdelay\",\"complexity\":10,\"frameDuration\":60000,\"packetlossperc\":20,\"usedtx\":true,\"bogus\":456}}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"opus\":{\"frameDuration\":120000}}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"opus\":{\"frameDuration\":7500}}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2,\"opus\":{}}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":48000,\"numberOfChannels\":2}",
+      "AudioEncoder.isConfigSupported() supports: {\"codec\":\"opus\",\"sampleRate\":8000,\"numberOfChannels\":1}",
+      "Test that AudioEncoder.configure() doesn't support config: Possible future aac codec string",
+      "Test that AudioEncoder.configure() doesn't support config: Possible future opus codec string",
+      "Test that AudioEncoder.configure() doesn't support config: Sample rate is too large",
+      "Test that AudioEncoder.configure() doesn't support config: Sample rate is too small",
+      "Test that AudioEncoder.configure() doesn't support config: Unrecognized codec",
+      "Test that AudioEncoder.configure() doesn't support config: Way too many channels",
+      "Test that AudioEncoder.configure() doesn't support config: codec with spaces",
+      "Test that AudioEncoder.configure() rejects invalid config: Bit rate present but equal to zero",
+      "Test that AudioEncoder.configure() rejects invalid config: Bit rate too big",
+      "Test that AudioEncoder.configure() rejects invalid config: Bitrate is too low for Opus",
+      "Test that AudioEncoder.configure() rejects invalid config: Empty codec",
+      "Test that AudioEncoder.configure() rejects invalid config: Invalid Opus frameDuration",
+      "Test that AudioEncoder.configure() rejects invalid config: Missing codec",
+      "Test that AudioEncoder.configure() rejects invalid config: Missing numberOfChannels",
+      "Test that AudioEncoder.configure() rejects invalid config: Missing sampleRate",
+      "Test that AudioEncoder.configure() rejects invalid config: Opus complexity too big",
+      "Test that AudioEncoder.configure() rejects invalid config: Opus frame duration too big",
+      "Test that AudioEncoder.configure() rejects invalid config: Opus frame duration too small",
+      "Test that AudioEncoder.configure() rejects invalid config: Opus packetlossperc too big",
+      "Test that AudioEncoder.configure() rejects invalid config: Zero channels",
+      "Test that AudioEncoder.configure() rejects invalid config: Zero sampleRate",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Possible future aac codec string",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Possible future opus codec string",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Sample rate is too large",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Sample rate is too small",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Unrecognized codec",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: Way too many channels",
+      "Test that AudioEncoder.isConfigSupported() doesn't support config: codec with spaces",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Bit rate present but equal to zero",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Bit rate too big",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Bitrate is too low for Opus",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Empty codec",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Invalid Opus frameDuration",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Missing codec",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Missing numberOfChannels",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Missing sampleRate",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Opus complexity too big",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Opus frame duration too big",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Opus frame duration too small",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Opus packetlossperc too big",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Zero channels",
+      "Test that AudioEncoder.isConfigSupported() rejects invalid config: Zero sampleRate"
+    ]
+  },
+  "webcodecs/audio-encoder.https.any.js": false,
+  "webcodecs/audio-serialization.crossAgentCluster.helper.html": {
+    "ignore": true
+  },
+  "webcodecs/audio-serialization.crossAgentCluster.https.html": {
+    "ignore": true
+  },
+  "webcodecs/audioDecoder-codec-specific.https.any.js": false,
+  "webcodecs/chunk-serialization.any.js": {
+    "expectedFailures": [
+      "Verify EncodedAudioChunk is serializable.",
+      "Verify EncodedVideoChunk is serializable."
+    ]
+  },
+  "webcodecs/encoded-audio-chunk.any.js": {
+    "expectedFailures": [
+      "Test we can construct an EncodedAudioChunk."
+    ]
+  },
+  "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test construction and copyTo() using a SharedArrayBuffer",
+      "Test construction and copyTo() using a Uint8Array(SharedArrayBuffer)"
+    ]
+  },
+  "webcodecs/encoded-video-chunk.any.js": {
+    "expectedFailures": [
+      "Test we can construct an EncodedVideoChunk.",
+      "Test we can construct an zero-sized EncodedVideoChunk."
+    ]
+  },
+  "webcodecs/encoded-video-chunk.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test construction and copyTo() using a SharedArrayBuffer",
+      "Test construction and copyTo() using a Uint8Array(SharedArrayBuffer)"
+    ]
+  },
+  "webcodecs/encodedVideoChunk-serialization.crossAgentCluster.helper.html": {
+    "ignore": true
+  },
+  "webcodecs/encodedVideoChunk-serialization.crossAgentCluster.https.html": {
+    "ignore": true
+  },
+  "webcodecs/full-cycle-test.https.any.js": {
+    "expectedFailures": [
+      "Encoding and decoding cycle",
+      "Encoding and decoding cycle w/ rate control",
+      "Encoding and decoding cycle w/ stripped color space",
+      "Encoding and decoding cycle with realtime latency mode"
+    ]
+  },
+  "webcodecs/idlharness.https.any.js": {
+    "expectedFailures": [
+      "AudioData interface object length",
+      "AudioData interface: calling allocationSize(AudioDataCopyToOptions) on make_audio_data(1234, 2, 8000, 100) with too few arguments must throw TypeError",
+      "AudioData interface: calling copyTo(AllowSharedBufferSource, AudioDataCopyToOptions) on make_audio_data(1234, 2, 8000, 100) with too few arguments must throw TypeError",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"allocationSize(AudioDataCopyToOptions)\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"clone()\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"close()\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"copyTo(AllowSharedBufferSource, AudioDataCopyToOptions)\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"duration\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"format\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"numberOfChannels\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"numberOfFrames\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"sampleRate\" with the proper type",
+      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"timestamp\" with the proper type",
+      "AudioData interface: operation allocationSize(AudioDataCopyToOptions)",
+      "AudioData interface: operation clone()",
+      "AudioData interface: operation copyTo(AllowSharedBufferSource, AudioDataCopyToOptions)",
+      "AudioData must be primary interface of make_audio_data(1234, 2, 8000, 100)",
+      "AudioDecoder interface: attribute ondequeue",
+      "AudioDecoder interface: calling isConfigSupported(AudioDecoderConfig) on new AudioDecoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "AudioDecoder interface: existence and properties of interface object",
+      "AudioDecoder interface: existence and properties of interface prototype object",
+      "AudioDecoder interface: new AudioDecoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
+      "AudioDecoder interface: operation flush()",
+      "AudioDecoder interface: operation isConfigSupported(AudioDecoderConfig)",
+      "AudioEncoder interface object length",
+      "AudioEncoder interface object name",
+      "AudioEncoder interface: attribute encodeQueueSize",
+      "AudioEncoder interface: attribute ondequeue",
+      "AudioEncoder interface: attribute state",
+      "AudioEncoder interface: calling configure(AudioEncoderConfig) on new AudioEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "AudioEncoder interface: calling encode(AudioData) on new AudioEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "AudioEncoder interface: calling isConfigSupported(AudioEncoderConfig) on new AudioEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "AudioEncoder interface: existence and properties of interface object",
+      "AudioEncoder interface: existence and properties of interface prototype object",
+      "AudioEncoder interface: existence and properties of interface prototype object's \"constructor\" property",
+      "AudioEncoder interface: existence and properties of interface prototype object's @@unscopables property",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"close()\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"configure(AudioEncoderConfig)\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"encode(AudioData)\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"encodeQueueSize\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"flush()\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"isConfigSupported(AudioEncoderConfig)\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"reset()\" with the proper type",
+      "AudioEncoder interface: new AudioEncoder(defaultCodecInit) must inherit property \"state\" with the proper type",
+      "AudioEncoder interface: operation close()",
+      "AudioEncoder interface: operation configure(AudioEncoderConfig)",
+      "AudioEncoder interface: operation encode(AudioData)",
+      "AudioEncoder interface: operation flush()",
+      "AudioEncoder interface: operation isConfigSupported(AudioEncoderConfig)",
+      "AudioEncoder interface: operation reset()",
+      "AudioEncoder must be primary interface of new AudioEncoder(defaultCodecInit)",
+      "EncodedAudioChunk interface: attribute duration",
+      "EncodedAudioChunk interface: calling copyTo(AllowSharedBufferSource) on new EncodedAudioChunk(defaultAudioChunkInit) with too few arguments must throw TypeError",
+      "EncodedAudioChunk interface: new EncodedAudioChunk(defaultAudioChunkInit) must inherit property \"copyTo(AllowSharedBufferSource)\" with the proper type",
+      "EncodedAudioChunk interface: new EncodedAudioChunk(defaultAudioChunkInit) must inherit property \"duration\" with the proper type",
+      "EncodedAudioChunk interface: operation copyTo(AllowSharedBufferSource)",
+      "EncodedVideoChunk interface: attribute duration",
+      "EncodedVideoChunk interface: calling copyTo(AllowSharedBufferSource) on new EncodedVideoChunk(defaultVideoChunkInit) with too few arguments must throw TypeError",
+      "EncodedVideoChunk interface: new EncodedVideoChunk(defaultVideoChunkInit) must inherit property \"copyTo(AllowSharedBufferSource)\" with the proper type",
+      "EncodedVideoChunk interface: new EncodedVideoChunk(defaultVideoChunkInit) must inherit property \"duration\" with the proper type",
+      "EncodedVideoChunk interface: operation copyTo(AllowSharedBufferSource)",
+      "ImageDecoder interface: attribute completed",
+      "ImageDecoder interface: calling isTypeSupported(DOMString) on new ImageDecoder({data: self.imageBody, type: 'image/png'}) with too few arguments must throw TypeError",
+      "ImageDecoder interface: operation decode(optional ImageDecodeOptions)",
+      "ImageTrackList interface: attribute ready",
+      "Stringification of make_audio_data(1234, 2, 8000, 100)",
+      "Stringification of new AudioEncoder(defaultCodecInit)",
+      "Stringification of new VideoColorSpace()",
+      "Stringification of new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
+      "Stringification of new VideoEncoder(defaultCodecInit)",
+      "Stringification of new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33})",
+      "VideoColorSpace interface object length",
+      "VideoColorSpace interface object name",
+      "VideoColorSpace interface: attribute fullRange",
+      "VideoColorSpace interface: attribute matrix",
+      "VideoColorSpace interface: attribute primaries",
+      "VideoColorSpace interface: attribute transfer",
+      "VideoColorSpace interface: default toJSON operation on new VideoColorSpace()",
+      "VideoColorSpace interface: default toJSON operation on new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
+      "VideoColorSpace interface: existence and properties of interface object",
+      "VideoColorSpace interface: existence and properties of interface prototype object",
+      "VideoColorSpace interface: existence and properties of interface prototype object's \"constructor\" property",
+      "VideoColorSpace interface: existence and properties of interface prototype object's @@unscopables property",
+      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"fullRange\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"matrix\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"primaries\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"toJSON()\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"transfer\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"fullRange\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"matrix\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"primaries\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"toJSON()\" with the proper type",
+      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"transfer\" with the proper type",
+      "VideoColorSpace interface: operation toJSON()",
+      "VideoColorSpace must be primary interface of new VideoColorSpace()",
+      "VideoColorSpace must be primary interface of new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
+      "VideoDecoder interface: attribute ondequeue",
+      "VideoDecoder interface: calling isConfigSupported(VideoDecoderConfig) on new VideoDecoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "VideoDecoder interface: existence and properties of interface object",
+      "VideoDecoder interface: existence and properties of interface prototype object",
+      "VideoDecoder interface: new VideoDecoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
+      "VideoDecoder interface: operation flush()",
+      "VideoDecoder interface: operation isConfigSupported(VideoDecoderConfig)",
+      "VideoEncoder interface object length",
+      "VideoEncoder interface object name",
+      "VideoEncoder interface: attribute encodeQueueSize",
+      "VideoEncoder interface: attribute ondequeue",
+      "VideoEncoder interface: attribute state",
+      "VideoEncoder interface: calling configure(VideoEncoderConfig) on new VideoEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "VideoEncoder interface: calling encode(VideoFrame, optional VideoEncoderEncodeOptions) on new VideoEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "VideoEncoder interface: calling isConfigSupported(VideoEncoderConfig) on new VideoEncoder(defaultCodecInit) with too few arguments must throw TypeError",
+      "VideoEncoder interface: existence and properties of interface object",
+      "VideoEncoder interface: existence and properties of interface prototype object",
+      "VideoEncoder interface: existence and properties of interface prototype object's \"constructor\" property",
+      "VideoEncoder interface: existence and properties of interface prototype object's @@unscopables property",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"close()\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"configure(VideoEncoderConfig)\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"encode(VideoFrame, optional VideoEncoderEncodeOptions)\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"encodeQueueSize\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"flush()\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"isConfigSupported(VideoEncoderConfig)\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"reset()\" with the proper type",
+      "VideoEncoder interface: new VideoEncoder(defaultCodecInit) must inherit property \"state\" with the proper type",
+      "VideoEncoder interface: operation close()",
+      "VideoEncoder interface: operation configure(VideoEncoderConfig)",
+      "VideoEncoder interface: operation encode(VideoFrame, optional VideoEncoderEncodeOptions)",
+      "VideoEncoder interface: operation flush()",
+      "VideoEncoder interface: operation isConfigSupported(VideoEncoderConfig)",
+      "VideoEncoder interface: operation reset()",
+      "VideoEncoder must be primary interface of new VideoEncoder(defaultCodecInit)",
+      "VideoFrame interface object length",
+      "VideoFrame interface: attribute codedRect",
+      "VideoFrame interface: attribute flip",
+      "VideoFrame interface: attribute rotation",
+      "VideoFrame interface: attribute visibleRect",
+      "VideoFrame interface: calling allocationSize(optional VideoFrameCopyToOptions) on new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) with too few arguments must throw TypeError",
+      "VideoFrame interface: calling copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions) on new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) with too few arguments must throw TypeError",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"allocationSize(optional VideoFrameCopyToOptions)\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"clone()\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"close()\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedHeight\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedRect\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedWidth\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"colorSpace\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions)\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"displayHeight\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"displayWidth\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"duration\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"flip\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"format\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"metadata()\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"rotation\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"timestamp\" with the proper type",
+      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"visibleRect\" with the proper type",
+      "VideoFrame interface: operation allocationSize(optional VideoFrameCopyToOptions)",
+      "VideoFrame interface: operation clone()",
+      "VideoFrame interface: operation copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions)",
+      "VideoFrame interface: operation metadata()",
+      "VideoFrame must be primary interface of new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33})"
+    ]
+  },
+  "webcodecs/image-decoder-animated-zero-delay.https.any.js": true,
+  "webcodecs/image-decoder-disconnect-readable-stream-crash.https.html": {
+    "ignore": true
+  },
+  "webcodecs/image-decoder-image-orientation-none.https.html": {
+    "ignore": true
+  },
+  "webcodecs/image-decoder-transfer-nondetachable-crash.https.html": {
+    "ignore": true
+  },
+  "webcodecs/image-decoder.crossOriginIsolated.https.any.js": true,
+  "webcodecs/image-decoder.https.any.js": false,
+  "webcodecs/imagedecoder-bmp-in-ico-crash.https.html": {
+    "ignore": true
+  },
+  "webcodecs/imagedecoder-zero-length-crash.https.html": {
+    "ignore": true
+  },
+  "webcodecs/opus-multichannel.https.any.js": {
+    "expectedFailures": [
+      "Configuring AudioDecoder with 16ch Opus without description must fail.",
+      "Encoding 16ch Opus produces a valid OpusHead decoderConfig description.",
+      "Encoding then decoding 16ch Opus produces frames with 16 channels."
+    ]
+  },
+  "webcodecs/per-frame-qp-encoding.https.any.js": {
+    "expectedFailures": [
+      "Frame QP encoding, full range",
+      "Frame QP encoding, good range with validation"
+    ]
+  },
+  "webcodecs/reconfiguring-encoder.https.any.js": {
+    "expectedFailures": [
+      "Reconfiguring encoder"
+    ]
+  },
+  "webcodecs/serialization-to-shared-and-service-workers-helper.js": {
+    "ignore": true
+  },
+  "webcodecs/serialization-to-shared-and-service-workers.https.html": {
+    "ignore": true
+  },
+  "webcodecs/serialization.crossAgentCluster.serviceworker.js": {
+    "ignore": true
+  },
+  "webcodecs/temporal-svc-encoding.https.any.js": {
+    "expectedFailures": [
+      "SVC L1T2",
+      "SVC L1T3"
+    ]
+  },
+  "webcodecs/transfering.https.any.js": {
+    "expectedFailures": [
+      "Encoding from AudioData with transferred buffer",
+      "Test throwing AudioData constructor does not detach transfer buffers",
+      "Test throwing ImageDecoder constructor does not detach transfer buffers",
+      "Test transfering ArrayBuffer to AudioData",
+      "Test transfering ArrayBuffer to EncodedAudioChunk",
+      "Test transfering ArrayBuffer to EncodedVideoChunk",
+      "Test transfering ArrayBuffer to VideoFrame",
+      "Test transfering buffers to VideoFrame with uneven samples",
+      "Test transfering detached buffer to VideoFrame",
+      "Test transfering same array buffer twice to ImageDecoder",
+      "Test transfering same array buffer twice to VideoFrame",
+      "Test transfering view of an ArrayBuffer to VideoFrame"
+    ]
+  },
+  "webcodecs/video-decoder-no-size-in-configure.https.any.js": {
+    "expectedFailures": [
+      "Test configure() without setting width and height"
+    ]
+  },
+  "webcodecs/video-decoder.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test isConfigSupported() and configure() using a SharedArrayBuffer",
+      "Test isConfigSupported() and configure() using a Uint8Array(SharedArrayBuffer)"
+    ]
+  },
+  "webcodecs/video-decoder.https.any.js": {
+    "expectedFailures": [
+      "Test that VideoDecoder.configure() doesn't support config: Ambiguous codec",
+      "Test that VideoDecoder.configure() doesn't support config: Audio codec",
+      "Test that VideoDecoder.configure() doesn't support config: Codec with MIME type",
+      "Test that VideoDecoder.configure() doesn't support config: Codec with bad casing",
+      "Test that VideoDecoder.configure() doesn't support config: Possible future AV1 codec string",
+      "Test that VideoDecoder.configure() doesn't support config: Possible future H264 codec string",
+      "Test that VideoDecoder.configure() doesn't support config: Possible future H264 codec string (level 2.9)",
+      "Test that VideoDecoder.configure() doesn't support config: Possible future HEVC codec string",
+      "Test that VideoDecoder.configure() doesn't support config: Possible future VP9 codec string",
+      "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec",
+      "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec with dataview description",
+      "Test that VideoDecoder.configure() doesn't support config: codec with spaces",
+      "Test that VideoDecoder.configure() rejects invalid config:Empty codec",
+      "Test that VideoDecoder.configure() rejects invalid config:Valid codec, detached description",
+      "Test that VideoDecoder.isConfigSupported() accepts config:variant 1 of h264 codec string",
+      "Test that VideoDecoder.isConfigSupported() accepts config:variant 2 of h264 codec string",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Ambiguous codec",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Audio codec",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Codec with MIME type",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Codec with bad casing",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future AV1 codec string",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string (level 2.9)",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future HEVC codec string",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future VP9 codec string",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Unrecognized codec",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Unrecognized codec with dataview description",
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: codec with spaces",
+      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Empty codec",
+      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Missing codec",
+      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Valid codec, detached description"
+    ]
+  },
+  "webcodecs/video-encoder-canvasImageSource.https.html": {
+    "ignore": true
+  },
+  "webcodecs/video-encoder-config.https.any.js": {
+    "expectedFailures": [
+      "Test that VideoEncoder.configure() doesn't support config: Codec with bad casing",
+      "Test that VideoEncoder.configure() doesn't support config: Height is too large",
+      "Test that VideoEncoder.configure() doesn't support config: Invalid scalability mode",
+      "Test that VideoEncoder.configure() doesn't support config: Odd sized frames for H264",
+      "Test that VideoEncoder.configure() doesn't support config: Possible future AV1 codec string",
+      "Test that VideoEncoder.configure() doesn't support config: Possible future H264 codec string",
+      "Test that VideoEncoder.configure() doesn't support config: Possible future HEVC codec string",
+      "Test that VideoEncoder.configure() doesn't support config: Possible future VP9 codec string",
+      "Test that VideoEncoder.configure() doesn't support config: Too strenuous accelerated encoding parameters",
+      "Test that VideoEncoder.configure() doesn't support config: Unrecognized codec",
+      "Test that VideoEncoder.configure() doesn't support config: VP8 codec string not accepted by Web Codecs",
+      "Test that VideoEncoder.configure() doesn't support config: Width is too large",
+      "Test that VideoEncoder.configure() doesn't support config: codec with spaces",
+      "Test that VideoEncoder.configure() rejects invalid config: Empty codec",
+      "Test that VideoEncoder.configure() rejects invalid config: Height is 0",
+      "Test that VideoEncoder.configure() rejects invalid config: Missing codec",
+      "Test that VideoEncoder.configure() rejects invalid config: Width is 0",
+      "Test that VideoEncoder.configure() rejects invalid config: bitrate is present but zero",
+      "Test that VideoEncoder.configure() rejects invalid config: displayHeight is 0",
+      "Test that VideoEncoder.configure() rejects invalid config: displayWidth is 0",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Codec with bad casing",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Height is too large",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Invalid scalability mode",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Odd sized frames for H264",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Possible future AV1 codec string",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Possible future H264 codec string",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Possible future HEVC codec string",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Possible future VP9 codec string",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Too strenuous accelerated encoding parameters",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Unrecognized codec",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: VP8 codec string not accepted by Web Codecs",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: Width is too large",
+      "Test that VideoEncoder.isConfigSupported() doesn't support config: codec with spaces",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: Empty codec",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: Height is 0",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: Missing codec",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: Width is 0",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: bitrate is present but zero",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: displayHeight is 0",
+      "Test that VideoEncoder.isConfigSupported() rejects invalid config: displayWidth is 0",
+      "VideoEncoder.isConfigSupported() supports:{\"codec\":\"avc1.42001E\",\"hardwareAcceleration\":\"no-preference\",\"width\":640,\"height\":480,\"bitrate\":5000000,\"framerate\":24,\"avc\":{\"format\":\"annexb\"},\"futureConfigFeature\":\"foo\"}",
+      "VideoEncoder.isConfigSupported() supports:{\"codec\":\"vp09.00.10.08\",\"hardwareAcceleration\":\"no-preference\",\"width\":1280,\"height\":720,\"bitrate\":7000000,\"bitrateMode\":\"constant\",\"framerate\":25,\"futureConfigFeature\":\"foo\",\"latencyMode\":\"realtime\",\"alpha\":\"discard\"}",
+      "VideoEncoder.isConfigSupported() supports:{\"codec\":\"vp8\",\"hardwareAcceleration\":\"no-preference\",\"width\":800,\"height\":600,\"bitrate\":7000000,\"bitrateMode\":\"variable\",\"framerate\":60,\"scalabilityMode\":\"L1T2\",\"futureConfigFeature\":\"foo\",\"latencyMode\":\"quality\",\"avc\":{\"format\":\"annexb\"}}"
+    ]
+  },
+  "webcodecs/video-encoder-content-hint.https.any.js": {
+    "expectedFailures": [
+      "Test that contentHint is recognized by VideoEncoder"
+    ]
+  },
+  "webcodecs/video-encoder-flush.https.any.js": {
+    "expectedFailures": [
+      "Test new flush after reset in a flush callback",
+      "Test reset during flush"
+    ]
+  },
+  "webcodecs/video-encoder-h264.https.any.js": true,
+  "webcodecs/video-encoder-h26x-annexb.https.any.js": {
+    "expectedFailures": [
+      "Verify stream compliance h26x annexb"
+    ]
+  },
+  "webcodecs/video-encoder-hbd.https.any.js": {
+    "expectedFailures": [
+      "Test 16-bit high-bit-depth encoding of I420AP10",
+      "Test 16-bit high-bit-depth encoding of I420P10",
+      "Test 16-bit high-bit-depth encoding of I420P12",
+      "Test 16-bit high-bit-depth encoding of I422AP10",
+      "Test 16-bit high-bit-depth encoding of I422P10",
+      "Test 16-bit high-bit-depth encoding of I422P12",
+      "Test 16-bit high-bit-depth encoding of I444AP10",
+      "Test 16-bit high-bit-depth encoding of I444P10",
+      "Test 16-bit high-bit-depth encoding of I444P12",
+      "Test 16-to-8 bit conversion encoding of I420AP10",
+      "Test 16-to-8 bit conversion encoding of I420P10",
+      "Test 16-to-8 bit conversion encoding of I420P12",
+      "Test 16-to-8 bit conversion encoding of I422AP10",
+      "Test 16-to-8 bit conversion encoding of I422P10",
+      "Test 16-to-8 bit conversion encoding of I422P12",
+      "Test 16-to-8 bit conversion encoding of I444AP10",
+      "Test 16-to-8 bit conversion encoding of I444P10",
+      "Test 16-to-8 bit conversion encoding of I444P12"
+    ]
+  },
+  "webcodecs/video-encoder-orientation.https.any.js": {
+    "expectedFailures": [
+      "Encode video frame with orientation",
+      "Encode video frames with different orientation has non-fatal failures",
+      "Encode video frames with different orientations after reconfigure"
+    ]
+  },
+  "webcodecs/video-encoder-rescaling.https.any.js": {
+    "expectedFailures": [
+      "Scaling Image in Encoding from 128 x 128 to 128 x 128 Format: I420",
+      "Scaling Image in Encoding from 128 x 128 to 128 x 128 Format: RGBX",
+      "Scaling Image in Encoding from 128 x 128 to 64 x 64 Format: I420",
+      "Scaling Image in Encoding from 128 x 128 to 64 x 64 Format: RGBX",
+      "Scaling Image in Encoding from 128 x 192 to 64 x 64 Format: I420",
+      "Scaling Image in Encoding from 128 x 192 to 64 x 64 Format: RGBX",
+      "Scaling Image in Encoding from 128 x 256 to 64 x 128 Format: I420",
+      "Scaling Image in Encoding from 128 x 256 to 64 x 128 Format: RGBX",
+      "Scaling Image in Encoding from 192 x 192 to 64 x 64 Format: I420",
+      "Scaling Image in Encoding from 192 x 192 to 64 x 64 Format: RGBX",
+      "Scaling Image in Encoding from 32 x 32 to 96 x 96 Format: I420",
+      "Scaling Image in Encoding from 32 x 32 to 96 x 96 Format: RGBX",
+      "Scaling Image in Encoding from 64 x 32 to 128 x 64 Format: I420",
+      "Scaling Image in Encoding from 64 x 32 to 128 x 64 Format: RGBX",
+      "Scaling Image in Encoding from 64 x 64 to 128 x 128 Format: I420",
+      "Scaling Image in Encoding from 64 x 64 to 128 x 128 Format: RGBX",
+      "Scaling Image in Encoding from 64 x 64 to 128 x 192 Format: I420",
+      "Scaling Image in Encoding from 64 x 64 to 128 x 192 Format: RGBX"
+    ]
+  },
+  "webcodecs/video-encoder.https.any.js": {
+    "expectedFailures": [
+      "Encode video preserves unset, zero, and duplicate-timestamp durations",
+      "Encode video with negative timestamp",
+      "Test VideoEncoder construction",
+      "Test successful configure(), encode(), and flush()",
+      "Test successful encode() after re-configure().",
+      "Test successful reset() and re-confiugre()",
+      "Verify closed VideoEncoder operations",
+      "Verify encoding closed frames throws.",
+      "Verify unconfigured VideoEncoder operations",
+      "encodeQueueSize test"
+    ]
+  },
+  "webcodecs/video-frame-serialization.any.js": {
+    "expectedFailures": [
+      "Test we can clone a VideoFrame.",
+      "Verify cloning a closed frame throws.",
+      "Verify closing a frame doesn't affect its clones.",
+      "Verify closing frames does not propagate accross contexts.",
+      "Verify posting closed frames throws.",
+      "Verify storing a frame throws.",
+      "Verify transferring frames closes them."
+    ]
+  },
+  "webcodecs/videoColorSpace.any.js": {
+    "expectedFailures": [
+      "Test VideoColorSpace toJSON() works."
+    ]
+  },
+  "webcodecs/videoDecoder-444-h264.https.any.js": {
+    "expectedFailures": [
+      "Test decoding h.264 4:4:4 content"
+    ]
+  },
+  "webcodecs/videoDecoder-codec-specific-orientation.https.any.js": {
+    "expectedFailures": [
+      "Decode frames with orientation metadata",
+      "Test that isConfigSupported() with orientation"
+    ]
+  },
+  "webcodecs/videoDecoder-codec-specific.https.any.js": {
+    "expectedFailures": [
+      "Close while decoding corrupt frame",
+      "Decode a key frame",
+      "Decode a key frame marked as delta fails",
+      "Decode a non key frame first fails",
+      "Decode corrupt frame",
+      "Decode empty frame",
+      "Test closed VideoDecoder operations",
+      "Test configure()",
+      "Test configure, reset, configure does not stall",
+      "Test decoding a corrupt frame after reset in a flush callback",
+      "Test decoding a with negative timestamp",
+      "Test decoding after flush",
+      "Test decoding chunks with duplicate timestamps preserves durations",
+      "Test invalid configs",
+      "Test isConfigSupported()",
+      "Test isConfigSupported() with 1080p crop",
+      "Test low-latency decoding",
+      "Test new flush after reset in a flush callback",
+      "Test reset during flush",
+      "Test that isConfigSupported() returns a parsed configuration",
+      "Test unconfigured VideoDecoder operations",
+      "Verify reset() suppresses outputs",
+      "VideoDecoder decodeQueueSize test"
+    ]
+  },
+  "webcodecs/videoDecoder-h264-sei.https.any.js": {
+    "expectedFailures": [
+      "H.264 SEI recovery point frames are treated as keyframes."
+    ]
+  },
+  "webcodecs/videoDecoder-interlaced-h264.https.any.js": {
+    "expectedFailures": [
+      "Test decoding h.264 interlaced content"
+    ]
+  },
+  "webcodecs/videoFrame-alpha-discard.any.js": {
+    "expectedFailures": [
+      "An ImageBitmap of a VideoFrame made from an ImageBitmap with alpha discard is opaque",
+      "An ImageBitmap of a VideoFrame made from an OffscreenCanvas with alpha discard is opaque",
+      "An ImageBitmap of a VideoFrame made from an VideoFrame with alpha discard is opaque",
+      "Discarding the alpha of a VideoFrame does not change the original frame",
+      "Drawing a VideoFrame made from an ImageBitmap with alpha discard gives opaque pixels",
+      "Drawing a VideoFrame made from an ImageBitmap with alpha discard replaces the canvas background",
+      "Drawing a VideoFrame made from an OffscreenCanvas with alpha discard gives opaque pixels",
+      "Drawing a VideoFrame made from an OffscreenCanvas with alpha discard replaces the canvas background",
+      "Drawing a VideoFrame made from an VideoFrame with alpha discard gives opaque pixels",
+      "Drawing a VideoFrame made from an VideoFrame with alpha discard replaces the canvas background",
+      "Drawing a VideoFrame with alpha keep preserves its transparency",
+      "Drawing a clone of a VideoFrame made from an ImageBitmap with alpha discard gives opaque pixels",
+      "Drawing a clone of a VideoFrame made from an OffscreenCanvas with alpha discard gives opaque pixels",
+      "Drawing a clone of a VideoFrame made from an VideoFrame with alpha discard gives opaque pixels"
+    ]
+  },
+  "webcodecs/videoFrame-alpha-discard.window.js": {
+    "expectedFailures": [
+      "Drawing a VideoFrame made from an HTMLCanvasElement with alpha discard gives opaque pixels",
+      "Drawing a VideoFrame made from an HTMLCanvasElement with alpha discard replaces the canvas background",
+      "Drawing a VideoFrame made from an HTMLCanvasElement with alpha keep preserves its transparency",
+      "Drawing a VideoFrame made from an HTMLImageElement with alpha discard gives opaque pixels",
+      "Drawing a VideoFrame made from an HTMLImageElement with alpha discard replaces the canvas background",
+      "Drawing a VideoFrame made from an HTMLImageElement with alpha keep preserves its transparency",
+      "Drawing a clone of a VideoFrame made from an HTMLCanvasElement with alpha discard gives opaque pixels",
+      "Drawing a clone of a VideoFrame made from an HTMLImageElement with alpha discard gives opaque pixels"
+    ]
+  },
+  "webcodecs/videoFrame-alpha.any.js": {
+    "expectedFailures": [
+      "ImageBitmap source preserves alpha",
+      "OffscreenCanvas source preserves alpha"
+    ]
+  },
+  "webcodecs/videoFrame-canvasImageSource.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-construction.any.js": {
+    "expectedFailures": [
+      "Test ArrayBuffer constructed I420 VideoFrame",
+      "Test I420 VideoFrame with odd visible size",
+      "Test I420A VideoFrame and alpha={keep,discard}",
+      "Test RGBA, BGRA VideoFrames with alpha={keep,discard}",
+      "Test Uint8Array(ArrayBuffer) constructed I420 VideoFrame",
+      "Test VideoFrame constructed VideoFrame",
+      "Test a VideoFrame constructed from canvas can drop the alpha channel.",
+      "Test buffer constructed I420+Alpha VideoFrame",
+      "Test buffer constructed NV12 VideoFrame",
+      "Test buffer constructed RGB VideoFrames",
+      "Test closed VideoFrame.",
+      "Test constructing w/ unusable image argument throws: closed ImageBitmap.",
+      "Test constructing w/ unusable image argument throws: closed VideoFrame.",
+      "Test constructing w/ unusable image argument throws: emtpy Canvas.",
+      "Test display size metadata override",
+      "Test invalid CanvasImageSource constructed VideoFrames",
+      "Test planar can construct I420 VideoFrame with null colorSpace values",
+      "Test planar constructed I420 VideoFrame with colorSpace",
+      "Test that a visibleRect override throwing when computed display size rounds to zero",
+      "Test that timestamp is NOT required when constructing VideoFrame from another VideoFrame",
+      "Test that timestamp is required when constructing VideoFrame from ImageBitmap",
+      "Test that timestamp is required when constructing VideoFrame from OffscreenCanvas",
+      "Test visibleRect + display size metadata override",
+      "Test visibleRect metadata override where source display size = 2 * visible size for both width and height",
+      "Test visibleRect metadata override where source display size = visible size",
+      "Test visibleRect metadata override where source display width = 2 * visible width (anamorphic)",
+      "Test visibleRect metadata override with fractional display size scale",
+      "Test we can construct a I420 VideoFrame",
+      "Test we can construct a I420A VideoFrame",
+      "Test we can construct a I420AP10 VideoFrame",
+      "Test we can construct a I420AP12 VideoFrame",
+      "Test we can construct a I420P10 VideoFrame",
+      "Test we can construct a I420P12 VideoFrame",
+      "Test we can construct a I422 VideoFrame",
+      "Test we can construct a I422A VideoFrame",
+      "Test we can construct a I422AP10 VideoFrame",
+      "Test we can construct a I422AP12 VideoFrame",
+      "Test we can construct a I422P10 VideoFrame",
+      "Test we can construct a I422P12 VideoFrame",
+      "Test we can construct a I444 VideoFrame",
+      "Test we can construct a I444A VideoFrame",
+      "Test we can construct a I444AP10 VideoFrame",
+      "Test we can construct a I444AP12 VideoFrame",
+      "Test we can construct a I444P10 VideoFrame",
+      "Test we can construct a I444P12 VideoFrame",
+      "Test we can construct a VideoFrame from an offscreen canvas.",
+      "Test we can construct a VideoFrame with a negative timestamp.",
+      "Test we can construct a VideoFrame.",
+      "Test we can construct an odd-sized VideoFrame."
+    ]
+  },
+  "webcodecs/videoFrame-construction.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test SharedArrayBuffer constructed I420 VideoFrame",
+      "Test Uint8Array(SharedArrayBuffer) constructed I420 VideoFrame"
+    ]
+  },
+  "webcodecs/videoFrame-construction.crossOriginSource.sub.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-construction.window.js": {
+    "expectedFailures": [
+      "Test that timeamp is required when constructing VideoFrame from HTMLCanvasElement",
+      "Test that timestamp is required when constructing VideoFrame from HTMLImageElement",
+      "Test that timestamp is required when constructing VideoFrame from SVGImageElement"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo-canvas.window.js": {
+    "expectedFailures": [
+      "copyTo from canvas-backed VideoFrame matches canvas pixel data per row",
+      "copyTo from canvas-backed VideoFrame returns correct pixels for all rows"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo-opaque-swizzle.https.any.js": {
+    "expectedFailures": [
+      "BGRA to BGRX copyTo writes all rows (100x100)",
+      "BGRX to BGRA copyTo overwrites all bytes (sentinel test)",
+      "BGRX to BGRA copyTo writes all rows (100x100)",
+      "BGRX to BGRA copyTo writes all rows (7x3, odd dimensions)",
+      "BGRX to BGRA copyTo writes all rows (8x4)",
+      "BGRX to BGRA copyTo writes all rows (90x50, non-aligned width)",
+      "Decoded frame opaque-to-alpha copyTo writes all rows",
+      "RGBA to RGBX copyTo writes all rows (100x100)",
+      "RGBX to RGBA copyTo writes all rows (100x100)",
+      "RGBX to RGBA copyTo writes all rows (8x4)"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo-rgb.any.js": {
+    "expectedFailures": [
+      "Convert 4-color canvas frame to BGRA / display-p3",
+      "Convert 4-color canvas frame to BGRA / srgb",
+      "Convert 4-color canvas frame to BGRX / display-p3",
+      "Convert 4-color canvas frame to BGRX / srgb",
+      "Convert 4-color canvas frame to RGBA / display-p3",
+      "Convert 4-color canvas frame to RGBA / srgb",
+      "Convert 4-color canvas frame to RGBX / display-p3",
+      "Convert 4-color canvas frame to RGBX / srgb",
+      "Convert 4x4 bt709 black I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 black I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 black I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 black I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 black I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 black I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 black I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 black I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 black RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 black RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 black RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 black RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 black RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 black RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 black RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 black RGBX frame to RGBX / srgb",
+      "Convert 4x4 bt709 blue I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 blue I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 blue I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 blue I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 blue I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 blue I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 blue I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 blue I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 blue RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 blue RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 blue RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 blue RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 blue RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 blue RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 blue RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 blue RGBX frame to RGBX / srgb",
+      "Convert 4x4 bt709 green I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 green I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 green I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 green I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 green I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 green I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 green I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 green I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 green RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 green RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 green RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 green RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 green RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 green RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 green RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 green RGBX frame to RGBX / srgb",
+      "Convert 4x4 bt709 magenta I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 magenta I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 magenta I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 magenta I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 magenta I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 magenta I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 magenta I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 magenta I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 pink I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 pink I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 pink I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 pink I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 pink I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 pink I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 pink I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 pink I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 red I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 red I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 red I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 red I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 red I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 red I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 red I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 red I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 red RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 red RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 red RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 red RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 red RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 red RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 red RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 red RGBX frame to RGBX / srgb",
+      "Convert 4x4 bt709 white I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 white I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 white I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 white I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 white I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 white I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 white I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 white I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 white RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 white RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 white RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 white RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 white RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 white RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 white RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 white RGBX frame to RGBX / srgb",
+      "Convert 4x4 bt709 yellow I420 frame to BGRA / display-p3",
+      "Convert 4x4 bt709 yellow I420 frame to BGRA / srgb",
+      "Convert 4x4 bt709 yellow I420 frame to BGRX / display-p3",
+      "Convert 4x4 bt709 yellow I420 frame to BGRX / srgb",
+      "Convert 4x4 bt709 yellow I420 frame to RGBA / display-p3",
+      "Convert 4x4 bt709 yellow I420 frame to RGBA / srgb",
+      "Convert 4x4 bt709 yellow I420 frame to RGBX / display-p3",
+      "Convert 4x4 bt709 yellow I420 frame to RGBX / srgb",
+      "Convert 4x4 bt709 yellow RGBX frame to BGRA / display-p3",
+      "Convert 4x4 bt709 yellow RGBX frame to BGRA / srgb",
+      "Convert 4x4 bt709 yellow RGBX frame to BGRX / display-p3",
+      "Convert 4x4 bt709 yellow RGBX frame to BGRX / srgb",
+      "Convert 4x4 bt709 yellow RGBX frame to RGBA / display-p3",
+      "Convert 4x4 bt709 yellow RGBX frame to RGBA / srgb",
+      "Convert 4x4 bt709 yellow RGBX frame to RGBX / display-p3",
+      "Convert 4x4 bt709 yellow RGBX frame to RGBX / srgb",
+      "Convert 4x4 null black I420 frame to BGRA / display-p3",
+      "Convert 4x4 null black I420 frame to BGRA / srgb",
+      "Convert 4x4 null black I420 frame to BGRX / display-p3",
+      "Convert 4x4 null black I420 frame to BGRX / srgb",
+      "Convert 4x4 null black I420 frame to RGBA / display-p3",
+      "Convert 4x4 null black I420 frame to RGBA / srgb",
+      "Convert 4x4 null black I420 frame to RGBX / display-p3",
+      "Convert 4x4 null black I420 frame to RGBX / srgb",
+      "Convert 4x4 null black RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null black RGBX frame to BGRA / srgb",
+      "Convert 4x4 null black RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null black RGBX frame to BGRX / srgb",
+      "Convert 4x4 null black RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null black RGBX frame to RGBA / srgb",
+      "Convert 4x4 null black RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null black RGBX frame to RGBX / srgb",
+      "Convert 4x4 null blue I420 frame to BGRA / display-p3",
+      "Convert 4x4 null blue I420 frame to BGRA / srgb",
+      "Convert 4x4 null blue I420 frame to BGRX / display-p3",
+      "Convert 4x4 null blue I420 frame to BGRX / srgb",
+      "Convert 4x4 null blue I420 frame to RGBA / display-p3",
+      "Convert 4x4 null blue I420 frame to RGBA / srgb",
+      "Convert 4x4 null blue I420 frame to RGBX / display-p3",
+      "Convert 4x4 null blue I420 frame to RGBX / srgb",
+      "Convert 4x4 null blue RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null blue RGBX frame to BGRA / srgb",
+      "Convert 4x4 null blue RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null blue RGBX frame to BGRX / srgb",
+      "Convert 4x4 null blue RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null blue RGBX frame to RGBA / srgb",
+      "Convert 4x4 null blue RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null blue RGBX frame to RGBX / srgb",
+      "Convert 4x4 null green I420 frame to BGRA / display-p3",
+      "Convert 4x4 null green I420 frame to BGRA / srgb",
+      "Convert 4x4 null green I420 frame to BGRX / display-p3",
+      "Convert 4x4 null green I420 frame to BGRX / srgb",
+      "Convert 4x4 null green I420 frame to RGBA / display-p3",
+      "Convert 4x4 null green I420 frame to RGBA / srgb",
+      "Convert 4x4 null green I420 frame to RGBX / display-p3",
+      "Convert 4x4 null green I420 frame to RGBX / srgb",
+      "Convert 4x4 null green RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null green RGBX frame to BGRA / srgb",
+      "Convert 4x4 null green RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null green RGBX frame to BGRX / srgb",
+      "Convert 4x4 null green RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null green RGBX frame to RGBA / srgb",
+      "Convert 4x4 null green RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null green RGBX frame to RGBX / srgb",
+      "Convert 4x4 null magenta I420 frame to BGRA / display-p3",
+      "Convert 4x4 null magenta I420 frame to BGRA / srgb",
+      "Convert 4x4 null magenta I420 frame to BGRX / display-p3",
+      "Convert 4x4 null magenta I420 frame to BGRX / srgb",
+      "Convert 4x4 null magenta I420 frame to RGBA / display-p3",
+      "Convert 4x4 null magenta I420 frame to RGBA / srgb",
+      "Convert 4x4 null magenta I420 frame to RGBX / display-p3",
+      "Convert 4x4 null magenta I420 frame to RGBX / srgb",
+      "Convert 4x4 null pink I420 frame to BGRA / display-p3",
+      "Convert 4x4 null pink I420 frame to BGRA / srgb",
+      "Convert 4x4 null pink I420 frame to BGRX / display-p3",
+      "Convert 4x4 null pink I420 frame to BGRX / srgb",
+      "Convert 4x4 null pink I420 frame to RGBA / display-p3",
+      "Convert 4x4 null pink I420 frame to RGBA / srgb",
+      "Convert 4x4 null pink I420 frame to RGBX / display-p3",
+      "Convert 4x4 null pink I420 frame to RGBX / srgb",
+      "Convert 4x4 null red I420 frame to BGRA / display-p3",
+      "Convert 4x4 null red I420 frame to BGRA / srgb",
+      "Convert 4x4 null red I420 frame to BGRX / display-p3",
+      "Convert 4x4 null red I420 frame to BGRX / srgb",
+      "Convert 4x4 null red I420 frame to RGBA / display-p3",
+      "Convert 4x4 null red I420 frame to RGBA / srgb",
+      "Convert 4x4 null red I420 frame to RGBX / display-p3",
+      "Convert 4x4 null red I420 frame to RGBX / srgb",
+      "Convert 4x4 null red RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null red RGBX frame to BGRA / srgb",
+      "Convert 4x4 null red RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null red RGBX frame to BGRX / srgb",
+      "Convert 4x4 null red RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null red RGBX frame to RGBA / srgb",
+      "Convert 4x4 null red RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null red RGBX frame to RGBX / srgb",
+      "Convert 4x4 null white I420 frame to BGRA / display-p3",
+      "Convert 4x4 null white I420 frame to BGRA / srgb",
+      "Convert 4x4 null white I420 frame to BGRX / display-p3",
+      "Convert 4x4 null white I420 frame to BGRX / srgb",
+      "Convert 4x4 null white I420 frame to RGBA / display-p3",
+      "Convert 4x4 null white I420 frame to RGBA / srgb",
+      "Convert 4x4 null white I420 frame to RGBX / display-p3",
+      "Convert 4x4 null white I420 frame to RGBX / srgb",
+      "Convert 4x4 null white RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null white RGBX frame to BGRA / srgb",
+      "Convert 4x4 null white RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null white RGBX frame to BGRX / srgb",
+      "Convert 4x4 null white RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null white RGBX frame to RGBA / srgb",
+      "Convert 4x4 null white RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null white RGBX frame to RGBX / srgb",
+      "Convert 4x4 null yellow I420 frame to BGRA / display-p3",
+      "Convert 4x4 null yellow I420 frame to BGRA / srgb",
+      "Convert 4x4 null yellow I420 frame to BGRX / display-p3",
+      "Convert 4x4 null yellow I420 frame to BGRX / srgb",
+      "Convert 4x4 null yellow I420 frame to RGBA / display-p3",
+      "Convert 4x4 null yellow I420 frame to RGBA / srgb",
+      "Convert 4x4 null yellow I420 frame to RGBX / display-p3",
+      "Convert 4x4 null yellow I420 frame to RGBX / srgb",
+      "Convert 4x4 null yellow RGBX frame to BGRA / display-p3",
+      "Convert 4x4 null yellow RGBX frame to BGRA / srgb",
+      "Convert 4x4 null yellow RGBX frame to BGRX / display-p3",
+      "Convert 4x4 null yellow RGBX frame to BGRX / srgb",
+      "Convert 4x4 null yellow RGBX frame to RGBA / display-p3",
+      "Convert 4x4 null yellow RGBX frame to RGBA / srgb",
+      "Convert 4x4 null yellow RGBX frame to RGBX / display-p3",
+      "Convert 4x4 null yellow RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m black I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m black I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m black I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m black I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m black I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m black I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m black I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m black I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m black RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m black RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m black RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m black RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m black RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m black RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m black RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m black RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m blue I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m blue I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m blue I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m blue I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m blue I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m blue I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m blue I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m blue I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m blue RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m blue RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m blue RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m blue RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m blue RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m blue RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m blue RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m blue RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m green I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m green I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m green I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m green I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m green I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m green I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m green I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m green I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m green RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m green RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m green RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m green RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m green RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m green RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m green RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m green RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m magenta I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m magenta I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m magenta I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m magenta I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m magenta I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m magenta I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m magenta I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m magenta I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m pink I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m pink I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m pink I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m pink I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m pink I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m pink I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m pink I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m pink I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m red I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m red I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m red I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m red I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m red I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m red I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m red I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m red I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m red RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m red RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m red RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m red RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m red RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m red RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m red RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m red RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m white I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m white I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m white I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m white I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m white I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m white I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m white I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m white I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m white RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m white RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m white RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m white RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m white RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m white RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m white RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m white RGBX frame to RGBX / srgb",
+      "Convert 4x4 smpte170m yellow I420 frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m yellow I420 frame to BGRA / srgb",
+      "Convert 4x4 smpte170m yellow I420 frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m yellow I420 frame to BGRX / srgb",
+      "Convert 4x4 smpte170m yellow I420 frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m yellow I420 frame to RGBA / srgb",
+      "Convert 4x4 smpte170m yellow I420 frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m yellow I420 frame to RGBX / srgb",
+      "Convert 4x4 smpte170m yellow RGBX frame to BGRA / display-p3",
+      "Convert 4x4 smpte170m yellow RGBX frame to BGRA / srgb",
+      "Convert 4x4 smpte170m yellow RGBX frame to BGRX / display-p3",
+      "Convert 4x4 smpte170m yellow RGBX frame to BGRX / srgb",
+      "Convert 4x4 smpte170m yellow RGBX frame to RGBA / display-p3",
+      "Convert 4x4 smpte170m yellow RGBX frame to RGBA / srgb",
+      "Convert 4x4 smpte170m yellow RGBX frame to RGBX / display-p3",
+      "Convert 4x4 smpte170m yellow RGBX frame to RGBX / srgb",
+      "Unsupported format I420",
+      "Unsupported format I420A",
+      "Unsupported format I420P10",
+      "Unsupported format I420P12",
+      "Unsupported format I422",
+      "Unsupported format I422A",
+      "Unsupported format I444",
+      "Unsupported format I444A",
+      "Unsupported format NV12",
+      "copyTo() with layout"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo-rgbx.any.js": {
+    "expectedFailures": [
+      "copyTo() of a BGRX VideoFrame",
+      "copyTo() of a BGRX VideoFrame to BGRA gives opaque pixels",
+      "copyTo() of a BGRX VideoFrame to BGRX",
+      "copyTo() of a BGRX VideoFrame to RGBA gives opaque pixels",
+      "copyTo() of a RGBX VideoFrame",
+      "copyTo() of a RGBX VideoFrame to BGRA gives opaque pixels",
+      "copyTo() of a RGBX VideoFrame to RGBA gives opaque pixels",
+      "copyTo() of a RGBX VideoFrame to RGBX",
+      "copyTo() of a clone of a BGRX VideoFrame",
+      "copyTo() of a clone of a RGBX VideoFrame"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo.any.js": {
+    "expectedFailures": [
+      "Test I420 copyTo does not modify destination stride/offset padding bytes.",
+      "Test I420 stride and offset with padding.",
+      "Test I420 stride and offset work.",
+      "Test I420A stride and offset work.",
+      "Test NV12 frame.",
+      "Test NV12 stride and offset work.",
+      "Test RGBA frame.",
+      "Test address overflow.",
+      "Test closed frame.",
+      "Test codedRect.",
+      "Test copying I420 frame to a non-shared ArrayBuffer",
+      "Test copying I420 frame to a non-shared ArrayBufferView",
+      "Test empty rect.",
+      "Test incorrect plane count.",
+      "Test invalid rect.",
+      "Test invalid stride.",
+      "Test left crop.",
+      "Test texture-backed RGBA copyTo does not modify destination stride/offset padding bytes.",
+      "Test undersized buffer.",
+      "copyTo from byte data with non-default visibleRect"
+    ]
+  },
+  "webcodecs/videoFrame-copyTo.crossOriginIsolated.https.any.js": {
+    "expectedFailures": [
+      "Test copying I420 frame to SharedArrayBuffer.",
+      "Test copying I420 frame to shared ArrayBufferView."
+    ]
+  },
+  "webcodecs/videoFrame-createImageBitmap.any.js": {
+    "expectedFailures": [
+      "ImageBitmap<->VideoFrame with canvas(480x360 srgb uint8).",
+      "ImageBitmap<->VideoFrame with canvas(48x36 srgb uint8).",
+      "createImageBitmap uses frame display size"
+    ]
+  },
+  "webcodecs/videoFrame-createImageBitmap.https.any.js": {
+    "expectedFailures": [
+      "Create ImageBitmap for a VideoFrame from VP9 decoder."
+    ]
+  },
+  "webcodecs/videoFrame-drawImage-hbd.any.js": {
+    "expectedFailures": [
+      "drawImage with 10-bit YUV VideoFrame"
+    ]
+  },
+  "webcodecs/videoFrame-drawImage-rgbx.any.js": {
+    "expectedFailures": [
+      "Drawing a BGRX VideoFrame with padding byte 0 to a canvas gives opaque correct RGB",
+      "Drawing a BGRX VideoFrame with padding byte 127 to a canvas gives opaque correct RGB",
+      "Drawing a BGRX VideoFrame with padding byte 255 to a canvas gives opaque correct RGB",
+      "Drawing a RGBX VideoFrame with padding byte 0 to a canvas gives opaque correct RGB",
+      "Drawing a RGBX VideoFrame with padding byte 127 to a canvas gives opaque correct RGB",
+      "Drawing a RGBX VideoFrame with padding byte 255 to a canvas gives opaque correct RGB",
+      "RGBX and BGRX VideoFrames with the same colors draw the same pixels"
+    ]
+  },
+  "webcodecs/videoFrame-drawImage.any.js": {
+    "expectedFailures": [
+      "drawImage of nested frame works properly",
+      "drawImage on a closed VideoFrame throws InvalidStateError.",
+      "drawImage with display size != visible size",
+      "drawImage(VideoFrame) with canvas(480x360 display-p3 uint8).",
+      "drawImage(VideoFrame) with canvas(480x360 srgb uint8).",
+      "drawImage(VideoFrame) with canvas(48x36 display-p3 uint8).",
+      "drawImage(VideoFrame) with canvas(48x36 srgb uint8)."
+    ]
+  },
+  "webcodecs/videoFrame-metadata-rtpTimestamp.https.html": true,
+  "webcodecs/videoFrame-odd-size.any.js": {
+    "expectedFailures": [
+      "Test I420 VideoFrame construction with odd coded size",
+      "Test I420 copyTo with odd coded size."
+    ]
+  },
+  "webcodecs/videoFrame-orientation.any.js": {
+    "expectedFailures": [
+      "Test combinations of rotation and flip",
+      "Test orientation of wrapped VideoFrame",
+      "Test oriented VideoFrame from ArrayBuffer"
+    ]
+  },
+  "webcodecs/videoFrame-rgbx-imageBitmap.any.js": {
+    "expectedFailures": [
+      "An ImageBitmap of a cloned BGRX VideoFrame is opaque",
+      "An ImageBitmap of an RGBX VideoFrame stays opaque after closing the frame",
+      "createImageBitmap() of a BGRX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "createImageBitmap() of a BGRX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "createImageBitmap() of a BGRX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "createImageBitmap() of a RGBX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "createImageBitmap() of a RGBX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "createImageBitmap() of a RGBX VideoFrame with padding byte 255 is opaque with correct RGB"
+    ]
+  },
+  "webcodecs/videoFrame-rgbx-webgl.window.js": {
+    "expectedFailures": [
+      "texImage2D() (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a BGRX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=false) of a RGBX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a BGRX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 0 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 127 is opaque with correct RGB",
+      "texImage2D() as RGB (premultiplyAlpha=true) of a RGBX VideoFrame with padding byte 255 is opaque with correct RGB",
+      "texImage2D() of a cloned RGBX VideoFrame is opaque"
+    ]
+  },
+  "webcodecs/videoFrame-serialization.crossAgentCluster.helper.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-serialization.crossAgentCluster.https.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-serialization.https.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-texImage.any.js": {
+    "expectedFailures": [
+      "texImage2D with 480x360 srgb VideoFrame.",
+      "texImage2D with 48x36 srgb VideoFrame.",
+      "texImage2D with a closed VideoFrame.",
+      "texSubImage2D with 480x360 srgb VideoFrame.",
+      "texSubImage2D with 48x36 srgb VideoFrame.",
+      "texSubImage2D with a closed VideoFrame."
+    ]
+  }
+}

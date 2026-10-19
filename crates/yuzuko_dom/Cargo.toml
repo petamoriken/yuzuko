@@ -1,0 +1,13 @@
+[package]
+name = "yuzuko_dom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+url.workspace = true
+v8.workspace = true
+yuzuko_core.workspace = true
+yuzuko_macros.workspace = true
+yuzuko_winter.workspace = true
