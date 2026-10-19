@@ -31,7 +31,13 @@ pub fn run_repl() -> Result<(), RuntimeError> {
       host::set_entry_url(origin.clone());
       let mut editor = line::Editor::new();
       loop {
-        let chunk = editor.read(&mut |object| complete_names(scope, object));
+        // Completion and the prompt pump both need this scope, and they
+        // run one at a time inside `read`.
+        let scope_ptr = scope as *mut v8::PinScope;
+        let chunk = editor.read(
+          &mut |object| complete_names(unsafe { &mut *scope_ptr }, object),
+          &mut || runtime::poll_repl(unsafe { &mut *scope_ptr }),
+        );
         let Some(chunk) = chunk else {
           return Ok(());
         };

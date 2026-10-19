@@ -34,22 +34,23 @@ impl Editor {
   pub fn read(
     &mut self,
     complete: &mut dyn FnMut(Option<&str>) -> Vec<String>,
+    pace: &mut dyn FnMut() -> Option<std::time::Duration>,
   ) -> Option<String> {
     if !io::stdin().is_terminal() {
-      return read_pipe();
+      return read_pipe(pace);
     }
     #[cfg(unix)]
     {
       let _raw = match RawTerm::enter() {
         Some(raw) => raw,
-        None => return read_pipe(),
+        None => return read_pipe(pace),
       };
-      self.read_unix(complete)
+      self.read_unix(complete, pace)
     }
     #[cfg(not(unix))]
     {
       let _ = complete;
-      read_pipe()
+      read_pipe(pace)
     }
   }
 
@@ -57,13 +58,25 @@ impl Editor {
   fn read_unix(
     &mut self,
     complete: &mut dyn FnMut(Option<&str>) -> Vec<String>,
+    pace: &mut dyn FnMut() -> Option<std::time::Duration>,
   ) -> Option<String> {
     let mut buffer = String::new();
     let mut cursor = 0usize;
     let mut view = View::blank();
     prompt(buffer.is_empty());
     loop {
-      if self.pending.is_empty() && !fill_bytes(&mut self.pending) {
+      if self.pending.is_empty()
+        && !await_input(&mut self.pending, &mut || {
+          crate::runtime::editor_hold_line(true);
+          let wait = pace();
+          crate::runtime::editor_hold_line(false);
+          if crate::runtime::editor_line_broke() {
+            view = View::blank();
+            render(&mut view, &buffer, cursor);
+          }
+          wait
+        })
+      {
         if buffer.is_empty() {
           println!();
           return None;
@@ -194,7 +207,7 @@ impl Editor {
           let mut raw = vec![byte];
           let width = utf8_width(byte);
           while raw.len() < width {
-            if self.pending.is_empty() && !fill_bytes(&mut self.pending) {
+            if self.pending.is_empty() && !read_more(&mut self.pending, -1) {
               break;
             }
             if let Some(next) = self.pending.pop_front() {
@@ -383,13 +396,59 @@ impl Editor {
   }
 }
 
-fn read_pipe() -> Option<String> {
+fn read_pipe(
+  pace: &mut dyn FnMut() -> Option<std::time::Duration>,
+) -> Option<String> {
+  #[cfg(unix)]
+  {
+    return read_pipe_unix(pace);
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = pace;
+    read_pipe_blocking()
+  }
+}
+
+#[cfg(unix)]
+fn read_pipe_unix(
+  pace: &mut dyn FnMut() -> Option<std::time::Duration>,
+) -> Option<String> {
+  read_pipe_lines(&mut || {
+    await_readable(&mut || {
+      crate::runtime::editor_hold_line(true);
+      let wait = pace();
+      crate::runtime::editor_hold_line(false);
+      let _ = crate::runtime::editor_line_broke();
+      wait
+    })
+  })
+}
+
+#[cfg(not(unix))]
+fn read_pipe_blocking() -> Option<String> {
+  read_pipe_lines(&mut || true)
+}
+
+fn read_pipe_lines(ready: &mut dyn FnMut() -> bool) -> Option<String> {
   let stdin = io::stdin();
   let mut block = String::new();
   let mut line = String::new();
   loop {
     prompt(block.is_empty());
     line.clear();
+    if !ready() {
+      if block.is_empty() {
+        println!();
+        return None;
+      }
+      println!();
+      if repl::input_is_complete(&block) {
+        return Some(block);
+      }
+      println!("SyntaxError: incomplete input");
+      return None;
+    }
     let read = io::BufRead::read_line(&mut stdin.lock(), &mut line);
     let count = match read {
       Ok(count) => count,
@@ -685,15 +744,129 @@ fn utf8_width(byte: u8) -> usize {
   }
 }
 
+/// Waits until stdin can be read without consuming the bytes.
 #[cfg(unix)]
-fn fill_bytes(bytes: &mut std::collections::VecDeque<u8>) -> bool {
+fn await_readable(
+  pace: &mut dyn FnMut() -> Option<std::time::Duration>,
+) -> bool {
+  loop {
+    match poll_stdin(0) {
+      StdinWait::Data => return true,
+      StdinWait::Eof => return false,
+      StdinWait::Timeout => {}
+    }
+    let wait = pace();
+    match poll_stdin(timeout_ms(wait)) {
+      StdinWait::Data => return true,
+      StdinWait::Eof => return false,
+      StdinWait::Timeout => {}
+    }
+  }
+}
+
+#[cfg(unix)]
+fn await_input(
+  bytes: &mut std::collections::VecDeque<u8>,
+  pace: &mut dyn FnMut() -> Option<std::time::Duration>,
+) -> bool {
+  loop {
+    match poll_stdin(0) {
+      StdinWait::Data => return read_into(bytes),
+      StdinWait::Eof => return false,
+      StdinWait::Timeout => {}
+    }
+    let wait = pace();
+    match poll_stdin(0) {
+      StdinWait::Data => return read_into(bytes),
+      StdinWait::Eof => return false,
+      StdinWait::Timeout => {}
+    }
+    match poll_stdin(timeout_ms(wait)) {
+      StdinWait::Data => return read_into(bytes),
+      StdinWait::Eof => return false,
+      StdinWait::Timeout => {}
+    }
+  }
+}
+
+#[cfg(unix)]
+fn read_more(
+  bytes: &mut std::collections::VecDeque<u8>,
+  timeout_ms: i32,
+) -> bool {
+  match poll_stdin(timeout_ms) {
+    StdinWait::Data => read_into(bytes),
+    StdinWait::Timeout => false,
+    StdinWait::Eof => false,
+  }
+}
+
+#[cfg(unix)]
+enum StdinWait {
+  Data,
+  Timeout,
+  Eof,
+}
+
+#[cfg(unix)]
+fn poll_stdin(timeout_ms: i32) -> StdinWait {
+  loop {
+    let mut poll = libc::pollfd {
+      fd: 0,
+      events: libc::POLLIN,
+      revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut poll, 1, timeout_ms) };
+    if ready < 0 {
+      let err = std::io::Error::last_os_error();
+      if err.kind() == std::io::ErrorKind::Interrupted {
+        continue;
+      }
+      return StdinWait::Eof;
+    }
+    if ready == 0 {
+      return StdinWait::Timeout;
+    }
+    if poll.revents & libc::POLLIN != 0 {
+      return StdinWait::Data;
+    }
+    return StdinWait::Eof;
+  }
+}
+
+#[cfg(unix)]
+fn timeout_ms(wait: Option<std::time::Duration>) -> i32 {
+  let Some(wait) = wait else {
+    return -1;
+  };
+  if wait.is_zero() {
+    return 0;
+  }
+  let ms = wait.as_millis();
+  if ms == 0 { 1 } else { ms.min(60_000) as i32 }
+}
+
+#[cfg(unix)]
+fn read_into(bytes: &mut std::collections::VecDeque<u8>) -> bool {
   let mut buf = [0u8; 64];
-  let count = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
-  if count <= 0 {
+  loop {
+    let count = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
+    if count > 0 {
+      bytes.extend(buf[..count as usize].iter().copied());
+      return true;
+    }
+    if count == 0 {
+      return false;
+    }
+    let err = std::io::Error::last_os_error();
+    if err.kind() == std::io::ErrorKind::Interrupted {
+      continue;
+    }
+    if err.kind() == std::io::ErrorKind::WouldBlock {
+      return false;
+    }
     return false;
   }
-  bytes.extend(buf[..count as usize].iter().copied());
-  true
 }
 
 #[cfg(unix)]
@@ -711,7 +884,7 @@ fn take_escape(bytes: &mut std::collections::VecDeque<u8>) -> String {
     if ready <= 0 {
       return String::new();
     }
-    if !fill_bytes(bytes) {
+    if !read_more(bytes, 200) {
       return String::new();
     }
   }
@@ -726,7 +899,7 @@ fn take_escape(bytes: &mut std::collections::VecDeque<u8>) -> String {
   }
   let mut seq = String::from(next as char);
   for _ in 0..8 {
-    if bytes.is_empty() && !fill_bytes(bytes) {
+    if bytes.is_empty() && !read_more(bytes, 200) {
       break;
     }
     let Some(byte) = bytes.pop_front() else {

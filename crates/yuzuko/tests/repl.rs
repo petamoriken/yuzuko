@@ -219,6 +219,10 @@ struct Pty {
 #[cfg(unix)]
 impl Pty {
   fn spawn(dir: &Path) -> Self {
+    Self::open(dir, false)
+  }
+
+  fn open(dir: &Path, headless: bool) -> Self {
     let mut primary = 0;
     let mut secondary = 0;
     let opened = unsafe {
@@ -231,9 +235,12 @@ impl Pty {
       )
     };
     assert_eq!(opened, 0, "openpty");
-    let child = Command::new(bin())
-      .arg("repl")
-      .current_dir(dir)
+    let mut command = Command::new(bin());
+    command.arg("repl").current_dir(dir);
+    if headless {
+      command.env("YUZUKO_HEADLESS", "1");
+    }
+    let child = command
       .stdin(unsafe { Stdio::from_raw_fd(libc::dup(secondary)) })
       .stdout(unsafe { Stdio::from_raw_fd(libc::dup(secondary)) })
       .stderr(unsafe { Stdio::from_raw_fd(libc::dup(secondary)) })
@@ -499,6 +506,31 @@ fn terminal_session_completes_and_recalls_history() {
   let code = pty.wait_exit();
   assert_eq!(code, 0, "{}", pty.text);
   assert!(!pty.text.contains("panicked"), "{}", pty.text);
+}
+
+#[cfg(unix)]
+#[test]
+fn event_loop_runs_while_the_prompt_waits() {
+  let dir = scratch("live");
+  let mut pty = Pty::open(&dir, true);
+  let step = Duration::from_secs(15);
+  pty.wait_until(|text| text.contains("> "), step);
+
+  pty.send(b"setTimeout(() => console.log(\"while-waiting\"), 40)\n");
+  pty.wait_until(|text| printed_line(text, "while-waiting"), step);
+
+  pty.send(
+    b"const w = new Yuzuko.Window(); w.requestAnimationFrame(() => console.log(\"while-frame\"))\n",
+  );
+  pty.wait_until(|text| printed_line(text, "while-frame"), step);
+
+  let before = pty.text.len();
+  pty.send(b"8\n");
+  pty.wait_until(|text| text[before..].contains("\n8\n"), step);
+
+  pty.send(b"\x04");
+  let code = pty.wait_exit();
+  assert_eq!(code, 0, "{}", pty.text);
 }
 
 #[cfg(unix)]

@@ -27,6 +27,23 @@ thread_local! {
     counts: HashMap::new(),
     depth: 0,
   });
+  /// The line editor is sitting on a prompt. The next console line starts
+  /// on its own row, and [`editor_line_broke`] reports that.
+  static EDITOR_LINE: Cell<bool> = const { Cell::new(false) };
+  static EDITOR_BROKE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Marks that the Unix line editor owns the current terminal row.
+pub(crate) fn editor_hold_line(hold: bool) {
+  EDITOR_LINE.with(|flag| flag.set(hold));
+  if hold {
+    EDITOR_BROKE.with(|flag| flag.set(false));
+  }
+}
+
+/// Whether console output moved off the prompt line since the last call.
+pub(crate) fn editor_line_broke() -> bool {
+  EDITOR_BROKE.with(|flag| flag.replace(false))
 }
 
 fn wasm_in_flight() -> i32 {
@@ -749,6 +766,63 @@ pub(crate) fn pump(
   }
 }
 
+/// One non-blocking turn for the REPL prompt.
+///
+/// Ready timers, host tasks, jobs, and window frames run. The returned delay
+/// is how long the editor may block in the terminal before calling again.
+/// `None` means nothing is scheduled, so the editor waits for a key.
+pub(crate) fn poll_repl(
+  scope: &mut v8::PinScope<'_, '_>,
+) -> Option<std::time::Duration> {
+  scope.perform_microtask_checkpoint();
+  let _ = crate::worker::drain_inbound(scope);
+  let _ = crate::idle::poll_idle_timeout(scope);
+  if let Some(timer) = crate::timers::poll_due() {
+    crate::timers::fire(scope, timer);
+  }
+  if let Some(task) = host::queue().pop_ready() {
+    task.run();
+  }
+  let _ = crate::jobs::poll(scope);
+  if !host::is_dedicated_worker() {
+    let _ = drive_loop(scope);
+  }
+  let _ = crate::idle::poll_idle_period(scope);
+  scope.perform_microtask_checkpoint();
+  repl_wait()
+}
+
+fn repl_wait() -> Option<std::time::Duration> {
+  let interest = if host::is_dedicated_worker() {
+    LoopInterest {
+      keep_alive: false,
+      next_wait: None,
+    }
+  } else {
+    loop_interest()
+  };
+  let queue = host::queue();
+  let hint = earliest_wait(
+    earliest_wait(queue.next_wait(), crate::timers::next_wait()),
+    earliest_wait(interest.next_wait, crate::idle::idle_next_wait()),
+  );
+  let live = interest.keep_alive
+    || !queue.is_idle()
+    || crate::jobs::pending()
+    || crate::worker::keeps_alive(host::agent_id())
+    || crate::idle::idle_has_pending()
+    || wasm_in_flight() > 0;
+  if live {
+    Some(
+      hint
+        .unwrap_or(std::time::Duration::from_millis(16))
+        .min(std::time::Duration::from_millis(16)),
+    )
+  } else {
+    hint
+  }
+}
+
 pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   if crate::worker::drain_inbound(scope) {
     scope.perform_microtask_checkpoint();
@@ -1436,6 +1510,12 @@ fn emit(line: &str, stderr: bool) {
   if capture && !stderr {
     host::with_mut(|state| state.logs.push(line.to_string()));
     return;
+  }
+  if EDITOR_LINE.with(|flag| flag.get())
+    && !EDITOR_BROKE.with(|flag| flag.get())
+  {
+    println!();
+    EDITOR_BROKE.with(|flag| flag.set(true));
   }
   if stderr {
     eprintln!("{line}");
