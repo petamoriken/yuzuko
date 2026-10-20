@@ -1080,6 +1080,78 @@ fn windows_and_linux_layouts_use_the_packager() {
   assert!(icns_plist.contains("CFBundleIconFile"), "{icns_plist}");
 }
 
+/// An already-GUI PE still has its icon checked. A subsystem change is not
+/// required. A stand-in that is not a PE is covered above and is not parsed.
+#[test]
+fn windows_icon_is_checked_for_every_pe() {
+  let dir = scratch("pe-icon");
+  write(&dir.join("src/main.ts"), "console.log(1)\n");
+  write(&dir.join("icons/app.ico"), "ICO-BYTES");
+  write(
+    &dir.join("yuzuko.json"),
+    r#"{
+      "name": "Pack Game",
+      "identifier": "com.example.game2",
+      "icons": { "windows": "./icons/app.ico" }
+    }"#,
+  );
+  let config = load_package(&dir.join("src/main.ts"), None).unwrap();
+  let runtime = dir.join("runtime.exe");
+
+  fs::write(&runtime, pe_image(0x20b, 2)).unwrap();
+  let bad = dir.join("bad-out");
+  let error = package(&config, Target::Windows, &runtime, &bad).unwrap_err();
+  assert!(error.to_string().contains("not a valid .ico"), "{error}");
+  assert!(!bad.exists());
+  assert!(!dir.join(".bad-out.partial").exists());
+
+  fs::write(&runtime, pe_image(0x10b, 3)).unwrap();
+  let bad_console = dir.join("bad-console");
+  let error =
+    package(&config, Target::Windows, &runtime, &bad_console).unwrap_err();
+  assert!(error.to_string().contains("not a valid .ico"), "{error}");
+  assert!(!bad_console.exists());
+
+  // The resource API needs a complete executable. A synthetic image is only
+  // embedded on Windows by the launch test, which copies the real runtime.
+  if cfg!(windows) {
+    return;
+  }
+  let ico = one_pixel_ico();
+  fs::write(dir.join("icons/app.ico"), &ico).unwrap();
+  let already_gui = pe_image(0x20b, 2);
+  fs::write(&runtime, &already_gui).unwrap();
+  let gui_out = dir.join("gui-out");
+  package(&config, Target::Windows, &runtime, &gui_out).unwrap();
+  let gui_exe = gui_out.join("pack-game.exe");
+  assert_eq!(fs::read(gui_out.join("AppIcon.ico")).unwrap(), ico);
+  assert_eq!(fs::read(&gui_exe).unwrap(), already_gui);
+
+  fs::write(&runtime, pe_image(0x10b, 3)).unwrap();
+  let console_out = dir.join("console-out");
+  package(&config, Target::Windows, &runtime, &console_out).unwrap();
+  let mut expected = pe_image(0x10b, 2);
+  expected[0xd8..0xdc].fill(0);
+  assert_eq!(
+    fs::read(console_out.join("pack-game.exe")).unwrap(),
+    expected
+  );
+}
+
+/// PE32 or PE32+ with `e_lfanew` at `0x80`, a checksum of `0x1234`, and the
+/// given subsystem. `2` is GUI and `3` is console.
+fn pe_image(magic: u16, subsystem: u16) -> Vec<u8> {
+  let mut image = vec![0u8; 0x200];
+  image[0..2].copy_from_slice(b"MZ");
+  image[0x3c..0x40].copy_from_slice(&0x80u32.to_le_bytes());
+  image[0x80..0x84].copy_from_slice(b"PE\0\0");
+  image[0x94..0x96].copy_from_slice(&240u16.to_le_bytes());
+  image[0x98..0x9a].copy_from_slice(&magic.to_le_bytes());
+  image[0xd8..0xdc].copy_from_slice(&0x1234u32.to_le_bytes());
+  image[0xdc..0xde].copy_from_slice(&subsystem.to_le_bytes());
+  image
+}
+
 struct Launch {
   status: i32,
   stdout: String,

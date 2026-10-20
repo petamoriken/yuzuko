@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem::ManuallyDrop;
 
 use gilrs::Axis;
 use gilrs::Button;
@@ -77,10 +78,10 @@ struct Store {
 }
 
 struct Devices {
-  /// Leaked for the process. On Windows, gilrs joins its input thread when
-  /// it drops, and a thread-local destructor at exit runs after Windows has
-  /// already ended that thread, which aborts the process.
-  gilrs: Option<&'static mut Gilrs>,
+  /// Not dropped. On Windows, gilrs joins its input thread in `Drop`, and a
+  /// thread-local destructor at exit runs after Windows has already ended
+  /// that thread, which aborts the process.
+  gilrs: Option<ManuallyDrop<Gilrs>>,
   failed: bool,
 }
 
@@ -245,7 +246,7 @@ fn read_devices() -> Option<Vec<Snapshot>> {
     }
     if devices.gilrs.is_none() {
       match Gilrs::new() {
-        Ok(gilrs) => devices.gilrs = Some(Box::leak(Box::new(gilrs))),
+        Ok(gilrs) => devices.gilrs = Some(ManuallyDrop::new(gilrs)),
         Err(_) => {
           devices.failed = true;
           return None;

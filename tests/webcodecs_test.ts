@@ -371,72 +371,80 @@ Yuzuko.test("a rejected avc1 config yields no VideoFrame", async () => {
   decoder.close();
 });
 
-Yuzuko.test({ name: "an H.264 frame matches the golden and then closes", ignore: !hardwareAvc, fn: async () => {
-  const expected = await golden();
-  const frames = await decodeVideo(
-    "avc1.64000B",
-    await bytes("avc1.avcC"),
-    await bytes("avc1.idr"),
-  );
-  assert(frames.length === 1, `frames ${frames.length}`);
-  const frame = frames[0];
-  assert(frame.format === "RGBA", frame.format);
-  comparePicture(await drawFrame(frame), expected, 16);
-  const bitmap = await createImageBitmap(frame);
-  assert(bitmap.width === 64 && bitmap.height === 64, "bitmap");
-  const canvas = new OffscreenCanvas(64, 64);
-  const context = canvas.getContext("2d");
-  assert(context, "bitmap context");
-  context.drawImage(bitmap, 0, 0);
-  comparePicture(context.getImageData(0, 0, 64, 64), expected, 16);
-  frame.close();
-  await assertThrows(() => context.drawImage(frame, 0, 0), "InvalidStateError");
-  await assertThrows(() => createImageBitmap(frame), "InvalidStateError");
-} });
+Yuzuko.test({
+  name: "an H.264 frame matches the golden and then closes",
+  ignore: !hardwareAvc,
+  async fn() {
+    const expected = await golden();
+    const frames = await decodeVideo(
+      "avc1.64000B",
+      await bytes("avc1.avcC"),
+      await bytes("avc1.idr"),
+    );
+    assert(frames.length === 1, `frames ${frames.length}`);
+    const frame = frames[0];
+    assert(frame.format === "RGBA", frame.format);
+    comparePicture(await drawFrame(frame), expected, 16);
+    const bitmap = await createImageBitmap(frame);
+    assert(bitmap.width === 64 && bitmap.height === 64, "bitmap");
+    const canvas = new OffscreenCanvas(64, 64);
+    const context = canvas.getContext("2d");
+    assert(context, "bitmap context");
+    context.drawImage(bitmap, 0, 0);
+    comparePicture(context.getImageData(0, 0, 64, 64), expected, 16);
+    frame.close();
+    await assertThrows(() => context.drawImage(frame, 0, 0), "InvalidStateError");
+    await assertThrows(() => createImageBitmap(frame), "InvalidStateError");
+  },
+});
 
-Yuzuko.test({ name: "WebGPU readback matches the H.264 golden", ignore: !hardwareAvc, fn: async () => {
-  const expected = await golden();
-  const frames = await decodeVideo(
-    "avc1.64000B",
-    await bytes("avc1.avcC"),
-    await bytes("avc1.idr"),
-  );
-  const frame = frames[0];
-  const adapter = await navigator.gpu.requestAdapter();
-  assert(adapter, "adapter");
-  const device = await adapter.requestDevice();
-  const texture = device.createTexture({
-    size: [64, 64],
-    format: "rgba8unorm",
-    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
-  });
-  device.queue.copyExternalImageToTexture(
-    { source: frame },
-    { texture, colorSpace: "srgb" },
-    [64, 64],
-  );
-  const buffer = device.createBuffer({
-    size: 64 * 64 * 4,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-  });
-  const encoder = device.createCommandEncoder();
-  encoder.copyTextureToBuffer(
-    { texture },
-    { buffer, bytesPerRow: 256 },
-    [64, 64],
-  );
-  device.queue.submit([encoder.finish()]);
-  await buffer.mapAsync(GPUMapMode.READ);
-  const pixels = new Uint8ClampedArray(buffer.getMappedRange());
-  const image = new ImageData(pixels.slice(), 64, 64);
-  comparePicture(image, expected, 16);
-  buffer.unmap();
-  frame.close();
-  const later = new OffscreenCanvas(64, 64).getContext("2d");
-  assert(later, "later");
-  await assertThrows(() => later.drawImage(frame, 0, 0), "InvalidStateError");
-  device.destroy();
-} });
+Yuzuko.test({
+  name: "WebGPU readback matches the H.264 golden",
+  ignore: !hardwareAvc,
+  async fn() {
+    const expected = await golden();
+    const frames = await decodeVideo(
+      "avc1.64000B",
+      await bytes("avc1.avcC"),
+      await bytes("avc1.idr"),
+    );
+    const frame = frames[0];
+    const adapter = await navigator.gpu.requestAdapter();
+    assert(adapter, "adapter");
+    const device = await adapter.requestDevice();
+    const texture = device.createTexture({
+      size: [64, 64],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+    });
+    device.queue.copyExternalImageToTexture(
+      { source: frame },
+      { texture, colorSpace: "srgb" },
+      [64, 64],
+    );
+    const buffer = device.createBuffer({
+      size: 64 * 64 * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    const encoder = device.createCommandEncoder();
+    encoder.copyTextureToBuffer(
+      { texture },
+      { buffer, bytesPerRow: 256 },
+      [64, 64],
+    );
+    device.queue.submit([encoder.finish()]);
+    await buffer.mapAsync(GPUMapMode.READ);
+    const pixels = new Uint8ClampedArray(buffer.getMappedRange());
+    const image = new ImageData(pixels.slice(), 64, 64);
+    comparePicture(image, expected, 16);
+    buffer.unmap();
+    frame.close();
+    const later = new OffscreenCanvas(64, 64).getContext("2d");
+    assert(later, "later");
+    await assertThrows(() => later.drawImage(frame, 0, 0), "InvalidStateError");
+    device.destroy();
+  },
+});
 
 Yuzuko.test("AAC samples fill an AudioBuffer", async () => {
   const samples = await decodeAudio(
@@ -449,41 +457,51 @@ Yuzuko.test("AAC samples fill an AudioBuffer", async () => {
   assertTone(samples, 48000, "aac");
 });
 
-Yuzuko.test({ name: "a VideoFrame cannot be transferred", ignore: !hardwareAvc, fn: async () => {
-  const frames = await decodeVideo(
-    "avc1.64000B",
-    await bytes("avc1.avcC"),
-    await bytes("avc1.idr"),
-  );
-  const frame = frames[0];
-  let cloned = "";
-  try {
-    structuredClone(frame);
-  } catch (error) {
-    cloned = error instanceof DOMException ? error.name : "";
-  }
-  assert(cloned === "DataCloneError", cloned);
-  const worker = new Worker(new URL("./fixtures/webcodecs/recv.js", import.meta.url));
-  let transfer = "";
-  try {
-    worker.postMessage(frame);
-  } catch (error) {
-    transfer = error instanceof DOMException ? error.name : "";
-  }
-  worker.terminate();
-  assert(transfer === "DataCloneError", transfer);
-  frame.close();
-} });
+Yuzuko.test({
+  name: "a VideoFrame cannot be transferred",
+  ignore: !hardwareAvc,
+  async fn() {
+    const frames = await decodeVideo(
+      "avc1.64000B",
+      await bytes("avc1.avcC"),
+      await bytes("avc1.idr"),
+    );
+    const frame = frames[0];
+    let cloned = "";
+    try {
+      structuredClone(frame);
+    } catch (error) {
+      cloned = error instanceof DOMException ? error.name : "";
+    }
+    assert(cloned === "DataCloneError", cloned);
+    const worker = new Worker(
+      new URL("./fixtures/webcodecs/recv.js", import.meta.url),
+    );
+    let transfer = "";
+    try {
+      worker.postMessage(frame);
+    } catch (error) {
+      transfer = error instanceof DOMException ? error.name : "";
+    }
+    worker.terminate();
+    assert(transfer === "DataCloneError", transfer);
+    frame.close();
+  },
+});
 
-Yuzuko.test({ name: "prefer-software H.264 still decodes in hardware", ignore: !hardwareAvc, fn: async () => {
-  const expected = await golden();
-  const frames = await decodeVideo(
-    "avc1.64000B",
-    await bytes("avc1.avcC"),
-    await bytes("avc1.idr"),
-    { hardwareAcceleration: "prefer-software" },
-  );
-  assert(frames.length === 1, "prefer-software frame");
-  comparePicture(await drawFrame(frames[0]), expected, 16);
-  frames[0].close();
-} });
+Yuzuko.test({
+  name: "prefer-software H.264 still decodes in hardware",
+  ignore: !hardwareAvc,
+  async fn() {
+    const expected = await golden();
+    const frames = await decodeVideo(
+      "avc1.64000B",
+      await bytes("avc1.avcC"),
+      await bytes("avc1.idr"),
+      { hardwareAcceleration: "prefer-software" },
+    );
+    assert(frames.length === 1, "prefer-software frame");
+    comparePicture(await drawFrame(frames[0]), expected, 16);
+    frames[0].close();
+  },
+});

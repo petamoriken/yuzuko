@@ -175,8 +175,13 @@ fn write_directory(
   copy_runtime(runtime, &executable)?;
   if matches!(target, Target::Windows) {
     let mut image = fs::read(&executable)?;
+    // An already-GUI PE still receives the icon. A file that is not a PE,
+    // such as a test stand-in, is left as copied and its `.ico` is not parsed.
+    let pe = pe_offsets(&image).is_some();
     if gui_subsystem(&mut image) {
       fs::write(&executable, image)?;
+    }
+    if pe {
       if let Some(Icon::File(path)) = &config.icons.windows {
         embed_windows_icon(&executable, path)?;
       }
@@ -214,52 +219,94 @@ fn write_directory(
 
 /// Writes `icons.windows` into the executable so Explorer, a taskbar pin,
 /// and a shortcut show it. The resources are written with the Windows
-/// resource API, so only a Windows host embeds them, and a Windows bundle is
-/// packaged on Windows.
+/// resource API, so only a Windows host embeds them. Every host rejects a
+/// file that is not an icon directory when the runtime is a PE.
 fn embed_windows_icon(
   executable: &Path,
   ico: &Path,
 ) -> Result<(), ConfigError> {
   let bytes = fs::read(ico)?;
-  crate::bundle::icon::parse_ico(&bytes)?;
   #[cfg(windows)]
   crate::bundle::icon::embed(executable, &bytes)?;
   #[cfg(not(windows))]
-  let _ = executable;
+  {
+    let _ = executable;
+    crate::bundle::icon::parse_ico(&bytes)?;
+  }
   Ok(())
+}
+
+fn read_u16(image: &[u8], at: usize) -> Option<u16> {
+  let end = at.checked_add(2)?;
+  let bytes = image.get(at..end)?;
+  Some(u16::from_le_bytes([bytes[0], bytes[1]]))
+}
+
+fn read_u32(image: &[u8], at: usize) -> Option<u32> {
+  let end = at.checked_add(4)?;
+  let bytes = image.get(at..end)?;
+  Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+struct PeOffsets {
+  checksum: usize,
+  subsystem: usize,
+}
+
+/// Offsets of a PE32 or PE32+ image whose optional header covers `Subsystem`.
+///
+/// `Subsystem` is at optional-header offset 68 for both magics. A short
+/// declared optional header, or a file that ends before that field, is not a
+/// PE this packager edits.
+fn pe_offsets(image: &[u8]) -> Option<PeOffsets> {
+  const PE32: u16 = 0x10b;
+  const PE32_PLUS: u16 = 0x20b;
+  if image.get(0..2) != Some(b"MZ") {
+    return None;
+  }
+  let header = read_u32(image, 0x3c)? as usize;
+  let signature_end = header.checked_add(4)?;
+  if image.get(header..signature_end) != Some(b"PE\0\0") {
+    return None;
+  }
+  // File header: `SizeOfOptionalHeader` is at offset 16. The optional header
+  // follows the 4-byte signature and the 20-byte file header.
+  let optional = read_u16(image, header.checked_add(20)?)?;
+  if optional < 70 {
+    return None;
+  }
+  let magic = read_u16(image, header.checked_add(24)?)?;
+  if magic != PE32 && magic != PE32_PLUS {
+    return None;
+  }
+  let checksum = header.checked_add(24 + 64)?;
+  let subsystem = header.checked_add(24 + 68)?;
+  let subsystem_end = subsystem.checked_add(2)?;
+  image.get(checksum..subsystem_end)?;
+  Some(PeOffsets {
+    checksum,
+    subsystem,
+  })
 }
 
 /// Marks a PE image as a Windows GUI program, as `editbin /SUBSYSTEM:WINDOWS`
 /// does. A double-clicked bundle then opens no console window. Standard
 /// handles a parent passes in, such as pipes, still work. Returns whether the
-/// image was a console PE image and was changed.
+/// image was a console PE image and was changed. The checksum is cleared:
+/// zero means the image has no checksum, and the loader does not require one
+/// for a normal executable.
 pub(crate) fn gui_subsystem(image: &mut [u8]) -> bool {
   const CONSOLE: u16 = 3;
   const GUI: u16 = 2;
-  let read_u32 = |at: usize| {
-    image
-      .get(at..at + 4)
-      .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-  };
-  if image.get(0..2) != Some(b"MZ") {
-    return false;
-  }
-  let Some(header) = read_u32(0x3c).map(|offset| offset as usize) else {
+  let Some(offsets) = pe_offsets(image) else {
     return false;
   };
-  if image.get(header..header + 4) != Some(b"PE\0\0") {
+  let at = offsets.subsystem;
+  if u16::from_le_bytes([image[at], image[at + 1]]) != CONSOLE {
     return false;
   }
-  // The optional header follows the 4-byte signature and the 20-byte file
-  // header. `Subsystem` is at offset 68 for both PE32 and PE32+.
-  let at = header + 24 + 68;
-  let Some(field) = image.get_mut(at..at + 2) else {
-    return false;
-  };
-  if u16::from_le_bytes([field[0], field[1]]) != CONSOLE {
-    return false;
-  }
-  field.copy_from_slice(&GUI.to_le_bytes());
+  image[at..at + 2].copy_from_slice(&GUI.to_le_bytes());
+  image[offsets.checksum..at].fill(0);
   true
 }
 
@@ -629,13 +676,19 @@ impl From<std::io::Error> for ConfigError {
 
 #[cfg(test)]
 mod tests {
-  use super::gui_subsystem;
+  use super::{gui_subsystem, pe_offsets};
 
-  fn image(subsystem: u16) -> Vec<u8> {
+  fn image(magic: u16, subsystem: u16) -> Vec<u8> {
     let mut image = vec![0u8; 0x200];
     image[0..2].copy_from_slice(b"MZ");
     image[0x3c..0x40].copy_from_slice(&0x80u32.to_le_bytes());
     image[0x80..0x84].copy_from_slice(b"PE\0\0");
+    let size_at = 0x80 + 20;
+    image[size_at..size_at + 2].copy_from_slice(&240u16.to_le_bytes());
+    let magic_at = 0x80 + 24;
+    image[magic_at..magic_at + 2].copy_from_slice(&magic.to_le_bytes());
+    let checksum = 0x80 + 24 + 64;
+    image[checksum..checksum + 4].copy_from_slice(&0x1234u32.to_le_bytes());
     let at = 0x80 + 24 + 68;
     image[at..at + 2].copy_from_slice(&subsystem.to_le_bytes());
     image
@@ -643,21 +696,39 @@ mod tests {
 
   #[test]
   fn console_image_becomes_gui() {
-    let mut console = image(3);
-    assert!(gui_subsystem(&mut console));
-    assert_eq!(console, image(2));
+    for magic in [0x10bu16, 0x20b] {
+      let mut console = image(magic, 3);
+      assert!(gui_subsystem(&mut console), "{magic:#x}");
+      let mut expected = image(magic, 2);
+      let checksum = 0x80 + 24 + 64;
+      expected[checksum..checksum + 4].fill(0);
+      assert_eq!(console, expected);
+    }
   }
 
   #[test]
   fn other_bytes_stay_unchanged() {
-    let mut gui = image(2);
+    let mut gui = image(0x20b, 2);
+    assert!(pe_offsets(&gui).is_some());
     assert!(!gui_subsystem(&mut gui));
-    assert_eq!(gui, image(2));
+    assert_eq!(gui, image(0x20b, 2));
     let mut text = b"STANDIN-RUNTIME".to_vec();
+    assert!(pe_offsets(&text).is_none());
     assert!(!gui_subsystem(&mut text));
     assert_eq!(text, b"STANDIN-RUNTIME");
-    let mut truncated = image(3);
+    let mut truncated = image(0x20b, 3);
     truncated.truncate(0x90);
+    assert!(pe_offsets(&truncated).is_none());
     assert!(!gui_subsystem(&mut truncated));
+    let mut bad_magic = image(0, 3);
+    assert!(pe_offsets(&bad_magic).is_none());
+    assert!(!gui_subsystem(&mut bad_magic));
+    assert_eq!(bad_magic, image(0, 3));
+    let mut short_header = image(0x20b, 3);
+    let size_at = 0x80 + 20;
+    short_header[size_at..size_at + 2].copy_from_slice(&68u16.to_le_bytes());
+    assert!(pe_offsets(&short_header).is_none());
+    assert!(!gui_subsystem(&mut short_header));
+    assert_eq!(short_header[0x80 + 24 + 68], 3);
   }
 }

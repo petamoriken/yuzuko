@@ -30,6 +30,9 @@ pub fn run_repl() -> Result<(), RuntimeError> {
       host::set_sandbox_dir(&cwd);
       host::set_entry_url(origin.clone());
       let mut editor = line::Editor::new();
+      // Cooked mode between lines would edit typeahead before the next read.
+      #[cfg(unix)]
+      let _typeahead = line::hold_typeahead();
       loop {
         // Completion and the prompt pump both need this scope, and they
         // run one at a time inside `read`.

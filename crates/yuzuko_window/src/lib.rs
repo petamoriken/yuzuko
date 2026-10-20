@@ -10,6 +10,7 @@ mod inbox;
 mod input;
 mod media;
 mod os;
+mod png_rgba;
 mod prefs;
 mod session;
 mod shell;

@@ -432,54 +432,10 @@ fn copy_bytes(value: v8::Local<v8::Value>) -> Result<Vec<u8>, OpError> {
 }
 
 fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
-  let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-  decoder.set_transformations(
-    png::Transformations::EXPAND | png::Transformations::STRIP_16,
-  );
-  let mut reader = decoder
-    .read_info()
-    .map_err(|_| "The tray icon must be a PNG.".to_string())?;
-  let size = reader
-    .output_buffer_size()
+  let (rgba, width, height) = crate::png_rgba::decode(bytes)
     .ok_or_else(|| "The tray icon must be a PNG.".to_string())?;
-  let mut buffer = vec![0; size];
-  let frame = reader
-    .next_frame(&mut buffer)
-    .map_err(|_| "The tray icon must be a PNG.".to_string())?;
-  let width = frame.width;
-  let height = frame.height;
   if width == 0 || height == 0 || width > 1024 || height > 1024 {
     return Err("The tray icon is too large.".to_string());
-  }
-  let pixels = &buffer[..frame.buffer_size()];
-  let rgba = match frame.color_type {
-    png::ColorType::Rgba => pixels.to_vec(),
-    png::ColorType::Rgb => {
-      let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
-      for chunk in pixels.as_chunks::<3>().0 {
-        rgba.extend_from_slice(chunk);
-        rgba.push(255);
-      }
-      rgba
-    }
-    png::ColorType::Grayscale => pixels
-      .iter()
-      .flat_map(|sample| [*sample, *sample, *sample, 255])
-      .collect(),
-    png::ColorType::GrayscaleAlpha => pixels
-      .as_chunks::<2>()
-      .0
-      .iter()
-      .flat_map(|chunk| [chunk[0], chunk[0], chunk[0], chunk[1]])
-      .collect(),
-    _ => return Err("The tray icon must be a PNG.".to_string()),
-  };
-  let expected = (width as usize)
-    .checked_mul(height as usize)
-    .and_then(|count| count.checked_mul(4))
-    .ok_or_else(|| "The tray icon is too large.".to_string())?;
-  if rgba.len() != expected {
-    return Err("The tray icon must be a PNG.".to_string());
   }
   Ok((rgba, width, height))
 }

@@ -9,6 +9,16 @@ use std::io::{self, IsTerminal, Write};
 
 use crate::repl;
 
+/// Keeps canonical input and echo off until dropped.
+///
+/// `Editor::read` switches the terminal itself, but only while it is waiting
+/// for a line. This holds the same input mode across the chunk that runs
+/// between reads. See `term::RawTerm::enter_typeahead`.
+#[cfg(unix)]
+pub(crate) fn hold_typeahead() -> Option<term::RawTerm> {
+  term::RawTerm::enter_typeahead()
+}
+
 pub struct Editor {
   history: Vec<String>,
   nav: Option<usize>,
@@ -913,15 +923,33 @@ mod term {
 
   impl RawTerm {
     pub fn enter() -> Option<Self> {
+      // `ISIG` is off so Ctrl-C is a byte the editor can cancel with.
+      Self::apply(libc::ICANON | libc::ECHO | libc::ISIG, true)
+    }
+
+    /// Canonical input and echo stay off, and `ISIG` stays on.
+    ///
+    /// Used for the whole REPL session. `enter` restores whatever mode was
+    /// current when a line read ends, so without this a running chunk would
+    /// put the terminal back into cooked mode. Bytes typed during that chunk
+    /// would be edited by the kernel, and Escape or Delete would not reach
+    /// the next read. Ctrl-C still interrupts the chunk.
+    pub fn enter_typeahead() -> Option<Self> {
+      Self::apply(libc::ICANON | libc::ECHO, false)
+    }
+
+    fn apply(disable: libc::tcflag_t, byte_at_a_time: bool) -> Option<Self> {
       unsafe {
         let mut original = std::mem::zeroed::<libc::termios>();
         if libc::tcgetattr(0, &mut original) != 0 {
           return None;
         }
         let mut raw = original;
-        raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
-        raw.c_cc[libc::VMIN] = 1;
-        raw.c_cc[libc::VTIME] = 0;
+        raw.c_lflag &= !disable;
+        if byte_at_a_time {
+          raw.c_cc[libc::VMIN] = 1;
+          raw.c_cc[libc::VTIME] = 0;
+        }
         if libc::tcsetattr(0, libc::TCSANOW, &raw) != 0 {
           return None;
         }

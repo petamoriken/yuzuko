@@ -124,33 +124,8 @@ fn largest_icon(dir: &Path) -> Option<winit::window::Icon> {
 /// RGBA8 pixels of a PNG file, or `None` when it does not decode.
 #[cfg(any(test, all(unix, not(target_os = "macos"))))]
 fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
-  let file = std::fs::File::open(path).ok()?;
-  let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
-  decoder.set_transformations(png::Transformations::normalize_to_color8());
-  let mut reader = decoder.read_info().ok()?;
-  let mut buf = vec![0; reader.output_buffer_size()?];
-  let info = reader.next_frame(&mut buf).ok()?;
-  let pixels = &buf[..info.buffer_size()];
-  let rgba = match info.color_type {
-    png::ColorType::Rgba => pixels.to_vec(),
-    png::ColorType::Rgb => pixels
-      .as_chunks::<3>()
-      .0
-      .iter()
-      .flat_map(|&[r, g, b]| [r, g, b, 255])
-      .collect(),
-    png::ColorType::GrayscaleAlpha => pixels
-      .as_chunks::<2>()
-      .0
-      .iter()
-      .flat_map(|&[v, a]| [v, v, v, a])
-      .collect(),
-    png::ColorType::Grayscale => {
-      pixels.iter().flat_map(|&v| [v, v, v, 255]).collect()
-    }
-    png::ColorType::Indexed => return None,
-  };
-  Some((rgba, info.width, info.height))
+  let bytes = std::fs::read(path).ok()?;
+  crate::png_rgba::decode(&bytes)
 }
 
 #[cfg(test)]
