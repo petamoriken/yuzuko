@@ -4,10 +4,11 @@
  * API reference for the Yuzuko runtime.
  *
  * Web-standard and WinterTC APIs are declared on the global scope. Runtime
- * APIs are declared on {@link Yuzuko}. This file stands alone. Names that
- * `lib.dom.d.ts` also declares are defined here too, so a program that loads
- * both reports duplicate identifiers. The ambient declarations describe the
- * main realm. {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
+ * APIs are declared on {@link Yuzuko}. This file stands alone. It declares the
+ * types this runtime has. A name that `lib.dom.d.ts` also declares is defined
+ * here with this runtime's members, so a program that loads both reports
+ * duplicate identifiers. The ambient declarations describe the main realm.
+ * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
  * A web-standard interface or member ends with an MDN link in the form used by
  * [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator).
@@ -31,11 +32,7 @@ type XMLHttpRequestBodyInit = Blob | BufferSource | FormData | URLSearchParams |
 type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
 type CanvasDirection = "inherit" | "ltr" | "rtl";
 type CanvasFillRule = "evenodd" | "nonzero";
-type CanvasImageSource = HTMLOrSVGImageElement | HTMLVideoElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | VideoFrame;
-type HTMLOrSVGImageElement = HTMLImageElement | SVGImageElement;
-interface HTMLImageElement {}
-interface SVGImageElement {}
-interface HTMLVideoElement {}
+type CanvasImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
 type CanvasLineCap = "butt" | "round" | "square";
 type CanvasLineJoin = "bevel" | "miter" | "round";
 type CanvasTextAlign = "center" | "end" | "left" | "right" | "start";
@@ -62,8 +59,7 @@ interface FrameRequestCallback {
   (time: DOMHighResTimeStamp): void;
 }
 type GPUAddressMode = "clamp-to-edge" | "mirror-repeat" | "repeat";
-type GPUBindingResource = GPUSampler | GPUTexture | GPUTextureView | GPUBuffer | GPUBufferBinding | GPUExternalTexture;
-interface GPUExternalTexture {}
+type GPUBindingResource = GPUSampler | GPUTexture | GPUTextureView | GPUBuffer | GPUBufferBinding;
 type GPUBlendFactor = "constant" | "dst" | "dst-alpha" | "one" | "one-minus-constant" | "one-minus-dst" | "one-minus-dst-alpha" | "one-minus-src" | "one-minus-src-alpha" | "src" | "src-alpha" | "src-alpha-saturated" | "zero";
 type GPUBlendOperation = "add" | "max" | "min" | "reverse-subtract" | "subtract";
 type GPUBufferBindingType = "read-only-storage" | "storage" | "uniform";
@@ -83,10 +79,6 @@ interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUDebugCommand
   end(): void;
   setPipeline(pipeline: GPUComputePipeline): void;
 }
-declare var GPUComputePassEncoder: {
-  prototype: GPUComputePassEncoder;
-  new(): GPUComputePassEncoder;
-};
 
 interface GPUBindingCommandsMixin {
   setBindGroup(index: GPUIndex32, bindGroup: GPUBindGroup | null, dynamicOffsets?: GPUBufferDynamicOffset[]): void;
@@ -110,24 +102,16 @@ interface GPUObjectBase {
 interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
 
 }
-declare var GPUComputePipeline: {
-  prototype: GPUComputePipeline;
-  new(): GPUComputePipeline;
-};
 
 interface GPUPipelineBase {
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
-type GPUCopyExternalImageSource = ImageBitmap | ImageData | HTMLImageElement | HTMLVideoElement | VideoFrame | HTMLCanvasElement | OffscreenCanvas;
+type GPUCopyExternalImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
 type GPUCullMode = "back" | "front" | "none";
 type GPUDeviceLostReason = "destroyed" | "unknown";
 interface GPUError {
   readonly message: string;
 }
-declare var GPUError: {
-  prototype: GPUError;
-  new(): GPUError;
-};
 
 type GPUErrorFilter = "internal" | "out-of-memory" | "validation";
 type GPUExtent3D = GPUIntegerCoordinate[] | GPUExtent3DDict;
@@ -162,20 +146,12 @@ interface GPUQuerySet extends GPUObjectBase {
   readonly type: GPUQueryType;
   destroy(): void;
 }
-declare var GPUQuerySet: {
-  prototype: GPUQuerySet;
-  new(): GPUQuerySet;
-};
 
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
 interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUDebugCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
-declare var GPURenderBundleEncoder: {
-  prototype: GPURenderBundleEncoder;
-  new(): GPURenderBundleEncoder;
-};
 
 interface GPURenderCommandsMixin {
   draw(vertexCount: GPUSize32, instanceCount?: GPUSize32, firstVertex?: GPUSize32, firstInstance?: GPUSize32): void;
@@ -212,10 +188,6 @@ type GPUStoreOp = "discard" | "store";
 interface GPUSupportedFeatures {
   forEach(callbackfn: (value: string, key: string, parent: GPUSupportedFeatures) => void, thisArg?: any): void;
 }
-declare var GPUSupportedFeatures: {
-  prototype: GPUSupportedFeatures;
-  new(): GPUSupportedFeatures;
-};
 
 interface GPUSupportedFeatures extends ReadonlySet<string> {
 
@@ -253,11 +225,6 @@ interface GPUSupportedLimits {
   readonly minStorageBufferOffsetAlignment: number;
   readonly minUniformBufferOffsetAlignment: number;
 }
-declare var GPUSupportedLimits: {
-  prototype: GPUSupportedLimits;
-  new(): GPUSupportedLimits;
-};
-
 type GPUTextureAspect = "all" | "depth-only" | "stencil-only";
 type GPUTextureDimension = "1d" | "2d" | "3d";
 type GPUTextureFormat = "astc-10x10-unorm" | "astc-10x10-unorm-srgb" | "astc-10x5-unorm" | "astc-10x5-unorm-srgb" | "astc-10x6-unorm" | "astc-10x6-unorm-srgb" | "astc-10x8-unorm" | "astc-10x8-unorm-srgb" | "astc-12x10-unorm" | "astc-12x10-unorm-srgb" | "astc-12x12-unorm" | "astc-12x12-unorm-srgb" | "astc-4x4-unorm" | "astc-4x4-unorm-srgb" | "astc-5x4-unorm" | "astc-5x4-unorm-srgb" | "astc-5x5-unorm" | "astc-5x5-unorm-srgb" | "astc-6x5-unorm" | "astc-6x5-unorm-srgb" | "astc-6x6-unorm" | "astc-6x6-unorm-srgb" | "astc-8x5-unorm" | "astc-8x5-unorm-srgb" | "astc-8x6-unorm" | "astc-8x6-unorm-srgb" | "astc-8x8-unorm" | "astc-8x8-unorm-srgb" | "bc1-rgba-unorm" | "bc1-rgba-unorm-srgb" | "bc2-rgba-unorm" | "bc2-rgba-unorm-srgb" | "bc3-rgba-unorm" | "bc3-rgba-unorm-srgb" | "bc4-r-snorm" | "bc4-r-unorm" | "bc5-rg-snorm" | "bc5-rg-unorm" | "bc6h-rgb-float" | "bc6h-rgb-ufloat" | "bc7-rgba-unorm" | "bc7-rgba-unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" | "depth16unorm" | "depth24plus" | "depth24plus-stencil8" | "depth32float" | "depth32float-stencil8" | "eac-r11snorm" | "eac-r11unorm" | "eac-rg11snorm" | "eac-rg11unorm" | "etc2-rgb8a1unorm" | "etc2-rgb8a1unorm-srgb" | "etc2-rgb8unorm" | "etc2-rgb8unorm-srgb" | "etc2-rgba8unorm" | "etc2-rgba8unorm-srgb" | "r16float" | "r16sint" | "r16snorm" | "r16uint" | "r16unorm" | "r32float" | "r32sint" | "r32uint" | "r8sint" | "r8snorm" | "r8uint" | "r8unorm" | "rg11b10ufloat" | "rg16float" | "rg16sint" | "rg16snorm" | "rg16uint" | "rg16unorm" | "rg32float" | "rg32sint" | "rg32uint" | "rg8sint" | "rg8snorm" | "rg8uint" | "rg8unorm" | "rgb10a2uint" | "rgb10a2unorm" | "rgb9e5ufloat" | "rgba16float" | "rgba16sint" | "rgba16snorm" | "rgba16uint" | "rgba16unorm" | "rgba32float" | "rgba32sint" | "rgba32uint" | "rgba8sint" | "rgba8snorm" | "rgba8uint" | "rgba8unorm" | "rgba8unorm-srgb" | "stencil8";
@@ -270,7 +237,6 @@ type GamepadHapticEffectType = "dual-rumble" | "trigger-rumble";
 type GamepadHapticsResult = "complete" | "preempted";
 type GamepadMappingType = "" | "standard" | "xr-standard";
 type GlobalCompositeOperation = "color" | "color-burn" | "color-dodge" | "copy" | "darken" | "destination-atop" | "destination-in" | "destination-out" | "destination-over" | "difference" | "exclusion" | "hard-light" | "hue" | "lighten" | "lighter" | "luminosity" | "multiply" | "overlay" | "saturation" | "screen" | "soft-light" | "source-atop" | "source-in" | "source-out" | "source-over" | "xor";
-interface HTMLCanvasElement {}
 type HardwareAcceleration = "no-preference" | "prefer-hardware" | "prefer-software";
 type HeadersInit = [string, string][] | Record<string, string> | Headers;
 interface IdleRequestCallback {
@@ -282,9 +248,6 @@ type ImageDataArray = Uint8ClampedArray<ArrayBuffer>;
 type ImageSmoothingQuality = "high" | "low" | "medium";
 type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 type KeyUsage = "decrypt" | "deriveBits" | "deriveKey" | "encrypt" | "sign" | "unwrapKey" | "verify" | "wrapKey";
-type MessageEventSource = WindowProxy | MessagePort | ServiceWorker;
-type WindowProxy = Window;
-interface ServiceWorker extends EventTarget {}
 type OnErrorEventHandler = OnErrorEventHandlerNonNull | null;
 interface OnErrorEventHandlerNonNull {
   (event: Event | string, source?: string, lineno?: number, colno?: number, error?: Error): any;
@@ -300,17 +263,6 @@ declare var PeriodicWave: {
 
 type PredefinedColorSpace = "display-p3" | "srgb";
 type PresentationStyle = "attachment" | "inline" | "unspecified";
-interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly target: T | null;
-  readonly total: number;
-}
-declare var ProgressEvent: {
-  prototype: ProgressEvent;
-  new(type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
-};
-
 interface QueuingStrategySize<T = any> {
   (chunk: T): number;
 }
@@ -324,105 +276,7 @@ interface ReadableStreamReadDoneResult<T> {
   value: T | undefined;
 }
 type ReadableStreamType = "bytes";
-type RenderingContext = CanvasRenderingContext2D | ImageBitmapRenderingContext | WebGLRenderingContext | WebGL2RenderingContext | GPUCanvasContext;
-interface CanvasRenderingContext2D extends CanvasCompositing, CanvasDrawImage, CanvasDrawPath, CanvasFillStrokeStyles, CanvasFilters, CanvasImageData, CanvasImageSmoothing, CanvasPath, CanvasPathDrawingStyles, CanvasRect, CanvasSettings, CanvasShadowStyles, CanvasState, CanvasText, CanvasTextDrawingStyles, CanvasTransform, CanvasUserInterface {
-  readonly canvas: HTMLCanvasElement;
-}
-interface CanvasCompositing {
-  globalAlpha: number;
-  globalCompositeOperation: GlobalCompositeOperation;
-}
-interface CanvasDrawImage {
-  drawImage(image: CanvasImageSource, dx: number, dy: number): void;
-  drawImage(image: CanvasImageSource, dx: number, dy: number, dw: number, dh: number): void;
-  drawImage(image: CanvasImageSource, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void;
-}
-interface CanvasDrawPath {
-  beginPath(): void;
-  clip(fillRule?: CanvasFillRule): void;
-  clip(path: Path2D, fillRule?: CanvasFillRule): void;
-  fill(fillRule?: CanvasFillRule): void;
-  fill(path: Path2D, fillRule?: CanvasFillRule): void;
-  isPointInPath(x: number, y: number, fillRule?: CanvasFillRule): boolean;
-  isPointInPath(path: Path2D, x: number, y: number, fillRule?: CanvasFillRule): boolean;
-  isPointInStroke(x: number, y: number): boolean;
-  isPointInStroke(path: Path2D, x: number, y: number): boolean;
-  stroke(): void;
-  stroke(path: Path2D): void;
-}
-interface CanvasFillStrokeStyles {}
-interface CanvasFilters {
-  filter: string;
-}
-interface CanvasImageData {
-  createImageData(sw: number, sh: number, settings?: ImageDataSettings): ImageData;
-  createImageData(imageData: ImageData): ImageData;
-  getImageData(sx: number, sy: number, sw: number, sh: number, settings?: ImageDataSettings): ImageData;
-  putImageData(imageData: ImageData, dx: number, dy: number): void;
-  putImageData(imageData: ImageData, dx: number, dy: number, dirtyX: number, dirtyY: number, dirtyWidth: number, dirtyHeight: number): void;
-}
-interface CanvasImageSmoothing {
-  imageSmoothingEnabled: boolean;
-  imageSmoothingQuality: ImageSmoothingQuality;
-}
-interface CanvasPath {
-  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void;
-  arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
-  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void;
-  closePath(): void;
-  ellipse(x: number, y: number, radiusX: number, radiusY: number, rotation: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void;
-  lineTo(x: number, y: number): void;
-  moveTo(x: number, y: number): void;
-  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
-  rect(x: number, y: number, w: number, h: number): void;
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | DOMPointInit | (number | DOMPointInit)[]): void;
-}
-interface CanvasPath {
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | DOMPointInit | Iterable<number | DOMPointInit>): void;
-}
-interface CanvasPathDrawingStyles {}
-interface CanvasRect {
-  clearRect(x: number, y: number, w: number, h: number): void;
-  fillRect(x: number, y: number, w: number, h: number): void;
-  strokeRect(x: number, y: number, w: number, h: number): void;
-}
-interface CanvasSettings {
-  getContextAttributes(): CanvasRenderingContext2DSettings;
-}
-interface CanvasShadowStyles {}
-interface CanvasState {
-  isContextLost(): boolean;
-  reset(): void;
-  restore(): void;
-  save(): void;
-}
-interface CanvasText {
-  fillText(text: string, x: number, y: number, maxWidth?: number): void;
-  measureText(text: string): TextMetrics;
-  strokeText(text: string, x: number, y: number, maxWidth?: number): void;
-}
-interface CanvasTextDrawingStyles {}
-interface CanvasTransform {
-  getTransform(): DOMMatrix;
-  resetTransform(): void;
-  rotate(angle: number): void;
-  scale(x: number, y: number): void;
-  setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
-  setTransform(transform?: DOMMatrix2DInit): void;
-  transform(a: number, b: number, c: number, d: number, e: number, f: number): void;
-  translate(x: number, y: number): void;
-}
-interface CanvasUserInterface {
-  drawFocusIfNeeded(element: Element): void;
-  drawFocusIfNeeded(path: Path2D, element: Element): void;
-}
-interface Element {}
-interface ImageBitmapRenderingContext {
-  readonly canvas: HTMLCanvasElement | OffscreenCanvas;
-  transferFromImageBitmap(bitmap: ImageBitmap | null): void;
-}
-interface WebGLRenderingContext {}
-interface WebGL2RenderingContext {}
+type RenderingContext = OffscreenCanvasRenderingContext2D | BitmapContext | GPUCanvasContext;
 type RequestCache = "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload";
 type RequestCredentials = "include" | "omit" | "same-origin";
 type RequestInfo = Request | string;
@@ -430,9 +284,7 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
-type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | MediaSourceHandle | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | RTCDataChannel | ArrayBuffer;
-interface MediaSourceHandle {}
-interface RTCDataChannel {}
+type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
 }
@@ -449,41 +301,17 @@ type ReadableStreamController<T> = ReadableStreamDefaultController<T> | Readable
 interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
 }
-interface VideoColorSpace {
-  readonly fullRange: boolean | null;
-  readonly matrix: VideoMatrixCoefficients | null;
-  readonly primaries: VideoColorPrimaries | null;
-  readonly transfer: VideoTransferCharacteristics | null;
-  toJSON(): VideoColorSpaceInit;
-}
-type VideoMatrixCoefficients = "bt470bg" | "bt709" | "rgb" | "smpte170m";
-type VideoColorPrimaries = "bt470bg" | "bt709" | "smpte170m";
-type VideoTransferCharacteristics = "bt709" | "iec61966-2-1" | "smpte170m";
-interface VideoColorSpaceInit {
-  fullRange?: boolean | null;
-  matrix?: VideoMatrixCoefficients | null;
-  primaries?: VideoColorPrimaries | null;
-  transfer?: VideoTransferCharacteristics | null;
-}
 type VideoPixelFormat = "BGRA" | "BGRX" | "I420" | "I420A" | "I422" | "I444" | "NV12" | "RGBA" | "RGBX";
 interface WGSLLanguageFeatures {
   forEach(callbackfn: (value: string, key: string, parent: WGSLLanguageFeatures) => void, thisArg?: any): void;
 }
-declare var WGSLLanguageFeatures: {
-  prototype: WGSLLanguageFeatures;
-  new(): WGSLLanguageFeatures;
-};
-
 interface WGSLLanguageFeatures extends ReadonlySet<string> {
 
 }
 interface Window extends EventTarget {}
 type WorkerType = "classic" | "module";
-interface MediaSource extends EventTarget {}
 type URLPatternInput = string | URLPatternInit;
 type BlobPart = BufferSource | Blob | string;
-interface HTMLFormElement {}
-interface HTMLElement {}
 interface UnderlyingDefaultSource<R = any> {
   cancel?: UnderlyingSourceCancelCallback;
   pull?: (controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>;
@@ -494,31 +322,6 @@ interface QueuingStrategyInit {
   highWaterMark: number;
 }
 type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
-interface VideoFrameInit {
-  alpha?: AlphaOption;
-  displayHeight?: number;
-  displayWidth?: number;
-  duration?: number;
-  timestamp?: number;
-  visibleRect?: DOMRectInit;
-}
-type AlphaOption = "discard" | "keep";
-interface VideoFrameBufferInit {
-  codedHeight: number;
-  codedWidth: number;
-  colorSpace?: VideoColorSpaceInit;
-  displayHeight?: number;
-  displayWidth?: number;
-  duration?: number;
-  format: VideoPixelFormat;
-  layout?: PlaneLayout[];
-  timestamp: number;
-  visibleRect?: DOMRectInit;
-}
-interface PlaneLayout {
-  offset: number;
-  stride: number;
-}
 interface VideoDecoderSupport {
   config?: VideoDecoderConfig;
   supported?: boolean;
@@ -531,12 +334,6 @@ interface MediaQueryListEventInit extends EventInit {
   matches?: boolean;
   media?: string;
 }
-interface ProgressEventInit extends EventInit {
-  lengthComputable?: boolean;
-  loaded?: number;
-  total?: number;
-}
-
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventListener)
  */
@@ -3184,7 +2981,6 @@ interface MessageEventInit<T = any> extends EventInit {
   data?: T;
   origin?: string;
   lastEventId?: string;
-  source?: MessageEventSource | null;
   ports?: MessagePort[];
 }
 
@@ -3204,8 +3000,12 @@ interface MessageEvent<T = any> extends Event {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/lastEventId) */
   readonly lastEventId: string;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/source) */
-  readonly source: MessageEventSource | null;
+  /**
+   * Always `null`. There is no document and no service worker.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/source)
+   */
+  readonly source: null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports) */
   readonly ports: readonly MessagePort[];
@@ -3300,7 +3100,7 @@ declare var URL: {
   prototype: URL;
   new(url: string | URL, base?: string | URL): URL;
   canParse(url: string | URL, base?: string | URL): boolean;
-  createObjectURL(obj: Blob | MediaSource): string;
+  createObjectURL(obj: Blob): string;
   parse(url: string | URL, base?: string | URL): URL | null;
   revokeObjectURL(url: string): void;
 };
@@ -3639,22 +3439,22 @@ interface FileReader extends EventTarget {
   readonly error: DOMException | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/loadstart_event) */
-  onloadstart: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadstart: ((this: FileReader, ev: Event) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/progress_event) */
-  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onprogress: ((this: FileReader, ev: Event) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/load_event) */
-  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onload: ((this: FileReader, ev: Event) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/abort_event) */
-  onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onabort: ((this: FileReader, ev: Event) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/error_event) */
-  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onerror: ((this: FileReader, ev: Event) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/loadend_event) */
-  onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadend: ((this: FileReader, ev: Event) => any) | null;
 
   readonly EMPTY: 0;
   readonly LOADING: 1;
@@ -3993,7 +3793,7 @@ interface FormData {
 }
 declare var FormData: {
   prototype: FormData;
-  new(form?: HTMLFormElement, submitter?: HTMLElement | null): FormData;
+  new(): FormData;
 };
 
 
@@ -5527,7 +5327,7 @@ declare var OffscreenCanvas: {
 interface OffscreenCanvasRenderingContext2D {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/canvas) */
-  readonly canvas: OffscreenCanvas;
+  readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
 
   /**
    * Returns `colorSpace` and `colorType` from the context.
@@ -5639,7 +5439,7 @@ interface OffscreenCanvasRenderingContext2D {
   createConicGradient(startAngle: number, x: number, y: number): CanvasGradient;
 
   /**
-   * Sources are {@link ImageBitmap} and {@link OffscreenCanvas}.
+   * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createPattern)
    */
@@ -6531,10 +6331,6 @@ interface GPUDeviceLostInfo {
   readonly reason: GPUDeviceLostReason;
   readonly message: string;
 }
-declare var GPUDeviceLostInfo: {
-  prototype: GPUDeviceLostInfo;
-  new(): GPUDeviceLostInfo;
-};
 
 
 /** Placeholder for the unimplemented render-bundle descriptor. */
@@ -7118,7 +6914,7 @@ interface GPUCanvasContext {
   readonly label: string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/canvas) */
-  readonly canvas: HTMLCanvasElement | OffscreenCanvas;
+  readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/configure)
@@ -7854,7 +7650,7 @@ interface VideoFrame {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/colorSpace)
    */
-  readonly colorSpace: VideoColorSpace;
+  readonly colorSpace: "srgb" | "display-p3";
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/codedWidth) */
   readonly codedWidth: number;
@@ -7879,8 +7675,7 @@ interface VideoFrame {
 }
 declare var VideoFrame: {
   prototype: VideoFrame;
-  new(image: CanvasImageSource, init?: VideoFrameInit): VideoFrame;
-  new(data: AllowSharedBufferSource, init: VideoFrameBufferInit): VideoFrame;
+  new(): VideoFrame;
 };
 
 
@@ -8857,7 +8652,7 @@ interface ClipboardEvent extends Event {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent/clipboardData)
    */
-  readonly clipboardData: DataTransfer | null;
+  readonly clipboardData: null;
 }
 declare var ClipboardEvent: {
   prototype: ClipboardEvent;
@@ -8867,23 +8662,8 @@ declare var ClipboardEvent: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent/ClipboardEvent) */
 interface ClipboardEventInit extends EventInit {
-  clipboardData?: DataTransfer | null;
+  clipboardData?: null;
 }
-
-/**
- * Declared so {@link ClipboardEvent.clipboardData} has a type.
- *
- * Host clipboard events set the property to null. `DataTransfer` is not a
- * constructed clipboard store in this runtime.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer)
- */
-interface DataTransfer {}
-declare var DataTransfer: {
-  prototype: DataTransfer;
-  new(): DataTransfer;
-};
-
 
 /**
  * A connected gamepad.
