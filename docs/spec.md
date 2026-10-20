@@ -328,6 +328,8 @@ The realm includes:
 
 Dedicated workers are available. WinterTC does not require them.
 
+The Annex B accessor `Object.prototype.__proto__` is deleted before user code runs. The main realm, a dedicated worker, and an `AudioWorklet` processor realm each do this. An object literal `{ __proto__: null }` still sets [[Prototype]]. `Object.getPrototypeOf` and `Object.setPrototypeOf` still get and set it. Reading or assigning `obj.__proto__` uses an own property when one exists, and an assignment creates one. `Object.assign` of `JSON.parse('{"__proto__": null}')` leaves [[Prototype]] unchanged. There is no flag that restores the accessor.
+
 Streams, URLPattern, and compression algorithms may be implemented in embedded JavaScript when the tests pass. `EventTarget`, the event classes, `DOMException`, `AbortController`, `URL`, `URLSearchParams`, `Blob`, and `File` are `#[op]` classes. Windows, canvases, WebGPU, decoding, sockets, timers, URL parsing, encoding, Blob bytes, and the crypto boundary are Rust.
 
 `structuredClone` covers the WinterTC built-ins in this runtime, plus `ArrayBuffer`, typed arrays, `Map`, `Set`, `Date`, `RegExp`, and `Error`. An unsupported host object throws `DataCloneError`.

@@ -40,7 +40,10 @@ pub use js::{
 };
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
-pub use realm::{clone_value, performance_now_ms, time_origin_ms};
+pub use realm::{
+  clone_value, delete_object_prototype_proto, performance_now_ms,
+  time_origin_ms,
+};
 pub use repl::run_repl;
 pub use runtime::{
   ClassicRun, LoopInterest, RuntimeError, poll_task_poke, run_classic_scripts,

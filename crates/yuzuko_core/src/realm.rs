@@ -8,7 +8,26 @@ use crate::clone;
 use crate::host;
 use crate::js::{self, rust_string};
 
+/// Deletes the Annex B accessor `Object.prototype.__proto__`.
+///
+/// `{ __proto__: null }` and `Object.setPrototypeOf` still set [[Prototype]].
+/// Assigning the property writes an own data property.
+pub fn delete_object_prototype_proto(scope: &mut v8::PinScope) {
+  let object = v8::Object::new(scope);
+  let Some(prototype) = object.get_prototype(scope) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "__proto__") else {
+    return;
+  };
+  let _ = prototype.delete(scope, key.into());
+}
+
 pub fn install(scope: &mut v8::PinScope) {
+  delete_object_prototype_proto(scope);
   let global = js::global(scope);
   js::set_value(scope, global, "self", global.into());
   if !host::is_dedicated_worker() {

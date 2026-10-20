@@ -2552,6 +2552,7 @@ pub fn ensure_worklet(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
   let main_port = v8::Global::new(scope, main_port);
   {
     let scope = &mut v8::ContextScope::new(scope, context);
+    yuzuko_core::delete_object_prototype_proto(scope);
     install_worklet_host(scope, id);
     let global = scope.get_current_context().global(scope);
     let key = v8::String::new(scope, "port").unwrap();
