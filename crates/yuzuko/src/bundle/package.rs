@@ -177,6 +177,9 @@ fn write_directory(
     let mut image = fs::read(&executable)?;
     if gui_subsystem(&mut image) {
       fs::write(&executable, image)?;
+      if let Some(Icon::File(path)) = &config.icons.windows {
+        embed_windows_icon(&executable, path)?;
+      }
     }
   }
   let app_root = output.join("app");
@@ -206,6 +209,23 @@ fn write_directory(
     }
     Target::Macos => {}
   }
+  Ok(())
+}
+
+/// Writes `icons.windows` into the executable so Explorer, a taskbar pin,
+/// and a shortcut show it. The resources are written with the Windows
+/// resource API, so only a Windows host embeds them, and a Windows bundle is
+/// packaged on Windows.
+fn embed_windows_icon(
+  executable: &Path,
+  ico: &Path,
+) -> Result<(), ConfigError> {
+  let bytes = fs::read(ico)?;
+  crate::bundle::icon::parse_ico(&bytes)?;
+  #[cfg(windows)]
+  crate::bundle::icon::embed(executable, &bytes)?;
+  #[cfg(not(windows))]
+  let _ = executable;
   Ok(())
 }
 

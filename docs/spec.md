@@ -616,7 +616,7 @@ Unknown keys are errors. There is no `exports` key. Paths are relative to the co
 | `version` | Stored in the bundle and compared by the updater. Dot-separated decimal integers from 0 through 2^64−1, at most 32 components, each at most 20 digits. A missing trailing component is 0, so `1.0` equals `1.0.0`. A missing version is `"0.0.0"`. Any other form fails `yuzuko package` before anything is written |
 | `identifier` | Reverse-DNS id. macOS `CFBundleIdentifier`, the Windows AppUserModelID, and the Linux `.desktop` id. When omitted, `com.yuzuko.<slug>` from `name`. At least two labels. Each label starts with an ASCII letter and then contains letters, digits, or `-` |
 | `icons.macos` | An `.icns` path, or an array of `{ "path", "size" }` PNGs assembled at package time. A missing file is an error. No entry means the bundle has no custom icon |
-| `icons.windows` | An `.ico` path. PNGs are not assembled |
+| `icons.windows` | An `.ico` path. PNGs are not assembled. It becomes the executable's icon resource, which Explorer, taskbar pins, and shortcuts show, and is copied as `AppIcon.ico` for the window icon. A file that is not a valid icon directory fails `yuzuko package` |
 | `icons.linux` | A `.png` path, or the same PNG array as macOS |
 | `assets` | Globs copied into the bundle, relative to the config file. The module graph is included without being listed. Paths that escape the config directory are errors |
 | `output.macos` | A path ending in `.app` |

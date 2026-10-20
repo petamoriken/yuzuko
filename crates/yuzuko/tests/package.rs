@@ -478,6 +478,30 @@ fn refusals_write_nothing_and_do_not_panic() {
     assert!(!dest.exists(), "{name}");
   }
 
+  // The Windows icon is written into the executable, so it must parse.
+  if cfg!(windows) {
+    let root = dir.join("bad-ico");
+    write(
+      &root.join("yuzuko.json"),
+      r#"{ "name": "Bad", "icons": { "windows": "./app.ico" } }"#,
+    );
+    write(&root.join("app.ico"), "ICO-BYTES");
+    write(&root.join("src/main.ts"), "console.log(1)\n");
+    let dest = dir.join("bad-ico-out");
+    let output = run(
+      &root,
+      &["package", "src/main.ts", "--output", dest.to_str().unwrap()],
+    );
+    assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    assert!(
+      text(&output.stderr).contains("not a valid .ico"),
+      "{}",
+      text(&output.stderr)
+    );
+    assert!(!dest.exists());
+    assert!(!dir.join(".bad-ico-out.partial").exists());
+  }
+
   let comment = dir.join("comment");
   write(
     &comment.join("yuzuko.json"),
@@ -709,8 +733,14 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
 fn directory_bundle_launches_with_assets_and_title() {
   let dir = scratch("dir");
   // `output.macos` is a decoy; `--output` wins and the decoy is not written.
-  let config = base_config(r#""output": { "macos": "./decoy.app" },"#);
+  let config = base_config(
+    r#""output": { "macos": "./decoy.app" },
+  "icons": { "windows": "./icons/app.ico", "linux": "./icons/app.png" },"#,
+  );
   game_tree(&dir, &config);
+  fs::create_dir_all(dir.join("icons")).unwrap();
+  fs::write(dir.join("icons/app.ico"), one_pixel_ico()).unwrap();
+  fs::write(dir.join("icons/app.png"), one_pixel_png()).unwrap();
   let bundle = dir.join("MyGame");
   let output = Command::new(bin())
     .current_dir(&dir)
@@ -765,6 +795,12 @@ fn directory_bundle_launches_with_assets_and_title() {
     assert_eq!(u16::from_le_bytes([header[at], header[at + 1]]), 2);
     let runtime = fs::read(bin()).unwrap();
     assert_eq!(u16::from_le_bytes([runtime[at], runtime[at + 1]]), 3);
+    // Explorer reads the icon from the executable's resources.
+    #[cfg(windows)]
+    {
+      assert_eq!(icon_count(&bin()), 0, "the runtime has its own icon");
+      assert_eq!(icon_count(&exe), 1, "the bundle icon was not embedded");
+    }
   } else {
     assert_eq!(&header[0..4], b"\x7fELF", "not an ELF image");
     #[cfg(unix)]
@@ -1085,6 +1121,46 @@ fn launch(exe: &Path, cwd: &Path, args: &[&str]) -> Launch {
 
 /// The current directory of a running process, or `""` when this OS does not
 /// expose it to another process.
+fn one_pixel_png() -> Vec<u8> {
+  use base64::Engine;
+  base64::prelude::BASE64_STANDARD
+    .decode(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    )
+    .unwrap()
+}
+
+/// An `.ico` whose one image is a PNG, as Windows Vista and later accept.
+fn one_pixel_ico() -> Vec<u8> {
+  let png = one_pixel_png();
+  let mut ico = vec![0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 32, 0];
+  ico.extend_from_slice(&(png.len() as u32).to_le_bytes());
+  ico.extend_from_slice(&22u32.to_le_bytes());
+  ico.extend_from_slice(&png);
+  ico
+}
+
+/// How many icons Windows finds in an executable's resources.
+#[cfg(windows)]
+fn icon_count(exe: &Path) -> u32 {
+  use std::os::windows::ffi::OsStrExt;
+  use windows_sys::Win32::UI::Shell::ExtractIconExW;
+  let path: Vec<u16> = exe
+    .as_os_str()
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect();
+  unsafe {
+    ExtractIconExW(
+      path.as_ptr(),
+      -1,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+      0,
+    )
+  }
+}
+
 fn process_cwd(pid: u32) -> String {
   if cfg!(target_os = "macos") {
     Command::new("lsof")

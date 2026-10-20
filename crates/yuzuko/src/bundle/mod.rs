@@ -1,6 +1,7 @@
 //! Package config, the bundle writer, and the updater.
 
 mod config;
+mod icon;
 mod package;
 mod update;
 
