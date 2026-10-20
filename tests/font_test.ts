@@ -66,11 +66,10 @@ Yuzuko.test("loaded FontFace families shape differently from sans-serif", async 
   context.fillText("A", 0, 16);
   context.font = "16px monospace";
   context.fillText("A", 0, 16);
-  let name = "";
-  try {
-    context.font = "16px NotARegisteredFamily";
-  } catch (error) {
-    name = error instanceof DOMException ? error.name : "";
-  }
-  assert(name === "NotSupportedError", name);
+  context.font = "16px NotARegisteredFamily";
+  assert(context.font.includes("NotARegisteredFamily"), context.font);
+  const unloaded = context.measureText("A").width;
+  context.font = "16px sans-serif";
+  const fallback = context.measureText("A").width;
+  assert(unloaded === fallback, `${unloaded} vs ${fallback}`);
 });

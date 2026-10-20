@@ -28,14 +28,20 @@ pub struct PresentStyle {
 }
 
 pub fn parse(value: &str) -> Option<ObjectFit> {
-  Some(match value {
-    "none" => ObjectFit::None,
-    "contain" => ObjectFit::Contain,
-    "cover" => ObjectFit::Cover,
-    "fill" => ObjectFit::Fill,
-    "scale-down" => ObjectFit::ScaleDown,
-    _ => return None,
-  })
+  let value = value.trim();
+  if value.eq_ignore_ascii_case("none") {
+    Some(ObjectFit::None)
+  } else if value.eq_ignore_ascii_case("contain") {
+    Some(ObjectFit::Contain)
+  } else if value.eq_ignore_ascii_case("cover") {
+    Some(ObjectFit::Cover)
+  } else if value.eq_ignore_ascii_case("fill") {
+    Some(ObjectFit::Fill)
+  } else if value.eq_ignore_ascii_case("scale-down") {
+    Some(ObjectFit::ScaleDown)
+  } else {
+    None
+  }
 }
 
 pub fn name(fit: ObjectFit) -> &'static str {
@@ -49,13 +55,22 @@ pub fn name(fit: ObjectFit) -> &'static str {
 }
 
 pub fn parse_rendering(value: &str) -> Option<ImageRendering> {
-  Some(match value {
-    "auto" => ImageRendering::Auto,
-    "smooth" | "optimizeQuality" => ImageRendering::Smooth,
-    "crisp-edges" => ImageRendering::CrispEdges,
-    "pixelated" | "optimizeSpeed" => ImageRendering::Pixelated,
-    _ => return None,
-  })
+  let value = value.trim();
+  if value.eq_ignore_ascii_case("auto") {
+    Some(ImageRendering::Auto)
+  } else if value.eq_ignore_ascii_case("smooth")
+    || value.eq_ignore_ascii_case("optimizeQuality")
+  {
+    Some(ImageRendering::Smooth)
+  } else if value.eq_ignore_ascii_case("crisp-edges") {
+    Some(ImageRendering::CrispEdges)
+  } else if value.eq_ignore_ascii_case("pixelated")
+    || value.eq_ignore_ascii_case("optimizeSpeed")
+  {
+    Some(ImageRendering::Pixelated)
+  } else {
+    None
+  }
 }
 
 pub fn rendering_name(rendering: ImageRendering) -> &'static str {

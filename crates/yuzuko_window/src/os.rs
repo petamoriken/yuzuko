@@ -405,13 +405,22 @@ fn center_window(window: &Window) {
   window.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
 }
 
-pub fn set_cursor(id: u64, name: &str) -> Result<(), yuzuko_core::op::OpError> {
-  if name != "none" && CursorIcon::from_str(name).is_err() {
-    return Err(yuzuko_core::op::OpError::type_("Unknown cursor"));
+/// Canonical cursor keyword, or `None` when `name` is not a CSS cursor.
+pub fn canonical_cursor(name: &str) -> Option<String> {
+  let name = name.trim().to_ascii_lowercase();
+  if name == "none" {
+    return Some(name);
   }
+  CursorIcon::from_str(&name).ok()?;
+  Some(name)
+}
+
+pub fn set_cursor(id: u64, name: &str) {
+  let Some(name) = canonical_cursor(name) else {
+    return;
+  };
   let locked = LOCKED.with(|locked| locked.get()) == Some(id);
-  with_window(id, |window| apply_cursor(window, name, locked));
-  Ok(())
+  with_window(id, |window| apply_cursor(window, &name, locked));
 }
 
 pub fn resize(id: u64, width: f64, height: f64) {

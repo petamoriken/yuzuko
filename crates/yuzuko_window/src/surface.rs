@@ -1122,7 +1122,11 @@ impl Window {
   #[setter]
   fn cursor(&self, cursor: String) -> Result<(), OpError> {
     self.require_open()?;
-    os::set_cursor(self.id, &cursor)?;
+    // An unrecognized name is ignored, as a CSS `cursor` keyword would be.
+    let Some(cursor) = os::canonical_cursor(&cursor) else {
+      return Ok(());
+    };
+    os::set_cursor(self.id, &cursor);
     *self.cursor.borrow_mut() = cursor;
     Ok(())
   }
@@ -1596,9 +1600,7 @@ impl WindowSurface {
   #[setter]
   fn object_fit(&self, value: String) -> Result<(), OpError> {
     let Some(next) = fit::parse(&value) else {
-      return Err(OpError::type_(
-        "objectFit must be none, contain, cover, fill, or scale-down",
-      ));
+      return Ok(());
     };
     self.fit.set(next);
     self.restyle(|style| style.fit = next);
@@ -1613,9 +1615,7 @@ impl WindowSurface {
   #[setter]
   fn image_rendering(&self, value: String) -> Result<(), OpError> {
     let Some(next) = fit::parse_rendering(&value) else {
-      return Err(OpError::type_(
-        "imageRendering must be auto, smooth, crisp-edges, or pixelated",
-      ));
+      return Ok(());
     };
     self.rendering.set(next);
     self.restyle(|style| style.rendering = next);

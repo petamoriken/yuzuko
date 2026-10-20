@@ -274,6 +274,41 @@ fn serialize_color(color: CssColor) -> String {
   crate::paint::color::serialize(color)
 }
 
+/// HTML compositing operators plus the CSS blend modes. `"clear"` is kept
+/// because the canvas tests still assign it. Matching is case-sensitive.
+fn is_composite(value: &str) -> bool {
+  matches!(
+    value,
+    "clear"
+      | "copy"
+      | "destination-atop"
+      | "destination-in"
+      | "destination-out"
+      | "destination-over"
+      | "lighter"
+      | "source-atop"
+      | "source-in"
+      | "source-out"
+      | "source-over"
+      | "xor"
+      | "color"
+      | "color-burn"
+      | "color-dodge"
+      | "darken"
+      | "difference"
+      | "exclusion"
+      | "hard-light"
+      | "hue"
+      | "lighten"
+      | "luminosity"
+      | "multiply"
+      | "overlay"
+      | "saturation"
+      | "screen"
+      | "soft-light"
+  )
+}
+
 fn set_style(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -719,17 +754,19 @@ impl Context2D {
   }
 
   #[getter]
-  fn global_composite_operation(&self) -> String {
-    "source-over".to_string()
+  fn global_composite_operation(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.composite.clone()))
   }
 
   #[setter]
   fn global_composite_operation(&self, value: String) -> Result<(), OpError> {
-    if value != "source-over" {
-      return Err(objects::unsupported());
+    if !is_composite(&value) {
+      return Ok(());
     }
-    let _ = self;
-    Ok(())
+    self.update(|drawing| {
+      drawing.state.composite = value;
+      Ok(())
+    })
   }
 
   #[getter]
@@ -1579,17 +1616,13 @@ impl Context2D {
 
   #[setter]
   fn font(&self, value: String) -> Result<(), OpError> {
-    match text::parse_font(&value) {
-      Ok(Some(font)) => self.update(|drawing| {
-        drawing.state.font = font;
-        Ok(())
-      }),
-      Ok(None) => Ok(()),
-      Err(()) => Err(OpError::dom(
-        "NotSupportedError",
-        "Only sans-serif, serif, and monospace are available",
-      )),
-    }
+    let Some(font) = text::parse_font(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.font = font;
+      Ok(())
+    })
   }
 
   #[getter]
@@ -1763,61 +1796,67 @@ impl Context2D {
   }
 
   #[getter]
-  fn shadow_blur(&self) -> f64 {
-    0.0
+  fn shadow_blur(&self) -> Result<f64, OpError> {
+    self.update(|drawing| Ok(drawing.state.shadow_blur))
   }
 
   #[setter]
   fn shadow_blur(&self, value: f64) -> Result<(), OpError> {
-    if !value.is_finite() || value == 0.0 {
-      let _ = self;
+    if !value.is_finite() || value < 0.0 {
       return Ok(());
     }
-    Err(objects::unsupported())
+    self.update(|drawing| {
+      drawing.state.shadow_blur = value;
+      Ok(())
+    })
   }
 
   #[getter]
-  fn shadow_color(&self) -> String {
-    "rgba(0, 0, 0, 0)".to_string()
+  fn shadow_color(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(serialize_color(drawing.state.shadow_color)))
   }
 
   #[setter]
   fn shadow_color(&self, value: String) -> Result<(), OpError> {
-    if parse_color(&value).is_some_and(|color| color.a == 0.0)
-      || value.trim().is_empty()
-    {
-      let _ = self;
+    let Some(color) = parse_color(&value) else {
       return Ok(());
-    }
-    Err(objects::unsupported())
+    };
+    self.update(|drawing| {
+      drawing.state.shadow_color = color;
+      Ok(())
+    })
   }
 
   #[getter]
-  fn shadow_offset_x(&self) -> f64 {
-    0.0
+  fn shadow_offset_x(&self) -> Result<f64, OpError> {
+    self.update(|drawing| Ok(drawing.state.shadow_offset_x))
   }
 
   #[setter]
   fn shadow_offset_x(&self, value: f64) -> Result<(), OpError> {
-    if !value.is_finite() || value == 0.0 {
-      let _ = self;
+    if !value.is_finite() {
       return Ok(());
     }
-    Err(objects::unsupported())
+    self.update(|drawing| {
+      drawing.state.shadow_offset_x = value;
+      Ok(())
+    })
   }
 
   #[getter]
-  fn shadow_offset_y(&self) -> f64 {
-    0.0
+  fn shadow_offset_y(&self) -> Result<f64, OpError> {
+    self.update(|drawing| Ok(drawing.state.shadow_offset_y))
   }
 
   #[setter]
   fn shadow_offset_y(&self, value: f64) -> Result<(), OpError> {
-    if !value.is_finite() || value == 0.0 {
-      let _ = self;
+    if !value.is_finite() {
       return Ok(());
     }
-    Err(objects::unsupported())
+    self.update(|drawing| {
+      drawing.state.shadow_offset_y = value;
+      Ok(())
+    })
   }
 
   fn create_conic_gradient(&self) -> Result<(), OpError> {

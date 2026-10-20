@@ -168,6 +168,9 @@ pub enum Family {
   Mono,
   /// Index into the loaded-family table in `text`.
   Named(u32),
+  /// Index into that table for a family that is not loaded. Shaping uses
+  /// `sans-serif`.
+  Unloaded(u32),
 }
 
 impl Default for FontDesc {
@@ -293,6 +296,12 @@ pub struct State {
   pub lang: String,
   /// CSS filter string. Parsed and stored. Not painted.
   pub filter: String,
+  /// Stored compositing operator. Painting uses `source-over`.
+  pub composite: String,
+  pub shadow_blur: f64,
+  pub shadow_offset_x: f64,
+  pub shadow_offset_y: f64,
+  pub shadow_color: CssColor,
   pub clips: Vec<Clip>,
 }
 
@@ -343,6 +352,11 @@ impl Default for State {
       rtl: false,
       lang: "inherit".to_string(),
       filter: "none".to_string(),
+      composite: "source-over".to_string(),
+      shadow_blur: 0.0,
+      shadow_offset_x: 0.0,
+      shadow_offset_y: 0.0,
+      shadow_color: CssColor::TRANSPARENT,
       clips: Vec::new(),
     }
   }
@@ -421,6 +435,11 @@ impl Drawing {
     });
     self.layers.push(Vec::new());
     self.state.alpha = 1.0;
+    self.state.composite = "source-over".to_string();
+    self.state.shadow_blur = 0.0;
+    self.state.shadow_offset_x = 0.0;
+    self.state.shadow_offset_y = 0.0;
+    self.state.shadow_color = CssColor::TRANSPARENT;
     self.state.filter = "none".to_string();
     self.state.clips.clear();
   }

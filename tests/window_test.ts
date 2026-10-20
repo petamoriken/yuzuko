@@ -47,22 +47,16 @@ Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
     assert(window.surface.imageRendering === "pixelated", "optimizeSpeed");
     window.surface.imageRendering = "crisp-edges";
     assert(window.surface.imageRendering === "crisp-edges", "crisp-edges");
-    let badRendering = false;
-    try {
-      window.surface.imageRendering = "high-quality";
-    } catch (error) {
-      badRendering = error instanceof TypeError;
-    }
-    assert(badRendering, "imageRendering");
+    window.surface.imageRendering = "high-quality";
+    assert(window.surface.imageRendering === "crisp-edges", "imageRendering ignored");
+    window.surface.imageRendering = "Pixelated";
+    assert(window.surface.imageRendering === "pixelated", "imageRendering case");
     window.surface.objectFit = "contain";
     assert(window.surface.objectFit === "contain", "objectFit contain");
-    let badFit = false;
-    try {
-      window.surface.objectFit = "stretch";
-    } catch (error) {
-      badFit = error instanceof TypeError;
-    }
-    assert(badFit, "objectFit");
+    window.surface.objectFit = "stretch";
+    assert(window.surface.objectFit === "contain", "objectFit ignored");
+    window.surface.objectFit = "Cover";
+    assert(window.surface.objectFit === "cover", "objectFit case");
     assert(window.surface.title === "tools", "title");
     assert(typeof window.title === "undefined", "no window title");
     assert(window.clientWidth === 200 && window.clientHeight === 100, "client");
@@ -77,13 +71,10 @@ Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
     assert(window.cursor === "default", "cursor");
     window.cursor = "pointer";
     assert(window.cursor === "pointer", "pointer cursor");
-    let unknown = false;
-    try {
-      window.cursor = "not-a-cursor";
-    } catch (error) {
-      unknown = error instanceof TypeError;
-    }
-    assert(unknown, "unknown cursor");
+    window.cursor = "not-a-cursor";
+    assert(window.cursor === "pointer", "unknown cursor");
+    window.cursor = "Crosshair";
+    assert(window.cursor === "crosshair", "cursor case");
     window.resizeTo(180, 90);
     assert(window.clientWidth === 180 && window.clientHeight === 90, "resizeTo");
     assert(

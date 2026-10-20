@@ -29,6 +29,14 @@ impl CssColor {
     syntax: ColorSyntax::Legacy,
   };
 
+  pub const TRANSPARENT: Self = Self {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.0,
+    syntax: ColorSyntax::Legacy,
+  };
+
   pub fn to_srgb_peniko(self) -> vello::peniko::Color {
     let encoded = if self.syntax == ColorSyntax::DisplayP3 {
       convert_encoded(

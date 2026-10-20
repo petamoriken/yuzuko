@@ -123,24 +123,8 @@
   },
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.color.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.color.worker.js": true,
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.2dstate.html": {
-    "expectedFailures": [
-      "Resetting the canvas state resets globalCompositeOperation",
-      "Resetting the canvas state resets shadowBlur",
-      "Resetting the canvas state resets shadowColor",
-      "Resetting the canvas state resets shadowOffsetX",
-      "Resetting the canvas state resets shadowOffsetY"
-    ]
-  },
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.2dstate.worker.js": {
-    "expectedFailures": [
-      "Resetting the canvas state resets globalCompositeOperation",
-      "Resetting the canvas state resets shadowBlur",
-      "Resetting the canvas state resets shadowColor",
-      "Resetting the canvas state resets shadowOffsetX",
-      "Resetting the canvas state resets shadowOffsetY"
-    ]
-  },
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.2dstate.html": true,
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.2dstate.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.clip.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.clip.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.different.html": true,
@@ -725,88 +709,24 @@
       "2d"
     ]
   },
-  "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.clear.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.clear.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.darker.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.darker.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.darker.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.darker.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.default.html": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.default.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.operation.get.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.get.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.highlight.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.highlight.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.nullsuffix.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.nullsuffix.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.over.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.operation.get.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.get.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.highlight.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.highlight.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.nullsuffix.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.nullsuffix.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.solid.clear.html": {
     "expectedFailures": [
       ""
@@ -2805,16 +2725,8 @@
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.save-beginLayer-restore.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.save-endLayer.html": true,
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.save-endLayer.worker.js": true,
-  "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.html": {
-    "expectedFailures": [
-      "Tests that rendering states are reset in layers and restored after."
-    ]
-  },
-  "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.worker.js": {
-    "expectedFailures": [
-      "Tests that rendering states are reset in layers and restored after."
-    ]
-  },
+  "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.html": true,
+  "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.malformed-operations-with-promises.html": {
     "expectedFailures": [
       "Throws if convertToBlob is called while layers are open.",
@@ -4077,16 +3989,8 @@
   },
   "html/canvas/offscreen/reset/2d.reset.state.global_alpha.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.global_alpha.worker.js": true,
-  "html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
+  "html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_enabled.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_enabled.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.html": {
@@ -4121,46 +4025,14 @@
   "html/canvas/offscreen/reset/2d.reset.state.line_width.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.miter_limit.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.miter_limit.worker.js": true,
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_blur.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_blur.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_color.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_color.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_x.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_x.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_y.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_y.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_blur.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_blur.worker.js": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_color.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_color.worker.js": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_x.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_x.worker.js": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_y.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.shadow_offset_y.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.stroke_style.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.stroke_style.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.text_align.html": true,
@@ -4244,70 +4116,22 @@
   },
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.initial.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.initial.worker.js": true,
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.valid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.valid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.valid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.valid.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.initial.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.initial.worker.js": true,
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.invalid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.invalid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.valid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.valid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.invalid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.invalid.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.valid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.valid.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.initial.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.initial.worker.js": true,
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.blur.high-manual.html": {
     "expectedFailures": [
       "Shadows look correct for large blurs"
@@ -5195,16 +5019,8 @@
       "2d"
     ]
   },
-  "html/canvas/offscreen/text/2d.text.font.parse.invalid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.invalid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.font.parse.invalid.html": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.invalid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.font.parse.system.html": true,
   "html/canvas/offscreen/text/2d.text.font.parse.system.worker.js": true,
   "html/canvas/offscreen/text/2d.text.font.parse.tiny.html": true,
@@ -5648,22 +5464,8 @@
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.fillStyle.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalAlpha.html": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalAlpha.worker.js": true,
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalCompositeOperation.html": {
-    "expectedFailures": [
-      "save() does not modify globalCompositeOperation, for a canvas of size (0, 0).",
-      "save() does not modify globalCompositeOperation, for a canvas of size (300, 150).",
-      "save()/restore() restores globalCompositeOperation, for a canvas of size (0, 0).",
-      "save()/restore() restores globalCompositeOperation, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalCompositeOperation.worker.js": {
-    "expectedFailures": [
-      "save() does not modify globalCompositeOperation, for a canvas of size (0, 0).",
-      "save() does not modify globalCompositeOperation, for a canvas of size (300, 150).",
-      "save()/restore() restores globalCompositeOperation, for a canvas of size (0, 0).",
-      "save()/restore() restores globalCompositeOperation, for a canvas of size (300, 150)."
-    ]
-  },
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalCompositeOperation.html": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalCompositeOperation.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineCap.html": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineCap.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineJoin.html": true,
@@ -5674,70 +5476,14 @@
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.miterLimit.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.path.html": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.path.worker.js": true,
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowBlur.html": {
-    "expectedFailures": [
-      "save() does not modify shadowBlur, for a canvas of size (0, 0).",
-      "save() does not modify shadowBlur, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowBlur, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowBlur, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowBlur.worker.js": {
-    "expectedFailures": [
-      "save() does not modify shadowBlur, for a canvas of size (0, 0).",
-      "save() does not modify shadowBlur, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowBlur, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowBlur, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowColor.html": {
-    "expectedFailures": [
-      "save() does not modify shadowColor, for a canvas of size (0, 0).",
-      "save() does not modify shadowColor, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowColor, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowColor, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowColor.worker.js": {
-    "expectedFailures": [
-      "save() does not modify shadowColor, for a canvas of size (0, 0).",
-      "save() does not modify shadowColor, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowColor, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowColor, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetX.html": {
-    "expectedFailures": [
-      "save() does not modify shadowOffsetX, for a canvas of size (0, 0).",
-      "save() does not modify shadowOffsetX, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowOffsetX, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowOffsetX, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetX.worker.js": {
-    "expectedFailures": [
-      "save() does not modify shadowOffsetX, for a canvas of size (0, 0).",
-      "save() does not modify shadowOffsetX, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowOffsetX, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowOffsetX, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetY.html": {
-    "expectedFailures": [
-      "save() does not modify shadowOffsetY, for a canvas of size (0, 0).",
-      "save() does not modify shadowOffsetY, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowOffsetY, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowOffsetY, for a canvas of size (300, 150)."
-    ]
-  },
-  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetY.worker.js": {
-    "expectedFailures": [
-      "save() does not modify shadowOffsetY, for a canvas of size (0, 0).",
-      "save() does not modify shadowOffsetY, for a canvas of size (300, 150).",
-      "save()/restore() restores shadowOffsetY, for a canvas of size (0, 0).",
-      "save()/restore() restores shadowOffsetY, for a canvas of size (300, 150)."
-    ]
-  },
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowBlur.html": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowBlur.worker.js": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowColor.html": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowColor.worker.js": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetX.html": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetX.worker.js": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetY.html": true,
+  "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetY.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.stack.html": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.stack.worker.js": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.stackdepth.html": true,

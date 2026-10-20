@@ -158,13 +158,12 @@ Yuzuko.test("fonts, windows, and WebGPU stay on their thread", async () => {
   assert(Math.abs(font.width - font.generic) > 1, `${font.width} vs ${font.generic}`);
   const main = new OffscreenCanvas(40, 20).getContext("2d");
   assert(main, "main 2d");
-  let missing = "";
-  try {
-    main.font = "20px WorkerOnly";
-  } catch (error) {
-    missing = error instanceof DOMException ? error.name : "";
-  }
-  assert(missing === "NotSupportedError", missing);
+  main.font = "20px WorkerOnly";
+  assert(main.font.includes("WorkerOnly"), main.font);
+  const missingWidth = main.measureText("A").width;
+  main.font = "20px sans-serif";
+  const genericWidth = main.measureText("A").width;
+  assert(missingWidth === genericWidth, `${missingWidth} vs ${genericWidth}`);
   assert(globalThis.fonts === undefined, "main fonts");
 
   const window = new Yuzuko.Window({ width: 32, height: 32, title: "worker" });

@@ -83,31 +83,53 @@ Yuzuko.test("display-p3 path color is stored as sRGB unorm8", () => {
   assert(r > 240 && g < 20 && b < 40, `srgb ${r},${g},${b}`);
 });
 
-Yuzuko.test("named fonts and other composites are rejected", () => {
+Yuzuko.test("canvas state stores fonts, composites, and shadows", () => {
   const ctx = new OffscreenCanvas(2, 2).getContext("2d");
-  let named = false;
-  try {
-    ctx.font = "16px Arial";
-  } catch (error) {
-    named = error.name === "NotSupportedError";
-  }
-  assert(named, "named font");
-  assert(ctx.font.includes("sans-serif"), "font unchanged");
-  let composite = false;
-  try {
-    ctx.globalCompositeOperation = "destination-over";
-  } catch (error) {
-    composite = error.name === "NotSupportedError";
-  }
-  assert(composite, "composite");
-  let shadow = false;
-  try {
-    ctx.shadowBlur = 4;
-  } catch (error) {
-    shadow = error.name === "NotSupportedError";
-  }
-  assert(shadow, "shadow");
-  assert(ctx.shadowBlur === 0, "shadow unchanged");
+  ctx.font = "16px Arial";
+  assert(ctx.font.includes("Arial"), ctx.font);
+  const unloaded = ctx.measureText("A").width;
+  ctx.font = "16px sans-serif";
+  const generic = ctx.measureText("A").width;
+  assert(unloaded === generic, `${unloaded} vs ${generic}`);
+  ctx.font = "16px Missing, sans-serif";
+  assert(ctx.font.includes("sans-serif"), ctx.font);
+  ctx.font = "not a font";
+  assert(ctx.font.includes("sans-serif"), "invalid font ignored");
+
+  ctx.globalCompositeOperation = "destination-over";
+  assert(ctx.globalCompositeOperation === "destination-over", "composite");
+  ctx.globalCompositeOperation = "nope";
+  assert(ctx.globalCompositeOperation === "destination-over", "ignored");
+  ctx.save();
+  ctx.globalCompositeOperation = "xor";
+  ctx.shadowBlur = 4;
+  ctx.restore();
+  assert(ctx.globalCompositeOperation === "destination-over", "restored");
+  assert(ctx.shadowBlur === 0, "shadow restored");
+
+  ctx.shadowBlur = 4;
+  assert(ctx.shadowBlur === 4, "blur");
+  ctx.shadowBlur = -1;
+  assert(ctx.shadowBlur === 4, "negative blur");
+  ctx.shadowOffsetX = -2;
+  ctx.shadowOffsetY = 3;
+  assert(ctx.shadowOffsetX === -2 && ctx.shadowOffsetY === 3, "offset");
+  ctx.shadowColor = "lime";
+  assert(ctx.shadowColor === "#00ff00", ctx.shadowColor);
+  ctx.shadowColor = "bogus";
+  assert(ctx.shadowColor === "#00ff00", "color ignored");
+  ctx.globalCompositeOperation = "xor";
+  ctx.beginLayer();
+  assert(ctx.globalCompositeOperation === "source-over", "layer composite");
+  assert(ctx.shadowBlur === 0, "layer blur");
+  assert(ctx.shadowColor === "rgba(0, 0, 0, 0)", "layer color");
+  ctx.endLayer();
+  assert(ctx.globalCompositeOperation === "xor", "layer restored");
+  assert(ctx.shadowBlur === 4, "layer blur restored");
+  ctx.reset();
+  assert(ctx.shadowBlur === 0, "reset blur");
+  assert(ctx.shadowColor === "rgba(0, 0, 0, 0)", ctx.shadowColor);
+  assert(ctx.globalCompositeOperation === "source-over", "reset composite");
 });
 
 Yuzuko.test("lang is part of the canvas state and shapes text", () => {

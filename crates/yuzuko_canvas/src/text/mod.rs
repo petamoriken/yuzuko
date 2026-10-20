@@ -42,7 +42,7 @@ struct Registered {
 struct TextEnv {
   fonts: FontContext,
   layout: LayoutContext,
-  /// Interned family names. Indexes are `Family::Named`.
+  /// Interned family names. Indexes are `Family::Named` and `Family::Unloaded`.
   names: Vec<String>,
   /// Families currently in `Yuzuko.fonts` with a finished `load()`.
   ready: Vec<String>,
@@ -131,6 +131,18 @@ fn register_one(env: &mut TextEnv, family: &str, bytes: &[u8]) {
   }
 }
 
+/// Index of `token` in the family-name table, adding it when absent.
+pub fn intern_family(token: &str) -> u32 {
+  TEXT.with(|slot| {
+    let mut env = slot.borrow_mut();
+    if let Some(id) = env.names.iter().position(|item| item == token) {
+      return id as u32;
+    }
+    env.names.push(token.to_string());
+    (env.names.len() - 1) as u32
+  })
+}
+
 /// `Some` when `token` names a loaded family in `Yuzuko.fonts`.
 pub fn ready_family(token: &str) -> Option<u32> {
   TEXT.with(|slot| {
@@ -199,17 +211,19 @@ pub struct ShapedText {
   pub utf16_len: u32,
 }
 
-/// `Ok(None)` leaves the previous font. `Err` is an unregistered family.
-pub fn parse_font(input: &str) -> Result<Option<FontDesc>, ()> {
+/// `None` leaves the previous font. A parsed size is kept, including a
+/// family that is not loaded. A token that cannot be a family name rejects
+/// the whole value.
+pub fn parse_font(input: &str) -> Option<FontDesc> {
   let text = input.trim();
   if text.is_empty() {
-    return Ok(None);
+    return None;
   }
   let mut size = None;
   let mut weight = 400u16;
   let mut italic = false;
   let mut family = None;
-  let mut named = false;
+  let mut pending = None;
   for token in text.split_whitespace() {
     let token = token.trim_matches(',');
     if token.is_empty() {
@@ -238,41 +252,79 @@ pub fn parse_font(input: &str) -> Result<Option<FontDesc>, ()> {
       {
         weight = other.parse().unwrap_or(400);
       }
-      _ if lower.ends_with("px") || lower.ends_with("pt") => return Ok(None),
+      _ if lower.ends_with("px") || lower.ends_with("pt") => return None,
       _ => {
-        if family.is_none() {
-          let bare = token.trim_matches('"').trim_matches('\'');
-          if let Some(id) = ready_family(bare) {
-            family = Some(Family::Named(id));
-          } else {
-            named = true;
-          }
-        } else {
-          named = true;
+        let bare = token.trim_matches(['"', '\'']);
+        if bare.is_empty() {
+          continue;
+        }
+        // CSS-wide keywords and `default` are not family names. A bad token
+        // makes the shorthand invalid, so the previous font stays.
+        if is_reserved_family(bare) || !is_family_ident(bare) {
+          return None;
+        }
+        if family.is_some() {
+          continue;
+        }
+        if let Some(id) = ready_family(bare) {
+          family = Some(Family::Named(id));
+        } else if pending.is_none() {
+          pending = Some(bare.to_string());
         }
       }
     }
   }
   let Some(size) = size else {
-    return Ok(None);
+    return None;
   };
   if !(size.is_finite() && size > 0.0) {
-    return Ok(None);
+    return None;
   }
-  // A list uses the first loaded family or generic. A size with only an
-  // unregistered name throws.
-  let Some(family) = family else {
-    if named {
-      return Err(());
-    }
-    return Ok(None);
+  // A list uses the first loaded family or generic. A size that names only
+  // an unregistered family is still assigned; shaping falls back.
+  let family = if let Some(family) = family {
+    family
+  } else if let Some(name) = pending {
+    Family::Unloaded(intern_family(&name))
+  } else {
+    return None;
   };
-  Ok(Some(FontDesc {
+  Some(FontDesc {
     size,
     weight,
     italic,
     family,
-  }))
+  })
+}
+
+fn is_reserved_family(name: &str) -> bool {
+  matches!(
+    name.to_ascii_lowercase().as_str(),
+    "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "default"
+  )
+}
+
+fn is_family_ident(name: &str) -> bool {
+  let mut chars = name.chars();
+  let Some(first) = chars.next() else {
+    return false;
+  };
+  let rest =
+    |c: char| c.is_alphanumeric() || c == '_' || c == '-' || !c.is_ascii();
+  if first.is_alphabetic() || first == '_' || !first.is_ascii() {
+    return chars.all(rest);
+  }
+  if first != '-' {
+    return false;
+  }
+  let Some(second) = chars.next() else {
+    return false;
+  };
+  (second.is_alphabetic()
+    || second == '_'
+    || second == '-'
+    || !second.is_ascii())
+    && chars.all(rest)
 }
 
 fn shaping_language(lang: &str) -> Option<Language> {
@@ -306,6 +358,7 @@ pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
     let mut env = env.borrow_mut();
     let named = match font.family {
       Family::Named(id) => env.names.get(id as usize).cloned(),
+      Family::Unloaded(_) => None,
       _ => None,
     };
     let TextEnv { fonts, layout, .. } = &mut *env;
@@ -326,7 +379,7 @@ pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
         Family::Sans => GenericFamily::SansSerif,
         Family::Serif => GenericFamily::Serif,
         Family::Mono => GenericFamily::Monospace,
-        Family::Named(_) => GenericFamily::SansSerif,
+        Family::Named(_) | Family::Unloaded(_) => GenericFamily::SansSerif,
       };
       builder.push_default(generic);
     }
@@ -750,7 +803,7 @@ pub fn font_css(font: FontDesc) -> String {
     Family::Sans => "sans-serif".to_string(),
     Family::Serif => "serif".to_string(),
     Family::Mono => "monospace".to_string(),
-    Family::Named(id) => TEXT.with(|slot| {
+    Family::Named(id) | Family::Unloaded(id) => TEXT.with(|slot| {
       slot
         .borrow()
         .names

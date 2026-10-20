@@ -910,8 +910,10 @@ declare namespace Yuzuko {
      * `"ns-resize"`, `"nesw-resize"`, `"nwse-resize"`, `"col-resize"`,
      * `"row-resize"`, `"all-scroll"`, `"zoom-in"`, or `"zoom-out"`.
      *
+     * Matching is case-insensitive. An unrecognized name is ignored. The
+     * getter returns the canonical keyword.
+     *
      * @defaultValue `"default"`
-     * @throws {@link TypeError} When the name is not `"none"` and is not a winit cursor.
      * @throws {@link DOMException} `InvalidStateError` when the window is closed.
      */
     cursor: string;
@@ -1267,8 +1269,9 @@ declare namespace Yuzuko {
     /**
      * How the bitmap is fitted into the window.
      *
+     * Matching is case-insensitive. An unrecognized value is ignored.
+     *
      * @defaultValue `"scale-down"`
-     * @throws {@link TypeError} When the value is not an object-fit keyword.
      */
     objectFit: ObjectFit;
 
@@ -1276,11 +1279,11 @@ declare namespace Yuzuko {
      * How the bitmap is sampled when it is scaled.
      *
      * `"optimizeQuality"` is stored as `"smooth"`. `"optimizeSpeed"` is stored
-     * as `"pixelated"`. A bitmap that is already the size of its fitted
-     * rectangle is not resampled.
+     * as `"pixelated"`. Matching is case-insensitive. An unrecognized value
+     * is ignored. A bitmap that is already the size of its fitted rectangle
+     * is not resampled.
      *
      * @defaultValue `"auto"`
-     * @throws {@link TypeError} When the value is not an image-rendering keyword.
      */
     imageRendering: ImageRendering;
 
@@ -5507,10 +5510,12 @@ declare var OffscreenCanvas: {
  * and `float16` stores keep `putImageData` and a matching `drawImage`.
  * `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`.
  *
- * `shadowBlur`, `shadowColor`, `shadowOffsetX`, and `shadowOffsetY` throw
- * `NotSupportedError` when set away from the default. `globalCompositeOperation`
- * accepts `"source-over"` only. `createConicGradient` throws
- * `NotSupportedError`. `filter` is parsed and stored and is not painted.
+ * `shadowBlur`, `shadowColor`, `shadowOffsetX`, and `shadowOffsetY` are
+ * stored with the canvas state. Invalid values are ignored. Shadows are not
+ * painted. `globalCompositeOperation` stores a recognized operator, including
+ * `"clear"` and the blend modes. Any other value is ignored. Painting uses
+ * `"source-over"`. `createConicGradient` throws `NotSupportedError`. `filter`
+ * is parsed and stored and is not painted.
  * There is no `CanvasFilter` class.
  *
  * A window surface's context exposes that surface as `canvas`.
@@ -5552,7 +5557,10 @@ interface OffscreenCanvasRenderingContext2D {
    *
    * `null`, `undefined`, and `""` omit the filter. Any other unparsable
    * value, including a filter dictionary, throws `TypeError` and does not
-   * open a layer. The filter is not painted.
+   * open a layer. The filter is not painted. Entering a layer sets
+   * `globalAlpha` to `1`, `globalCompositeOperation` to `"source-over"`,
+   * the shadow attributes to their defaults, `filter` to `"none"`, and the
+   * clip list to empty.
    *
    * @throws {@link TypeError} When `filter` does not parse.
    */
@@ -5595,10 +5603,10 @@ interface OffscreenCanvasRenderingContext2D {
   globalAlpha: number;
 
   /**
-   * `"source-over"` only.
+   * A compositing or blend operator.
    *
-   * @throws {@link DOMException} `NotSupportedError` when the assigned value
-   * is not `"source-over"`.
+   * A recognized value is stored, including `"clear"`. Any other value is
+   * ignored. Painting uses `"source-over"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation)
    */
@@ -5824,10 +5832,9 @@ interface OffscreenCanvasRenderingContext2D {
    * A CSS font shorthand.
    *
    * A list uses the first loaded family from this realm's `FontFaceSet`, or
-   * else the first of `sans-serif`, `serif`, and `monospace`.
-   *
-   * @throws {@link DOMException} `NotSupportedError` when the size names only
-   * an unregistered family.
+   * else the first of `sans-serif`, `serif`, and `monospace`. A size that
+   * names only an unregistered family is stored. Shaping uses `sans-serif`
+   * for that family. A value that does not parse is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/font)
    */
@@ -5892,40 +5899,32 @@ interface OffscreenCanvasRenderingContext2D {
   filter: string;
 
   /**
-   * Reads back as `0`.
-   *
-   * @throws {@link DOMException} `NotSupportedError` when the assigned value
-   * is finite and not `0`.
+   * A non-negative finite value is stored. Any other value is ignored.
+   * Shadows are not painted.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowBlur)
    */
   shadowBlur: number;
 
   /**
-   * Reads back as `"rgba(0, 0, 0, 0)"`.
-   *
-   * @throws {@link DOMException} `NotSupportedError` when the assigned color
-   * is not empty and is not fully transparent.
+   * A CSS color is stored. An invalid color is ignored. The default is
+   * `"rgba(0, 0, 0, 0)"`. Shadows are not painted.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowColor)
    */
   shadowColor: string;
 
   /**
-   * Reads back as `0`.
-   *
-   * @throws {@link DOMException} `NotSupportedError` when the assigned value
-   * is finite and not `0`.
+   * A finite value is stored, including a negative offset. A non-finite
+   * value is ignored. Shadows are not painted.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetX)
    */
   shadowOffsetX: number;
 
   /**
-   * Reads back as `0`.
-   *
-   * @throws {@link DOMException} `NotSupportedError` when the assigned value
-   * is finite and not `0`.
+   * A finite value is stored, including a negative offset. A non-finite
+   * value is ignored. Shadows are not painted.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetY)
    */
