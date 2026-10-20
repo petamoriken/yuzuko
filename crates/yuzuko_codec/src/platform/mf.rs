@@ -2,24 +2,43 @@
 //!
 //! This module is compiled only for Windows and is the only place in the
 //! codec crate that calls the `windows` crate. `backend` uses the same
-//! `Session` shape as VideoToolbox and VA-API. A missing hardware transform
-//! fails the decode. There is no software H.264 decoder.
+//! `Session` shape as VideoToolbox and VA-API.
+//!
+//! Windows ships the H.264 decoder as one Media Foundation transform that
+//! decodes on the GPU through DXVA when it is given a Direct3D 11 device
+//! manager. The session hands it one and requires the GPU path: the device
+//! must offer the `H264_VLD_NOFGT` decoder profile, and every output sample
+//! must be a DXGI surface. A machine without that decoder fails `configure`,
+//! and a stream the GPU declines fails its decode. There is no software
+//! H.264 decoder.
+//!
+//! The transform reads an Annex B byte stream, so the `avcC` parameter sets
+//! and each length-prefixed `avc1` sample are rewritten with start codes.
 
 use std::mem::ManuallyDrop;
 use std::ptr::{from_mut, from_ref, null_mut};
 
+use windows::Win32::Foundation::HMODULE;
+use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+use windows::Win32::Graphics::Direct3D11::{
+  D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_DECODER_PROFILE_H264_VLD_NOFGT,
+  D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device, ID3D11Multithread,
+  ID3D11VideoDevice,
+};
 use windows::Win32::Media::MediaFoundation::{
-  IMF2DBuffer, IMFActivate, IMFMediaBuffer, IMFMediaType, IMFSample,
-  IMFTransform, MF_E_TRANSFORM_NEED_MORE_INPUT, MF_E_TRANSFORM_STREAM_CHANGE,
+  IMF2DBuffer, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
+  IMFMediaBuffer, IMFMediaType, IMFSample, IMFTransform,
+  MF_E_TRANSFORM_NEED_MORE_INPUT, MF_E_TRANSFORM_STREAM_CHANGE, MF_LOW_LATENCY,
   MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
-  MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_VERSION, MFCreateMediaType,
-  MFCreateMemoryBuffer, MFCreateSample, MFMediaType_Video, MFSTARTUP_NOSOCKET,
-  MFStartup, MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_HARDWARE,
-  MFT_ENUM_FLAG_SYNCMFT, MFT_MESSAGE_COMMAND_DRAIN,
+  MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_SA_D3D11_AWARE, MF_VERSION,
+  MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateMemoryBuffer,
+  MFCreateSample, MFMediaType_Video, MFSTARTUP_NOSOCKET, MFStartup,
+  MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT, MFT_MESSAGE_COMMAND_DRAIN,
   MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM,
-  MFT_OUTPUT_DATA_BUFFER, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES,
-  MFT_REGISTER_TYPE_INFO, MFTEnumEx, MFVideoFormat_ARGB32, MFVideoFormat_H264,
-  MFVideoFormat_NV12, MFVideoFormat_RGB32,
+  MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER,
+  MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO, MFTEnumEx,
+  MFVideoFormat_ARGB32, MFVideoFormat_H264, MFVideoFormat_NV12,
+  MFVideoFormat_RGB32,
 };
 use windows::Win32::System::Com::{
   COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree,
@@ -33,16 +52,72 @@ use crate::h264;
 
 pub struct Session {
   transform: IMFTransform,
+  /// Kept alive for the transform, which decodes into this device.
+  _device: ID3D11Device,
+  _manager: IMFDXGIDeviceManager,
   origin_x: u32,
   origin_y: u32,
   visible_width: u32,
   visible_height: u32,
   coded_width: u32,
   coded_height: u32,
+  /// The `avcC` SPS and PPS as Annex B.
+  header: Vec<u8>,
 }
 
 pub fn supports_avc() -> bool {
-  hardware_count(&MFVideoFormat_H264)
+  hardware_count(&MFVideoFormat_H264) && gpu_device().is_ok()
+}
+
+/// A Direct3D 11 device whose video decoder offers H.264.
+fn gpu_device() -> Result<ID3D11Device, DecodeError> {
+  let mut device = None;
+  unsafe {
+    D3D11CreateDevice(
+      None,
+      D3D_DRIVER_TYPE_HARDWARE,
+      HMODULE::default(),
+      D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+      None,
+      D3D11_SDK_VERSION,
+      Some(&mut device),
+      None,
+      None,
+    )
+  }
+  .map_err(|_| DecodeError::Unsupported)?;
+  let device = device.ok_or(DecodeError::Unsupported)?;
+  let video = device
+    .cast::<ID3D11VideoDevice>()
+    .map_err(|_| DecodeError::Unsupported)?;
+  let count = unsafe { video.GetVideoDecoderProfileCount() };
+  let h264 = (0..count).any(|index| {
+    unsafe { video.GetVideoDecoderProfile(index) }
+      .is_ok_and(|profile| profile == D3D11_DECODER_PROFILE_H264_VLD_NOFGT)
+  });
+  if !h264 {
+    return Err(DecodeError::Unsupported);
+  }
+  // The transform calls the device from its own threads.
+  if let Ok(multithread) = device.cast::<ID3D11Multithread>() {
+    unsafe {
+      let _ = multithread.SetMultithreadProtected(true);
+    }
+  }
+  Ok(device)
+}
+
+fn device_manager(
+  device: &ID3D11Device,
+) -> Result<IMFDXGIDeviceManager, DecodeError> {
+  let mut token = 0u32;
+  let mut manager = None;
+  unsafe { MFCreateDXGIDeviceManager(&mut token, &mut manager) }
+    .map_err(|_| DecodeError::Unsupported)?;
+  let manager = manager.ok_or(DecodeError::Unsupported)?;
+  unsafe { manager.ResetDevice(device, token) }
+    .map_err(|_| DecodeError::Unsupported)?;
+  Ok(manager)
 }
 
 pub fn open_avc(
@@ -50,7 +125,7 @@ pub fn open_avc(
   width: u32,
   height: u32,
 ) -> Result<Session, DecodeError> {
-  if !supports_avc() {
+  if !hardware_count(&MFVideoFormat_H264) {
     return Err(DecodeError::Unsupported);
   }
   let sets = h264::Sets::parse_avcc(description)?;
@@ -71,8 +146,22 @@ pub fn open_avc(
   {
     return Err(DecodeError::Rejected);
   }
+  let header = h264::annex_b_header(description)?;
+  let device = gpu_device()?;
+  let manager = device_manager(&device)?;
   let transform = activate_hardware(&MFVideoFormat_H264)?;
   unsafe {
+    let attributes = transform
+      .GetAttributes()
+      .map_err(|_| DecodeError::Unsupported)?;
+    if attributes.GetUINT32(&MF_SA_D3D11_AWARE).unwrap_or(0) == 0 {
+      return Err(DecodeError::Unsupported);
+    }
+    // One access unit in, one picture out, without waiting for a drain.
+    let _ = attributes.SetUINT32(&MF_LOW_LATENCY, 1);
+    transform
+      .ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, manager.as_raw() as usize)
+      .map_err(|_| DecodeError::Unsupported)?;
     let input: IMFMediaType =
       MFCreateMediaType().map_err(|_| DecodeError::Rejected)?;
     input
@@ -84,23 +173,24 @@ pub fn open_avc(
     input
       .SetUINT64(&MF_MT_FRAME_SIZE, pack_size(coded_width, coded_height))
       .map_err(|_| DecodeError::Rejected)?;
-    if !description.is_empty() {
-      input
-        .SetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, description)
-        .map_err(|_| DecodeError::Rejected)?;
-    }
+    input
+      .SetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, &header)
+      .map_err(|_| DecodeError::Rejected)?;
     transform
       .SetInputType(0, &input, 0)
-      .map_err(|_| DecodeError::Rejected)?;
+      .map_err(|_| DecodeError::Unsupported)?;
   }
   let mut session = Session {
     transform,
+    _device: device,
+    _manager: manager,
     origin_x,
     origin_y,
     visible_width,
     visible_height,
     coded_width,
     coded_height,
+    header,
   };
   session.bind_output()?;
   unsafe {
@@ -120,8 +210,15 @@ impl Session {
     if bytes.is_empty() {
       return Err(DecodeError::Rejected);
     }
+    let mut stream = Vec::new();
+    // The transform takes its parameter sets in band. Each IDR access unit
+    // carries them so a decoder that was reset can start there.
+    if h264::has_idr(bytes) {
+      stream.extend_from_slice(&self.header);
+    }
+    stream.extend(h264::annex_b_sample(bytes)?);
     unsafe {
-      let sample = sample_with_bytes(bytes)?;
+      let sample = sample_with_bytes(&stream)?;
       self
         .transform
         .ProcessInput(0, &sample, 0)
@@ -205,6 +302,13 @@ impl Session {
   }
 
   fn raster_of(&self, sample: &IMFSample) -> Result<Raster, DecodeError> {
+    // A picture the GPU decoded is a DXGI surface. Anything else means the
+    // transform fell back to software for this stream.
+    let first = unsafe { sample.GetBufferByIndex(0) }
+      .map_err(|_| DecodeError::Rejected)?;
+    if first.cast::<IMFDXGIBuffer>().is_err() {
+      return Err(DecodeError::Unsupported);
+    }
     let kind = unsafe { self.transform.GetOutputCurrentType(0) }
       .map_err(|_| DecodeError::Rejected)?;
     let subtype = unsafe { kind.GetGUID(&MF_MT_SUBTYPE) }
@@ -292,7 +396,7 @@ fn enumerate(subtype_id: &GUID) -> Result<Activates, DecodeError> {
     let mut count = 0u32;
     let status = MFTEnumEx(
       MFT_CATEGORY_VIDEO_DECODER,
-      MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SYNCMFT,
+      MFT_ENUM_FLAG_SYNCMFT,
       Some(from_ref(&input)),
       None,
       from_mut(&mut list),

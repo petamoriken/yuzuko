@@ -690,7 +690,10 @@ fn wpt_python(suite: &Path) -> String {
     "python3.12",
     "python3.11",
     "python3.10",
+    "python3.9",
     "python3",
+    // The python.org installer for Windows names the interpreter `python`.
+    "python",
   ];
   for candidate in CANDIDATES {
     let ok = Command::new(*candidate)

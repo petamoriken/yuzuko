@@ -1453,6 +1453,11 @@ impl WindowSurface {
     self.canvas.id()
   }
 
+  /// The canvas this surface draws into.
+  pub(crate) fn drawing_canvas(&self) -> &OffscreenCanvas {
+    &self.canvas
+  }
+
   pub(crate) fn resize_bitmap(&self, width: f64, height: f64) {
     if self.transferred.get() {
       return;

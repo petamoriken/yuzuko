@@ -6,7 +6,7 @@ pub(super) fn present(
   dialog: super::Dialog<'_>,
 ) -> Result<super::Answer, String> {
   use gtk::prelude::*;
-  gtk_ready()?;
+  crate::shell::gtk_loop::ready()?;
   match dialog {
     super::Dialog::Alert => {
       let alert = gtk::MessageDialog::builder()
@@ -61,20 +61,5 @@ pub(super) fn present(
         Ok(super::Answer::Cancel)
       }
     }
-  }
-}
-
-fn gtk_ready() -> Result<(), String> {
-  use std::sync::Once;
-  use std::sync::atomic::{AtomicBool, Ordering};
-  static READY: Once = Once::new();
-  static OK: AtomicBool = AtomicBool::new(false);
-  READY.call_once(|| {
-    OK.store(gtk::init().is_ok(), Ordering::SeqCst);
-  });
-  if OK.load(Ordering::SeqCst) {
-    Ok(())
-  } else {
-    Err("GTK could not start.".to_string())
   }
 }

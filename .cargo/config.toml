@@ -1,0 +1,5 @@
+# The prebuilt rusty_v8 archive for MSVC is compiled against the static CRT.
+# Linking it into a binary that uses the DLL CRT mixes two C runtimes. A
+# static CRT also lets a packaged `.exe` start without the VC++ runtime.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

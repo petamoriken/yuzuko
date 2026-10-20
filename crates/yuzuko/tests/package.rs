@@ -1,4 +1,5 @@
-//! Phase 14 packaging. The Mac bundle is the real `yuzuko` binary.
+//! Phase 14 packaging. The bundle for the host OS holds the real `yuzuko`
+//! binary: a `.app` on macOS and a directory on Windows and Linux.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -286,18 +287,22 @@ fn refusals_write_nothing_and_do_not_panic() {
     );
     assert!(!dest.exists(), "{extension}");
   }
-  let not_app = dir.join("not-an-app.txt");
-  let output = run(
-    &ok,
-    &[
-      "package",
-      "src/main.ts",
-      "--output",
-      not_app.to_str().unwrap(),
-    ],
-  );
-  assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert!(!not_app.exists());
+  // Only a macOS bundle must end in `.app`. Windows and Linux write a
+  // directory under any name.
+  if cfg!(target_os = "macos") {
+    let not_app = dir.join("not-an-app.txt");
+    let output = run(
+      &ok,
+      &[
+        "package",
+        "src/main.ts",
+        "--output",
+        not_app.to_str().unwrap(),
+      ],
+    );
+    assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    assert!(!not_app.exists());
+  }
 
   let no_output = dir.join("no-output");
   write(&no_output.join("yuzuko.json"), r#"{ "name": "No Output" }"#);
@@ -402,29 +407,33 @@ fn refusals_write_nothing_and_do_not_panic() {
   assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert!(!dest.exists());
 
-  let link = dir.join("link");
-  write(
-    &link.join("yuzuko.json"),
-    r#"{ "name": "Link", "assets": ["./assets/**"] }"#,
-  );
-  write(&link.join("main.ts"), "console.log(1)\n");
-  write(&link.join("assets/keep.txt"), "keep\n");
-  std::os::unix::fs::symlink("/etc/passwd", link.join("assets/passwd"))
-    .unwrap();
-  let dest = dir.join("link.app");
-  let output = run(
-    &link,
-    &["package", "main.ts", "--output", dest.to_str().unwrap()],
-  );
-  assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert!(
-    text(&output.stderr).contains("escapes"),
-    "{}",
-    text(&output.stderr)
-  );
-  assert!(!text(&output.stderr).contains("panicked"));
-  assert!(!dest.exists());
-  assert!(!dir.join(".link.app.partial").exists());
+  // Creating a symlink on Windows needs Developer Mode or an elevated token.
+  #[cfg(unix)]
+  {
+    let link = dir.join("link");
+    write(
+      &link.join("yuzuko.json"),
+      r#"{ "name": "Link", "assets": ["./assets/**"] }"#,
+    );
+    write(&link.join("main.ts"), "console.log(1)\n");
+    write(&link.join("assets/keep.txt"), "keep\n");
+    std::os::unix::fs::symlink("/etc/passwd", link.join("assets/passwd"))
+      .unwrap();
+    let dest = dir.join("link.app");
+    let output = run(
+      &link,
+      &["package", "main.ts", "--output", dest.to_str().unwrap()],
+    );
+    assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    assert!(
+      text(&output.stderr).contains("escapes"),
+      "{}",
+      text(&output.stderr)
+    );
+    assert!(!text(&output.stderr).contains("panicked"));
+    assert!(!dest.exists());
+    assert!(!dir.join(".link.app.partial").exists());
+  }
 
   let host = dir.join("host");
   write(&host.join("outside.ts"), "export const x = 1;\n");
@@ -484,6 +493,7 @@ fn refusals_write_nothing_and_do_not_panic() {
   assert!(!dest.exists());
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   let dir = scratch("mac");
@@ -694,6 +704,114 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   assert_ne!(mixed.status.code(), Some(0), "{}", text(&mixed.stdout));
 }
 
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn directory_bundle_launches_with_assets_and_title() {
+  let dir = scratch("dir");
+  // `output.macos` is a decoy; `--output` wins and the decoy is not written.
+  let config = base_config(r#""output": { "macos": "./decoy.app" },"#);
+  game_tree(&dir, &config);
+  let bundle = dir.join("MyGame");
+  let output = Command::new(bin())
+    .current_dir(&dir)
+    .args([
+      "package",
+      "src/main.ts",
+      "--output",
+      bundle.to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert!(!dir.join("decoy.app").exists());
+  assert!(!dir.join(".MyGame.partial").exists());
+  assert!(!bundle.join("Contents").exists());
+  assert_eq!(
+    fs::read(bundle.join("app/assets/note.txt")).unwrap(),
+    NOTE.as_bytes()
+  );
+  assert!(bundle.join("app/src/lib.ts").is_file());
+  assert!(!bundle.join("app/src/missing-type.ts").exists());
+  assert!(!bundle.join("app/src/missing-dynamic.ts").exists());
+  let manifest = fs::read_to_string(bundle.join("yuzuko.bundle.json")).unwrap();
+  assert!(
+    manifest.contains("https://updates.example.invalid/game"),
+    "{manifest}"
+  );
+  assert!(
+    manifest.contains("\"entry\": \"src/main.ts\""),
+    "{manifest}"
+  );
+  assert!(!bundle.join("yuzuko.update-key").exists());
+  let exe = if cfg!(windows) {
+    assert_eq!(
+      fs::read_to_string(bundle.join("AppUserModelID")).unwrap(),
+      "com.yuzuko.my-game"
+    );
+    bundle.join("my-game.exe")
+  } else {
+    let desktop =
+      fs::read_to_string(bundle.join("com.yuzuko.my-game.desktop")).unwrap();
+    assert!(desktop.contains("Name=My Game"), "{desktop}");
+    assert!(desktop.contains("Exec=my-game"), "{desktop}");
+    bundle.join("my-game")
+  };
+  let header = fs::read(&exe).unwrap();
+  if cfg!(windows) {
+    assert_eq!(&header[0..2], b"MZ", "not a PE image");
+    // A double click opens no console: the copy is a GUI-subsystem image.
+    let pe = u32::from_le_bytes(header[0x3c..0x40].try_into().unwrap());
+    let at = pe as usize + 24 + 68;
+    assert_eq!(u16::from_le_bytes([header[at], header[at + 1]]), 2);
+    let runtime = fs::read(bin()).unwrap();
+    assert_eq!(u16::from_le_bytes([runtime[at], runtime[at + 1]]), 3);
+  } else {
+    assert_eq!(&header[0..4], b"\x7fELF", "not an ELF image");
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let mode = fs::metadata(&exe).unwrap().permissions().mode();
+      assert_eq!(mode & 0o111, 0o111, "{mode:o}");
+    }
+  }
+
+  let sentinel = dir.join("launch-cwd");
+  fs::create_dir_all(&sentinel).unwrap();
+  let first = launch(&exe, &sentinel, &[]);
+  assert_eq!(first.status, 0, "{}", first.stderr);
+  assert!(
+    first.stdout.contains("fixture-asset-token"),
+    "{}",
+    first.stdout
+  );
+  assert!(first.stdout.contains("My Game"), "{}", first.stdout);
+  assert!(first.stdout.contains("scripted"), "{}", first.stdout);
+  assert!(first.stdout.contains("updater:object"), "{}", first.stdout);
+  assert!(
+    first.stdout.contains("/app/src/main.ts"),
+    "{}",
+    first.stdout
+  );
+  assert!(
+    first.stdout.contains("local-import-marker"),
+    "{}",
+    first.stdout
+  );
+  assert!(first.stdout.contains("undefined"), "{}", first.stdout);
+  assert!(first.stdout.contains("blocked"), "{}", first.stdout);
+  if cfg!(target_os = "linux") {
+    assert_eq!(first.cwd, sentinel.to_str().unwrap());
+  }
+
+  let bundled_run = Command::new(&exe).args(["run"]).output().unwrap();
+  assert_ne!(
+    bundled_run.status.code(),
+    Some(0),
+    "{}",
+    text(&bundled_run.stdout)
+  );
+}
+
 #[test]
 fn run_uses_config_only_for_the_omitted_title() {
   let dir = scratch("run");
@@ -798,6 +916,10 @@ fn windows_and_linux_layouts_use_the_packager() {
     fs::read_to_string(linux.join("com.example.game2.desktop")).unwrap();
   assert!(desktop.contains("Name=Pack Game"), "{desktop}");
   assert!(desktop.contains("Exec=pack-game"), "{desktop}");
+  assert!(
+    desktop.contains("StartupWMClass=com.example.game2"),
+    "{desktop}"
+  );
   assert!(linux.is_dir());
   assert!(!linux.with_extension("deb").exists());
   assert!(!linux.with_extension("rpm").exists());
@@ -830,14 +952,17 @@ fn windows_and_linux_layouts_use_the_packager() {
     }"#,
   );
   let config = load_package(&dir.join("src/main.ts"), None).unwrap();
+  // A `.app` is signed with `codesign`, which exists only on macOS.
   let icon_app = dir.join("Icon.app");
-  package(&config, Target::Macos, &bin(), &icon_app).unwrap();
-  let icns =
-    fs::read(icon_app.join("Contents/Resources/AppIcon.icns")).unwrap();
-  assert!(
-    icns.windows(15).any(|window| window == b"PNG-128-FIXTURE"),
-    "icns missing png"
-  );
+  if cfg!(target_os = "macos") {
+    package(&config, Target::Macos, &bin(), &icon_app).unwrap();
+    let icns =
+      fs::read(icon_app.join("Contents/Resources/AppIcon.icns")).unwrap();
+    assert!(
+      icns.windows(15).any(|window| window == b"PNG-128-FIXTURE"),
+      "icns missing png"
+    );
+  }
   let linux_icons = dir.join("linux-pngs");
   package(
     &config,
@@ -850,9 +975,11 @@ fn windows_and_linux_layouts_use_the_packager() {
     fs::read(linux_icons.join("icons/128.png")).unwrap(),
     b"PNG-128-FIXTURE"
   );
-  let icon_plist =
-    fs::read_to_string(icon_app.join("Contents/Info.plist")).unwrap();
-  assert!(icon_plist.contains("CFBundleIconFile"), "{icon_plist}");
+  if cfg!(target_os = "macos") {
+    let icon_plist =
+      fs::read_to_string(icon_app.join("Contents/Info.plist")).unwrap();
+    assert!(icon_plist.contains("CFBundleIconFile"), "{icon_plist}");
+  }
 
   let named = dir.join("My Game");
   write(&named.join("src/main.ts"), "console.log(1)\n");
@@ -898,6 +1025,9 @@ fn windows_and_linux_layouts_use_the_packager() {
       "icons": { "macos": "./icons/app.icns" }
     }"#,
   );
+  if !cfg!(target_os = "macos") {
+    return;
+  }
   let config = load_package(&dir.join("src/main.ts"), None).unwrap();
   let icns_app = dir.join("Icns.app");
   package(&config, Target::Macos, &bin(), &icns_app).unwrap();
@@ -931,14 +1061,8 @@ fn launch(exe: &Path, cwd: &Path, args: &[&str]) -> Launch {
     .stderr(Stdio::piped())
     .spawn()
     .expect("spawn bundle");
-  let pid = child.id();
   std::thread::sleep(Duration::from_millis(300));
-  let listed = Command::new("lsof")
-    .args(["-a", "-p", &pid.to_string(), "-d", "cwd"])
-    .output();
-  let cwd_text = listed
-    .map(|output| text(&output.stdout))
-    .unwrap_or_default();
+  let cwd_text = process_cwd(child.id());
   let start = Instant::now();
   let output = loop {
     if let Some(status) = child.try_wait().unwrap() {
@@ -959,6 +1083,25 @@ fn launch(exe: &Path, cwd: &Path, args: &[&str]) -> Launch {
   }
 }
 
+/// The current directory of a running process, or `""` when this OS does not
+/// expose it to another process.
+fn process_cwd(pid: u32) -> String {
+  if cfg!(target_os = "macos") {
+    Command::new("lsof")
+      .args(["-a", "-p", &pid.to_string(), "-d", "cwd"])
+      .output()
+      .map(|output| text(&output.stdout))
+      .unwrap_or_default()
+  } else if cfg!(target_os = "linux") {
+    fs::read_link(format!("/proc/{pid}/cwd"))
+      .map(|path| path.to_string_lossy().into_owned())
+      .unwrap_or_default()
+  } else {
+    String::new()
+  }
+}
+
+#[cfg(target_os = "macos")]
 fn open_app(app: &Path) -> (i32, String) {
   let mut child = Command::new("open")
     .args(["-W", app.to_str().unwrap()])

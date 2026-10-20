@@ -100,9 +100,11 @@ pub fn run_file_sandboxed(
   path: &Path,
   sandbox: Option<&Path>,
 ) -> Result<(), RuntimeError> {
-  let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+  let path = crate::loader::modules::canonicalize(path)
+    .unwrap_or_else(|_| path.to_path_buf());
   let sandbox = sandbox.map(|path| {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::loader::modules::canonicalize(path)
+      .unwrap_or_else(|_| path.to_path_buf())
   });
   with_runtime(
     false,

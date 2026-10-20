@@ -53,6 +53,10 @@ fn wide(text: &str) -> Vec<u16> {
   text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+/// The `prompt` window class. Its OK and Cancel buttons use the dialog IDs
+/// `IDOK` and `IDCANCEL`, so `IsDialogMessageW` maps Enter and Esc onto them.
+const PROMPT_CLASS: &str = "YuzukoPrompt";
+
 fn prompt(
   parent: windows_sys::Win32::Foundation::HWND,
   title: &str,
@@ -60,27 +64,52 @@ fn prompt(
   default_value: &str,
 ) -> Result<super::Answer, String> {
   use std::sync::Once;
-  use std::sync::OnceLock;
-  use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+  use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+  use windows_sys::Win32::Graphics::Gdi::{
+    COLOR_BTNFACE, DEFAULT_GUI_FONT, GetStockObject,
+  };
   use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+  use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    EnableWindow, SetFocus,
+  };
   use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BS_DEFPUSHBUTTON, CREATESTRUCTW, CW_USEDEFAULT, CreateWindowExW,
-    DefWindowProcW, DestroyWindow, DispatchMessageW, EnableWindow,
-    GWLP_USERDATA, GetMessageW, GetWindowLongPtrW, HMENU, MSG, RegisterClassW,
-    SW_SHOW, SetWindowLongPtrW, ShowWindow, TranslateMessage, WM_CLOSE,
-    WM_COMMAND, WM_CREATE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_EX_DLGMODALFRAME, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    AdjustWindowRectEx, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CREATESTRUCTW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    ES_AUTOHSCROLL, GWLP_USERDATA, GetMessageW, GetWindowLongPtrW,
+    GetWindowRect, HMENU, IDCANCEL, IDOK, IsDialogMessageW, MSG,
+    RegisterClassW, SW_SHOW, SendMessageW, SetWindowLongPtrW, ShowWindow,
+    TranslateMessage, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_SETFONT, WNDCLASSW,
+    WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_DLGMODALFRAME, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
   };
   const EDIT: isize = 101;
-  const OK: isize = 1;
-  const CANCEL: isize = 2;
+  const EM_SETSEL: u32 = 0x00b1;
+  /// Client size in 96-DPI pixels.
+  const WIDTH: i32 = 404;
+  const HEIGHT: i32 = 134;
   struct State {
+    parent: HWND,
     edit: HWND,
     ok: bool,
     text: String,
     done: bool,
     default_value: String,
     message: String,
+    scale: f64,
+  }
+  fn finish(hwnd: HWND, state: &mut State, ok: bool) {
+    if ok {
+      state.text = edit_text(state.edit);
+    }
+    state.ok = ok;
+    state.done = true;
+    // Enable the owner before the dialog goes away so activation returns to
+    // it instead of another application's window.
+    unsafe {
+      EnableWindow(state.parent, 1);
+      DestroyWindow(hwnd);
+    }
   }
   unsafe extern "system" fn proc(
     hwnd: HWND,
@@ -94,66 +123,56 @@ fn prompt(
       unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, state as _) };
       let state = unsafe { &mut *state };
       let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
-      let label = wide(&state.message);
-      let initial = wide(&state.default_value);
-      unsafe {
-        CreateWindowExW(
-          0,
-          wide("STATIC").as_ptr(),
-          label.as_ptr(),
-          WS_CHILD | WS_VISIBLE,
-          12,
-          12,
-          380,
-          40,
-          hwnd,
-          std::ptr::null_mut(),
-          instance,
-          std::ptr::null_mut(),
-        );
-        state.edit = CreateWindowExW(
-          0,
-          wide("EDIT").as_ptr(),
-          initial.as_ptr(),
-          WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
-          12,
-          56,
-          380,
-          24,
-          hwnd,
-          EDIT as HMENU,
-          instance,
-          std::ptr::null_mut(),
-        );
-        CreateWindowExW(
-          0,
-          wide("BUTTON").as_ptr(),
-          wide("OK").as_ptr(),
-          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
-          210,
-          96,
-          86,
-          26,
-          hwnd,
-          OK as HMENU,
-          instance,
-          std::ptr::null_mut(),
-        );
-        CreateWindowExW(
-          0,
-          wide("BUTTON").as_ptr(),
-          wide("Cancel").as_ptr(),
-          WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-          306,
-          96,
-          86,
-          26,
-          hwnd,
-          CANCEL as HMENU,
-          instance,
-          std::ptr::null_mut(),
-        );
-      }
+      let font = unsafe { GetStockObject(DEFAULT_GUI_FONT) };
+      let px = |value: i32| (f64::from(value) * state.scale).round() as i32;
+      let child = |class: &str,
+                   text: &str,
+                   style: u32,
+                   rect: (i32, i32, i32, i32),
+                   id: isize| {
+        let class = wide(class);
+        let text = wide(text);
+        let control = unsafe {
+          CreateWindowExW(
+            0,
+            class.as_ptr(),
+            text.as_ptr(),
+            WS_CHILD | WS_VISIBLE | style,
+            px(rect.0),
+            px(rect.1),
+            px(rect.2),
+            px(rect.3),
+            hwnd,
+            id as HMENU,
+            instance,
+            std::ptr::null_mut(),
+          )
+        };
+        unsafe { SendMessageW(control, WM_SETFONT, font as WPARAM, 1) };
+        control
+      };
+      child("STATIC", &state.message, 0, (12, 12, 380, 40), 0);
+      state.edit = child(
+        "EDIT",
+        &state.default_value,
+        WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL as u32,
+        (12, 56, 380, 24),
+        EDIT,
+      );
+      child(
+        "BUTTON",
+        "OK",
+        WS_TABSTOP | BS_DEFPUSHBUTTON as u32,
+        (210, 96, 86, 26),
+        IDOK as isize,
+      );
+      child(
+        "BUTTON",
+        "Cancel",
+        WS_TABSTOP | BS_PUSHBUTTON as u32,
+        (306, 96, 86, 26),
+        IDCANCEL as isize,
+      );
       return 0;
     }
     let state = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut State;
@@ -163,87 +182,125 @@ fn prompt(
     let state = unsafe { &mut *state };
     match msg {
       WM_COMMAND => {
-        let id = (wparam & 0xffff) as isize;
-        if id == OK {
-          state.text = edit_text(state.edit);
-          state.ok = true;
-          state.done = true;
-          unsafe { DestroyWindow(hwnd) };
-          return 0;
-        }
-        if id == CANCEL {
-          state.ok = false;
-          state.done = true;
-          unsafe { DestroyWindow(hwnd) };
-          return 0;
+        let id = (wparam & 0xffff) as i32;
+        if id == IDOK {
+          finish(hwnd, state, true);
+        } else if id == IDCANCEL {
+          finish(hwnd, state, false);
         }
         0
       }
       WM_CLOSE => {
-        state.ok = false;
-        state.done = true;
-        unsafe { DestroyWindow(hwnd) };
+        finish(hwnd, state, false);
         0
       }
       _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
   }
-  static CLASS_NAME: OnceLock<Vec<u16>> = OnceLock::new();
   static REGISTER: Once = Once::new();
   REGISTER.call_once(|| {
-    let class_name = CLASS_NAME.get_or_init(|| wide("YuzukoPrompt"));
+    let class_name = wide(PROMPT_CLASS);
     let class = WNDCLASSW {
       lpfnWndProc: Some(proc),
       hInstance: unsafe { GetModuleHandleW(std::ptr::null()) },
       lpszClassName: class_name.as_ptr(),
+      hbrBackground: (COLOR_BTNFACE + 1) as usize as _,
       ..unsafe { std::mem::zeroed() }
     };
+    // RegisterClassW copies the name, so the buffer can drop afterward.
     unsafe { RegisterClassW(&class) };
   });
-  let mut state = State {
+  let dpi = unsafe { GetDpiForWindow(parent) };
+  let scale = if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 };
+  // The window procedure writes this state through the pointer it gets at
+  // creation, so the loop below reads it through the same pointer.
+  let state = Box::into_raw(Box::new(State {
+    parent,
     edit: std::ptr::null_mut(),
     ok: false,
     text: String::new(),
     done: false,
     default_value: default_value.to_string(),
     message: message.to_string(),
+    scale,
+  }));
+  let style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+  let mut frame = RECT {
+    left: 0,
+    top: 0,
+    right: (f64::from(WIDTH) * scale).round() as i32,
+    bottom: (f64::from(HEIGHT) * scale).round() as i32,
   };
+  unsafe { AdjustWindowRectEx(&mut frame, style, 0, WS_EX_DLGMODALFRAME) };
+  let width = frame.right - frame.left;
+  let height = frame.bottom - frame.top;
+  let mut owner = RECT {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  };
+  unsafe { GetWindowRect(parent, &mut owner) };
+  let x = owner.left + (owner.right - owner.left - width) / 2;
+  let y = owner.top + (owner.bottom - owner.top - height) / 2;
   let caption = wide(title);
-  let class_name = wide("YuzukoPrompt");
+  let class_name = wide(PROMPT_CLASS);
   unsafe { EnableWindow(parent, 0) };
   let hwnd = unsafe {
     CreateWindowExW(
       WS_EX_DLGMODALFRAME,
       class_name.as_ptr(),
       caption.as_ptr(),
-      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
-      420,
-      170,
+      style,
+      x,
+      y,
+      width,
+      height,
       parent,
       std::ptr::null_mut(),
       GetModuleHandleW(std::ptr::null()),
-      (&mut state as *mut State).cast(),
+      state.cast(),
     )
   };
   if hwnd.is_null() {
-    unsafe { EnableWindow(parent, 1) };
+    unsafe {
+      EnableWindow(parent, 1);
+      drop(Box::from_raw(state));
+    }
     return Err("This window has no dialog.".to_string());
   }
-  unsafe { ShowWindow(hwnd, SW_SHOW) };
-  while !state.done {
+  unsafe {
+    ShowWindow(hwnd, SW_SHOW);
+    SetFocus((*state).edit);
+    SendMessageW((*state).edit, EM_SETSEL, 0, -1);
+  }
+  loop {
+    // `DispatchMessageW` runs the window procedure, which sets `done`.
+    if unsafe { (*state).done } {
+      break;
+    }
     let mut message = unsafe { std::mem::zeroed::<MSG>() };
     let code = unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) };
     if code == 0 || code == -1 {
       break;
+    }
+    // Tab moves focus, Enter presses OK, and Esc presses Cancel.
+    if unsafe { IsDialogMessageW(hwnd, &message) } != 0 {
+      continue;
     }
     unsafe {
       TranslateMessage(&message);
       DispatchMessageW(&message);
     }
   }
-  unsafe { EnableWindow(parent, 1) };
+  if !unsafe { (*state).done } {
+    unsafe {
+      EnableWindow(parent, 1);
+      DestroyWindow(hwnd);
+    }
+  }
+  // The window is destroyed, so its procedure no longer holds the pointer.
+  let state = unsafe { Box::from_raw(state) };
   if state.ok {
     Ok(super::Answer::Text(state.text))
   } else {

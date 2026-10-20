@@ -7112,6 +7112,7 @@ dependencies = [
  "url",
  "v8",
  "webpki-roots",
+ "windows-sys 0.61.2",
  "yuzuko_audio",
  "yuzuko_canvas",
  "yuzuko_codec",
@@ -7196,6 +7197,7 @@ dependencies = [
  "unicode-width",
  "url",
  "v8",
+ "windows-sys 0.61.2",
  "yuzuko_macros",
 ]
 

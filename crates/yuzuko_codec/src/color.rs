@@ -127,6 +127,7 @@ pub fn nv12_to_rgba(
   Some(rgba)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn packed_to_rgba(
   src: &[u8],
   width: usize,

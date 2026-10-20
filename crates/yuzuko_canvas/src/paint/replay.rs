@@ -68,6 +68,12 @@ fn backend() -> &'static Backend {
 
 fn gpu_renderer_works() -> bool {
   yuzuko_window::with_device(|device, _queue| {
+    // vello's compute pipelines need wgpu's default limits. On a downlevel
+    // device, such as a GL driver, building them fails as an uncaptured
+    // validation error that panics instead of returning `Err`.
+    if !wgpu::Limits::default().check_limits(&device.limits()) {
+      return false;
+    }
     vello::Renderer::new(device, vello::RendererOptions::default()).is_ok()
   })
   .unwrap_or(false)

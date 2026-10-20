@@ -5,6 +5,7 @@ mod canvas;
 mod fit;
 mod frame;
 mod gpu;
+mod identity;
 mod inbox;
 mod input;
 mod media;
@@ -56,6 +57,7 @@ pub use gpu::{
   ensure as ensure_gpu, failed as gpu_failed, foreign as gpu_foreign,
   with_device, with_gpu,
 };
+pub use identity::set_app_identity;
 pub use os::{canvas_is_transparent, request_redraw};
 pub use session::headless;
 pub use surface::{canvas_style, default_title, set_default_title};

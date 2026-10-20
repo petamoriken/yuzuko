@@ -55,11 +55,11 @@ fn gamut() -> Gamut {
 }
 
 fn reduced_motion() -> bool {
-  system_flag("accessibilityDisplayShouldReduceMotion")
+  system_reduced_motion()
 }
 
 fn contrast() -> Contrast {
-  if system_flag("accessibilityDisplayShouldIncreaseContrast") {
+  if system_more_contrast() {
     Contrast::More
   } else {
     Contrast::NoPreference
@@ -78,7 +78,38 @@ fn system_scheme() -> Scheme {
   }
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Apps mode in Settings > Personalization > Colors.
+#[cfg(target_os = "windows")]
+fn system_scheme() -> Scheme {
+  use windows_sys::Win32::System::Registry::{
+    HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW,
+  };
+  let key: Vec<u16> =
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+      .encode_utf16()
+      .collect();
+  let name: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+  let mut value = 1u32;
+  let mut size = std::mem::size_of::<u32>() as u32;
+  let status = unsafe {
+    RegGetValueW(
+      HKEY_CURRENT_USER,
+      key.as_ptr(),
+      name.as_ptr(),
+      RRF_RT_REG_DWORD,
+      std::ptr::null_mut(),
+      (&mut value as *mut u32).cast(),
+      &mut size,
+    )
+  };
+  if status == 0 && value == 0 {
+    Scheme::Dark
+  } else {
+    Scheme::Light
+  }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn system_scheme() -> Scheme {
   Scheme::Light
 }
@@ -94,12 +125,66 @@ fn system_p3() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn system_flag(selector: &str) -> bool {
-  apple::workspace_bool(selector)
+fn system_reduced_motion() -> bool {
+  apple::workspace_bool("accessibilityDisplayShouldReduceMotion")
 }
 
-#[cfg(not(target_os = "macos"))]
-fn system_flag(_selector: &str) -> bool {
+#[cfg(target_os = "macos")]
+fn system_more_contrast() -> bool {
+  apple::workspace_bool("accessibilityDisplayShouldIncreaseContrast")
+}
+
+/// Settings > Accessibility > Visual effects > Animation effects. Off means
+/// reduce, as in Chromium.
+#[cfg(target_os = "windows")]
+fn system_reduced_motion() -> bool {
+  use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
+  };
+  let mut animate = 1i32;
+  let ok = unsafe {
+    SystemParametersInfoW(
+      SPI_GETCLIENTAREAANIMATION,
+      0,
+      (&mut animate as *mut i32).cast(),
+      0,
+    )
+  };
+  ok != 0 && animate == 0
+}
+
+/// A contrast theme in Settings > Accessibility > Contrast themes.
+#[cfg(target_os = "windows")]
+fn system_more_contrast() -> bool {
+  use windows_sys::Win32::UI::Accessibility::{
+    HCF_HIGHCONTRASTON, HIGHCONTRASTW,
+  };
+  use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SPI_GETHIGHCONTRAST, SystemParametersInfoW,
+  };
+  let mut info = HIGHCONTRASTW {
+    cbSize: std::mem::size_of::<HIGHCONTRASTW>() as u32,
+    dwFlags: 0,
+    lpszDefaultScheme: std::ptr::null_mut(),
+  };
+  let ok = unsafe {
+    SystemParametersInfoW(
+      SPI_GETHIGHCONTRAST,
+      info.cbSize,
+      (&mut info as *mut HIGHCONTRASTW).cast(),
+      0,
+    )
+  };
+  ok != 0 && info.dwFlags & HCF_HIGHCONTRASTON != 0
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_reduced_motion() -> bool {
+  false
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_more_contrast() -> bool {
   false
 }
 
@@ -237,5 +322,31 @@ mod apple {
     let send: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> i8 =
       unsafe { std::mem::transmute(objc_msgSend as *const ()) };
     unsafe { send(obj, sel, arg) != 0 }
+  }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+  use super::{Scheme, system_scheme};
+
+  #[test]
+  fn scheme_follows_the_apps_mode_setting() {
+    let output = std::process::Command::new("reg")
+      .args([
+        "query",
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        "/v",
+        "AppsUseLightTheme",
+      ])
+      .output()
+      .expect("reg query");
+    let text = String::from_utf8_lossy(&output.stdout);
+    let value = text
+      .lines()
+      .find(|line| line.contains("AppsUseLightTheme"))
+      .and_then(|line| line.split_whitespace().last());
+    let dark = value == Some("0x0");
+    let expected = if dark { Scheme::Dark } else { Scheme::Light };
+    assert_eq!(system_scheme(), expected, "{text}");
   }
 }

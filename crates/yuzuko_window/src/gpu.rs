@@ -96,9 +96,49 @@ pub(crate) fn cloned_parts()
   })
 }
 
+/// Instance options for the process device and window surfaces.
+///
+/// A debug build leaves out debug labels unless `WGPU_DEBUG` asks for them.
+/// lavapipe in Mesa 21 advertises `VK_EXT_debug_utils` without the command
+/// buffer label functions, and wgpu aborts when it records a label there.
+pub(crate) fn instance_descriptor() -> wgpu::InstanceDescriptor {
+  let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+  descriptor.flags = (wgpu::InstanceFlags::from_build_config()
+    - wgpu::InstanceFlags::DEBUG)
+    .with_env();
+  descriptor
+}
+
+/// The limits requested for the process device: wgpu's defaults when the
+/// adapter supports them, otherwise everything the adapter offers. A
+/// downlevel adapter, such as a GL driver with two color attachments, would
+/// reject the defaults.
+pub(crate) fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
+  let supported = adapter.limits();
+  let defaults = wgpu::Limits::default();
+  if defaults.check_limits(&supported) {
+    defaults
+  } else {
+    supported
+  }
+}
+
+pub(crate) fn request_device(
+  adapter: &wgpu::Adapter,
+) -> Result<(wgpu::Device, wgpu::Queue), String> {
+  pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+    label: Some("yuzuko"),
+    required_features: wgpu::Features::empty(),
+    required_limits: device_limits(adapter),
+    experimental_features: wgpu::ExperimentalFeatures::disabled(),
+    memory_hints: wgpu::MemoryHints::default(),
+    trace: wgpu::Trace::Off,
+  }))
+  .map_err(|error| error.to_string())
+}
+
 fn create() -> Result<SharedGpu, String> {
-  let instance =
-    wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+  let instance = wgpu::Instance::new(instance_descriptor());
   let adapter = pollster::block_on(instance.request_adapter(
     &wgpu::RequestAdapterOptions {
       power_preference: wgpu::PowerPreference::default(),
@@ -107,16 +147,7 @@ fn create() -> Result<SharedGpu, String> {
     },
   ))
   .map_err(|error| error.to_string())?;
-  let (device, queue) =
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-      label: Some("yuzuko"),
-      required_features: wgpu::Features::empty(),
-      required_limits: wgpu::Limits::default(),
-      experimental_features: wgpu::ExperimentalFeatures::disabled(),
-      memory_hints: wgpu::MemoryHints::default(),
-      trace: wgpu::Trace::Off,
-    }))
-    .map_err(|error| error.to_string())?;
+  let (device, queue) = request_device(&adapter)?;
   Ok(SharedGpu {
     instance,
     adapter,

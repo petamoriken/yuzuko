@@ -490,9 +490,19 @@ pub fn offscreen_canvas(
   value: v8::Local<v8::Value>,
 ) -> Option<(u64, f64, f64)> {
   let object = v8::Local::<v8::Object>::try_from(value).ok()?;
-  let host =
-    unsafe { yuzuko_core::op::host_ref::<OffscreenCanvas>(scope, object) }?;
-  let canvas = host.get();
+  if let Some(host) =
+    unsafe { yuzuko_core::op::host_ref::<OffscreenCanvas>(scope, object) }
+  {
+    let canvas = host.get();
+    let (width, height) = canvas.bitmap();
+    return Some((canvas.id(), width, height));
+  }
+  // A `WindowSurface` is not an `OffscreenCanvas`, but a WebGPU context on
+  // it draws into the canvas the surface owns.
+  let host = unsafe {
+    yuzuko_core::op::host_ref::<crate::surface::WindowSurface>(scope, object)
+  }?;
+  let canvas = host.get().drawing_canvas();
   let (width, height) = canvas.bitmap();
   Some((canvas.id(), width, height))
 }

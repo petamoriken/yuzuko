@@ -992,7 +992,7 @@ fn nv_plane(
 
 fn swap_chroma(uv: &[u8]) -> Vec<u8> {
   let mut swapped = uv.to_vec();
-  for pair in swapped.chunks_exact_mut(2) {
+  for pair in swapped.as_chunks_mut::<2>().0 {
     pair.swap(0, 1);
   }
   swapped

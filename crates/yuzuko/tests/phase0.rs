@@ -1,5 +1,6 @@
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 fn workspace() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -193,7 +194,8 @@ fn microtask_runs_before_a_timer() {
 
 #[test]
 fn usage_errors_exit_2() {
-  assert_eq!(yuzuko(&[]).status.code(), Some(2));
+  // No command starts the REPL, which ends with status 0 at stdin EOF.
+  assert_eq!(yuzuko(&[]).status.code(), Some(0));
   assert_eq!(yuzuko(&["run"]).status.code(), Some(2));
   let output = yuzuko(&["wpt"]);
   assert_eq!(output.status.code(), Some(2));
@@ -202,4 +204,31 @@ fn usage_errors_exit_2() {
     "{}",
     text(&output.stderr)
   );
+}
+
+#[test]
+fn delayed_v8_housekeeping_does_not_keep_the_process_alive() {
+  let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["run", "tests/fixtures/allocate_exit.ts"])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn yuzuko");
+  let start = Instant::now();
+  let status = loop {
+    if let Some(status) = child.try_wait().expect("poll yuzuko") {
+      break status;
+    }
+    // Without the fix the process never exits, so a generous limit still
+    // catches it on a loaded machine.
+    if start.elapsed() > Duration::from_secs(15) {
+      let _ = child.kill();
+      panic!("the script finished but the process stayed alive");
+    }
+    std::thread::sleep(Duration::from_millis(20));
+  };
+  let output = child.wait_with_output().expect("yuzuko output");
+  assert!(status.success(), "{}", text(&output.stderr));
+  assert_eq!(text(&output.stdout).trim(), "allocated");
 }

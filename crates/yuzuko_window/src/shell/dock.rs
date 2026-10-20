@@ -1,14 +1,15 @@
 //! `Yuzuko.dock`. One process-wide dock or taskbar control.
 
-use std::cell::RefCell;
-
 use yuzuko_core::op::{OpError, OpException};
-use yuzuko_dom::Event;
 
 use crate::shell::menu::{self, MenuOwner};
 
 #[cfg(target_os = "macos")]
+use std::cell::RefCell;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "macos")]
+use yuzuko_dom::Event;
 
 #[cfg(target_os = "macos")]
 std::thread_local! {
@@ -69,11 +70,6 @@ pub fn main_screen_scale() -> Option<f64> {
   } else {
     None
   }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn main_screen_scale() -> Option<f64> {
-  None
 }
 
 fn set_badge(
@@ -193,7 +189,7 @@ fn apply_menu(
   #[cfg(not(target_os = "macos"))]
   {
     let _ = (scope, value);
-    return Err(unsupported("This system has no dock menu."));
+    Err(unsupported("This system has no dock menu."))
   }
   #[cfg(target_os = "macos")]
   {

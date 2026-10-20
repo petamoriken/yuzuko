@@ -661,6 +661,51 @@ pub fn absolute(path: &Path) -> Result<PathBuf, RuntimeError> {
   }
 }
 
+/// `std::fs::canonicalize` without the Windows verbatim prefix.
+///
+/// Windows returns `\\?\C:\dir` and `\\?\UNC\server\share`. A `file:` URL
+/// converts back to `C:\dir` and `\\server\share`, so a sandbox check that
+/// compares the two forms would reject every file. Other systems return the
+/// canonical path unchanged.
+pub fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+  let canonical = std::fs::canonicalize(path)?;
+  Ok(strip_verbatim(canonical))
+}
+
+#[cfg(windows)]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+  use std::path::{Component, Prefix};
+  let mut components = path.components();
+  let Some(Component::Prefix(prefix)) = components.next() else {
+    return path;
+  };
+  let mut plain = match prefix.kind() {
+    Prefix::VerbatimDisk(letter) => {
+      PathBuf::from(format!("{}:\\", char::from(letter)))
+    }
+    Prefix::VerbatimUNC(server, share) => {
+      let mut root = std::ffi::OsString::from(r"\\");
+      root.push(server);
+      root.push(r"\");
+      root.push(share);
+      root.push(r"\");
+      PathBuf::from(root)
+    }
+    _ => return path,
+  };
+  for component in components {
+    if !matches!(component, Component::RootDir) {
+      plain.push(component);
+    }
+  }
+  plain
+}
+
+#[cfg(not(windows))]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+  path
+}
+
 pub fn file_url(path: &Path) -> Result<String, RuntimeError> {
   let absolute = absolute(path)?;
   Url::from_file_path(&absolute)
@@ -812,4 +857,34 @@ fn throw_type(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   let message = v8::String::new(scope, message).unwrap();
   let error = v8::Exception::type_error(scope, message);
   scope.throw_exception(error);
+}
+
+#[cfg(all(test, windows))]
+mod verbatim_tests {
+  use std::path::{Path, PathBuf};
+
+  use super::{canonicalize, strip_verbatim};
+
+  #[test]
+  fn verbatim_prefixes_become_plain_paths() {
+    assert_eq!(
+      strip_verbatim(PathBuf::from(r"\\?\C:\games\app\main.ts")),
+      PathBuf::from(r"C:\games\app\main.ts")
+    );
+    assert_eq!(
+      strip_verbatim(PathBuf::from(r"\\?\UNC\host\share\app")),
+      PathBuf::from(r"\\host\share\app")
+    );
+    assert_eq!(
+      strip_verbatim(PathBuf::from(r"C:\plain")),
+      PathBuf::from(r"C:\plain")
+    );
+  }
+
+  #[test]
+  fn canonical_paths_match_file_urls() {
+    let here = canonicalize(Path::new(".")).unwrap();
+    let url = url::Url::from_directory_path(&here).unwrap();
+    assert!(url.to_file_path().unwrap().starts_with(&here), "{here:?}");
+  }
 }

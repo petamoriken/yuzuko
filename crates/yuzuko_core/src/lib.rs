@@ -38,7 +38,7 @@ pub use jobs::{Listen, enqueue, listen, pending as jobs_pending, spawn};
 pub use js::{
   global, namespace, rust_string, set_function, set_value, throw_type,
 };
-pub use loader::modules::{file_url, module_graph};
+pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
 pub use realm::{clone_value, performance_now_ms, time_origin_ms};
 pub use repl::run_repl;

@@ -1,4 +1,5 @@
-//! Phase 15 updates. The Mac bundle is the real `yuzuko` binary.
+//! Phase 15 updates. The bundle for the host OS holds the real `yuzuko`
+//! binary: a `.app` on macOS and a directory on Windows and Linux.
 
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -212,6 +213,29 @@ fn new_hits(server: &FeedServer, mark: &mut usize) -> Vec<String> {
   next
 }
 
+/// The `--output` path `yuzuko package` accepts on this host.
+fn bundle_name() -> &'static str {
+  if cfg!(target_os = "macos") {
+    "UpdateGame.app"
+  } else {
+    "UpdateGame"
+  }
+}
+
+/// The resources directory and the executable inside a host bundle.
+fn bundle_paths(app: &Path) -> (PathBuf, PathBuf) {
+  if cfg!(target_os = "macos") {
+    (
+      app.join("Contents/Resources"),
+      app.join("Contents/MacOS/update-game"),
+    )
+  } else if cfg!(windows) {
+    (app.to_path_buf(), app.join("update-game.exe"))
+  } else {
+    (app.to_path_buf(), app.join("update-game"))
+  }
+}
+
 fn launch(exe: &Path) -> (i32, String, String) {
   let cwd = exe.parent().unwrap().to_path_buf();
   let mut child = Command::new(exe)
@@ -302,7 +326,7 @@ console.log("token-old");
 "#,
   )
   .unwrap();
-  let app = dir.join("UpdateGame.app");
+  let app = dir.join(bundle_name());
   let packaged = Command::new(bin())
     .current_dir(&dir)
     .args(["package", "src/main.ts", "--output", app.to_str().unwrap()])
@@ -314,8 +338,7 @@ console.log("token-old");
     "{}",
     text(&packaged.stderr)
   );
-  let resources = app.join("Contents/Resources");
-  let exe = app.join("Contents/MacOS/update-game");
+  let (resources, exe) = bundle_paths(&app);
   assert!(exe.is_file(), "missing {}", exe.display());
   let key_path = resources.join("yuzuko.update-key");
   assert_eq!(fs::read(&key_path).unwrap(), public);
@@ -326,9 +349,11 @@ console.log("token-old");
     original_manifest.contains("\"version\": \"1.0.0\""),
     "{original_manifest}"
   );
-  let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
-  assert!(plist.contains(&base), "{plist}");
-  assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
+  if cfg!(target_os = "macos") {
+    let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
+    assert!(plist.contains(&base), "{plist}");
+    assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
+  }
   let source = resources.join("app/src/main.ts");
   assert!(fs::read_to_string(&source).unwrap().contains("token-old"));
   let exe_id = fingerprint(&exe);
@@ -496,9 +521,11 @@ console.log("token-old");
   assert!(manifest.contains("\"version\": \"1.1.0\""), "{manifest}");
   assert!(manifest.contains(&base), "{manifest}");
   assert!(manifest.contains("src/main.ts"), "{manifest}");
-  let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
-  assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
-  assert!(!plist.contains("1.1.0"), "{plist}");
+  if cfg!(target_os = "macos") {
+    let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
+    assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
+    assert!(!plist.contains("1.1.0"), "{plist}");
+  }
   assert_eq!(fs::read(&key_path).unwrap(), public);
   assert_eq!(fingerprint(&exe), exe_id);
 }

@@ -23,6 +23,9 @@ fn main() -> ExitCode {
     yuzuko_window::set_test_input(false);
     yuzuko_window::configure(false);
     yuzuko_window::set_default_title(&bundle.name);
+    if let Some(identifier) = &bundle.identifier {
+      yuzuko_window::set_app_identity(identifier, &bundle.resources);
+    }
     yuzuko::enable_updater(bundle.resources);
     let code = match run_file_sandboxed(&bundle.entry, Some(&bundle.sandbox)) {
       Ok(()) => 0,

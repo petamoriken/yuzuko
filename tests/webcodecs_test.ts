@@ -38,6 +38,36 @@ function framesOf(blob: Uint8Array): Uint8Array[] {
   return frames;
 }
 
+/**
+ * H.264 decodes only in the platform hardware decoder. A Windows or Linux
+ * machine without one, such as a VM or WSL without VA-API, rejects the valid
+ * fixture config with `NotSupportedError`, and the picture tests are ignored
+ * there. macOS always has VideoToolbox, so the probe must succeed.
+ */
+async function probeHardwareAvc(): Promise<boolean> {
+  const decoder = new VideoDecoder({ output: () => {}, error: () => {} });
+  try {
+    decoder.configure({
+      codec: "avc1.64000B",
+      description: await bytes("avc1.avcC"),
+      codedWidth: 64,
+      codedHeight: 64,
+    });
+    return true;
+  } catch (error) {
+    const unsupported = error instanceof DOMException &&
+      error.name === "NotSupportedError";
+    if (!unsupported || Yuzuko.build.os === "darwin") {
+      throw error;
+    }
+    return false;
+  } finally {
+    decoder.close();
+  }
+}
+
+const hardwareAvc = await probeHardwareAvc();
+
 async function golden(): Promise<ImageData> {
   const blob = new Blob([await bytes("pattern.png")], { type: "image/png" });
   const bitmap = await createImageBitmap(blob);
@@ -246,7 +276,7 @@ Yuzuko.test("WebCodecs constructors exist and encoders do not", () => {
   assert(typeof AudioData === "function", "AudioData");
   assert(typeof VideoEncoder === "undefined", "VideoEncoder");
   assert(typeof AudioEncoder === "undefined", "AudioEncoder");
-  assert(typeof ImageDecoder === "undefined", "ImageDecoder");
+  assert(typeof ImageDecoder === "function", "ImageDecoder");
   assert(typeof HTMLVideoElement === "undefined", "HTMLVideoElement");
   let name = "";
   try {
@@ -341,7 +371,7 @@ Yuzuko.test("a rejected avc1 config yields no VideoFrame", async () => {
   decoder.close();
 });
 
-Yuzuko.test("an H.264 frame matches the golden and then closes", async () => {
+Yuzuko.test({ name: "an H.264 frame matches the golden and then closes", ignore: !hardwareAvc, fn: async () => {
   const expected = await golden();
   const frames = await decodeVideo(
     "avc1.64000B",
@@ -362,9 +392,9 @@ Yuzuko.test("an H.264 frame matches the golden and then closes", async () => {
   frame.close();
   await assertThrows(() => context.drawImage(frame, 0, 0), "InvalidStateError");
   await assertThrows(() => createImageBitmap(frame), "InvalidStateError");
-});
+} });
 
-Yuzuko.test("WebGPU readback matches the H.264 golden", async () => {
+Yuzuko.test({ name: "WebGPU readback matches the H.264 golden", ignore: !hardwareAvc, fn: async () => {
   const expected = await golden();
   const frames = await decodeVideo(
     "avc1.64000B",
@@ -406,7 +436,7 @@ Yuzuko.test("WebGPU readback matches the H.264 golden", async () => {
   assert(later, "later");
   await assertThrows(() => later.drawImage(frame, 0, 0), "InvalidStateError");
   device.destroy();
-});
+} });
 
 Yuzuko.test("AAC samples fill an AudioBuffer", async () => {
   const samples = await decodeAudio(
@@ -419,7 +449,7 @@ Yuzuko.test("AAC samples fill an AudioBuffer", async () => {
   assertTone(samples, 48000, "aac");
 });
 
-Yuzuko.test("a VideoFrame cannot be transferred", async () => {
+Yuzuko.test({ name: "a VideoFrame cannot be transferred", ignore: !hardwareAvc, fn: async () => {
   const frames = await decodeVideo(
     "avc1.64000B",
     await bytes("avc1.avcC"),
@@ -443,9 +473,9 @@ Yuzuko.test("a VideoFrame cannot be transferred", async () => {
   worker.terminate();
   assert(transfer === "DataCloneError", transfer);
   frame.close();
-});
+} });
 
-Yuzuko.test("prefer-software H.264 still decodes in hardware", async () => {
+Yuzuko.test({ name: "prefer-software H.264 still decodes in hardware", ignore: !hardwareAvc, fn: async () => {
   const expected = await golden();
   const frames = await decodeVideo(
     "avc1.64000B",
@@ -456,4 +486,4 @@ Yuzuko.test("prefer-software H.264 still decodes in hardware", async () => {
   assert(frames.length === 1, "prefer-software frame");
   comparePicture(await drawFrame(frames[0]), expected, 16);
   frames[0].close();
-});
+} });

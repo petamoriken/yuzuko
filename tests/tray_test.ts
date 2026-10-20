@@ -4,6 +4,16 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+function notSupported(body: () => void, label: string) {
+  let name = "";
+  try {
+    body();
+  } catch (error) {
+    name = error instanceof DOMException ? error.name : String(error);
+  }
+  assert(name === "NotSupportedError", `${label}: ${name}`);
+}
+
 const PNG = Uint8Array.from(
   atob(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -34,11 +44,21 @@ Yuzuko.test("tray and dock use methods and their own menuclick", () => {
   tray.addEventListener("menuclick", onTray);
   tray.addEventListener("click", onClick);
   Yuzuko.dock.addEventListener("menuclick", onDock);
+  const macos = Yuzuko.build.os === "darwin";
+  const linux = Yuzuko.build.os === "linux";
   try {
     tray.setIcon(PNG);
-    tray.setIcon(PNG, { template: true });
-    tray.setTooltip("Yuzuko");
-    tray.setTooltip(null);
+    if (macos) {
+      tray.setIcon(PNG, { template: true });
+    } else {
+      notSupported(() => tray.setIcon(PNG, { template: true }), "template");
+    }
+    if (linux) {
+      notSupported(() => tray.setTooltip("Yuzuko"), "tooltip");
+    } else {
+      tray.setTooltip("Yuzuko");
+      tray.setTooltip(null);
+    }
     const bounds = tray.bounds;
     assert(
       bounds === null ||
@@ -48,19 +68,29 @@ Yuzuko.test("tray and dock use methods and their own menuclick", () => {
     tray.setMenu(
       new Yuzuko.Menu([{ label: "Open", action: "tray.open" }]),
     );
-    Yuzuko.dock.setMenu(
-      new Yuzuko.Menu([{ label: "Quit", action: "dock.quit" }]),
-    );
-    Yuzuko.dock.setBadge("3");
-    Yuzuko.dock.setBadge(null);
-    Yuzuko.dock.bounce();
-    Yuzuko.dock.setVisible(false);
-    Yuzuko.dock.setVisible(true);
+    const dockMenu = new Yuzuko.Menu([{ label: "Quit", action: "dock.quit" }]);
+    if (macos) {
+      Yuzuko.dock.setMenu(dockMenu);
+      Yuzuko.dock.setBadge("3");
+      Yuzuko.dock.setBadge(null);
+      Yuzuko.dock.bounce();
+      Yuzuko.dock.setVisible(false);
+      Yuzuko.dock.setVisible(true);
+    } else {
+      // There is no Dock. `bounce` needs an OS window, and this one is
+      // headless under `yuzuko test`.
+      notSupported(() => Yuzuko.dock.setMenu(dockMenu), "dock menu");
+      notSupported(() => Yuzuko.dock.setBadge("3"), "badge");
+      notSupported(() => Yuzuko.dock.setVisible(false), "visible");
+      notSupported(() => Yuzuko.dock.bounce(), "bounce");
+    }
 
     Yuzuko.__test.inject(window, [{ kind: "menu", action: "tray.open" }]);
     assert(trayAction === "tray.open", trayAction);
-    Yuzuko.__test.inject(window, [{ kind: "menu", action: "dock.quit" }]);
-    assert(dockAction === "dock.quit", dockAction);
+    if (macos) {
+      Yuzuko.__test.inject(window, [{ kind: "menu", action: "dock.quit" }]);
+      assert(dockAction === "dock.quit", dockAction);
+    }
     Yuzuko.__test.inject(window, [{ kind: "trayclick" }]);
     assert(clicks === 1, `clicks ${clicks}`);
 

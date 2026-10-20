@@ -1,7 +1,9 @@
 //! Elementary H.264 parameter sets and slice headers.
 //!
 //! The bytes are an `avcC` record plus length-prefixed NALs. This module
-//! does not decode picture data and does not demux a container.
+//! does not decode picture data and does not demux a container. Windows uses
+//! only the `avcC` validation. The slice headers feed VA-API on Linux.
+#![cfg_attr(target_os = "windows", allow(dead_code))]
 
 use crate::error::DecodeError;
 
@@ -52,8 +54,6 @@ pub struct Sps {
   pub level_idc: u8,
   pub id: u32,
   pub chroma_format_idc: u32,
-  pub bit_depth_luma: u32,
-  pub bit_depth_chroma: u32,
   pub log2_max_frame_num: u32,
   pub poc_type: u32,
   pub log2_max_poc_lsb: u32,
@@ -101,6 +101,7 @@ impl Sps {
     )
   }
 
+  #[cfg(test)]
   pub fn visible_size(&self) -> (u32, u32) {
     let (_x, _y, width, height) = self.visible_rect();
     (width, height)
@@ -311,6 +312,64 @@ pub fn avcc_nals(bytes: &[u8]) -> Result<Vec<Vec<u8>>, DecodeError> {
   Ok(nals)
 }
 
+const START_CODE: [u8; 4] = [0, 0, 0, 1];
+
+/// The SPS and PPS of an `avcC` as an Annex B byte stream, each NAL after a
+/// four-byte start code. Media Foundation reads its sequence header so.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn annex_b_header(avcc: &[u8]) -> Result<Vec<u8>, DecodeError> {
+  let mut out = Vec::new();
+  for nal in avcc_nals(avcc)? {
+    out.extend_from_slice(&START_CODE);
+    out.extend_from_slice(&nal);
+  }
+  Ok(out)
+}
+
+/// An access unit of four-byte length-prefixed NALs, the `avc1` sample
+/// layout, rewritten as an Annex B byte stream.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn annex_b_sample(sample: &[u8]) -> Result<Vec<u8>, DecodeError> {
+  let mut out = Vec::with_capacity(sample.len());
+  let mut offset = 0;
+  while offset < sample.len() {
+    let header = sample
+      .get(offset..offset + 4)
+      .ok_or(DecodeError::Rejected)?;
+    let length =
+      u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+    offset += 4;
+    let nal = offset
+      .checked_add(length)
+      .and_then(|end| sample.get(offset..end))
+      .filter(|nal| !nal.is_empty())
+      .ok_or(DecodeError::Rejected)?;
+    out.extend_from_slice(&START_CODE);
+    out.extend_from_slice(nal);
+    offset += length;
+  }
+  if out.is_empty() {
+    return Err(DecodeError::Rejected);
+  }
+  Ok(out)
+}
+
+/// Whether a length-prefixed access unit holds an IDR slice (NAL type 5).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn has_idr(sample: &[u8]) -> bool {
+  let mut offset = 0;
+  while let Some(header) = sample.get(offset..offset + 4) {
+    let length =
+      u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+    offset += 4;
+    if sample.get(offset).is_some_and(|byte| byte & 0x1f == 5) {
+      return true;
+    }
+    offset = offset.saturating_add(length);
+  }
+  false
+}
+
 fn take_nal(bytes: &[u8], offset: &mut usize) -> Result<Vec<u8>, DecodeError> {
   if *offset + 2 > bytes.len() {
     return Err(DecodeError::Rejected);
@@ -346,8 +405,6 @@ fn parse_sps(nal: &[u8]) -> Result<Sps, DecodeError> {
     return Err(DecodeError::Rejected);
   }
   let mut chroma_format_idc = 1u32;
-  let mut bit_depth_luma = 8u32;
-  let mut bit_depth_chroma = 8u32;
   let mut matrix4 = [[16u8; 16]; 6];
   let mut matrix8 = [[16u8; 64]; 6];
   if high_profile(profile_idc) {
@@ -358,8 +415,8 @@ fn parse_sps(nal: &[u8]) -> Result<Sps, DecodeError> {
     if chroma_format_idc == 3 && bits.bit()? {
       return Err(DecodeError::Rejected);
     }
-    bit_depth_luma = bits.ue()?.saturating_add(8);
-    bit_depth_chroma = bits.ue()?.saturating_add(8);
+    let bit_depth_luma = bits.ue()?.saturating_add(8);
+    let bit_depth_chroma = bits.ue()?.saturating_add(8);
     if bit_depth_luma != 8 || bit_depth_chroma != 8 {
       return Err(DecodeError::Rejected);
     }
@@ -445,8 +502,6 @@ fn parse_sps(nal: &[u8]) -> Result<Sps, DecodeError> {
     level_idc,
     id,
     chroma_format_idc,
-    bit_depth_luma,
-    bit_depth_chroma,
     log2_max_frame_num,
     poc_type,
     log2_max_poc_lsb,
@@ -1014,7 +1069,9 @@ impl<'a> Bits<'a> {
 
 #[cfg(test)]
 mod tests {
-  use super::{Sets, avcc_nals, parse_access_unit};
+  use super::{
+    Sets, annex_b_header, annex_b_sample, avcc_nals, has_idr, parse_access_unit,
+  };
 
   fn read(name: &str) -> Vec<u8> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1046,5 +1103,35 @@ mod tests {
     let bytes = read("avc1-bad.avcC");
     assert!(avcc_nals(&bytes).is_ok());
     assert!(Sets::parse_avcc(&bytes).is_err());
+  }
+
+  #[test]
+  fn avcc_and_samples_become_annex_b() {
+    let avcc = read("avc1.avcC");
+    let header = annex_b_header(&avcc).expect("header");
+    let mut expected = Vec::new();
+    for nal in avcc_nals(&avcc).unwrap() {
+      expected.extend_from_slice(&[0, 0, 0, 1]);
+      expected.extend_from_slice(&nal);
+    }
+    assert_eq!(header, expected);
+
+    let idr = read("avc1.idr");
+    let stream = annex_b_sample(&idr).expect("sample");
+    assert_eq!(stream.len(), idr.len());
+    assert_eq!(&stream[..4], &[0, 0, 0, 1]);
+    assert_eq!(&stream[4..], &idr[4..4 + (stream.len() - 4)]);
+
+    assert!(has_idr(&idr));
+    assert!(!has_idr(&[0, 0, 0, 1, 0x41]));
+    assert!(!has_idr(&[]));
+
+    assert!(annex_b_sample(&[]).is_err());
+    assert!(annex_b_sample(&[0, 0, 0, 9, 1]).is_err());
+    assert!(annex_b_sample(&[0, 0, 0, 0]).is_err());
+    assert_eq!(
+      annex_b_sample(&[0, 0, 0, 1, 7, 0, 0, 0, 2, 8, 9]).unwrap(),
+      vec![0, 0, 0, 1, 7, 0, 0, 0, 1, 8, 9]
+    );
   }
 }

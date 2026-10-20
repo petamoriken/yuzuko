@@ -76,7 +76,7 @@ fn input_sequences_pass_under_yuzuko_test() {
 }
 
 #[test]
-fn macos_opens_an_os_window() {
+fn opens_an_os_window() {
   let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
     .args(["run", "tests/fixtures/show_window.ts"])

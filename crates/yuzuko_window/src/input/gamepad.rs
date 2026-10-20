@@ -77,7 +77,10 @@ struct Store {
 }
 
 struct Devices {
-  gilrs: Option<Gilrs>,
+  /// Leaked for the process. On Windows, gilrs joins its input thread when
+  /// it drops, and a thread-local destructor at exit runs after Windows has
+  /// already ended that thread, which aborts the process.
+  gilrs: Option<&'static mut Gilrs>,
   failed: bool,
 }
 
@@ -242,7 +245,7 @@ fn read_devices() -> Option<Vec<Snapshot>> {
     }
     if devices.gilrs.is_none() {
       match Gilrs::new() {
-        Ok(gilrs) => devices.gilrs = Some(gilrs),
+        Ok(gilrs) => devices.gilrs = Some(Box::leak(Box::new(gilrs))),
         Err(_) => {
           devices.failed = true;
           return None;

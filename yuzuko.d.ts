@@ -815,9 +815,12 @@ declare namespace Yuzuko {
      * Display P3. Other platforms report `srgb`. `rec2020` does not match.
      * `prefers-color-scheme` follows the window theme. On macOS,
      * `prefers-reduced-motion: reduce` follows the Reduce Motion setting, and
-     * `prefers-contrast` is `more` when Increase Contrast is on. `less` and
-     * `custom` do not match. Other platforms report `no-preference` for those
-     * two features and use the winit theme when a window exists.
+     * `prefers-contrast` is `more` when Increase Contrast is on. On Windows,
+     * `prefers-reduced-motion: reduce` matches when Animation effects is off,
+     * `prefers-contrast` is `more` while a contrast theme is on, and the
+     * scheme before a window reports its theme is the apps mode. `less` and
+     * `custom` do not match. Linux reports `no-preference` for those two
+     * features and uses the winit theme when a window exists.
      *
      * A dedicated worker has no `matchMedia`.
      *
@@ -6166,7 +6169,8 @@ interface GPUAdapter {
   readonly features: GPUSupportedFeatures;
 
   /**
-   * The shared device's wgpu defaults.
+   * The shared device's wgpu defaults, or the adapter's own limits when a
+   * downlevel adapter cannot meet those defaults.
    *
    * `maxBindGroupsPlusVertexBuffers` can be below the WebGPU minimum.
    *
@@ -7713,8 +7717,8 @@ interface EncodedVideoChunkInit {
  * Decodes H.264 elementary chunks.
  *
  * `avc1` and `avc3` are the only video codecs. The decoder is hardware-only:
- * VideoToolbox on Darwin, a hardware Media Foundation transform on Windows,
- * and VA-API on Linux. There is no software decoder.
+ * VideoToolbox on Darwin, the Media Foundation transform decoding through
+ * DXVA on Windows, and VA-API on Linux. There is no software decoder.
  * `hardwareAcceleration: "prefer-software"` does not select one. `vp8`,
  * `vp09`, `av01`, and every other codec string fail `configure`.
  * `VideoEncoder` is absent.
@@ -7732,7 +7736,9 @@ interface VideoDecoder extends EventTarget {
   /**
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not
    * `avc1` or `avc3`, or when the hardware decoder is missing or rejects a
-   * structurally valid `avcC`. No frame is produced.
+   * structurally valid `avcC`. On Windows the decoder is missing when no
+   * Direct3D 11 device offers the H.264 decoder profile. On Linux it is
+   * missing when VA-API has no H.264 profile. No frame is produced.
    * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/configure)

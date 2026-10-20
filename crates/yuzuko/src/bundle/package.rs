@@ -29,6 +29,7 @@ pub struct BundleLaunch {
   pub entry: PathBuf,
   pub sandbox: PathBuf,
   pub name: String,
+  pub identifier: Option<String>,
   pub resources: PathBuf,
 }
 
@@ -47,6 +48,7 @@ pub fn bundled_launch() -> Option<BundleLaunch> {
     entry,
     sandbox,
     name: manifest.name,
+    identifier: manifest.identifier,
     resources,
   })
 }
@@ -171,6 +173,12 @@ fn write_directory(
     _ => output.join(&exe_name),
   };
   copy_runtime(runtime, &executable)?;
+  if matches!(target, Target::Windows) {
+    let mut image = fs::read(&executable)?;
+    if gui_subsystem(&mut image) {
+      fs::write(&executable, image)?;
+    }
+  }
   let app_root = output.join("app");
   let entry = copy_tree(config, &app_root)?;
   write_manifest(config, &entry, &output.join("yuzuko.bundle.json"))?;
@@ -184,9 +192,12 @@ fn write_directory(
     }
     Target::Linux => {
       write_linux_icons(config, output)?;
+      // The runtime sets the X11 `WM_CLASS` and the Wayland `app_id` to the
+      // identifier, so `StartupWMClass` ties the window to this entry.
       let desktop = format!(
-        "[Desktop Entry]\nType=Application\nName={}\nExec={exe_name}\n",
-        config.name.replace(['\n', '\r'], " ")
+        "[Desktop Entry]\nType=Application\nName={}\nExec={exe_name}\nStartupWMClass={}\n",
+        config.name.replace(['\n', '\r'], " "),
+        config.identifier
       );
       fs::write(
         output.join(format!("{}.desktop", config.identifier)),
@@ -196,6 +207,40 @@ fn write_directory(
     Target::Macos => {}
   }
   Ok(())
+}
+
+/// Marks a PE image as a Windows GUI program, as `editbin /SUBSYSTEM:WINDOWS`
+/// does. A double-clicked bundle then opens no console window. Standard
+/// handles a parent passes in, such as pipes, still work. Returns whether the
+/// image was a console PE image and was changed.
+pub(crate) fn gui_subsystem(image: &mut [u8]) -> bool {
+  const CONSOLE: u16 = 3;
+  const GUI: u16 = 2;
+  let read_u32 = |at: usize| {
+    image
+      .get(at..at + 4)
+      .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+  };
+  if image.get(0..2) != Some(b"MZ") {
+    return false;
+  }
+  let Some(header) = read_u32(0x3c).map(|offset| offset as usize) else {
+    return false;
+  };
+  if image.get(header..header + 4) != Some(b"PE\0\0") {
+    return false;
+  }
+  // The optional header follows the 4-byte signature and the 20-byte file
+  // header. `Subsystem` is at offset 68 for both PE32 and PE32+.
+  let at = header + 24 + 68;
+  let Some(field) = image.get_mut(at..at + 2) else {
+    return false;
+  };
+  if u16::from_le_bytes([field[0], field[1]]) != CONSOLE {
+    return false;
+  }
+  field.copy_from_slice(&GUI.to_le_bytes());
+  true
 }
 
 fn write_linux_icons(
@@ -339,8 +384,10 @@ fn collect_files(
 }
 
 fn contained(root: &Path, path: &Path) -> Result<PathBuf, ConfigError> {
-  let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-  let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+  let canonical =
+    yuzuko_core::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+  let root =
+    yuzuko_core::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
   if canonical.starts_with(&root) {
     Ok(canonical)
   } else {
@@ -385,8 +432,10 @@ fn segment_matches(pattern: &str, name: &str) -> bool {
 }
 
 fn relative_path(root: &Path, path: &Path) -> Result<String, ConfigError> {
-  let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-  let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+  let root =
+    yuzuko_core::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+  let path =
+    yuzuko_core::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
   let relative = path.strip_prefix(&root).map_err(|_| {
     ConfigError::new(format!(
       "module is outside the config directory: {}",
@@ -555,5 +604,40 @@ impl From<std::io::Error> for ConfigError {
     Self {
       message: error.to_string(),
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::gui_subsystem;
+
+  fn image(subsystem: u16) -> Vec<u8> {
+    let mut image = vec![0u8; 0x200];
+    image[0..2].copy_from_slice(b"MZ");
+    image[0x3c..0x40].copy_from_slice(&0x80u32.to_le_bytes());
+    image[0x80..0x84].copy_from_slice(b"PE\0\0");
+    let at = 0x80 + 24 + 68;
+    image[at..at + 2].copy_from_slice(&subsystem.to_le_bytes());
+    image
+  }
+
+  #[test]
+  fn console_image_becomes_gui() {
+    let mut console = image(3);
+    assert!(gui_subsystem(&mut console));
+    assert_eq!(console, image(2));
+  }
+
+  #[test]
+  fn other_bytes_stay_unchanged() {
+    let mut gui = image(2);
+    assert!(!gui_subsystem(&mut gui));
+    assert_eq!(gui, image(2));
+    let mut text = b"STANDIN-RUNTIME".to_vec();
+    assert!(!gui_subsystem(&mut text));
+    assert_eq!(text, b"STANDIN-RUNTIME");
+    let mut truncated = image(3);
+    truncated.truncate(0x90);
+    assert!(!gui_subsystem(&mut truncated));
   }
 }

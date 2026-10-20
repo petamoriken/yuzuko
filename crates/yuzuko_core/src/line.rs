@@ -1,7 +1,9 @@
 //! Terminal line editor for `yuzuko repl`.
 //!
-//! A pipe reads whole lines. A Unix terminal handles the Node.js readline
-//! emacs bindings in this process. Windows console input stays line-oriented.
+//! A pipe reads whole lines. A Unix terminal and a Windows console handle the
+//! Node.js readline emacs bindings in this process. The Windows console runs
+//! with virtual terminal input, so keys arrive as the same escape sequences a
+//! Unix terminal sends.
 
 use std::io::{self, IsTerminal, Write};
 
@@ -39,23 +41,23 @@ impl Editor {
     if !io::stdin().is_terminal() {
       return read_pipe(pace);
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
-      let _raw = match RawTerm::enter() {
+      let _raw = match term::RawTerm::enter() {
         Some(raw) => raw,
         None => return read_pipe(pace),
       };
-      self.read_unix(complete, pace)
+      self.read_raw(complete, pace)
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
       let _ = complete;
       read_pipe(pace)
     }
   }
 
-  #[cfg(unix)]
-  fn read_unix(
+  #[cfg(any(unix, windows))]
+  fn read_raw(
     &mut self,
     complete: &mut dyn FnMut(Option<&str>) -> Vec<String>,
     pace: &mut dyn FnMut() -> Option<std::time::Duration>,
@@ -234,7 +236,7 @@ impl Editor {
 
   /// Handles one sequence after Esc. Returns whether the buffer or cursor
   /// changed. The caller redraws.
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn escape(
     &mut self,
     seq: &str,
@@ -280,13 +282,13 @@ impl Editor {
     before != (buffer.clone(), *cursor)
   }
 
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn kill_backward_line(&mut self, buffer: &mut String, cursor: &mut usize) {
     let start = line_start(buffer, *cursor);
     self.kill(buffer, cursor, start, *cursor);
   }
 
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn kill_forward(&mut self, buffer: &mut String, cursor: &mut usize) {
     let mut end = line_end(buffer, *cursor);
     if end == *cursor
@@ -298,7 +300,7 @@ impl Editor {
     self.kill(buffer, cursor, *cursor, end);
   }
 
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn kill(
     &mut self,
     buffer: &mut String,
@@ -314,7 +316,7 @@ impl Editor {
     *cursor = start;
   }
 
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn history_step(
     &mut self,
     delta: isize,
@@ -346,7 +348,7 @@ impl Editor {
     *cursor = buffer.len();
   }
 
-  #[cfg(unix)]
+  #[cfg(any(unix, windows))]
   fn complete_at(
     &mut self,
     complete: &mut dyn FnMut(Option<&str>) -> Vec<String>,
@@ -401,7 +403,7 @@ fn read_pipe(
 ) -> Option<String> {
   #[cfg(unix)]
   {
-    return read_pipe_unix(pace);
+    read_pipe_unix(pace)
   }
   #[cfg(not(unix))]
   {
@@ -502,13 +504,13 @@ fn prompt(fresh: bool) {
 }
 
 /// Where the terminal cursor sits inside the buffer on screen.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 struct View {
   text: String,
   cursor: usize,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl View {
   fn blank() -> Self {
     Self {
@@ -520,7 +522,7 @@ impl View {
 
 /// Redraws the prompt block and leaves the terminal cursor on `cursor`.
 /// `view` is where that cursor was before this redraw.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn render(view: &mut View, buffer: &str, cursor: usize) {
   let above = view.text[..view.cursor]
     .bytes()
@@ -537,7 +539,7 @@ fn render(view: &mut View, buffer: &str, cursor: usize) {
   view.cursor = cursor;
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn clear_screen(view: &mut View, buffer: &str, cursor: usize) {
   print!("\x1b[2J\x1b[H");
   let _ = io::stdout().flush();
@@ -545,7 +547,7 @@ fn clear_screen(view: &mut View, buffer: &str, cursor: usize) {
   render(view, buffer, cursor);
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn write_buffer(buffer: &str) {
   let mut lines = buffer.split('\n');
   if let Some(first) = lines.next() {
@@ -558,7 +560,7 @@ fn write_buffer(buffer: &str) {
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn place_cursor(buffer: &str, cursor: usize) {
   let end_line = buffer.bytes().filter(|byte| *byte == b'\n').count();
   let cur_line = buffer[..cursor]
@@ -577,12 +579,12 @@ fn place_cursor(buffer: &str, cursor: usize) {
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn prompt_columns(line: usize) -> usize {
   if line == 0 { 2 } else { 4 }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn columns(text: &str) -> usize {
   use unicode_width::UnicodeWidthStr;
   text.width()
@@ -750,13 +752,13 @@ fn await_readable(
   pace: &mut dyn FnMut() -> Option<std::time::Duration>,
 ) -> bool {
   loop {
-    match poll_stdin(0) {
+    match term::poll_stdin(0) {
       StdinWait::Data => return true,
       StdinWait::Eof => return false,
       StdinWait::Timeout => {}
     }
     let wait = pace();
-    match poll_stdin(timeout_ms(wait)) {
+    match term::poll_stdin(timeout_ms(wait)) {
       StdinWait::Data => return true,
       StdinWait::Eof => return false,
       StdinWait::Timeout => {}
@@ -764,77 +766,51 @@ fn await_readable(
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn await_input(
   bytes: &mut std::collections::VecDeque<u8>,
   pace: &mut dyn FnMut() -> Option<std::time::Duration>,
 ) -> bool {
   loop {
-    match poll_stdin(0) {
-      StdinWait::Data => return read_into(bytes),
+    match term::poll_stdin(0) {
+      StdinWait::Data => return term::read_into(bytes),
       StdinWait::Eof => return false,
       StdinWait::Timeout => {}
     }
     let wait = pace();
-    match poll_stdin(0) {
-      StdinWait::Data => return read_into(bytes),
+    match term::poll_stdin(0) {
+      StdinWait::Data => return term::read_into(bytes),
       StdinWait::Eof => return false,
       StdinWait::Timeout => {}
     }
-    match poll_stdin(timeout_ms(wait)) {
-      StdinWait::Data => return read_into(bytes),
+    match term::poll_stdin(timeout_ms(wait)) {
+      StdinWait::Data => return term::read_into(bytes),
       StdinWait::Eof => return false,
       StdinWait::Timeout => {}
     }
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn read_more(
   bytes: &mut std::collections::VecDeque<u8>,
   timeout_ms: i32,
 ) -> bool {
-  match poll_stdin(timeout_ms) {
-    StdinWait::Data => read_into(bytes),
+  match term::poll_stdin(timeout_ms) {
+    StdinWait::Data => term::read_into(bytes),
     StdinWait::Timeout => false,
     StdinWait::Eof => false,
   }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 enum StdinWait {
   Data,
   Timeout,
   Eof,
 }
 
-#[cfg(unix)]
-fn poll_stdin(timeout_ms: i32) -> StdinWait {
-  loop {
-    let mut poll = libc::pollfd {
-      fd: 0,
-      events: libc::POLLIN,
-      revents: 0,
-    };
-    let ready = unsafe { libc::poll(&mut poll, 1, timeout_ms) };
-    if ready < 0 {
-      let err = std::io::Error::last_os_error();
-      if err.kind() == std::io::ErrorKind::Interrupted {
-        continue;
-      }
-      return StdinWait::Eof;
-    }
-    if ready == 0 {
-      return StdinWait::Timeout;
-    }
-    if poll.revents & libc::POLLIN != 0 {
-      return StdinWait::Data;
-    }
-    return StdinWait::Eof;
-  }
-}
-
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn timeout_ms(wait: Option<std::time::Duration>) -> i32 {
   let Some(wait) = wait else {
     return -1;
@@ -846,47 +822,13 @@ fn timeout_ms(wait: Option<std::time::Duration>) -> i32 {
   if ms == 0 { 1 } else { ms.min(60_000) as i32 }
 }
 
-#[cfg(unix)]
-fn read_into(bytes: &mut std::collections::VecDeque<u8>) -> bool {
-  let mut buf = [0u8; 64];
-  loop {
-    let count = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
-    if count > 0 {
-      bytes.extend(buf[..count as usize].iter().copied());
-      return true;
-    }
-    if count == 0 {
-      return false;
-    }
-    let err = std::io::Error::last_os_error();
-    if err.kind() == std::io::ErrorKind::Interrupted {
-      continue;
-    }
-    if err.kind() == std::io::ErrorKind::WouldBlock {
-      return false;
-    }
-    return false;
-  }
-}
-
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn take_escape(bytes: &mut std::collections::VecDeque<u8>) -> String {
-  if bytes.is_empty() {
-    let mut poll = libc::pollfd {
-      fd: 0,
-      events: libc::POLLIN,
-      revents: 0,
-    };
-    // A bare Esc must not wait forever. A following byte of a cursor or
-    // Meta sequence can arrive in the next read, so wait long enough for
-    // that byte under load.
-    let ready = unsafe { libc::poll(&mut poll, 1, 200) };
-    if ready <= 0 {
-      return String::new();
-    }
-    if !read_more(bytes, 200) {
-      return String::new();
-    }
+  // A bare Esc must not wait forever. A following byte of a cursor or Meta
+  // sequence can arrive in the next read, so wait long enough for that byte
+  // under load.
+  if bytes.is_empty() && !read_more(bytes, 200) {
+    return String::new();
   }
   let Some(next) = bytes.pop_front() else {
     return String::new();
@@ -913,36 +855,293 @@ fn take_escape(bytes: &mut std::collections::VecDeque<u8>) -> String {
   seq
 }
 
+/// Terminal mode and key input on a Unix tty.
 #[cfg(unix)]
-struct RawTerm {
-  original: libc::termios,
-}
+mod term {
+  use super::StdinWait;
 
-#[cfg(unix)]
-impl RawTerm {
-  fn enter() -> Option<Self> {
-    unsafe {
-      let mut original = std::mem::zeroed::<libc::termios>();
-      if libc::tcgetattr(0, &mut original) != 0 {
-        return None;
+  pub fn poll_stdin(timeout_ms: i32) -> StdinWait {
+    loop {
+      let mut poll = libc::pollfd {
+        fd: 0,
+        events: libc::POLLIN,
+        revents: 0,
+      };
+      let ready = unsafe { libc::poll(&mut poll, 1, timeout_ms) };
+      if ready < 0 {
+        let err = std::io::Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::Interrupted {
+          continue;
+        }
+        return StdinWait::Eof;
       }
-      let mut raw = original;
-      raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
-      raw.c_cc[libc::VMIN] = 1;
-      raw.c_cc[libc::VTIME] = 0;
-      if libc::tcsetattr(0, libc::TCSANOW, &raw) != 0 {
-        return None;
+      if ready == 0 {
+        return StdinWait::Timeout;
       }
-      Some(Self { original })
+      // Linux reports a closed pipe as `POLLHUP` without `POLLIN`, while
+      // lines may still sit in the `Stdin` buffer. The read then reports EOF
+      // once those lines are gone.
+      if poll.revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+        return StdinWait::Data;
+      }
+      return StdinWait::Eof;
+    }
+  }
+
+  pub fn read_into(bytes: &mut std::collections::VecDeque<u8>) -> bool {
+    let mut buf = [0u8; 64];
+    loop {
+      let count = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
+      if count > 0 {
+        bytes.extend(buf[..count as usize].iter().copied());
+        return true;
+      }
+      if count == 0 {
+        return false;
+      }
+      let err = std::io::Error::last_os_error();
+      if err.kind() == std::io::ErrorKind::Interrupted {
+        continue;
+      }
+      return false;
+    }
+  }
+
+  pub struct RawTerm {
+    original: libc::termios,
+  }
+
+  impl RawTerm {
+    pub fn enter() -> Option<Self> {
+      unsafe {
+        let mut original = std::mem::zeroed::<libc::termios>();
+        if libc::tcgetattr(0, &mut original) != 0 {
+          return None;
+        }
+        let mut raw = original;
+        raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
+        raw.c_cc[libc::VMIN] = 1;
+        raw.c_cc[libc::VTIME] = 0;
+        if libc::tcsetattr(0, libc::TCSANOW, &raw) != 0 {
+          return None;
+        }
+        Some(Self { original })
+      }
+    }
+  }
+
+  impl Drop for RawTerm {
+    fn drop(&mut self) {
+      unsafe {
+        libc::tcsetattr(0, libc::TCSANOW, &self.original);
+      }
     }
   }
 }
 
-#[cfg(unix)]
-impl Drop for RawTerm {
-  fn drop(&mut self) {
-    unsafe {
-      libc::tcsetattr(0, libc::TCSANOW, &self.original);
+/// Console mode and key input on Windows.
+///
+/// Raw mode turns off line input, echo, and Ctrl-C processing, and turns on
+/// virtual terminal input. Each key then arrives as key-down records whose
+/// characters are the bytes a Unix terminal would send, including `ESC [ A`
+/// for Up and `0x03` for Ctrl-C. Output gets virtual terminal processing so
+/// the redraw sequences move the cursor.
+#[cfg(windows)]
+mod term {
+  use std::collections::VecDeque;
+  use std::time::{Duration, Instant};
+
+  use windows_sys::Win32::Foundation::{
+    HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+  };
+  use windows_sys::Win32::System::Console::{
+    CONSOLE_MODE, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    GetConsoleMode, GetStdHandle, INPUT_RECORD, KEY_EVENT, PeekConsoleInputW,
+    ReadConsoleInputW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleMode,
+  };
+  use windows_sys::Win32::System::Threading::WaitForSingleObject;
+
+  use super::StdinWait;
+
+  thread_local! {
+    /// A high surrogate whose low half has not been read yet.
+    static SURROGATE: std::cell::Cell<Option<u16>> =
+      const { std::cell::Cell::new(None) };
+  }
+
+  fn input() -> HANDLE {
+    unsafe { GetStdHandle(STD_INPUT_HANDLE) }
+  }
+
+  /// The UTF-16 unit a record contributes, or `None` for a record that
+  /// carries no text: key-up, a bare modifier, focus, mouse, and resize.
+  fn record_unit(record: &INPUT_RECORD) -> Option<u16> {
+    if u32::from(record.EventType) != KEY_EVENT {
+      return None;
+    }
+    let key = unsafe { &record.Event.KeyEvent };
+    let unit = unsafe { key.uChar.UnicodeChar };
+    // A character with no key of its own, such as one outside the Basic
+    // Multilingual Plane, arrives on the key-up of Alt, as Alt+Numpad input
+    // does. Each half of a surrogate pair is one such record.
+    const VK_MENU: u16 = 0x12;
+    let alt_text = key.bKeyDown == 0 && key.wVirtualKeyCode == VK_MENU;
+    if unit == 0 || (key.bKeyDown == 0 && !alt_text) {
+      return None;
+    }
+    Some(unit)
+  }
+
+  /// Drops records at the front of the queue that carry no text. Returns
+  /// whether a text record is waiting, or `None` when the console fails.
+  fn skip_silent(handle: HANDLE) -> Option<bool> {
+    loop {
+      let mut record = unsafe { std::mem::zeroed::<INPUT_RECORD>() };
+      let mut count = 0u32;
+      if unsafe { PeekConsoleInputW(handle, &mut record, 1, &mut count) } == 0 {
+        return None;
+      }
+      if count == 0 {
+        return Some(false);
+      }
+      if record_unit(&record).is_some() {
+        return Some(true);
+      }
+      let mut read = 0u32;
+      if unsafe { ReadConsoleInputW(handle, &mut record, 1, &mut read) } == 0 {
+        return None;
+      }
+    }
+  }
+
+  pub fn poll_stdin(timeout_ms: i32) -> StdinWait {
+    let handle = input();
+    let deadline = u64::try_from(timeout_ms)
+      .ok()
+      .map(|ms| Instant::now() + Duration::from_millis(ms));
+    loop {
+      match skip_silent(handle) {
+        Some(true) => return StdinWait::Data,
+        Some(false) => {}
+        None => return StdinWait::Eof,
+      }
+      // `u32::MAX` is INFINITE.
+      let wait = match deadline {
+        None => u32::MAX,
+        Some(deadline) => {
+          let left = deadline.saturating_duration_since(Instant::now());
+          u32::try_from(left.as_millis()).unwrap_or(u32::MAX - 1)
+        }
+      };
+      match unsafe { WaitForSingleObject(handle, wait) } {
+        WAIT_OBJECT_0 => {}
+        // Records that carry no text also signal the handle, so look once
+        // more before reporting the timeout.
+        WAIT_TIMEOUT => {
+          return match skip_silent(handle) {
+            Some(true) => StdinWait::Data,
+            Some(false) => StdinWait::Timeout,
+            None => StdinWait::Eof,
+          };
+        }
+        _ => return StdinWait::Eof,
+      }
+    }
+  }
+
+  pub fn read_into(bytes: &mut VecDeque<u8>) -> bool {
+    let handle = input();
+    let mut records = [unsafe { std::mem::zeroed::<INPUT_RECORD>() }; 64];
+    let mut count = 0u32;
+    if unsafe {
+      ReadConsoleInputW(
+        handle,
+        records.as_mut_ptr(),
+        records.len() as u32,
+        &mut count,
+      )
+    } == 0
+    {
+      return false;
+    }
+    let before = bytes.len();
+    for record in &records[..count as usize] {
+      let Some(unit) = record_unit(record) else {
+        continue;
+      };
+      let repeat = unsafe { record.Event.KeyEvent.wRepeatCount }.max(1);
+      for _ in 0..repeat {
+        push_unit(bytes, unit);
+      }
+    }
+    bytes.len() > before
+  }
+
+  fn push_unit(bytes: &mut VecDeque<u8>, unit: u16) {
+    let high = SURROGATE.with(|slot| slot.take());
+    let units = match high {
+      Some(high) if (0xdc00..0xe000).contains(&unit) => vec![high, unit],
+      _ if (0xd800..0xdc00).contains(&unit) => {
+        SURROGATE.with(|slot| slot.set(Some(unit)));
+        return;
+      }
+      _ => vec![unit],
+    };
+    let text = String::from_utf16_lossy(&units);
+    bytes.extend(text.as_bytes());
+  }
+
+  pub struct RawTerm {
+    input: CONSOLE_MODE,
+    output: Option<CONSOLE_MODE>,
+  }
+
+  impl RawTerm {
+    pub fn enter() -> Option<Self> {
+      let handle = input();
+      if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return None;
+      }
+      let mut original = 0;
+      if unsafe { GetConsoleMode(handle, &mut original) } == 0 {
+        return None;
+      }
+      let raw = (original
+        & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT))
+        | ENABLE_VIRTUAL_TERMINAL_INPUT;
+      // A console host without virtual terminal input keeps the line reader.
+      if unsafe { SetConsoleMode(handle, raw) } == 0 {
+        return None;
+      }
+      let out = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+      let mut output = None;
+      let mut mode = 0;
+      if unsafe { GetConsoleMode(out, &mut mode) } != 0 {
+        if unsafe {
+          SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        } == 0
+        {
+          unsafe { SetConsoleMode(handle, original) };
+          return None;
+        }
+        output = Some(mode);
+      }
+      Some(Self {
+        input: original,
+        output,
+      })
+    }
+  }
+
+  impl Drop for RawTerm {
+    fn drop(&mut self) {
+      unsafe {
+        SetConsoleMode(input(), self.input);
+        if let Some(mode) = self.output {
+          SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), mode);
+        }
+      }
     }
   }
 }

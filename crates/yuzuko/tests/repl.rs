@@ -1,4 +1,5 @@
-//! `yuzuko repl` through the real binary. Tab and Up need a terminal.
+//! `yuzuko repl` through the real binary. Tab and Up need a terminal: a pty
+//! on Unix and a pseudo console on Windows.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -30,6 +31,7 @@ fn scratch(name: &str) -> PathBuf {
   dir
 }
 
+#[cfg(unix)]
 fn printed_line(text: &str, line: &str) -> bool {
   text.lines().any(|item| item == line)
 }
@@ -582,4 +584,378 @@ fn terminal_cursor_keys_edit_before_submit() {
   pty.send(b"\x04");
   let code = pty.wait_exit();
   assert_eq!(code, 0, "{}", pty.text);
+}
+
+/// A Windows pseudo console running `yuzuko repl`. The console host renders
+/// the screen and sends it back as virtual terminal output, so `text` keeps
+/// the printed characters and drops the control sequences.
+#[cfg(windows)]
+struct ConPty {
+  console: windows_sys::Win32::System::Console::HPCON,
+  input: windows_sys::Win32::Foundation::HANDLE,
+  process: windows_sys::Win32::Foundation::HANDLE,
+  output: std::sync::mpsc::Receiver<Vec<u8>>,
+  raw: Vec<u8>,
+  text: String,
+}
+
+#[cfg(windows)]
+impl ConPty {
+  fn spawn(dir: &Path, headless: bool) -> Self {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Storage::FileSystem::ReadFile;
+    use windows_sys::Win32::System::Console::{COORD, CreatePseudoConsole};
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::System::Threading::{
+      CreateProcessW, EXTENDED_STARTUPINFO_PRESENT,
+      InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
+      PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION, STARTUPINFOEXW,
+      UpdateProcThreadAttribute,
+    };
+
+    let mut input_read: HANDLE = std::ptr::null_mut();
+    let mut input_write: HANDLE = std::ptr::null_mut();
+    let mut output_read: HANDLE = std::ptr::null_mut();
+    let mut output_write: HANDLE = std::ptr::null_mut();
+    unsafe {
+      assert_ne!(
+        CreatePipe(&mut input_read, &mut input_write, std::ptr::null(), 0),
+        0
+      );
+      assert_ne!(
+        CreatePipe(&mut output_read, &mut output_write, std::ptr::null(), 0),
+        0
+      );
+    }
+    let mut console = 0;
+    let size = COORD { X: 160, Y: 50 };
+    let created = unsafe {
+      CreatePseudoConsole(size, input_read, output_write, 0, &mut console)
+    };
+    assert_eq!(created, 0, "CreatePseudoConsole");
+    // The pseudo console holds its own duplicates of these ends.
+    unsafe {
+      CloseHandle(input_read);
+      CloseHandle(output_write);
+    }
+
+    let mut bytes = 0usize;
+    unsafe {
+      InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut bytes)
+    };
+    let mut list = vec![0u8; bytes];
+    let attributes = list.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+    unsafe {
+      assert_ne!(
+        InitializeProcThreadAttributeList(attributes, 1, 0, &mut bytes),
+        0
+      );
+      assert_ne!(
+        UpdateProcThreadAttribute(
+          attributes,
+          0,
+          PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
+          console as *const std::ffi::c_void,
+          std::mem::size_of::<isize>(),
+          std::ptr::null_mut(),
+          std::ptr::null(),
+        ),
+        0
+      );
+    }
+    let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+    startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    startup.lpAttributeList = attributes;
+    // Null standard handles make the child take the pseudo console's. The
+    // test process's own handles are pipes that the child must not reuse.
+    startup.StartupInfo.dwFlags =
+      windows_sys::Win32::System::Threading::STARTF_USESTDHANDLES;
+
+    let mut command: Vec<u16> = format!("\"{}\" repl", bin().display())
+      .encode_utf16()
+      .chain(std::iter::once(0))
+      .collect();
+    let cwd: Vec<u16> = dir
+      .as_os_str()
+      .encode_wide()
+      .chain(std::iter::once(0))
+      .collect();
+    // An environment block of `KEY=VALUE\0` entries ending in another `\0`.
+    let mut environment = Vec::<u16>::new();
+    for (key, value) in std::env::vars_os() {
+      if key == "YUZUKO_HEADLESS" {
+        continue;
+      }
+      let mut entry = key.clone();
+      entry.push("=");
+      entry.push(&value);
+      environment.extend(entry.encode_wide());
+      environment.push(0);
+    }
+    if headless {
+      environment.extend("YUZUKO_HEADLESS=1".encode_utf16());
+      environment.push(0);
+    }
+    environment.push(0);
+    let mut info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    let started = unsafe {
+      CreateProcessW(
+        std::ptr::null(),
+        command.as_mut_ptr(),
+        std::ptr::null(),
+        std::ptr::null(),
+        0,
+        EXTENDED_STARTUPINFO_PRESENT | 0x0000_0400,
+        environment.as_ptr().cast(),
+        cwd.as_ptr(),
+        &startup.StartupInfo,
+        &mut info,
+      )
+    };
+    assert_ne!(started, 0, "CreateProcessW");
+    unsafe { CloseHandle(info.hThread) };
+
+    let (send, output) = std::sync::mpsc::channel();
+    let reader = output_read as usize;
+    std::thread::spawn(move || {
+      let handle = reader as HANDLE;
+      let mut buf = [0u8; 4096];
+      loop {
+        let mut read = 0u32;
+        let ok = unsafe {
+          ReadFile(
+            handle,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            &mut read,
+            std::ptr::null_mut(),
+          )
+        };
+        if ok == 0 || read == 0 {
+          break;
+        }
+        if send.send(buf[..read as usize].to_vec()).is_err() {
+          break;
+        }
+      }
+      unsafe { CloseHandle(handle) };
+    });
+    Self {
+      console,
+      input: input_write,
+      process: info.hProcess,
+      output,
+      raw: Vec::new(),
+      text: String::new(),
+    }
+  }
+
+  fn send(&mut self, bytes: &[u8]) {
+    use windows_sys::Win32::Storage::FileSystem::WriteFile;
+    let mut offset = 0;
+    while offset < bytes.len() {
+      let mut wrote = 0u32;
+      let ok = unsafe {
+        WriteFile(
+          self.input,
+          bytes[offset..].as_ptr(),
+          (bytes.len() - offset) as u32,
+          &mut wrote,
+          std::ptr::null_mut(),
+        )
+      };
+      assert!(ok != 0 && wrote > 0, "console write\n{}", self.text);
+      offset += wrote as usize;
+    }
+  }
+
+  fn pull(&mut self, timeout: Duration) {
+    if let Ok(chunk) = self.output.recv_timeout(timeout) {
+      self.raw.extend(chunk);
+      while let Ok(chunk) = self.output.try_recv() {
+        self.raw.extend(chunk);
+      }
+      self.text = strip_vt(&String::from_utf8_lossy(&self.raw));
+    }
+  }
+
+  fn exit_code(&self) -> Option<u32> {
+    use windows_sys::Win32::System::Threading::GetExitCodeProcess;
+    const STILL_ACTIVE: u32 = 259;
+    let mut code = 0u32;
+    unsafe { GetExitCodeProcess(self.process, &mut code) };
+    (code != STILL_ACTIVE).then_some(code)
+  }
+
+  fn wait_until(&mut self, pred: impl Fn(&str) -> bool, timeout: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+      if pred(&self.text) {
+        return;
+      }
+      if let Some(code) = self.exit_code() {
+        self.pull(Duration::from_millis(100));
+        if pred(&self.text) {
+          return;
+        }
+        panic!("repl exited {code}\n{}", self.text);
+      }
+      self.pull(Duration::from_millis(100));
+    }
+    panic!(
+      "timeout\n{}\nraw: {:?}",
+      self.text,
+      String::from_utf8_lossy(&self.raw)
+    );
+  }
+
+  fn wait_exit(&mut self) -> u32 {
+    let start = Instant::now();
+    loop {
+      if let Some(code) = self.exit_code() {
+        return code;
+      }
+      if start.elapsed() > Duration::from_secs(10) {
+        panic!("repl did not exit\n{}", self.text);
+      }
+      self.pull(Duration::from_millis(100));
+    }
+  }
+
+  /// How many times `needle` appears on screen so far.
+  fn count(&self, needle: &str) -> usize {
+    self.text.matches(needle).count()
+  }
+}
+
+#[cfg(windows)]
+impl Drop for ConPty {
+  fn drop(&mut self) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Console::ClosePseudoConsole;
+    use windows_sys::Win32::System::Threading::TerminateProcess;
+    unsafe {
+      if self.exit_code().is_none() {
+        TerminateProcess(self.process, 1);
+      }
+      CloseHandle(self.input);
+      ClosePseudoConsole(self.console);
+      CloseHandle(self.process);
+    }
+  }
+}
+
+/// Removes CSI, OSC, and two-byte escape sequences and carriage returns.
+#[cfg(windows)]
+fn strip_vt(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  let mut chars = text.chars().peekable();
+  while let Some(ch) = chars.next() {
+    match ch {
+      '\x1b' => match chars.next() {
+        Some('[') => {
+          let mut params = String::new();
+          for next in chars.by_ref() {
+            if ('@'..='~').contains(&next) {
+              // The console host draws a run of spaces as a cursor move.
+              if next == 'C' {
+                let count = params.parse::<usize>().unwrap_or(1);
+                out.extend(std::iter::repeat_n(' ', count));
+              }
+              break;
+            }
+            params.push(next);
+          }
+        }
+        Some(']') => {
+          while let Some(next) = chars.next() {
+            if next == '\x07' {
+              break;
+            }
+            if next == '\x1b' && chars.peek() == Some(&'\\') {
+              chars.next();
+              break;
+            }
+          }
+        }
+        _ => {}
+      },
+      '\r' => {}
+      _ => out.push(ch),
+    }
+  }
+  out
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_console_edits_with_readline_keys() {
+  let dir = scratch("conpty-keys");
+  let mut con = ConPty::spawn(&dir, false);
+  let step = Duration::from_secs(20);
+  con.wait_until(|text| text.contains("> "), step);
+
+  // Left inserts before the last digit.
+  con.send(b"\"left-\" + 2\x1b[D1\r");
+  con.wait_until(|text| text.contains("left-12"), step);
+
+  // Ctrl-A moves to the start of the line.
+  con.send(b"+ \"home\"\x01\"ctrl-a\"\r");
+  con.wait_until(|text| text.contains("ctrl-ahome"), step);
+
+  // Ctrl-E returns to the end, and Ctrl-B and Ctrl-F move one character.
+  con.send(b"\"end-\" + 3\x01\x05\x024\x06\r");
+  con.wait_until(|text| text.contains("end-43"), step);
+
+  // Ctrl-U removes the line and Ctrl-Y puts it back.
+  con.send(b"\"yank-\" + 5\x15\x19\r");
+  con.wait_until(|text| text.contains("yank-5"), step);
+
+  // Up recalls the previous chunk.
+  con.send(b"\"hist-\" + 7\r");
+  con.wait_until(|text| text.contains("hist-7"), step);
+  let seen = con.count("hist-7");
+  con.send(b"\x1b[A\r");
+  con.wait_until(|text| text.matches("hist-7").count() > seen, step);
+
+  // Tab completes a property name.
+  con.send(b"\"tab:\" + typeof Math.ab\t\r");
+  con.wait_until(|text| text.contains("tab:function"), step);
+
+  // Characters outside ASCII, including a surrogate pair, keep their length.
+  con.send("\"len-\" + \"あい😀\".length\r".as_bytes());
+  con.wait_until(|text| text.contains("len-4"), step);
+
+  // Ctrl-C clears the line instead of ending the process.
+  con.send(b"\"cancelled\"\x03");
+  con.wait_until(|text| text.contains("^C"), step);
+  con.send(b"\"after-\" + 1\r");
+  con.wait_until(|text| text.contains("after-1"), step);
+  assert!(!con.text.contains("\ncancelled"), "{}", con.text);
+
+  // Ctrl-D on an empty line ends the session.
+  con.send(b"\x04");
+  assert_eq!(con.wait_exit(), 0, "{}", con.text);
+  assert!(!con.text.contains("panicked"), "{}", con.text);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_console_runs_the_event_loop_while_the_prompt_waits() {
+  let dir = scratch("conpty-live");
+  let mut con = ConPty::spawn(&dir, true);
+  let step = Duration::from_secs(20);
+  con.wait_until(|text| text.contains("> "), step);
+
+  con.send(b"setTimeout(() => console.log(\"while-\" + \"waiting\"), 40)\r");
+  con.wait_until(|text| text.contains("while-waiting"), step);
+
+  con.send(
+    b"const w = new Yuzuko.Window(); w.requestAnimationFrame(() => console.log(\"while-\" + \"frame\"))\r",
+  );
+  con.wait_until(|text| text.contains("while-frame"), step);
+
+  con.send(b"\x04");
+  assert_eq!(con.wait_exit(), 0, "{}", con.text);
 }

@@ -4,7 +4,30 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-Yuzuko.test("menuclick carries the selected action", () => {
+Yuzuko.test({
+  name: "Linux has no menu bar to install",
+  ignore: Yuzuko.build.os !== "linux",
+  fn() {
+    const menu = new Yuzuko.Menu([
+      { label: "File", submenu: [{ label: "Save", action: "file.save" }] },
+    ]);
+    let name = "";
+    try {
+      Yuzuko.setMenu(menu);
+    } catch (error) {
+      name = error instanceof DOMException ? error.name : "";
+    }
+    assert(name === "NotSupportedError", `setMenu: ${name}`);
+  },
+});
+
+Yuzuko.test({
+  name: "menuclick carries the selected action",
+  ignore: Yuzuko.build.os === "linux",
+  fn,
+});
+
+function fn() {
   assert(Yuzuko instanceof EventTarget, "Yuzuko is an EventTarget");
   assert(globalThis.Menu === undefined, "Menu stays off globalThis");
   assert(typeof Yuzuko.setMenu === "function", "setMenu");
@@ -53,4 +76,4 @@ Yuzuko.test("menuclick carries the selected action", () => {
     window.close();
     Yuzuko.removeEventListener("menuclick", onClick);
   }
-});
+}

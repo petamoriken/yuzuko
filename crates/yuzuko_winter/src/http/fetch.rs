@@ -2049,7 +2049,7 @@ fn file_inside_entry(url: &url::Url) -> Result<std::path::PathBuf, Reject> {
       "The file URL is outside the entry directory".to_string(),
     ));
   }
-  match std::fs::canonicalize(&path) {
+  match yuzuko_core::canonicalize(&path) {
     Ok(canonical) if canonical.starts_with(&root) => Ok(canonical),
     Ok(_) => Err(Reject::Type(
       "The file URL is outside the entry directory".to_string(),

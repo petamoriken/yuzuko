@@ -228,7 +228,7 @@ pub fn set_entry_url(url: String) {
 pub fn set_sandbox_dir(path: &std::path::Path) {
   let absolute = crate::loader::modules::absolute(path)
     .unwrap_or_else(|_| path.to_path_buf());
-  let dir = std::fs::canonicalize(&absolute).unwrap_or(absolute);
+  let dir = crate::loader::modules::canonicalize(&absolute).unwrap_or(absolute);
   with_mut(|state| {
     state.entry_dir = Some(dir);
   });
@@ -238,7 +238,8 @@ pub fn set_sandbox_dir(path: &std::path::Path) {
 pub fn set_file_root(path: &std::path::Path) {
   let absolute = crate::loader::modules::absolute(path)
     .unwrap_or_else(|_| path.to_path_buf());
-  let file = std::fs::canonicalize(&absolute).unwrap_or(absolute);
+  let file =
+    crate::loader::modules::canonicalize(&absolute).unwrap_or(absolute);
   let dir = file
     .parent()
     .map(std::path::Path::to_path_buf)

@@ -88,6 +88,9 @@ struct HostWindow {
   window: Window,
   surface_id: u64,
   transparent: bool,
+  /// Whether `surface` has been configured. wgpu panics when an unconfigured
+  /// surface is asked for a texture.
+  configured: bool,
 }
 
 impl Drop for HostWindow {
@@ -358,7 +361,7 @@ fn chrome_attributes(
     attributes =
       attributes.with_max_inner_size(LogicalSize::new(size.0, size.1));
   }
-  attributes
+  crate::identity::apply(attributes)
 }
 
 /// One optional edge. The missing edge is `fill` so winit still receives a size.
@@ -534,7 +537,17 @@ pub fn pump(timeout: Option<Duration>) -> bool {
     let OsLoop {
       event_loop, app, ..
     } = os;
+    // GLib events do not wake winit, so a GTK user bounds the sleep.
+    #[cfg(target_os = "linux")]
+    let timeout = if crate::shell::gtk_loop::active() {
+      const GLIB_SLICE: Duration = Duration::from_millis(16);
+      Some(timeout.map_or(GLIB_SLICE, |wait| wait.min(GLIB_SLICE)))
+    } else {
+      timeout
+    };
     event_loop.pump_app_events(timeout, app);
+    #[cfg(target_os = "linux")]
+    crate::shell::gtk_loop::drain();
     true
   })
 }
@@ -604,9 +617,7 @@ fn hwnd_of(window: &Window) -> Option<isize> {
   use raw_window_handle::HasWindowHandle;
   let handle = window.window_handle().ok()?;
   match handle.as_raw() {
-    raw_window_handle::RawWindowHandle::Win32(win) => {
-      Some(win.hwnd.get() as isize)
-    }
+    raw_window_handle::RawWindowHandle::Win32(win) => Some(win.hwnd.get()),
     _ => None,
   }
 }
@@ -663,6 +674,7 @@ impl App {
         window,
         surface_id: id,
         transparent,
+        configured: false,
       },
     );
     self.by_surface.insert(id, window_id);
@@ -686,12 +698,9 @@ impl App {
     {
       self.instance = Some(instance);
     }
-    let instance =
-      self.instance.get_or_insert_with(|| {
-        wgpu::Instance::new(
-          wgpu::InstanceDescriptor::new_without_display_handle(),
-        )
-      });
+    let instance = self.instance.get_or_insert_with(|| {
+      wgpu::Instance::new(crate::gpu::instance_descriptor())
+    });
     // The instance is created without a display handle. wgpu 29 then rejects
     // `from_window`, which leaves that handle empty, and the window stays the
     // unpainted view color. The window itself has the display handle.
@@ -799,14 +808,14 @@ impl App {
       view_formats: vec![],
       desired_maximum_frame_latency: 2,
     };
-    let Some(surface) = self
-      .windows
-      .get(&window_id)
-      .and_then(|host| host.surface.as_ref())
-    else {
+    let Some(host) = self.windows.get_mut(&window_id) else {
+      return;
+    };
+    let Some(surface) = host.surface.as_ref() else {
       return;
     };
     surface.configure(&gpu.device, &config);
+    host.configured = true;
   }
 
   fn present_window(&mut self, window_id: WindowId) {
@@ -819,6 +828,11 @@ impl App {
     let surface_id = crate::surface::canvas_for_window(host.surface_id)
       .unwrap_or(host.surface_id);
     let transparent = host.transparent;
+    // Without a device, or before the first non-empty size, the surface was
+    // never configured and has no texture to present.
+    if !host.configured {
+      return;
+    }
     host.window.pre_present_notify();
     let Some(surface) = host.surface.as_ref() else {
       return;
@@ -1153,16 +1167,7 @@ fn build_gpu(
       },
     ))
     .map_err(|error| error.to_string())?;
-    let (device, queue) =
-      pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("yuzuko"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::default(),
-        experimental_features: wgpu::ExperimentalFeatures::disabled(),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-      }))
-      .map_err(|error| error.to_string())?;
+    let (device, queue) = crate::gpu::request_device(&adapter)?;
     (adapter, device, queue)
   };
   let caps = surface.get_capabilities(&adapter);

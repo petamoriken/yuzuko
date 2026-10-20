@@ -50,6 +50,9 @@ impl Tray {
   #[constructor]
   fn new() -> Result<Self, OpError> {
     crate::os::ensure_running().map_err(unsupported)?;
+    // tray-icon builds a GTK AppIndicator on Linux.
+    #[cfg(target_os = "linux")]
+    crate::shell::gtk_loop::ready().map_err(unsupported)?;
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let icon = blank_icon().map_err(unsupported)?;
     let native = TrayIconBuilder::new()
@@ -127,7 +130,7 @@ impl Tray {
     #[cfg(target_os = "linux")]
     {
       let _ = (scope, tooltip);
-      return Err(unsupported("This system has no tray tooltip.".to_string()));
+      Err(unsupported("This system has no tray tooltip.".to_string()))
     }
     #[cfg(not(target_os = "linux"))]
     {

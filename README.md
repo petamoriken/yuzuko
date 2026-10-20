@@ -36,7 +36,13 @@ Behavior is specified in [docs/spec.md](docs/spec.md). Intentional divergences f
 | `aarch64-unknown-linux-gnu` | Linux | arm64 |
 | `x86_64-unknown-linux-gnu` | Linux | x86_64 |
 
-The first machine that must run is macOS arm64. Window, GPU, and input code uses winit and wgpu so the other targets stay reachable.
+Window, GPU, and input code uses winit and wgpu, so one implementation serves every target. The test suite runs on macOS arm64, Windows 11 x86_64, and Ubuntu 20.04 x86_64 under WSL2. Windows builds link the C runtime statically, which `.cargo/config.toml` sets for `x86_64-pc-windows-msvc`. A Linux build needs the GTK 3, xdo, udev, and AppIndicator development packages:
+
+```sh
+sudo apt-get install libgtk-3-dev libxdo-dev libudev-dev libayatana-appindicator3-dev
+```
+
+`cargo test -p yuzuko --test wpt` starts the WPT server with Python 3.9 or later and expects the `web-platform.test` names from `./wpt make-hosts-file` in the hosts file.
 
 ## License
 

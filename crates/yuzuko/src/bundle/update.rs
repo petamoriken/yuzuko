@@ -84,6 +84,7 @@ struct Checked {
 
 pub(crate) struct BundleMeta {
   pub name: String,
+  pub identifier: Option<String>,
   pub version: String,
   pub entry: String,
   pub release_base_url: Option<String>,
@@ -561,6 +562,11 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
     .and_then(|item| item.as_str())
     .ok_or(())?
     .to_string();
+  let identifier = value
+    .get("identifier")
+    .and_then(|item| item.as_str())
+    .filter(|id| !id.is_empty())
+    .map(str::to_string);
   let release_base_url = value
     .get("releaseBaseUrl")
     .and_then(|item| item.as_str())
@@ -568,6 +574,7 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
     .map(str::to_string);
   Ok(BundleMeta {
     name,
+    identifier,
     version,
     entry,
     release_base_url,
