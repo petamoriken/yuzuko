@@ -20,6 +20,13 @@ pub use http::websocket::{
   AddressSpace, Command, Connection, Note, NoteQueue, PullGate, abort_all,
   connect, environment_origin, is_bad_port, valid_protocol,
 };
+pub use http::webtransport::{
+  Command as WebTransportCommand, Congestion as WebTransportCongestion,
+  Connection as WebTransportConnection, Note as WebTransportNote,
+  NoteQueue as WebTransportNotes, Options as WebTransportOptions,
+  abort_all as abort_web_transports, connect as connect_web_transport,
+  next_stream_id as next_web_transport_stream_id,
+};
 pub use http::{BodyNote, HttpBody, perform};
 pub use text::mime::is_mime_type;
 

@@ -199,17 +199,17 @@ impl PullGate {
     self.inner.lock().expect("pull gate").permits
   }
 
-  fn take(&self) {
+  pub(crate) fn take(&self) {
     let mut inner = self.inner.lock().expect("pull gate");
     inner.permits = inner.permits.saturating_sub(1);
   }
 
-  fn wait(&self) -> PullWait<'_> {
+  pub(crate) fn wait(&self) -> PullWait<'_> {
     PullWait { gate: self }
   }
 }
 
-struct PullWait<'a> {
+pub(crate) struct PullWait<'a> {
   gate: &'a PullGate,
 }
 

@@ -5,7 +5,9 @@
 //! thread keeps the body connection open and forwards chunks until the
 //! caller sets `cancel`, which drops the socket.
 
+mod alt_svc;
 mod content_coding;
+mod h3;
 mod request;
 
 pub(crate) mod cache;
@@ -13,7 +15,11 @@ pub(crate) mod fetch;
 pub(crate) mod form;
 pub(crate) mod sse;
 pub(crate) mod websocket;
+pub(crate) mod webtransport;
 pub(crate) mod xhr;
+
+#[cfg(test)]
+mod protocol;
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -142,6 +148,39 @@ pub fn perform(
   redirect: String,
   cancel: Arc<AtomicBool>,
 ) -> Result<HttpResponse, HttpFailure> {
+  drive(method, url, headers, body, redirect, cancel, None)
+}
+
+#[cfg(test)]
+pub(crate) fn perform_with_roots(
+  method: String,
+  url: String,
+  headers: Vec<(String, String)>,
+  body: Vec<u8>,
+  redirect: String,
+  cancel: Arc<AtomicBool>,
+  roots: rustls::RootCertStore,
+) -> Result<HttpResponse, HttpFailure> {
+  drive(
+    method,
+    url,
+    headers,
+    body,
+    redirect,
+    cancel,
+    Some(Arc::new(roots)),
+  )
+}
+
+fn drive(
+  method: String,
+  url: String,
+  headers: Vec<(String, String)>,
+  body: Vec<u8>,
+  redirect: String,
+  cancel: Arc<AtomicBool>,
+  roots: Option<Arc<rustls::RootCertStore>>,
+) -> Result<HttpResponse, HttpFailure> {
   let headers = combine_request_headers(headers);
   let (sender, receiver) = std::sync::mpsc::channel();
   std::thread::spawn(move || {
@@ -163,6 +202,7 @@ pub fn perform(
       redirect,
       cancel,
       sender.clone(),
+      roots,
     ));
     if let Err(error) = outcome {
       let _ = sender.send(Err(error));
@@ -181,6 +221,7 @@ async fn exchange(
   redirect: String,
   cancel: Arc<AtomicBool>,
   sender: std::sync::mpsc::Sender<Result<HttpResponse, HttpFailure>>,
+  roots: Option<Arc<rustls::RootCertStore>>,
 ) -> Result<(), HttpFailure> {
   let mut redirected = false;
   let mut redirects = 0u32;
@@ -201,11 +242,7 @@ async fn exchange(
     return Ok(());
   }
   install_tls();
-  let connector = hyper_rustls::HttpsConnectorBuilder::new()
-    .with_webpki_roots()
-    .https_or_http()
-    .enable_http1()
-    .build();
+  let connector = https_connector(roots.as_deref());
   let client = Client::builder(TokioExecutor::new()).build(connector);
   loop {
     if cancel.load(Ordering::Relaxed) {
@@ -227,6 +264,26 @@ async fn exchange(
         return Ok(());
       }
       continue;
+    }
+    if url.starts_with("https://") {
+      let step = h3::attempt(h3::Attempt {
+        method: &mut method,
+        url: &mut url,
+        headers: &headers,
+        body: &mut body,
+        redirect: &redirect,
+        redirected: &mut redirected,
+        redirects: &mut redirects,
+        cancel: &cancel,
+        sender: &sender,
+        roots: roots.as_deref(),
+      })
+      .await?;
+      match step {
+        h3::Step::Delivered => return Ok(()),
+        h3::Step::Redirected => continue,
+        h3::Step::Skip => {}
+      }
     }
     let request = build_request(&method, &url, &headers, &body)?;
     let response = tokio::select! {
@@ -261,6 +318,7 @@ async fn exchange(
         return Err(HttpFailure::Network(error.to_string()));
       }
     };
+    alt_svc::observe(&url, response.headers());
     let status = response.status().as_u16();
     if is_redirect(status) {
       match redirect.as_str() {
@@ -456,6 +514,28 @@ fn build_request(
 
 fn is_redirect(status: u16) -> bool {
   matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+fn https_connector(
+  roots: Option<&rustls::RootCertStore>,
+) -> hyper_rustls::HttpsConnector<
+  hyper_util::client::legacy::connect::HttpConnector,
+> {
+  let builder = hyper_rustls::HttpsConnectorBuilder::new();
+  let builder = if let Some(roots) = roots {
+    // ALPN stays empty here. `enable_http2` writes `h2` and `http/1.1`.
+    let config = rustls::ClientConfig::builder()
+      .with_root_certificates(roots.clone())
+      .with_no_client_auth();
+    builder.with_tls_config(config)
+  } else {
+    builder.with_webpki_roots()
+  };
+  builder
+    .https_or_http()
+    .enable_http1()
+    .enable_http2()
+    .build()
 }
 
 /// One wire header per name, using the first spelling. `set-cookie` stays

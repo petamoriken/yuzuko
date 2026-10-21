@@ -82,6 +82,7 @@ const ENROLLED: &[(&str, &[&str])] = &[
   ("requestidlecallback", &["requestidlecallback"]),
   ("eventsource", &["eventsource"]),
   ("websockets", &["websockets"]),
+  ("webtransport", &["webtransport"]),
   ("webcodecs", &["webcodecs"]),
   (
     "imagebitmap-renderingcontext",

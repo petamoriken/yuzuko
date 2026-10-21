@@ -12,14 +12,19 @@ flate2 = { workspace = true, default-features = false, features = ["zlib-rs"] }
 getrandom = "0.3"
 rustls.workspace = true
 http-body-util = "0.1.5"
-hyper = { version = "1.12.0", features = ["client", "http1"] }
+hyper = { version = "1.12.0", features = ["client", "server", "http1", "http2"] }
 hyper-rustls = { version = "0.27.10", default-features = false, features = [
   "http1",
+  "http2",
   "ring",
   "tls12",
   "webpki-tokio",
 ] }
-hyper-util = { version = "0.1.21", features = ["tokio", "http1", "client-legacy"] }
+hyper-util = { version = "0.1.21", features = ["tokio", "http1", "http2", "client-legacy"] }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+web-transport-quinn = { version = "0.13.2", default-features = false, features = ["ring"] }
 tokio-rustls = "0.26.6"
 webpki-roots.workspace = true
 tokio = { version = "1.53.3", features = [
@@ -53,3 +58,6 @@ brotli = "9.0.0"
 ruzstd = "0.9.1"
 ed448-goldilocks = { version = "0.14.0-pre.15", default-features = false, features = ["signing", "pkcs8"] }
 x448 = { version = "0.14.0-pre.12", default-features = false }
+
+[dev-dependencies]
+rcgen = "0.13"

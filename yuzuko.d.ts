@@ -8323,6 +8323,262 @@ declare class WebSocketError extends DOMException {
 }
 
 /**
+ * Requested congestion control for a {@link WebTransport} session.
+ */
+type WebTransportCongestionControl = "default" | "throughput" | "low-latency";
+
+/**
+ * Datagram support reported by a {@link WebTransport} session.
+ *
+ * `"pending"` is the value until `ready` resolves.
+ */
+type WebTransportReliabilityMode =
+  | "pending"
+  | "supports-unreliable"
+  | "reliable-only";
+
+/**
+ * Options for {@link WebTransport}.
+ *
+ * `serverCertificateHashes` replaces the webpki roots when the list is
+ * non-empty, including when every algorithm is unknown. Unknown algorithms
+ * are ignored. `allowPooling: true` with that non-empty list throws
+ * `NotSupportedError`. Pooling is otherwise ignored.
+ * `datagramsReadableType: "bytes"` throws `NotSupportedError`. Any other
+ * string throws `TypeError`. A non-empty `protocols` list throws
+ * `NotSupportedError`. An empty list is accepted. A `Headers` object throws
+ * `NotSupportedError`, including an empty one. A non-empty header sequence
+ * or record throws `NotSupportedError`. An empty sequence or record is
+ * accepted. A value that is not a `HeadersInit` throws `TypeError`.
+ * `anticipatedConcurrentIncomingUnidirectionalStreams` and
+ * `anticipatedConcurrentIncomingBidirectionalStreams` must be `null` or an
+ * integer from 0 through 65535. Any other number throws `TypeError`.
+ * In-range values are ignored, and those attributes are absent.
+ * `requireUnreliable` rejects `ready` and `closed` when the session cannot
+ * carry datagrams.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/WebTransport)
+ */
+interface WebTransportOptions {
+  allowPooling?: boolean;
+  requireUnreliable?: boolean;
+  congestionControl?: WebTransportCongestionControl;
+  serverCertificateHashes?: WebTransportHash[];
+  protocols?: string[];
+  datagramsReadableType?: string;
+  headers?: HeadersInit;
+  anticipatedConcurrentIncomingUnidirectionalStreams?: number | null;
+  anticipatedConcurrentIncomingBidirectionalStreams?: number | null;
+}
+
+/**
+ * One certificate hash in {@link WebTransportOptions.serverCertificateHashes}.
+ *
+ * `algorithm` other than `"sha-256"` is ignored. A `"sha-256"` `value` is 32
+ * bytes. A missing `algorithm` or `value`, a `value` that is not a
+ * `BufferSource`, a `SharedArrayBuffer`, a view of one, or a resizable
+ * buffer throws `TypeError`.
+ */
+interface WebTransportHash {
+  algorithm: string;
+  value: BufferSource;
+}
+
+/**
+ * Close information for {@link WebTransport}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportCloseInfo)
+ */
+interface WebTransportCloseInfo {
+  closeCode?: number;
+  reason?: string;
+}
+
+/**
+ * Options for {@link WebTransport.createBidirectionalStream} and
+ * {@link WebTransport.createUnidirectionalStream}.
+ *
+ * `sendOrder` and `waitUntilAvailable` are ignored. A non-null `sendGroup`
+ * throws `NotSupportedError`.
+ */
+interface WebTransportSendStreamOptions {
+  sendGroup?: object | null;
+  sendOrder?: number;
+  waitUntilAvailable?: boolean;
+}
+
+/**
+ * A bidirectional WebTransport stream.
+ *
+ * `readable` and `writable` are `ReadableStream` and `WritableStream`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
+ */
+interface WebTransportBidirectionalStream {
+  readable: ReadableStream<Uint8Array>;
+  writable: WritableStream<Uint8Array>;
+}
+
+/**
+ * Datagram duplex exposed by {@link WebTransport.datagrams}.
+ *
+ * This is a plain object. Chunks are `Uint8Array` values.
+ */
+interface WebTransportDatagrams {
+  readable: ReadableStream<Uint8Array>;
+  writable: WritableStream<Uint8Array>;
+}
+
+/**
+ * Options for {@link WebTransportError}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/WebTransportError)
+ */
+interface WebTransportErrorOptions {
+  source?: "stream" | "session";
+  streamErrorCode?: number | null;
+}
+
+/**
+ * An HTTP/3 WebTransport session.
+ *
+ * The URL must be `https` and must not contain a fragment. A relative URL
+ * is resolved against the entry URL. The constructor is on `globalThis` in
+ * the main realm and in a dedicated worker. This is not an `EventTarget`.
+ * `ready` and `closed` reject when the handshake fails, and those
+ * rejections are marked handled. `datagrams` is a plain
+ * `{ readable, writable }`. Chunks are `Uint8Array` values. `reliability`
+ * is `"pending"` until `ready` resolves.
+ *
+ * @throws {@link DOMException} `SyntaxError` when the URL is invalid, the
+ * scheme is not `https`, or the URL has a fragment.
+ * @throws {@link TypeError} When `options` is not an object, `protocols` is
+ * not an array, `headers` is not a `HeadersInit`, `congestionControl` is
+ * not `"default"`, `"throughput"`, or `"low-latency"`,
+ * `datagramsReadableType` is a string other than `"bytes"`, a certificate
+ * hash is malformed, or an anticipated incoming-stream count is not an
+ * unsigned short.
+ * @throws {@link DOMException} `NotSupportedError` when
+ * `datagramsReadableType` is `"bytes"`, `protocols` is non-empty, `headers`
+ * is a `Headers` object or a non-empty sequence or record, or
+ * `allowPooling` is true with a non-empty `serverCertificateHashes` list.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport)
+ */
+declare class WebTransport {
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/WebTransport)
+   */
+  constructor(url: string | URL, options?: WebTransportOptions);
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/url)
+   */
+  readonly url: string;
+
+  /**
+   * Resolves when the handshake finishes.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/ready)
+   */
+  readonly ready: Promise<undefined>;
+
+  /**
+   * Resolves `{ closeCode, reason }` after a clean close and rejects with
+   * {@link WebTransportError} after an unclean close.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/closed)
+   */
+  readonly closed: Promise<WebTransportCloseInfo>;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/datagrams)
+   */
+  readonly datagrams: WebTransportDatagrams;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingBidirectionalStreams)
+   */
+  readonly incomingBidirectionalStreams: ReadableStream<WebTransportBidirectionalStream>;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingUnidirectionalStreams)
+   */
+  readonly incomingUnidirectionalStreams: ReadableStream<ReadableStream<Uint8Array>>;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/congestionControl)
+   */
+  readonly congestionControl: WebTransportCongestionControl;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/reliability)
+   */
+  readonly reliability: WebTransportReliabilityMode;
+
+  /**
+   * @param closeInfo - `closeCode` is an unsigned long. `reason` is a
+   * USVString of at most 1024 UTF-8 bytes.
+   * @throws {@link DOMException} `SyntaxError` when `reason` is longer than
+   * 1024 UTF-8 bytes.
+   * @throws {@link TypeError} When `closeInfo` is not an object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/close)
+   */
+  close(closeInfo?: WebTransportCloseInfo): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `sendGroup` is
+   * non-null.
+   * @throws {@link TypeError} When `options` is not an object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createBidirectionalStream)
+   */
+  createBidirectionalStream(
+    options?: WebTransportSendStreamOptions,
+  ): Promise<WebTransportBidirectionalStream>;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `sendGroup` is
+   * non-null.
+   * @throws {@link TypeError} When `options` is not an object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createUnidirectionalStream)
+   */
+  createUnidirectionalStream(
+    options?: WebTransportSendStreamOptions,
+  ): Promise<WritableStream<Uint8Array>>;
+}
+
+/**
+ * A WebTransport stream or session failure.
+ *
+ * `name` is `"WebTransportError"` and `code` is `0`. `source` defaults to
+ * `"stream"`. `streamErrorCode` defaults to `null`.
+ *
+ * @throws {@link TypeError} When `options` is not an object or `source` is
+ * not `"stream"` or `"session"`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError)
+ */
+declare class WebTransportError extends DOMException {
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/WebTransportError)
+   */
+  constructor(message?: string, options?: WebTransportErrorOptions);
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/source)
+   */
+  readonly source: "stream" | "session";
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/streamErrorCode)
+   */
+  readonly streamErrorCode: number | null;
+}
+
+/**
  * A dedicated worker.
  *
  * `new Worker(url)` runs a classic script. `{ type: "module" }` runs an ES

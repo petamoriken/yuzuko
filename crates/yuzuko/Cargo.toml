@@ -30,9 +30,15 @@ yuzuko_winter.workspace = true
 
 [dev-dependencies]
 base64 = "0.23"
+bytes = "1.12.1"
 ed25519-dalek.workspace = true
 libc.workspace = true
+rcgen = "0.13"
+rustls.workspace = true
 serde_json = "1"
+sha2 = "0.11.1"
+tokio = { version = "1.53.3", features = ["macros", "net", "rt", "sync", "time"] }
+web-transport-quinn = { version = "0.13.2", default-features = false, features = ["ring"] }
 yuzuko_audio.workspace = true
 yuzuko_core.workspace = true
 yuzuko_dom.workspace = true

@@ -1,0 +1,311 @@
+{
+  "webtransport/anticipated-concurrent-incoming-streams.https.any.js": {
+    "expectedFailures": [
+      "Anticipated incoming stream hint setters accept boundary and null values",
+      "Anticipated incoming stream hints are null when explicitly null",
+      "Anticipated incoming stream hints are null when omitted",
+      "Constructor reflects stream hints 0/65535",
+      "Constructor reflects stream hints 65535/0",
+      "Constructor reflects stream hints 99/101",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingBidirectionalStreams value -1",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingBidirectionalStreams value -Infinity",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingBidirectionalStreams value 65536",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingBidirectionalStreams value Infinity",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingBidirectionalStreams value NaN",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingUnidirectionalStreams value -1",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingUnidirectionalStreams value -Infinity",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingUnidirectionalStreams value 65536",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingUnidirectionalStreams value Infinity",
+      "WebTransport constructor rejects anticipatedConcurrentIncomingUnidirectionalStreams value NaN",
+      "anticipatedConcurrentIncomingBidirectionalStreams setter rejects out-of-range values",
+      "anticipatedConcurrentIncomingUnidirectionalStreams setter rejects out-of-range values"
+    ]
+  },
+  "webtransport/back-forward-cache-with-closed-webtransport-connection-ccns.https.tentative.window.js": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "webtransport/back-forward-cache-with-closed-webtransport-connection.https.window.js": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "webtransport/back-forward-cache-with-open-webtransport-connection-ccns.https.tentative.window.js": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "webtransport/back-forward-cache-with-open-webtransport-connection.https.window.js": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "webtransport/bidirectional-cancel-crash.https.html": {
+    "ignore": true
+  },
+  "webtransport/close.https.any.js": {
+    "expectedFailures": [
+      "close",
+      "close with code and long reason",
+      "close with code and reason",
+      "close without waiting for ready",
+      "opening bidirectional stream before ready",
+      "opening unidirectional stream before ready",
+      "reading closed property after close should work",
+      "server initiated closure while opening bidirectional stream before ready",
+      "server initiated closure while opening unidirectional stream before ready",
+      "server initiated closure with code and reason",
+      "server initiated closure without code and reason",
+      "server initiated connection closure"
+    ]
+  },
+  "webtransport/congestion-control.https.any.js": {
+    "expectedFailures": [
+      "WebTransport session established with congestionControl \"default\" and attribute is readable",
+      "WebTransport session established with congestionControl \"low-latency\" and attribute is readable",
+      "WebTransport session established with congestionControl \"throughput\" and attribute is readable",
+      "WebTransport session without congestionControl option defaults to \"default\""
+    ]
+  },
+  "webtransport/connect.https.any.js": {
+    "expectedFailures": [
+      "Cookie header is not echoed back",
+      "Echo back request headers",
+      "Protocol with backslash is escaped in wt-available-protocols header",
+      "Protocol with double-quote is escaped in wt-available-protocols header",
+      "Validate malformed subprotocol response header gets ignored",
+      "Validate subprotocol headers sent",
+      "Validate subprotocol response header received",
+      "Validate subprotocol response header received with parameters handled correctly",
+      "Validate subprotocol response header when no protocols were offered gets ignored",
+      "Validate subprotocol response header with non-offered protocol gets ignored",
+      "WebTransport session establishment fails with status code 301",
+      "WebTransport session establishment fails with status code 404",
+      "WebTransport session establishment with status code 401",
+      "WebTransport session is established with status code 200",
+      "WebTransport session is established with status code 204"
+    ]
+  },
+  "webtransport/constructor-sharedarraybuffer.https.any.js": {
+    "expectedFailures": [
+      "WebTransport constructor should reject serverCertificateHashes value of type 'SharedArrayBuffer'",
+      "WebTransport constructor should reject serverCertificateHashes value of type 'Uint8Array(SharedArrayBuffer)'"
+    ]
+  },
+  "webtransport/constructor.https.sub.any.js": {
+    "ignore": true
+  },
+  "webtransport/csp-fail.https.window.js": {
+    "expectedFailures": [
+      "WebTransport connection should fail when CSP connect-src is set to none and reject the promises"
+    ]
+  },
+  "webtransport/csp-pass.https.window.js": {
+    "expectedFailures": [
+      "WebTransport connection should succeed when CSP connect-src destination is set to the page"
+    ]
+  },
+  "webtransport/datagram-bad-chunk.https.any.js": {
+    "expectedFailures": [
+      "Datagram should reject when non-buffer-source data is written"
+    ]
+  },
+  "webtransport/datagram-cancel-crash.https.sub.window.js": {
+    "ignore": true
+  },
+  "webtransport/datagrams-writable.https.any.js": {
+    "expectedFailures": [
+      "WebTransportDatagramsWritable attributes have correct defaults",
+      "WebTransportDatagramsWritable can write and receive datagrams",
+      "WebTransportDatagramsWritable can write max-size datagrams",
+      "WebTransportDatagramsWritable writer.ready works correctly",
+      "createWritable respects sendOrder option",
+      "createWritable returns WebTransportDatagramsWritable which extends WritableStream",
+      "createWritable throws InvalidStateError on closed transport",
+      "createWritable throws InvalidStateError when sendGroup is from different transport",
+      "multiple WebTransportDatagramsWritable streams can be created",
+      "multiple writes through WebTransportDatagramsWritable work correctly",
+      "sendGroup attribute can be get and set",
+      "sendOrder attribute can be get and set"
+    ]
+  },
+  "webtransport/datagrams.https.any.js": {
+    "expectedFailures": [
+      "Datagram MaxAge getters/setters work correctly",
+      "Datagram MaxBufferedDatagrams getters/setters work correctly",
+      "Datagram's outgoingMaxBufferedDatagrams correctly regulates written datagrams",
+      "Datagrams are echoed successfully",
+      "Datagrams read is less than or equal to the incomingMaxBufferedDatagrams",
+      "Fail to transfer max-size+1 datagram, handle PMTUD increases",
+      "Reading datagrams with BYOB reader without datagramsReadableType should fail.",
+      "Reading datagrams with insufficient buffer should be rejected.",
+      "Sending and receiving datagrams is ready to use before session is established",
+      "Successfully reading datagrams with BYOB reader.",
+      "Transfer max-size datagram"
+    ]
+  },
+  "webtransport/draining.https.any.js": {
+    "expectedFailures": [
+      "WebTransport should allow opening streams after server-initiated draining",
+      "WebTransport.draining should be a Promise and not resolve immediately",
+      "WebTransport.draining should be accessible before connection is ready",
+      "WebTransport.draining should resolve when server initiates draining",
+      "WebTransport.draining should return the same promise",
+      "draining does not settle closed",
+      "draining stays pending when the session closes without draining",
+      "streams remain usable after draining"
+    ]
+  },
+  "webtransport/echo-large-bidirectional-streams.https.any.js": {
+    "expectedFailures": [
+      "Ensure large bidirectional streams does not cause race condition"
+    ]
+  },
+  "webtransport/export-keying-material.https.any.js": {
+    "expectedFailures": [
+      "Different contexts produce different keying material",
+      "Different labels produce different keying material",
+      "Different sessions produce different keying material",
+      "The same inputs on one session produce identical keying material",
+      "exportKeyingMaterial accepts 255-byte label and context inputs",
+      "exportKeyingMaterial accepts ArrayBuffer and ArrayBufferView inputs",
+      "exportKeyingMaterial accepts empty label and context inputs",
+      "exportKeyingMaterial can be called while connecting",
+      "exportKeyingMaterial rejects a zero output length",
+      "exportKeyingMaterial rejects after the session closes",
+      "exportKeyingMaterial rejects an output length over 4096 bytes",
+      "exportKeyingMaterial rejects label and context inputs over 255 bytes",
+      "exportKeyingMaterial requires all three arguments",
+      "exportKeyingMaterial respects non-zero ArrayBufferView offsets",
+      "exportKeyingMaterial returns the requested number of bytes"
+    ]
+  },
+  "webtransport/headers.https.any.js": {
+    "expectedFailures": [
+      "An empty headers object is accepted",
+      "Duplicate header names in sequence form are all sent, in order",
+      "Forbidden request-header names are silently dropped from the headers option",
+      "Header names differing only in case are lowercased and both sent",
+      "Header value containing CR/LF throws TypeError",
+      "HeadersInit Headers object form sends every header",
+      "HeadersInit sequence with an empty inner sequence throws TypeError",
+      "HeadersInit sequence with one inner element throws TypeError",
+      "HeadersInit sequence with three inner elements throws TypeError",
+      "HeadersInit sequence-of-sequences form sends every header",
+      "Invalid header name throws TypeError",
+      "Set-Cookie is stripped from responseHeaders",
+      "headers option forwards a custom header to the server, lowercased",
+      "responseHeaders exposes server-sent response headers",
+      "responseHeaders is a Headers object after ready resolves",
+      "responseHeaders is immutable",
+      "responseHeaders is null before the connection is established",
+      "wt-available-protocols header throws TypeError",
+      "wt-available-protocols header throws TypeError (mixed case)",
+      "wt-available-protocols header throws TypeError (upper case)",
+      "wt-protocol is stripped from responseHeaders"
+    ]
+  },
+  "webtransport/historical.https.sub.any.js": {
+    "ignore": true
+  },
+  "webtransport/idlharness.https.sub.any.js": {
+    "ignore": true
+  },
+  "webtransport/in-removed-iframe.https.html": {
+    "ignore": true
+  },
+  "webtransport/incoming-multiple-streams.https.any.js": {
+    "expectedFailures": [
+      "Multiple server-initiated bidirectional streams should all be received",
+      "Multiple server-initiated unidirectional streams should all be received"
+    ]
+  },
+  "webtransport/receive-stream-pull.https.any.js": {
+    "expectedFailures": [
+      "A BYOB read smaller than the received bytes keeps the rest for later reads",
+      "A read waits for bytes that have not been received yet",
+      "Bytes received before any read are given to later reads"
+    ]
+  },
+  "webtransport/reliability.https.any.js": true,
+  "webtransport/reliability.https.window.js": {
+    "expectedFailures": [
+      "WebTransport reliability transitions when the connection is ready"
+    ]
+  },
+  "webtransport/sendgroup.https.any.js": {
+    "expectedFailures": [
+      "Multiple send groups can be created and used independently",
+      "Multiple streams can be created with the same send group",
+      "WebTransport streams can have both sendGroup and sendOrder options",
+      "WebTransport.createBidirectionalStream() with sendGroup should create a working stream",
+      "WebTransport.createBidirectionalStream() with sendGroup should respect sendOrder option",
+      "WebTransport.createSendGroup() should return a WebTransportSendGroup instance",
+      "WebTransport.createUnidirectionalStream() with sendGroup should create a working stream",
+      "WebTransport.createUnidirectionalStream() with sendGroup should respect sendOrder option",
+      "WebTransportDatagramsWritable supports sendGroup and sendOrder",
+      "createSendGroup() throws InvalidStateError on a closed transport",
+      "sendGroup can be set to null to clear the group",
+      "sendGroup setter on existing stream updates the sendGroup",
+      "sendGroup setter throws InvalidStateError when sendGroup belongs to a different transport"
+    ]
+  },
+  "webtransport/sendorder.https.any.js": {
+    "expectedFailures": [
+      "WebTransport client should be able to create and handle a bidirectional stream with sendOrder",
+      "WebTransport client should be able to modify existing sendOrder after stream creation",
+      "WebTransport client should be able to modify unset sendOrder after stream creation"
+    ]
+  },
+  "webtransport/sendstream-bad-chunk.https.any.js": {
+    "expectedFailures": [
+      "WebTransportSendStream should reject when non-buffer-source data is written"
+    ]
+  },
+  "webtransport/server-certificate-hashes.https.any.js": {
+    "expectedFailures": [
+      "Connection fails due to certificate hash mismatch"
+    ]
+  },
+  "webtransport/stats.https.any.js": {
+    "expectedFailures": [
+      "WebTransport client should be able to handle multiple concurrent stats requests",
+      "WebTransport client should be able to handle multiple sequential stats requests",
+      "WebTransport client should be able to provide droppedIncoming values for datagrams",
+      "WebTransport client should be able to provide stats after connection has been closed",
+      "WebTransport client should be able to provide stats after connection has been established",
+      "WebTransport client should be able to provide stats requested right before connection has been closed",
+      "WebTransport client should be able to provide valid stats when requested before connection established",
+      "WebTransport client should throw an error when stats are requested for a failed connection"
+    ]
+  },
+  "webtransport/streams-close.https.any.js": {
+    "expectedFailures": [
+      "Abort client-created bidirectional stream",
+      "Abort server-initiated bidirectional stream",
+      "Abort unidirectional stream with WebTransportError",
+      "Abort unidirectional stream with default error code",
+      "Close and abort unidirectional stream",
+      "Close outgoing stream / bidi-1",
+      "Close outgoing stream / bidi-2",
+      "Close outgoing stream / uni",
+      "RESET_STREAM coming from server",
+      "STOP_SENDING coming from server"
+    ]
+  },
+  "webtransport/streams-echo.https.any.js": {
+    "expectedFailures": [
+      "Can read data from a bidirectional stream with BYOB reader",
+      "Can read data from a unidirectional stream with BYOB reader",
+      "Closing the stream with no data still resolves the read request",
+      "Transfer large chunks of data on a bidirectional stream",
+      "Transfer large chunks of data on a unidirectional stream",
+      "WebTransport client should be able to create and handle a bidirectional stream",
+      "WebTransport client should be able to create and handle a bidirectional stream without waiting for ready",
+      "WebTransport client should be able to create, accept, and handle a unidirectional stream",
+      "WebTransport client should be able to create, accept, and handle a unidirectional stream without waiting for ready",
+      "WebTransport server should be able to accept and handle a bidirectional stream"
+    ]
+  }
+}

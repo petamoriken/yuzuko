@@ -60,6 +60,7 @@ fn install(scope: &mut v8::PinScope) {
   net::event_source::install(scope);
   net::websocket::install(scope);
   net::websocket_stream::install(scope);
+  net::webtransport::install(scope);
 }
 
 /// Dispatch a trusted, non-bubbling `Event` at `target`.
@@ -84,4 +85,5 @@ fn clear() {
   net::event_source::clear();
   net::websocket::clear();
   net::websocket_stream::clear();
+  net::webtransport::clear();
 }

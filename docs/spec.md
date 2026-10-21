@@ -324,7 +324,7 @@ The realm includes:
 - `MessageChannel`, `MessagePort`, `MessageEvent`
 - `caches`
 
-`fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. A cached request does not keep the caller's `AbortSignal`. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
+`fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. `https:` negotiates HTTP/2 by ALPN and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. A cached request does not keep the caller's `AbortSignal`. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
 
 Dedicated workers are available. WinterTC does not require them.
 
@@ -423,7 +423,7 @@ Erasure is cached in memory for the process, keyed by path, modified time, and l
 
 Parse and transform failures reject module evaluation with the source path and span. Dynamic `import()` and workers use this same loader.
 
-Image decoders are pure Rust. TLS uses rustls. HTTP uses hyper. Versions are pinned in `Cargo.lock`. The oxc crates used for resolution and erasure stay on one version. A `v8` upgrade, and an oxc upgrade, are each their own change.
+Image decoders are pure Rust. TLS uses rustls. HTTP/1.1 and HTTP/2 use hyper. HTTP/3 uses quinn and h3. `https:` offers ALPN `h2` and `http/1.1`. `http:` stays HTTP/1.1. A later request to an `https` origin uses HTTP/3 after an `Alt-Svc` `h3` advertisement. Versions are pinned in `Cargo.lock`. The oxc crates used for resolution and erasure stay on one version. A `v8` upgrade, and an oxc upgrade, are each their own change.
 
 ## CLI
 
@@ -564,6 +564,8 @@ Shared workers, service workers, and worklets stay out of scope.
 `new WebSocket(url)` opens a `ws:` or `wss:` connection. The second argument is a protocol string, a sequence of protocol strings, or a `WebSocketInit` dictionary `{ protocols, targetAddressSpace }`. `targetAddressSpace` is `"loopback"`, `"local"`, or `"public"`. The connection fails unless the connected address is in that space. Any other value, including the legacy alias `"private"`, throws `TypeError`. A further argument is ignored. `send` accepts a string, a `BufferSource`, or a `Blob`. `binaryType` is `"blob"` or `"arraybuffer"`. `close(code, reason)` uses code 1000 or a code from 3000 through 4999. `extensions` stays `""`.
 
 `new WebSocketStream(url, options)` opens the same kind of connection. `options.protocols` is a sequence of protocol strings. `options.signal` aborts the handshake. `opened` resolves to `{ readable, writable, protocol, extensions }`. Text messages are strings and binary messages are `Uint8Array` values. `closed` resolves to `{ closeCode, reason }` after a clean close and rejects with `WebSocketError` after an unclean close. `close({ closeCode, reason })` sends that close. A readable `pull` reads one message, and further socket reads wait, which applies receive backpressure.
+
+`new WebTransport(url, options)` opens an `https` session on its own QUIC connection. It is on `globalThis` in the main realm and in a dedicated worker. `ready` resolves when the handshake finishes. `reliability` is `"pending"` until then, then `"supports-unreliable"` or `"reliable-only"`. `closed` resolves `{ closeCode, reason }` after a clean close and rejects with `WebTransportError` after an unclean close. A failed handshake rejects both `ready` and `closed`, and those rejections are marked handled. `datagrams` is `{ readable, writable }` and chunks are `Uint8Array` values. `createBidirectionalStream()` resolves `{ readable, writable }`. `createUnidirectionalStream()` resolves a `WritableStream`. `incomingBidirectionalStreams` and `incomingUnidirectionalStreams` are `ReadableStream`s. `close({ closeCode, reason })` closes the session. `congestionControl` is `"default"`, `"throughput"`, or `"low-latency"`.
 
 ## WebCodecs
 
