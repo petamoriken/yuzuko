@@ -577,10 +577,9 @@ declare namespace Yuzuko {
    * @example
    * ```ts
    * const win = new Yuzuko.Window({ title: "yuzuko", width: 1280, height: 720 });
-   * const ctx = win.surface.getContext("2d");
-   * win.requestAnimationFrame(function frame() {
-   *   win.requestAnimationFrame(frame);
-   * });
+   * const ctx = win.surface.getContext("2d")!;
+   * ctx.fillStyle = "black";
+   * ctx.fillRect(0, 0, win.clientWidth, win.clientHeight);
    * ```
    */
   class Window extends EventTarget {
@@ -718,6 +717,10 @@ declare namespace Yuzuko {
 
     /**
      * Runs `callback` before this window's next rendering update.
+     *
+     * A Canvas 2D or bitmaprenderer change is presented on the next
+     * event-loop turn without this callback. Use this callback to draw on a
+     * later frame.
      *
      * The period is the refresh rate of the monitor this window is on. On
      * macOS that is the screen's maximum, so a variable-refresh display runs
@@ -1056,6 +1059,11 @@ declare namespace Yuzuko {
   /**
    * The bitmap presented by a {@link Window}.
    *
+   * Drawing on this surface, replacing its bitmap, or changing
+   * {@link WindowSurface.objectFit} or {@link WindowSurface.imageRendering}
+   * is presented on the next event-loop turn.
+   * {@link Window.requestAnimationFrame} draws a later frame.
+   *
    * This is not an {@link OffscreenCanvas} and cannot be transferred.
    * {@link WindowSurface.transferControlToOffscreen} returns the canvas a
    * worker draws. The constructor throws. The initial bitmap is
@@ -1173,6 +1181,7 @@ declare namespace Yuzuko {
      * Calling it again, or calling it after `getContext`, throws. After it
      * returns, drawing methods on this surface throw `InvalidStateError`.
      * A worker `requestAnimationFrame` copies that canvas into this window.
+     * The window presents that copy on the next turn of the main event loop.
      *
      * @throws {@link DOMException} `InvalidStateError` when a context already
      * exists or control was already transferred.
@@ -8669,7 +8678,8 @@ declare class WorkerGlobalScope extends EventTarget {
  * worker's {@link FontFaceSet}. `requestAnimationFrame` runs the callback at
  * the slowest refresh rate among the open windows whose canvas this worker
  * holds, or at 60 Hz when it holds none, and then copies each transferred
- * window canvas into the window that owns it.
+ * window canvas into the window that owns it. That window presents the copy
+ * on the next turn of the main event loop.
  *
  * @throws {@link TypeError} Illegal constructor.
  *

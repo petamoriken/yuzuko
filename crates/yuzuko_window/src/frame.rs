@@ -80,6 +80,7 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
   crate::shell::menu::poll(scope);
   crate::shell::tray::poll(scope);
   crate::shell::dock::poll(scope);
+  os::begin_present_turn();
   let mut did = gamepad::poll(scope);
   for id in inbox::ids() {
     if inbox::has_input(id) {
@@ -90,6 +91,11 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
       surface::Window::run_frame(scope, id, deadline);
       did = true;
     }
+  }
+  // A canvas dirtied by the task, or by a frame that did not present it,
+  // is shown once. A present that already ran this turn is left alone.
+  if surface::present_pending() {
+    did = true;
   }
   did
 }

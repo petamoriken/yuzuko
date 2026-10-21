@@ -68,7 +68,10 @@ pub use gpu::{
 pub use identity::set_app_identity;
 pub use os::{canvas_is_transparent, request_redraw};
 pub use session::headless;
-pub use surface::{canvas_style, default_title, set_default_title};
+pub use surface::{
+  canvas_needs_present, canvas_style, clear_canvas_present, default_title,
+  note_canvas_draw, set_default_title,
+};
 
 fn install(scope: &mut v8::PinScope) {
   canvas::OffscreenCanvas::install(scope);

@@ -16,7 +16,7 @@ The runtime provides:
 - Pointer, wheel, keyboard, and IME composition events delivered to that surface. IME is off by default.
 - `createImageBitmap` for JPEG, PNG, WebP, and JPEG XL.
 - Canvas 2D through vello, on the GPU when the environment can use one and on the CPU otherwise. WebGPU uses the process wgpu device.
-- Presenting only that surface at the end of its own `requestAnimationFrame` rendering update.
+- Presenting that surface when its Canvas 2D or `bitmaprenderer` contents change, and at the end of a due `requestAnimationFrame` callback.
 - The WinterTC Minimum Common API (the ECMA-429 2025 snapshot; the draft is dated 31 July 2026), as specified below.
 - Dedicated workers, Web Audio, hardware H.264 and AAC decoding, packaging, and automatic updates.
 
@@ -71,6 +71,8 @@ const win = new Yuzuko.Window({
   height: 720,
 });
 const ctx = win.surface.getContext("2d");
+ctx.fillStyle = "#141820";
+ctx.fillRect(0, 0, 1280, 720);
 
 win.addEventListener("pointerdown", (e) => {
   ctx.fillRect(e.offsetX, e.offsetY, 4, 4);
@@ -80,12 +82,10 @@ win.addEventListener("compositionupdate", (e) => {
   win.setCompositionCaret(24, win.clientHeight - 32, 200, 24);
 });
 
-win.requestAnimationFrame(function frame() {
-  win.requestAnimationFrame(frame);
-});
-
 const tools = new Yuzuko.Window({ title: "tools", width: 400, height: 600 });
 ```
+
+The `fillRect` above is presented on the next turn of the event loop. `requestAnimationFrame` is how a later frame draws again.
 
 `Window` extends `EventTarget`, not `OffscreenCanvas`. `win.surface` is a `Yuzuko.WindowSurface`. It is not an `OffscreenCanvas` and cannot be transferred to a worker. It has the same drawing methods as `OffscreenCanvas`: `width`, `height`, `getContext`, `convertToBlob`, and `transferToImageBitmap`. `transferControlToOffscreen()` returns an `OffscreenCanvas` that presents in that window. Calling it again, or calling it after `getContext`, throws `InvalidStateError`. After it returns, drawing methods on the surface throw `InvalidStateError`. The returned canvas is what a worker receives. The constructor `width` and `height` are CSS pixels and default to 1280×720 when omitted. `x` and `y` are the frame's initial origin in CSS pixels. When both are omitted the window is centered on the primary monitor, or placed at `0, 0` when that monitor does not exist. If only one of `x` or `y` is set, the other is `0`. `resizable` defaults to `false` and can be assigned after creation. `decorations` and `active` are creation-only and default to `true`. `transparent` defaults to `false` and is creation-only. It asks the OS to composite the window's alpha. Unpainted pixels and the area outside the fitted bitmap are clear instead of black. `visible` defaults to `true`; `false` creates the window hidden. `maximized` defaults to `false`. `minWidth`, `minHeight`, `maxWidth`, and `maxHeight` limit the client size. An omitted edge is unset. Setting only one maximum uses 100000 CSS pixels for the other edge when telling the OS. `resizeTo` and `resizeBy` clamp into those limits. The initial `width` and `height` are clamped the same way. There is no `reload`. The constructor `title` is the initial OS title. `WindowSurface.title` reads and writes that title. `Window` has no `title` attribute.
 
@@ -108,7 +108,7 @@ const tools = new Yuzuko.Window({ title: "tools", width: 400, height: 600 });
 | `transparent` | Composite the window's alpha. Set only in the constructor. The default is `false` |
 | `minWidth` / `minHeight` | Minimum client size in CSS pixels. Unset when omitted |
 | `maxWidth` / `maxHeight` | Maximum client size in CSS pixels. Unset when omitted |
-| `requestAnimationFrame` / `cancelAnimationFrame` | Runs before this window's rendering update, at the refresh rate of the monitor that window is on. After the window is closed, `requestAnimationFrame` returns `0` and does not queue a callback |
+| `requestAnimationFrame` / `cancelAnimationFrame` | Runs before this window's rendering update, at the refresh rate of the monitor that window is on. A Canvas 2D or `bitmaprenderer` change is presented on the next event-loop turn without this callback. After the window is closed, `requestAnimationFrame` returns `0` and does not queue a callback |
 | `resizeTo(width, height)` | Sets the client size in CSS pixels, clamped to `minWidth` / `maxWidth` and `minHeight` / `maxHeight`. Does not resize `surface` |
 | `resizeBy(x, y)` | Adds CSS pixels to the client size, with the same clamp. Does not resize `surface` |
 | `moveTo(x, y)` / `moveBy(x, y)` | Move the frame in CSS pixels. Positive `y` is downward |
@@ -134,7 +134,7 @@ const tools = new Yuzuko.Window({ title: "tools", width: 400, height: 600 });
 
 `matchMedia` understands `screen` and `all`, `not` / `and` / `or`, and comma-separated lists. Width and height use `px`. `min-width` and `max-width` remain, and level 4 ranges such as `(width >= 800px)` and `(200px <= width <= 800px)` work for `width`, `height`, `resolution`, and `device-pixel-ratio`. `resolution` accepts `dppx`, `x`, `dpi`, and `dpcm`. `1dppx` is `devicePixelRatio`. `device-pixel-ratio` and `-webkit-device-pixel-ratio` are the same value, including the `min-` and `max-` prefixes. Also recognized: `orientation`, `color-gamut` (`srgb`, `p3`, `rec2020`), `prefers-color-scheme`, `prefers-reduced-motion`, `prefers-contrast`, and `pointer`. An unknown feature or a broken query does not match. `MediaQueryList` and `MediaQueryListEvent` cannot be constructed with `new`.
 
-There is no global `requestAnimationFrame` on the main global. A frame belongs to a surface. A dedicated worker has `requestAnimationFrame` and `cancelAnimationFrame`. A frame there runs the callback, then copies each transferred window canvas into the window that owns it.
+There is no global `requestAnimationFrame` on the main global. A frame belongs to a surface. A dedicated worker has `requestAnimationFrame` and `cancelAnimationFrame`. A frame there runs the callback, then copies each transferred window canvas into the window that owns it. That window presents the copy on the next turn of the main event loop.
 
 A window's animation frames run at the refresh rate of the monitor that window is on. On macOS that rate is the screen's maximum, so a variable-refresh display runs at its maximum while frames are scheduled. Linux and Windows use the monitor's current mode. The next frame after the window moves uses the new monitor. A rate that cannot be read, a rate below 10 Hz or above 1000 Hz, and a headless window run at 60 Hz. A dedicated worker uses the slowest of those rates among the open windows whose canvas it holds. Each worker follows only the canvases it holds. A window that has not transferred a canvas does not count, and `new OffscreenCanvas` does not count. With no transferred window canvas, the worker runs at 60 Hz. Closing a window, or moving one to another monitor, applies the next time that worker schedules a frame.
 
@@ -142,12 +142,14 @@ A window's animation frames run at the refresh rate of the monitor that window i
 
 ### Frame order
 
+Canvas 2D drawing, a `bitmaprenderer` update, a bitmap copied from a worker frame, and a change to `objectFit` or `imageRendering` are presented on the next turn of the event loop. That includes drawing at the top level of a script. The present runs once. It does not repeat until one of those changes again, and it does not queue an animation frame. A due animation frame still runs first, and drawing done by that callback is included in the same present. WebGPU still updates only in the steps below.
+
 For each window:
 
 1. Dispatch that window's OS events to its `Window`, one at a time, and run a microtask checkpoint after each event.
-2. Run the `requestAnimationFrame` callbacks already queued on that surface. Callbacks queued during those callbacks wait for the next frame.
+2. When an animation frame is due, run the `requestAnimationFrame` callbacks already queued on that surface. Callbacks queued during those callbacks wait for the next frame.
 3. Run a microtask checkpoint.
-4. Update that surface. For WebGPU, follow "update the rendering of a WebGPU canvas": expire the current texture and present. For Canvas 2D, rasterize the recorded commands and present. For `bitmaprenderer`, present the transferred bitmap.
+4. When that frame ran, or the canvas changed as described above, update that surface. For WebGPU, follow "update the rendering of a WebGPU canvas": expire the current texture and present. For Canvas 2D, rasterize the recorded commands and present. For `bitmaprenderer`, present the transferred bitmap.
 5. If another animation frame is queued, request a redraw of that window.
 
 When only timers or idle callbacks remain, the event loop sleeps until the next timer or idle deadline.

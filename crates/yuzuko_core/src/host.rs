@@ -195,6 +195,20 @@ pub fn is_dedicated_worker() -> bool {
   with(|state| state.kind == RealmKind::DedicatedWorker)
 }
 
+/// Whether this thread is a dedicated worker.
+///
+/// A thread that has not entered a realm is not one. Callers that record a
+/// canvas draw use this so a unit test can mark the canvas without a realm.
+#[inline]
+pub fn on_dedicated_worker() -> bool {
+  STATE.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .is_some_and(|state| state.kind == RealmKind::DedicatedWorker)
+  })
+}
+
 #[inline]
 pub fn agent_id() -> u64 {
   with(|state| state.agent_id)

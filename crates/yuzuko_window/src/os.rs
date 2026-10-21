@@ -133,6 +133,23 @@ thread_local! {
   static OS: RefCell<Option<OsLoop>> = const { RefCell::new(None) };
   static IN_PUMP: Cell<bool> = const { Cell::new(false) };
   static LOCKED: Cell<Option<u64>> = const { Cell::new(None) };
+  /// Windows that acquired a drawable during this event-loop turn.
+  static PRESENTED_TURN: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+}
+
+/// Forgets which windows presented during the previous turn.
+pub(crate) fn begin_present_turn() {
+  PRESENTED_TURN.with(|turn| turn.borrow_mut().clear());
+}
+
+pub(crate) fn note_presented(id: u64) {
+  PRESENTED_TURN.with(|turn| {
+    turn.borrow_mut().insert(id);
+  });
+}
+
+pub(crate) fn presented_this_turn(id: u64) -> bool {
+  PRESENTED_TURN.with(|turn| turn.borrow().contains(&id))
 }
 
 struct PumpGuard;
@@ -706,20 +723,21 @@ pub fn request_redraw(id: u64) {
   with_window(id, |window| window.request_redraw());
 }
 
-pub fn present(id: u64) {
+/// Presents one window. `true` when a drawable was presented.
+pub fn present(id: u64) -> bool {
   if session::headless() {
-    return;
+    return false;
   }
   OS.with(|slot| {
     let mut guard = slot.borrow_mut();
     let Some(os) = guard.as_mut() else {
-      return;
+      return false;
     };
     let Some(window_id) = os.app.by_surface.get(&id).copied() else {
-      return;
+      return false;
     };
-    os.app.present_window(window_id);
-  });
+    os.app.present_window(window_id)
+  })
 }
 
 pub fn shutdown() {
@@ -1051,12 +1069,12 @@ impl App {
     host.configured = true;
   }
 
-  fn present_window(&mut self, window_id: WindowId) {
+  fn present_window(&mut self, window_id: WindowId) -> bool {
     if self.gpu.is_none() {
       self.configure_surface(window_id);
     }
     let Some(host) = self.windows.get(&window_id) else {
-      return;
+      return false;
     };
     let window_surface = host.surface_id;
     let surface_id = crate::surface::canvas_for_window(window_surface)
@@ -1065,18 +1083,18 @@ impl App {
     // Without a device, or before the first non-empty size, the surface was
     // never configured and has no texture to present.
     if !host.configured {
-      return;
+      return false;
     }
     let Some(size) = inbox::size(window_surface) else {
-      return;
+      return false;
     };
     let width = size.bitmap_width.round() as u32;
     let height = size.bitmap_height.round() as u32;
     if width == 0 || height == 0 {
-      return;
+      return false;
     }
     let Some(gpu) = self.gpu.as_ref() else {
-      return;
+      return false;
     };
     let device = gpu.device.clone();
     let queue = gpu.queue.clone();
@@ -1092,12 +1110,12 @@ impl App {
     let acquired = {
       let Some(host) = self.windows.get(&window_id) else {
         crate::canvas::discard_staged();
-        return;
+        return false;
       };
       host.window.pre_present_notify();
       let Some(surface) = host.surface.as_ref() else {
         crate::canvas::discard_staged();
-        return;
+        return false;
       };
       match surface.get_current_texture() {
         wgpu::CurrentSurfaceTexture::Success(frame)
@@ -1121,27 +1139,36 @@ impl App {
       Err(true) => {
         crate::canvas::discard_staged();
         self.configure_surface(window_id);
-        return;
+        return false;
       }
       Err(false) => {
         crate::canvas::discard_staged();
-        return;
+        return false;
       }
     };
     let view = frame
       .texture
       .create_view(&wgpu::TextureViewDescriptor::default());
-    if (canvas_ready
+    if canvas_ready
       && crate::canvas::present_canvas(
         &device, &queue, &view, surface_id, width, height, format,
-      ))
-      || (webgpu_ready
-        && crate::canvas::present_webgpu(
-          &device, &queue, &view, surface_id, width, height, format,
-        ))
+      )
     {
       frame.present();
-      return;
+      note_presented(window_surface);
+      // The staged bitmap is on screen. A later redraw can present again,
+      // but this change is done.
+      crate::surface::clear_canvas_present(surface_id);
+      return true;
+    }
+    if webgpu_ready
+      && crate::canvas::present_webgpu(
+        &device, &queue, &view, surface_id, width, height, format,
+      )
+    {
+      frame.present();
+      note_presented(window_surface);
+      return true;
     }
     crate::canvas::discard_staged();
     let mut encoder =
@@ -1173,6 +1200,10 @@ impl App {
     }
     queue.submit([encoder.finish()]);
     frame.present();
+    note_presented(window_surface);
+    // The canvas was not shown. Leave its dirty mark so a later turn retries
+    // without presenting twice in this one.
+    true
   }
 
   fn on_window(&mut self, window_id: WindowId, event: WindowEvent) {
@@ -1206,7 +1237,9 @@ impl App {
         crate::prefs::note_scheme(theme == winit::window::Theme::Dark);
         inbox::push(id, crate::inbox::Raw::Media);
       }
-      WindowEvent::RedrawRequested => self.present_window(window_id),
+      WindowEvent::RedrawRequested => {
+        let _ = self.present_window(window_id);
+      }
       WindowEvent::ModifiersChanged(modifiers) => {
         self.modifiers = modifiers.state();
       }

@@ -1,7 +1,7 @@
 //! `Yuzuko.Window` and `Yuzuko.WindowSurface`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -42,6 +42,8 @@ thread_local! {
   static CANVAS_STYLE: RefCell<HashMap<u64, PresentStyle>> =
     RefCell::new(HashMap::new());
   static WINDOW_CANVAS: RefCell<HashMap<u64, u64>> = RefCell::new(HashMap::new());
+  /// Canvases whose bitmap changed and has not been presented since.
+  static DIRTY: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
 /// How a window surface is presented. An unknown canvas fills the target,
@@ -94,8 +96,107 @@ fn bind_window_canvas(window_id: u64, canvas_id: u64) {
 
 fn unbind_window(window_id: u64) {
   WINDOW_CANVAS.with(|slots| {
-    slots.borrow_mut().remove(&window_id);
+    if let Some(canvas) = slots.borrow_mut().remove(&window_id) {
+      clear_canvas_present(canvas);
+    }
   });
+}
+
+/// Records that `canvas_id` changed on this thread.
+///
+/// A dedicated worker draws into its own slots. The copy onto the owning
+/// window is what marks that canvas, from the main thread.
+pub fn note_canvas_draw(canvas_id: u64) {
+  if yuzuko_core::on_dedicated_worker() {
+    return;
+  }
+  let _ = DIRTY.try_with(|dirty| {
+    dirty.borrow_mut().insert(canvas_id);
+  });
+}
+
+pub fn canvas_needs_present(canvas_id: u64) -> bool {
+  DIRTY
+    .try_with(|dirty| dirty.borrow().contains(&canvas_id))
+    .unwrap_or(false)
+}
+
+pub fn clear_canvas_present(canvas_id: u64) {
+  let _ = DIRTY.try_with(|dirty| {
+    dirty.borrow_mut().remove(&canvas_id);
+  });
+}
+
+fn window_for_canvas(canvas_id: u64) -> Option<u64> {
+  WINDOW_CANVAS.with(|slots| {
+    slots
+      .borrow()
+      .iter()
+      .find_map(|(window, canvas)| (*canvas == canvas_id).then_some(*window))
+  })
+}
+
+/// `(window, canvas)` pairs that still need a present.
+fn canvases_to_present(open: impl Fn(u64) -> bool) -> Vec<(u64, u64)> {
+  let mut pending = Vec::new();
+  let mut drop_ids = Vec::new();
+  DIRTY.with(|dirty| {
+    for canvas in dirty.borrow().iter().copied() {
+      match window_for_canvas(canvas) {
+        Some(window) if open(window) => pending.push((window, canvas)),
+        _ => drop_ids.push(canvas),
+      }
+    }
+  });
+  for canvas in drop_ids {
+    clear_canvas_present(canvas);
+  }
+  pending
+}
+
+/// Presents each open window whose canvas changed.
+///
+/// Headless mode drops the mark and does not present, so a dirty canvas
+/// cannot make `run_ready` return true on every turn. A window that already
+/// presented this turn is skipped, which keeps a due animation frame to one
+/// drawable.
+pub(crate) fn present_pending() -> bool {
+  settle(
+    |window| inbox::contains(window),
+    session::headless(),
+    |window| {
+      if os::presented_this_turn(window) {
+        false
+      } else {
+        os::present(window)
+      }
+    },
+  )
+}
+
+fn settle(
+  open: impl Fn(u64) -> bool,
+  drop_without_present: bool,
+  mut present: impl FnMut(u64) -> bool,
+) -> bool {
+  let pending = canvases_to_present(open);
+  if pending.is_empty() {
+    return false;
+  }
+  if drop_without_present {
+    for (_, canvas) in pending {
+      clear_canvas_present(canvas);
+    }
+    return false;
+  }
+  let mut showed = false;
+  for (window, canvas) in pending {
+    // `present` clears the mark only when the canvas itself was shown.
+    if present(window) && !canvas_needs_present(canvas) {
+      showed = true;
+    }
+  }
+  showed
 }
 
 #[derive(Clone, Copy)]
@@ -1508,9 +1609,11 @@ impl WindowSurface {
 
   fn restyle(&self, edit: impl Fn(&mut PresentStyle)) {
     update_style(self.id(), &edit);
-    if let Some(presented) = canvas_for_window(self.window_id) {
+    let presented = canvas_for_window(self.window_id).unwrap_or(self.id());
+    if presented != self.id() {
       update_style(presented, &edit);
     }
+    note_canvas_draw(presented);
   }
 
   fn require_direct(&self) -> Result<(), OpError> {
@@ -1787,5 +1890,76 @@ mod tests {
       .expect("placeholders")
       .remove(&CANVAS_FAST);
     assert_eq!(interval_for_agent(AGENT_A), FRAME);
+  }
+
+  #[test]
+  fn a_canvas_change_is_presented_once() {
+    const WINDOW: u64 = 9_200_010;
+    const CANVAS: u64 = 9_200_011;
+    const LOOSE: u64 = 9_200_012;
+
+    struct Guard;
+
+    impl Drop for Guard {
+      fn drop(&mut self) {
+        super::clear_canvas_present(CANVAS);
+        super::clear_canvas_present(LOOSE);
+        super::unbind_window(WINDOW);
+        crate::os::begin_present_turn();
+      }
+    }
+
+    let _guard = Guard;
+    super::bind_window_canvas(WINDOW, CANVAS);
+
+    super::note_canvas_draw(LOOSE);
+    assert!(super::canvases_to_present(|_| true).is_empty());
+    assert!(!super::canvas_needs_present(LOOSE));
+
+    super::note_canvas_draw(CANVAS);
+    let showed = super::settle(
+      |_| true,
+      false,
+      |window| {
+        assert_eq!(window, WINDOW);
+        super::clear_canvas_present(CANVAS);
+        true
+      },
+    );
+    assert!(showed);
+    assert!(!super::canvas_needs_present(CANVAS));
+
+    super::note_canvas_draw(CANVAS);
+    let missed = super::settle(|_| true, false, |_| true);
+    assert!(!missed);
+    assert!(super::canvas_needs_present(CANVAS));
+
+    let dropped = super::settle(|_| true, true, |_| panic!("headless present"));
+    assert!(!dropped);
+    assert!(!super::canvas_needs_present(CANVAS));
+
+    super::note_canvas_draw(CANVAS);
+    let missed = super::settle(|_| true, false, |_| false);
+    assert!(!missed);
+    assert!(super::canvas_needs_present(CANVAS));
+
+    crate::os::begin_present_turn();
+    crate::os::note_presented(WINDOW);
+    let mut calls = 0;
+    let showed = super::settle(
+      |_| true,
+      false,
+      |window| {
+        calls += 1;
+        if crate::os::presented_this_turn(window) {
+          return false;
+        }
+        super::clear_canvas_present(CANVAS);
+        true
+      },
+    );
+    assert_eq!(calls, 1);
+    assert!(!showed);
+    assert!(super::canvas_needs_present(CANVAS));
   }
 }

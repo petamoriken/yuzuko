@@ -387,6 +387,7 @@ impl State {
 }
 
 pub struct Drawing {
+  id: u64,
   pub width: u32,
   pub height: u32,
   pub attrs: Attrs,
@@ -403,8 +404,9 @@ pub struct Drawing {
 }
 
 impl Drawing {
-  fn fresh(width: u32, height: u32, attrs: Attrs) -> Self {
+  fn fresh(id: u64, width: u32, height: u32, attrs: Attrs) -> Self {
     Self {
+      id,
       width,
       height,
       attrs,
@@ -422,6 +424,9 @@ impl Drawing {
       layer.push(command);
     } else {
       self.commands.push(command);
+      // A layer's list is not on screen until it is composited into
+      // `commands`. The window presents this canvas on the next turn.
+      yuzuko_window::note_canvas_draw(self.id);
     }
   }
 
@@ -479,7 +484,11 @@ impl Drawing {
   }
 
   pub fn clear_bitmap(&mut self) {
+    if self.commands.is_empty() {
+      return;
+    }
     self.commands.clear();
+    yuzuko_window::note_canvas_draw(self.id);
   }
 }
 
@@ -535,7 +544,7 @@ pub fn open_2d(id: u64, width: f64, height: f64, attrs: Attrs) {
     slots.insert(
       id,
       Slot {
-        drawing: Some(Drawing::fresh(width, height, attrs)),
+        drawing: Some(Drawing::fresh(id, width, height, attrs)),
         bitmap: None,
       },
     );
@@ -573,6 +582,7 @@ pub fn present_bitmap(id: u64, width: u32, height: u32, bytes: Vec<u8>) {
       },
     );
   });
+  yuzuko_window::note_canvas_draw(id);
 }
 
 pub fn open_bitmap(id: u64, width: f64, height: f64) {
@@ -597,14 +607,14 @@ pub fn open_bitmap(id: u64, width: f64, height: f64) {
 
 pub fn resized(id: u64, width: f64, height: f64) {
   let (width, height) = dimensions(width, height);
-  SLOTS.with(|slots| {
+  let changed = SLOTS.with(|slots| {
     let mut slots = slots.borrow_mut();
     let Some(slot) = slots.get_mut(&id) else {
-      return;
+      return false;
     };
     if let Some(drawing) = slot.drawing.as_mut() {
       let attrs = drawing.attrs;
-      *drawing = Drawing::fresh(width, height, attrs);
+      *drawing = Drawing::fresh(id, width, height, attrs);
     }
     if let Some(bitmap) = slot.bitmap.as_mut() {
       bitmap.width = width;
@@ -613,13 +623,18 @@ pub fn resized(id: u64, width: f64, height: f64) {
       bitmap.display_p3 = false;
       bitmap.float16 = false;
     }
+    true
   });
+  if changed {
+    yuzuko_window::note_canvas_draw(id);
+  }
 }
 
 pub fn dispose(id: u64) {
   let _ = SLOTS.try_with(|slots| {
     slots.borrow_mut().remove(&id);
   });
+  yuzuko_window::clear_canvas_present(id);
 }
 
 pub fn with_drawing<T>(
@@ -731,5 +746,83 @@ pub fn resolve_style(style: &Style, nearest: bool) -> Option<Brush> {
       repeat_y: pattern.repeat_y,
       nearest,
     }),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use kurbo::Affine;
+  use kurbo::Rect;
+
+  use super::{
+    Attrs, Command, dispose, open_2d, present_bitmap, resized, with_drawing,
+  };
+
+  const ID: u64 = 8_100_041;
+
+  struct Guard;
+
+  impl Drop for Guard {
+    fn drop(&mut self) {
+      dispose(ID);
+      yuzuko_window::clear_canvas_present(ID);
+    }
+  }
+
+  fn clear_rect() -> Command {
+    Command::Clear {
+      rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+      transform: Affine::IDENTITY,
+      clips: Arc::from([]),
+    }
+  }
+
+  #[test]
+  fn a_draw_marks_the_canvas_for_the_next_present() {
+    let _guard = Guard;
+    open_2d(ID, 8.0, 8.0, Attrs::default());
+    assert!(!yuzuko_window::canvas_needs_present(ID));
+
+    with_drawing(ID, |drawing| {
+      drawing.begin_layer(None);
+      drawing.push_command(clear_rect());
+      assert!(drawing.end_layer().is_ok());
+    });
+    assert!(!yuzuko_window::canvas_needs_present(ID));
+
+    with_drawing(ID, |drawing| {
+      drawing.push_command(clear_rect());
+    });
+    assert!(yuzuko_window::canvas_needs_present(ID));
+
+    yuzuko_window::clear_canvas_present(ID);
+    with_drawing(ID, |drawing| {
+      let _ = drawing.width;
+    });
+    assert!(!yuzuko_window::canvas_needs_present(ID));
+
+    with_drawing(ID, |drawing| drawing.clear_bitmap());
+    assert!(yuzuko_window::canvas_needs_present(ID));
+    yuzuko_window::clear_canvas_present(ID);
+    with_drawing(ID, |drawing| drawing.clear_bitmap());
+    assert!(!yuzuko_window::canvas_needs_present(ID));
+
+    assert!(!resized_without_slot());
+    resized(ID, 4.0, 4.0);
+    assert!(yuzuko_window::canvas_needs_present(ID));
+    yuzuko_window::clear_canvas_present(ID);
+
+    present_bitmap(ID, 1, 1, vec![0, 0, 0, 0]);
+    assert!(yuzuko_window::canvas_needs_present(ID));
+  }
+
+  fn resized_without_slot() -> bool {
+    const MISSING: u64 = 8_100_042;
+    resized(MISSING, 2.0, 2.0);
+    let pending = yuzuko_window::canvas_needs_present(MISSING);
+    yuzuko_window::clear_canvas_present(MISSING);
+    pending
   }
 }

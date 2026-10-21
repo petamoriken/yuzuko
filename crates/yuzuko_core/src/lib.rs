@@ -27,7 +27,8 @@ pub use clone::{
 pub use extensions::{add_extension, on_realm_drop};
 pub use host::{
   agent_id, entry_dir, entry_url, is_dedicated_worker, note_test_error,
-  set_dom_exception, set_file_root, set_rejection_hook, try_agent_id,
+  on_dedicated_worker, set_dom_exception, set_file_root, set_rejection_hook,
+  try_agent_id,
 };
 pub use idle::{
   IdleHooks, idle_frame_delay, idle_has_pending, idle_next_wait,

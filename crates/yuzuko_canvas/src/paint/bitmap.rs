@@ -55,12 +55,16 @@ impl BitmapContext {
     bitmap: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
     if bitmap.is_null() {
-      record::with_bitmap(self.id, |image| {
+      if record::with_bitmap(self.id, |image| {
         image.bytes.fill(0);
         image.display_p3 = false;
         image.float16 = false;
         image.premultiplied = false;
-      });
+      })
+      .is_some()
+      {
+        yuzuko_window::note_canvas_draw(self.id);
+      }
       return Ok(());
     }
     let object = v8::Local::<v8::Object>::try_from(bitmap).map_err(|_| {
@@ -93,9 +97,13 @@ impl BitmapContext {
         f64::from(image.height),
       );
     }
-    record::with_bitmap(self.id, |slot| {
+    if record::with_bitmap(self.id, |slot| {
       *slot = image;
-    });
+    })
+    .is_some()
+    {
+      yuzuko_window::note_canvas_draw(self.id);
+    }
     Ok(())
   }
 }
