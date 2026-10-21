@@ -43,6 +43,56 @@ fn run_does_not_install_yuzuko_test() {
 }
 
 #[test]
+fn test_installs_inject_only_when_enabled() {
+  let hidden = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/inject_absent_test.ts"])
+    .env_remove("YUZUKO_TEST_INPUT")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(hidden.status.code(), Some(0), "{}", text(&hidden.stderr));
+  assert!(
+    text(&hidden.stdout).contains("ok | 1 passed | 0 failed | 0 ignored"),
+    "{}",
+    text(&hidden.stdout)
+  );
+
+  let missing = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/inject_present_test.ts"])
+    .env_remove("YUZUKO_TEST_INPUT")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(missing.status.code(), Some(1), "{}", text(&missing.stdout));
+
+  let shown = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/inject_present_test.ts"])
+    .env("YUZUKO_TEST_INPUT", "1")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(shown.status.code(), Some(0), "{}", text(&shown.stderr));
+  assert!(
+    text(&shown.stdout).contains("ok | 1 passed | 0 failed | 0 ignored"),
+    "{}",
+    text(&shown.stdout)
+  );
+
+  let unexpected = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/inject_absent_test.ts"])
+    .env("YUZUKO_TEST_INPUT", "1")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(
+    unexpected.status.code(),
+    Some(1),
+    "{}",
+    text(&unexpected.stdout)
+  );
+}
+
+#[test]
 fn thrown_stack_names_the_typescript_file() {
   let output = yuzuko(&["run", "examples/throw.ts"]);
   assert_eq!(output.status.code(), Some(1));

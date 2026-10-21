@@ -1656,8 +1656,10 @@ declare namespace Yuzuko {
   /**
    * Input injection for `yuzuko test`.
    *
+   * Installed only when that command runs with `YUZUKO_TEST_INPUT=1`.
+   * Absent from `yuzuko run`, `yuzuko repl`, and `yuzuko test` otherwise.
+   *
    * @internal
-   * Absent during `yuzuko run` and `yuzuko repl`.
    */
   namespace __test {
     /**

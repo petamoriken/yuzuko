@@ -156,7 +156,7 @@ When only timers or idle callbacks remain, the event loop sleeps until the next 
 
 ### Headless mode
 
-`YUZUKO_HEADLESS=1` makes `Window` skip OS window creation. The drawing buffer and animation frames (60 Hz) still run on the object. `yuzuko test` creates windows headless. Input injection is `Yuzuko.__test`, installed only for that command. `yuzuko run` does not install it. Web-platform tests run under `cargo test`, not under a `yuzuko` subcommand.
+`YUZUKO_HEADLESS=1` makes `Window` skip OS window creation. The drawing buffer and animation frames (60 Hz) still run on the object. `yuzuko test` creates windows headless. Input injection is `Yuzuko.__test`. That command installs it only when `YUZUKO_TEST_INPUT=1`. `yuzuko run` and `yuzuko repl` do not install it. Web-platform tests run under `cargo test`, not under a `yuzuko` subcommand.
 
 ## Input
 
@@ -479,6 +479,8 @@ The runner evaluates one file at a time in one isolate, in registration order. A
 There is no op or resource sanitizer. Those track a host-call layer this runtime does not have. The runner does fail a test that leaves a timer it started, or that produces an unhandled rejection after the test function settles.
 
 `Yuzuko.build.os` is `"darwin"`, `"linux"`, or `"windows"`, and it is part of the test namespace, installed with `Yuzuko.test`.
+
+`Yuzuko.__test` injects pointer, key, IME, wheel, focus, menu, tray, and gamepad input. `yuzuko test` installs it only when `YUZUKO_TEST_INPUT=1`. Without that variable the property is absent. `yuzuko run` and `yuzuko repl` do not install it.
 
 Use `Yuzuko.test` for behavior WPT does not cover: `Window`, input mapping, IME event order, present, the canvas renderer fallback, the CLI, and timer and microtask order.
 

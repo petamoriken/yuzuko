@@ -11,15 +11,12 @@ fn gamepad_sequences_pass_under_yuzuko_test() {
     .current_dir(workspace())
     .args(["test", "tests/gamepad_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
+    .env("YUZUKO_TEST_INPUT", "1")
     .output()
     .expect("spawn yuzuko");
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  assert_eq!(
-    output.status.code(),
-    Some(0),
-    "{stdout}\n{stderr}"
-  );
+  assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
   assert!(
     stdout.contains("ok | 2 passed | 0 failed | 0 ignored"),
     "{stdout}\n{stderr}"

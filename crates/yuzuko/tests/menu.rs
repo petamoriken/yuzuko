@@ -11,6 +11,7 @@ fn menu_click_passes_under_yuzuko_test() {
     .current_dir(workspace())
     .args(["test", "tests/menu_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
+    .env("YUZUKO_TEST_INPUT", "1")
     .output()
     .expect("spawn yuzuko");
   let stdout = String::from_utf8_lossy(&output.stdout);

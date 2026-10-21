@@ -65,7 +65,13 @@ fn run_rejects_removed_window_flags() {
 
 #[test]
 fn input_sequences_pass_under_yuzuko_test() {
-  let output = yuzuko(&["test", "tests/window_test.ts"]);
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/window_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .env("YUZUKO_TEST_INPUT", "1")
+    .output()
+    .expect("spawn yuzuko");
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(

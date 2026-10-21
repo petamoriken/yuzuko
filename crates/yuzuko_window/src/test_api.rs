@@ -1,4 +1,5 @@
-//! `Yuzuko.__test` input injection. Installed only for `yuzuko test`.
+//! `Yuzuko.__test` input injection. Installed for `yuzuko test` when
+//! `YUZUKO_TEST_INPUT=1`.
 
 use yuzuko_core::op::{OpError, OpException, host_ref};
 

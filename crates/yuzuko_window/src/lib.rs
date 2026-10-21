@@ -40,8 +40,14 @@ pub fn configure(headless: bool) {
   session::configure(headless);
 }
 
+/// Marks a `yuzuko test` process. Real gamepads are not polled. `Yuzuko.__test`
+/// is installed only when `YUZUKO_TEST_INPUT=1`.
 pub fn set_test_input(enabled: bool) {
   TEST_INPUT.store(enabled, Ordering::SeqCst);
+}
+
+fn test_inject_enabled() -> bool {
+  std::env::var("YUZUKO_TEST_INPUT").ok().as_deref() == Some("1")
 }
 
 pub use canvas::{
@@ -74,7 +80,7 @@ fn install(scope: &mut v8::PinScope) {
   surface::install(scope);
   shell::clipboard::install(scope);
   input::gamepad::install(scope);
-  if TEST_INPUT.load(Ordering::SeqCst) {
+  if TEST_INPUT.load(Ordering::SeqCst) && test_inject_enabled() {
     test_api::install(scope);
   }
 }
