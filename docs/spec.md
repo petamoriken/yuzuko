@@ -18,6 +18,7 @@ The runtime provides:
 - Canvas 2D through vello, on the GPU when the environment can use one and on the CPU otherwise. WebGPU uses the process wgpu device.
 - Presenting that surface when its Canvas 2D or `bitmaprenderer` contents change, and at the end of a due `requestAnimationFrame` callback.
 - The WinterTC Minimum Common API (the ECMA-429 2025 snapshot; the draft is dated 31 July 2026), as specified below.
+- ECMA-402 `Intl` with the full ICU locale data linked into this V8 build.
 - Dedicated workers, Web Audio, hardware H.264 and AAC decoding, packaging, and automatic updates.
 
 ## Platforms
@@ -327,6 +328,7 @@ The realm includes:
 - `Crypto`, `CryptoKey`, `SubtleCrypto`, `crypto`, including Ed448 and X448
 - `MessageChannel`, `MessagePort`, `MessageEvent`
 - `caches`
+- ECMA-402 `Intl`, as specified under Internationalization
 
 `fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. `https:` negotiates HTTP/2 by ALPN and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. A cached request does not keep the caller's `AbortSignal`. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
 
@@ -337,6 +339,16 @@ The Annex B accessor `Object.prototype.__proto__` is deleted before user code ru
 Streams, URLPattern, and compression algorithms may be implemented in embedded JavaScript when the tests pass. `EventTarget`, the event classes, `DOMException`, `AbortController`, `URL`, `URLSearchParams`, `Blob`, and `File` are `#[op]` classes. Windows, canvases, WebGPU, decoding, sockets, timers, URL parsing, encoding, Blob bytes, and the crypto boundary are Rust.
 
 `structuredClone` covers the WinterTC built-ins in this runtime, plus `ArrayBuffer`, typed arrays, `Map`, `Set`, `Date`, `RegExp`, and `Error`. An unsupported host object throws `DataCloneError`.
+
+## Internationalization
+
+ECMA-402 `Intl` uses the full ICU locale data linked into this V8 build, the same data Deno ships with rusty_v8. Locales beyond English resolve from that data. `Collator`, `DateTimeFormat`, `DisplayNames`, `DurationFormat`, `ListFormat`, `Locale`, `NumberFormat`, `PluralRules`, `RelativeTimeFormat`, and `Segmenter` are present on `Intl`. The main realm, a dedicated worker, and an `AudioWorklet` processor realm each have this object.
+
+`Intl.DateTimeFormat.supportedLocalesOf` accepts `ja`, `zh-Hans`, `ar`, `th`, and `hi`. `Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY" })` formats `1234` as `￥1,234`. `Intl.PluralRules("ar")` selects `zero`, `two`, and `few` for `0`, `2`, and `3`. `Intl.Segmenter("ja", { granularity: "word" })` splits `東京都庁` into `東京` and `都庁`. `Intl.Collator("sv")` orders `ä` after `z`. `Intl.supportedValuesOf("calendar")` includes `japanese` and `islamic`. `Intl.DisplayNames(["zh-Hans"], { type: "region" })` names `JP` as `日本`.
+
+The default locale and time zone are the host values ICU reports for the process. Every realm shares them. A `Date` and an `Intl.DateTimeFormat` that omit `timeZone` use that zone.
+
+`Intl.v8BreakIterator` is absent. Breaks go through `Intl.Segmenter`.
 
 ## Architecture
 

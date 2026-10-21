@@ -981,6 +981,8 @@ fn init_v8() {
     // Source-phase `import source` is how Wasm modules compile without
     // instantiating. V8 still gates the syntax on this flag.
     v8::V8::set_flags_from_string("--js-source-phase-imports");
+    // rusty_v8 links the full ICU dataset into the binary, so ECMA-402
+    // `Intl` resolves locales beyond English without a separate icudtl.dat.
     let queue = TaskQueue::new();
     let _ = QUEUE.set(Arc::clone(&queue));
     let platform =

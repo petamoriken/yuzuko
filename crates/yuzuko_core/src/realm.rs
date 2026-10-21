@@ -26,8 +26,30 @@ pub fn delete_object_prototype_proto(scope: &mut v8::PinScope) {
   let _ = prototype.delete(scope, key.into());
 }
 
+/// Removes V8's non-standard `Intl.v8BreakIterator`.
+///
+/// ECMA-402 exposes breaks through `Intl.Segmenter`. Node.js and Deno leave
+/// this constructor off `Intl`.
+pub fn delete_intl_v8_break_iterator(scope: &mut v8::PinScope) {
+  let global = js::global(scope);
+  let Some(intl_key) = v8::String::new(scope, "Intl") else {
+    return;
+  };
+  let Some(intl) = global.get(scope, intl_key.into()) else {
+    return;
+  };
+  let Ok(intl) = v8::Local::<v8::Object>::try_from(intl) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "v8BreakIterator") else {
+    return;
+  };
+  let _ = intl.delete(scope, key.into());
+}
+
 pub fn install(scope: &mut v8::PinScope) {
   delete_object_prototype_proto(scope);
+  delete_intl_v8_break_iterator(scope);
   let global = js::global(scope);
   js::set_value(scope, global, "self", global.into());
   if !host::is_dedicated_worker() {

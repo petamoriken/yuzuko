@@ -42,8 +42,8 @@ pub use js::{
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
 pub use realm::{
-  clone_value, delete_object_prototype_proto, performance_now_ms,
-  time_origin_ms,
+  clone_value, delete_intl_v8_break_iterator, delete_object_prototype_proto,
+  performance_now_ms, time_origin_ms,
 };
 pub use repl::run_repl;
 pub use runtime::{
