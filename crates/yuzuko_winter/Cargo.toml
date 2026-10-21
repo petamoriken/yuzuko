@@ -61,3 +61,6 @@ x448 = { version = "0.14.0-pre.12", default-features = false }
 
 [dev-dependencies]
 rcgen = "0.13"
+# 0.103.16 rejects the compromised eMudhra intermediate SPKIs
+# (RUSTSEC-2026-0382). The distrust list is not public.
+rustls-webpki = { version = "0.103.16", features = ["ring"] }
