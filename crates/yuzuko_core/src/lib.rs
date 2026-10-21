@@ -50,7 +50,7 @@ pub use runtime::{
   run_classic_scripts_at, run_file, run_file_sandboxed, run_scripts, run_tests,
   set_loop_hooks, set_task_waker, wait_for_tasks,
 };
-pub use timers::schedule_callback;
+pub use timers::{schedule_animation_callback, schedule_callback};
 pub use worker::{
   Inbound, LocationParts, ScriptKind, WorkerScript, agent_alive, drain_inbound,
   eval_classic_in_worker, keeps_alive, load_worker_source, parent_agent,

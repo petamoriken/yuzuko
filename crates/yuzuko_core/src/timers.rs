@@ -207,6 +207,33 @@ pub fn schedule_callback(
   };
   let nesting = host::with(|state| state.timer_nesting);
   let delay = clamp_delay(requested, nesting);
+  enqueue_function(scope, function, delay, extra);
+}
+
+/// Schedules `function` without the nested-timer clamp.
+///
+/// A worker animation frame is not a timer. The 4 ms clamp would hold a
+/// display faster than 250 Hz at that floor.
+pub fn schedule_animation_callback(
+  scope: &mut v8::PinScope,
+  function: v8::Local<v8::Function>,
+  delay: Duration,
+) {
+  let delay_ms = delay.as_secs_f64() * 1000.0;
+  let delay_ms = if delay_ms.is_finite() {
+    delay_ms.max(0.0).min(MAX_DELAY_MS)
+  } else {
+    0.0
+  };
+  enqueue_function(scope, function, delay_ms, &[]);
+}
+
+fn enqueue_function(
+  scope: &mut v8::PinScope,
+  function: v8::Local<v8::Function>,
+  delay_ms: f64,
+  extra: &[v8::Local<v8::Value>],
+) {
   let args = extra
     .iter()
     .copied()
@@ -219,7 +246,7 @@ pub fn schedule_callback(
     state.timers.push(Timer {
       id,
       generation,
-      when: Instant::now() + duration_from_ms(delay),
+      when: Instant::now() + duration_from_ms(delay_ms),
       repeat_ms: None,
       callback: TimerCallback::Function(v8::Global::new(scope, function)),
       args,

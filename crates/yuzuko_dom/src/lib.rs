@@ -15,6 +15,7 @@ mod ui;
 mod util;
 mod worker;
 
+pub use animation::set_interval_hook as set_worker_frame_interval_hook;
 pub use event::{Event, define_is_trusted};
 pub use message::entangled_ports;
 pub use report::report_error;

@@ -1,8 +1,33 @@
 //! `requestAnimationFrame` on a dedicated worker.
 
 use std::cell::{Cell, RefCell};
+use std::sync::OnceLock;
+use std::time::Duration;
 
-use yuzuko_core::{performance_now_ms, schedule_callback};
+use yuzuko_core::{performance_now_ms, schedule_animation_callback};
+
+/// 60 Hz, matching `yuzuko_window`'s period when no monitor rate is known.
+const DEFAULT_NS: u64 = 16_666_667;
+
+static HOOK: OnceLock<fn() -> Duration> = OnceLock::new();
+
+/// Installs how a worker chooses the next animation-frame period.
+///
+/// The window runtime reports the slowest monitor among the canvases that
+/// worker holds. Until the hook is installed, and when a worker holds no
+/// transferred window canvas, the period is 60 Hz. An armed callback keeps
+/// its deadline. The hook runs the next time a frame is scheduled.
+pub fn set_interval_hook(hook: fn() -> Duration) {
+  let _ = HOOK.set(hook);
+}
+
+fn frame_interval() -> Duration {
+  HOOK
+    .get()
+    .copied()
+    .map(|hook| hook())
+    .unwrap_or(Duration::from_nanos(DEFAULT_NS))
+}
 
 struct Frame {
   id: i32,
@@ -44,7 +69,7 @@ fn request(
   if !ARMED.with(Cell::get) {
     ARMED.with(|armed| armed.set(true));
     if let Some(wake) = v8::Function::builder(fire).build(scope) {
-      schedule_callback(scope, wake, 16.0, &[]);
+      schedule_animation_callback(scope, wake, frame_interval());
     }
   }
   ret.set(v8::Integer::new(scope, id).into());

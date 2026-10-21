@@ -569,8 +569,9 @@ declare namespace Yuzuko {
    * One native window.
    *
    * Startup does not open a window. Each `new Yuzuko.Window()` opens one.
-   * `YUZUKO_HEADLESS=1` and `yuzuko test` skip OS window creation. The drawing
-   * buffer and animation frames still run. A dedicated worker has no `Window`.
+   * `YUZUKO_HEADLESS=1` and `yuzuko test` skip OS window creation. A headless
+   * window still runs its drawing buffer and animation frames at 60 Hz. A
+   * dedicated worker has no `Window`.
    * The window cannot be transferred.
    *
    * @example
@@ -717,6 +718,13 @@ declare namespace Yuzuko {
 
     /**
      * Runs `callback` before this window's next rendering update.
+     *
+     * The period is the refresh rate of the monitor this window is on. On
+     * macOS that is the screen's maximum, so a variable-refresh display runs
+     * at that maximum while a frame is scheduled. Linux and Windows use the
+     * monitor's current mode. Moving the window adopts the new monitor on the
+     * next frame. A headless window, or a rate that cannot be read, runs at
+     * 60 Hz. A rate below 10 Hz or above 1000 Hz is treated as 60 Hz.
      *
      * The main global has no `requestAnimationFrame`. Frames are not throttled
      * while the surface is hidden. After the window is closed this returns `0`
@@ -8658,8 +8666,10 @@ declare class WorkerGlobalScope extends EventTarget {
  * `cancelIdleCallback`, `Yuzuko.Window`, `Yuzuko.Menu`, `Yuzuko.setMenu`,
  * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.updater`, `navigator.clipboard`, and
  * `navigator.getGamepads`. `self.fonts` and `globalThis.fonts` are that
- * worker's {@link FontFaceSet}. `requestAnimationFrame` runs the callback and
- * then copies each transferred window canvas into the window that owns it.
+ * worker's {@link FontFaceSet}. `requestAnimationFrame` runs the callback at
+ * the slowest refresh rate among the open windows whose canvas this worker
+ * holds, or at 60 Hz when it holds none, and then copies each transferred
+ * window canvas into the window that owns it.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8681,6 +8691,11 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 
   /**
    * Schedules `callback`, then copies each transferred window canvas.
+   *
+   * The period is the slowest refresh rate among the open windows whose
+   * OffscreenCanvas this worker holds. A window that has not transferred its
+   * canvas does not count. With none, the period is 60 Hz. A transfer, a
+   * close, or a move to another monitor applies on the next frame.
    *
    * Browsers throw `NotSupportedError` when the worker has no owner window.
    * This runtime does not. It schedules the callback on the worker event loop.

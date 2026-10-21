@@ -91,10 +91,16 @@ struct HostWindow {
   /// Whether `surface` has been configured. wgpu panics when an unconfigured
   /// surface is asked for a texture.
   configured: bool,
+  /// Asks for this window's monitor rate while an animation frame is armed.
+  /// Invalidated before `window` is dropped.
+  #[cfg(target_os = "macos")]
+  frame_link: Option<objc2::rc::Retained<objc2::runtime::AnyObject>>,
 }
 
 impl Drop for HostWindow {
   fn drop(&mut self) {
+    #[cfg(target_os = "macos")]
+    frame_link::invalidate(&mut self.frame_link);
     self.surface.take();
   }
 }
@@ -213,6 +219,32 @@ pub fn open(id: u64, request: OpenRequest) -> Result<(), String> {
     return Err("The window was not created.".to_string());
   }
   Ok(())
+}
+
+/// Matches the macOS display link to whether this window has a frame armed.
+///
+/// Other platforms pace from the monitor period alone.
+pub fn sync_frame_link(id: u64) {
+  #[cfg(target_os = "macos")]
+  {
+    if session::headless() {
+      return;
+    }
+    OS.with(|slot| {
+      let mut guard = slot.borrow_mut();
+      let Some(os) = guard.as_mut() else {
+        return;
+      };
+      let Some(window_id) = os.app.by_surface.get(&id).copied() else {
+        return;
+      };
+      os.app.sync_link(window_id);
+    });
+  }
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = id;
+  }
 }
 
 pub fn close(id: u64) {
@@ -391,6 +423,185 @@ pub fn canvas_is_transparent(canvas_id: u64) -> bool {
   windows
     .iter()
     .any(|id| crate::surface::canvas_for_window(*id) == Some(canvas_id))
+}
+
+fn note_refresh_from(window: &Window, id: u64) {
+  inbox::set_frame_interval(id, monitor_interval(window));
+}
+
+fn monitor_interval(window: &Window) -> Duration {
+  inbox::interval_from_millihertz(monitor_millihertz(window))
+}
+
+fn monitor_millihertz(window: &Window) -> Option<u32> {
+  #[cfg(target_os = "macos")]
+  if let Some(rate) = frame_link::maximum_millihertz(window) {
+    return Some(rate);
+  }
+  window
+    .current_monitor()
+    .or_else(|| window.primary_monitor())
+    .and_then(|monitor| monitor.refresh_rate_millihertz())
+}
+
+/// Keeps a window's display link matched to its animation frames.
+///
+/// `CAMetalLayer` has no frame-rate property on macOS. A variable-refresh
+/// display stays below its maximum until a `CADisplayLink` requests that
+/// rate. The callback does not draw. The window still presents from its
+/// rendering update, and Fifo presentation still waits for vertical sync.
+#[cfg(target_os = "macos")]
+mod frame_link {
+  use std::cell::RefCell;
+  use std::time::Duration;
+
+  use objc2::rc::Retained;
+  use objc2::runtime::{AnyObject, NSObject};
+  use objc2::{AnyThread, define_class, msg_send, sel};
+  use objc2_app_kit::NSView;
+  use objc2_foundation::{NSObjectProtocol, NSRunLoop, NSRunLoopCommonModes};
+  use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+  use winit::window::Window;
+
+  use super::monitor_interval;
+  use crate::inbox;
+
+  define_class!(
+    #[unsafe(super(NSObject))]
+    #[ivars = ()]
+    #[name = "YuzukoFrameLink"]
+    struct FrameLinkTarget;
+
+    impl FrameLinkTarget {
+      #[unsafe(method(onDisplayLink:))]
+      fn on_display_link(&self, _link: &AnyObject) {}
+    }
+  );
+
+  impl FrameLinkTarget {
+    fn new() -> Retained<Self> {
+      let this = Self::alloc().set_ivars(());
+      unsafe { msg_send![super(this), init] }
+    }
+  }
+
+  thread_local! {
+    static TARGET: RefCell<Option<Retained<FrameLinkTarget>>> =
+      const { RefCell::new(None) };
+  }
+
+  fn target() -> Retained<FrameLinkTarget> {
+    TARGET.with(|slot| {
+      let mut slot = slot.borrow_mut();
+      if let Some(target) = slot.as_ref() {
+        return target.clone();
+      }
+      let target = FrameLinkTarget::new();
+      *slot = Some(target.clone());
+      target
+    })
+  }
+
+  pub(super) fn maximum_millihertz(window: &Window) -> Option<u32> {
+    let screen = ns_window(window)?.screen()?;
+    if !screen.respondsToSelector(sel!(maximumFramesPerSecond)) {
+      return None;
+    }
+    let fps = screen.maximumFramesPerSecond();
+    u32::try_from(fps)
+      .ok()
+      .filter(|fps| *fps > 0)
+      .map(|fps| fps.saturating_mul(1000))
+  }
+
+  pub(super) fn sync(host: &mut super::HostWindow) {
+    if !inbox::frame_armed(host.surface_id) {
+      invalidate(&mut host.frame_link);
+      return;
+    }
+    if host.frame_link.is_none() {
+      host.frame_link = make(&host.window);
+    }
+    if let Some(link) = host.frame_link.as_ref() {
+      set_rate(link, monitor_interval(&host.window));
+    }
+  }
+
+  pub(super) fn invalidate(slot: &mut Option<Retained<AnyObject>>) {
+    let Some(link) = slot.take() else {
+      return;
+    };
+    let _: () = unsafe { msg_send![&*link, invalidate] };
+  }
+
+  fn make(window: &Window) -> Option<Retained<AnyObject>> {
+    let ns_window = ns_window(window)?;
+    let selector = sel!(displayLinkWithTarget:selector:);
+    if !ns_window.respondsToSelector(selector) {
+      return None;
+    }
+    let target = target();
+    let callback = sel!(onDisplayLink:);
+    let link: Option<Retained<AnyObject>> = unsafe {
+      msg_send![
+        &*ns_window,
+        displayLinkWithTarget: &*target,
+        selector: callback
+      ]
+    };
+    let link = link?;
+    let run_loop = NSRunLoop::mainRunLoop();
+    let mode = unsafe { NSRunLoopCommonModes };
+    let _: () =
+      unsafe { msg_send![&*link, addToRunLoop: &*run_loop, forMode: mode] };
+    Some(link)
+  }
+
+  fn set_rate(link: &AnyObject, interval: Duration) {
+    let selector = sel!(setPreferredFrameRateRange:);
+    let responds: objc2::runtime::Bool =
+      unsafe { msg_send![link, respondsToSelector: selector] };
+    if !responds.as_bool() {
+      return;
+    }
+    let hz = (1_000_000_000.0 / interval.as_nanos().max(1) as f64) as f32;
+    let range = FrameRateRange {
+      minimum: hz,
+      maximum: hz,
+      preferred: hz,
+    };
+    let _: () = unsafe { msg_send![link, setPreferredFrameRateRange: range] };
+  }
+
+  fn ns_window(window: &Window) -> Option<Retained<objc2_app_kit::NSWindow>> {
+    let handle = window.window_handle().ok()?;
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+      return None;
+    };
+    let view =
+      unsafe { Retained::retain(appkit.ns_view.as_ptr() as *mut NSView) }?;
+    view.window()
+  }
+
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  struct FrameRateRange {
+    minimum: f32,
+    maximum: f32,
+    preferred: f32,
+  }
+
+  // `CAFrameRateRange` is three floats. `@encode` is `{CAFrameRateRange=fff}`.
+  unsafe impl objc2::encode::Encode for FrameRateRange {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+      "CAFrameRateRange",
+      &[
+        <f32 as objc2::encode::Encode>::ENCODING,
+        <f32 as objc2::encode::Encode>::ENCODING,
+        <f32 as objc2::encode::Encode>::ENCODING,
+      ],
+    );
+  }
 }
 
 fn center_window(window: &Window) {
@@ -675,6 +886,8 @@ impl App {
         surface_id: id,
         transparent,
         configured: false,
+        #[cfg(target_os = "macos")]
+        frame_link: None,
       },
     );
     self.by_surface.insert(id, window_id);
@@ -687,6 +900,7 @@ impl App {
     self.publish_size(window_id);
     self.configure_surface(window_id);
     self.present_window(window_id);
+    self.note_refresh(window_id);
   }
 
   fn make_surface(
@@ -752,6 +966,25 @@ impl App {
       eprintln!("yuzuko: window will not clear: {message}");
     }
     self.gpu_failed = true;
+  }
+
+  fn note_refresh(&mut self, window_id: WindowId) {
+    let Some(id) = self.windows.get(&window_id).map(|host| host.surface_id)
+    else {
+      return;
+    };
+    if let Some(host) = self.windows.get(&window_id) {
+      note_refresh_from(&host.window, id);
+    }
+    #[cfg(target_os = "macos")]
+    self.sync_link(window_id);
+  }
+
+  #[cfg(target_os = "macos")]
+  fn sync_link(&mut self, window_id: WindowId) {
+    if let Some(host) = self.windows.get_mut(&window_id) {
+      frame_link::sync(host);
+    }
   }
 
   fn publish_size(&mut self, window_id: WindowId) {
@@ -963,9 +1196,11 @@ impl App {
       WindowEvent::Occluded(occluded) => {
         inbox::push(id, Raw::Visibility(!occluded));
       }
+      WindowEvent::Moved(_) => self.note_refresh(window_id),
       WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
         self.publish_size(window_id);
         self.configure_surface(window_id);
+        self.note_refresh(window_id);
       }
       WindowEvent::ThemeChanged(theme) => {
         crate::prefs::note_scheme(theme == winit::window::Theme::Dark);

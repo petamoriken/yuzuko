@@ -11,6 +11,9 @@ use crate::os;
 use crate::surface;
 
 /// A pump that waited this long was held until a display refresh.
+///
+/// The same amount is how early that refresh may land before the deadline.
+/// A full frame of slack would run a slower window on a faster display's wake.
 const REFRESH_WAIT: Duration = Duration::from_millis(2);
 
 pub fn drive(scope: &mut v8::PinScope) -> bool {
@@ -27,7 +30,7 @@ pub fn drive(scope: &mut v8::PinScope) -> bool {
   // The refresh often lands a fraction of a millisecond before the frame
   // deadline. Treat that wake as the frame, or the next pump waits again.
   let deadline = if started.elapsed() > REFRESH_WAIT {
-    now + inbox::FRAME
+    now + REFRESH_WAIT
   } else {
     now
   };
@@ -96,8 +99,9 @@ fn defer_os_pump(timeout: Option<Duration>) -> bool {
     return false;
   };
   // Other platforms honor a short pump timeout. macOS turns it into the
-  // next refresh after a drawable has been presented.
+  // next refresh after a drawable has been presented, so a wait that is
+  // only the rest of this frame sleeps outside NSApplication.
   cfg!(target_os = "macos")
-    && timeout <= inbox::FRAME
-    && inbox::next_frame_wait().is_some_and(|frame| frame <= inbox::FRAME)
+    && inbox::next_frame_wait()
+      .is_some_and(|frame| timeout <= frame.saturating_add(REFRESH_WAIT))
 }

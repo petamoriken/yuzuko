@@ -29,6 +29,7 @@ pub fn register() {
     yuzuko_core::on_realm_drop(shutdown);
     yuzuko_core::set_loop_hooks(frame::drive, frame::interest, frame::wait);
     yuzuko_core::set_worker_frame_hook(surface::commit_worker_frames);
+    yuzuko_dom::set_worker_frame_interval_hook(surface::worker_frame_interval);
     yuzuko_core::set_idle_frame_delay(inbox::next_frame_wait);
     canvas::register_transfer();
   });

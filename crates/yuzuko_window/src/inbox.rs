@@ -2,9 +2,30 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+/// 60 Hz. Headless windows and an unknown monitor rate use this period.
 pub const FRAME: Duration = Duration::from_nanos(16_666_667);
+
+const MIN_REFRESH_MHZ: u32 = 10_000;
+const MAX_REFRESH_MHZ: u32 = 1_000_000;
+
+/// One frame at `rate` millihertz. Unknown and out-of-range rates are 60 Hz.
+pub(crate) fn interval_from_millihertz(rate: Option<u32>) -> Duration {
+  let Some(rate) = rate else {
+    return FRAME;
+  };
+  // Keep the documented 60 Hz period identical to [`FRAME`].
+  if rate == 60_000 {
+    return FRAME;
+  }
+  if !(MIN_REFRESH_MHZ..=MAX_REFRESH_MHZ).contains(&rate) {
+    return FRAME;
+  }
+  // nanoseconds = 1e12 / millihertz.
+  Duration::from_nanos(1_000_000_000_000 / u64::from(rate))
+}
 
 #[derive(Clone, Copy)]
 pub struct Size {
@@ -138,6 +159,7 @@ struct Slot {
   size: Size,
   queue: VecDeque<Raw>,
   frame_at: Option<Instant>,
+  frame_interval: Duration,
   ime: bool,
 }
 
@@ -145,6 +167,28 @@ thread_local! {
   static PENDING: RefCell<HashMap<u64, Pending>> =
     RefCell::new(HashMap::new());
   static SLOTS: RefCell<HashMap<u64, Slot>> = RefCell::new(HashMap::new());
+}
+
+/// Monitor period of each open window, readable from a worker thread.
+///
+/// `SLOTS` stays on the main thread. `bind` publishes 60 Hz,
+/// `set_frame_interval` replaces it, and `forget` removes the window.
+static INTERVALS: LazyLock<Mutex<HashMap<u64, Duration>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub(crate) fn publish_frame_interval(id: u64, interval: Duration) {
+  INTERVALS
+    .lock()
+    .expect("frame intervals")
+    .insert(id, interval);
+}
+
+pub(crate) fn retract_frame_interval(id: u64) {
+  INTERVALS.lock().expect("frame intervals").remove(&id);
+}
+
+pub(crate) fn published_frame_interval(id: u64) -> Option<Duration> {
+  INTERVALS.lock().expect("frame intervals").get(&id).copied()
 }
 
 pub fn prepare(id: u64, size: Size) {
@@ -167,18 +211,22 @@ pub fn bind(scope: &mut v8::PinScope, id: u64, object: v8::Local<v8::Object>) {
         size: pending.size,
         queue: VecDeque::new(),
         frame_at: None,
+        frame_interval: FRAME,
         ime: false,
       },
     );
   });
+  publish_frame_interval(id, FRAME);
 }
 
 pub fn forget(id: u64) -> Option<Size> {
+  retract_frame_interval(id);
   PENDING.with(|pending| pending.borrow_mut().remove(&id));
   SLOTS.with(|slots| slots.borrow_mut().remove(&id).map(|slot| slot.size))
 }
 
 pub fn clear() {
+  INTERVALS.lock().expect("frame intervals").clear();
   PENDING.with(|pending| pending.borrow_mut().clear());
   SLOTS.with(|slots| slots.borrow_mut().clear());
 }
@@ -285,9 +333,32 @@ pub fn arm_frame(id: u64) {
     if let Some(slot) = slots.borrow_mut().get_mut(&id)
       && slot.frame_at.is_none()
     {
-      slot.frame_at = Some(Instant::now() + FRAME);
+      let interval = slot.frame_interval;
+      slot.frame_at = Some(Instant::now() + interval);
     }
   });
+}
+
+/// Stores the monitor period used the next time a frame is armed.
+///
+/// An already armed deadline is left in place. Returns whether the period
+/// changed.
+pub fn set_frame_interval(id: u64, interval: Duration) -> bool {
+  let changed = SLOTS.with(|slots| {
+    let mut slots = slots.borrow_mut();
+    let Some(slot) = slots.get_mut(&id) else {
+      return false;
+    };
+    if slot.frame_interval == interval {
+      return false;
+    }
+    slot.frame_interval = interval;
+    true
+  });
+  if changed {
+    publish_frame_interval(id, interval);
+  }
+  changed
 }
 
 pub fn clear_frame(id: u64) {
@@ -296,6 +367,16 @@ pub fn clear_frame(id: u64) {
       slot.frame_at = None;
     }
   });
+}
+
+/// Whether a callback is waiting for this window's next frame.
+pub fn frame_armed(id: u64) -> bool {
+  SLOTS.with(|slots| {
+    slots
+      .borrow()
+      .get(&id)
+      .is_some_and(|slot| slot.frame_at.is_some())
+  })
 }
 
 pub fn frame_due(id: u64, now: Instant) -> bool {
@@ -344,4 +425,47 @@ pub fn next_frame_wait() -> Option<Duration> {
 
 pub fn any_open() -> bool {
   SLOTS.with(|slots| !slots.borrow().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{FRAME, interval_from_millihertz};
+  use std::time::Duration;
+
+  #[test]
+  fn unknown_refresh_is_60_hz() {
+    assert_eq!(interval_from_millihertz(None), FRAME);
+    assert_eq!(interval_from_millihertz(Some(0)), FRAME);
+    assert_eq!(interval_from_millihertz(Some(9_999)), FRAME);
+    assert_eq!(interval_from_millihertz(Some(1_000_001)), FRAME);
+  }
+
+  #[test]
+  fn refresh_period_matches_millihertz() {
+    assert_eq!(interval_from_millihertz(Some(60_000)), FRAME);
+    assert_eq!(
+      interval_from_millihertz(Some(120_000)),
+      Duration::from_nanos(8_333_333)
+    );
+    assert_eq!(
+      interval_from_millihertz(Some(144_000)),
+      Duration::from_nanos(6_944_444)
+    );
+    assert_eq!(
+      interval_from_millihertz(Some(165_000)),
+      Duration::from_nanos(6_060_606)
+    );
+    assert_eq!(
+      interval_from_millihertz(Some(240_000)),
+      Duration::from_nanos(4_166_666)
+    );
+    assert_eq!(
+      interval_from_millihertz(Some(10_000)),
+      Duration::from_millis(100)
+    );
+    assert_eq!(
+      interval_from_millihertz(Some(1_000_000)),
+      Duration::from_millis(1)
+    );
+  }
 }

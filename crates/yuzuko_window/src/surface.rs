@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
 use yuzuko_core::performance_now_ms;
@@ -101,6 +102,8 @@ fn unbind_window(window_id: u64) {
 pub struct Placeholder {
   pub window_id: u64,
   pub surface_id: u64,
+  /// Realm that currently holds this canvas. `0` is the main agent.
+  agent: u64,
 }
 
 static PLACEHOLDERS: LazyLock<Mutex<HashMap<u64, Placeholder>>> =
@@ -110,11 +113,38 @@ static COMMITS: LazyLock<Mutex<HashMap<u64, crate::canvas::CanvasSnapshot>>> =
 static REBINDS: LazyLock<Mutex<Vec<Placeholder>>> =
   LazyLock::new(|| Mutex::new(Vec::new()));
 
-pub fn link_placeholder(canvas_id: u64, link: Placeholder) {
+pub fn link_placeholder(canvas_id: u64, mut link: Placeholder) {
+  if let Some(agent) = yuzuko_core::try_agent_id() {
+    link.agent = agent;
+  }
   PLACEHOLDERS
     .lock()
     .expect("placeholders")
     .insert(canvas_id, link);
+}
+
+/// Slowest open window among canvases `agent` holds, or 60 Hz.
+fn interval_for_agent(agent: u64) -> Duration {
+  let windows = {
+    let placeholders = PLACEHOLDERS.lock().expect("placeholders");
+    placeholders
+      .values()
+      .filter(|link| link.agent == agent)
+      .map(|link| link.window_id)
+      .collect::<Vec<_>>()
+  };
+  windows
+    .into_iter()
+    .filter_map(inbox::published_frame_interval)
+    .max()
+    .unwrap_or(inbox::FRAME)
+}
+
+pub(crate) fn worker_frame_interval() -> Duration {
+  match yuzuko_core::try_agent_id() {
+    Some(agent) => interval_for_agent(agent),
+    None => inbox::FRAME,
+  }
 }
 
 pub fn take_placeholder(canvas_id: u64) -> Option<Placeholder> {
@@ -386,6 +416,9 @@ impl Window {
     }
     scope.perform_microtask_checkpoint();
     if inbox::contains(id) {
+      // The callback may have armed the next frame, or it may have been the
+      // last one. The display link tracks that before this frame is presented.
+      os::sync_frame_link(id);
       os::present(id);
       crate::canvas::webgpu_after_frame(id);
     }
@@ -1151,6 +1184,7 @@ impl Window {
       callback: traced(scope, callback),
     });
     inbox::arm_frame(self.id);
+    os::sync_frame_link(self.id);
     Ok(id)
   }
 
@@ -1159,6 +1193,7 @@ impl Window {
     if self.frames.borrow().is_empty() {
       inbox::clear_frame(self.id);
     }
+    os::sync_frame_link(self.id);
   }
 
   fn resize_to(
@@ -1593,6 +1628,7 @@ impl WindowSurface {
       Placeholder {
         window_id: self.window_id,
         surface_id: self.id(),
+        agent: 0,
       },
     );
     remember_style(offscreen_id, canvas_style(self.id()));
@@ -1667,4 +1703,89 @@ pub fn install(scope: &mut v8::PinScope) {
   crate::media::install(scope);
   publish(scope, WindowSurface::install, "WindowSurface");
   publish(scope, Window::install, "Window");
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  use super::{PLACEHOLDERS, Placeholder, interval_for_agent};
+  use crate::inbox::{self, FRAME};
+
+  const AGENT_A: u64 = 41;
+  const AGENT_B: u64 = 42;
+  const FAST: u64 = 9_000_001;
+  const SLOW: u64 = 9_000_002;
+  const OTHER: u64 = 9_000_003;
+  const CLOSED: u64 = 9_000_004;
+  const UNRELATED: u64 = 9_000_005;
+  const CANVAS_FAST: u64 = 9_100_001;
+  const CANVAS_SLOW: u64 = 9_100_002;
+  const CANVAS_OTHER: u64 = 9_100_003;
+  const CANVAS_CLOSED: u64 = 9_100_004;
+
+  struct Guard;
+
+  impl Drop for Guard {
+    fn drop(&mut self) {
+      let mut map = PLACEHOLDERS.lock().expect("placeholders");
+      for id in [CANVAS_FAST, CANVAS_SLOW, CANVAS_OTHER, CANVAS_CLOSED] {
+        map.remove(&id);
+      }
+      drop(map);
+      for id in [FAST, SLOW, OTHER, CLOSED, UNRELATED] {
+        inbox::retract_frame_interval(id);
+      }
+    }
+  }
+
+  fn hold(canvas: u64, window: u64, agent: u64) {
+    PLACEHOLDERS.lock().expect("placeholders").insert(
+      canvas,
+      Placeholder {
+        window_id: window,
+        surface_id: window,
+        agent,
+      },
+    );
+  }
+
+  #[test]
+  fn worker_frame_period_is_the_slowest_canvas_it_holds() {
+    let _guard = Guard;
+    let hz120 = Duration::from_nanos(8_333_333);
+    let hz144 = Duration::from_nanos(6_944_444);
+
+    inbox::publish_frame_interval(FAST, hz120);
+    assert_eq!(interval_for_agent(AGENT_A), FRAME);
+
+    hold(CANVAS_FAST, FAST, AGENT_A);
+    assert_eq!(interval_for_agent(AGENT_A), hz120);
+    assert_eq!(interval_for_agent(AGENT_B), FRAME);
+
+    inbox::publish_frame_interval(SLOW, FRAME);
+    hold(CANVAS_SLOW, SLOW, AGENT_A);
+    assert_eq!(interval_for_agent(AGENT_A), FRAME);
+
+    inbox::publish_frame_interval(OTHER, hz144);
+    hold(CANVAS_OTHER, OTHER, AGENT_B);
+    assert_eq!(interval_for_agent(AGENT_A), FRAME);
+    assert_eq!(interval_for_agent(AGENT_B), hz144);
+
+    hold(CANVAS_CLOSED, CLOSED, AGENT_A);
+    PLACEHOLDERS
+      .lock()
+      .expect("placeholders")
+      .remove(&CANVAS_SLOW);
+    assert_eq!(interval_for_agent(AGENT_A), hz120);
+
+    inbox::publish_frame_interval(UNRELATED, hz144);
+    assert_eq!(interval_for_agent(AGENT_A), hz120);
+
+    PLACEHOLDERS
+      .lock()
+      .expect("placeholders")
+      .remove(&CANVAS_FAST);
+    assert_eq!(interval_for_agent(AGENT_A), FRAME);
+  }
 }
