@@ -20,21 +20,21 @@ fn text(bytes: &[u8]) -> String {
 
 #[test]
 fn hello_prints_the_imported_greeting() {
-  let output = yuzuko(&["run", "examples/hello.ts"]);
+  let output = yuzuko(&["run", "tests/cli/hello.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert_eq!(text(&output.stdout), "hello from greeting\n");
 }
 
 #[test]
 fn javascript_specifier_prefers_the_typescript_sibling() {
-  let output = yuzuko(&["run", "examples/via_js.ts"]);
+  let output = yuzuko(&["run", "tests/cli/via_js.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert_eq!(text(&output.stdout), "hello from greeting\n");
 }
 
 #[test]
 fn run_does_not_install_yuzuko_test() {
-  let output = yuzuko(&["run", "examples/typeof_yuzuko.ts"]);
+  let output = yuzuko(&["run", "tests/cli/typeof_yuzuko.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert_eq!(
     text(&output.stdout),
@@ -94,7 +94,7 @@ fn test_installs_inject_only_when_enabled() {
 
 #[test]
 fn thrown_stack_names_the_typescript_file() {
-  let output = yuzuko(&["run", "examples/throw.ts"]);
+  let output = yuzuko(&["run", "tests/cli/throw.ts"]);
   assert_eq!(output.status.code(), Some(1));
   let stderr = text(&output.stderr);
   assert!(stderr.contains("throw.ts"), "{stderr}");
@@ -103,13 +103,52 @@ fn thrown_stack_names_the_typescript_file() {
 
 #[test]
 fn unhandled_rejection_exits_1() {
-  let output = yuzuko(&["run", "examples/reject.ts"]);
+  let output = yuzuko(&["run", "tests/cli/reject.ts"]);
   assert_eq!(output.status.code(), Some(1));
   assert!(
     text(&output.stderr).contains("nope"),
     "{}",
     text(&output.stderr)
   );
+}
+
+#[test]
+fn window_examples_stay_open() {
+  for name in ["hello.ts", "breakout.ts", "paint.ts", "clock.ts"] {
+    let path = format!("examples/{name}");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+      .current_dir(workspace())
+      .args(["run", path.as_str()])
+      .env("YUZUKO_HEADLESS", "1")
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .spawn()
+      .unwrap_or_else(|error| panic!("spawn {name}: {error}"));
+    let started = Instant::now();
+    let status = loop {
+      match child.try_wait() {
+        Ok(Some(status)) => break Some(status),
+        Ok(None) if started.elapsed() >= Duration::from_secs(2) => break None,
+        Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+        Err(error) => panic!("{name}: {error}"),
+      }
+    };
+    let _ = child.kill();
+    let output = child
+      .wait_with_output()
+      .unwrap_or_else(|error| panic!("wait {name}: {error}"));
+    let stderr = text(&output.stderr);
+    let stdout = text(&output.stdout);
+    assert!(
+      status.is_none(),
+      "{name} exited {:?}\n{stderr}{stdout}",
+      status.and_then(|code| code.code())
+    );
+    assert!(
+      stderr.is_empty() && stdout.is_empty(),
+      "{name}\n{stderr}{stdout}"
+    );
+  }
 }
 
 #[test]

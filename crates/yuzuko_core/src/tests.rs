@@ -39,18 +39,18 @@ fn foreground_task_wakes_the_event_loop() {
 
 #[test]
 fn hello_runs_a_relative_typescript_import() {
-  run_file(&workspace().join("examples/hello.ts")).expect("hello.ts");
+  run_file(&workspace().join("tests/cli/hello.ts")).expect("hello.ts");
 }
 
 #[test]
 fn javascript_extension_resolves_to_typescript() {
-  run_file(&workspace().join("examples/via_js.ts")).expect("via_js.ts");
+  run_file(&workspace().join("tests/cli/via_js.ts")).expect("via_js.ts");
 }
 
 #[test]
 fn thrown_error_names_the_typescript_file_and_line() {
   let error =
-    run_file(&workspace().join("examples/throw.ts")).expect_err("throw.ts");
+    run_file(&workspace().join("tests/cli/throw.ts")).expect_err("throw.ts");
   assert!(
     error.message.contains("throw.ts"),
     "stack should name the file: {}",
@@ -143,7 +143,7 @@ fn realm_globals_cover_phase_one_basics() {
 #[test]
 fn unhandled_rejection_fails() {
   let error =
-    run_file(&workspace().join("examples/reject.ts")).expect_err("reject.ts");
+    run_file(&workspace().join("tests/cli/reject.ts")).expect_err("reject.ts");
   assert!(
     error.message.contains("nope"),
     "rejection should include the reason: {}",

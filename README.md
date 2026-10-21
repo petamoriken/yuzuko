@@ -17,10 +17,13 @@ window.requestAnimationFrame(function frame() {
 
 TypeScript entries are erased with oxc before V8 parses them. `yuzuko run game.ts` and `yuzuko run game.js` are the same kind of program. Standard web and WinterTC APIs live on `globalThis`. Runtime-specific APIs live on `Yuzuko`.
 
-`yuzuko run` executes a TypeScript or JavaScript module. `yuzuko test` runs `Yuzuko.test`. Windows, Canvas, and WebGPU come in later phases.
+`yuzuko run` executes a TypeScript or JavaScript module. `yuzuko test` runs `Yuzuko.test`. The programs in `examples/` open a window and draw on its surface. Escape closes the window.
 
 ```sh
 cargo run -p yuzuko -- run examples/hello.ts
+cargo run -p yuzuko -- run examples/breakout.ts
+cargo run -p yuzuko -- run examples/paint.ts
+cargo run -p yuzuko -- run examples/clock.ts
 cargo run -p yuzuko -- test tests/pass_test.ts
 ```
 
