@@ -825,64 +825,96 @@ impl App {
     let Some(host) = self.windows.get(&window_id) else {
       return;
     };
-    let surface_id = crate::surface::canvas_for_window(host.surface_id)
-      .unwrap_or(host.surface_id);
+    let window_surface = host.surface_id;
+    let surface_id = crate::surface::canvas_for_window(window_surface)
+      .unwrap_or(window_surface);
     let transparent = host.transparent;
     // Without a device, or before the first non-empty size, the surface was
     // never configured and has no texture to present.
     if !host.configured {
       return;
     }
-    host.window.pre_present_notify();
-    let Some(surface) = host.surface.as_ref() else {
+    let Some(size) = inbox::size(window_surface) else {
       return;
     };
-    let frame = match surface.get_current_texture() {
-      wgpu::CurrentSurfaceTexture::Success(frame)
-      | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-      wgpu::CurrentSurfaceTexture::Lost
-      | wgpu::CurrentSurfaceTexture::Outdated => {
+    let width = size.bitmap_width.round() as u32;
+    let height = size.bitmap_height.round() as u32;
+    if width == 0 || height == 0 {
+      return;
+    }
+    let Some(gpu) = self.gpu.as_ref() else {
+      return;
+    };
+    let device = gpu.device.clone();
+    let queue = gpu.queue.clone();
+    let format = gpu.format;
+    // A readback waits on the GPU. Doing that while the swapchain texture is
+    // held makes the next drawable time out after about a second.
+    let canvas_ready =
+      crate::canvas::stage_canvas(&device, &queue, surface_id, width, height);
+    let webgpu_ready = !canvas_ready
+      && crate::canvas::stage_webgpu(
+        &device, &queue, surface_id, width, height,
+      );
+    let acquired = {
+      let Some(host) = self.windows.get(&window_id) else {
+        crate::canvas::discard_staged();
+        return;
+      };
+      host.window.pre_present_notify();
+      let Some(surface) = host.surface.as_ref() else {
+        crate::canvas::discard_staged();
+        return;
+      };
+      match surface.get_current_texture() {
+        wgpu::CurrentSurfaceTexture::Success(frame)
+        | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
+          let size = frame.texture.size();
+          if size.width == width && size.height == height {
+            Ok(frame)
+          } else {
+            Err(true)
+          }
+        }
+        wgpu::CurrentSurfaceTexture::Lost
+        | wgpu::CurrentSurfaceTexture::Outdated => Err(true),
+        wgpu::CurrentSurfaceTexture::Timeout
+        | wgpu::CurrentSurfaceTexture::Occluded
+        | wgpu::CurrentSurfaceTexture::Validation => Err(false),
+      }
+    };
+    let frame = match acquired {
+      Ok(frame) => frame,
+      Err(true) => {
+        crate::canvas::discard_staged();
         self.configure_surface(window_id);
         return;
       }
-      wgpu::CurrentSurfaceTexture::Timeout
-      | wgpu::CurrentSurfaceTexture::Occluded
-      | wgpu::CurrentSurfaceTexture::Validation => return,
-    };
-    let Some(gpu) = self.gpu.as_ref() else {
-      return;
+      Err(false) => {
+        crate::canvas::discard_staged();
+        return;
+      }
     };
     let view = frame
       .texture
       .create_view(&wgpu::TextureViewDescriptor::default());
-    let width = frame.texture.size().width;
-    let height = frame.texture.size().height;
-    if crate::canvas::present_canvas(
-      &gpu.device,
-      &gpu.queue,
-      &view,
-      surface_id,
-      width,
-      height,
-      gpu.format,
-    ) || crate::canvas::present_webgpu(
-      &gpu.device,
-      &gpu.queue,
-      &view,
-      surface_id,
-      width,
-      height,
-      gpu.format,
-    ) {
+    if (canvas_ready
+      && crate::canvas::present_canvas(
+        &device, &queue, &view, surface_id, width, height, format,
+      ))
+      || (webgpu_ready
+        && crate::canvas::present_webgpu(
+          &device, &queue, &view, surface_id, width, height, format,
+        ))
+    {
       frame.present();
       return;
     }
+    crate::canvas::discard_staged();
     let mut encoder =
-      gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-          label: Some("yuzuko-clear"),
-        });
+      device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("yuzuko-clear"),
+      });
     {
       let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("yuzuko-clear"),
@@ -906,7 +938,7 @@ impl App {
         multiview_mask: None,
       });
     }
-    gpu.queue.submit([encoder.finish()]);
+    queue.submit([encoder.finish()]);
     frame.present();
   }
 

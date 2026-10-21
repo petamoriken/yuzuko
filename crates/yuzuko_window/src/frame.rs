@@ -1,6 +1,6 @@
 //! Per-surface animation frames on the runtime event loop.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use yuzuko_core::LoopInterest;
 
@@ -10,26 +10,28 @@ use crate::input::gamepad;
 use crate::os;
 use crate::surface;
 
+/// A pump that waited this long was held until a display refresh.
+const REFRESH_WAIT: Duration = Duration::from_millis(2);
+
 pub fn drive(scope: &mut v8::PinScope) -> bool {
   surface::apply_remote_presentation();
-  os::pump(Some(Duration::ZERO));
-  crate::shell::menu::poll(scope);
-  crate::shell::tray::poll(scope);
-  crate::shell::dock::poll(scope);
-  let mut did = gamepad::poll(scope);
-  let ids = inbox::ids();
-  let now = std::time::Instant::now();
-  for id in ids {
-    if inbox::has_input(id) {
-      input::flush(scope, id);
-      did = true;
-    }
-    if inbox::frame_due(id, now) {
-      surface::Window::run_frame(scope, id);
-      did = true;
-    }
+  // Run a frame that is already due before entering the OS loop. After a
+  // present, macOS does not return from that loop until the next refresh,
+  // so pumping first spends the refresh the callback was waiting for.
+  if run_ready(scope, Instant::now()) {
+    return true;
   }
-  did
+  let started = Instant::now();
+  os::pump(Some(Duration::ZERO));
+  let now = Instant::now();
+  // The refresh often lands a fraction of a millisecond before the frame
+  // deadline. Treat that wake as the frame, or the next pump waits again.
+  let deadline = if started.elapsed() > REFRESH_WAIT {
+    now + inbox::FRAME
+  } else {
+    now
+  };
+  run_ready(scope, deadline)
 }
 
 pub fn interest() -> LoopInterest {
@@ -45,6 +47,13 @@ pub fn wait(timeout: Option<Duration>) {
   if yuzuko_core::poll_task_poke() {
     return;
   }
+  // The same refresh wait applies to a short frame timeout: a few hundred
+  // microseconds still blocks until the next display refresh. Sleep outside
+  // NSApplication when the next animation frame is what we are waiting for.
+  if defer_os_pump(timeout) {
+    yuzuko_core::wait_for_tasks(timeout);
+    return;
+  }
   let live = yuzuko_core::keeps_alive(yuzuko_core::agent_id());
   let long = timeout.is_none_or(|timeout| timeout > Duration::from_millis(5));
   if live && long {
@@ -58,4 +67,37 @@ pub fn wait(timeout: Option<Duration>) {
   if !os::pump(timeout) {
     yuzuko_core::wait_for_tasks(timeout);
   }
+}
+
+/// `true` when a frame ran or input was delivered.
+///
+/// A `true` result is finished work: the caller must not spend another
+/// display refresh before the event loop turns again.
+fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
+  crate::shell::menu::poll(scope);
+  crate::shell::tray::poll(scope);
+  crate::shell::dock::poll(scope);
+  let mut did = gamepad::poll(scope);
+  for id in inbox::ids() {
+    if inbox::has_input(id) {
+      input::flush(scope, id);
+      did = true;
+    }
+    if inbox::frame_due(id, deadline) {
+      surface::Window::run_frame(scope, id, deadline);
+      did = true;
+    }
+  }
+  did
+}
+
+fn defer_os_pump(timeout: Option<Duration>) -> bool {
+  let Some(timeout) = timeout else {
+    return false;
+  };
+  // Other platforms honor a short pump timeout. macOS turns it into the
+  // next refresh after a drawable has been presented.
+  cfg!(target_os = "macos")
+    && timeout <= inbox::FRAME
+    && inbox::next_frame_wait().is_some_and(|frame| frame <= inbox::FRAME)
 }

@@ -719,11 +719,15 @@ declare namespace Yuzuko {
      * Runs `callback` before this window's next rendering update.
      *
      * The main global has no `requestAnimationFrame`. Frames are not throttled
-     * while the surface is hidden.
+     * while the surface is hidden. After the window is closed this returns `0`
+     * and does not queue `callback`. `0` is not a live handle. During `close`,
+     * and during the `visibilitychange` that follows a close that proceeds,
+     * the window is still open, so this still queues a callback. That callback
+     * is dropped when the window is destroyed.
      *
      * @param callback - Receives the same timestamp as `performance.now()`.
-     * @returns A handle for {@link Window.cancelAnimationFrame}.
-     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     * @returns A positive handle for {@link Window.cancelAnimationFrame}, or
+     * `0` when the window is already closed.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/requestAnimationFrame)
      */
@@ -731,6 +735,9 @@ declare namespace Yuzuko {
 
     /**
      * Cancels a callback scheduled on this window.
+     *
+     * An unknown handle does nothing. That includes `0` and a handle whose
+     * callback was already dropped because the window closed.
      *
      * @param handle - The value returned by {@link Window.requestAnimationFrame}.
      *

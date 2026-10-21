@@ -108,7 +108,7 @@ const tools = new Yuzuko.Window({ title: "tools", width: 400, height: 600 });
 | `transparent` | Composite the window's alpha. Set only in the constructor. The default is `false` |
 | `minWidth` / `minHeight` | Minimum client size in CSS pixels. Unset when omitted |
 | `maxWidth` / `maxHeight` | Maximum client size in CSS pixels. Unset when omitted |
-| `requestAnimationFrame` / `cancelAnimationFrame` | Runs before this window's rendering update |
+| `requestAnimationFrame` / `cancelAnimationFrame` | Runs before this window's rendering update. After the window is closed, `requestAnimationFrame` returns `0` and does not queue a callback |
 | `resizeTo(width, height)` | Sets the client size in CSS pixels, clamped to `minWidth` / `maxWidth` and `minHeight` / `maxHeight`. Does not resize `surface` |
 | `resizeBy(x, y)` | Adds CSS pixels to the client size, with the same clamp. Does not resize `surface` |
 | `moveTo(x, y)` / `moveBy(x, y)` | Move the frame in CSS pixels. Positive `y` is downward |
@@ -152,7 +152,7 @@ When only timers or idle callbacks remain, the event loop sleeps until the next 
 
 `getCurrentTexture()` returns the same `GPUTexture` until that surface's rendering update for the frame. The next call after the update returns a new texture.
 
-`close` is cancelable. If `preventDefault()` is not called, only that window is destroyed. Other windows and outstanding timers or promises remain. When no `Window` is open and the task queue is empty, the process exits with status 0. An uncaught exception and an unhandled rejection exit with status 1. A promise microtask runs before the next macrotask. Posting a V8 foreground task wakes the event loop.
+`close` is cancelable. If `preventDefault()` is not called, only that window is destroyed. While `close` is being dispatched, and while the `visibilitychange` that follows a close that was not cancelled is being dispatched, the window is still open, so `requestAnimationFrame` queues a callback and returns a positive handle. Destroying the window drops callbacks queued on it, including one queued in those listeners. After the window is closed, `requestAnimationFrame` returns `0` and does not queue a callback or request a redraw. `0` is never a live handle. `cancelAnimationFrame` does nothing for an unknown handle, including `0`. A callback that is already running can call `close()` and then `requestAnimationFrame`, which returns `0`. Other windows and outstanding timers or promises remain. When no `Window` is open and the task queue is empty, the process exits with status 0. An uncaught exception and an unhandled rejection exit with status 1. A promise microtask runs before the next macrotask. Posting a V8 foreground task wakes the event loop.
 
 ### Headless mode
 

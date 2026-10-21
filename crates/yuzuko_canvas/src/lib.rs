@@ -4,6 +4,7 @@ mod geom;
 mod paint;
 mod text;
 
+use std::cell::RefCell;
 use std::sync::Once;
 
 use yuzuko_core::op::{Js, OpError};
@@ -31,7 +32,9 @@ pub fn register() {
       transfer_to_image_bitmap,
       resized: record::resized,
       snapshot,
+      stage,
       present,
+      discard_present: discard_staged,
       dispose: record::dispose,
       take_slot: record::take_slot,
       put_slot: record::put_slot,
@@ -330,20 +333,150 @@ fn snapshot_raster(id: u64) -> Option<yuzuko_image::Raster> {
   })?
 }
 
+enum Staged {
+  /// Nothing to upload. The caller still presents the current drawable.
+  Skip,
+  Texture(wgpu::Texture),
+  Pixels {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+  },
+}
+
+enum Prepare {
+  Ready(Staged),
+  Failed,
+  Fallback,
+}
+
+thread_local! {
+  static STAGED: RefCell<Option<(u64, Staged)>> = const { RefCell::new(None) };
+}
+
+fn stage(
+  _device: &wgpu::Device,
+  _queue: &wgpu::Queue,
+  id: u64,
+  target_width: u32,
+  target_height: u32,
+) -> bool {
+  match prepare(id, target_width, target_height) {
+    Some(staged) => {
+      STAGED.with(|slot| *slot.borrow_mut() = Some((id, staged)));
+      true
+    }
+    None => {
+      discard_staged();
+      false
+    }
+  }
+}
+
+fn discard_staged() {
+  STAGED.with(|slot| *slot.borrow_mut() = None);
+}
+
 fn present(
   device: &wgpu::Device,
   queue: &wgpu::Queue,
   view: &wgpu::TextureView,
   id: u64,
-  target_width: u32,
-  target_height: u32,
+  _target_width: u32,
+  _target_height: u32,
   format: wgpu::TextureFormat,
 ) -> bool {
-  let Some(mut raster) = snapshot_raster(id) else {
+  let Some((staged_id, staged)) = STAGED.with(|slot| slot.borrow_mut().take())
+  else {
     return false;
   };
+  if staged_id != id {
+    return false;
+  }
+  match staged {
+    Staged::Skip => true,
+    Staged::Texture(texture) => {
+      let source = texture.create_view(&wgpu::TextureViewDescriptor::default());
+      replay::blit_texture(device, queue, &source, view, format);
+      true
+    }
+    Staged::Pixels {
+      width,
+      height,
+      pixels,
+    } => {
+      replay::present_texture(
+        device, queue, view, format, &pixels, width, height,
+      );
+      true
+    }
+  }
+}
+
+fn prepare(id: u64, target_width: u32, target_height: u32) -> Option<Staged> {
+  match record::with_drawing(id, |drawing| {
+    prepare_drawing(drawing, id, target_width, target_height)
+  }) {
+    Some(Prepare::Ready(staged)) => return Some(staged),
+    Some(Prepare::Failed) => return None,
+    Some(Prepare::Fallback) | None => {}
+  }
+  prepare_snapshot(id, target_width, target_height)
+}
+
+fn prepare_drawing(
+  drawing: &record::Drawing,
+  id: u64,
+  target_width: u32,
+  target_height: u32,
+) -> Prepare {
+  if !drawing.attrs.vello_target() {
+    return Prepare::Fallback;
+  }
+  if drawing.width == 0 || drawing.height == 0 {
+    return Prepare::Ready(Staged::Skip);
+  }
+  let style = yuzuko_window::canvas_style(id);
+  let direct = drawing.attrs.alpha
+    && (target_width == 0
+      || target_height == 0
+      || (drawing.width == target_width && drawing.height == target_height)
+      || (style.fit == yuzuko_window::ObjectFit::Fill
+        && yuzuko_window::rendering_is_smooth(style.rendering)));
+  if direct
+    && let Some(texture) =
+      replay::render_texture(&drawing.commands, drawing.width, drawing.height)
+  {
+    return Prepare::Ready(Staged::Texture(texture));
+  }
+  let Some(mut pixels) =
+    replay::render_premul(&drawing.commands, drawing.width, drawing.height)
+  else {
+    return Prepare::Failed;
+  };
+  if !drawing.attrs.alpha {
+    for pixel in pixels.chunks_exact_mut(4) {
+      pixel[3] = 255;
+    }
+  }
+  Prepare::Ready(fit_pixels(
+    pixels,
+    drawing.width,
+    drawing.height,
+    target_width,
+    target_height,
+    id,
+  ))
+}
+
+fn prepare_snapshot(
+  id: u64,
+  target_width: u32,
+  target_height: u32,
+) -> Option<Staged> {
+  let mut raster = snapshot_raster(id)?;
   if raster.width == 0 || raster.height == 0 {
-    return true;
+    return Some(Staged::Skip);
   }
   yuzuko_image::convert(&mut raster, ColorSpace::Srgb);
   if raster.format != SampleFormat::Unorm8 {
@@ -366,22 +499,39 @@ fn present(
     .expect("present");
   }
   yuzuko_image::premultiply(&mut raster);
+  Some(fit_pixels(
+    raster.bytes,
+    raster.width,
+    raster.height,
+    target_width,
+    target_height,
+    id,
+  ))
+}
+
+fn fit_pixels(
+  pixels: Vec<u8>,
+  source_width: u32,
+  source_height: u32,
+  target_width: u32,
+  target_height: u32,
+  id: u64,
+) -> Staged {
+  if source_width == 0 || source_height == 0 {
+    return Staged::Skip;
+  }
   let style = yuzuko_window::canvas_style(id);
   if target_width == 0
     || target_height == 0
+    || (source_width == target_width && source_height == target_height)
     || (style.fit == yuzuko_window::ObjectFit::Fill
       && yuzuko_window::rendering_is_smooth(style.rendering))
   {
-    replay::present_texture(
-      device,
-      queue,
-      view,
-      format,
-      &raster.bytes,
-      raster.width,
-      raster.height,
-    );
-    return true;
+    return Staged::Pixels {
+      width: source_width,
+      height: source_height,
+      pixels,
+    };
   }
   let pad = if yuzuko_window::canvas_is_transparent(id) {
     0
@@ -389,25 +539,20 @@ fn present(
     255
   };
   let fitted = yuzuko_window::composite_pad(
-    &raster.bytes,
-    raster.width,
-    raster.height,
+    &pixels,
+    source_width,
+    source_height,
     target_width,
     target_height,
     style.fit,
     style.rendering,
     pad,
   );
-  replay::present_texture(
-    device,
-    queue,
-    view,
-    format,
-    &fitted,
-    target_width,
-    target_height,
-  );
-  true
+  Staged::Pixels {
+    width: target_width,
+    height: target_height,
+    pixels: fitted,
+  }
 }
 
 fn resolve_blob(scope: &mut v8::PinScope, bytes: Vec<u8>, mime: &str) -> Js {

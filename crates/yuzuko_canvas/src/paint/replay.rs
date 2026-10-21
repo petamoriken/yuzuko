@@ -85,6 +85,9 @@ struct GpuRenderer {
 
 std::thread_local! {
   static GPU: RefCell<Option<GpuRenderer>> = const { RefCell::new(None) };
+  static BLITTER: RefCell<
+    Option<(wgpu::TextureFormat, wgpu::util::TextureBlitter)>,
+  > = const { RefCell::new(None) };
 }
 
 /// Rasterize a layer's commands to a premultiplied sRGB bitmap.
@@ -780,6 +783,33 @@ fn render_gpu(
   width: u32,
   height: u32,
 ) -> Option<Vec<u8>> {
+  let texture = render_gpu_texture(commands, width, height)?;
+  yuzuko_window::with_device(|device, queue| {
+    readback(device, queue, &texture, width, height)
+  })
+  .flatten()
+}
+
+/// GPU render of `commands` with no readback. `None` on the CPU backend.
+pub fn render_texture(
+  commands: &[Command],
+  width: u32,
+  height: u32,
+) -> Option<wgpu::Texture> {
+  if width == 0 || height == 0 {
+    return None;
+  }
+  match backend() {
+    Backend::Gpu => render_gpu_texture(commands, width, height),
+    Backend::Cpu => None,
+  }
+}
+
+fn render_gpu_texture(
+  commands: &[Command],
+  width: u32,
+  height: u32,
+) -> Option<wgpu::Texture> {
   yuzuko_window::with_device(|device, queue| {
     let scene = build_scene(commands, width, height);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -799,7 +829,7 @@ fn render_gpu(
       view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    GPU.with(|slot| {
+    let rendered = GPU.with(|slot| {
       let mut slot = slot.borrow_mut();
       if slot.is_none() {
         let renderer =
@@ -826,9 +856,11 @@ fn render_gpu(
         )
         .ok()?;
       Some(())
-    })?;
-    readback(device, queue, &texture, width, height)
-  })?
+    });
+    rendered?;
+    Some(texture)
+  })
+  .flatten()
 }
 
 fn build_scene(commands: &[Command], width: u32, height: u32) -> vello::Scene {
@@ -1146,11 +1178,29 @@ pub fn present_texture(
     texture.size(),
   );
   let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-  let blitter = wgpu::util::TextureBlitter::new(device, format);
+  blit_texture(device, queue, &view, target, format);
+}
+
+pub fn blit_texture(
+  device: &wgpu::Device,
+  queue: &wgpu::Queue,
+  source: &wgpu::TextureView,
+  target: &wgpu::TextureView,
+  format: wgpu::TextureFormat,
+) {
   let mut encoder =
     device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
       label: Some("yuzuko-canvas-present"),
     });
-  blitter.copy(device, &mut encoder, &view, target);
+  BLITTER.with(|slot| {
+    let mut slot = slot.borrow_mut();
+    if slot.as_ref().is_none_or(|(cached, _)| *cached != format) {
+      *slot = Some((format, wgpu::util::TextureBlitter::new(device, format)));
+    }
+    let Some((_, blitter)) = slot.as_ref() else {
+      return;
+    };
+    blitter.copy(device, &mut encoder, source, target);
+  });
   queue.submit([encoder.finish()]);
 }

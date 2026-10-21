@@ -319,14 +319,30 @@ pub fn get_context(
   Ok(Js(v8::Global::new(scope, value)))
 }
 
-pub fn present(
+enum StagedGpu {
+  Blit {
+    texture: wgpu::Texture,
+    alpha_opaque: bool,
+    color_space: ColorSpace,
+  },
+  Fitted {
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+  },
+}
+
+thread_local! {
+  static STAGED: RefCell<Option<(u64, StagedGpu)>> =
+    const { RefCell::new(None) };
+}
+
+pub fn stage(
   device: &wgpu::Device,
   queue: &wgpu::Queue,
-  target: &wgpu::TextureView,
   id: u64,
-  _width: u32,
-  _height: u32,
-  format: wgpu::TextureFormat,
+  target_width: u32,
+  target_height: u32,
 ) -> bool {
   let taken = CANVASES.with(|canvases| {
     let mut canvases = canvases.borrow_mut();
@@ -348,55 +364,94 @@ pub fn present(
   let Some(texture) = texture else {
     return false;
   };
-  let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
   let style = yuzuko_window::canvas_style(id);
   let source_width = texture.size().width;
   let source_height = texture.size().height;
-  if _width == 0
-    || _height == 0
-    || (source_width == _width && source_height == _height)
-    || (style.fit == yuzuko_window::ObjectFit::Fill
-      && yuzuko_window::rendering_is_smooth(style.rendering))
-  {
-    blit_canvas(
-      device,
-      queue,
-      &view,
-      target,
-      format,
-      alpha_opaque,
-      color_space,
-    );
-    return true;
-  }
-  if let Some(pixels) = read_rgba(device, queue, &texture) {
-    let pad = if yuzuko_window::canvas_is_transparent(id) {
-      0
-    } else {
-      255
-    };
-    let fitted = yuzuko_window::composite_pad(
-      &pixels,
-      source_width,
-      source_height,
-      _width,
-      _height,
-      style.fit,
-      style.rendering,
-      pad,
-    );
-    blit_rgba(device, queue, target, format, &fitted, _width, _height);
-    return true;
-  }
-  blit_canvas(
-    device,
-    queue,
-    &view,
-    target,
-    format,
+  let fitted = target_width != 0
+    && target_height != 0
+    && (source_width != target_width || source_height != target_height)
+    && !(style.fit == yuzuko_window::ObjectFit::Fill
+      && yuzuko_window::rendering_is_smooth(style.rendering));
+  let staged = if fitted {
+    read_rgba(device, queue, &texture).map(|pixels| {
+      let pad = if yuzuko_window::canvas_is_transparent(id) {
+        0
+      } else {
+        255
+      };
+      let pixels = yuzuko_window::composite_pad(
+        &pixels,
+        source_width,
+        source_height,
+        target_width,
+        target_height,
+        style.fit,
+        style.rendering,
+        pad,
+      );
+      StagedGpu::Fitted {
+        pixels,
+        width: target_width,
+        height: target_height,
+      }
+    })
+  } else {
+    None
+  };
+  let staged = staged.unwrap_or(StagedGpu::Blit {
+    texture,
     alpha_opaque,
     color_space,
-  );
+  });
+  STAGED.with(|slot| *slot.borrow_mut() = Some((id, staged)));
+  true
+}
+
+pub fn discard_staged() {
+  STAGED.with(|slot| *slot.borrow_mut() = None);
+}
+
+pub fn present(
+  device: &wgpu::Device,
+  queue: &wgpu::Queue,
+  target: &wgpu::TextureView,
+  id: u64,
+  _width: u32,
+  _height: u32,
+  format: wgpu::TextureFormat,
+) -> bool {
+  let Some((staged_id, staged)) = STAGED.with(|slot| slot.borrow_mut().take())
+  else {
+    return false;
+  };
+  if staged_id != id {
+    return false;
+  }
+  match staged {
+    StagedGpu::Blit {
+      texture,
+      alpha_opaque,
+      color_space,
+    } => {
+      let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+      blit_canvas(
+        device,
+        queue,
+        &view,
+        target,
+        format,
+        alpha_opaque,
+        color_space,
+      );
+    }
+    StagedGpu::Fitted {
+      pixels,
+      width,
+      height,
+    } => {
+      blit_rgba(device, queue, target, format, &pixels, width, height);
+    }
+  }
   true
 }
 

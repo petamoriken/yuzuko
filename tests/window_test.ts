@@ -245,6 +245,122 @@ Yuzuko.test("animation frames run once per frame and pointer lock resolves", asy
   }
 });
 
+Yuzuko.test("animation frames keep a display cadence", async () => {
+  const window = new Yuzuko.Window({ width: 32, height: 32 });
+  try {
+    const gaps = await new Promise((resolve) => {
+      const samples = [];
+      let last = 0;
+      let left = 8;
+      window.requestAnimationFrame(function frame(now) {
+        if (last !== 0) {
+          samples.push(now - last);
+        }
+        last = now;
+        left -= 1;
+        if (left === 0) {
+          resolve(samples);
+          return;
+        }
+        window.requestAnimationFrame(frame);
+      });
+    });
+    const average = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+    assert(average < 40, "average frame " + average.toFixed(1));
+    assert(gaps.every((gap) => gap < 80), "frame gap");
+  } finally {
+    window.close();
+  }
+});
+
+Yuzuko.test("a closed window requestAnimationFrame returns 0", async () => {
+  const window = new Yuzuko.Window({ width: 40, height: 40 });
+  const clock = new Yuzuko.Window({ width: 8, height: 8 });
+  let orphan = null;
+  try {
+    const first = window.requestAnimationFrame(() => {});
+    assert(first === 1, "first handle");
+    window.cancelAnimationFrame(first);
+    window.cancelAnimationFrame(0);
+
+    let kept = 0;
+    let keptHandle = 0;
+    window.requestAnimationFrame(() => {
+      kept += 1;
+    });
+    window.addEventListener("close", (event) => {
+      event.preventDefault();
+      keptHandle = window.requestAnimationFrame(() => {
+        kept += 1;
+      });
+    }, { once: true });
+    window.close();
+    assert(keptHandle > 0, "queued during close");
+    await nextFrame(window);
+    assert(kept === 2, "cancelled close kept both frames");
+
+    let dropped = 0;
+    let droppedHandle = 0;
+    let after = -1;
+    window.addEventListener("close", () => {
+      droppedHandle = window.requestAnimationFrame(() => {
+        dropped += 1;
+      });
+    }, { once: true });
+    await new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.close();
+        after = window.requestAnimationFrame(() => {
+          dropped += 1;
+        });
+        window.cancelAnimationFrame(after);
+        window.cancelAnimationFrame(0);
+        resolve();
+      });
+    });
+    assert(droppedHandle > 0, "queued before destroy");
+    assert(after === 0, "returns 0 after close");
+    const outside = window.requestAnimationFrame(() => {
+      dropped += 1;
+    });
+    assert(outside === 0, "already closed");
+    window.cancelAnimationFrame(1);
+    let bad = false;
+    try {
+      window.requestAnimationFrame(1);
+    } catch (error) {
+      bad = error instanceof TypeError;
+    }
+    assert(bad, "callback type");
+    let rejected = false;
+    try {
+      window.resizeTo(10, 10);
+    } catch (error) {
+      rejected = error instanceof DOMException && error.name === "InvalidStateError";
+    }
+    assert(rejected, "resize still throws");
+
+    orphan = new Yuzuko.Window({ width: 8, height: 8 });
+    let ran = 0;
+    orphan.requestAnimationFrame(() => {
+      ran += 1;
+    });
+    orphan.close();
+    assert(orphan.requestAnimationFrame(() => {
+      ran += 1;
+    }) === 0, "closed from outside");
+    await nextFrames(clock, 2);
+    assert(dropped === 0, "destroyed queue");
+    assert(ran === 0, "cleared before its frame");
+  } finally {
+    window.close();
+    clock.close();
+    if (orphan !== null) {
+      orphan.close();
+    }
+  }
+});
+
 Yuzuko.test("matchMedia tracks size, pixel ratio, and preferences", () => {
   const window = new Yuzuko.Window({ width: 400, height: 200 });
   try {
@@ -668,6 +784,26 @@ Yuzuko.test("window geometry follows the frame and the client", () => {
   assert(window.screenX === 0 && window.outerY === 0, "closed origin");
   assert(window.visible === false, "closed visible");
 });
+
+function nextFrame(window) {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function nextFrames(window, count) {
+  return new Promise((resolve) => {
+    const step = () => {
+      count -= 1;
+      if (count === 0) {
+        resolve();
+      } else {
+        window.requestAnimationFrame(step);
+      }
+    };
+    window.requestAnimationFrame(step);
+  });
+}
 
 function record(window, into) {
   const types = [

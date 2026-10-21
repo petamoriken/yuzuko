@@ -58,6 +58,8 @@ pub struct CanvasHooks {
     fn(&mut v8::PinScope, u64) -> Result<Js, OpError>,
   pub resized: fn(u64, f64, f64),
   pub snapshot: fn(u64) -> Option<CanvasSnapshot>,
+  /// Rasterize before the swapchain texture is acquired. May wait on the GPU.
+  pub stage: fn(&wgpu::Device, &wgpu::Queue, u64, u32, u32) -> bool,
   pub present: fn(
     &wgpu::Device,
     &wgpu::Queue,
@@ -67,6 +69,7 @@ pub struct CanvasHooks {
     u32,
     wgpu::TextureFormat,
   ) -> bool,
+  pub discard_present: fn(),
   pub dispose: fn(u64),
   pub take_slot: fn(u64) -> Option<Box<dyn Any + Send>>,
   pub put_slot: fn(u64, Box<dyn Any + Send>),
@@ -79,6 +82,8 @@ fn hooks() -> Option<&'static CanvasHooks> {
 
 pub struct WebGpuHooks {
   pub get_context: GetContextFn,
+  /// Read back, if needed, before the swapchain texture is acquired.
+  pub stage: fn(&wgpu::Device, &wgpu::Queue, u64, u32, u32) -> bool,
   pub present: fn(
     &wgpu::Device,
     &wgpu::Queue,
@@ -88,6 +93,7 @@ pub struct WebGpuHooks {
     u32,
     wgpu::TextureFormat,
   ) -> bool,
+  pub discard_present: fn(),
   pub expire: fn(u64),
   pub resized: fn(u64),
   pub dispose: fn(u64),
@@ -164,6 +170,36 @@ pub fn reset_canvas_bitmap(
     yuzuko_core::op::host_ref::<crate::surface::WindowSurface>(scope, object)
   } {
     host.get().resize_bitmap(width, height);
+  }
+}
+
+pub fn stage_canvas(
+  device: &wgpu::Device,
+  queue: &wgpu::Queue,
+  id: u64,
+  width: u32,
+  height: u32,
+) -> bool {
+  hooks().is_some_and(|hooks| (hooks.stage)(device, queue, id, width, height))
+}
+
+pub fn stage_webgpu(
+  device: &wgpu::Device,
+  queue: &wgpu::Queue,
+  id: u64,
+  width: u32,
+  height: u32,
+) -> bool {
+  webgpu_hooks()
+    .is_some_and(|hooks| (hooks.stage)(device, queue, id, width, height))
+}
+
+pub fn discard_staged() {
+  if let Some(hooks) = hooks() {
+    (hooks.discard_present)();
+  }
+  if let Some(hooks) = webgpu_hooks() {
+    (hooks.discard_present)();
   }
 }
 

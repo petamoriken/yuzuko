@@ -338,8 +338,11 @@ impl Window {
     }
   }
 
-  pub(crate) fn run_frame(scope: &mut v8::PinScope, id: u64) {
-    let now = std::time::Instant::now();
+  pub(crate) fn run_frame(
+    scope: &mut v8::PinScope,
+    id: u64,
+    now: std::time::Instant,
+  ) {
     if !inbox::take_due_frame(id, now) {
       return;
     }
@@ -1136,7 +1139,11 @@ impl Window {
     scope: &mut v8::PinScope,
     callback: v8::Local<v8::Function>,
   ) -> Result<i32, OpError> {
-    self.require_open()?;
+    // `next_frame` starts at 0 and is incremented before it is stored, so 0
+    // is never a live handle. Returning it must not arm another redraw.
+    if !inbox::contains(self.id) {
+      return Ok(0);
+    }
     let id = self.next_frame.get().saturating_add(1);
     self.next_frame.set(id);
     self.frames.borrow_mut().push(Frame {
@@ -1144,7 +1151,6 @@ impl Window {
       callback: traced(scope, callback),
     });
     inbox::arm_frame(self.id);
-    os::request_redraw(self.id);
     Ok(id)
   }
 
