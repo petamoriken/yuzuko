@@ -137,7 +137,13 @@ fn window_examples_stay_open() {
     let output = child
       .wait_with_output()
       .unwrap_or_else(|error| panic!("wait {name}: {error}"));
-    let stderr = text(&output.stderr);
+    // Mesa's software Vulkan driver, used where Linux has no GPU (WSL, CI),
+    // prints this banner itself when the device opens.
+    let stderr = text(&output.stderr)
+      .lines()
+      .filter(|line| !line.contains("lavapipe is not a conformant vulkan"))
+      .collect::<Vec<_>>()
+      .join("\n");
     let stdout = text(&output.stdout);
     assert!(
       status.is_none(),
