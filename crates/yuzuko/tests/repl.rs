@@ -823,7 +823,6 @@ impl ConPty {
     }
   }
 
-  /// How many times `needle` appears on screen so far.
   fn count(&self, needle: &str) -> usize {
     self.text.matches(needle).count()
   }

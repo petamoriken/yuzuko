@@ -140,10 +140,7 @@ pub fn flag_object(
 }
 
 pub fn unsupported(what: &str) -> OpError {
-  OpError::dom(
-    "NotSupportedError",
-    format!("{what} is not in the phase 5 WebGPU subset"),
-  )
+  OpError::dom("NotSupportedError", format!("{what} is not implemented"))
 }
 
 pub fn promise_rejected(scope: &mut v8::PinScope, error: OpError) -> Js {

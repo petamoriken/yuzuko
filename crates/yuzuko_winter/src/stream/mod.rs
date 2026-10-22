@@ -1,9 +1,6 @@
 //! WHATWG streams used by fetch bodies, blobs, text, and compression.
 //!
-//! Byte streams do not implement BYOB readers yet. `ReadableStream` of the
-//! default type, `ReadableStream.from`, writers, transforms, and the
-//! built-in encoder, decoder, and compression streams are the phase 6
-//! surface.
+//! Byte streams do not implement BYOB readers yet.
 
 #![allow(clippy::too_many_arguments)]
 

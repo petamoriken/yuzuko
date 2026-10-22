@@ -369,8 +369,7 @@ pub fn clear_frame(id: u64) {
   });
 }
 
-/// Whether a callback is waiting for this window's next frame. Only the
-/// macOS display link asks.
+/// The macOS display link is the only caller.
 #[cfg(target_os = "macos")]
 pub fn frame_armed(id: u64) -> bool {
   SLOTS.with(|slots| {

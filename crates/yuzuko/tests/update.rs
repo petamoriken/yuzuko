@@ -1,5 +1,5 @@
-//! Phase 15 updates. The bundle for the host OS holds the real `yuzuko`
-//! binary: a `.app` on macOS and a directory on Windows and Linux.
+//! Update checks against a host bundle that contains the real `yuzuko`
+//! binary.
 
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -25,7 +25,7 @@ fn text(bytes: &[u8]) -> String {
 
 fn scratch(name: &str) -> PathBuf {
   let dir = std::env::temp_dir().join(format!(
-    "yuzuko-phase15-{name}-{}-{}",
+    "yuzuko-update-{name}-{}-{}",
     std::process::id(),
     std::time::SystemTime::now()
       .duration_since(std::time::UNIX_EPOCH)
@@ -222,7 +222,6 @@ fn bundle_name() -> &'static str {
   }
 }
 
-/// The resources directory and the executable inside a host bundle.
 fn bundle_paths(app: &Path) -> (PathBuf, PathBuf) {
   if cfg!(target_os = "macos") {
     (

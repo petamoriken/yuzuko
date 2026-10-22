@@ -24,8 +24,7 @@ fn is_lavapipe_banner(line: &str) -> bool {
     .contains("lavapipe is not a conformant vulkan")
 }
 
-/// Drops Mesa's lavapipe banner. Linux without a GPU prints it when the
-/// device opens. Text that does not contain the banner is returned unchanged.
+/// Mesa prints this when Linux opens lavapipe, which has no GPU.
 fn without_lavapipe_banner(text: &str) -> String {
   let lines: Vec<&str> = text.lines().collect();
   if !lines.iter().copied().any(is_lavapipe_banner) {
@@ -350,8 +349,7 @@ fn delayed_v8_housekeeping_does_not_keep_the_process_alive() {
     if let Some(status) = child.try_wait().expect("poll yuzuko") {
       break status;
     }
-    // Without the fix the process never exits, so a generous limit still
-    // catches it on a loaded machine.
+    // A hang never exits. The limit is long enough for a loaded machine.
     if start.elapsed() > Duration::from_secs(15) {
       let _ = child.kill();
       panic!("the script finished but the process stayed alive");

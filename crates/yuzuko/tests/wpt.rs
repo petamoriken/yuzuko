@@ -1,4 +1,4 @@
-//! Web-platform-tests for the enrolled phases.
+//! Web-platform-tests.
 //!
 //! `YUZUKO_WPT_UPDATE=1` rewrites `tests/wpt/expectations`.
 //! `YUZUKO_WPT_NO_IGNORE=1` also runs files marked `{"ignore": true}`.
@@ -45,8 +45,7 @@ add_completion_callback(function(tests, status) {
 });
 "#;
 
-/// Top-level expectation file, then the directories enrolled for the
-/// current phases. Phase 2 adds UI-event constructors and pointer events.
+/// Expectation filename, then the suite directories that file records.
 const ENROLLED: &[(&str, &[&str])] = &[
   ("url", &["url"]),
   ("encoding", &["encoding"]),
@@ -109,7 +108,7 @@ enum Expect {
 enum Kind {
   Script,
   Html,
-  /// Dedicated worker. The file runs inside the worker global.
+  /// The file runs in the worker global.
   Worker,
   Ignore,
 }
@@ -135,7 +134,7 @@ enum Outcome {
 }
 
 #[test]
-fn phase1_wpt_expectations_match() {
+fn wpt_expectations_match() {
   yuzuko_dom::register();
   yuzuko_winter::register();
   yuzuko_window::register();
@@ -326,8 +325,8 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
   None
 }
 
-/// Phase 12 ignores files that need a document-only node, a media element,
-/// a `MediaStream`, a permissions policy, or `AudioParam` automation.
+/// The file needs a document-only node, a media element, a `MediaStream`,
+/// a permissions policy, or `AudioParam` automation.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
   let test_file = name.ends_with(".html")
     || name.ends_with(".xhtml")
@@ -637,14 +636,10 @@ worker.onerror = function(event) {{
   )
 }
 
-/// `location` exists only for the WPT run, so variant and subset queries can
-/// read `location.search`. It is not a product `Location` object.
-/// Root-relative WPT URLs such as `/images/red.png` are files under the suite.
-/// `file:` URL resolution would otherwise replace the path from the filesystem
-/// root, and the product sandbox would reject that path.
 const WPT_HTTP: &str = "http://web-platform.test:8000";
 
-/// Fetch, MIME sniffing, and wasm streaming talk to the WPT server.
+/// These suites request a network origin, so they use the WPT server
+/// instead of `file:`.
 fn network_base(key: &str) -> Option<&'static str> {
   if key.starts_with("fetch/")
     || key.starts_with("mimesniff/")
@@ -764,6 +759,9 @@ fn port_open() -> bool {
   .is_ok()
 }
 
+/// A root-relative URL such as `/images/red.png` is a file under the suite.
+/// `file:` resolution would replace the path from the filesystem root, and
+/// the sandbox would reject it.
 fn fetch_script(suite: &Path, base: Option<&str>) -> String {
   let root = base
     .map(str::to_string)
@@ -793,6 +791,7 @@ fn fetch_script(suite: &Path, base: Option<&str>) -> String {
   )
 }
 
+/// Present only while a WPT file runs, so a variant query can read `search`.
 fn location_script(
   path: &Path,
   search: &str,

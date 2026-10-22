@@ -1,5 +1,5 @@
-//! Phase 14 packaging. The bundle for the host OS holds the real `yuzuko`
-//! binary: a `.app` on macOS and a directory on Windows and Linux.
+//! The host bundle holds the real `yuzuko` binary: a `.app` on macOS and a
+//! directory on Windows and Linux.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -117,7 +117,6 @@ fn refusals_write_nothing_and_do_not_panic() {
       missing_icon.to_str().unwrap(),
     ],
   );
-  // config is jsonc but I wrote jsonc name with json content. The tree used yuzuko.jsonc.
   assert_ne!(output.status.code(), Some(0), "{}", text(&output.stdout));
   assert!(
     !text(&output.stderr).contains("panicked"),
@@ -1191,8 +1190,6 @@ fn launch(exe: &Path, cwd: &Path, args: &[&str]) -> Launch {
   }
 }
 
-/// The current directory of a running process, or `""` when this OS does not
-/// expose it to another process.
 fn one_pixel_png() -> Vec<u8> {
   use base64::Engine;
   base64::prelude::BASE64_STANDARD
@@ -1212,7 +1209,6 @@ fn one_pixel_ico() -> Vec<u8> {
   ico
 }
 
-/// How many icons Windows finds in an executable's resources.
 #[cfg(windows)]
 fn icon_count(exe: &Path) -> u32 {
   use std::os::windows::ffi::OsStrExt;
@@ -1222,6 +1218,7 @@ fn icon_count(exe: &Path) -> u32 {
     .encode_wide()
     .chain(std::iter::once(0))
     .collect();
+  // -1 asks for the count rather than an icon.
   unsafe {
     ExtractIconExW(
       path.as_ptr(),
@@ -1233,6 +1230,7 @@ fn icon_count(exe: &Path) -> u32 {
   }
 }
 
+/// `""` when this OS does not expose another process's directory.
 fn process_cwd(pid: u32) -> String {
   if cfg!(target_os = "macos") {
     Command::new("lsof")
