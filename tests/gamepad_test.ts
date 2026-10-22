@@ -133,13 +133,7 @@ Yuzuko.test("haptic effects reject and GamepadEvent can be constructed", async (
     name = error instanceof DOMException ? error.name : "";
   }
   assert(name === "NotSupportedError", name);
-  let pulseName = "";
-  try {
-    await pad.vibrationActuator.pulse(0.5, 10);
-  } catch (error) {
-    pulseName = error instanceof DOMException ? error.name : "";
-  }
-  assert(pulseName === "NotSupportedError", pulseName);
+  assert(!("pulse" in pad.vibrationActuator), "pulse");
   assert(await pad.vibrationActuator.reset() === "complete", "reset");
   const event = new GamepadEvent("gamepadconnected", { gamepad: pad });
   assert(event.type === "gamepadconnected", "type");
@@ -197,14 +191,7 @@ Yuzuko.test("dual-rumble completes, preempts, and resets", async () => {
         "NotSupportedError",
       "trigger",
     );
-    assert(
-      (await rejectionName(() => actuator.pulse(2, 10))) === "TypeError",
-      "pulse value",
-    );
-    assert(
-      (await rejectionName(() => actuator.pulse(0.2, -5))) === "TypeError",
-      "pulse duration",
-    );
+    assert(!("pulse" in actuator), "pulse");
 
     const kept = actuator.playEffect("dual-rumble", {
       duration: 80,
@@ -253,7 +240,6 @@ Yuzuko.test("dual-rumble completes, preempts, and resets", async () => {
     const elapsed = performance.now() - started;
     assert(elapsed >= 50, "startDelay " + elapsed);
 
-    assert((await actuator.pulse(0.4, 20)) === "complete", "pulse");
     assert(
       (await actuator.playEffect("dual-rumble", {
         duration: 0,

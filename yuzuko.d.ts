@@ -9106,18 +9106,6 @@ interface GamepadHapticActuator {
   playEffect(type: GamepadHapticEffectType, params?: GamepadEffectParameters): Promise<GamepadHapticsResult>;
 
   /**
-   * Plays `"dual-rumble"` with both magnitudes set to `value` and `startDelay` 0.
-   * The current W3C Gamepad draft has no `pulse`.
-   *
-   * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
-   * @throws {@link DOMException} `NotSupportedError` when `"dual-rumble"` is not in `effects`.
-   * @throws {@link TypeError} When `value` is outside [0, 1], or `duration` is negative or non-finite.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadHapticActuator/pulse)
-   */
-  pulse(value: number, duration: number): Promise<GamepadHapticsResult>;
-
-  /**
    * Resolves `"complete"` while the gamepad is connected.
    * A playing effect resolves `"preempted"`.
    *

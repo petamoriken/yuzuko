@@ -1634,32 +1634,6 @@ impl GamepadHapticActuator {
     preempt_playing(self.token);
     resolve_text(scope, "complete")
   }
-
-  #[promise]
-  fn pulse(&self, scope: &mut v8::PinScope, value: f64, duration: f64) -> Js {
-    if !pad_connected(self.token) {
-      return disconnected(scope);
-    }
-    if !value.is_finite()
-      || !(0.0..=1.0).contains(&value)
-      || !duration.is_finite()
-      || duration < 0.0
-    {
-      return reject_type(scope, "The haptic effect parameters are invalid");
-    }
-    let duration_ms = effect_millis(duration).unwrap_or(MAX_EFFECT_MS);
-    start_effect(
-      scope,
-      self.token,
-      EffectKind::Dual,
-      EffectParams {
-        delay_ms: 0,
-        duration_ms,
-        strong: value,
-        weak: value,
-      },
-    )
-  }
 }
 
 pub struct GamepadPose;
