@@ -9072,7 +9072,9 @@ declare var GamepadButton: {
 
 
 /**
- * A haptic actuator that does not play effects.
+ * Haptic actuator for one gamepad.
+ *
+ * `effects` contains `"dual-rumble"` when the device can play that effect.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -9081,24 +9083,35 @@ declare var GamepadButton: {
 interface GamepadHapticActuator {
 
   /**
-   * Always empty.
+   * `"dual-rumble"` when the device can play it. Otherwise empty.
+   * The same frozen array is returned for the life of the actuator.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadHapticActuator/effects)
    */
   readonly effects: readonly GamepadHapticEffectType[];
 
   /**
+   * Plays `"dual-rumble"` when that type is listed in `effects`.
+   * `trigger-rumble` rejects `NotSupportedError`.
+   * The sum of `duration` and `startDelay` is capped at 5000 ms.
+   * The promise resolves `"complete"` or `"preempted"`.
+   *
    * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
-   * @throws {@link DOMException} `NotSupportedError` when it is connected.
-   * Haptic effects are not played.
+   * @throws {@link DOMException} `NotSupportedError` when `type` is not in `effects`.
+   * @throws {@link TypeError} When `type` is not a haptic effect type, or the
+   * parameters are not a valid effect.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadHapticActuator/playEffect)
    */
   playEffect(type: GamepadHapticEffectType, params?: GamepadEffectParameters): Promise<GamepadHapticsResult>;
 
   /**
+   * Plays `"dual-rumble"` with both magnitudes set to `value` and `startDelay` 0.
+   * The current W3C Gamepad draft has no `pulse`.
+   *
    * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
-   * @throws {@link DOMException} `NotSupportedError` when it is connected.
+   * @throws {@link DOMException} `NotSupportedError` when `"dual-rumble"` is not in `effects`.
+   * @throws {@link TypeError} When `value` is outside [0, 1], or `duration` is negative or non-finite.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadHapticActuator/pulse)
    */
@@ -9106,6 +9119,7 @@ interface GamepadHapticActuator {
 
   /**
    * Resolves `"complete"` while the gamepad is connected.
+   * A playing effect resolves `"preempted"`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
    *

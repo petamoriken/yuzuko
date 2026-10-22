@@ -1,15 +1,24 @@
 //! `navigator.getGamepads()` and `gamepadconnected` / `gamepaddisconnected`
 //! on `globalThis`. Already-connected devices are exposed without waiting
-//! for a button press. Haptic effects are not supported.
+//! for a button press. Dual-rumble plays when the device supports force
+//! feedback.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
+use std::time::Duration;
 
 use gilrs::Axis;
 use gilrs::Button;
 use gilrs::Gilrs;
 use gilrs::MappingSource;
+use gilrs::ff::BaseEffect;
+use gilrs::ff::BaseEffectType;
+use gilrs::ff::Effect;
+use gilrs::ff::EffectBuilder;
+use gilrs::ff::Repeat;
+use gilrs::ff::Replay;
+use gilrs::ff::Ticks;
 use yuzuko_core::op::Js;
 use yuzuko_core::op::OpError;
 use yuzuko_core::op::OpException;
@@ -47,6 +56,9 @@ const STANDARD_AXES: [Axis; 4] = [
   Axis::RightStickY,
 ];
 
+/// The Gamepad spec recommends capping `startDelay + duration` at 5 seconds.
+const MAX_EFFECT_MS: u64 = 5_000;
+
 #[derive(Clone, Copy, PartialEq)]
 struct ButtonReading {
   pressed: bool,
@@ -54,10 +66,17 @@ struct ButtonReading {
   value: f64,
 }
 
+struct Playing {
+  generation: u64,
+  resolver: v8::Global<v8::PromiseResolver>,
+  timer: i32,
+}
+
 struct Pad {
   object: v8::Global<v8::Object>,
   buttons: Vec<v8::Global<v8::Object>>,
   actuator: Option<v8::Global<v8::Object>>,
+  effect_list: v8::Global<v8::Value>,
   id: String,
   index: i32,
   connected: bool,
@@ -66,6 +85,11 @@ struct Pad {
   mapping: String,
   axes: Vec<f64>,
   readings: Vec<ButtonReading>,
+  dual_rumble: bool,
+  gilrs_id: Option<gilrs::GamepadId>,
+  play_seq: u64,
+  playing: Option<Playing>,
+  effect: Option<Effect>,
 }
 
 struct Store {
@@ -99,8 +123,18 @@ thread_local! {
 }
 
 pub fn clear() {
-  STORE.with(|slot| {
-    *slot.borrow_mut() = Store {
+  let timers = STORE.with(|slot| {
+    let mut store = slot.borrow_mut();
+    let mut timers = Vec::new();
+    for pad in store.pads.values_mut() {
+      if let Some(playing) = pad.playing.take() {
+        timers.push(playing.timer);
+      }
+      if let Some(effect) = pad.effect.take() {
+        let _ = effect.stop();
+      }
+    }
+    *store = Store {
       slots: Vec::new(),
       pads: HashMap::new(),
       gilrs_ids: HashMap::new(),
@@ -108,7 +142,11 @@ pub fn clear() {
       scanned: false,
       handlers: HashMap::new(),
     };
+    timers
   });
+  for timer in timers {
+    yuzuko_core::cancel_host(timer);
+  }
 }
 
 pub fn poll(scope: &mut v8::PinScope) -> bool {
@@ -192,7 +230,11 @@ fn apply_test(
           );
         }
       }
-      connect_pad(scope, id, mapping, axes, readings);
+      // Test pads have no gilrs device. `vibration: true` lists dual-rumble
+      // and runs the promise state machine without a motor.
+      let dual_rumble =
+        object_flag(scope, record, "vibration").unwrap_or(false);
+      connect_pad(scope, id, mapping, axes, readings, dual_rumble, None);
       Ok(())
     }
     "update" => {
@@ -236,6 +278,7 @@ struct Snapshot {
   mapping: String,
   axes: Vec<f64>,
   readings: Vec<ButtonReading>,
+  dual_rumble: bool,
 }
 
 fn read_devices() -> Option<Vec<Snapshot>> {
@@ -315,6 +358,7 @@ fn snapshot(pad: &gilrs::Gamepad) -> Snapshot {
     mapping,
     axes,
     readings,
+    dual_rumble: pad.is_ff_supported(),
   }
 }
 
@@ -368,6 +412,8 @@ fn apply_snapshots(scope: &mut v8::PinScope, snaps: Vec<Snapshot>) -> bool {
         snap.mapping.clone(),
         snap.axes.clone(),
         snap.readings.clone(),
+        snap.dual_rumble,
+        Some(snap.gid),
       );
       STORE.with(|slot| {
         slot.borrow_mut().gilrs_ids.insert(snap.gid, token);
@@ -408,6 +454,8 @@ fn connect_pad(
   mapping: String,
   axes: Vec<f64>,
   readings: Vec<ButtonReading>,
+  dual_rumble: bool,
+  gilrs_id: Option<gilrs::GamepadId>,
 ) -> u64 {
   let (token, index) = STORE.with(|slot| {
     let mut store = slot.borrow_mut();
@@ -442,6 +490,7 @@ fn connect_pad(
   let actuator = unsafe {
     yuzuko_core::op::wrap_instance(scope, GamepadHapticActuator { token })
   };
+  let effect_list = effect_names(scope, dual_rumble);
   STORE.with(|slot| {
     slot.borrow_mut().pads.insert(
       token,
@@ -449,6 +498,7 @@ fn connect_pad(
         object,
         buttons,
         actuator: Some(v8::Global::new(scope, actuator)),
+        effect_list,
         id,
         index: index as i32,
         connected: true,
@@ -457,6 +507,11 @@ fn connect_pad(
         mapping,
         axes,
         readings,
+        dual_rumble,
+        gilrs_id,
+        play_seq: 0,
+        playing: None,
+        effect: None,
       },
     );
   });
@@ -465,6 +520,7 @@ fn connect_pad(
 }
 
 fn disconnect_pad(scope: &mut v8::PinScope, token: u64) -> bool {
+  preempt_playing(token);
   let exposed = STORE.with(|slot| {
     let mut store = slot.borrow_mut();
     let Some(pad) = store.pads.get_mut(&token) else {
@@ -805,6 +861,29 @@ fn object_flag(
   Some(value.boolean_value(scope))
 }
 
+fn frozen_strings<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  values: &[&str],
+) -> v8::Local<'s, v8::Array> {
+  let array = v8::Array::new(scope, values.len() as i32);
+  for (index, value) in values.iter().enumerate() {
+    let text = v8::String::new(scope, value).unwrap();
+    array.set_index(scope, index as u32, text.into());
+  }
+  array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  array
+}
+
+fn effect_names(
+  scope: &mut v8::PinScope,
+  dual_rumble: bool,
+) -> v8::Global<v8::Value> {
+  let names: &[&str] = if dual_rumble { &["dual-rumble"] } else { &[] };
+  let array = frozen_strings(scope, names);
+  let value: v8::Local<v8::Value> = array.into();
+  v8::Global::new(scope, value)
+}
+
 fn frozen_numbers<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   values: &[f64],
@@ -1075,6 +1154,416 @@ fn reading(token: u64, index: u32) -> Option<ButtonReading> {
   })
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EffectKind {
+  Dual,
+  Trigger,
+}
+
+struct EffectParams {
+  delay_ms: u64,
+  duration_ms: u64,
+  strong: f64,
+  weak: f64,
+}
+
+fn disconnected(scope: &mut v8::PinScope) -> Js {
+  reject_dom(scope, "InvalidStateError", "The gamepad is disconnected")
+}
+
+fn reject_type(scope: &mut v8::PinScope, message: &str) -> Js {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  let message = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::type_error(scope, message);
+  resolver.reject(scope, error);
+  let promise: v8::Local<v8::Value> = promise.into();
+  Js(v8::Global::new(scope, promise))
+}
+
+fn open_promise(
+  scope: &mut v8::PinScope,
+) -> (v8::Global<v8::PromiseResolver>, Js) {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  let resolver = v8::Global::new(scope, resolver);
+  let promise: v8::Local<v8::Value> = promise.into();
+  (resolver, Js(v8::Global::new(scope, promise)))
+}
+
+fn resolve_resolver(
+  scope: &mut v8::PinScope,
+  resolver: v8::Global<v8::PromiseResolver>,
+  text: &str,
+) {
+  let resolver = v8::Local::new(scope, resolver);
+  let text = v8::String::new(scope, text).unwrap();
+  resolver.resolve(scope, text.into());
+}
+
+fn reject_resolver(
+  scope: &mut v8::PinScope,
+  resolver: v8::Global<v8::PromiseResolver>,
+  name: &str,
+  message: &str,
+) {
+  let resolver = v8::Local::new(scope, resolver);
+  let error = yuzuko_core::op::new_dom_exception(scope, name, message)
+    .map(v8::Local::<v8::Value>::from)
+    .unwrap_or_else(|| {
+      let message = v8::String::new(scope, message).unwrap();
+      v8::Exception::type_error(scope, message)
+    });
+  resolver.reject(scope, error);
+}
+
+/// WebIDL `unsigned long long`, then the 5 second cap.
+///
+/// A negative value wraps to a huge unsigned integer, which the cap clamps.
+fn effect_millis(number: f64) -> Result<u64, ()> {
+  if !number.is_finite() {
+    return Err(());
+  }
+  let trunc = number.trunc();
+  if trunc < 0.0 || trunc >= MAX_EFFECT_MS as f64 {
+    return Ok(MAX_EFFECT_MS);
+  }
+  Ok(trunc as u64)
+}
+
+fn clamp_effect(start_delay: u64, duration: u64) -> (u64, u64) {
+  let start_delay = start_delay.min(MAX_EFFECT_MS);
+  let duration = duration.min(MAX_EFFECT_MS - start_delay);
+  (start_delay, duration)
+}
+
+fn unit_interval(number: f64) -> Result<f64, ()> {
+  if number.is_finite() && (0.0..=1.0).contains(&number) {
+    Ok(number)
+  } else {
+    Err(())
+  }
+}
+
+fn motor_magnitude(value: f64) -> u16 {
+  let scaled = (value * 65535.0).round();
+  if scaled <= 0.0 {
+    0
+  } else if scaled >= 65535.0 {
+    65535
+  } else {
+    scaled as u16
+  }
+}
+
+fn effect_kind(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<EffectKind, ()> {
+  let text = {
+    v8::tc_scope!(let tc, scope);
+    match value.to_string(tc) {
+      Some(text) => Ok(text.to_rust_string_lossy(tc)),
+      None => Err(()),
+    }
+  }?;
+  match text.as_str() {
+    "dual-rumble" => Ok(EffectKind::Dual),
+    "trigger-rumble" => Ok(EffectKind::Trigger),
+    _ => Err(()),
+  }
+}
+
+fn effect_parameters(
+  scope: &mut v8::PinScope,
+  kind: EffectKind,
+  params: Option<v8::Local<v8::Value>>,
+) -> Result<EffectParams, ()> {
+  let Some(value) = params.filter(|value| !value.is_null_or_undefined()) else {
+    return Ok(EffectParams {
+      delay_ms: 0,
+      duration_ms: 0,
+      strong: 0.0,
+      weak: 0.0,
+    });
+  };
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(());
+  };
+  let duration_ms = dictionary_millis(scope, object, "duration")?.unwrap_or(0);
+  let delay_ms = dictionary_millis(scope, object, "startDelay")?.unwrap_or(0);
+  let strong =
+    dictionary_unit(scope, object, "strongMagnitude")?.unwrap_or(0.0);
+  let weak = dictionary_unit(scope, object, "weakMagnitude")?.unwrap_or(0.0);
+  if kind == EffectKind::Trigger {
+    let _ = dictionary_unit(scope, object, "leftTrigger")?.unwrap_or(0.0);
+    let _ = dictionary_unit(scope, object, "rightTrigger")?.unwrap_or(0.0);
+  }
+  Ok(EffectParams {
+    delay_ms,
+    duration_ms,
+    strong,
+    weak,
+  })
+}
+
+fn dictionary_millis(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<u64>, ()> {
+  match dictionary_number(scope, object, name)? {
+    Some(number) => effect_millis(number).map(Some),
+    None => Ok(None),
+  }
+}
+
+fn dictionary_unit(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<f64>, ()> {
+  match dictionary_number(scope, object, name)? {
+    Some(number) => unit_interval(number).map(Some),
+    None => Ok(None),
+  }
+}
+
+fn dictionary_number(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<f64>, ()> {
+  v8::tc_scope!(let tc, scope);
+  let Some(key) = v8::String::new(tc, name) else {
+    return Err(());
+  };
+  match object.get(tc, key.into()) {
+    None => Err(()),
+    Some(value) if value.is_undefined() => Ok(None),
+    Some(value) => match value.number_value(tc) {
+      Some(number) => Ok(Some(number)),
+      None => Err(()),
+    },
+  }
+}
+
+fn effect_supported(token: u64, kind: EffectKind) -> bool {
+  if kind != EffectKind::Dual {
+    return false;
+  }
+  STORE.with(|slot| {
+    slot
+      .borrow()
+      .pads
+      .get(&token)
+      .is_some_and(|pad| pad.dual_rumble)
+  })
+}
+
+fn start_effect(
+  scope: &mut v8::PinScope,
+  token: u64,
+  kind: EffectKind,
+  params: EffectParams,
+) -> Js {
+  if !pad_connected(token) {
+    return disconnected(scope);
+  }
+  preempt_playing(token);
+  if !effect_supported(token, kind) {
+    return reject_dom(
+      scope,
+      "NotSupportedError",
+      "The haptic effect is not supported",
+    );
+  }
+  let (delay_ms, duration_ms) =
+    clamp_effect(params.delay_ms, params.duration_ms);
+  let (resolver, promise) = open_promise(scope);
+  let uploaded = start_motors(
+    token,
+    motor_magnitude(params.strong),
+    motor_magnitude(params.weak),
+    delay_ms as u32,
+    duration_ms as u32,
+  );
+  let effect = match uploaded {
+    Ok(effect) => effect,
+    Err(()) => {
+      reject_resolver(
+        scope,
+        resolver,
+        "NotSupportedError",
+        "The haptic effect is not supported",
+      );
+      return promise;
+    }
+  };
+  let Some(generation) = next_generation(token) else {
+    if let Some(effect) = effect {
+      let _ = effect.stop();
+    }
+    reject_resolver(
+      scope,
+      resolver,
+      "InvalidStateError",
+      "The gamepad is disconnected",
+    );
+    return promise;
+  };
+  let timer = yuzuko_core::schedule_host(
+    Duration::from_millis(delay_ms + duration_ms),
+    move |scope| complete_playing(scope, token, generation),
+  );
+  if !store_playing(token, generation, resolver.clone(), timer, effect) {
+    yuzuko_core::cancel_host(timer);
+    reject_resolver(
+      scope,
+      resolver,
+      "InvalidStateError",
+      "The gamepad is disconnected",
+    );
+  }
+  promise
+}
+
+fn next_generation(token: u64) -> Option<u64> {
+  STORE.with(|slot| {
+    let mut store = slot.borrow_mut();
+    let pad = store.pads.get_mut(&token)?;
+    pad.play_seq = pad.play_seq.wrapping_add(1);
+    Some(pad.play_seq)
+  })
+}
+
+fn store_playing(
+  token: u64,
+  generation: u64,
+  resolver: v8::Global<v8::PromiseResolver>,
+  timer: i32,
+  effect: Option<Effect>,
+) -> bool {
+  STORE.with(|slot| {
+    let mut store = slot.borrow_mut();
+    let Some(pad) = store.pads.get_mut(&token) else {
+      if let Some(effect) = effect {
+        let _ = effect.stop();
+      }
+      return false;
+    };
+    pad.playing = Some(Playing {
+      generation,
+      resolver,
+      timer,
+    });
+    pad.effect = effect;
+    true
+  })
+}
+
+fn complete_playing(scope: &mut v8::PinScope, token: u64, generation: u64) {
+  let taken = STORE.with(|slot| {
+    let mut store = slot.borrow_mut();
+    let pad = store.pads.get_mut(&token)?;
+    if pad
+      .playing
+      .as_ref()
+      .is_none_or(|playing| playing.generation != generation)
+    {
+      return None;
+    }
+    let playing = pad.playing.take()?;
+    let effect = pad.effect.take();
+    Some((playing.resolver, effect))
+  });
+  let Some((resolver, effect)) = taken else {
+    return;
+  };
+  if let Some(effect) = effect {
+    let _ = effect.stop();
+  }
+  resolve_resolver(scope, resolver, "complete");
+}
+
+fn preempt_playing(token: u64) {
+  let Some((resolver, timer, effect)) = take_playing(token) else {
+    return;
+  };
+  yuzuko_core::cancel_host(timer);
+  if let Some(effect) = effect {
+    let _ = effect.stop();
+  }
+  yuzuko_core::enqueue(move |scope| {
+    resolve_resolver(scope, resolver, "preempted");
+  });
+}
+
+fn take_playing(
+  token: u64,
+) -> Option<(v8::Global<v8::PromiseResolver>, i32, Option<Effect>)> {
+  STORE.with(|slot| {
+    let mut store = slot.borrow_mut();
+    let pad = store.pads.get_mut(&token)?;
+    let playing = pad.playing.take()?;
+    let effect = pad.effect.take();
+    Some((playing.resolver, playing.timer, effect))
+  })
+}
+
+/// `EffectBuilder` repeats forever unless `Repeat::For` is set. A
+/// `play_for` of zero ticks also makes gilrs divide by zero, so a silent
+/// effect stays on the host timer.
+fn start_motors(
+  token: u64,
+  strong: u16,
+  weak: u16,
+  delay_ms: u32,
+  duration_ms: u32,
+) -> Result<Option<Effect>, ()> {
+  if duration_ms == 0 || (strong == 0 && weak == 0) {
+    return Ok(None);
+  }
+  let gid = STORE
+    .with(|slot| slot.borrow().pads.get(&token).and_then(|pad| pad.gilrs_id));
+  let Some(gid) = gid else {
+    return Ok(None);
+  };
+  DEVICES.with(|slot| {
+    let mut devices = slot.borrow_mut();
+    let Some(gilrs) = devices.gilrs.as_deref_mut() else {
+      return Err(());
+    };
+    let replay = Replay {
+      after: Ticks::from_ms(delay_ms),
+      play_for: Ticks::from_ms(duration_ms),
+      with_delay: Ticks::from_ms(0),
+    };
+    if replay.play_for == Ticks::from_ms(0) {
+      return Ok(None);
+    }
+    let span = replay.after + replay.play_for;
+    let mut builder = EffectBuilder::new();
+    let effect = builder
+      .repeat(Repeat::For(span))
+      .gamepads(&[gid])
+      .add_effect(BaseEffect {
+        kind: BaseEffectType::Strong { magnitude: strong },
+        scheduling: replay,
+        envelope: Default::default(),
+      })
+      .add_effect(BaseEffect {
+        kind: BaseEffectType::Weak { magnitude: weak },
+        scheduling: replay,
+        envelope: Default::default(),
+      })
+      .finish(gilrs)
+      .map_err(|_| ())?;
+    effect.play().map_err(|_| ())?;
+    Ok(Some(effect))
+  })
+}
+
 pub struct GamepadHapticActuator {
   token: u64,
 }
@@ -1096,57 +1585,79 @@ impl GamepadHapticActuator {
 
   #[getter]
   fn effects(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    let array = frozen_objects(scope, &[]);
-    js_array(scope, array)
+    let effects = STORE.with(|slot| {
+      slot
+        .borrow()
+        .pads
+        .get(&self.token)
+        .map(|pad| pad.effect_list.clone())
+    });
+    match effects {
+      Some(effects) => Js(effects),
+      None => {
+        let array = frozen_strings(scope, &[]);
+        js_array(scope, array)
+      }
+    }
   }
 
   #[promise]
   fn play_effect(
     &self,
     scope: &mut v8::PinScope,
-    _type: v8::Local<v8::Value>,
-    _params: Option<v8::Local<v8::Value>>,
+    effect_type: v8::Local<v8::Value>,
+    params: Option<v8::Local<v8::Value>>,
   ) -> Js {
     if !pad_connected(self.token) {
-      return reject_dom(
-        scope,
-        "InvalidStateError",
-        "The gamepad is disconnected",
-      );
+      return disconnected(scope);
     }
-    reject_dom(
-      scope,
-      "NotSupportedError",
-      "The haptic effect is not supported",
-    )
+    let kind = match effect_kind(scope, effect_type) {
+      Ok(kind) => kind,
+      Err(()) => {
+        return reject_type(scope, "The haptic effect type is invalid");
+      }
+    };
+    let params = match effect_parameters(scope, kind, params) {
+      Ok(params) => params,
+      Err(()) => {
+        return reject_type(scope, "The haptic effect parameters are invalid");
+      }
+    };
+    start_effect(scope, self.token, kind, params)
   }
 
   #[promise]
   fn reset(&self, scope: &mut v8::PinScope) -> Js {
     if !pad_connected(self.token) {
-      return reject_dom(
-        scope,
-        "InvalidStateError",
-        "The gamepad is disconnected",
-      );
+      return disconnected(scope);
     }
+    preempt_playing(self.token);
     resolve_text(scope, "complete")
   }
 
   #[promise]
-  fn pulse(&self, scope: &mut v8::PinScope, _value: f64, _duration: f64) -> Js {
+  fn pulse(&self, scope: &mut v8::PinScope, value: f64, duration: f64) -> Js {
     if !pad_connected(self.token) {
-      return reject_dom(
-        scope,
-        "InvalidStateError",
-        "The gamepad is disconnected",
-      );
+      return disconnected(scope);
     }
-    reject_dom(
+    if !value.is_finite()
+      || !(0.0..=1.0).contains(&value)
+      || !duration.is_finite()
+      || duration < 0.0
+    {
+      return reject_type(scope, "The haptic effect parameters are invalid");
+    }
+    let duration_ms = effect_millis(duration).unwrap_or(MAX_EFFECT_MS);
+    start_effect(
       scope,
-      "NotSupportedError",
-      "The haptic effect is not supported",
+      self.token,
+      EffectKind::Dual,
+      EffectParams {
+        delay_ms: 0,
+        duration_ms,
+        strong: value,
+        weak: value,
+      },
     )
   }
 }
@@ -1341,4 +1852,24 @@ fn read_gamepad_init(
     return Err(OpError::type_("GamepadEvent requires a Gamepad"));
   }
   Ok(Some(yuzuko_core::op::traced(scope, gamepad)))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{MAX_EFFECT_MS, clamp_effect, effect_millis, motor_magnitude};
+
+  #[test]
+  fn effect_time_truncates_and_caps_the_total() {
+    assert_eq!(effect_millis(10.9), Ok(10));
+    assert_eq!(effect_millis(0.0), Ok(0));
+    assert_eq!(effect_millis(-1.0), Ok(MAX_EFFECT_MS));
+    assert_eq!(effect_millis(6_000.0), Ok(MAX_EFFECT_MS));
+    assert!(effect_millis(f64::NAN).is_err());
+    assert!(effect_millis(f64::INFINITY).is_err());
+    assert_eq!(clamp_effect(2_000, 4_000), (2_000, 3_000));
+    assert_eq!(clamp_effect(5_000, 10), (5_000, 0));
+    assert_eq!(motor_magnitude(0.0), 0);
+    assert_eq!(motor_magnitude(1.0), 65535);
+    assert_eq!(motor_magnitude(0.5), 32768);
+  }
 }
