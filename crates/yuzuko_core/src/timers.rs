@@ -76,27 +76,45 @@ pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
   host::with_mut(|state| state.timer_nesting += 1);
   {
     v8::tc_scope!(let tc, scope);
-    let failed = match &timer.callback {
-      TimerCallback::FlushRejections => {
-        crate::runtime::flush_rejection_notifications(tc);
-        false
+    let host = match &timer.callback {
+      TimerCallback::Host(_) => {
+        let TimerCallback::Host(finish) = std::mem::replace(
+          &mut timer.callback,
+          TimerCallback::FlushRejections,
+        ) else {
+          unreachable!("host timer");
+        };
+        Some(finish)
       }
-      TimerCallback::Function(function) => {
-        let function = v8::Local::new(tc, function);
-        let receiver = js::global(tc);
-        let args: Vec<v8::Local<v8::Value>> = timer
-          .args
-          .iter()
-          .map(|arg| v8::Local::new(tc, arg))
-          .collect();
-        function.call(tc, receiver.into(), &args).is_none()
+      _ => None,
+    };
+    let failed = if let Some(finish) = host {
+      finish(tc);
+      false
+    } else {
+      match &timer.callback {
+        TimerCallback::FlushRejections => {
+          crate::runtime::flush_rejection_notifications(tc);
+          false
+        }
+        TimerCallback::Function(function) => {
+          let function = v8::Local::new(tc, function);
+          let receiver = js::global(tc);
+          let args: Vec<v8::Local<v8::Value>> = timer
+            .args
+            .iter()
+            .map(|arg| v8::Local::new(tc, arg))
+            .collect();
+          function.call(tc, receiver.into(), &args).is_none()
+        }
+        TimerCallback::Code(code) => match v8::String::new(tc, code) {
+          Some(source) => v8::Script::compile(tc, source, None)
+            .and_then(|script| script.run(tc))
+            .is_none(),
+          None => true,
+        },
+        TimerCallback::Host(_) => false,
       }
-      TimerCallback::Code(code) => match v8::String::new(tc, code) {
-        Some(source) => v8::Script::compile(tc, source, None)
-          .and_then(|script| script.run(tc))
-          .is_none(),
-        None => true,
-      },
     };
     if failed {
       let thrown = tc.exception().map(|value| v8::Global::new(tc, value));
@@ -167,9 +185,43 @@ fn clear_timer(
   let Some(id) = args.get(0).int32_value(scope) else {
     return;
   };
+  // Host playback timers use negative ids.
+  if id <= 0 {
+    return;
+  }
   host::with_mut(|state| {
     state.timers.retain(|timer| timer.id != id);
     *state.timer_generation.entry(id).or_insert(0) += 1;
+  });
+}
+
+/// Runs `finish` on the isolate thread after `delay`.
+///
+/// The returned id is negative. `clearTimeout` only cancels ids JavaScript
+/// received, which are positive. [`cancel_host`] drops this callback.
+pub fn schedule_host(
+  delay: Duration,
+  finish: impl FnOnce(&mut v8::PinScope) + 'static,
+) -> i32 {
+  host::with_mut(|state| {
+    state.next_timer_id += 1;
+    let id = -state.next_timer_id;
+    state.timers.push(Timer {
+      id,
+      generation: 0,
+      when: Instant::now() + delay,
+      repeat_ms: None,
+      callback: TimerCallback::Host(Box::new(finish)),
+      args: Vec::new(),
+    });
+    id
+  })
+}
+
+/// Drops a callback scheduled with [`schedule_host`].
+pub fn cancel_host(id: i32) {
+  host::with_mut(|state| {
+    state.timers.retain(|timer| timer.id != id);
   });
 }
 

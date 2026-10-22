@@ -1,15 +1,17 @@
-//! Audio graph. One quantum in, one block out. No OS audio device.
+//! Audio graph. One quantum in, one block out.
+//! Realtime output copies rendered quanta into a playback ring.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::time::Duration;
 
 use yuzuko_core::op::{Js, OpError, OpException};
 
+use crate::playback::{self, Pace};
 use crate::util::{self, f32_array, f32_to_bytes};
 
 const MAX_CHANNELS: u32 = 32;
 const MAX_FRAMES: u32 = 20_000_000;
-const REALTIME_QUANTA: u32 = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RunState {
@@ -244,7 +246,11 @@ struct ContextRec {
   render_called: bool,
   object: Option<v8::Global<v8::Object>>,
   worklet: Option<WorkletRec>,
-  pump_left: u32,
+  // Realtime `currentTime` stays 0 until a source starts.
+  clock_started: bool,
+  // Bumped on suspend and close so a listen dropped with the device cannot
+  // schedule another quantum.
+  generation: u64,
   pump_queued: bool,
 }
 
@@ -269,6 +275,7 @@ thread_local! {
 }
 
 pub fn clear() {
+  playback::clear();
   CONTEXTS.with(|slot| slot.borrow_mut().clear());
   NODES.with(|slot| slot.borrow_mut().clear());
   PARAMS.with(|slot| slot.borrow_mut().clear());
@@ -836,7 +843,8 @@ pub fn register_context(
         render_called: false,
         object: None,
         worklet: None,
-        pump_left: 0,
+        clock_started: false,
+        generation: 0,
         pump_queued: false,
       },
     );
@@ -903,6 +911,10 @@ pub fn base_latency(id: u64) -> Option<f64> {
       .get(&id)
       .map(|context| f64::from(context.quantum) / context.sample_rate)
   })
+}
+
+pub fn output_latency(id: u64) -> f64 {
+  playback::output_latency(id)
 }
 
 pub fn destination_object(id: u64) -> Option<v8::Global<v8::Object>> {
@@ -1218,8 +1230,15 @@ pub fn source_start(
     node.ended = false;
     Ok(())
   })?;
-  if realtime && running {
-    kick(scope, ctx);
+  if realtime {
+    CONTEXTS.with(|contexts| {
+      if let Some(context) = contexts.borrow_mut().get_mut(&ctx) {
+        context.clock_started = true;
+      }
+    });
+    if running {
+      kick(scope, ctx);
+    }
   }
   Ok(())
 }
@@ -1475,6 +1494,9 @@ pub fn suspend_realtime(
       return Err(Fault::dom("InvalidStateError", "The context is closed"));
     }
     context.state = RunState::Suspended;
+    context.generation = context.generation.wrapping_add(1);
+    context.pump_queued = false;
+    playback::pause(id);
     Ok(true)
   })
 }
@@ -1491,6 +1513,7 @@ pub fn resume_realtime(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
       return Err(Fault::dom("InvalidStateError", "The context is closed"));
     }
     context.state = RunState::Running;
+    playback::resume(id);
     Ok(true)
   })?;
   kick(scope, id);
@@ -1506,7 +1529,9 @@ pub fn close_context(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
       return Err(Fault::dom("InvalidStateError", "The context is closed"));
     }
     context.state = RunState::Closed;
-    context.pump_left = 0;
+    context.generation = context.generation.wrapping_add(1);
+    context.pump_queued = false;
+    playback::stop(id);
     Ok(true)
   })
 }
@@ -1779,70 +1804,112 @@ fn suspend_now(scope: &mut v8::PinScope, id: u64) {
 }
 
 fn kick(scope: &mut v8::PinScope, id: u64) {
-  let queued = CONTEXTS.with(|contexts| {
+  let generation = CONTEXTS.with(|contexts| {
     let mut contexts = contexts.borrow_mut();
-    let Some(context) = contexts.get_mut(&id) else {
-      return true;
-    };
-    if !context.realtime || context.state != RunState::Running {
-      return true;
-    }
-    if context.pump_queued {
-      return true;
-    }
-    if context.pump_left == 0 {
-      context.pump_left = REALTIME_QUANTA;
+    let context = contexts.get_mut(&id)?;
+    if !context.realtime
+      || context.state != RunState::Running
+      || !context.clock_started
+      || context.pump_queued
+    {
+      return None;
     }
     context.pump_queued = true;
-    false
+    Some(context.generation)
   });
-  if queued {
+  let Some(generation) = generation else {
     return;
-  }
+  };
   // The current stack may still be assigning `onmessage`. Render on a task.
   let _ = scope;
-  yuzuko_core::enqueue(move |scope| pump(scope, id));
+  yuzuko_core::enqueue(move |scope| pump(scope, id, generation));
 }
 
-fn pump(scope: &mut v8::PinScope, id: u64) {
-  let (quantum, frame, running) = CONTEXTS
-    .with(|contexts| {
-      contexts.borrow().get(&id).map(|context| {
-        (
-          context.quantum,
-          context.frame,
-          context.state == RunState::Running,
-        )
-      })
-    })
-    .unwrap_or((0, 0, false));
+fn playback_active(id: u64, generation: u64) -> bool {
   CONTEXTS.with(|contexts| {
-    if let Some(context) = contexts.borrow_mut().get_mut(&id) {
+    contexts.borrow().get(&id).is_some_and(|context| {
+      context.generation == generation
+        && context.clock_started
+        && context.realtime
+        && context.state == RunState::Running
+    })
+  })
+}
+
+fn release_pump(id: u64, generation: u64) {
+  CONTEXTS.with(|contexts| {
+    if let Some(context) = contexts.borrow_mut().get_mut(&id)
+      && context.generation == generation
+    {
       context.pump_queued = false;
     }
   });
-  if !running || quantum == 0 {
+}
+
+fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
+  let Some((quantum, frame, rate)) = CONTEXTS.with(|contexts| {
+    let contexts = contexts.borrow();
+    let context = contexts.get(&id)?;
+    if !playback_matches(context, generation) {
+      return None;
+    }
+    Some((context.quantum, context.frame, context.sample_rate))
+  }) else {
+    release_pump(id, generation);
+    return;
+  };
+  let block = render_destination(scope, id, frame, quantum as usize);
+  if !playback_active(id, generation) {
+    release_pump(id, generation);
     return;
   }
-  let _block = render_destination(scope, id, frame, quantum as usize);
   CONTEXTS.with(|contexts| {
-    if let Some(context) = contexts.borrow_mut().get_mut(&id) {
-      context.frame = frame + u64::from(quantum);
-      if context.pump_left > 0 {
-        context.pump_left -= 1;
-      }
+    if let Some(context) = contexts.borrow_mut().get_mut(&id)
+      && context.generation == generation
+    {
+      context.frame = frame.saturating_add(u64::from(quantum));
     }
   });
   publish_worklet_time(scope, id);
   fire_ended(scope);
-  let more = CONTEXTS.with(|contexts| {
-    contexts.borrow().get(&id).is_some_and(|context| {
-      context.pump_left > 0 && context.state == RunState::Running
-    })
-  });
-  if more {
-    kick(scope, id);
+  if !playback_active(id, generation) {
+    release_pump(id, generation);
+    return;
   }
+  playback::ensure(id, rate, quantum);
+  let pace = playback::submit(id, &block, quantum as usize, rate);
+  if !playback_active(id, generation) {
+    release_pump(id, generation);
+    return;
+  }
+  match pace {
+    Pace::Immediate => {
+      yuzuko_core::enqueue(move |scope| pump(scope, id, generation));
+    }
+    Pace::Wait => {
+      let listen =
+        yuzuko_core::listen(move |scope| pump(scope, id, generation));
+      playback::arm_listen(id, listen);
+    }
+    Pace::Timer => {
+      let seconds = f64::from(quantum) / rate;
+      let timer = yuzuko_core::schedule_host(
+        Duration::from_secs_f64(seconds),
+        move |scope| pump(scope, id, generation),
+      );
+      playback::arm_timer(id, timer);
+    }
+  }
+}
+
+fn playback_matches(context: &ContextRec, generation: u64) -> bool {
+  context.generation == generation
+    && context.clock_started
+    && context.realtime
+    && context.state == RunState::Running
+    && context.quantum > 0
+    && context.sample_rate.is_finite()
+    && context.sample_rate > 0.0
 }
 
 fn render_destination(

@@ -217231,79 +217231,19 @@
   "encoding/sniffing.html": {
     "ignore": true
   },
-  "encoding/streams/backpressure.any.js": false,
+  "encoding/streams/backpressure.any.js": true,
   "encoding/streams/crashtests/from-cross-realm.html": {
     "ignore": true
   },
-  "encoding/streams/decode-attributes.any.js": {
-    "expectedFailures": [
-      "a throwing fatal member should cause the constructor to throw",
-      "a throwing ignoreBOM member should cause the constructor to throw"
-    ]
-  },
-  "encoding/streams/decode-bad-chunks.any.js": false,
-  "encoding/streams/decode-ignore-bom.any.js": {
-    "expectedFailures": [
-      "ignoreBOM should work for encoding utf-16be, split at character 0",
-      "ignoreBOM should work for encoding utf-16be, split at character 1",
-      "ignoreBOM should work for encoding utf-16be, split at character 2",
-      "ignoreBOM should work for encoding utf-16be, split at character 3",
-      "ignoreBOM should work for encoding utf-16le, split at character 0",
-      "ignoreBOM should work for encoding utf-16le, split at character 1",
-      "ignoreBOM should work for encoding utf-16le, split at character 2",
-      "ignoreBOM should work for encoding utf-16le, split at character 3",
-      "ignoreBOM should work for encoding utf-8, split at character 0",
-      "ignoreBOM should work for encoding utf-8, split at character 1",
-      "ignoreBOM should work for encoding utf-8, split at character 2",
-      "ignoreBOM should work for encoding utf-8, split at character 3"
-    ]
-  },
-  "encoding/streams/decode-incomplete-input.any.js": {
-    "expectedFailures": [
-      "incomplete input with error mode \"fatal\" should error the stream",
-      "incomplete input with error mode \"replacement\" should end with a replacement character"
-    ]
-  },
-  "encoding/streams/decode-non-utf8.any.js": false,
-  "encoding/streams/decode-split-character.any.js": {
-    "expectedFailures": [
-      "a code point should be emitted as soon as all bytes are available",
-      "a code point split between chunks should not be emitted until all bytes are available; split point = 2",
-      "a code point split between chunks should not be emitted until all bytes are available; split point = 3",
-      "a code point split between chunks should not be emitted until all bytes are available; split point = 4",
-      "a code point split between chunks should not be emitted until all bytes are available; split point = 5",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 1",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 2",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 3",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 4",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 5",
-      "an empty chunk inside a code point split between chunks should not change the output; split point = 6"
-    ]
-  },
-  "encoding/streams/decode-utf8.any.js": false,
-  "encoding/streams/encode-bad-chunks.any.js": {
-    "expectedFailures": [
-      "a chunk that cannot be converted to a string should error the streams",
-      "input of type array should be converted correctly to string",
-      "input of type null should be converted correctly to string",
-      "input of type numeric should be converted correctly to string",
-      "input of type object should be converted correctly to string",
-      "input of type undefined should be converted correctly to string"
-    ]
-  },
-  "encoding/streams/encode-utf8.any.js": {
-    "expectedFailures": [
-      "a character following one split between chunks should be correctly encoded",
-      "a character split between chunks should be correctly encoded",
-      "a leading surrogate chunk should be carried past empty chunks",
-      "a non-terminal unpaired leading surrogate should immediately be replaced",
-      "an unmatched surrogate at the end of a chunk followed by a plane 1 character split into two chunks should result in the encoded plane 1 character appearing in the last output chunk",
-      "an unmatched surrogate at the end of a chunk followed by an ascii character in the next chunk should be replaced with the replacement character at the start of the next output chunk",
-      "an unmatched surrogate at the end of a chunk followed by an astral character in the next chunk should be replaced with the replacement character at the start of the next output chunk",
-      "two consecutive astral characters each split down the middle should be correctly reassembled",
-      "two consecutive astral characters each split down the middle with an invalid surrogate in the middle should be correctly encoded"
-    ]
-  },
+  "encoding/streams/decode-attributes.any.js": true,
+  "encoding/streams/decode-bad-chunks.any.js": true,
+  "encoding/streams/decode-ignore-bom.any.js": true,
+  "encoding/streams/decode-incomplete-input.any.js": true,
+  "encoding/streams/decode-non-utf8.any.js": true,
+  "encoding/streams/decode-split-character.any.js": true,
+  "encoding/streams/decode-utf8.any.js": true,
+  "encoding/streams/encode-bad-chunks.any.js": true,
+  "encoding/streams/encode-utf8.any.js": true,
   "encoding/streams/invalid-realm.window.js": {
     "expectedFailures": [
       "TextDecoderStream: close in detached realm should succeed",

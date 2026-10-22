@@ -205,7 +205,7 @@ impl TextDecoder {
 
 /// `new_decoder()` sniffs a UTF-8 or UTF-16 BOM and switches encoding.
 /// TextDecoder keeps the label's encoding and only strips that encoding's BOM.
-fn open_decoder(
+pub(crate) fn open_decoder(
   encoding: &'static encoding_rs::Encoding,
   ignore_bom: bool,
 ) -> encoding_rs::Decoder {
@@ -247,7 +247,7 @@ enum Feed {
 /// Fatal decoding is one byte at a time. A bulk `Malformed` result hides
 /// whether the next byte was pushed back (`read == 0`) or not yet visited.
 /// EUC-JP restores the ASCII byte. UTF-8 does not keep `0xEF` after `0xFD`.
-fn fatal_decode(
+pub(crate) fn fatal_decode(
   decoder: &mut encoding_rs::Decoder,
   pending: &mut Vec<u8>,
   bytes: &[u8],

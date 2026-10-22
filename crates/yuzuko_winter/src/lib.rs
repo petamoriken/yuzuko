@@ -28,6 +28,10 @@ pub use http::webtransport::{
   next_stream_id as next_web_transport_stream_id,
 };
 pub use http::{BodyNote, HttpBody, perform};
+pub use stream::{
+  ByteWait, byte_controller_enqueue, byte_controller_respond,
+  byte_controller_wait,
+};
 pub use text::mime::is_mime_type;
 
 pub fn register() {

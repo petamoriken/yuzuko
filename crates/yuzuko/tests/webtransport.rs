@@ -24,13 +24,13 @@ const SCRIPT: &str = r#"
       syntax = error.name === "SyntaxError";
     }
     assert(syntax, "http scheme");
-    let bytesMode = false;
+    let chunks = false;
     try {
-      new WebTransport(url, { datagramsReadableType: "bytes" });
+      new WebTransport(url, { datagramsReadableType: "chunks" });
     } catch (error) {
-      bytesMode = error.name === "NotSupportedError";
+      chunks = error instanceof TypeError;
     }
-    assert(bytesMode, "bytes mode");
+    assert(chunks, "chunks");
     let protocols = false;
     try {
       new WebTransport(url, { protocols: ["a"] });
@@ -59,12 +59,28 @@ const SCRIPT: &str = r#"
     assert(plain.source === "stream", "default source");
     assert(plain.streamErrorCode === null, "default streamErrorCode");
 
+    const hashes = [{ algorithm: "sha-256", value: hash }];
     const transport = new WebTransport(url, {
-      serverCertificateHashes: [{ algorithm: "sha-256", value: hash }],
+      serverCertificateHashes: hashes,
+    });
+    const bytes = new WebTransport(url, {
+      datagramsReadableType: "bytes",
+      serverCertificateHashes: hashes,
+    });
+    const views = new WebTransport(url, {
+      datagramsReadableType: "bytes",
+      serverCertificateHashes: hashes,
     });
     assert(transport.reliability === "pending", "pending");
     assert(transport.congestionControl === "default", "congestionControl");
-    await transport.ready;
+    let defaultByob = false;
+    try {
+      transport.datagrams.readable.getReader({ mode: "byob" });
+    } catch (error) {
+      defaultByob = error instanceof TypeError;
+    }
+    assert(defaultByob, "default byob");
+    await Promise.all([transport.ready, bytes.ready, views.ready]);
     assert(transport.reliability === "supports-unreliable", "unreliable");
 
     const datagram = (async () => {
@@ -83,29 +99,79 @@ const SCRIPT: &str = r#"
       );
       await written;
     })();
+    const bytesRead = (async () => {
+      const writer = bytes.datagrams.writable.getWriter();
+      const defaults = bytes.datagrams.readable.getReader();
+      const sent = writer.write(new Uint8Array([4]));
+      const chunk = await defaults.read();
+      assert(chunk.done === false, "bytes default done");
+      assert(
+        chunk.value.length === 1 && chunk.value[0] === 4,
+        "bytes default",
+      );
+      await sent;
+      defaults.releaseLock();
+      const reader = bytes.datagrams.readable.getReader({ mode: "byob" });
+      const byobSent = writer.write(new Uint8Array([5, 6, 7, 8, 9]));
+      const byob = await reader.read(new Uint8Array(new ArrayBuffer(16)));
+      assert(byob.done === false, "byob done");
+      assert(byob.value.byteLength === 5, "byob length " + byob.value.byteLength);
+      assert(byob.value[0] === 5 && byob.value[4] === 9, "byob bytes");
+      await byobSent;
+      const short = reader.read(new Uint8Array(new ArrayBuffer(1)));
+      const shortSent = writer.write(new Uint8Array(10));
+      let shortName = "";
+      try {
+        await short;
+      } catch (error) {
+        shortName = error.name;
+      }
+      assert(shortName === "RangeError", "short byob " + shortName);
+      await shortSent;
+    })();
+    const viewRead = (async () => {
+      const writer = views.datagrams.writable.getWriter();
+      const reader = views.datagrams.readable.getReader({ mode: "byob" });
+      const pending = reader.read(new DataView(new ArrayBuffer(32)));
+      const sent = writer.write(new Uint8Array([1, 2, 3, 4]));
+      let name = "";
+      try {
+        await pending;
+      } catch (error) {
+        name = error.name;
+      }
+      assert(name === "TypeError", "dataview " + name);
+      await sent;
+    })();
     const stream = (async () => {
       const pair = await transport.createBidirectionalStream();
       const writer = pair.writable.getWriter();
-      const reader = pair.readable.getReader();
+      const reader = pair.readable.getReader({ mode: "byob" });
       const payload = new Uint8Array([9, 8, 7]);
       const written = writer.write(payload);
       await writer.close();
       await written;
-      const chunks = [];
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          break;
-        }
-        chunks.push(...chunk.value);
+      const got = [];
+      while (got.length < 3) {
+        const chunk = await reader.read(new Uint8Array(new ArrayBuffer(1)));
+        assert(chunk.done === false, "stream done early");
+        assert(
+          chunk.value.byteLength === 1,
+          "stream split " + chunk.value.byteLength,
+        );
+        got.push(chunk.value[0]);
       }
-      assert(chunks.join(",") === "9,8,7", "stream bytes " + chunks);
+      assert(got.join(",") === "9,8,7", "stream bytes " + got);
     })();
-    await Promise.all([datagram, stream]);
+    await Promise.all([datagram, bytesRead, viewRead, stream]);
+    bytes.close();
+    views.close();
     transport.close({ closeCode: 7, reason: "bye" });
     const info = await transport.closed;
     assert(info.closeCode === 7, "closeCode " + info.closeCode);
     assert(info.reason === "bye", "reason " + info.reason);
+    await bytes.closed;
+    await views.closed;
     globalThis.done = "ok";
   } catch (error) {
     globalThis.done = error && error.stack ? String(error.stack) : String(error);
@@ -190,9 +256,27 @@ async fn serve(
   port_tx
     .send(server.local_addr().expect("local addr").port())
     .expect("port");
-  let Some(request) = server.accept().await else {
-    return;
-  };
+  let mut tasks = Vec::new();
+  let mut first = true;
+  loop {
+    let wait = if first {
+      Duration::from_secs(15)
+    } else {
+      Duration::from_secs(2)
+    };
+    first = false;
+    let accepted = tokio::time::timeout(wait, server.accept()).await;
+    let Ok(Some(request)) = accepted else {
+      break;
+    };
+    tasks.push(tokio::spawn(echo_session(request)));
+  }
+  for task in tasks {
+    let _ = task.await;
+  }
+}
+
+async fn echo_session(request: web_transport_quinn::Request) {
   let session = match request.ok().await {
     Ok(session) => session,
     Err(_) => return,

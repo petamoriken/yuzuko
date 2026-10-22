@@ -1,6 +1,4 @@
 //! WHATWG streams used by fetch bodies, blobs, text, and compression.
-//!
-//! Byte streams do not implement BYOB readers yet.
 
 #![allow(clippy::too_many_arguments)]
 
@@ -23,6 +21,11 @@ use yuzuko_macros::op;
 use crate::bytes;
 
 mod byte_stream;
+
+pub use byte_stream::{
+  ByteWait, byte_controller_enqueue, byte_controller_respond,
+  byte_controller_wait,
+};
 
 const DEFAULT_HWM: f64 = 1.0;
 
@@ -93,6 +96,8 @@ enum Sink {
   Utf8Decode {
     decoder: encoding_rs::Decoder,
     fatal: bool,
+    /// Bytes `fatal` mode pushed back. The decoder keeps a partial sequence.
+    pending: Vec<u8>,
     readable: u64,
   },
   Codec {
@@ -314,6 +319,12 @@ thread_local! {
   static TEES: RefCell<HashMap<u64, Tee>> = RefCell::new(HashMap::new());
   static TRANSFORMS: RefCell<HashMap<u64, TransformLink>> =
     RefCell::new(HashMap::new());
+  /// Writable id to the text stream's readable backpressure gate.
+  static TEXT_GATES: RefCell<HashMap<u64, TextGate>> =
+    RefCell::new(HashMap::new());
+  /// Readable id to the text stream's writable id.
+  static TEXT_READABLE: RefCell<HashMap<u64, u64>> =
+    RefCell::new(HashMap::new());
   static TRANSFORM_WAITS: RefCell<HashMap<u64, TransformWait>> =
     RefCell::new(HashMap::new());
   static TRANSFORM_FORWARDS: RefCell<HashMap<u64, TransformForward>> =
@@ -355,6 +366,8 @@ pub fn clear() {
   BODY_WAITS.with(|slot| slot.borrow_mut().clear());
   ITERS.with(|slot| slot.borrow_mut().clear());
   OWNING.with(|slot| slot.borrow_mut().clear());
+  TEXT_GATES.with(|slot| slot.borrow_mut().clear());
+  TEXT_READABLE.with(|slot| slot.borrow_mut().clear());
   byte_stream::clear();
 }
 
@@ -1745,6 +1758,7 @@ impl TextEncoderStream {
         readable: 0,
       },
     )?;
+    arm_text_stream(scope, &readable, &writable)?;
     Ok(Self { readable, writable })
   }
 
@@ -1775,21 +1789,19 @@ impl TextDecoderStream {
     let label = label.unwrap_or_else(|| "utf-8".to_string());
     let encoding = encoding_rs::Encoding::for_label(label.as_bytes())
       .ok_or_else(|| OpError::range("The encoding label is unknown"))?;
-    let fatal = option_bool(scope, options, "fatal");
-    let ignore_bom = option_bool(scope, options, "ignoreBOM");
-    let decoder = if ignore_bom {
-      encoding.new_decoder_without_bom_handling()
-    } else {
-      encoding.new_decoder()
-    };
+    let fatal = option_bool(scope, options, "fatal")?;
+    let ignore_bom = option_bool(scope, options, "ignoreBOM")?;
+    let decoder = crate::text::encoding::open_decoder(encoding, ignore_bom);
     let (readable, writable) = linked_pair(
       scope,
       Sink::Utf8Decode {
         decoder,
         fatal,
+        pending: Vec::new(),
         readable: 0,
       },
     )?;
+    arm_text_stream(scope, &readable, &writable)?;
     Ok(Self {
       readable,
       writable,
@@ -2431,6 +2443,11 @@ fn cancel_stream(
   if let Some(writable) = transform_writable(stream) {
     return transform_source_cancel(scope, writable, reason);
   }
+  if let Some(writable) = text_writable(stream) {
+    let _ = error_write(scope, writable, reason);
+    unblock_text(scope, writable);
+    return resolved(scope, v8::undefined(scope).into());
+  }
   let Some(cancel) = cancel else {
     return resolved(scope, v8::undefined(scope).into());
   };
@@ -2550,6 +2567,10 @@ fn mark_started(scope: &mut v8::PinScope, id: u64) {
 fn pull_if_needed(scope: &mut v8::PinScope, id: u64) {
   if native_ready(id) {
     pull_native(scope, id);
+    return;
+  }
+  if text_writable(id).is_some() {
+    text_pull(scope, id);
     return;
   }
   if transform_writable(id).is_some() {
@@ -3712,6 +3733,10 @@ fn become_errored(
   if let Some(writer) = writer {
     settle_writer(scope, writer, false, Some(stored));
   }
+  if let Some(readable) = text_readable(stream) {
+    let _ = error_stream(scope, readable, thrown);
+    unblock_text(scope, stream);
+  }
 }
 
 fn settle_writer(
@@ -3968,13 +3993,8 @@ fn reject_resolver(
   resolver.reject(scope, error);
 }
 
-fn apply_sink<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  stream: u64,
-  chunk: v8::Local<v8::Value>,
-  finish: bool,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  let kind = WRITES.with(|slot| {
+fn sink_kind(stream: u64) -> Option<u8> {
+  WRITES.with(|slot| {
     slot.borrow().get(&stream).map(|state| match &state.sink {
       Sink::Js { .. } => 0,
       Sink::Transform { .. } => 1,
@@ -3982,7 +4002,16 @@ fn apply_sink<'s>(
       Sink::Utf8Decode { .. } => 3,
       Sink::Codec { .. } => 4,
     })
-  });
+  })
+}
+
+fn apply_sink<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  stream: u64,
+  chunk: v8::Local<v8::Value>,
+  finish: bool,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let kind = sink_kind(stream);
   match kind {
     Some(0) => js_sink(scope, stream, chunk, finish),
     Some(1) => transform_sink(scope, stream, chunk, finish),
@@ -4679,7 +4708,13 @@ fn on_transform_release(scope: &mut v8::PinScope, id: u64) {
   }
   let chunk = v8::Local::new(scope, &wait.chunk);
   let chunk = yuzuko_core::op::root(scope, chunk);
-  match perform_transform(scope, wait.writable, chunk) {
+  let kind = sink_kind(wait.writable);
+  let performed = match kind {
+    Some(2) => utf8_encode_now(scope, wait.writable, chunk, false),
+    Some(3) => utf8_decode_now(scope, wait.writable, chunk, false),
+    _ => perform_transform(scope, wait.writable, chunk),
+  };
+  match performed {
     Ok(value) => forward_to_resolver(scope, wait.resolver, value),
     Err(error) => {
       let thrown = error_value(scope, &error);
@@ -4906,7 +4941,200 @@ fn transform_pull(scope: &mut v8::PinScope, readable: u64) {
   let _ = watch_promise(scope, promise, Token::Pull(readable));
 }
 
+struct TextGate {
+  readable: u64,
+  backpressure: bool,
+  change_resolver: Option<v8::Global<v8::PromiseResolver>>,
+  change_promise: Option<v8::Global<v8::Promise>>,
+}
+
+/// Text streams are transform streams with a readable high-water mark of 0.
+/// A write waits until `pull` clears backpressure. One enqueue turns it back
+/// on. An empty transform leaves it clear. `close` does not wait.
+fn arm_text_stream(
+  scope: &mut v8::PinScope,
+  readable: &v8::TracedReference<v8::Object>,
+  writable: &v8::TracedReference<v8::Object>,
+) -> Result<(), OpError> {
+  let readable_obj = yuzuko_core::op::traced_local(scope, readable)
+    .ok_or_else(|| OpError::type_("The stream is closed"))?;
+  let readable_obj = yuzuko_core::op::root(scope, readable_obj);
+  let readable_id = stream_id(scope, readable_obj.into())?;
+  let writable_obj = yuzuko_core::op::traced_local(scope, writable)
+    .ok_or_else(|| OpError::type_("The stream is closed"))?;
+  let writable_obj = yuzuko_core::op::root(scope, writable_obj);
+  let writable_id = writable_id(scope, writable_obj.into())?;
+  READS.with(|slot| {
+    if let Some(state) = slot.borrow_mut().get_mut(&readable_id) {
+      state.high_water = 0.0;
+    }
+  });
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  TEXT_GATES.with(|slot| {
+    slot.borrow_mut().insert(
+      writable_id,
+      TextGate {
+        readable: readable_id,
+        backpressure: true,
+        change_resolver: Some(v8::Global::new(scope, resolver)),
+        change_promise: Some(v8::Global::new(scope, promise)),
+      },
+    );
+  });
+  TEXT_READABLE.with(|slot| {
+    slot.borrow_mut().insert(readable_id, writable_id);
+  });
+  Ok(())
+}
+
+fn text_writable(readable: u64) -> Option<u64> {
+  TEXT_READABLE.with(|slot| slot.borrow().get(&readable).copied())
+}
+
+fn text_readable(writable: u64) -> Option<u64> {
+  TEXT_GATES.with(|slot| slot.borrow().get(&writable).map(|gate| gate.readable))
+}
+
+fn text_backpressure(writable: u64) -> bool {
+  TEXT_GATES.with(|slot| {
+    slot
+      .borrow()
+      .get(&writable)
+      .is_some_and(|gate| gate.backpressure)
+  })
+}
+
+fn text_change_promise<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  writable: u64,
+) -> v8::Local<'s, v8::Value> {
+  let promise = TEXT_GATES.with(|slot| {
+    slot
+      .borrow()
+      .get(&writable)
+      .and_then(|gate| gate.change_promise.clone())
+  });
+  match promise {
+    Some(promise) => {
+      let promise = v8::Local::new(scope, &promise);
+      promise.into()
+    }
+    None => v8::undefined(scope).into(),
+  }
+}
+
+fn set_text_backpressure(
+  scope: &mut v8::PinScope,
+  writable: u64,
+  backpressure: bool,
+) {
+  let same = TEXT_GATES.with(|slot| {
+    slot
+      .borrow()
+      .get(&writable)
+      .is_some_and(|gate| gate.backpressure == backpressure)
+  });
+  if same {
+    return;
+  }
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  let previous = TEXT_GATES.with(|slot| {
+    let mut gates = slot.borrow_mut();
+    let gate = gates.get_mut(&writable)?;
+    let previous = gate.change_resolver.take();
+    gate.change_resolver = Some(v8::Global::new(scope, resolver));
+    gate.change_promise = Some(v8::Global::new(scope, promise));
+    gate.backpressure = backpressure;
+    previous
+  });
+  if let Some(previous) = previous {
+    let value = v8::undefined(scope).into();
+    resolve_resolver(scope, previous, value);
+  }
+}
+
+fn sync_text_backpressure(scope: &mut v8::PinScope, writable: u64) {
+  let readable = text_readable(writable);
+  let Some(readable) = readable else {
+    return;
+  };
+  if !should_pull_transform(readable) && !text_backpressure(writable) {
+    set_text_backpressure(scope, writable, true);
+  }
+}
+
+fn unblock_text(scope: &mut v8::PinScope, writable: u64) {
+  if text_backpressure(writable) {
+    set_text_backpressure(scope, writable, false);
+  }
+}
+
+fn text_pull(scope: &mut v8::PinScope, readable: u64) {
+  let Some(writable) = text_writable(readable) else {
+    return;
+  };
+  if !text_backpressure(writable) || !should_pull_transform(readable) {
+    return;
+  }
+  let busy = READS.with(|slot| {
+    let mut states = slot.borrow_mut();
+    let Some(state) = states.get_mut(&readable) else {
+      return true;
+    };
+    if state.pulling {
+      state.pull_again = true;
+      return true;
+    }
+    state.pulling = true;
+    false
+  });
+  if busy {
+    return;
+  }
+  set_text_backpressure(scope, writable, false);
+  let promise = text_change_promise(scope, writable);
+  let _ = watch_promise(scope, promise, Token::Pull(readable));
+}
+
+fn park_text<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  writable: u64,
+  chunk: v8::Local<v8::Value>,
+) -> v8::Local<'s, v8::Value> {
+  let waiting = text_change_promise(scope, writable);
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  let id = alloc();
+  TRANSFORM_WAITS.with(|slot| {
+    slot.borrow_mut().insert(
+      id,
+      TransformWait {
+        writable,
+        chunk: v8::Global::new(scope, chunk),
+        resolver: v8::Global::new(scope, resolver),
+      },
+    );
+  });
+  let _ = watch_promise(scope, waiting, Token::TransformRelease(id));
+  promise.into()
+}
+
 fn utf8_encode_sink<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  stream: u64,
+  chunk: v8::Local<v8::Value>,
+  finish: bool,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  // `close` flushes immediately. Only a chunk waits for readable backpressure.
+  if !finish && text_backpressure(stream) {
+    return Ok(park_text(scope, stream, chunk));
+  }
+  utf8_encode_now(scope, stream, chunk, finish)
+}
+
+fn utf8_encode_now<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   stream: u64,
   chunk: v8::Local<v8::Value>,
@@ -4914,85 +5142,211 @@ fn utf8_encode_sink<'s>(
 ) -> Result<v8::Local<'s, v8::Value>, OpError> {
   let readable = sink_readable(stream)?;
   if !finish {
-    let text = chunk
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
-    let (output, pending) = encode_utf8(&text);
-    WRITES.with(|slot| {
-      if let Some(state) = slot.borrow_mut().get_mut(&stream)
-        && let Sink::Utf8Encode { pending: slot, .. } = &mut state.sink
-      {
-        *slot = pending;
-      }
-    });
+    let units = utf16_units(scope, chunk)?;
+    let pending = take_encode_pending(stream);
+    let (output, pending) = encode_utf8(pending, &units);
+    store_encode_pending(stream, pending);
     if !output.is_empty() {
       let view = bytes::uint8_array(scope, output);
       enqueue_chunk(scope, readable, view.into(), None)?;
+      sync_text_backpressure(scope, stream);
     }
   } else {
-    let pending = WRITES.with(|slot| {
-      slot
-        .borrow()
-        .get(&stream)
-        .and_then(|state| match &state.sink {
-          Sink::Utf8Encode { pending, .. } => *pending,
-          _ => None,
-        })
-    });
+    let pending = take_encode_pending(stream);
+    store_encode_pending(stream, None);
     if pending.is_some() {
       let view = bytes::uint8_array(scope, vec![0xef, 0xbf, 0xbd]);
       enqueue_chunk(scope, readable, view.into(), None)?;
+      sync_text_backpressure(scope, stream);
     }
     let _ = close_stream(scope, readable);
   }
   Ok(v8::undefined(scope).into())
 }
 
-fn encode_utf8(text: &str) -> (Vec<u8>, Option<u16>) {
-  let mut pending = None;
-  let mut units = Vec::new();
-  for unit in text.encode_utf16() {
+fn take_encode_pending(stream: u64) -> Option<u16> {
+  WRITES.with(|slot| {
+    slot
+      .borrow()
+      .get(&stream)
+      .and_then(|state| match &state.sink {
+        Sink::Utf8Encode { pending, .. } => *pending,
+        _ => None,
+      })
+  })
+}
+
+fn store_encode_pending(stream: u64, pending: Option<u16>) {
+  WRITES.with(|slot| {
+    if let Some(state) = slot.borrow_mut().get_mut(&stream)
+      && let Sink::Utf8Encode { pending: slot, .. } = &mut state.sink
+    {
+      *slot = pending;
+    }
+  });
+}
+
+/// UTF-8 encode of UTF-16 code units. A leading surrogate stays pending
+/// across chunks, including empty ones, until a pair or a flush.
+fn encode_utf8(pending: Option<u16>, units: &[u16]) -> (Vec<u8>, Option<u16>) {
+  let mut pending = pending;
+  let mut out = Vec::new();
+  for &unit in units {
     if let Some(high) = pending.take() {
-      if (0xDC00..=0xDFFF).contains(&unit) {
-        let point =
-          0x10000 + (((high as u32 - 0xD800) << 10) | (unit as u32 - 0xDC00));
-        units.extend(
-          char::from_u32(point)
-            .unwrap_or('\u{FFFD}')
-            .encode_utf8(&mut [0; 4])
-            .as_bytes(),
-        );
+      if is_trail(unit) {
+        push_point(&mut out, astral(high, unit));
       } else {
-        units.extend_from_slice("\u{FFFD}".as_bytes());
-        if (0xD800..=0xDBFF).contains(&unit) {
+        push_replacement(&mut out);
+        if is_lead(unit) {
           pending = Some(unit);
         } else {
-          units.extend(
-            char::from_u32(unit as u32)
-              .unwrap_or('\u{FFFD}')
-              .encode_utf8(&mut [0; 4])
-              .as_bytes(),
-          );
+          push_point(&mut out, unit as u32);
         }
       }
-    } else if (0xD800..=0xDBFF).contains(&unit) {
+    } else if is_lead(unit) {
       pending = Some(unit);
-    } else if (0xDC00..=0xDFFF).contains(&unit) {
-      units.extend_from_slice("\u{FFFD}".as_bytes());
+    } else if is_trail(unit) {
+      push_replacement(&mut out);
     } else {
-      units.extend(
-        char::from_u32(unit as u32)
-          .unwrap_or('\u{FFFD}')
-          .encode_utf8(&mut [0; 4])
-          .as_bytes(),
-      );
+      push_point(&mut out, unit as u32);
     }
   }
-  (units, pending)
+  (out, pending)
+}
+
+fn is_lead(unit: u16) -> bool {
+  (0xD800..=0xDBFF).contains(&unit)
+}
+
+fn is_trail(unit: u16) -> bool {
+  (0xDC00..=0xDFFF).contains(&unit)
+}
+
+fn astral(high: u16, low: u16) -> u32 {
+  0x10000 + (((high as u32 - 0xD800) << 10) | (low as u32 - 0xDC00))
+}
+
+fn push_replacement(out: &mut Vec<u8>) {
+  out.extend_from_slice(&[0xef, 0xbf, 0xbd]);
+}
+
+fn push_point(out: &mut Vec<u8>, point: u32) {
+  let mut buf = [0; 4];
+  let encoded = char::from_u32(point)
+    .unwrap_or('\u{FFFD}')
+    .encode_utf8(&mut buf);
+  out.extend_from_slice(encoded.as_bytes());
+}
+
+#[cfg(test)]
+mod text_encode_tests {
+  use super::decode_replacement;
+  use super::encode_utf8;
+
+  fn lead() -> u16 {
+    "\u{1F499}".encode_utf16().next().unwrap()
+  }
+
+  fn trail() -> u16 {
+    "\u{1F499}".encode_utf16().nth(1).unwrap()
+  }
+
+  #[test]
+  fn surrogate_pair_spans_chunks() {
+    let (first, pending) = encode_utf8(None, &[lead()]);
+    assert!(first.is_empty());
+    let (second, pending) = encode_utf8(pending, &[trail()]);
+    assert_eq!(second, [0xf0, 0x9f, 0x92, 0x99]);
+    assert!(pending.is_none());
+  }
+
+  #[test]
+  fn empty_chunk_keeps_a_leading_surrogate() {
+    let (_, pending) = encode_utf8(None, &[lead()]);
+    let (empty, pending) = encode_utf8(pending, &[]);
+    assert!(empty.is_empty());
+    let (out, pending) = encode_utf8(pending, &[trail()]);
+    assert_eq!(out, [0xf0, 0x9f, 0x92, 0x99]);
+    assert!(pending.is_none());
+  }
+
+  #[test]
+  fn unpaired_leading_then_ascii_is_one_chunk() {
+    let (_, pending) = encode_utf8(None, &[lead()]);
+    let ascii: Vec<u16> = "A".encode_utf16().collect();
+    let (out, pending) = encode_utf8(pending, &ascii);
+    assert_eq!(out, [0xef, 0xbf, 0xbd, 65]);
+    assert!(pending.is_none());
+  }
+
+  #[test]
+  fn bom_removal_and_a_split_code_point() {
+    let encoding = encoding_rs::Encoding::for_label(b"utf-8").unwrap();
+    let mut decoder = crate::text::encoding::open_decoder(encoding, false);
+    let text = decode_replacement(
+      &mut decoder,
+      &[0xEF, 0xBB, 0xBF, b'a', b'b', b'c'],
+      true,
+    );
+    assert_eq!(text, "abc");
+
+    let mut decoder = crate::text::encoding::open_decoder(encoding, true);
+    let text =
+      decode_replacement(&mut decoder, &[0xEF, 0xBB, 0xBF, b'a'], true);
+    assert_eq!(text, "\u{FEFF}a");
+
+    let bytes = [73, 32, 240, 159, 146, 153, 32, 115];
+    let mut decoder = crate::text::encoding::open_decoder(encoding, false);
+    let first = decode_replacement(&mut decoder, &bytes[..4], false);
+    let second = decode_replacement(&mut decoder, &bytes[4..], true);
+    assert_eq!(first, "I ");
+    assert_eq!(second, "\u{1F499} s");
+  }
+}
+
+fn utf16_units(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<u16>, OpError> {
+  let text = {
+    v8::tc_scope!(let tc, scope);
+    match value.to_string(tc) {
+      Some(text) => Ok(v8::Global::new(tc, text)),
+      None => {
+        let thrown = tc.exception().map(|value| v8::Global::new(tc, value));
+        Err(thrown)
+      }
+    }
+  };
+  let text = match text {
+    Ok(text) => text,
+    Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
+    Err(None) => {
+      return Err(OpError::type_("The chunk cannot be converted to a string"));
+    }
+  };
+  let text = v8::Local::new(scope, text);
+  let len = text.length();
+  let mut units = vec![0u16; len];
+  if len > 0 {
+    text.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
+  }
+  Ok(units)
 }
 
 fn utf8_decode_sink<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  stream: u64,
+  chunk: v8::Local<v8::Value>,
+  finish: bool,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  if !finish && text_backpressure(stream) {
+    return Ok(park_text(scope, stream, chunk));
+  }
+  utf8_decode_now(scope, stream, chunk, finish)
+}
+
+fn utf8_decode_now<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   stream: u64,
   chunk: v8::Local<v8::Value>,
@@ -5002,35 +5356,94 @@ fn utf8_decode_sink<'s>(
   let bytes = if finish {
     Vec::new()
   } else {
-    buffer_bytes(scope, chunk)?
+    // Text decode accepts a shared buffer. Compression does not.
+    bytes::buffer_source(scope, chunk)
+      .ok_or_else(|| OpError::type_("The chunk is not a BufferSource"))?
   };
   let decoded = WRITES.with(|slot| {
     let mut states = slot.borrow_mut();
     let state = states.get_mut(&stream)?;
-    let Sink::Utf8Decode { decoder, fatal, .. } = &mut state.sink else {
+    let Sink::Utf8Decode {
+      decoder,
+      fatal,
+      pending,
+      ..
+    } = &mut state.sink
+    else {
       return None;
     };
-    let mut output = String::new();
-    let (_result, _read, had_errors) =
-      decoder.decode_to_string(&bytes, &mut output, finish);
-    Some((output, *fatal && had_errors))
+    if *fatal {
+      Some(
+        crate::text::encoding::fatal_decode(decoder, pending, &bytes, !finish)
+          .map(|text| (text, false)),
+      )
+    } else {
+      Some(Ok((decode_replacement(decoder, &bytes, finish), false)))
+    }
   });
-  let Some((text, failed)) = decoded else {
+  let Some(decoded) = decoded else {
     return Err(OpError::type_("The stream is closed"));
   };
-  if failed {
-    let error = type_error(scope, "The encoded data was not valid");
-    let _ = error_stream(scope, readable, error);
-    return Err(OpError::type_("The encoded data was not valid"));
-  }
+  let (text, _) = match decoded {
+    Ok(text) => text,
+    Err(_) => {
+      return Err(OpError::type_("The encoded data was not valid"));
+    }
+  };
   if !text.is_empty() {
-    let text = v8::String::new(scope, &text).unwrap();
+    let text = v8::String::new(scope, &text)
+      .ok_or_else(|| OpError::type_("The encoded data was not valid"))?;
     enqueue_chunk(scope, readable, text.into(), None)?;
+    sync_text_backpressure(scope, stream);
   }
   if finish {
     let _ = close_stream(scope, readable);
   }
   Ok(v8::undefined(scope).into())
+}
+
+/// `decode_to_string` writes only into spare capacity. An empty `String`
+/// would report `OutputFull` and drop the characters.
+fn decode_replacement(
+  decoder: &mut encoding_rs::Decoder,
+  bytes: &[u8],
+  finish: bool,
+) -> String {
+  let mut output = String::new();
+  let mut offset = 0usize;
+  loop {
+    let pending = bytes.len().saturating_sub(offset);
+    let extra = decoder
+      .max_utf8_buffer_length(pending)
+      .unwrap_or(pending.saturating_mul(3).saturating_add(16));
+    output.reserve(extra.max(16));
+    let last = finish && offset >= bytes.len();
+    let slice: &[u8] = if offset >= bytes.len() {
+      &[]
+    } else {
+      &bytes[offset..]
+    };
+    let (result, read, _) = decoder.decode_to_string(slice, &mut output, last);
+    offset += read;
+    match result {
+      encoding_rs::CoderResult::InputEmpty => {
+        if last || !finish {
+          break;
+        }
+        if read == 0 && !slice.is_empty() {
+          break;
+        }
+      }
+      encoding_rs::CoderResult::OutputFull => {
+        let before = output.capacity();
+        output.reserve(16);
+        if output.capacity() == before {
+          break;
+        }
+      }
+    }
+  }
+  output
 }
 
 fn codec_sink<'s>(
@@ -6410,17 +6823,17 @@ fn option_bool(
   scope: &mut v8::PinScope,
   options: Option<v8::Local<v8::Value>>,
   name: &str,
-) -> bool {
-  let Some(options) = options else {
-    return false;
+) -> Result<bool, OpError> {
+  let Some(options) = options.filter(|value| !value.is_null_or_undefined())
+  else {
+    return Ok(false);
   };
-  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
-    return false;
-  };
-  property(scope, object, name)
-    .ok()
-    .flatten()
-    .is_some_and(|value| value.boolean_value(scope))
+  let object = v8::Local::<v8::Object>::try_from(options)
+    .map_err(|_| OpError::type_("The options are not an object"))?;
+  match property(scope, object, name)? {
+    Some(value) => Ok(value.boolean_value(scope)),
+    None => Ok(false),
+  }
 }
 
 fn readable_object_id(

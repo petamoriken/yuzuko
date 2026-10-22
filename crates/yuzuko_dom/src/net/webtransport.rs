@@ -1,9 +1,11 @@
 //! `WebTransport` and `WebTransportError`.
 //!
 //! The session uses its own QUIC connection. `datagrams` is a plain
-//! `{ readable, writable }`. Datagrams and stream chunks are `Uint8Array`
-//! values. A pull grants one read. `reliability` stays `"pending"` until the
-//! handshake note is pumped, which is after the constructor returns.
+//! `{ readable, writable }`. Datagram and stream chunks are `Uint8Array`
+//! values. Bytes-mode datagrams stay in `datagram_pending` until a reader is
+//! waiting, so one datagram is not split across a BYOB view. A pull grants
+//! one read. `reliability` stays `"pending"` until the handshake note is
+//! pumped, which is after the constructor returns.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -13,11 +15,12 @@ use std::sync::{Arc, Mutex};
 use yuzuko_core::op::{HostRef, Js, OpError, host_ref, traced, traced_local};
 use yuzuko_macros::op;
 use yuzuko_winter::{
-  WebTransportCommand as Command, WebTransportCongestion as Congestion,
-  WebTransportConnection as Connection, WebTransportNote as Note,
-  WebTransportNotes as NoteQueue, WebTransportOptions as Options,
-  abort_web_transports, array_buffer, buffer_source, connect_web_transport,
-  next_web_transport_stream_id,
+  ByteWait, WebTransportCommand as Command,
+  WebTransportCongestion as Congestion, WebTransportConnection as Connection,
+  WebTransportNote as Note, WebTransportNotes as NoteQueue,
+  WebTransportOptions as Options, abort_web_transports, array_buffer,
+  buffer_source, byte_controller_enqueue, byte_controller_respond,
+  byte_controller_wait, connect_web_transport, next_web_transport_stream_id,
 };
 
 use crate::util::key;
@@ -68,6 +71,7 @@ pub struct WebTransport {
   datagram_read: RefCell<Option<v8::TracedReference<v8::Object>>>,
   datagram_write: RefCell<Option<v8::TracedReference<v8::Object>>>,
   datagram_pending: RefCell<VecDeque<Vec<u8>>>,
+  datagram_bytes: Cell<bool>,
   datagram_writes: RefCell<VecDeque<v8::TracedReference<v8::PromiseResolver>>>,
   incoming_bi: RefCell<Option<v8::TracedReference<v8::Object>>>,
   incoming_uni: RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -130,6 +134,7 @@ impl WebTransport {
       datagram_read: RefCell::new(None),
       datagram_write: RefCell::new(None),
       datagram_pending: RefCell::new(VecDeque::new()),
+      datagram_bytes: Cell::new(parsed.datagram_bytes),
       datagram_writes: RefCell::new(VecDeque::new()),
       incoming_bi: RefCell::new(None),
       incoming_uni: RefCell::new(None),
@@ -156,7 +161,9 @@ impl WebTransport {
         },
       ));
     });
-    if let Some(datagrams) = make_datagrams(scope, self.id) {
+    if let Some(datagrams) =
+      make_datagrams(scope, self.id, self.datagram_bytes.get())
+    {
       *self.datagrams.borrow_mut() = Some(traced(scope, datagrams));
     }
     if let Some(incoming) = make_incoming(scope, self.id, true) {
@@ -517,16 +524,26 @@ fn on_closed(
 }
 
 fn on_datagram(scope: &mut v8::PinScope, session: u64, bytes: Vec<u8>) {
+  let bytes_mode = live_host(scope, session)
+    .is_some_and(|transport| transport.get().datagram_bytes.get());
+  if bytes_mode {
+    if let Some(transport) = live_host(scope, session) {
+      transport
+        .get()
+        .datagram_pending
+        .borrow_mut()
+        .push_back(bytes);
+    }
+    if let DatagramStep::Failed(error) = step_datagram(scope, session) {
+      error_datagram(scope, session, error);
+    }
+    return;
+  }
   let controller = {
     let Some(transport) = live_host(scope, session) else {
       return;
     };
-    let controller = transport
-      .get()
-      .datagram_read
-      .borrow()
-      .as_ref()
-      .and_then(|reference| traced_object(scope, reference));
+    let controller = datagram_controller(scope, transport.get());
     if controller.is_none() {
       transport
         .get()
@@ -897,11 +914,16 @@ fn error_side(
 fn make_datagrams<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   session: u64,
+  bytes: bool,
 ) -> Option<v8::Local<'s, v8::Object>> {
   let readable = make_source(
     scope,
     session,
     0,
+    ReadableInit {
+      bytes,
+      high_water: Some(0.0),
+    },
     on_datagram_read_start,
     on_datagram_pull,
     on_ignore,
@@ -931,6 +953,7 @@ fn make_incoming<'s>(
       scope,
       session,
       0,
+      ReadableInit::plain(),
       on_incoming_bi_start,
       on_ignore,
       on_ignore,
@@ -940,6 +963,7 @@ fn make_incoming<'s>(
       scope,
       session,
       0,
+      ReadableInit::plain(),
       on_incoming_uni_start,
       on_ignore,
       on_ignore,
@@ -956,6 +980,10 @@ fn make_stream_readable<'s>(
     scope,
     session,
     stream,
+    ReadableInit {
+      bytes: true,
+      high_water: None,
+    },
     on_stream_read_start,
     on_stream_pull,
     on_stream_cancel,
@@ -978,19 +1006,44 @@ fn make_stream_writable<'s>(
   )
 }
 
+struct ReadableInit {
+  bytes: bool,
+  high_water: Option<f64>,
+}
+
+impl ReadableInit {
+  fn plain() -> Self {
+    Self {
+      bytes: false,
+      high_water: None,
+    }
+  }
+}
+
 fn make_source<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   session: u64,
   stream: u64,
+  init: ReadableInit,
   start: impl v8::MapFnTo<v8::FunctionCallback>,
   pull: impl v8::MapFnTo<v8::FunctionCallback>,
   cancel: impl v8::MapFnTo<v8::FunctionCallback>,
 ) -> Option<v8::Local<'s, v8::Object>> {
   let source = v8::Object::new(scope);
+  if init.bytes {
+    let kind = v8::String::new(scope, "bytes").unwrap();
+    set(scope, source, "type", kind.into());
+  }
   set_callback(scope, source, "start", start, session, stream)?;
   set_callback(scope, source, "pull", pull, session, stream)?;
   set_callback(scope, source, "cancel", cancel, session, stream)?;
-  construct(scope, "ReadableStream", source)
+  let strategy = init.high_water.map(|high_water| {
+    let strategy = v8::Object::new(scope);
+    let number = v8::Number::new(scope, high_water);
+    set(scope, strategy, "highWaterMark", number.into());
+    strategy
+  });
+  construct(scope, "ReadableStream", source, strategy)
 }
 
 fn make_sink<'s>(
@@ -1007,7 +1060,7 @@ fn make_sink<'s>(
   set_callback(scope, sink, "write", write, session, stream)?;
   set_callback(scope, sink, "close", close, session, stream)?;
   set_callback(scope, sink, "abort", abort, session, stream)?;
-  construct(scope, "WritableStream", sink)
+  construct(scope, "WritableStream", sink, None)
 }
 
 fn on_datagram_read_start(
@@ -1021,13 +1074,190 @@ fn on_datagram_read_start(
 fn on_datagram_pull(
   scope: &mut v8::PinScope,
   args: v8::FunctionCallbackArguments,
-  mut _ret: v8::ReturnValue,
+  mut ret: v8::ReturnValue,
 ) {
   let (session, _) = callback_ids(scope, &args);
-  let Some(transport) = live_host(scope, session) else {
+  let bytes_mode = live_host(scope, session)
+    .is_some_and(|transport| transport.get().datagram_bytes.get());
+  if !bytes_mode {
+    if let Some(transport) = live_host(scope, session) {
+      transport.get().command(Command::PullDatagram);
+    }
+    return;
+  }
+  match step_datagram(scope, session) {
+    DatagramStep::NeedGrant => {
+      if let Some(transport) = live_host(scope, session) {
+        transport.get().command(Command::PullDatagram);
+      }
+    }
+    DatagramStep::Settled => {}
+    DatagramStep::Failed(error) => {
+      let (resolver, promise) = resolver_pair(scope);
+      let error = v8::Local::new(scope, &error);
+      resolver.reject(scope, error);
+      ret.set(promise.into());
+    }
+  }
+}
+
+enum DatagramStep {
+  NeedGrant,
+  Settled,
+  Failed(v8::Global<v8::Value>),
+}
+
+/// Deliver at most one queued bytes-mode datagram to a waiting reader.
+fn step_datagram(scope: &mut v8::PinScope, session: u64) -> DatagramStep {
+  let controller = {
+    let Some(transport) = live_host(scope, session) else {
+      return DatagramStep::Settled;
+    };
+    if !transport.get().datagram_bytes.get() {
+      return DatagramStep::Settled;
+    }
+    datagram_controller(scope, transport.get())
+  };
+  let Some(controller) = controller else {
+    return DatagramStep::NeedGrant;
+  };
+  let controller = yuzuko_core::op::root(scope, controller);
+  let wait = byte_controller_wait(scope, controller);
+  match wait {
+    ByteWait::Closed => {
+      if let Some(transport) = live_host(scope, session) {
+        transport.get().datagram_pending.borrow_mut().clear();
+      }
+      return DatagramStep::Settled;
+    }
+    ByteWait::Idle => return DatagramStep::Settled,
+    ByteWait::Default | ByteWait::Byob { .. } => {}
+  }
+  let bytes = {
+    let Some(transport) = live_host(scope, session) else {
+      return DatagramStep::Settled;
+    };
+    let Some(bytes) = transport.get().datagram_pending.borrow_mut().pop_front()
+    else {
+      return DatagramStep::NeedGrant;
+    };
+    bytes
+  };
+  match wait {
+    ByteWait::Default => deliver_default(scope, controller, &bytes),
+    ByteWait::Byob {
+      byte_length,
+      element_size,
+    } => deliver_byob(scope, controller, &bytes, byte_length, element_size),
+    ByteWait::Closed | ByteWait::Idle => DatagramStep::Settled,
+  }
+}
+
+fn deliver_default(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+  bytes: &[u8],
+) -> DatagramStep {
+  if bytes.is_empty() {
+    return DatagramStep::Failed(type_exception(
+      scope,
+      "An empty datagram cannot be read as bytes",
+    ));
+  }
+  match byte_controller_enqueue(scope, controller, bytes) {
+    Ok(()) => DatagramStep::Settled,
+    Err(error) => DatagramStep::Failed(exception_value(scope, error)),
+  }
+}
+
+fn deliver_byob(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+  bytes: &[u8],
+  byte_length: usize,
+  element_size: usize,
+) -> DatagramStep {
+  if byte_length < bytes.len() {
+    return DatagramStep::Failed(range_exception(
+      scope,
+      "The BYOB view is smaller than the datagram",
+    ));
+  }
+  if element_size != 1 {
+    return DatagramStep::Failed(type_exception(
+      scope,
+      "The BYOB view element size must be 1",
+    ));
+  }
+  if bytes.is_empty() {
+    return DatagramStep::Failed(type_exception(
+      scope,
+      "An empty datagram cannot be read as bytes",
+    ));
+  }
+  match byte_controller_respond(scope, controller, bytes) {
+    Ok(()) => DatagramStep::Settled,
+    Err(error) => DatagramStep::Failed(exception_value(scope, error)),
+  }
+}
+
+fn error_datagram(
+  scope: &mut v8::PinScope,
+  session: u64,
+  error: v8::Global<v8::Value>,
+) {
+  let controller = {
+    let Some(transport) = live_host(scope, session) else {
+      return;
+    };
+    datagram_controller(scope, transport.get())
+  };
+  let Some(controller) = controller else {
     return;
   };
-  transport.get().command(Command::PullDatagram);
+  let error = v8::Local::new(scope, &error);
+  call_method(scope, controller, "error", &[error]);
+}
+
+fn datagram_controller<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  transport: &WebTransport,
+) -> Option<v8::Local<'s, v8::Object>> {
+  transport
+    .datagram_read
+    .borrow()
+    .as_ref()
+    .and_then(|reference| traced_object(scope, reference))
+}
+
+fn exception_value(
+  scope: &mut v8::PinScope,
+  error: OpError,
+) -> v8::Global<v8::Value> {
+  match error {
+    OpError::Type(message) => type_exception(scope, &message),
+    OpError::Range(message) => range_exception(scope, &message),
+    OpError::Dom { message, .. } => type_exception(scope, &message),
+    OpError::Thrown(value) => *value,
+  }
+}
+
+fn type_exception(
+  scope: &mut v8::PinScope,
+  message: &str,
+) -> v8::Global<v8::Value> {
+  let text = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::type_error(scope, text);
+  v8::Global::new(scope, error)
+}
+
+fn range_exception(
+  scope: &mut v8::PinScope,
+  message: &str,
+) -> v8::Global<v8::Value> {
+  let text = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::range_error(scope, text);
+  v8::Global::new(scope, error)
 }
 
 fn on_datagram_write_start(
@@ -1233,7 +1463,13 @@ fn save_simple_controller(
   };
   let transport = transport.get();
   if readable {
+    let bytes_mode = transport.datagram_bytes.get();
     *transport.datagram_read.borrow_mut() = Some(traced(scope, controller));
+    // A bytes-mode queue must not be flushed into the byte controller.
+    // That enqueue would split a datagram across a later BYOB view.
+    if bytes_mode {
+      return;
+    }
     let pending = std::mem::take(&mut *transport.datagram_pending.borrow_mut());
     let controller = yuzuko_core::op::root(scope, controller);
     for bytes in pending {
@@ -1357,6 +1593,7 @@ fn chunk_bytes(
 struct ParsedOptions {
   options: Options,
   congestion: String,
+  datagram_bytes: bool,
 }
 
 fn parsed_options(
@@ -1372,6 +1609,7 @@ fn parsed_options(
         require_unreliable: false,
       },
       congestion: "default".to_string(),
+      datagram_bytes: false,
     });
   }
   let value = args.get(1);
@@ -1391,16 +1629,15 @@ fn parsed_options(
     ));
   }
   let mode = property(scope, object, "datagramsReadableType")?;
-  if !mode.is_undefined() {
+  let datagram_bytes = if mode.is_undefined() {
+    false
+  } else {
     let text = yuzuko_core::rust_string(scope, mode);
-    if text == "bytes" {
-      return Err(OpError::dom(
-        "NotSupportedError",
-        "datagramsReadableType bytes is not supported",
-      ));
+    if text != "bytes" {
+      return Err(OpError::type_("The datagram readable type is invalid"));
     }
-    return Err(OpError::type_("The datagram readable type is invalid"));
-  }
+    true
+  };
   let protocols = property(scope, object, "protocols")?;
   if !protocols.is_undefined() {
     if !protocols.is_array() {
@@ -1441,6 +1678,7 @@ fn parsed_options(
       require_unreliable,
     },
     congestion: label,
+    datagram_bytes,
   })
 }
 
@@ -1917,12 +2155,18 @@ fn construct<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   name: &str,
   source: v8::Local<'_, v8::Object>,
+  strategy: Option<v8::Local<'_, v8::Object>>,
 ) -> Option<v8::Local<'s, v8::Object>> {
   let global = scope.get_current_context().global(scope);
   let value = global.get(scope, key(scope, name).into())?;
   let function = v8::Local::<v8::Function>::try_from(value).ok()?;
   let source = yuzuko_core::op::root(scope, source);
-  function.new_instance(scope, &[source.into()])
+  if let Some(strategy) = strategy {
+    let strategy = yuzuko_core::op::root(scope, strategy);
+    function.new_instance(scope, &[source.into(), strategy.into()])
+  } else {
+    function.new_instance(scope, &[source.into()])
+  }
 }
 
 fn set(

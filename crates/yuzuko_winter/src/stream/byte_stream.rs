@@ -2729,6 +2729,148 @@ pub(super) fn install(scope: &mut v8::PinScope) {
   ReadableStreamBYOBRequest::install(scope);
 }
 
+/// What a readable byte stream's controller will accept right now.
+///
+/// `Byob.element_size` is 0 for a `DataView`. The byte-stream descriptor
+/// stores 1 for that view so later fills do not divide by zero. Datagram
+/// delivery must use this reported size: a `DataView` is not an element
+/// size of 1.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ByteWait {
+  /// The controller is not a readable byte stream.
+  Closed,
+  /// Readable, and no default or BYOB read is waiting.
+  Idle,
+  /// A default reader has a pending read.
+  Default,
+  /// A BYOB read is waiting. `byte_length` is the unfilled view length.
+  Byob {
+    byte_length: usize,
+    element_size: usize,
+  },
+}
+
+pub fn byte_controller_wait(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+) -> ByteWait {
+  let Some(id) = controller_stream(scope, controller) else {
+    return ByteWait::Closed;
+  };
+  if phase_of(id) != Some(Phase::Readable) {
+    return ByteWait::Closed;
+  }
+  let byob = BYTES.with(|slot| {
+    slot.borrow().get(&id).and_then(|byte| {
+      let pull = byte.pending.front()?;
+      if pull.reader != PullReader::Byob {
+        return None;
+      }
+      let element_size = if pull.view == ViewKind::DataView {
+        0
+      } else {
+        pull.element_size
+      };
+      Some(ByteWait::Byob {
+        byte_length: pull.byte_length.saturating_sub(pull.bytes_filled),
+        element_size,
+      })
+    })
+  });
+  if let Some(wait) = byob {
+    return wait;
+  }
+  let (default_reader, requests, _) = reader_counts(id);
+  if default_reader && requests > 0 {
+    ByteWait::Default
+  } else {
+    ByteWait::Idle
+  }
+}
+
+/// Enqueue one `Uint8Array` chunk. A waiting default reader receives the
+/// whole view. A waiting BYOB reader is filled by the byte queue, which
+/// may split the chunk.
+pub fn byte_controller_enqueue(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+  bytes: &[u8],
+) -> Result<(), OpError> {
+  let id = controller_stream(scope, controller)
+    .ok_or_else(|| OpError::type_("The controller is not a byte stream"))?;
+  let length = bytes.len();
+  let buffer = crate::bytes::array_buffer(scope, bytes.to_vec());
+  let view = v8::Uint8Array::new(scope, buffer, 0, length)
+    .ok_or_else(|| OpError::type_("The view could not be created"))?;
+  let view = yuzuko_core::op::root(scope, view);
+  enqueue_view(scope, id, view.into(), true)
+}
+
+/// Copy `bytes` into the pending BYOB view and `respond` with that length.
+pub fn byte_controller_respond(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+  bytes: &[u8],
+) -> Result<(), OpError> {
+  let id = controller_stream(scope, controller)
+    .ok_or_else(|| OpError::type_("The controller is not a byte stream"))?;
+  let placed = BYTES.with(|slot| {
+    let states = slot.borrow();
+    let byte = states.get(&id)?;
+    let pull = byte.pending.front()?;
+    if pull.reader != PullReader::Byob {
+      return None;
+    }
+    Some((pull.buffer.clone(), pull.byte_offset + pull.bytes_filled))
+  });
+  let Some((buffer, offset)) = placed else {
+    return Err(OpError::type_("There is no pending BYOB request"));
+  };
+  let buffer = v8::Local::new(scope, &buffer);
+  write_bytes(buffer, offset, bytes)?;
+  respond(scope, id, bytes.len())
+}
+
+fn controller_stream(
+  scope: &mut v8::PinScope,
+  controller: v8::Local<v8::Object>,
+) -> Option<u64> {
+  let host = unsafe {
+    yuzuko_core::op::host_ref::<ReadableByteStreamController>(scope, controller)
+  }?;
+  Some(host.get().stream)
+}
+
+fn write_bytes(
+  buffer: v8::Local<v8::ArrayBuffer>,
+  offset: usize,
+  bytes: &[u8],
+) -> Result<(), OpError> {
+  if bytes.is_empty() {
+    return Ok(());
+  }
+  if buffer.was_detached() {
+    return Err(OpError::type_("The buffer has been detached"));
+  }
+  let end = offset
+    .checked_add(bytes.len())
+    .ok_or_else(|| OpError::range("bytesWritten out of range"))?;
+  if end > buffer.byte_length() {
+    return Err(OpError::range("bytesWritten out of range"));
+  }
+  let Some(data) = buffer.data() else {
+    return Err(OpError::type_("The buffer has no data"));
+  };
+  unsafe {
+    std::ptr::copy_nonoverlapping(
+      bytes.as_ptr(),
+      data.as_ptr().cast::<u8>().add(offset),
+      bytes.len(),
+    );
+  }
+  Ok(())
+}
+
 impl Clone for PullInto {
   fn clone(&self) -> Self {
     Self {

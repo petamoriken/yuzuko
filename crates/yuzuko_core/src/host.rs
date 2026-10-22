@@ -31,6 +31,8 @@ pub enum TimerCallback {
   Code(String),
   /// Report promise rejections that still have no handler.
   FlushRejections,
+  /// A host callback. Its id is negative so `clearTimeout` does not see it.
+  Host(Box<dyn FnOnce(&mut v8::PinScope)>),
 }
 
 pub struct DeferredRejection {

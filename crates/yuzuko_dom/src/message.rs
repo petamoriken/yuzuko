@@ -397,8 +397,12 @@ impl MessagePort {
     &self,
     scope: &mut v8::PinScope,
     message: Option<v8::Local<v8::Value>>,
+    transfer: Option<v8::Local<v8::Value>>,
   ) -> Result<(), OpError> {
     let message = message.unwrap_or_else(|| v8::undefined(scope).into());
+    let transfer = transfer.unwrap_or_else(|| v8::undefined(scope).into());
+    let message = v8::Local::new(scope, v8::Global::new(scope, message));
+    let transfer = v8::Local::new(scope, v8::Global::new(scope, transfer));
     let peer = PORTS.with(|slot| {
       let ports = slot.borrow();
       let state = ports.get(&self.id);
@@ -413,9 +417,15 @@ impl MessagePort {
     let Some(peer) = peer else {
       return Ok(());
     };
+    let (objects, buffers) = transfer_parts(scope, transfer)?;
     if port_agent(peer) != yuzuko_core::agent_id() {
-      return post_port_remote(scope, peer, message);
+      return post_port_remote(scope, peer, message, &objects, &buffers);
     }
+    // `clone_value` copies an ArrayBuffer. Detach afterward so the sender's
+    // buffer is empty and the peer keeps the bytes. Host objects in the
+    // transfer list move during that clone.
+    let _clear = ClearStructuredTransfer;
+    yuzuko_core::set_structured_transfer(objects);
     let cloned = match yuzuko_core::clone_value(scope, message) {
       Ok(cloned) => cloned,
       Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
@@ -426,6 +436,11 @@ impl MessagePort {
         ));
       }
     };
+    yuzuko_core::clear_structured_transfer();
+    for buffer in &buffers {
+      let buffer = v8::Local::new(scope, buffer);
+      let _ = buffer.detach(None);
+    }
     let started = PORTS.with(|slot| {
       let mut ports = slot.borrow_mut();
       let Some(state) = ports.get_mut(&peer) else {
@@ -651,25 +666,157 @@ pub(crate) fn trusted_message<'s>(
   object
 }
 
+struct ClearStructuredTransfer;
+
+impl Drop for ClearStructuredTransfer {
+  fn drop(&mut self) {
+    yuzuko_core::clear_structured_transfer();
+  }
+}
+
+pub(crate) fn transfer_parts<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> Result<
+  (
+    Vec<v8::Global<v8::Object>>,
+    Vec<v8::Global<v8::ArrayBuffer>>,
+  ),
+  OpError,
+> {
+  if value.is_null_or_undefined() {
+    return Ok((Vec::new(), Vec::new()));
+  }
+  let list = transfer_array(scope, value)?;
+  let mut objects = Vec::new();
+  let mut buffers = Vec::new();
+  for index in 0..list.length() {
+    let Some(item) = list.get_index(scope, index) else {
+      return Err(OpError::type_("The transfer list is not readable"));
+    };
+    if item.is_null_or_undefined() {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The value cannot be transferred",
+      ));
+    }
+    if item.is_shared_array_buffer() {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "A SharedArrayBuffer cannot be transferred",
+      ));
+    }
+    if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(item) {
+      push_transfer_buffer(scope, &mut buffers, buffer)?;
+      continue;
+    }
+    if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(item)
+      && let Some(buffer) = view.buffer(scope)
+    {
+      if buffer.is_shared_array_buffer() {
+        return Err(OpError::dom(
+          "DataCloneError",
+          "A SharedArrayBuffer cannot be transferred",
+        ));
+      }
+      push_transfer_buffer(scope, &mut buffers, buffer)?;
+      continue;
+    }
+    let Ok(object) = v8::Local::<v8::Object>::try_from(item) else {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The value cannot be transferred",
+      ));
+    };
+    if !object.is_api_wrapper() {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The value cannot be transferred",
+      ));
+    }
+    let duplicate = objects.iter().any(|existing| {
+      let existing: v8::Local<v8::Object> = v8::Local::new(scope, existing);
+      existing.strict_equals(object.into())
+    });
+    if duplicate {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The object is already in the transfer list",
+      ));
+    }
+    objects.push(v8::Global::new(scope, object));
+  }
+  Ok((objects, buffers))
+}
+
+fn transfer_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> Result<v8::Local<'s, v8::Array>, OpError> {
+  if let Ok(list) = v8::Local::<v8::Array>::try_from(value) {
+    return Ok(list);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_("The transfer list is not an array"));
+  };
+  let key = v8::String::new(scope, "transfer").unwrap();
+  let Some(transfer) = object.get(scope, key.into()) else {
+    return Err(OpError::type_("The transfer list is not an array"));
+  };
+  if transfer.is_undefined() {
+    return Ok(v8::Array::new(scope, 0));
+  }
+  v8::Local::<v8::Array>::try_from(transfer)
+    .map_err(|_| OpError::type_("The transfer list is not an array"))
+}
+
+fn push_transfer_buffer(
+  scope: &mut v8::PinScope,
+  buffers: &mut Vec<v8::Global<v8::ArrayBuffer>>,
+  buffer: v8::Local<v8::ArrayBuffer>,
+) -> Result<(), OpError> {
+  if buffer.was_detached() || !buffer.is_detachable() {
+    return Err(OpError::dom(
+      "DataCloneError",
+      "The ArrayBuffer cannot be transferred",
+    ));
+  }
+  let duplicate = buffers.iter().any(|existing| {
+    let existing: v8::Local<v8::ArrayBuffer> = v8::Local::new(scope, existing);
+    existing.strict_equals(buffer.into())
+  });
+  if duplicate {
+    return Err(OpError::dom(
+      "DataCloneError",
+      "The ArrayBuffer is already in the transfer list",
+    ));
+  }
+  buffers.push(v8::Global::new(scope, buffer));
+  Ok(())
+}
+
 fn post_port_remote(
   scope: &mut v8::PinScope,
   peer: u64,
   message: v8::Local<v8::Value>,
+  objects: &[v8::Global<v8::Object>],
+  buffers: &[v8::Global<v8::ArrayBuffer>],
 ) -> Result<(), OpError> {
   let agent = port_agent(peer);
-  let parcel =
-    match yuzuko_core::serialize_parcel(scope, message, &[], &[], agent) {
-      Ok(parcel) => parcel,
-      Err(Some(thrown)) => {
-        return Err(OpError::Thrown(Box::new(thrown)));
-      }
-      Err(None) => {
-        return Err(OpError::dom(
-          "DataCloneError",
-          "The object could not be cloned.",
-        ));
-      }
-    };
+  let parcel = match yuzuko_core::serialize_parcel(
+    scope, message, objects, buffers, agent,
+  ) {
+    Ok(parcel) => parcel,
+    Err(Some(thrown)) => {
+      return Err(OpError::Thrown(Box::new(thrown)));
+    }
+    Err(None) => {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The object could not be cloned.",
+      ));
+    }
+  };
   yuzuko_core::post_inbound(
     agent,
     yuzuko_core::Inbound::Port { port: peer, parcel },

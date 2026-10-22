@@ -1777,7 +1777,7 @@ impl AudioContext {
 
   #[getter]
   fn output_latency(&self) -> f64 {
-    0.0
+    engine::output_latency(self.base.id)
   }
 
   #[promise]

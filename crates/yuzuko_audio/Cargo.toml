@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 claxon = "0.4"
+cpal = { version = "0.18.2", default-features = false }
 hound = "3.5"
 lewton = "0.10"
 symphonia = { workspace = true, features = ["mp3"] }

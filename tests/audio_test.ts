@@ -195,6 +195,58 @@ Yuzuko.test("AudioWorklet process uses the render quantum", async () => {
   }
 });
 
+Yuzuko.test("realtime currentTime advances until close", async () => {
+  const context = new AudioContext();
+  try {
+    assert(context.currentTime === 0, "clock starts at 0");
+    const source = new ConstantSourceNode(context, { offset: 0 });
+    source.connect(context.destination);
+    source.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const first = context.currentTime;
+    assert(first > 0, `currentTime after start ${first}`);
+    const latency = context.outputLatency;
+    assert(
+      latency === 0 || latency === 0.1,
+      `outputLatency ${latency}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const second = context.currentTime;
+    assert(second - first > 0.05, `clock delta ${second - first}`);
+  } finally {
+    await context.close();
+  }
+});
+
+Yuzuko.test("suspend freezes the realtime clock until resume", async () => {
+  const context = new AudioContext();
+  try {
+    const source = new ConstantSourceNode(context, { offset: 0 });
+    source.connect(context.destination);
+    await context.suspend();
+    source.start();
+    assert(context.currentTime === 0, "suspended start stays at 0");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert(context.currentTime === 0, "stays 0 while suspended");
+    await context.resume();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const started = context.currentTime;
+    assert(started > 0, `resumed ${started}`);
+    await context.suspend();
+    const frozen = context.currentTime;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert(
+      context.currentTime === frozen,
+      `frozen ${context.currentTime} ${frozen}`,
+    );
+    await context.resume();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert(context.currentTime > frozen, `continued ${context.currentTime}`);
+  } finally {
+    await context.close();
+  }
+});
+
 Yuzuko.test("offline suspend stops on a quantum boundary", async () => {
   const renderSize = 441;
   const sampleRate = 48000;

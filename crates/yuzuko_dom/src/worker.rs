@@ -356,7 +356,7 @@ fn prepare_message<'s>(
   transfer: v8::Local<'s, v8::Value>,
   target: u64,
 ) -> Result<yuzuko_core::Parcel, OpError> {
-  let (objects, buffers) = transfer_list(scope, transfer)?;
+  let (objects, buffers) = crate::message::transfer_parts(scope, transfer)?;
   match yuzuko_core::serialize_parcel(
     scope, message, &objects, &buffers, target,
   ) {
@@ -367,126 +367,6 @@ fn prepare_message<'s>(
       "The object could not be cloned.",
     )),
   }
-}
-
-type TransferParts = (
-  Vec<v8::Global<v8::Object>>,
-  Vec<v8::Global<v8::ArrayBuffer>>,
-);
-
-fn transfer_list<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  value: v8::Local<'s, v8::Value>,
-) -> Result<TransferParts, OpError> {
-  if value.is_null_or_undefined() {
-    return Ok((Vec::new(), Vec::new()));
-  }
-  let list = transfer_array(scope, value)?;
-  let mut objects = Vec::new();
-  let mut buffers = Vec::new();
-  for index in 0..list.length() {
-    let Some(item) = list.get_index(scope, index) else {
-      return Err(OpError::type_("The transfer list is not readable"));
-    };
-    if item.is_null_or_undefined() {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The value cannot be transferred",
-      ));
-    }
-    if item.is_shared_array_buffer() {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "A SharedArrayBuffer cannot be transferred",
-      ));
-    }
-    if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(item) {
-      push_buffer(scope, &mut buffers, buffer)?;
-      continue;
-    }
-    if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(item)
-      && let Some(buffer) = view.buffer(scope)
-    {
-      if buffer.is_shared_array_buffer() {
-        return Err(OpError::dom(
-          "DataCloneError",
-          "A SharedArrayBuffer cannot be transferred",
-        ));
-      }
-      push_buffer(scope, &mut buffers, buffer)?;
-      continue;
-    }
-    let Ok(object) = v8::Local::<v8::Object>::try_from(item) else {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The value cannot be transferred",
-      ));
-    };
-    if !object.is_api_wrapper() {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The value cannot be transferred",
-      ));
-    }
-    let duplicate = objects.iter().any(|existing| {
-      let existing: v8::Local<v8::Object> = v8::Local::new(scope, existing);
-      existing.strict_equals(object.into())
-    });
-    if duplicate {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The object is already in the transfer list",
-      ));
-    }
-    objects.push(v8::Global::new(scope, object));
-  }
-  Ok((objects, buffers))
-}
-
-fn transfer_array<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  value: v8::Local<'s, v8::Value>,
-) -> Result<v8::Local<'s, v8::Array>, OpError> {
-  if let Ok(list) = v8::Local::<v8::Array>::try_from(value) {
-    return Ok(list);
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
-    return Err(OpError::type_("The transfer list is not an array"));
-  };
-  let key = v8::String::new(scope, "transfer").unwrap();
-  let Some(transfer) = object.get(scope, key.into()) else {
-    return Err(OpError::type_("The transfer list is not an array"));
-  };
-  if transfer.is_undefined() {
-    return Ok(v8::Array::new(scope, 0));
-  }
-  v8::Local::<v8::Array>::try_from(transfer)
-    .map_err(|_| OpError::type_("The transfer list is not an array"))
-}
-
-fn push_buffer(
-  scope: &mut v8::PinScope,
-  buffers: &mut Vec<v8::Global<v8::ArrayBuffer>>,
-  buffer: v8::Local<v8::ArrayBuffer>,
-) -> Result<(), OpError> {
-  if buffer.was_detached() || !buffer.is_detachable() {
-    return Err(OpError::dom(
-      "DataCloneError",
-      "The ArrayBuffer cannot be transferred",
-    ));
-  }
-  let duplicate = buffers.iter().any(|existing| {
-    let existing: v8::Local<v8::ArrayBuffer> = v8::Local::new(scope, existing);
-    existing.strict_equals(buffer.into())
-  });
-  if duplicate {
-    return Err(OpError::dom(
-      "DataCloneError",
-      "The ArrayBuffer is already in the transfer list",
-    ));
-  }
-  buffers.push(v8::Global::new(scope, buffer));
-  Ok(())
 }
 
 #[repr(C)]

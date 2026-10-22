@@ -7164,8 +7164,12 @@ interface PeriodicWaveConstraints {
 /**
  * A realtime context.
  *
- * No output device is opened. `baseLatency` is `renderQuantumSize / sampleRate`.
- * `outputLatency` is reported by the context.
+ * `currentTime` stays 0 until a source starts. Playback then opens the default
+ * output device and keeps rendering until `suspend` or `close`, which keeps
+ * the process alive. The device callback only copies a buffer. When the device
+ * cannot be opened, a timer advances the clock.
+ * `baseLatency` is `renderQuantumSize / sampleRate`. With a device,
+ * `outputLatency` is the 100 ms playback buffer. On the timer it is 0.
  *
  * @throws {@link DOMException} `NotSupportedError` when `sampleRate` is outside
  * 3000 through 768000, when `renderSizeHint` is an integer outside 1 through
@@ -8370,8 +8374,13 @@ type WebTransportReliabilityMode =
  * non-empty, including when every algorithm is unknown. Unknown algorithms
  * are ignored. `allowPooling: true` with that non-empty list throws
  * `NotSupportedError`. Pooling is otherwise ignored.
- * `datagramsReadableType: "bytes"` throws `NotSupportedError`. Any other
- * string throws `TypeError`. A non-empty `protocols` list throws
+ * Omitted `datagramsReadableType` uses a default readable stream, and
+ * `getReader({ mode: "byob" })` on it throws `TypeError`. `"bytes"` uses a
+ * readable byte stream. A BYOB view shorter than the datagram rejects the
+ * read with `RangeError`. A view whose element size is not 1, including a
+ * `DataView`, rejects the read with `TypeError`. An empty datagram in that
+ * mode rejects the read with `TypeError`. Any other string throws
+ * `TypeError`. A non-empty `protocols` list throws
  * `NotSupportedError`. An empty list is accepted. A `Headers` object throws
  * `NotSupportedError`, including an empty one. A non-empty header sequence
  * or record throws `NotSupportedError`. An empty sequence or record is
@@ -8436,7 +8445,7 @@ interface WebTransportSendStreamOptions {
 /**
  * A bidirectional WebTransport stream.
  *
- * `readable` and `writable` are `ReadableStream` and `WritableStream`.
+ * `readable` is a readable byte stream. `writable` is a `WritableStream`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
  */
@@ -8448,7 +8457,13 @@ interface WebTransportBidirectionalStream {
 /**
  * Datagram duplex exposed by {@link WebTransport.datagrams}.
  *
- * This is a plain object. Chunks are `Uint8Array` values.
+ * This is a plain object. Chunks are `Uint8Array` values. Omitted
+ * `datagramsReadableType` makes `readable` a default readable stream, and
+ * `getReader({ mode: "byob" })` throws `TypeError`. `"bytes"` makes
+ * `readable` a readable byte stream. Both modes use a high-water mark of 0.
+ * In bytes mode one read returns one datagram. A BYOB view shorter than the
+ * datagram rejects the read with `RangeError`. A view whose element size is
+ * not 1, including a `DataView`, rejects the read with `TypeError`.
  */
 interface WebTransportDatagrams {
   readable: ReadableStream<Uint8Array>;
@@ -8473,8 +8488,10 @@ interface WebTransportErrorOptions {
  * the main realm and in a dedicated worker. This is not an `EventTarget`.
  * `ready` and `closed` reject when the handshake fails, and those
  * rejections are marked handled. `datagrams` is a plain
- * `{ readable, writable }`. Chunks are `Uint8Array` values. `reliability`
- * is `"pending"` until `ready` resolves.
+ * `{ readable, writable }`. Chunks are `Uint8Array` values. The readable
+ * side of a bidirectional stream, and each incoming unidirectional stream,
+ * is a readable byte stream. `reliability` is `"pending"` until `ready`
+ * resolves.
  *
  * @throws {@link DOMException} `SyntaxError` when the URL is invalid, the
  * scheme is not `https`, or the URL has a fragment.
@@ -8484,10 +8501,10 @@ interface WebTransportErrorOptions {
  * `datagramsReadableType` is a string other than `"bytes"`, a certificate
  * hash is malformed, or an anticipated incoming-stream count is not an
  * unsigned short.
- * @throws {@link DOMException} `NotSupportedError` when
- * `datagramsReadableType` is `"bytes"`, `protocols` is non-empty, `headers`
- * is a `Headers` object or a non-empty sequence or record, or
- * `allowPooling` is true with a non-empty `serverCertificateHashes` list.
+ * @throws {@link DOMException} `NotSupportedError` when `protocols` is
+ * non-empty, `headers` is a `Headers` object or a non-empty sequence or
+ * record, or `allowPooling` is true with a non-empty
+ * `serverCertificateHashes` list.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport)
  */
@@ -8523,11 +8540,15 @@ declare class WebTransport {
   readonly datagrams: WebTransportDatagrams;
 
   /**
+   * Each value's `readable` is a readable byte stream.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingBidirectionalStreams)
    */
   readonly incomingBidirectionalStreams: ReadableStream<WebTransportBidirectionalStream>;
 
   /**
+   * Each value is a readable byte stream.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingUnidirectionalStreams)
    */
   readonly incomingUnidirectionalStreams: ReadableStream<ReadableStream<Uint8Array>>;
