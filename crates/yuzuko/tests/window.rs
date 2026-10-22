@@ -75,7 +75,7 @@ fn input_sequences_pass_under_yuzuko_test() {
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
-    stdout.contains("ok | 9 passed | 0 failed | 0 ignored"),
+    stdout.contains("ok | 11 passed | 0 failed | 0 ignored"),
     "{stdout}\n{}",
     text(&output.stderr)
   );

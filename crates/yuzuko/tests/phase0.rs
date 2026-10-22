@@ -18,6 +18,26 @@ fn text(bytes: &[u8]) -> String {
   String::from_utf8_lossy(bytes).into_owned()
 }
 
+fn is_lavapipe_banner(line: &str) -> bool {
+  line
+    .to_ascii_lowercase()
+    .contains("lavapipe is not a conformant vulkan")
+}
+
+/// Drops Mesa's lavapipe banner. Linux without a GPU prints it when the
+/// device opens. Text that does not contain the banner is returned unchanged.
+fn without_lavapipe_banner(text: &str) -> String {
+  let lines: Vec<&str> = text.lines().collect();
+  if !lines.iter().copied().any(is_lavapipe_banner) {
+    return text.to_string();
+  }
+  lines
+    .into_iter()
+    .filter(|line| !line.trim().is_empty() && !is_lavapipe_banner(line))
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
 #[test]
 fn hello_prints_the_imported_greeting() {
   let output = yuzuko(&["run", "tests/cli/hello.ts"]);
@@ -137,18 +157,39 @@ fn window_examples_stay_open() {
     let output = child
       .wait_with_output()
       .unwrap_or_else(|error| panic!("wait {name}: {error}"));
-    let stderr = text(&output.stderr);
+    let raw_stderr = text(&output.stderr);
+    let stderr = without_lavapipe_banner(&raw_stderr);
     let stdout = text(&output.stdout);
     assert!(
       status.is_none(),
-      "{name} exited {:?}\n{stderr}{stdout}",
+      "{name} exited {:?}\n{raw_stderr}{stdout}",
       status.and_then(|code| code.code())
     );
     assert!(
       stderr.is_empty() && stdout.is_empty(),
-      "{name}\n{stderr}{stdout}"
+      "{name}\n{raw_stderr}{stdout}"
     );
   }
+}
+
+#[test]
+fn lavapipe_banner_is_not_example_output() {
+  let banner = concat!(
+    "WARNING: lavapipe is not a conformant vulkan implementation, ",
+    "testing use only.\n"
+  );
+  assert_eq!(without_lavapipe_banner(banner), "");
+  let mesa = concat!(
+    "lavapipe: warning: lavapipe is not a conformant Vulkan ",
+    "implementation, testing use only."
+  );
+  assert_eq!(without_lavapipe_banner(&format!("\n{mesa}\n\n")), "");
+  assert_eq!(
+    without_lavapipe_banner(&format!("{banner}real error\n")),
+    "real error"
+  );
+  assert_eq!(without_lavapipe_banner("real error\n"), "real error\n");
+  assert_eq!(without_lavapipe_banner("\n"), "\n");
 }
 
 #[test]

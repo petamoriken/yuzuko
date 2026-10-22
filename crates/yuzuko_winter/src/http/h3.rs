@@ -180,20 +180,16 @@ async fn open(
       Ok::<_, h3::error::StreamError>((response, stream))
     };
     tokio::pin!(request_fut);
-    loop {
-      tokio::select! {
-        biased;
-        _ = super::wait_cancel(Arc::clone(attempt.cancel)) => {
-          return Err(HttpFailure::Abort);
-        }
-        result = &mut request_fut => {
-          break result.map_err(|error| {
-            HttpFailure::Network(error.to_string())
-          })?;
-        }
-        closed = std::future::poll_fn(|cx| driver.poll_close(cx)) => {
-          return Err(HttpFailure::Network(closed.to_string()));
-        }
+    tokio::select! {
+      biased;
+      _ = super::wait_cancel(Arc::clone(attempt.cancel)) => {
+        return Err(HttpFailure::Abort);
+      }
+      result = &mut request_fut => {
+        result.map_err(|error| HttpFailure::Network(error.to_string()))?
+      }
+      closed = std::future::poll_fn(|cx| driver.poll_close(cx)) => {
+        return Err(HttpFailure::Network(closed.to_string()));
       }
     }
   };
