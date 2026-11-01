@@ -15,11 +15,14 @@ pub use blob::{
   lease_blob_url, new_blob, snapshot_blob,
 };
 pub use bytes::{array_buffer, buffer_source};
+#[cfg(feature = "fetch")]
 pub use http::sse::{SseError, SseItem, SseParser};
+#[cfg(feature = "socket")]
 pub use http::websocket::{
   AddressSpace, Command, Connection, Note, NoteQueue, PullGate, abort_all,
   connect, environment_origin, is_bad_port, valid_protocol,
 };
+#[cfg(feature = "socket")]
 pub use http::webtransport::{
   Command as WebTransportCommand, Congestion as WebTransportCongestion,
   Connection as WebTransportConnection, Note as WebTransportNote,
@@ -27,6 +30,7 @@ pub use http::webtransport::{
   abort_all as abort_web_transports, connect as connect_web_transport,
   next_stream_id as next_web_transport_stream_id,
 };
+#[cfg(feature = "fetch")]
 pub use http::{BodyNote, HttpBody, perform};
 pub use stream::{
   ByteWait, byte_controller_enqueue, byte_controller_respond,
@@ -39,6 +43,7 @@ pub fn register() {
   ONCE.call_once(|| {
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(blob::clear_jobs);
+    #[cfg(feature = "fetch")]
     yuzuko_core::on_realm_drop(http::cache::clear);
     yuzuko_core::on_realm_drop(stream::clear);
     blob::register_clone();
@@ -52,8 +57,11 @@ fn install(scope: &mut v8::PinScope) {
   crypto::install(scope);
   blob::install(scope);
   url::install(scope);
+  #[cfg(feature = "fetch")]
   http::fetch::install(scope);
+  #[cfg(feature = "fetch")]
   http::cache::install(scope);
+  #[cfg(feature = "fetch")]
   http::xhr::XMLHttpRequest::install(scope);
   http::form::install(scope);
   stream::install(scope);

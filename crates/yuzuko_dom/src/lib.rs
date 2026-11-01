@@ -58,9 +58,13 @@ fn install(scope: &mut v8::PinScope) {
   report::install(scope);
   worker::install(scope);
   idle::install(scope);
+  #[cfg(feature = "fetch")]
   net::event_source::install(scope);
+  #[cfg(feature = "socket")]
   net::websocket::install(scope);
+  #[cfg(feature = "socket")]
   net::websocket_stream::install(scope);
+  #[cfg(feature = "socket")]
   net::webtransport::install(scope);
 }
 
@@ -83,8 +87,12 @@ fn clear() {
   event::clear_is_trusted();
   worker::clear();
   idle::clear();
+  #[cfg(feature = "fetch")]
   net::event_source::clear();
+  #[cfg(feature = "socket")]
   net::websocket::clear();
+  #[cfg(feature = "socket")]
   net::websocket_stream::clear();
+  #[cfg(feature = "socket")]
   net::webtransport::clear();
 }

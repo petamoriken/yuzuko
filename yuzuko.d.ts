@@ -9,7 +9,9 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm.
  * File-system members on {@link Yuzuko} are present when the runtime is
- * built with the `fs` feature, which is enabled by default.
+ * built with the `fs` feature, which is enabled by default. `fetch` and
+ * `socket` are also enabled by default. `fetch` installs {@link fetch} and
+ * {@link EventSource}. `socket` installs {@link WebSocket}.
  * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
  * A web-standard interface or member ends with an MDN link in the form used by
@@ -4307,6 +4309,12 @@ declare var Response: {
 
 /**
  * Fetches `input`.
+ *
+ * Present when the runtime is built with the `fetch` Cargo feature, which is
+ * enabled by default. A build that does not enable `fetch` omits this
+ * function, {@link Headers}, {@link Request}, {@link Response}, `caches`,
+ * {@link XMLHttpRequest}, and {@link EventSource}. The `socket` feature,
+ * which installs {@link WebSocket}, is separate.
  *
  * Schemes are `file:`, `blob:`, `data:`, `http:`, and `https:`. `http:` and
  * `https:` follow redirects, retry a `421` once on a new connection, and

@@ -5,29 +5,54 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+default = ["fetch", "socket"]
+fetch = [
+  "dep:http-body-util",
+  "dep:hyper",
+  "dep:hyper-rustls",
+  "dep:hyper-util",
+  "dep:h3",
+  "dep:h3-quinn",
+  "dep:ruzstd",
+  "dep:quinn",
+  "dep:tokio",
+  "dep:tokio-rustls",
+  "dep:rustls",
+  "dep:webpki-roots",
+]
+socket = [
+  "dep:quinn",
+  "dep:web-transport-quinn",
+  "dep:tokio",
+  "dep:tokio-rustls",
+  "dep:rustls",
+  "dep:webpki-roots",
+]
+
 [dependencies]
 bytes = "1.12.1"
 encoding_rs.workspace = true
 flate2 = { workspace = true, default-features = false, features = ["zlib-rs"] }
 getrandom = "0.3"
-rustls.workspace = true
-http-body-util = "0.1.5"
-hyper = { version = "1.12.0", features = ["client", "server", "http1", "http2"] }
-hyper-rustls = { version = "0.27.10", default-features = false, features = [
+rustls = { workspace = true, optional = true }
+http-body-util = { version = "0.1.5", optional = true }
+hyper = { version = "1.12.0", optional = true, features = ["client", "server", "http1", "http2"] }
+hyper-rustls = { version = "0.27.10", optional = true, default-features = false, features = [
   "http1",
   "http2",
   "ring",
   "tls12",
   "webpki-tokio",
 ] }
-hyper-util = { version = "0.1.21", features = ["tokio", "http1", "http2", "client-legacy"] }
-h3 = "0.0.8"
-h3-quinn = "0.0.10"
-quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
-web-transport-quinn = { version = "0.13.2", default-features = false, features = ["ring"] }
-tokio-rustls = "0.26.6"
-webpki-roots.workspace = true
-tokio = { version = "1.53.3", features = [
+hyper-util = { version = "0.1.21", optional = true, features = ["tokio", "http1", "http2", "client-legacy"] }
+h3 = { version = "0.0.8", optional = true }
+h3-quinn = { version = "0.0.10", optional = true }
+quinn = { version = "0.11.12", optional = true, default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+web-transport-quinn = { version = "0.13.2", optional = true, default-features = false, features = ["ring"] }
+tokio-rustls = { version = "0.26.6", optional = true }
+webpki-roots = { workspace = true, optional = true }
+tokio = { version = "1.53.3", optional = true, features = [
   "io-util",
   "macros",
   "net",
@@ -55,7 +80,7 @@ p521 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa"
 ed25519-dalek = { workspace = true, features = ["alloc", "pkcs8", "rand_core"] }
 x25519-dalek = { version = "3.0.0", default-features = false, features = ["static_secrets"] }
 brotli = "9.0.0"
-ruzstd = "0.9.1"
+ruzstd = { version = "0.9.1", optional = true }
 ed448-goldilocks = { version = "0.14.0-pre.15", default-features = false, features = ["signing", "pkcs8"] }
 x448 = { version = "0.14.0-pre.12", default-features = false }
 

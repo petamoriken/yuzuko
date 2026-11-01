@@ -176,6 +176,7 @@ pub(super) fn fail(
   let _ = error_controller(scope, id, error);
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(super) fn take_queued_bytes(
   scope: &mut v8::PinScope,
   id: u64,

@@ -299,6 +299,7 @@ enum Token {
   PipeAction(u64),
   PipeSignal(u64),
   BodyRead(u64),
+  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   BodyWait(u64),
   CodecError(u64),
 }
@@ -794,12 +795,14 @@ pub fn stream_from_source(
   stream_from_bytes(scope, bytes)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn open_byte_stream(
   scope: &mut v8::PinScope,
 ) -> v8::Global<v8::Object> {
   wrap_stream(scope, byte_stream::create_push())
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn byte_stream_id(
   scope: &mut v8::PinScope,
   object: &v8::Global<v8::Object>,
@@ -807,6 +810,7 @@ pub(crate) fn byte_stream_id(
   stream_id_of(scope, object).unwrap_or(0)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn byte_stream_open(id: u64) -> bool {
   READS.with(|slot| {
     slot.borrow().get(&id).is_some_and(|state| {
@@ -815,6 +819,7 @@ pub(crate) fn byte_stream_open(id: u64) -> bool {
   })
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn push_byte_chunk(
   scope: &mut v8::PinScope,
   id: u64,
@@ -830,6 +835,7 @@ pub(crate) fn push_byte_chunk(
   enqueue_chunk(scope, id, view.into(), Some(1.0)).is_ok()
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn finish_byte_stream(scope: &mut v8::PinScope, id: u64) {
   if byte_stream::is_byte(id) {
     byte_stream::finish(scope, id);
@@ -838,6 +844,7 @@ pub(crate) fn finish_byte_stream(scope: &mut v8::PinScope, id: u64) {
   let _ = close_stream(scope, id);
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn error_byte_stream(
   scope: &mut v8::PinScope,
   id: u64,
@@ -850,6 +857,7 @@ pub(crate) fn error_byte_stream(
   let _ = error_stream(scope, id, error);
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn stream_error(id: u64) -> Option<v8::Global<v8::Value>> {
   READS.with(|slot| {
     slot
@@ -860,6 +868,7 @@ pub(crate) fn stream_error(id: u64) -> Option<v8::Global<v8::Value>> {
   })
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn cancel_stream_object(
   scope: &mut v8::PinScope,
   object: &v8::Global<v8::Object>,
@@ -932,6 +941,7 @@ pub(crate) fn tee_pair(
 
 /// UTF-8 text stream for `textStream()`. Buffered bodies become one string
 /// chunk. An open body is decoded when its bytes arrive.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn text_stream_from_body(
   scope: &mut v8::PinScope,
   body: v8::Local<v8::Object>,
@@ -964,6 +974,7 @@ pub fn text_stream_from_body(
   }
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn stream_from_text(
   scope: &mut v8::PinScope,
   text: &str,
@@ -978,6 +989,7 @@ fn stream_from_text(
   object
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn open_value_stream(
   scope: &mut v8::PinScope,
 ) -> (u64, v8::Global<v8::Object>) {
@@ -1028,6 +1040,7 @@ fn wrap_stream(scope: &mut v8::PinScope, id: u64) -> v8::Global<v8::Object> {
   v8::Global::new(scope, object)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn stream_id_of(
   scope: &mut v8::PinScope,
   object: &v8::Global<v8::Object>,
@@ -1035,6 +1048,7 @@ pub fn stream_id_of(
   readable_object_id(scope, object).ok()
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn is_disturbed(id: u64) -> bool {
   if id == 0 {
     return false;
@@ -1042,6 +1056,7 @@ pub fn is_disturbed(id: u64) -> bool {
   READS.with(|slot| slot.borrow().get(&id).is_some_and(|state| state.disturbed))
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn is_locked(id: u64) -> bool {
   if id == 0 {
     return false;
@@ -1054,6 +1069,7 @@ pub fn is_locked(id: u64) -> bool {
   })
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub enum StreamBody {
   Ready(Vec<u8>),
   Pending(v8::Global<v8::Promise>),
@@ -1061,6 +1077,7 @@ pub enum StreamBody {
 
 /// Copies a body that is already complete. An open stream is read until it
 /// closes so later chunks are not discarded.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn read_stream_bytes(
   scope: &mut v8::PinScope,
   id: u64,
@@ -1097,6 +1114,7 @@ pub fn read_stream_bytes(
   Ok(StreamBody::Pending(start_body_read(scope, id)?))
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn start_body_read(
   scope: &mut v8::PinScope,
   id: u64,
@@ -1196,6 +1214,7 @@ fn finish_body(
   let _ = release_reader(scope, reader);
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn when_stream_bytes(
   scope: &mut v8::PinScope,
   promise: v8::Global<v8::Promise>,
@@ -1229,6 +1248,7 @@ fn body_on_wait(
   }
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn consume_buffered(
   scope: &mut v8::PinScope,
   id: u64,

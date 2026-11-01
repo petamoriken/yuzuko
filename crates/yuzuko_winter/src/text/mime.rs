@@ -131,6 +131,7 @@ pub(crate) fn file_type(input: &str) -> String {
 
 /// The `data:` URL processor. `input` is the URL serialization with the
 /// leading `data:` and the fragment removed. `None` is a network error.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn process_data_url(input: &str) -> Option<(Vec<u8>, String)> {
   let chars: Vec<char> = input.chars().collect();
   let mut index = 0;
@@ -158,6 +159,7 @@ pub(crate) fn process_data_url(input: &str) -> Option<(Vec<u8>, String)> {
 }
 
 /// Run the processor on a parsed URL, excluding the fragment.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn data_url(url: &url::Url) -> Option<(Vec<u8>, String)> {
   if url.scheme() != "data" {
     return None;
@@ -169,6 +171,7 @@ pub(crate) fn data_url(url: &url::Url) -> Option<(Vec<u8>, String)> {
   process_data_url(input)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn default_data_mime() -> Mime {
   Mime {
     type_: "text".to_string(),
@@ -177,6 +180,7 @@ fn default_data_mime() -> Mime {
   }
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn strip_base64_suffix(mime: &str) -> Option<String> {
   let chars: Vec<char> = mime.chars().collect();
   if chars.len() < 6 {
@@ -196,10 +200,12 @@ fn strip_base64_suffix(mime: &str) -> Option<String> {
   Some(chars[..index - 1].iter().collect())
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn trim_ascii_whitespace(value: &str) -> &str {
   value.trim_matches(|ch| matches!(ch, '\t' | '\n' | '\u{000c}' | '\r' | ' '))
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn percent_decode(input: &str) -> Vec<u8> {
   let bytes = input.as_bytes();
   let mut out = Vec::with_capacity(bytes.len());
@@ -220,6 +226,7 @@ fn percent_decode(input: &str) -> Vec<u8> {
   out
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn hex_digit(byte: u8) -> Option<u8> {
   match byte {
     b'0'..=b'9' => Some(byte - b'0'),

@@ -21,6 +21,8 @@ The runtime provides:
 - ECMA-402 `Intl` with the full ICU locale data linked into this V8 build.
 - Dedicated workers, Web Audio, hardware H.264 and AAC decoding, packaging, and automatic updates.
 - `Yuzuko` file-system methods when the runtime is built with the `fs` feature.
+- `fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, and `EventSource` when the runtime is built with the `fetch` feature.
+- `WebSocket`, `WebSocketStream`, and `WebTransport` when the runtime is built with the `socket` feature.
 
 ## Platforms
 
@@ -318,7 +320,7 @@ The realm includes:
 - `AbortController`, `AbortSignal`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
 - V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`
-- `fetch`, `Headers`, `Request`, and `Response` for `file:`, `blob:`, `data:`, `http:`, and `https:`
+- `fetch`, `Headers`, `Request`, and `Response` for `file:`, `blob:`, `data:`, `http:`, and `https:`, when the runtime is built with the `fetch` feature
 - `createImageBitmap`, `ImageBitmap`, `ImageData`
 - `OffscreenCanvas`, `CanvasRenderingContext2D`, `ImageBitmapRenderingContext`, `Path2D`
 - WebGPU and `navigator.gpu`
@@ -327,7 +329,7 @@ The realm includes:
 - `URLPattern`
 - `Crypto`, `CryptoKey`, `SubtleCrypto`, `crypto`, including Ed448 and X448
 - `MessageChannel`, `MessagePort`, `MessageEvent`
-- `caches`
+- `caches`, when the runtime is built with the `fetch` feature
 - ECMA-402 `Intl`, as specified under Internationalization
 
 `fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. `https:` negotiates HTTP/2 by ALPN and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. A cached request does not keep the caller's `AbortSignal`. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
@@ -577,7 +579,7 @@ Shared workers, service workers, and worklets stay out of scope.
 
 ## Server messages
 
-`EventSource` and `WebSocket` live on `globalThis`, including a dedicated worker. `EventSource` reads an `http:` or `https:` `text/event-stream` response and dispatches `MessageEvent`s. The default reconnection time is 3000ms. `retry` replaces it. `close()` stops the stream. `withCredentials` is stored on the object.
+`EventSource` is installed with the `fetch` feature. `WebSocket`, `WebSocketStream`, and `WebTransport` are installed with the `socket` feature. Both features are enabled by default, and either one can be left out. `FormData` stays in every build. When its feature is enabled, `EventSource` or `WebSocket` lives on `globalThis`, including a dedicated worker. `EventSource` reads an `http:` or `https:` `text/event-stream` response and dispatches `MessageEvent`s. The default reconnection time is 3000ms. `retry` replaces it. `close()` stops the stream. `withCredentials` is stored on the object.
 
 `new WebSocket(url)` opens a `ws:` or `wss:` connection. The second argument is a protocol string, a sequence of protocol strings, or a `WebSocketInit` dictionary `{ protocols, targetAddressSpace }`. `targetAddressSpace` is `"loopback"`, `"local"`, or `"public"`. The connection fails unless the connected address is in that space. Any other value, including the legacy alias `"private"`, throws `TypeError`. A further argument is ignored. `send` accepts a string, a `BufferSource`, or a `Blob`. `binaryType` is `"blob"` or `"arraybuffer"`. `close(code, reason)` uses code 1000 or a code from 3000 through 4999. `extensions` stays `""`.
 

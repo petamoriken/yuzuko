@@ -12,7 +12,7 @@ use std::time::Duration;
 use bytes::Buf;
 use rustls::pki_types::ServerName;
 
-use super::alt_svc;
+use super::super::alt_svc;
 use super::{BodyNote, HttpBody, HttpFailure, HttpResponse};
 
 pub(super) enum Step {
@@ -124,7 +124,7 @@ async fn open(
   host: &str,
   port: u16,
 ) -> Result<Opened, HttpFailure> {
-  super::install_tls();
+  super::super::install_tls();
   let server_name = alt_svc::server_name(attempt.url)
     .ok_or_else(|| HttpFailure::Type("The URL is invalid".to_string()))?;
   // Quinn checks the name before the handshake. An unbracketed IPv6 literal
@@ -315,7 +315,7 @@ async fn deliver(
   let decoder = if null_body {
     None
   } else {
-    super::content_coding::prepare(&mut headers)
+    super::super::content_coding::prepare(&mut headers)
   };
   if attempt
     .sender
@@ -345,7 +345,7 @@ async fn deliver(
 async fn forward(
   opened: &mut Opened,
   body: HttpBody,
-  mut decoder: Option<super::content_coding::ContentDecoder>,
+  mut decoder: Option<super::super::content_coding::ContentDecoder>,
 ) {
   loop {
     let stream = &mut opened.stream;
@@ -389,7 +389,7 @@ async fn forward(
 }
 
 fn push_chunk(
-  decoder: &mut Option<super::content_coding::ContentDecoder>,
+  decoder: &mut Option<super::super::content_coding::ContentDecoder>,
   body: &HttpBody,
   bytes: &[u8],
 ) -> bool {
@@ -414,7 +414,7 @@ fn push_chunk(
 }
 
 fn finish_decoder(
-  decoder: &mut Option<super::content_coding::ContentDecoder>,
+  decoder: &mut Option<super::super::content_coding::ContentDecoder>,
   body: &HttpBody,
 ) {
   if let Some(decoder) = decoder.as_mut() {

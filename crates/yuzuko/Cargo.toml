@@ -10,8 +10,10 @@ name = "yuzuko"
 path = "src/main.rs"
 
 [features]
-default = ["fs"]
+default = ["fetch", "fs", "socket"]
+fetch = ["yuzuko_dom/fetch", "yuzuko_winter/fetch"]
 fs = ["yuzuko_core/fs"]
+socket = ["yuzuko_dom/socket", "yuzuko_winter/socket"]
 
 [dependencies]
 base64 = "0.23"

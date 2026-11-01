@@ -55,12 +55,12 @@ yuzuko_audio = { path = "crates/yuzuko_audio" }
 yuzuko_canvas = { path = "crates/yuzuko_canvas" }
 yuzuko_codec = { path = "crates/yuzuko_codec" }
 yuzuko_core = { path = "crates/yuzuko_core", default-features = false }
-yuzuko_dom = { path = "crates/yuzuko_dom" }
+yuzuko_dom = { path = "crates/yuzuko_dom", default-features = false }
 yuzuko_image = { path = "crates/yuzuko_image" }
 yuzuko_macros = { path = "crates/yuzuko_macros" }
 yuzuko_webgpu = { path = "crates/yuzuko_webgpu" }
 yuzuko_window = { path = "crates/yuzuko_window" }
-yuzuko_winter = { path = "crates/yuzuko_winter" }
+yuzuko_winter = { path = "crates/yuzuko_winter", default-features = false }
 
 # The packaged binary optimizes for size. Hot crates below stay at speed.
 # `bench` matches `release`. Panic stays unwind so `catch_unwind` can turn a

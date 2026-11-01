@@ -47,6 +47,7 @@ pub fn clear_jobs() {
   BLOB_URLS.with(|urls| urls.borrow_mut().clear());
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 struct BlobUrlEntry {
   source: BlobSource,
   mime: String,
@@ -70,6 +71,7 @@ pub struct BlobUrlLease {
 }
 
 impl BlobUrlLease {
+  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   pub(crate) fn source(&self) -> Option<(BlobSource, String)> {
     BLOB_URLS.with(|urls| {
       urls
@@ -292,6 +294,7 @@ pub(crate) struct BlobSource {
 
 enum SourceInner {
   Chunks(Vec<::bytes::Bytes>),
+  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   File {
     path: PathBuf,
     offset: u64,
@@ -314,6 +317,7 @@ impl BlobSource {
     }
   }
 
+  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   pub(crate) fn file(path: PathBuf, len: u64) -> Self {
     Self {
       inner: Arc::new(SourceInner::File {
@@ -1239,6 +1243,7 @@ pub fn snapshot_blob(
 
 /// `readAsText`: an explicit label wins, then the type's charset, then a BOM.
 /// UTF-8 decode that strips a UTF-8 BOM and does not sniff UTF-16.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn decode_utf8(bytes: &[u8]) -> String {
   decode_with(encoding_rs::UTF_8, bytes)
 }

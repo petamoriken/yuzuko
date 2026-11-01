@@ -354,6 +354,7 @@ fn part_value(scope: &mut v8::PinScope, part: &Part) -> Js {
   }
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn encode(form: &FormData) -> (Vec<u8>, String) {
   if form.entries.borrow().is_empty() {
     return (
@@ -404,6 +405,7 @@ pub fn encode(form: &FormData) -> (Vec<u8>, String) {
   (body, format!("multipart/form-data; boundary={boundary}"))
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn parse(mime: &str, body: &[u8]) -> Result<FormData, OpError> {
   let mime = mime.to_ascii_lowercase();
   let entries = if mime.starts_with("multipart/form-data") {
@@ -419,6 +421,7 @@ pub fn parse(mime: &str, body: &[u8]) -> Result<FormData, OpError> {
   })
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn parse_urlencoded(body: &[u8]) -> Vec<Entry> {
   let text = String::from_utf8_lossy(body);
   text
@@ -434,6 +437,7 @@ fn parse_urlencoded(body: &[u8]) -> Vec<Entry> {
     .collect()
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn parse_multipart(mime: &str, body: &[u8]) -> Result<Vec<Entry>, OpError> {
   let boundary = mime
     .split(';')
@@ -486,6 +490,7 @@ fn parse_multipart(mime: &str, body: &[u8]) -> Result<Vec<Entry>, OpError> {
   Ok(entries)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn header_param(headers: &str, name: &str) -> Option<String> {
   let line = headers.lines().find(|line| {
     line
@@ -497,11 +502,13 @@ fn header_param(headers: &str, name: &str) -> Option<String> {
   Some(rest.split('"').next().unwrap_or("").to_string())
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn decode_component(value: &str) -> String {
   let value = value.replace('+', " ");
   percent_decode(&value)
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn percent_decode(input: &str) -> String {
   let bytes = input.as_bytes();
   let mut out = Vec::new();
@@ -522,6 +529,7 @@ fn percent_decode(input: &str) -> String {
   String::from_utf8_lossy(&out).into_owned()
 }
 
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn hex(byte: u8) -> Option<u8> {
   match byte {
     b'0'..=b'9' => Some(byte - b'0'),

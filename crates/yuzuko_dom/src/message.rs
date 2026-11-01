@@ -648,6 +648,7 @@ impl MessageEvent {
   }
 }
 
+#[cfg(any(feature = "fetch", feature = "socket"))]
 pub(crate) fn trusted_message<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   type_name: &str,
