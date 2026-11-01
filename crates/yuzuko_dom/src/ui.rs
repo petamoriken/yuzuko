@@ -1,4 +1,9 @@
 //! UI Events and Pointer Events. `Window` dispatches the trusted ones.
+//!
+//! Constructors are installed with the `window` feature. The dispatch entry
+//! points stay available to that crate. Without the feature, nothing in a
+//! runtime reaches the constructors, and the unit tests below still compile.
+#![cfg_attr(not(feature = "window"), allow(dead_code))]
 
 use std::cell::{Cell, RefCell};
 

@@ -6,9 +6,10 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = ["fetch", "socket"]
+default = ["fetch", "socket", "window"]
 fetch = ["yuzuko_winter/fetch"]
 socket = ["yuzuko_winter/socket"]
+window = []
 
 [dependencies]
 url.workspace = true

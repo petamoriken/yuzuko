@@ -75,6 +75,8 @@ impl Event {
     }
   }
 
+  // PointerEvent reads this. That constructor is installed with `window`.
+  #[cfg_attr(not(feature = "window"), allow(dead_code))]
   pub(crate) fn event_name(&self) -> String {
     self.type_name.borrow().clone()
   }

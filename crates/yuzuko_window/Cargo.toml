@@ -15,7 +15,7 @@ v8.workspace = true
 wgpu.workspace = true
 winit = "0.30"
 yuzuko_core.workspace = true
-yuzuko_dom.workspace = true
+yuzuko_dom = { workspace = true, features = ["window"] }
 yuzuko_macros.workspace = true
 yuzuko_winter.workspace = true
 tray-icon = "0.26"

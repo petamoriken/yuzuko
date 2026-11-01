@@ -2,6 +2,8 @@
 
 Desktop JavaScript runtime built on rusty_v8. It has no WebView and no HTML document. Scripts draw their own pixels and present them in native windows.
 
+The default Cargo features include every surface below. Build features lists the JavaScript runtime that remains when no feature is enabled.
+
 This file is the product spec. The implementation contract is `AGENTS.md` at the repository root. Intentional divergences from the web platform live in `docs/deviations.md`.
 
 ## Product
@@ -19,10 +21,41 @@ The runtime provides:
 - Presenting that surface when its Canvas 2D or `bitmaprenderer` contents change, and at the end of a due `requestAnimationFrame` callback.
 - The WinterTC Minimum Common API (the ECMA-429 2025 snapshot; the draft is dated 31 July 2026), as specified below.
 - ECMA-402 `Intl` with the full ICU locale data linked into this V8 build.
-- Dedicated workers, Web Audio, hardware H.264 and AAC decoding, packaging, and automatic updates.
+- Dedicated workers in every build. Web Audio when the runtime is built with `audio`. Hardware H.264 and AAC decoding when it is built with `codec`. Packaging and automatic updates are part of the CLI.
 - `Yuzuko` file-system methods when the runtime is built with the `fs` feature.
-- `fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, and `EventSource` when the runtime is built with the `fetch` feature.
-- `WebSocket`, `WebSocketStream`, and `WebTransport` when the runtime is built with the `socket` feature.
+
+## Build features
+
+Cargo features of the `yuzuko` package select optional surfaces. The default set enables every feature, so `cargo build -p yuzuko` is the full runtime. `cargo build -p yuzuko --no-default-features` is the JavaScript runtime alone. `cargo build -p yuzuko --no-default-features --features fetch,fs` selects a subset. `yuzuko package` copies the executable that invoked it and does not rebuild it, and there is no `yuzuko.json` key for features.
+
+These names are compiled into every build. They are not Cargo features. `AbortController` and `AbortSignal` are in this set.
+
+- `Event`, `EventTarget`, `CustomEvent`, `ErrorEvent`, `PromiseRejectionEvent`, `DOMException`
+- `AbortController`, `AbortSignal`
+- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `console`, `navigator.userAgent`
+- `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `URLPattern`, `Blob`, `File`
+- Streams, `FormData`, `CompressionStream`, `DecompressionStream`
+- `Crypto`, `CryptoKey`, `SubtleCrypto`
+- `MessageChannel`, dedicated workers, and a dedicated worker's `requestAnimationFrame`
+- `requestIdleCallback` on the main realm
+- `Intl` and `WebAssembly`
+- The `Yuzuko` object on the main realm and in a dedicated worker. Members are attached by the features below
+
+`Yuzuko.updater` stays in the CLI. It is installed only on a packaged application's main global. The updater's feed client is not one of these features.
+
+| Feature | Installed names | Also enables |
+| --- | --- | --- |
+| `fetch` | `fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, `EventSource`, and the HTTP client, including HTTP/3 | |
+| `fs` | The `Yuzuko` file system | |
+| `socket` | `WebSocket`, `WebSocketStream`, `WebTransport` | |
+| `window` | `Yuzuko.Window`, pointer, key, and the other input events, the application menu, tray, dock, clipboard, and gamepad. `OffscreenCanvas` is installed here | |
+| `image` | `createImageBitmap`, `ImageBitmap`, `ImageData` | `window` |
+| `canvas` | Canvas 2D, `bitmaprenderer`, `Path2D`, `DOMMatrix`, `FontFace`, `Yuzuko.fonts`, `Yuzuko.canvasRenderer` | `image` |
+| `webgpu` | `navigator.gpu` and the WebGPU surface | `image` |
+| `audio` | Web Audio | |
+| `codec` | `VideoDecoder`, `EncodedVideoChunk`, `VideoFrame`, `AudioDecoder`, `EncodedAudioChunk`, `AudioData`, `ImageDecoder` | `image` |
+
+`image`, `canvas`, `webgpu`, and `codec` enable `window` because image sources share the window canvas snapshot. `audio`, `fetch`, `fs`, and `socket` do not. `fetch` and `socket` are separate: a build can include HTTP without `WebSocket`, and `WebSocket` without HTTP. With `window` and without `canvas`, `getContext("2d")` and `getContext("bitmaprenderer")` return `null`. With `window` and without `webgpu`, `getContext("webgpu")` returns `null`. A name from a feature that was not enabled is absent on the main realm and in a dedicated worker. An `AudioWorklet` processor realm does not gain the file system.
 
 ## Platforms
 
@@ -46,7 +79,7 @@ Do not add these as a side effect. Update this section before adding one.
 - WebGL and WebGL2. `getContext("webgl")` and `getContext("webgl2")` return `null`
 - Node compatibility, an npm client, `node:` builtins, CommonJS evaluation, and JSX or TSX. TypeScript runs by type erasure, not by type checking
 - A dependency on `deno` or `deno_core`.
-- Permission prompts. A shipped app runs as a trusted local application
+- Permission prompts. A shipped app runs as a trusted local application. Which optional surfaces are present is chosen when that app's runtime is built. See Build features
 - WebRTC, WebXR, and Keyboard Lock
 - `HTMLVideoElement`, container demux, and a media presentation clock
 - Frames after the first frame of an animated image, and CSS `@font-face`
@@ -56,8 +89,8 @@ Do not add these as a side effect. Update this section before adding one.
 
 | Place | Contents |
 | --- | --- |
-| `globalThis` | WinterTC, plus web-standard constructors and functions, including `OffscreenCanvas`, `createImageBitmap`, `PointerEvent`, and `navigator.gpu` |
-| `Yuzuko` | Runtime-specific APIs. The members include `Window` and `canvasRenderer`. `Yuzuko.test` exists only under `yuzuko test`. `Yuzuko.Menu` and `Yuzuko.setMenu` install the application menu. On the main global, `Yuzuko.fonts` is the `FontFaceSet` and `globalThis.fonts` is absent. A dedicated worker exposes that set as `self.fonts` and `globalThis.fonts` instead. `Yuzuko.updater` is installed only on a packaged application's main global |
+| `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
+| `Yuzuko` | Present on the main realm and in a dedicated worker in every build. Runtime-specific APIs live here. `Window` requires `window`. `canvasRenderer` and `fonts` require `canvas`. `Yuzuko.test` exists only under `yuzuko test`. `Yuzuko.Menu` and `Yuzuko.setMenu` install the application menu when `window` is enabled. On the main global, `Yuzuko.fonts` is the `FontFaceSet` and `globalThis.fonts` is absent. A dedicated worker exposes that set as `self.fonts` and `globalThis.fonts` instead. `Yuzuko.readFile`, `Yuzuko.FsFile`, and the other file-system members are installed when the runtime is built with `fs`, on the main global and in a dedicated worker. `Yuzuko.updater` is installed only on a packaged application's main global |
 
 `globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`. `onerror` and `onunhandledrejection` are delivered here. Pointer and key events are not.
 
@@ -321,9 +354,9 @@ The realm includes:
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
 - V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`
 - `fetch`, `Headers`, `Request`, and `Response` for `file:`, `blob:`, `data:`, `http:`, and `https:`, when the runtime is built with the `fetch` feature
-- `createImageBitmap`, `ImageBitmap`, `ImageData`
-- `OffscreenCanvas`, `CanvasRenderingContext2D`, `ImageBitmapRenderingContext`, `Path2D`
-- WebGPU and `navigator.gpu`
+- `createImageBitmap`, `ImageBitmap`, `ImageData`, when the runtime is built with the `image` feature
+- `OffscreenCanvas`, when the runtime is built with the `window` feature. `CanvasRenderingContext2D`, `ImageBitmapRenderingContext`, `Path2D`, and `DOMMatrix`, when it is built with the `canvas` feature
+- WebGPU and `navigator.gpu`, when the runtime is built with the `webgpu` feature
 - The streams interfaces, including byte-stream readers, `ReadableStream.from`, owning streams that transfer `ArrayBuffer` and `MessagePort`, `TextEncoderStream`, and `TextDecoderStream`
 - `FormData`, `CompressionStream`, `DecompressionStream`
 - `URLPattern`
@@ -332,7 +365,9 @@ The realm includes:
 - `caches`, when the runtime is built with the `fetch` feature
 - ECMA-402 `Intl`, as specified under Internationalization
 
-`fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. `https:` negotiates HTTP/2 by ALPN and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. A cached request does not keep the caller's `AbortSignal`. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
+`fetch` for `http:` and `https:` follows redirects, retries a `421` once on a new connection, cancels with `AbortSignal`, and answers a blob URL `Range` with `206` or a network error. `https:` negotiates HTTP/2 by ALPN and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. A cached request does not keep the caller's `AbortSignal`. `DOMMatrix` and `DOMMatrixReadOnly` are installed with the `canvas` feature. Shared `DOMMatrix` methods are inherited from `DOMMatrixReadOnly`. `WebKitCSSMatrix` is not defined.
+
+`fetch`, `fs`, `socket`, `window`, `image`, `canvas`, `webgpu`, `audio`, and `codec` are the Cargo features in Build features, and the default build enables every one. `yuzuko package` copies the executable that invoked it, so the packaged game has the features of that build. A game that loads bytes with `fetch`, including a `file:` URL under the entry directory, keeps the `fetch` feature. A `FontFace` whose source is a URL and `AudioWorklet.addModule` call `fetch`. Without `fetch` the font load fails and `addModule` rejects `AbortError`.
 
 Dedicated workers are available. WinterTC does not require them.
 
@@ -380,16 +415,16 @@ Crates:
 
 | Crate | Role |
 | --- | --- |
-| `yuzuko` | CLI. `run`, `test`, `package`, and `repl`. Calls each extension's `install` |
-| `yuzuko_core` | Isolate, platform, event loop, module loader (`oxc_resolver`, oxc type erasure), extension trait, timers, console, exception conversion |
-| `yuzuko_dom` | `EventTarget` and event classes |
-| `yuzuko_winter` | URL, encoding, Blob, fetch, crypto, streams |
-| `yuzuko_window` | `Yuzuko.Window`, winit, input mapping, IME, pointer lock, fullscreen |
-| `yuzuko_image` | Decoders and `ImageBitmap` / `createImageBitmap` |
-| `yuzuko_canvas` | `OffscreenCanvas`, Canvas 2D, `bitmaprenderer` |
-| `yuzuko_webgpu` | WebGPU |
-| `yuzuko_audio` | Web Audio |
-| `yuzuko_codec` | WebCodecs |
+| `yuzuko` | CLI. `run`, `test`, `package`, and `repl`. Calls each enabled extension's `install`. Links a feature crate only when that Cargo feature is on |
+| `yuzuko_core` | Isolate, platform, event loop, module loader (`oxc_resolver`, oxc type erasure), extension trait, timers, console, exception conversion. The `fs` feature compiles the `Yuzuko` file system |
+| `yuzuko_dom` | `EventTarget`, event classes, and `AbortController`. The `window` feature installs pointer and key events. The `fetch` feature installs `EventSource`. The `socket` feature installs `WebSocket`, `WebSocketStream`, and `WebTransport` |
+| `yuzuko_winter` | URL, encoding, Blob, crypto, streams. The `fetch` feature compiles the HTTP client. The `socket` feature compiles `WebSocket` and `WebTransport` |
+| `yuzuko_window` | `Yuzuko.Window`, winit, input mapping, IME, pointer lock, fullscreen. Compiled with the `window` feature |
+| `yuzuko_image` | Decoders and `ImageBitmap` / `createImageBitmap`. Compiled with the `image` feature |
+| `yuzuko_canvas` | Canvas 2D and `bitmaprenderer`. Compiled with the `canvas` feature. `OffscreenCanvas` itself is installed by `yuzuko_window` |
+| `yuzuko_webgpu` | WebGPU. Compiled with the `webgpu` feature |
+| `yuzuko_audio` | Web Audio. Compiled with the `audio` feature |
+| `yuzuko_codec` | WebCodecs. Compiled with the `codec` feature |
 
 `yuzuko_core` does not depend on winit or wgpu. Feature crates depend on core, and the binary assembles the feature crates.
 
@@ -553,7 +588,7 @@ The web Gamepad API. `navigator.getGamepads()` returns the connected gamepads. `
 
 ## FontFace
 
-`FontFace` lives on `globalThis`. There is no `document`, so the `FontFaceSet` is `Yuzuko.fonts`, not `globalThis.fonts`. A dedicated worker exposes `self.fonts` and `globalThis.fonts` as that worker's set. Sources are an `ArrayBuffer` and a URL that `fetch` can load. Formats are TTF, OTF, WOFF, and WOFF2. A family that has finished `load()` and is in `Yuzuko.fonts` can be named from the Canvas 2D `font` property. The generic families remain. `serif` and `monospace` still draw. A size that names only an unregistered family is stored and shaped as `sans-serif`. `globalThis.fonts` and `document` stay absent on the main global. CSS `@font-face` is not implemented.
+`FontFace` lives on `globalThis`. There is no `document`, so the `FontFaceSet` is `Yuzuko.fonts`, not `globalThis.fonts`. A dedicated worker exposes `self.fonts` and `globalThis.fonts` as that worker's set. Sources are an `ArrayBuffer` and a URL that `fetch` can load. A build without the `fetch` feature has no `fetch`, and a URL source fails. Formats are TTF, OTF, WOFF, and WOFF2. A family that has finished `load()` and is in `Yuzuko.fonts` can be named from the Canvas 2D `font` property. The generic families remain. `serif` and `monospace` still draw. A size that names only an unregistered family is stored and shaped as `sans-serif`. `globalThis.fonts` and `document` stay absent on the main global. CSS `@font-face` is not implemented.
 
 ## Workers
 
@@ -573,13 +608,13 @@ Shared workers, service workers, and worklets stay out of scope.
 
 `renderSizeHint` on `AudioContextOptions` and `OfflineAudioContextOptions` is `"default"`, `"hardware"`, or an integer. `BaseAudioContext.renderQuantumSize` is that block length for the life of the context, and `AudioWorkletGlobalScope.renderQuantumSize` is the same value. Omitted and `"default"` are 128. An integer from 1 through floor(6 × sampleRate), including 1 and a non-power of two, is that exact length. Any other integer throws `NotSupportedError`. `baseLatency` is larger when the hint is 4096 than when it is 128. An `AudioWorklet` `process` uses that same length, so a hint of 256 makes `process` see length 256. Offline `"hardware"` is 128. Realtime `"hardware"` is the default output device's current buffer size in frames when the OS reports one inside 1 through floor(6 × sampleRate), and 128 when it does not. That size is already visible at construction. On this Mac the query is Core Audio `kAudioDevicePropertyBufferFrameSize`. Windows and Linux still use 128. `baseLatency` is `renderQuantumSize / sampleRate`. The three-argument `OfflineAudioContext` constructor uses 128.
 
-`AudioWorklet.addModule` evaluates a processor script. `registerProcessor` defines it. An `AudioWorkletNode` calls `process` once per quantum with `Float32Array` channels of length `renderQuantumSize`. The node port and the processor port exchange messages. `currentFrame`, `currentTime`, `sampleRate`, and `renderQuantumSize` are visible in the worklet. A `parameterDescriptors` entry is an `AudioParam`, and `process` receives that parameter's block. Setting `AudioParam.value` works. The automation timeline (`setValueAtTime`, ramps, and curves) throws `NotSupportedError`.
+`AudioWorklet.addModule` loads the processor script with `fetch` and evaluates it. A build without the `fetch` feature rejects `AbortError`. `registerProcessor` defines it. An `AudioWorkletNode` calls `process` once per quantum with `Float32Array` channels of length `renderQuantumSize`. The node port and the processor port exchange messages. `currentFrame`, `currentTime`, `sampleRate`, and `renderQuantumSize` are visible in the worklet. A `parameterDescriptors` entry is an `AudioParam`, and `process` receives that parameter's block. Setting `AudioParam.value` works. The automation timeline (`setValueAtTime`, ramps, and curves) throws `NotSupportedError`.
 
 `AudioBuffer`, `PeriodicWave`, `AudioParam`, `AudioParamMap`, `AudioNode`, `AudioScheduledSourceNode`, `AudioDestinationNode`, `GainNode`, `AudioBufferSourceNode`, `OscillatorNode`, `ConstantSourceNode`, `AudioWorklet`, and `AudioWorkletNode` are part of this surface. `BaseAudioContext` is not constructable. Update this section before adding more node types.
 
 ## Server messages
 
-`EventSource` is installed with the `fetch` feature. `WebSocket`, `WebSocketStream`, and `WebTransport` are installed with the `socket` feature. Both features are enabled by default, and either one can be left out. `FormData` stays in every build. When its feature is enabled, `EventSource` or `WebSocket` lives on `globalThis`, including a dedicated worker. `EventSource` reads an `http:` or `https:` `text/event-stream` response and dispatches `MessageEvent`s. The default reconnection time is 3000ms. `retry` replaces it. `close()` stops the stream. `withCredentials` is stored on the object.
+`EventSource` and `WebSocket` live on `globalThis`, including a dedicated worker. `EventSource` is installed with the `fetch` feature and is absent from a build without it. `EventSource` reads an `http:` or `https:` `text/event-stream` response and dispatches `MessageEvent`s. The default reconnection time is 3000ms. `retry` replaces it. `close()` stops the stream. `withCredentials` is stored on the object.
 
 `new WebSocket(url)` opens a `ws:` or `wss:` connection. The second argument is a protocol string, a sequence of protocol strings, or a `WebSocketInit` dictionary `{ protocols, targetAddressSpace }`. `targetAddressSpace` is `"loopback"`, `"local"`, or `"public"`. The connection fails unless the connected address is in that space. Any other value, including the legacy alias `"private"`, throws `TypeError`. A further argument is ignored. `send` accepts a string, a `BufferSource`, or a `Blob`. `binaryType` is `"blob"` or `"arraybuffer"`. `close(code, reason)` uses code 1000 or a code from 3000 through 4999. `extensions` stays `""`.
 
@@ -633,10 +668,9 @@ A path that is not a string or a `file:` URL throws `The path must be a string o
 
 A packaged launch records the bundle root before the entry runs. On macOS the root is the `.app` bundle. On Windows and Linux it is the directory that contains the executable and `yuzuko.bundle.json`. A mutation whose resolved path is that directory, or a path inside it, throws `NotSupported` with `Cannot modify the application bundle.` `open` for write, `writeFile`, `writeTextFile`, `truncate`, and a `copyFile` destination follow the final symlink, so a symlink outside the bundle that points inside it is rejected. `remove`, `rename`, `mkdir`, and a temporary path keep the directory entry: deleting a symlink that lives outside the bundle is allowed when the symlink points into the bundle. The updater writes `Updates/` from Rust and is not subject to this guard.
 
-
 ## Packaging
 
-`yuzuko package` produces an application that starts from a double click. The bundle contains the runtime, the entry module graph, and the assets listed in the config. The targets are the five triples in Platforms. The macOS output is a `.app`. Windows and Linux outputs are directories. There is no WebView and no `backend` choice. The `Contents/MacOS` binary and opening the `.app` both run the packaged entry. `codesign --verify` succeeds for an ad-hoc signature. `import.meta.url` is a `file:` URL under `Contents/Resources/app/`. A listed asset outside the entry directory is fetched from that tree, and a `file:` URL outside it fails. An omitted window title is the config `name`. The launch directory stays the caller's current directory. Windows and Linux directories from the same packager store the AppUserModelID, the `.desktop` id, and the icon bytes. The Windows executable in a bundle is marked as a GUI-subsystem image, so a double click opens no console window. Standard handles a parent passes in still receive output. A Windows bundle sets that AppUserModelID for the process before its first window and uses `AppIcon.ico` for the window and taskbar icon. A Linux bundle sets the X11 `WM_CLASS` and the Wayland `app_id` to the identifier, uses the widest PNG under `icons/` as the window icon, and its `.desktop` entry names the identifier as `StartupWMClass`.
+`yuzuko package` produces an application that starts from a double click. The bundle contains the `yuzuko` executable that ran the command, the entry module graph, and the assets listed in the config. That executable keeps the Cargo features it was built with. `yuzuko package` does not rebuild it. A packager built with `--no-default-features` is the JavaScript runtime from Build features. `--features` selects the subset. The default packager includes every feature. The targets are the five triples in Platforms. The macOS output is a `.app`. Windows and Linux outputs are directories. There is no WebView and no `backend` choice. The `Contents/MacOS` binary and opening the `.app` both run the packaged entry. `codesign --verify` succeeds for an ad-hoc signature. `import.meta.url` is a `file:` URL under `Contents/Resources/app/`. A listed asset outside the entry directory is fetched from that tree, and a `file:` URL outside it fails. An omitted window title is the config `name`. The launch directory stays the caller's current directory. Windows and Linux directories from the same packager store the AppUserModelID, the `.desktop` id, and the icon bytes. The Windows executable in a bundle is marked as a GUI-subsystem image, so a double click opens no console window. Standard handles a parent passes in still receive output. A Windows bundle sets that AppUserModelID for the process before its first window and uses `AppIcon.ico` for the window and taskbar icon. A Linux bundle sets the X11 `WM_CLASS` and the Wayland `app_id` to the identifier, uses the widest PNG under `icons/` as the window icon, and its `.desktop` entry names the identifier as `StartupWMClass`.
 
 The config file is `yuzuko.json` or `yuzuko.jsonc`. `yuzuko.jsonc` is JSON with `//` and `/* */` comments and with trailing commas. `yuzuko.json` is strict JSON. Discovery starts at the entry file's directory and walks toward the root. The nearest directory that contains either file wins. Both names in that directory is an error. The entry is the path argument. `yuzuko package` with no path fails before anything is written. `--config` names the file and skips the walk. `--output` replaces the output path for the host OS. A command-line value wins over the file.
 

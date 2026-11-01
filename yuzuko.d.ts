@@ -7,11 +7,17 @@
  * APIs are declared on {@link Yuzuko}. This file stands alone. It declares the
  * types this runtime has. A name that `lib.dom.d.ts` also declares is defined
  * here with this runtime's members, so a program that loads both reports
- * duplicate identifiers. The ambient declarations describe the main realm.
- * File-system members on {@link Yuzuko} are present when the runtime is
- * built with the `fs` feature, which is enabled by default. `fetch` and
- * `socket` are also enabled by default. `fetch` installs {@link fetch} and
- * {@link EventSource}. `socket` installs {@link WebSocket}.
+ * duplicate identifiers. The ambient declarations describe the main realm of a
+ * runtime built with the default Cargo features. That build enables `fetch`,
+ * `fs`, `socket`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
+ * `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
+ * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
+ * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
+ * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
+ * on the main realm and in a dedicated worker. That build omits `fetch`,
+ * the file system, {@link WebSocket}, {@link Window}, canvas, WebGPU, Web
+ * Audio, and WebCodecs. `--no-default-features --features name` selects a
+ * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
  * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
  * A web-standard interface or member ends with an MDN link in the form used by

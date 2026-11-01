@@ -10,19 +10,26 @@ use yuzuko_core::{run_file, run_file_sandboxed, run_repl, run_tests};
 fn main() -> ExitCode {
   yuzuko_dom::register();
   yuzuko_winter::register();
+  #[cfg(feature = "window")]
   yuzuko_window::register();
+  #[cfg(feature = "image")]
   yuzuko_image::register();
+  #[cfg(feature = "codec")]
   yuzuko_codec::register();
+  #[cfg(feature = "canvas")]
   yuzuko_canvas::register();
+  #[cfg(feature = "webgpu")]
   yuzuko_webgpu::register();
+  #[cfg(feature = "audio")]
   yuzuko_audio::register();
   let args = std::env::args().skip(1).collect::<Vec<_>>();
   if bundled_args(&args)
     && let Some(bundle) = bundled_launch()
   {
-    yuzuko_window::set_test_input(false);
-    yuzuko_window::configure(false);
+    configure_window(false, false);
+    #[cfg(feature = "window")]
     yuzuko_window::set_default_title(&bundle.name);
+    #[cfg(feature = "window")]
     if let Some(identifier) = &bundle.identifier {
       yuzuko_window::set_app_identity(identifier, &bundle.resources);
     }
@@ -102,8 +109,7 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     eprintln!("{error}");
     return Ok(1);
   }
-  yuzuko_window::set_test_input(false);
-  yuzuko_window::configure(false);
+  configure_window(false, false);
   match run_file(&entry) {
     Ok(()) => Ok(0),
     Err(error) => {
@@ -142,8 +148,7 @@ fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
       }
     }
   }
-  yuzuko_window::set_test_input(true);
-  yuzuko_window::configure(true);
+  configure_window(true, true);
   run_tests(&paths, filter.as_deref())
     .map(|code| u8::try_from(code).unwrap_or(1))
 }
@@ -153,8 +158,7 @@ fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     eprintln!("yuzuko repl");
     return Ok(2);
   }
-  yuzuko_window::set_test_input(false);
-  yuzuko_window::configure(false);
+  configure_window(false, false);
   match run_repl() {
     Ok(()) => Ok(0),
     Err(error) => {
@@ -162,6 +166,20 @@ fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
       Ok(1)
     }
   }
+}
+
+fn configure_window(test_input: bool, headless: bool) {
+  #[cfg(feature = "window")]
+  {
+    yuzuko_window::set_test_input(test_input);
+    yuzuko_window::configure(headless);
+  }
+  #[cfg(not(feature = "window"))]
+  let _ = (test_input, headless);
+}
+
+fn bundled_args(args: &[String]) -> bool {
+  args.iter().all(|arg| arg.starts_with("-psn_"))
 }
 
 /// The signed bundle. On macOS that is the `.app`. On Windows and Linux it
@@ -186,13 +204,12 @@ fn application_bundle_root(bundle: &yuzuko::BundleLaunch) -> PathBuf {
   }
 }
 
-fn bundled_args(args: &[String]) -> bool {
-  args.iter().all(|arg| arg.starts_with("-psn_"))
-}
-
 fn apply_run_title(entry: &Path) -> Result<(), ConfigError> {
   if let Some(config) = load_for_run(entry)? {
+    #[cfg(feature = "window")]
     yuzuko_window::set_default_title(&config.name);
+    #[cfg(not(feature = "window"))]
+    let _ = config;
   }
   Ok(())
 }

@@ -49,6 +49,7 @@ pub fn register() {
 fn install(scope: &mut v8::PinScope) {
   exception::install(scope);
   event::install(scope);
+  #[cfg(feature = "window")]
   ui::install(scope);
   target::install(scope);
   performance::install(scope);
