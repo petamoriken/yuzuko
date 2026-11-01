@@ -8,6 +8,8 @@
  * types this runtime has. A name that `lib.dom.d.ts` also declares is defined
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm.
+ * File-system members on {@link Yuzuko} are present when the runtime is
+ * built with the `fs` feature, which is enabled by default.
  * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
  * A web-standard interface or member ends with an MDN link in the form used by
@@ -1707,6 +1709,548 @@ declare namespace Yuzuko {
      */
     function gamepad(devices: unknown): void;
   }
+
+  /**
+   * Open file. There is no public constructor. {@link open} and
+   * {@link create} return one.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `fs` feature, which is enabled by default. Absent from
+   * an `AudioWorklet` processor realm. A build that does not enable `fs`
+   * leaves `FsFile` and the other file-system members absent.
+   *
+   * A synchronous method blocks the calling thread. An asynchronous method
+   * runs the operating-system call on a background thread. A bad argument
+   * throws {@link TypeError}. An operating-system failure throws, or rejects
+   * with, one of {@link errors.NotFound}, {@link errors.AlreadyExists},
+   * {@link errors.PermissionDenied}, {@link errors.IsADirectory},
+   * {@link errors.NotADirectory}, {@link errors.NotSupported},
+   * {@link errors.Busy}, {@link errors.Interrupted},
+   * {@link errors.InvalidData}, {@link errors.BadResource}, or
+   * {@link errors.FilesystemLoop}. A symbolic-link loop is
+   * {@link errors.FilesystemLoop}. A directory that is not empty, and any
+   * other operating-system failure, is a plain {@link Error}. Modifying a
+   * packaged application bundle throws {@link errors.NotSupported}.
+   *
+   * A path string is absolute or relative to the process current directory.
+   * A {@link URL} must be `file:`. On Windows, `mode` is ignored, and
+   * {@link FileInfo} reports `0` for `mode`, `dev`, `ino`, `nlink`, `uid`,
+   * `gid`, `blksize`, and `blocks`, and `false` for the device-type flags.
+   *
+   * `[Symbol.dispose]` and `[Symbol.asyncDispose]` are installed when those
+   * symbols exist. Both close the file.
+   */
+  class FsFile {
+    private constructor();
+
+    /**
+     * Reads into `buffer`.
+     *
+     * @returns The number of bytes read, or `null` at the end of the file.
+     * A zero-length view returns `0`.
+     * @throws {@link TypeError} When `buffer` is not an {@link ArrayBufferView},
+     * including when it is a bare {@link ArrayBuffer}, or when it is detached
+     * or longer than 2147483647 bytes.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    read(buffer: ArrayBufferView<ArrayBufferLike>): Promise<number | null>;
+
+    /** Synchronous {@link FsFile.read}. It blocks the caller. */
+    readSync(buffer: ArrayBufferView<ArrayBufferLike>): number | null;
+
+    /**
+     * Writes `data` once. The result can be a short write.
+     *
+     * @throws {@link TypeError} When `data` is not a buffer source, or when
+     * it is detached or longer than 2147483647 bytes.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    write(data: AllowSharedBufferSource): Promise<number>;
+
+    /** Synchronous {@link FsFile.write}. It blocks the caller. */
+    writeSync(data: AllowSharedBufferSource): number;
+
+    /**
+     * Moves the position by `offset` from `whence`.
+     *
+     * `whence` is {@link SeekMode.Start}, {@link SeekMode.Current}, or
+     * {@link SeekMode.End}. The offset is a finite integer. A seek from the
+     * start cannot be negative.
+     *
+     * @returns The new position, which can be above 2^53.
+     * @throws {@link TypeError} When `offset` or `whence` is not one of those
+     * values.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    seek(offset: number, whence: number): Promise<number>;
+
+    /** Synchronous {@link FsFile.seek}. It blocks the caller. */
+    seekSync(offset: number, whence: number): number;
+
+    /**
+     * Describes the open descriptor.
+     *
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    stat(): Promise<FileInfo>;
+
+    /** Synchronous {@link FsFile.stat}. It blocks the caller. */
+    statSync(): FileInfo;
+
+    /**
+     * Sets the file length. An omitted length is `0`.
+     *
+     * @throws {@link TypeError} When `len` is not a finite integer of at least 0.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    truncate(len?: number): Promise<void>;
+
+    /** Synchronous {@link FsFile.truncate}. It blocks the caller. */
+    truncateSync(len?: number): void;
+
+    /**
+     * Flushes the file and its metadata.
+     *
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    sync(): Promise<void>;
+
+    /** Synchronous {@link FsFile.sync}. It blocks the caller. */
+    syncSync(): void;
+
+    /**
+     * Flushes the file data.
+     *
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    syncData(): Promise<void>;
+
+    /** Synchronous {@link FsFile.syncData}. It blocks the caller. */
+    syncDataSync(): void;
+
+    /**
+     * Closes the descriptor.
+     *
+     * @throws {@link errors.BadResource} When the file is already closed.
+     */
+    close(): void;
+
+    /** Closes the file. Installed when `Symbol.dispose` exists. */
+    [Symbol.dispose](): void;
+
+    /**
+     * Closes the file and returns a promise. Installed when
+     * `Symbol.asyncDispose` exists.
+     */
+    [Symbol.asyncDispose](): Promise<void>;
+  }
+
+  /**
+   * Where {@link FsFile.seek} measures `offset` from.
+   *
+   * This is a plain object. `typeof Yuzuko.SeekMode` is `"object"`.
+   */
+  enum SeekMode {
+    Start = 0,
+    Current = 1,
+    End = 2,
+  }
+
+  /**
+   * File-system error classes captured when the realm starts.
+   *
+   * The thrown object is an instance of the constructor installed at startup.
+   */
+  namespace errors {
+    class NotFound extends Error {
+      constructor(message?: string);
+    }
+    class AlreadyExists extends Error {
+      constructor(message?: string);
+    }
+    class PermissionDenied extends Error {
+      constructor(message?: string);
+    }
+    class IsADirectory extends Error {
+      constructor(message?: string);
+    }
+    class NotADirectory extends Error {
+      constructor(message?: string);
+    }
+    class NotSupported extends Error {
+      constructor(message?: string);
+    }
+    class Busy extends Error {
+      constructor(message?: string);
+    }
+    class Interrupted extends Error {
+      constructor(message?: string);
+    }
+    class InvalidData extends Error {
+      constructor(message?: string);
+    }
+    class BadResource extends Error {
+      constructor(message?: string);
+    }
+    class FilesystemLoop extends Error {
+      constructor(message?: string);
+    }
+  }
+
+  /** Result of {@link stat} and {@link FsFile.stat}. */
+  interface FileInfo {
+    isFile: boolean;
+    isDirectory: boolean;
+    isSymlink: boolean;
+    /** Length in bytes. */
+    size: number;
+    /** Modification time, or `null` when it is missing or before the Unix epoch. */
+    mtime: Date | null;
+    /** Access time, or `null` when it is missing or before the Unix epoch. */
+    atime: Date | null;
+    /** Creation time, or `null` when it is missing or before the Unix epoch. */
+    birthtime: Date | null;
+    /**
+     * Unix mode bits.
+     *
+     * On Windows this is `0`.
+     */
+    mode: number;
+    /** On Windows this is `0`. */
+    dev: number;
+    /** On Windows this is `0`. */
+    ino: number;
+    /** On Windows this is `0`. */
+    nlink: number;
+    /** On Windows this is `0`. */
+    uid: number;
+    /** On Windows this is `0`. */
+    gid: number;
+    /** On Windows this is `0`. */
+    blksize: number;
+    /** On Windows this is `0`. */
+    blocks: number;
+    /** On Windows this is `false`. */
+    isBlockDevice: boolean;
+    /** On Windows this is `false`. */
+    isCharDevice: boolean;
+    /** On Windows this is `false`. */
+    isFifo: boolean;
+    /** On Windows this is `false`. */
+    isSocket: boolean;
+  }
+
+  /** One {@link readDir} result. */
+  interface DirEntry {
+    name: string;
+    isFile: boolean;
+    isDirectory: boolean;
+    isSymlink: boolean;
+  }
+
+  /**
+   * Options for {@link open}.
+   *
+   * Omitted options read. On an object, `read` defaults to true and the other
+   * booleans default to false. `signal` is ignored.
+   */
+  interface OpenOptions {
+    /** @defaultValue true */
+    read?: boolean;
+    /** @defaultValue false */
+    write?: boolean;
+    /** @defaultValue false */
+    append?: boolean;
+    /** @defaultValue false */
+    truncate?: boolean;
+    /** @defaultValue false */
+    create?: boolean;
+    /** @defaultValue false */
+    createNew?: boolean;
+    /**
+     * Unix permission bits, from 0 through 262143. The process umask still
+     * applies. Ignored on Windows.
+     */
+    mode?: number;
+    /** Ignored. */
+    signal?: unknown;
+  }
+
+  /**
+   * Options for {@link writeFile} and {@link writeTextFile}.
+   *
+   * The file is created and truncated unless `append` is set. `signal` is
+   * ignored.
+   */
+  interface WriteFileOptions {
+    /** @defaultValue false */
+    append?: boolean;
+    /** @defaultValue true */
+    create?: boolean;
+    /** @defaultValue false */
+    createNew?: boolean;
+    /**
+     * Unix permission bits, from 0 through 262143. The process umask still
+     * applies. Ignored on Windows.
+     */
+    mode?: number;
+    /** Ignored. */
+    signal?: unknown;
+  }
+
+  /** Options for {@link mkdir}. */
+  interface MkdirOptions {
+    /**
+     * Create missing parents. Succeeds when the directory already exists.
+     *
+     * @defaultValue false
+     */
+    recursive?: boolean;
+    /**
+     * Unix permission bits, from 0 through 262143. The process umask still
+     * applies. Ignored on Windows.
+     */
+    mode?: number;
+  }
+
+  /** Options for {@link remove}. */
+  interface RemoveOptions {
+    /**
+     * Delete a directory tree. A symlink is still removed as a file.
+     *
+     * @defaultValue false
+     */
+    recursive?: boolean;
+  }
+
+  /** Options for {@link makeTempDir} and {@link makeTempFile}. */
+  interface MakeTempOptions {
+    /** Directory that receives the new path. The default is the system temporary directory. */
+    dir?: string | URL;
+    /** @defaultValue `""` */
+    prefix?: string;
+    /** @defaultValue `""` */
+    suffix?: string;
+  }
+
+  /**
+   * Opens `path`.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, when
+   * `options` is not an object, or when the flags disagree.
+   * @throws {@link errors.NotSupported} When a write would modify the
+   * application bundle.
+   */
+  function open(path: string | URL, options?: OpenOptions): Promise<FsFile>;
+
+  /** Synchronous {@link open}. It blocks the caller. */
+  function openSync(path: string | URL, options?: OpenOptions): FsFile;
+
+  /**
+   * Opens `path` for write, creating or truncating it.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   */
+  function create(path: string | URL): Promise<FsFile>;
+
+  /** Synchronous {@link create}. It blocks the caller. */
+  function createSync(path: string | URL): FsFile;
+
+  /**
+   * Reads `path` as bytes.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link errors.IsADirectory} When `path` is a directory.
+   * @throws {@link errors.NotFound} When no file is at `path`.
+   */
+  function readFile(path: string | URL): Promise<Uint8Array>;
+
+  /** Synchronous {@link readFile}. It blocks the caller. */
+  function readFileSync(path: string | URL): Uint8Array;
+
+  /**
+   * Reads `path` as UTF-8 text.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link errors.InvalidData} When the bytes are not UTF-8.
+   * @throws {@link errors.IsADirectory} When `path` is a directory.
+   */
+  function readTextFile(path: string | URL): Promise<string>;
+
+  /** Synchronous {@link readTextFile}. It blocks the caller. */
+  function readTextFileSync(path: string | URL): string;
+
+  /**
+   * Writes `data` to `path`.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, when
+   * `data` is not a buffer source, or when `options` is not an object.
+   * @throws {@link errors.NotSupported} When the resolved path is inside the
+   * application bundle.
+   */
+  function writeFile(
+    path: string | URL,
+    data: AllowSharedBufferSource,
+    options?: WriteFileOptions,
+  ): Promise<void>;
+
+  /** Synchronous {@link writeFile}. It blocks the caller. */
+  function writeFileSync(
+    path: string | URL,
+    data: AllowSharedBufferSource,
+    options?: WriteFileOptions,
+  ): void;
+
+  /**
+   * Writes `text` to `path` as UTF-8.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, when
+   * `text` is not a string, or when `options` is not an object.
+   */
+  function writeTextFile(
+    path: string | URL,
+    text: string,
+    options?: WriteFileOptions,
+  ): Promise<void>;
+
+  /** Synchronous {@link writeTextFile}. It blocks the caller. */
+  function writeTextFileSync(
+    path: string | URL,
+    text: string,
+    options?: WriteFileOptions,
+  ): void;
+
+  /**
+   * Creates a directory at `path`.
+   *
+   * The path is resolved, including symlinks and `..`, before anything is
+   * created.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, or
+   * when `options` is not an object.
+   * @throws {@link errors.AlreadyExists} When the directory exists and
+   * `recursive` is not set, or when the resolved path exists and is not a
+   * directory.
+   */
+  function mkdir(path: string | URL, options?: MkdirOptions): Promise<void>;
+
+  /** Synchronous {@link mkdir}. It blocks the caller. */
+  function mkdirSync(path: string | URL, options?: MkdirOptions): void;
+
+  /**
+   * Removes `path`.
+   *
+   * A symlink is removed as a file and is not followed.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, or
+   * when `options` is not an object.
+   */
+  function remove(path: string | URL, options?: RemoveOptions): Promise<void>;
+
+  /** Synchronous {@link remove}. It blocks the caller. */
+  function removeSync(path: string | URL, options?: RemoveOptions): void;
+
+  /**
+   * Renames `oldPath` to `newPath`.
+   *
+   * @throws {@link TypeError} When either path is not a string or a file URL.
+   */
+  function rename(oldPath: string | URL, newPath: string | URL): Promise<void>;
+
+  /** Synchronous {@link rename}. It blocks the caller. */
+  function renameSync(oldPath: string | URL, newPath: string | URL): void;
+
+  /**
+   * Describes `path`, following a final symlink.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link errors.NotFound} When `path` does not exist.
+   */
+  function stat(path: string | URL): Promise<FileInfo>;
+
+  /** Synchronous {@link stat}. It blocks the caller. */
+  function statSync(path: string | URL): FileInfo;
+
+  /**
+   * Describes `path` without following a final symlink.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   */
+  function lstat(path: string | URL): Promise<FileInfo>;
+
+  /** Synchronous {@link lstat}. It blocks the caller. */
+  function lstatSync(path: string | URL): FileInfo;
+
+  /**
+   * Lists `path`.
+   *
+   * The array is not sorted.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link errors.NotADirectory} When `path` is not a directory.
+   */
+  function readDir(path: string | URL): Promise<DirEntry[]>;
+
+  /** Synchronous {@link readDir}. It blocks the caller. */
+  function readDirSync(path: string | URL): DirEntry[];
+
+  /**
+   * Copies `from` onto `to`, overwriting `to`.
+   *
+   * @throws {@link TypeError} When either path is not a string or a file URL.
+   * @throws {@link errors.NotSupported} When `to` resolves inside the
+   * application bundle.
+   */
+  function copyFile(from: string | URL, to: string | URL): Promise<void>;
+
+  /** Synchronous {@link copyFile}. It blocks the caller. */
+  function copyFileSync(from: string | URL, to: string | URL): void;
+
+  /**
+   * Returns the canonical path of `path`.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link errors.NotFound} When `path` does not exist.
+   */
+  function realPath(path: string | URL): Promise<string>;
+
+  /** Synchronous {@link realPath}. It blocks the caller. */
+  function realPathSync(path: string | URL): string;
+
+  /**
+   * Sets the length of the file at `path`. The file must already exist.
+   * An omitted length is `0`.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, or
+   * when `len` is not a finite integer of at least 0.
+   */
+  function truncate(path: string | URL, len?: number): Promise<void>;
+
+  /** Synchronous {@link truncate}. It blocks the caller. */
+  function truncateSync(path: string | URL, len?: number): void;
+
+  /**
+   * Creates an empty directory with a new name and returns its absolute path.
+   *
+   * @throws {@link TypeError} When `options` is not an object, or when
+   * `prefix` or `suffix` is not a string or contains a path separator or NUL.
+   * @throws {@link errors.AlreadyExists} When a unique name cannot be created.
+   */
+  function makeTempDir(options?: MakeTempOptions): Promise<string>;
+
+  /** Synchronous {@link makeTempDir}. It blocks the caller. */
+  function makeTempDirSync(options?: MakeTempOptions): string;
+
+  /**
+   * Creates an empty file with a new name and returns its absolute path.
+   *
+   * @throws {@link TypeError} When `options` is not an object, or when
+   * `prefix` or `suffix` is not a string or contains a path separator or NUL.
+   */
+  function makeTempFile(options?: MakeTempOptions): Promise<string>;
+
+  /** Synchronous {@link makeTempFile}. It blocks the caller. */
+  function makeTempFileSync(options?: MakeTempOptions): string;
 
   /**
    * Registers a listener on the `Yuzuko` object.

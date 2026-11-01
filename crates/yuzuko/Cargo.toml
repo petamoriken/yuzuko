@@ -9,6 +9,10 @@ publish.workspace = true
 name = "yuzuko"
 path = "src/main.rs"
 
+[features]
+default = ["fs"]
+fs = ["yuzuko_core/fs"]
+
 [dependencies]
 base64 = "0.23"
 ed25519-dalek.workspace = true

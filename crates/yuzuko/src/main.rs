@@ -26,6 +26,8 @@ fn main() -> ExitCode {
     if let Some(identifier) = &bundle.identifier {
       yuzuko_window::set_app_identity(identifier, &bundle.resources);
     }
+    #[cfg(feature = "fs")]
+    yuzuko_core::set_process_bundle_root(&application_bundle_root(&bundle));
     yuzuko::enable_updater(bundle.resources);
     let code = match run_file_sandboxed(&bundle.entry, Some(&bundle.sandbox)) {
       Ok(()) => 0,
@@ -159,6 +161,28 @@ fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
       eprintln!("{error}");
       Ok(1)
     }
+  }
+}
+
+/// The signed bundle. On macOS that is the `.app`. On Windows and Linux it
+/// is the directory that holds the executable and `yuzuko.bundle.json`.
+#[cfg(feature = "fs")]
+fn application_bundle_root(bundle: &yuzuko::BundleLaunch) -> PathBuf {
+  let resources = &bundle.resources;
+  let contents = resources.parent();
+  let macos_app = resources.file_name().and_then(|name| name.to_str())
+    == Some("Resources")
+    && contents
+      .and_then(|path| path.file_name())
+      .and_then(|name| name.to_str())
+      == Some("Contents");
+  if macos_app {
+    contents
+      .and_then(|path| path.parent())
+      .unwrap_or(resources)
+      .to_path_buf()
+  } else {
+    resources.clone()
   }
 }
 

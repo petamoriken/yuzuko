@@ -268,7 +268,10 @@ pub(crate) fn run_worker_isolate(
     install_namespace_instance(scope);
     crate::timers::install(scope);
     crate::realm::install(scope);
+    install_yuzuko_namespace(scope);
     crate::extensions::install(scope);
+    #[cfg(feature = "fs")]
+    crate::fs::install(scope);
     bind_wasm_response(scope);
     let result: Result<(), RuntimeError> = (|| {
       if !crate::worker::agent_alive(id) {
@@ -306,6 +309,8 @@ pub(crate) fn run_worker_isolate(
         }
       }
     }
+    #[cfg(feature = "fs")]
+    crate::fs::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
   }
@@ -936,13 +941,18 @@ pub(crate) fn with_runtime<T>(
     install_namespace_instance(scope);
     crate::timers::install(scope);
     crate::realm::install(scope);
+    install_yuzuko_namespace(scope);
     crate::extensions::install(scope);
+    #[cfg(feature = "fs")]
+    crate::fs::install(scope);
     bind_wasm_response(scope);
     if test_mode {
       install_test_api(scope);
     }
     prepare(scope);
     let result = body(scope);
+    #[cfg(feature = "fs")]
+    crate::fs::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
     result
@@ -1195,6 +1205,14 @@ fn namespace_instance(
       "WebAssembly.namespaceInstance requires a WebAssembly module namespace",
     ),
   }
+}
+
+/// The `Yuzuko` object exists on the main realm and in a dedicated worker
+/// even when no Cargo feature is enabled. Feature crates attach members
+/// afterwards. An AudioWorklet processor context is created separately and
+/// does not receive this object.
+fn install_yuzuko_namespace(scope: &mut v8::PinScope<'_, '_>) {
+  let _ = crate::js::namespace(scope, "Yuzuko");
 }
 
 fn install_console(scope: &mut v8::PinScope<'_, '_>) {

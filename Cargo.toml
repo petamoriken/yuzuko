@@ -54,7 +54,7 @@ symphonia = { version = "0.5", default-features = false }
 yuzuko_audio = { path = "crates/yuzuko_audio" }
 yuzuko_canvas = { path = "crates/yuzuko_canvas" }
 yuzuko_codec = { path = "crates/yuzuko_codec" }
-yuzuko_core = { path = "crates/yuzuko_core" }
+yuzuko_core = { path = "crates/yuzuko_core", default-features = false }
 yuzuko_dom = { path = "crates/yuzuko_dom" }
 yuzuko_image = { path = "crates/yuzuko_image" }
 yuzuko_macros = { path = "crates/yuzuko_macros" }

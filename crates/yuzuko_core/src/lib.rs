@@ -4,6 +4,8 @@ extern crate self as yuzuko_core;
 
 mod clone;
 mod extensions;
+#[cfg(feature = "fs")]
+mod fs;
 mod host;
 mod idle;
 mod jobs;
@@ -25,6 +27,8 @@ pub use clone::{
   reject_clone, set_structured_transfer, write_bytes, write_text,
 };
 pub use extensions::{add_extension, on_realm_drop};
+#[cfg(feature = "fs")]
+pub use fs::set_process_bundle_root;
 pub use host::{
   agent_id, entry_dir, entry_url, is_dedicated_worker, note_test_error,
   on_dedicated_worker, set_dom_exception, set_file_root, set_rejection_hook,
