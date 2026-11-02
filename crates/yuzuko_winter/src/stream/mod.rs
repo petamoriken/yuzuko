@@ -974,8 +974,7 @@ pub fn text_stream_from_body(
   }
 }
 
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn stream_from_text(
+pub(crate) fn stream_from_text(
   scope: &mut v8::PinScope,
   text: &str,
 ) -> v8::Global<v8::Object> {

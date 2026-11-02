@@ -4319,6 +4319,13 @@ interface Blob {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/stream) */
   stream(): ReadableStream<Uint8Array>;
+
+  /**
+   * UTF-8 text. The blob type's charset is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/textStream)
+   */
+  textStream(): ReadableStream<string>;
 }
 declare var Blob: {
   prototype: Blob;

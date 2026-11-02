@@ -620,14 +620,18 @@ impl Blob {
     Ok(New(Blob::from_input(self.source.slice(start, end), &input)))
   }
 
+  // A bad `this` rejects. These operations return promises.
+  #[promise]
   fn text(&self, scope: &mut v8::PinScope) -> ReadPromise {
     queue_owned(scope, self, ReadKind::Text)
   }
 
+  #[promise]
   fn array_buffer(&self, scope: &mut v8::PinScope) -> ReadPromise {
     queue_owned(scope, self, ReadKind::Buffer)
   }
 
+  #[promise]
   fn bytes(&self, scope: &mut v8::PinScope) -> ReadPromise {
     queue_owned(scope, self, ReadKind::Bytes)
   }
@@ -637,6 +641,20 @@ impl Blob {
     let object = v8::Local::new(scope, &object);
     let value: v8::Local<v8::Value> = object.into();
     Js(v8::Global::new(scope, value))
+  }
+
+  /// File API `textStream`: UTF-8, ignoring the type's charset.
+  #[rename("textStream")]
+  fn text_stream(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    let bytes = self
+      .source
+      .read_all()
+      .map_err(|_| OpError::type_("The blob could not be read"))?;
+    let text = decode_utf8(&bytes);
+    let object = crate::stream::stream_from_text(scope, &text);
+    let object = v8::Local::new(scope, &object);
+    let value: v8::Local<v8::Value> = object.into();
+    Ok(Js(v8::Global::new(scope, value)))
   }
 }
 
@@ -659,7 +677,9 @@ unsafe impl v8::cppgc::GarbageCollected for File {
 
 #[op(inherit = Blob)]
 impl File {
+  // `fileBits` and `fileName` are required. `options` is optional.
   #[constructor]
+  #[length(2)]
   fn new(
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
