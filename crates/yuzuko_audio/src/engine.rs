@@ -39,6 +39,7 @@ enum OverMax {
   IndexSize,
 }
 
+#[derive(Debug)]
 pub enum Fault {
   Type(String),
   Range(String),
@@ -159,10 +160,42 @@ pub enum Kind {
   },
 }
 
+enum ConnTarget {
+  Node { id: u64, input: u32 },
+  Param(u64),
+}
+
 struct Connection {
-  dest: u64,
   output: u32,
-  input: u32,
+  target: ConnTarget,
+}
+
+#[derive(Clone)]
+enum EventKind {
+  SetValue {
+    value: f64,
+  },
+  LinearRamp {
+    value: f64,
+  },
+  ExponentialRamp {
+    value: f64,
+  },
+  SetTarget {
+    target: f64,
+    time_constant: f64,
+    start_value: f64,
+  },
+  SetValueCurve {
+    duration: f64,
+    values: Vec<f32>,
+  },
+}
+
+#[derive(Clone)]
+struct AutomationEvent {
+  time: f64,
+  kind: EventKind,
 }
 
 struct NodeRec {
@@ -189,6 +222,8 @@ pub struct ParamRec {
   min: f64,
   max: f64,
   a_rate: bool,
+  context: u64,
+  events: Vec<AutomationEvent>,
   object: Option<v8::Global<v8::Object>>,
 }
 
@@ -252,6 +287,7 @@ struct ContextRec {
   // schedule another quantum.
   generation: u64,
   pump_queued: bool,
+  sink: String,
 }
 
 struct WaveRec {
@@ -464,6 +500,7 @@ pub fn parameters(id: u64) -> Option<v8::Global<v8::Object>> {
 
 pub fn insert_param(
   id: u64,
+  context: u64,
   value: f64,
   default: f64,
   min: f64,
@@ -480,6 +517,8 @@ pub fn insert_param(
         min,
         max,
         a_rate,
+        context,
+        events: Vec::new(),
         object: None,
       },
     );
@@ -516,13 +555,23 @@ pub struct ParamView {
 }
 
 pub fn param_view(id: u64) -> Option<ParamView> {
+  let context = PARAMS
+    .with(|params| params.borrow().get(&id).map(|param| param.context))?;
+  let time = context_time(context).unwrap_or(0.0);
   PARAMS.with(|params| {
-    params.borrow().get(&id).map(|param| ParamView {
-      value: param.value,
-      default: param.default,
-      min: param.min,
-      max: param.max,
-      a_rate: param.a_rate,
+    params.borrow().get(&id).map(|param| {
+      let value = clamp_param(
+        value_at(param.value, &param.events, time),
+        param.min,
+        param.max,
+      );
+      ParamView {
+        value,
+        default: param.default,
+        min: param.min,
+        max: param.max,
+        a_rate: param.a_rate,
+      }
     })
   })
 }
@@ -531,12 +580,173 @@ pub fn set_param_value(id: u64, value: f64) -> Result<(), Fault> {
   if value.is_nan() {
     return Ok(());
   }
-  PARAMS.with(|params| {
-    let mut params = params.borrow_mut();
-    let Some(param) = params.get_mut(&id) else {
-      return Err(Fault::type_("Invalid AudioParam"));
-    };
-    param.value = clamp_param(value, param.min, param.max);
+  let context = param_context(id)?;
+  let time = context_time(context).unwrap_or(0.0);
+  with_param(id, |param| {
+    let value = clamp_param(value, param.min, param.max);
+    reject_inside_curve(&param.events, time)?;
+    param.value = value;
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::SetValue { value },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn set_value_at_time(id: u64, value: f64, time: f64) -> Result<(), Fault> {
+  let time = check_time(time)?;
+  let value = check_finite(value)?;
+  with_param(id, |param| {
+    reject_inside_curve(&param.events, time)?;
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::SetValue { value },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn linear_ramp_to_value_at_time(
+  id: u64,
+  value: f64,
+  time: f64,
+) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  let value = check_finite(value)?;
+  with_param(id, |param| {
+    require_earlier(&param.events, time)?;
+    reject_inside_curve(&param.events, time)?;
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::LinearRamp { value },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn exponential_ramp_to_value_at_time(
+  id: u64,
+  value: f64,
+  time: f64,
+) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  let value = check_finite(value)?;
+  if value <= 0.0 {
+    return Err(Fault::range("The exponential ramp value must be positive"));
+  }
+  with_param(id, |param| {
+    let previous = ramp_start(&param.events, time)?;
+    if previous <= 0.0 {
+      return Err(Fault::range("The exponential ramp values must be positive"));
+    }
+    reject_inside_curve(&param.events, time)?;
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::ExponentialRamp { value },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn set_target_at_time(
+  id: u64,
+  target: f64,
+  time: f64,
+  time_constant: f64,
+) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  let target = check_finite(target)?;
+  if !time_constant.is_finite() {
+    return Err(Fault::type_("The value is not finite"));
+  }
+  if time_constant <= 0.0 {
+    return Err(Fault::range("The time constant must be positive"));
+  }
+  with_param(id, |param| {
+    reject_inside_curve(&param.events, time)?;
+    let start_value = value_at(param.value, &param.events, time);
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::SetTarget {
+          target,
+          time_constant,
+          start_value,
+        },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn set_value_curve_at_time(
+  id: u64,
+  values: Vec<f32>,
+  time: f64,
+  duration: f64,
+) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  if values.len() < 2 {
+    return Err(Fault::dom(
+      "InvalidStateError",
+      "The curve needs at least two values",
+    ));
+  }
+  if values.iter().any(|sample| !sample.is_finite()) {
+    return Err(Fault::type_("The value is not finite"));
+  }
+  if !duration.is_finite() || duration <= 0.0 {
+    return Err(Fault::range("The duration must be positive"));
+  }
+  with_param(id, |param| {
+    if param
+      .events
+      .iter()
+      .any(|event| event.time > time && event.time < time + duration)
+    {
+      return Err(Fault::dom(
+        "InvalidStateError",
+        "The curve overlaps an event",
+      ));
+    }
+    reject_inside_curve(&param.events, time)?;
+    insert_event(
+      &mut param.events,
+      AutomationEvent {
+        time,
+        kind: EventKind::SetValueCurve { duration, values },
+      },
+    );
+    Ok(())
+  })
+}
+
+pub fn cancel_scheduled_values(id: u64, time: f64) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  with_param(id, |param| {
+    param.events.retain(|event| event.time < time);
+    Ok(())
+  })
+}
+
+pub fn cancel_and_hold_at_time(id: u64, time: f64) -> Result<(), Fault> {
+  let time = clamp_past(id, check_time(time)?)?;
+  with_param(id, |param| {
+    hold_at(&mut param.events, param.value, time);
     Ok(())
   })
 }
@@ -566,14 +776,285 @@ fn clamp_param(value: f64, min: f64, max: f64) -> f64 {
   }
 }
 
-fn param_value(id: u64) -> f64 {
+fn param_context(id: u64) -> Result<u64, Fault> {
   PARAMS.with(|params| {
     params
       .borrow()
       .get(&id)
-      .map(|param| param.value)
-      .unwrap_or(0.0)
+      .map(|param| param.context)
+      .ok_or_else(|| Fault::type_("Invalid AudioParam"))
   })
+}
+
+fn with_param(
+  id: u64,
+  body: impl FnOnce(&mut ParamRec) -> Result<(), Fault>,
+) -> Result<(), Fault> {
+  PARAMS.with(|params| {
+    let mut params = params.borrow_mut();
+    let Some(param) = params.get_mut(&id) else {
+      return Err(Fault::type_("Invalid AudioParam"));
+    };
+    body(param)
+  })
+}
+
+fn check_time(time: f64) -> Result<f64, Fault> {
+  if !time.is_finite() || time.is_sign_negative() {
+    Err(Fault::range("The time is negative or not finite"))
+  } else {
+    Ok(time)
+  }
+}
+
+fn check_finite(value: f64) -> Result<f64, Fault> {
+  if value.is_finite() {
+    Ok(value)
+  } else {
+    Err(Fault::type_("The value is not finite"))
+  }
+}
+
+fn clamp_past(id: u64, time: f64) -> Result<f64, Fault> {
+  let context = param_context(id)?;
+  let now = context_time(context).unwrap_or(0.0);
+  Ok(if time < now { now } else { time })
+}
+
+fn require_earlier(events: &[AutomationEvent], time: f64) -> Result<(), Fault> {
+  if events.iter().any(|event| event.time < time) {
+    Ok(())
+  } else {
+    Err(Fault::dom(
+      "InvalidStateError",
+      "A ramp needs an earlier event",
+    ))
+  }
+}
+
+fn reject_inside_curve(
+  events: &[AutomationEvent],
+  time: f64,
+) -> Result<(), Fault> {
+  for event in events {
+    let EventKind::SetValueCurve { duration, .. } = &event.kind else {
+      continue;
+    };
+    if time > event.time && time < event.time + duration {
+      return Err(Fault::dom(
+        "InvalidStateError",
+        "The time is inside a value curve",
+      ));
+    }
+  }
+  Ok(())
+}
+
+fn insert_event(events: &mut Vec<AutomationEvent>, event: AutomationEvent) {
+  if let Some(index) = events.iter().position(|found| found.time == event.time)
+  {
+    events[index] = event;
+    return;
+  }
+  let index = events
+    .iter()
+    .position(|found| found.time > event.time)
+    .unwrap_or(events.len());
+  events.insert(index, event);
+}
+
+fn ramp_start(events: &[AutomationEvent], end: f64) -> Result<f64, Fault> {
+  let Some(index) = events.iter().rposition(|event| event.time < end) else {
+    return Err(Fault::dom(
+      "InvalidStateError",
+      "A ramp needs an earlier event",
+    ));
+  };
+  Ok(event_anchor(&events[index]))
+}
+
+fn event_anchor(event: &AutomationEvent) -> f64 {
+  match &event.kind {
+    EventKind::SetValue { value }
+    | EventKind::LinearRamp { value }
+    | EventKind::ExponentialRamp { value } => *value,
+    EventKind::SetTarget { start_value, .. } => *start_value,
+    EventKind::SetValueCurve { values, .. } => {
+      values.first().copied().unwrap_or(0.0) as f64
+    }
+  }
+}
+
+fn hold_at(events: &mut Vec<AutomationEvent>, intrinsic: f64, time: f64) {
+  let next = events.iter().position(|event| event.time > time);
+  let next_is_ramp = next.is_some_and(|index| {
+    matches!(
+      events[index].kind,
+      EventKind::LinearRamp { .. } | EventKind::ExponentialRamp { .. }
+    )
+  });
+  if let Some(index) = next
+    && next_is_ramp
+  {
+    let value = value_at(intrinsic, events, time);
+    events[index].time = time;
+    match &mut events[index].kind {
+      EventKind::LinearRamp { value: slot }
+      | EventKind::ExponentialRamp { value: slot } => *slot = value,
+      _ => {}
+    }
+    events.retain(|event| event.time <= time);
+    sort_events(events);
+    return;
+  }
+  enum Active {
+    Target,
+    Curve { start: f64, duration: f64 },
+    Other,
+  }
+  let current = events.iter().rposition(|event| event.time <= time);
+  let active = current
+    .map(|index| match &events[index].kind {
+      EventKind::SetTarget { .. } => Active::Target,
+      EventKind::SetValueCurve { duration, .. } => Active::Curve {
+        start: events[index].time,
+        duration: *duration,
+      },
+      _ => Active::Other,
+    })
+    .unwrap_or(Active::Other);
+  match active {
+    Active::Target => {
+      let value = value_at(intrinsic, events, time);
+      events.retain(|event| event.time <= time);
+      insert_event(
+        events,
+        AutomationEvent {
+          time,
+          kind: EventKind::SetValue { value },
+        },
+      );
+    }
+    Active::Curve { start, duration } if time <= start + duration => {
+      let value = value_at(intrinsic, events, time);
+      events.retain(|event| event.time <= time);
+      insert_event(
+        events,
+        AutomationEvent {
+          time,
+          kind: EventKind::SetValue { value },
+        },
+      );
+    }
+    Active::Curve { .. } | Active::Other => {
+      let value = value_at(intrinsic, events, time);
+      events.retain(|event| event.time <= time);
+      insert_event(
+        events,
+        AutomationEvent {
+          time,
+          kind: EventKind::SetValue { value },
+        },
+      );
+    }
+  }
+}
+
+fn sort_events(events: &mut [AutomationEvent]) {
+  events.sort_by(|left, right| {
+    left
+      .time
+      .partial_cmp(&right.time)
+      .unwrap_or(std::cmp::Ordering::Equal)
+  });
+}
+
+fn value_at(intrinsic: f64, events: &[AutomationEvent], time: f64) -> f64 {
+  if events.is_empty() || time < events[0].time {
+    return intrinsic;
+  }
+  let mut index = 0;
+  for (cursor, event) in events.iter().enumerate() {
+    if event.time <= time {
+      index = cursor;
+    } else {
+      break;
+    }
+  }
+  let event = &events[index];
+  if let Some(next) = events.get(index + 1)
+    && next.time > event.time
+    && matches!(
+      next.kind,
+      EventKind::LinearRamp { .. } | EventKind::ExponentialRamp { .. }
+    )
+  {
+    let start = event_anchor(event);
+    let portion =
+      ((time - event.time) / (next.time - event.time)).clamp(0.0, 1.0);
+    return match next.kind {
+      EventKind::LinearRamp { value } => start + (value - start) * portion,
+      EventKind::ExponentialRamp { value } => {
+        if start <= 0.0 || value <= 0.0 {
+          start
+        } else {
+          start * (value / start).powf(portion)
+        }
+      }
+      _ => start,
+    };
+  }
+  match &event.kind {
+    EventKind::SetValue { value }
+    | EventKind::LinearRamp { value }
+    | EventKind::ExponentialRamp { value } => *value,
+    EventKind::SetTarget {
+      target,
+      time_constant,
+      start_value,
+    } => {
+      if *time_constant <= 0.0 {
+        *target
+      } else {
+        let elapsed = time - event.time;
+        *target + (*start_value - *target) * (-elapsed / *time_constant).exp()
+      }
+    }
+    EventKind::SetValueCurve { duration, values } => {
+      curve_at(event.time, *duration, values, time)
+    }
+  }
+}
+
+fn curve_at(start: f64, duration: f64, values: &[f32], time: f64) -> f64 {
+  let last = values.last().copied().unwrap_or(0.0) as f64;
+  if values.len() < 2 || duration <= 0.0 || time >= start + duration {
+    return last;
+  }
+  if time <= start {
+    return values[0] as f64;
+  }
+  let span = (values.len() - 1) as f64;
+  let position = span * (time - start) / duration;
+  let index = (position.floor() as usize).min(values.len() - 2);
+  let fraction = position - index as f64;
+  let left = f64::from(values[index]);
+  let right = f64::from(values[index + 1]);
+  left + (right - left) * fraction
+}
+
+fn apply_param(
+  intrinsic: f64,
+  audio: f64,
+  default: f64,
+  min: f64,
+  max: f64,
+) -> f64 {
+  let mut sum = intrinsic + audio;
+  if sum.is_nan() {
+    sum = default;
+  }
+  clamp_param(sum, min, max)
 }
 
 pub fn insert_buffer(id: u64, rate: f64, channels: Vec<Vec<f32>>) {
@@ -812,6 +1293,7 @@ pub fn register_context(
   length: Option<u32>,
   destination: u64,
   destination_object: v8::Global<v8::Object>,
+  sink: String,
 ) {
   let output = if realtime {
     Vec::new()
@@ -846,9 +1328,19 @@ pub fn register_context(
         clock_started: false,
         generation: 0,
         pump_queued: false,
+        sink,
       },
     );
   });
+}
+
+pub fn context_sink(id: u64) -> Option<String> {
+  CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .get(&id)
+      .map(|context| context.sink.clone())
+  })
 }
 
 pub fn set_context_object(
@@ -1063,15 +1555,60 @@ pub fn connect_node(
       return;
     };
     let duplicate = node.connections.iter().any(|connection| {
-      connection.dest == dest
-        && connection.output == output
-        && connection.input == input
+      connection.output == output
+        && matches!(
+          connection.target,
+          ConnTarget::Node { id, input: slot } if id == dest && slot == input
+        )
     });
     if !duplicate {
       node.connections.push(Connection {
-        dest,
         output,
-        input,
+        target: ConnTarget::Node { id: dest, input },
+      });
+    }
+  });
+  Ok(())
+}
+
+pub fn connect_param(
+  source: u64,
+  param: u64,
+  output: u32,
+) -> Result<(), Fault> {
+  let (source_ctx, outputs) = NODES.with(|nodes| {
+    let nodes = nodes.borrow();
+    let Some(node) = nodes.get(&source) else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    Ok((node.context, node.outputs))
+  })?;
+  let param_ctx = param_context(param)?;
+  if source_ctx != param_ctx {
+    return Err(Fault::dom(
+      "InvalidAccessError",
+      "The AudioParam belongs to a different context",
+    ));
+  }
+  if output >= outputs {
+    return Err(Fault::dom(
+      "IndexSizeError",
+      "The output index is out of range",
+    ));
+  }
+  NODES.with(|nodes| {
+    let mut nodes = nodes.borrow_mut();
+    let Some(node) = nodes.get_mut(&source) else {
+      return;
+    };
+    let duplicate = node.connections.iter().any(|connection| {
+      connection.output == output
+        && matches!(connection.target, ConnTarget::Param(id) if id == param)
+    });
+    if !duplicate {
+      node.connections.push(Connection {
+        output,
+        target: ConnTarget::Param(param),
       });
     }
   });
@@ -1115,13 +1652,36 @@ pub fn disconnect_dest(id: u64, dest: u64) -> Result<(), Fault> {
       return Err(Fault::type_("Invalid AudioNode"));
     };
     let before = node.connections.len();
-    node
-      .connections
-      .retain(|connection| connection.dest != dest);
+    node.connections.retain(|connection| {
+      !matches!(
+        connection.target,
+        ConnTarget::Node { id, .. } if id == dest
+      )
+    });
     if node.connections.len() == before {
       return Err(Fault::dom(
         "InvalidAccessError",
         "The node is not connected to that destination",
+      ));
+    }
+    Ok(())
+  })
+}
+
+pub fn disconnect_param(id: u64, param: u64) -> Result<(), Fault> {
+  NODES.with(|nodes| {
+    let mut nodes = nodes.borrow_mut();
+    let Some(node) = nodes.get_mut(&id) else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    let before = node.connections.len();
+    node.connections.retain(|connection| {
+      !matches!(connection.target, ConnTarget::Param(found) if found == param)
+    });
+    if node.connections.len() == before {
+      return Err(Fault::dom(
+        "InvalidAccessError",
+        "The node is not connected to that AudioParam",
       ));
     }
     Ok(())
@@ -1847,13 +2407,18 @@ fn release_pump(id: u64, generation: u64) {
 }
 
 fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
-  let Some((quantum, frame, rate)) = CONTEXTS.with(|contexts| {
+  let Some((quantum, frame, rate, sink)) = CONTEXTS.with(|contexts| {
     let contexts = contexts.borrow();
     let context = contexts.get(&id)?;
     if !playback_matches(context, generation) {
       return None;
     }
-    Some((context.quantum, context.frame, context.sample_rate))
+    Some((
+      context.quantum,
+      context.frame,
+      context.sample_rate,
+      context.sink.clone(),
+    ))
   }) else {
     release_pump(id, generation);
     return;
@@ -1876,7 +2441,7 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
     release_pump(id, generation);
     return;
   }
-  playback::ensure(id, rate, quantum);
+  playback::ensure(id, rate, quantum, &sink);
   let pace = playback::submit(id, &block, quantum as usize, rate);
   if !playback_active(id, generation) {
     release_pump(id, generation);
@@ -2002,17 +2567,19 @@ fn pull(
     Kind::Gain { param } => {
       let mut mixed =
         mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
-      let gain = param_value(param) as f32;
+      let gain =
+        param_block(scope, param, origin, quantum, cache, stack, ended);
       for channel in &mut mixed {
-        for sample in channel {
-          *sample *= gain;
+        for (sample, value) in channel.iter_mut().zip(&gain) {
+          *sample *= *value as f32;
         }
       }
       mixed
     }
     Kind::Constant { offset, play } => {
-      let (block, play, stop) =
-        render_constant(play, param_value(offset), origin, quantum);
+      let curve =
+        param_block(scope, offset, origin, quantum, cache, stack, ended);
+      let (block, play, stop) = render_constant(play, &curve, origin, quantum);
       write_play(id, play);
       if stop {
         mark_pending(id);
@@ -2027,10 +2594,13 @@ fn pull(
       play,
     } => {
       let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
-      let computed =
-        param_value(frequency) * 2f64.powf(param_value(detune) / 1200.0);
-      let (block, play, stop) =
-        render_oscillator(play, &wave, computed, rate, origin, quantum);
+      let frequency =
+        param_block(scope, frequency, origin, quantum, cache, stack, ended);
+      let detune =
+        param_block(scope, detune, origin, quantum, cache, stack, ended);
+      let (block, play, stop) = render_oscillator(
+        play, &wave, &frequency, &detune, rate, origin, quantum,
+      );
       write_play(id, play);
       if stop {
         mark_pending(id);
@@ -2050,7 +2620,9 @@ fn pull(
     } => {
       let context_rate =
         context_of(id).and_then(context_rate).unwrap_or(48000.0);
-      let speed = param_value(rate) * 2f64.powf(param_value(detune) / 1200.0);
+      let rate = param_block(scope, rate, origin, quantum, cache, stack, ended);
+      let detune =
+        param_block(scope, detune, origin, quantum, cache, stack, ended);
       let pcm = match &acquired {
         Some(channels) if channels.is_empty() => None,
         Some(channels) => {
@@ -2064,7 +2636,8 @@ fn pull(
       let (block, play, stop) = render_buffer_source(
         play,
         pcm.as_ref(),
-        speed,
+        &rate,
+        &detune,
         context_rate,
         looped,
         loop_start,
@@ -2119,6 +2692,88 @@ fn write_play(id: u64, play: Play) {
     };
     *slot = play;
   });
+}
+
+fn param_block(
+  scope: &mut v8::PinScope,
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut HashMap<u64, Vec<Vec<f32>>>,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Vec<f64> {
+  if quantum == 0 {
+    return Vec::new();
+  }
+  let (a_rate, min, max, default, intrinsic) =
+    timeline_samples(id, origin, quantum);
+  let sources = param_sources(id);
+  let mut audio = vec![0.0; quantum];
+  for source in sources {
+    let block = pull(scope, source, origin, quantum, cache, stack, ended);
+    for channel in block {
+      for (slot, sample) in audio.iter_mut().zip(channel) {
+        *slot += f64::from(sample);
+      }
+    }
+  }
+  if !a_rate {
+    let value = apply_param(intrinsic[0], audio[0], default, min, max);
+    return vec![value; quantum];
+  }
+  for index in 0..quantum {
+    audio[index] =
+      apply_param(intrinsic[index], audio[index], default, min, max);
+  }
+  audio
+}
+
+fn timeline_samples(
+  id: u64,
+  origin: u64,
+  quantum: usize,
+) -> (bool, f64, f64, f64, Vec<f64>) {
+  PARAMS.with(|params| {
+    let params = params.borrow();
+    let Some(param) = params.get(&id) else {
+      return (
+        true,
+        f32::MIN as f64,
+        f32::MAX as f64,
+        0.0,
+        vec![0.0; quantum],
+      );
+    };
+    let rate = context_rate(param.context).unwrap_or(48000.0);
+    let mut curve = Vec::with_capacity(quantum);
+    for index in 0..quantum {
+      let time = if rate == 0.0 {
+        0.0
+      } else {
+        (origin + index as u64) as f64 / rate
+      };
+      curve.push(value_at(param.value, &param.events, time));
+    }
+    (param.a_rate, param.min, param.max, param.default, curve)
+  })
+}
+
+fn param_sources(param: u64) -> Vec<u64> {
+  NODES.with(|nodes| {
+    let nodes = nodes.borrow();
+    let mut sources = Vec::new();
+    for (id, node) in nodes.iter() {
+      for connection in &node.connections {
+        if connection.output == 0
+          && matches!(connection.target, ConnTarget::Param(id) if id == param)
+        {
+          sources.push(*id);
+        }
+      }
+    }
+    sources
+  })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2231,7 +2886,13 @@ fn incoming(dest: u64, input: u32) -> Vec<u64> {
     let mut sources = Vec::new();
     for (id, node) in nodes.iter() {
       for connection in &node.connections {
-        if connection.dest == dest && connection.input == input {
+        if let ConnTarget::Node {
+          id: target,
+          input: slot,
+        } = connection.target
+          && target == dest
+          && slot == input
+        {
           sources.push(*id);
         }
       }
@@ -2242,7 +2903,7 @@ fn incoming(dest: u64, input: u32) -> Vec<u64> {
 
 fn render_constant(
   mut play: Play,
-  offset: f64,
+  offset: &[f64],
   origin: u64,
   quantum: usize,
 ) -> (Vec<Vec<f32>>, Play, bool) {
@@ -2251,7 +2912,7 @@ fn render_constant(
   for (index, sample) in channel.iter_mut().enumerate() {
     let frame = origin + index as u64;
     if playing(&play, frame) {
-      *sample = offset as f32;
+      *sample = offset.get(index).copied().unwrap_or(0.0) as f32;
       play.played += 1.0;
     } else if stopped(&play, frame) {
       stop = true;
@@ -2263,7 +2924,8 @@ fn render_constant(
 fn render_oscillator(
   mut play: Play,
   wave: &Wave,
-  computed: f64,
+  frequency: &[f64],
+  detune: &[f64],
   rate: f64,
   origin: u64,
   quantum: usize,
@@ -2279,6 +2941,9 @@ fn render_oscillator(
       }
       continue;
     }
+    let freq = frequency.get(index).copied().unwrap_or(0.0);
+    let cents = detune.get(index).copied().unwrap_or(0.0);
+    let computed = freq * 2f64.powf(cents / 1200.0);
     *sample = if !computed.is_finite() || computed.abs() >= limit {
       0.0
     } else {
@@ -2331,7 +2996,8 @@ fn wave_sample(wave: &Wave, frequency: f64, rate: f64, frame: u64) -> f32 {
 fn render_buffer_source(
   mut play: Play,
   pcm: Option<&(f64, Vec<Vec<f32>>)>,
-  speed: f64,
+  rate_curve: &[f64],
+  detune_curve: &[f64],
   context_rate: f64,
   looped: bool,
   loop_start: f64,
@@ -2348,12 +3014,15 @@ fn render_buffer_source(
   let mut output = vec![vec![0.0; quantum]; channels.len()];
   let length = channels[0].len() as f64;
   let mut stop = false;
-  let step = if context_rate == 0.0 {
-    0.0
-  } else {
-    speed * buffer_rate / context_rate
-  };
   for index in 0..quantum {
+    let playback = rate_curve.get(index).copied().unwrap_or(1.0);
+    let cents = detune_curve.get(index).copied().unwrap_or(0.0);
+    let speed = playback * 2f64.powf(cents / 1200.0);
+    let step = if context_rate == 0.0 {
+      0.0
+    } else {
+      speed * buffer_rate / context_rate
+    };
     let frame = origin + index as u64;
     if !playing(&play, frame) {
       if stopped(&play, frame) || duration_done(&play) {
@@ -3059,12 +3728,26 @@ fn render_worklet(
     }
     inputs.push(mixed);
   }
+  let mut curves = Vec::with_capacity(params.len());
+  for param in params {
+    curves.push(param_block(
+      scope, param.id, origin, quantum, cache, stack, ended,
+    ));
+  }
   publish_worklet_time(scope, ctx);
   let rendered = {
     let context = v8::Local::new(scope, context);
     let scope = &mut v8::ContextScope::new(scope, context);
     v8::tc_scope!(let scope, scope);
-    call_process(scope, instance, &inputs, output_channels, params, quantum)
+    call_process(
+      scope,
+      instance,
+      &inputs,
+      output_channels,
+      params,
+      &curves,
+      quantum,
+    )
   };
   match rendered {
     Ok((outputs, keep)) => {
@@ -3089,6 +3772,7 @@ fn call_process(
   inputs: &[Vec<Vec<f32>>],
   output_channels: &[u32],
   params: &[WorkletParam],
+  curves: &[Vec<f64>],
   quantum: usize,
 ) -> Result<(Vec<Vec<f32>>, bool), ()> {
   let instance = v8::Local::new(scope, instance);
@@ -3107,10 +3791,14 @@ fn call_process(
     output_locals.push(locals);
   }
   let parameters = v8::Object::new(scope);
-  for param in params {
+  for (param, curve) in params.iter().zip(curves) {
     let length = if param.a_rate { quantum } else { 1 };
-    let value = param_value(param.id) as f32;
-    let view = f32_array(scope, &vec![value; length]);
+    let samples = curve
+      .iter()
+      .take(length)
+      .map(|value| *value as f32)
+      .collect::<Vec<_>>();
+    let view = f32_array(scope, &samples);
     let key = v8::String::new(scope, &param.name).ok_or(())?;
     parameters.set(scope, key.into(), view.into());
   }
@@ -3206,4 +3894,133 @@ pub fn create_port_pair(
     v8::Global::new(scope, main),
     v8::Global::new(scope, processor),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{
+    Fault, cancel_and_hold_at_time, cancel_scheduled_values,
+    exponential_ramp_to_value_at_time, insert_param,
+    linear_ramp_to_value_at_time, set_param_value, set_target_at_time,
+    set_value_at_time, set_value_curve_at_time, value_at,
+  };
+
+  fn sample(id: u64, time: f64) -> f64 {
+    let (intrinsic, events) = super::PARAMS.with(|params| {
+      let params = params.borrow();
+      let param = params.get(&id).expect("param");
+      (param.value, param.events.clone())
+    });
+    value_at(intrinsic, &events, time)
+  }
+
+  fn fault_name(result: Result<(), Fault>) -> &'static str {
+    match result {
+      Ok(()) => "ok",
+      Err(Fault::Type(_)) => "TypeError",
+      Err(Fault::Range(_)) => "RangeError",
+      Err(Fault::Dom(name, _)) => name,
+    }
+  }
+
+  fn near(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+  }
+
+  fn param(id: u64) {
+    insert_param(id, 1, 1.0, 1.0, f32::MIN as f64, f32::MAX as f64, true);
+  }
+
+  #[test]
+  fn linear_and_exponential_ramps_sample_the_midpoint() {
+    super::clear();
+    param(1);
+    set_value_at_time(1, 0.0, 0.0).unwrap();
+    linear_ramp_to_value_at_time(1, 1.0, 1.0).unwrap();
+    near(sample(1, 0.5), 0.5);
+
+    param(2);
+    set_value_at_time(2, 1.0, 0.0).unwrap();
+    exponential_ramp_to_value_at_time(2, 2.0, 1.0).unwrap();
+    near(sample(2, 0.5), 2f64.sqrt());
+  }
+
+  #[test]
+  fn set_target_uses_the_value_captured_at_its_start() {
+    super::clear();
+    param(3);
+    set_value_at_time(3, 0.0, 0.0).unwrap();
+    set_target_at_time(3, 1.0, 1.0, 0.5).unwrap();
+    near(sample(3, 1.0), 0.0);
+    near(sample(3, 1.5), 1.0 - (-1.0f64).exp());
+  }
+
+  #[test]
+  fn curve_interpolates_and_then_holds_the_last_sample() {
+    super::clear();
+    param(4);
+    set_value_curve_at_time(4, vec![0.0, 1.0], 0.0, 1.0).unwrap();
+    near(sample(4, 0.0), 0.0);
+    near(sample(4, 0.5), 0.5);
+    near(sample(4, 1.0), 1.0);
+  }
+
+  #[test]
+  fn cancel_removes_future_events_and_hold_keeps_the_partial_ramp() {
+    super::clear();
+    param(5);
+    set_value_at_time(5, 1.0, 0.0).unwrap();
+    set_value_at_time(5, 5.0, 1.0).unwrap();
+    cancel_scheduled_values(5, 0.5).unwrap();
+    near(sample(5, 0.0), 1.0);
+    near(sample(5, 2.0), 1.0);
+
+    param(6);
+    set_value_at_time(6, 0.0, 0.0).unwrap();
+    linear_ramp_to_value_at_time(6, 1.0, 1.0).unwrap();
+    cancel_and_hold_at_time(6, 0.5).unwrap();
+    near(sample(6, 0.25), 0.25);
+    near(sample(6, 0.5), 0.5);
+    near(sample(6, 0.75), 0.5);
+  }
+
+  #[test]
+  fn automation_rejects_a_ramp_without_an_anchor_and_a_non_positive_exponential()
+   {
+    super::clear();
+    param(7);
+    assert_eq!(
+      fault_name(linear_ramp_to_value_at_time(7, 1.0, 1.0)),
+      "InvalidStateError"
+    );
+    set_value_at_time(7, 1.0, 0.0).unwrap();
+    assert_eq!(
+      fault_name(exponential_ramp_to_value_at_time(7, 0.0, 1.0)),
+      "RangeError"
+    );
+    set_value_at_time(7, 0.0, 0.25).unwrap();
+    assert_eq!(
+      fault_name(exponential_ramp_to_value_at_time(7, 1.0, 1.0)),
+      "RangeError"
+    );
+    assert_eq!(
+      fault_name(set_target_at_time(7, 1.0, 0.5, 0.0)),
+      "RangeError"
+    );
+    assert_eq!(
+      fault_name(set_value_curve_at_time(7, vec![1.0], 2.0, 1.0)),
+      "InvalidStateError"
+    );
+  }
+
+  #[test]
+  fn assigning_value_changes_the_intrinsic_and_nan_does_not() {
+    super::clear();
+    param(8);
+    set_param_value(8, f64::NAN).unwrap();
+    near(sample(8, 0.0), 1.0);
+    set_param_value(8, 0.25).unwrap();
+    cancel_scheduled_values(8, 0.0).unwrap();
+    near(sample(8, 0.0), 0.25);
+  }
 }

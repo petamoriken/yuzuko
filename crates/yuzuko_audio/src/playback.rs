@@ -127,7 +127,7 @@ pub(crate) fn output_latency(id: u64) -> f64 {
   })
 }
 
-pub(crate) fn ensure(id: u64, rate: f64, quantum: u32) {
+pub(crate) fn ensure(id: u64, rate: f64, quantum: u32, sink: &str) {
   PLAY.with(|slot| {
     let mut plays = slot.borrow_mut();
     if plays.contains_key(&id) {
@@ -136,7 +136,7 @@ pub(crate) fn ensure(id: u64, rate: f64, quantum: u32) {
     let device = if timer_only() {
       None
     } else {
-      open_device(rate, quantum)
+      open_device(rate, quantum, sink)
     };
     let latency = if device.is_some() {
       OUTPUT_LATENCY
@@ -336,9 +336,33 @@ fn timer_only() -> bool {
   std::env::var_os("YUZUKO_AUDIO_TIMER").is_some()
 }
 
-fn open_device(rate: f64, quantum: u32) -> Option<Device> {
+pub(crate) fn sink_available(name: &str) -> bool {
+  if name.is_empty() {
+    return true;
+  }
+  let found = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let host = cpal::default_host();
+    select_output(&host, name).is_some()
+  }));
+  matches!(found, Ok(true))
+}
+
+fn select_output(host: &cpal::Host, sink: &str) -> Option<cpal::Device> {
+  if sink.is_empty() {
+    return host.default_output_device();
+  }
+  let mut devices = host.output_devices().ok()?;
+  devices.find(|device| {
+    device
+      .description()
+      .ok()
+      .is_some_and(|description| description.name() == sink)
+  })
+}
+
+fn open_device(rate: f64, quantum: u32, sink: &str) -> Option<Device> {
   let opened = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-    try_open(rate, quantum)
+    try_open(rate, quantum, sink)
   }));
   match opened {
     Ok(device) => device,
@@ -346,9 +370,9 @@ fn open_device(rate: f64, quantum: u32) -> Option<Device> {
   }
 }
 
-fn try_open(rate: f64, quantum: u32) -> Option<Device> {
+fn try_open(rate: f64, quantum: u32, sink: &str) -> Option<Device> {
   let host = cpal::default_host();
-  let device = host.default_output_device()?;
+  let device = select_output(&host, sink)?;
   let hz = rate.round().clamp(1.0, 1_000_000.0) as u32;
   let preferred = cpal::StreamConfig {
     channels: 2,
@@ -689,5 +713,37 @@ mod tests {
     let mut state = Resampler::new();
     let out = resample(&mut state, &[0.0, 10.0, 20.0, 30.0], 1, 10.0, 20.0);
     assert_eq!(out, vec![0.0, 5.0, 10.0, 15.0, 20.0, 25.0]);
+  }
+
+  #[test]
+  fn empty_sink_is_available_without_a_device() {
+    assert!(super::sink_available(""));
+  }
+
+  #[test]
+  fn unknown_sink_is_unavailable() {
+    assert!(!super::sink_available("yuzuko-missing-audio-sink"));
+  }
+
+  #[test]
+  fn default_output_name_is_available_when_present() {
+    use cpal::traits::{DeviceTrait, HostTrait};
+
+    let found = std::panic::catch_unwind(|| {
+      let host = cpal::default_host();
+      host.default_output_device().and_then(|device| {
+        device
+          .description()
+          .ok()
+          .map(|description| description.name().to_string())
+      })
+    });
+    let Ok(Some(name)) = found else {
+      return;
+    };
+    if name.is_empty() {
+      return;
+    }
+    assert!(super::sink_available(&name));
   }
 }

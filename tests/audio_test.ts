@@ -410,3 +410,125 @@ Yuzuko.test("OffscreenCanvas still paints beside AudioContext", () => {
   assert(pixel[3] === 255, `alpha ${pixel[3]}`);
   context.close();
 });
+
+function assertName(run: () => unknown, name: string): void {
+  try {
+    run();
+  } catch (error) {
+    const caught = error as { name?: string };
+    assert(caught.name === name, `${name} was ${caught.name}`);
+    return;
+  }
+  throw new Error(`${name} was not thrown`);
+}
+
+async function renderGain(schedule: (gain: AudioParam) => void): Promise<Float32Array> {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const source = new ConstantSourceNode(context, { offset: 1 });
+  const gain = context.createGain();
+  schedule(gain.gain);
+  source.connect(gain).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  return rendered.getChannelData(0);
+}
+
+Yuzuko.test("AudioParam automation changes the rendered gain", async () => {
+  const linear = await renderGain((gain) => {
+    gain.setValueAtTime(0, 0).linearRampToValueAtTime(1, 128 / 48000);
+  });
+  assertClose(linear[0], 0, "linear start");
+  assert(linear[127] > 0.9, `linear end ${linear[127]}`);
+
+  const exponential = await renderGain((gain) => {
+    gain.setValueAtTime(0.25, 0);
+    gain.exponentialRampToValueAtTime(1, 128 / 48000);
+  });
+  assertClose(exponential[0], 0.25, "exponential start");
+  assert(exponential[127] > 0.9, `exponential end ${exponential[127]}`);
+
+  const target = await renderGain((gain) => {
+    gain.setValueAtTime(0, 0);
+    gain.setTargetAtTime(1, 0, 128 / 48000);
+  });
+  assertClose(target[0], 0, "target start");
+  assertClose(target[127], 1 - Math.exp(-127 / 128), "target end");
+
+  const curve = await renderGain((gain) => {
+    gain.setValueCurveAtTime(new Float32Array([0, 1]), 0, 128 / 48000);
+  });
+  assertClose(curve[0], 0, "curve start");
+  assert(curve[127] > 0.9, `curve end ${curve[127]}`);
+
+  const cancelled = await renderGain((gain) => {
+    gain.setValueAtTime(0, 0);
+    gain.cancelScheduledValues(0);
+  });
+  assertClose(cancelled[0], 1, "cancel restores the intrinsic value");
+  assertClose(cancelled[127], 1, "cancel holds the intrinsic value");
+});
+
+Yuzuko.test("cancelAndHoldAtTime keeps the partial ramp", async () => {
+  const context = new OfflineAudioContext(1, 256, 48000);
+  const source = new ConstantSourceNode(context, { offset: 1 });
+  const gain = context.createGain();
+  gain.gain
+    .setValueAtTime(0, 0)
+    .linearRampToValueAtTime(1, 256 / 48000)
+    .cancelAndHoldAtTime(128 / 48000);
+  source.connect(gain).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[64], 0.25, "partial ramp");
+  assertClose(channel[200], 0.5, "held ramp");
+});
+
+Yuzuko.test("an AudioParam input sums output 0 into the parameter", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const gain = context.createGain();
+  gain.gain.value = 0;
+  const audio = new ConstantSourceNode(context, { offset: 1 });
+  const control = new ConstantSourceNode(context, { offset: 0.25 });
+  const connected = control.connect(gain.gain);
+  assert(connected === undefined, "connect returns undefined");
+  audio.connect(gain).connect(context.destination);
+  audio.start();
+  control.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[0], 0.25, "param input");
+  assertClose(channel[127], 0.25, "param input end");
+});
+
+Yuzuko.test("automation methods reject an incomplete schedule", () => {
+  const context = new OfflineAudioContext(1, 8, 48000);
+  const gain = context.createGain().gain;
+  assertName(
+    () => gain.linearRampToValueAtTime(1, 1),
+    "InvalidStateError",
+  );
+  gain.setValueAtTime(1, 0);
+  assertName(
+    () => gain.exponentialRampToValueAtTime(0, 1),
+    "RangeError",
+  );
+  assertName(() => gain.setTargetAtTime(1, 0, 0), "RangeError");
+  assertName(
+    () => gain.setValueCurveAtTime(new Float32Array([1]), 0, 1),
+    "InvalidStateError",
+  );
+});
+
+Yuzuko.test("sinkId names an output device", async () => {
+  const context = new AudioContext({ sinkId: "" });
+  try {
+    assert(context.sinkId === "", "default sink");
+  } finally {
+    await context.close();
+  }
+  await assertThrows(
+    () => new AudioContext({ sinkId: "yuzuko-missing-audio-sink" }),
+    "NotFoundError",
+  );
+});

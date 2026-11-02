@@ -8352,16 +8352,19 @@ interface PeriodicWaveConstraints {
 /**
  * A realtime context.
  *
- * `currentTime` stays 0 until a source starts. Playback then opens the default
- * output device and keeps rendering until `suspend` or `close`, which keeps
- * the process alive. The device callback only copies a buffer. When the device
- * cannot be opened, a timer advances the clock.
- * `baseLatency` is `renderQuantumSize / sampleRate`. With a device,
- * `outputLatency` is the 100 ms playback buffer. On the timer it is 0.
+ * `currentTime` stays 0 until a source starts. Playback then opens the output
+ * device named by `sinkId`, or the default device when `sinkId` is `""`, and
+ * keeps rendering until `suspend` or `close`, which keeps the process alive.
+ * The device callback only copies a buffer. When the device cannot be opened,
+ * a timer advances the clock. `baseLatency` is `renderQuantumSize / sampleRate`.
+ * With a device, `outputLatency` is the 100 ms playback buffer. On the timer
+ * it is 0. `setSinkId` is absent.
  *
  * @throws {@link DOMException} `NotSupportedError` when `sampleRate` is outside
- * 3000 through 768000, when `renderSizeHint` is an integer outside 1 through
- * `floor(6 * sampleRate)`, or when `sinkId` is a non-empty string.
+ * 3000 through 768000, or when `renderSizeHint` is an integer outside 1 through
+ * `floor(6 * sampleRate)`.
+ * @throws {@link DOMException} `NotFoundError` when `sinkId` names an output
+ * device that is not present. `""` does not require a device.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext)
  */
@@ -8372,6 +8375,13 @@ interface AudioContext extends BaseAudioContext {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/outputLatency) */
   readonly outputLatency: number;
+
+  /**
+   * The requested output-device name. `""` is the default device.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/sinkId)
+   */
+  readonly sinkId: string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/suspend) */
   suspend(): Promise<void>;
@@ -8471,7 +8481,12 @@ interface AudioBufferOptions {
 /**
  * An audio parameter.
  *
- * Assigning `value` works. The automation timeline throws `NotSupportedError`.
+ * Reading `value` returns the timeline at `currentTime`, clamped to `minValue`
+ * and `maxValue`. That read does not include samples connected to the
+ * parameter. Assigning `value` sets the intrinsic value and inserts
+ * `setValueAtTime` at `currentTime`. `NaN` is ignored. An event at the same
+ * time replaces the previous event. A ramp with no earlier event throws
+ * `InvalidStateError`. Each method returns this parameter.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8479,7 +8494,11 @@ interface AudioBufferOptions {
  */
 interface AudioParam {
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/value) */
+  /**
+   * The computed value at `currentTime`. Audio-rate inputs are not included.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/value)
+   */
   value: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/defaultValue) */
@@ -8500,50 +8519,48 @@ interface AudioParam {
    */
   automationRate: AutomationRate;
 
-  /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/setValueAtTime)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/setValueAtTime) */
   setValueAtTime(value: number, startTime: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Throws `InvalidStateError` when no event is strictly earlier than `endTime`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/linearRampToValueAtTime)
    */
   linearRampToValueAtTime(value: number, endTime: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Throws `RangeError` when `value` is not positive or the previous value is
+   * not positive, and `InvalidStateError` when no event is strictly earlier.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/exponentialRampToValueAtTime)
    */
   exponentialRampToValueAtTime(value: number, endTime: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Throws `RangeError` when `timeConstant` is not positive.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/setTargetAtTime)
    */
   setTargetAtTime(target: number, startTime: number, timeConstant: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Throws `InvalidStateError` when `values` has fewer than two samples or the
+   * curve overlaps an event. Throws `RangeError` when `duration` is not positive.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/setValueCurveAtTime)
    */
   setValueCurveAtTime(values: Iterable<number>, startTime: number, duration: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Removes events at or after `cancelTime`. An in-progress curve stays.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/cancelScheduledValues)
    */
   cancelScheduledValues(cancelTime: number): AudioParam;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Automation is not implemented.
+   * Holds the value at `cancelTime`. A following ramp is shortened to that time.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/cancelAndHoldAtTime)
    */
@@ -8582,7 +8599,8 @@ declare var AudioParamMap: {
 /**
  * A node in the audio graph.
  *
- * Connecting an output to another {@link AudioParam} throws `NotSupportedError`.
+ * `connect` to an {@link AudioParam} returns `undefined`. Only output 0 of
+ * that connection contributes samples, summed into one channel.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8613,19 +8631,27 @@ interface AudioNode extends EventTarget {
   channelInterpretation: ChannelInterpretation;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` when `destination` is an
-   * {@link AudioParam}.
+   * @throws {@link DOMException} `InvalidAccessError` when the parameter
+   * belongs to a different context.
+   * @throws {@link DOMException} `IndexSizeError` when `output` is out of range.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/connect)
    */
   connect(destinationNode: AudioNode, output?: number, input?: number): AudioNode;
+  connect(destinationParam: AudioParam, output?: number): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/disconnect) */
+  /**
+   * @throws {@link DOMException} `InvalidAccessError` when this node is not
+   * connected to `destinationParam`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/disconnect)
+   */
   disconnect(): void;
   disconnect(output: number): void;
   disconnect(destinationNode: AudioNode): void;
   disconnect(destinationNode: AudioNode, output: number): void;
   disconnect(destinationNode: AudioNode, output: number, input: number): void;
+  disconnect(destinationParam: AudioParam): void;
 }
 declare var AudioNode: {
   prototype: AudioNode;

@@ -224,6 +224,7 @@ fn shell(
 
 fn make_param(
   scope: &mut v8::PinScope,
+  context: u64,
   value: f64,
   default: f64,
   min: f64,
@@ -231,7 +232,7 @@ fn make_param(
   a_rate: bool,
 ) -> u64 {
   let id = engine::alloc();
-  engine::insert_param(id, value, default, min, max, a_rate);
+  engine::insert_param(id, context, value, default, min, max, a_rate);
   let object =
     unsafe { yuzuko_core::op::wrap_instance(scope, AudioParam { id }) };
   engine::set_param_object(scope, id, object);
@@ -415,11 +416,38 @@ unsafe impl v8::cppgc::GarbageCollected for AudioParam {
   }
 }
 
-fn automation() -> Result<(), OpError> {
-  Err(OpError::dom(
-    "NotSupportedError",
-    "AudioParam automation is not implemented",
-  ))
+fn to_f64(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<f64, OpError> {
+  yuzuko_core::op::FromV8::from_v8(scope, value)
+}
+
+fn curve_values(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<f32>, OpError> {
+  if let Ok(view) = v8::Local::<v8::Float32Array>::try_from(value) {
+    let samples = util::read_f32_view(scope, view);
+    if samples.iter().any(|sample| !sample.is_finite()) {
+      return Err(OpError::type_("The value is not finite"));
+    }
+    return Ok(samples);
+  }
+  let array = v8::Local::<v8::Array>::try_from(value)
+    .map_err(|_| OpError::type_("The curve is not a sequence"))?;
+  let mut samples = Vec::with_capacity(array.length() as usize);
+  for index in 0..array.length() {
+    let item = array
+      .get_index(scope, index)
+      .ok_or_else(|| OpError::type_("The curve is not a sequence"))?;
+    let number = to_f64(scope, item)?;
+    if !number.is_finite() {
+      return Err(OpError::type_("The value is not finite"));
+    }
+    samples.push(number as f32);
+  }
+  Ok(samples)
 }
 
 #[op]
@@ -477,38 +505,91 @@ impl AudioParam {
   }
 
   #[length(2)]
-  fn set_value_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn set_value_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let value = to_f64(scope, args.get(0))?;
+    let time = to_f64(scope, args.get(1))?;
+    engine::set_value_at_time(self.id, value, time).map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(2)]
-  fn linear_ramp_to_value_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn linear_ramp_to_value_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let value = to_f64(scope, args.get(0))?;
+    let time = to_f64(scope, args.get(1))?;
+    engine::linear_ramp_to_value_at_time(self.id, value, time)
+      .map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(2)]
-  fn exponential_ramp_to_value_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn exponential_ramp_to_value_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let value = to_f64(scope, args.get(0))?;
+    let time = to_f64(scope, args.get(1))?;
+    engine::exponential_ramp_to_value_at_time(self.id, value, time)
+      .map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(3)]
-  fn set_target_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn set_target_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let target = to_f64(scope, args.get(0))?;
+    let time = to_f64(scope, args.get(1))?;
+    let constant = to_f64(scope, args.get(2))?;
+    engine::set_target_at_time(self.id, target, time, constant)
+      .map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(3)]
-  fn set_value_curve_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn set_value_curve_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let values = curve_values(scope, args.get(0))?;
+    let time = to_f64(scope, args.get(1))?;
+    let duration = to_f64(scope, args.get(2))?;
+    engine::set_value_curve_at_time(self.id, values, time, duration)
+      .map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(1)]
-  fn cancel_scheduled_values(&self) -> Result<(), OpError> {
-    automation()
+  fn cancel_scheduled_values(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let time = to_f64(scope, args.get(0))?;
+    engine::cancel_scheduled_values(self.id, time).map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 
   #[length(1)]
-  fn cancel_and_hold_at_time(&self) -> Result<(), OpError> {
-    automation()
+  fn cancel_and_hold_at_time(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let time = to_f64(scope, args.get(0))?;
+    engine::cancel_and_hold_at_time(self.id, time).map_err(op_fault)?;
+    Ok(param_js(scope, self.id))
   }
 }
 
@@ -626,14 +707,15 @@ impl AudioNode {
     args: &v8::FunctionCallbackArguments,
   ) -> Result<Js, OpError> {
     let destination = args.get(0);
-    if v8::Local::<v8::Object>::try_from(destination).is_ok_and(|object| {
-      unsafe { yuzuko_core::op::host_ref::<AudioParam>(scope, object) }
-        .is_some()
-    }) {
-      return Err(OpError::dom(
-        "NotSupportedError",
-        "Connecting to an AudioParam is not implemented",
-      ));
+    if let Some(param) = audio_param_id(scope, destination) {
+      let output = if args.length() > 1 && !args.get(1).is_undefined() {
+        as_u32(scope, args.get(1))?
+      } else {
+        0
+      };
+      engine::connect_param(self.id, param, output).map_err(op_fault)?;
+      let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+      return Ok(Js(v8::Global::new(scope, undefined)));
     }
     let dest = node_id(scope, destination)?;
     let output = if args.length() > 1 && !args.get(1).is_undefined() {
@@ -663,9 +745,21 @@ impl AudioNode {
       return engine::disconnect_output(self.id, as_u32(scope, value)?)
         .map_err(op_fault);
     }
+    if let Some(param) = audio_param_id(scope, value) {
+      return engine::disconnect_param(self.id, param).map_err(op_fault);
+    }
     let dest = node_id(scope, value)?;
     engine::disconnect_dest(self.id, dest).map_err(op_fault)
   }
+}
+
+fn audio_param_id(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Option<u64> {
+  let object = v8::Local::<v8::Object>::try_from(value).ok()?;
+  let host = unsafe { yuzuko_core::op::host_ref::<AudioParam>(scope, object) }?;
+  Some(host.get().id)
 }
 
 #[repr(C)]
@@ -836,7 +930,7 @@ fn build_gain(
   let opts = node_options(scope, options, 2, "max", "speakers")?;
   let gain = option_number(scope, options, "gain")?.unwrap_or(1.0);
   let (min, max) = engine::float_limits();
-  let param = make_param(scope, gain, 1.0, min, max, true);
+  let param = make_param(scope, context, gain, 1.0, min, max, true);
   let id = engine::alloc();
   engine::insert_node(id, shell(context, &opts, 1, 1), Kind::Gain { param });
   Ok(GainNode {
@@ -900,7 +994,7 @@ fn build_constant(
   let opts = node_options(scope, options, 2, "max", "speakers")?;
   let offset = option_number(scope, options, "offset")?.unwrap_or(1.0);
   let (min, max) = engine::float_limits();
-  let param = make_param(scope, offset, 1.0, min, max, true);
+  let param = make_param(scope, context, offset, 1.0, min, max, true);
   let id = engine::alloc();
   engine::insert_node(
     id,
@@ -978,8 +1072,8 @@ fn build_oscillator(
   let detune = option_number(scope, options, "detune")?.unwrap_or(0.0);
   let (min, max) = engine::float_limits();
   let frequency_id =
-    make_param(scope, frequency, 440.0, -nyquist, nyquist, true);
-  let detune_id = make_param(scope, detune, 0.0, min, max, true);
+    make_param(scope, context, frequency, 440.0, -nyquist, nyquist, true);
+  let detune_id = make_param(scope, context, detune, 0.0, min, max, true);
   let wave = oscillator_wave(scope, context, options)?;
   let id = engine::alloc();
   engine::insert_node(
@@ -1131,8 +1225,8 @@ fn build_buffer_source(
   let playback = option_number(scope, options, "playbackRate")?.unwrap_or(1.0);
   let detune = option_number(scope, options, "detune")?.unwrap_or(0.0);
   let (min, max) = engine::float_limits();
-  let rate_id = make_param(scope, playback, 1.0, min, max, true);
-  let detune_id = make_param(scope, detune, 0.0, min, max, true);
+  let rate_id = make_param(scope, context, playback, 1.0, min, max, true);
+  let detune_id = make_param(scope, context, detune, 0.0, min, max, true);
   let buffer = source_buffer_option(scope, options)?;
   let looped = option_bool(scope, options, "loop");
   let loop_start = option_number(scope, options, "loopStart")?.unwrap_or(0.0);
@@ -1715,6 +1809,7 @@ impl AudioContext {
   ) -> Result<AudioContext, OpError> {
     let mut rate = 48000.0;
     let mut hint = RenderHint::Default;
+    let mut sink = String::new();
     if args.length() > 0 && !args.get(0).is_null_or_undefined() {
       let init = args.get(0);
       if !init.is_object() {
@@ -1734,11 +1829,11 @@ impl AudioContext {
         check_latency(scope, value)?;
       }
       if let Some(value) = util::member(scope, object, "sinkId") {
-        let sink = util::rust_string(scope, value);
-        if !sink.is_empty() {
+        sink = util::rust_string(scope, value);
+        if !crate::playback::sink_available(&sink) {
           return Err(OpError::dom(
-            "NotSupportedError",
-            "Selecting an audio sink is not implemented",
+            "NotFoundError",
+            "The audio sink was not found",
           ));
         }
       }
@@ -1756,6 +1851,7 @@ impl AudioContext {
       None,
       destination,
       destination_object,
+      sink,
     );
     Ok(AudioContext {
       base: BaseAudioContext {
@@ -1778,6 +1874,11 @@ impl AudioContext {
   #[getter]
   fn output_latency(&self) -> f64 {
     engine::output_latency(self.base.id)
+  }
+
+  #[getter]
+  fn sink_id(&self) -> String {
+    engine::context_sink(self.base.id).unwrap_or_default()
   }
 
   #[promise]
@@ -1894,6 +1995,7 @@ impl OfflineAudioContext {
       length,
       destination,
       destination_object,
+      String::new(),
     );
     Ok(OfflineAudioContext {
       base: BaseAudioContext {
@@ -2229,6 +2331,7 @@ impl AudioWorkletNode {
     for template in &templates {
       let id = make_param(
         scope,
+        context,
         template.default,
         template.default,
         template.min,
