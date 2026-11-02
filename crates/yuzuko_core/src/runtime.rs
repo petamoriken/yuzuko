@@ -317,6 +317,8 @@ pub(crate) fn run_worker_isolate(
     crate::http_server::install(scope);
     #[cfg(feature = "signal")]
     crate::signal::install(scope);
+    #[cfg(feature = "child")]
+    crate::child::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget on the main
     // realm. A worker keeps the original object. Install after either path.
     install_process(scope);
@@ -372,6 +374,8 @@ pub(crate) fn run_worker_isolate(
     crate::http_server::clear();
     #[cfg(feature = "signal")]
     crate::signal::clear();
+    #[cfg(feature = "child")]
+    crate::child::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
   }
@@ -1121,6 +1125,8 @@ pub(crate) fn with_runtime<T>(
     crate::http_server::install(scope);
     #[cfg(feature = "signal")]
     crate::signal::install(scope);
+    #[cfg(feature = "child")]
+    crate::child::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget. Process
     // members are installed after that replacement.
     install_process(scope);
@@ -1140,6 +1146,8 @@ pub(crate) fn with_runtime<T>(
     crate::http_server::clear();
     #[cfg(feature = "signal")]
     crate::signal::clear();
+    #[cfg(feature = "child")]
+    crate::child::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
     result

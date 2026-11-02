@@ -9,7 +9,7 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `window`, `image`, `canvas`,
+ * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `window`, `image`, `canvas`,
  * `webgpu`, `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
@@ -18,7 +18,7 @@
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
- * listeners, {@link WebSocket}, {@link Window},
+ * listeners, a child process, {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -2244,6 +2244,110 @@ declare namespace Yuzuko {
    * the operating system does not accept it.
    */
   function raiseSignal(signal: SignalName): void;
+
+  /**
+   * Arguments for {@link spawn}.
+   *
+   * Omitted fields use an empty argument list. Other fields are ignored.
+   */
+  interface SpawnOptions {
+    /** Arguments passed to the program. There is no shell. */
+    args?: string[] | null;
+  }
+
+  /**
+   * The exit state and captured output of a {@link Child}.
+   *
+   * `code` is `null` when a signal terminated the process. `signal` is
+   * `null` when the process exited, and it is always `null` on Windows.
+   */
+  interface ChildOutput {
+    code: number | null;
+    signal: number | null;
+    stdout: Uint8Array;
+    stderr: Uint8Array;
+  }
+
+  /**
+   * A child process started by {@link spawn}.
+   *
+   * `output` and `kill` run outside the calling thread. A running child
+   * keeps the event loop alive until it exits and its output is collected.
+   * Dropping this object does not terminate the process. Realm shutdown
+   * does.
+   */
+  class Child {
+    private constructor();
+
+    /**
+     * The operating-system process id.
+     *
+     * The value stays after the process exits.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly pid: number;
+
+    /**
+     * Collects the exit status and the captured output.
+     *
+     * A second call returns the same promise. `stdout` and `stderr` each
+     * hold at most 1048576 bytes. A larger stream rejects the promise with
+     * {@link Error} `The child output is too large.` and terminates the
+     * process. Another collection failure rejects with {@link Error}
+     * `The child process failed.`
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`. `The child process failed.` when the promise cannot
+     * be created.
+     */
+    output(): Promise<ChildOutput>;
+
+    /**
+     * Terminates the process if it is still running.
+     *
+     * A process that has already exited is left alone. Calling `kill`
+     * again succeeds. On Unix this sends `SIGKILL`. On Windows this calls
+     * `TerminateProcess` with exit code 1.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    kill(): void;
+  }
+
+  /**
+   * Starts `command` as a child process.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `child` feature, which is enabled by default. Absent
+   * from an `AudioWorklet` processor realm. A build that does not enable
+   * `child` leaves this function and {@link Child} absent. The feature does
+   * not enable `window`. There is no permission prompt and no shell. The
+   * child inherits the environment and the current directory. Its standard
+   * input is closed. The call blocks only while the operating system
+   * creates the process.
+   *
+   * @param command - Program path or name. A non-empty string primitive.
+   * @param options - Arguments. Omitted, `null`, and `undefined` pass none.
+   * @throws {@link TypeError} `Not enough arguments` when `command` is
+   * missing. `The command must be a string.` when it is not a string.
+   * `The command must not be empty.` when it is empty.
+   * `Options must be an object.` when `options` is not an object, `null`,
+   * or `undefined`. `The options could not be read.` when the options
+   * cannot be read. `The arguments must be an array of strings.` when
+   * `args` is not an array of string primitives.
+   * `There are too many arguments.` when `args` has more than 4096
+   * elements. `The command and arguments must not contain a null
+   * character.` when one does.
+   * @throws {@link Error} `The child process could not be started.` when
+   * the operating system refuses the program.
+   */
+  function spawn(
+    command: string,
+    options?: SpawnOptions | null,
+  ): Child;
 
   /**
    * Result of {@link Updater.check}.

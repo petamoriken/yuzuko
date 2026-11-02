@@ -11,6 +11,8 @@ mod host;
 mod http_server;
 #[cfg(feature = "signal")]
 mod signal;
+#[cfg(feature = "child")]
+mod child;
 mod idle;
 mod jobs;
 mod js;
