@@ -177,6 +177,7 @@ pub fn serialize_parcel(
     let bytes = serializer.release();
     (bytes, copied)
   };
+  clone::detach_structured_transfers(scope);
   for buffer in buffers {
     let buffer = v8::Local::new(scope, buffer);
     let _ = buffer.detach(None);

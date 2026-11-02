@@ -66,6 +66,22 @@ impl VideoFrame {
   fn pixels(&self) -> Option<Raster> {
     self.raster.borrow().clone()
   }
+
+  pub(crate) fn stored(&self) -> Option<(Raster, f64)> {
+    self.pixels().map(|raster| (raster, self.timestamp))
+  }
+
+  pub(crate) fn is_closed(&self) -> bool {
+    self.raster.borrow().is_none()
+  }
+
+  pub(crate) fn neuter(&self) {
+    *self.raster.borrow_mut() = None;
+  }
+
+  pub(crate) fn from_stored(raster: Raster, timestamp: f64) -> Self {
+    Self::new(raster, timestamp)
+  }
 }
 
 pub fn lookup_frame(
@@ -195,6 +211,20 @@ impl EncodedVideoChunk {
   #[getter]
   fn byte_length(&self) -> u32 {
     u32::try_from(self.data.len()).unwrap_or(u32::MAX)
+  }
+}
+
+impl EncodedVideoChunk {
+  pub(crate) fn copy_parts(&self) -> (bool, i64, Vec<u8>) {
+    (self.key, self.timestamp, self.data.clone())
+  }
+
+  pub(crate) fn from_parts(key: bool, timestamp: i64, data: Vec<u8>) -> Self {
+    Self {
+      key,
+      timestamp,
+      data,
+    }
   }
 }
 
@@ -439,6 +469,27 @@ impl AudioData {
       timestamp,
     }
   }
+
+  pub(crate) fn from_stored(
+    channels: Vec<Vec<f32>>,
+    rate: f64,
+    timestamp: f64,
+  ) -> Self {
+    Self::new(channels, rate, timestamp)
+  }
+
+  pub(crate) fn stored(&self) -> Option<(Vec<Vec<f32>>, f64, f64)> {
+    let channels = self.channels.borrow().clone()?;
+    Some((channels, self.rate, self.timestamp))
+  }
+
+  pub(crate) fn is_closed(&self) -> bool {
+    self.channels.borrow().is_none()
+  }
+
+  pub(crate) fn neuter(&self) {
+    *self.channels.borrow_mut() = None;
+  }
 }
 
 #[op]
@@ -561,6 +612,20 @@ impl EncodedAudioChunk {
   #[getter]
   fn byte_length(&self) -> u32 {
     u32::try_from(self.data.len()).unwrap_or(u32::MAX)
+  }
+}
+
+impl EncodedAudioChunk {
+  pub(crate) fn copy_parts(&self) -> (bool, i64, Vec<u8>) {
+    (self.key, self.timestamp, self.data.clone())
+  }
+
+  pub(crate) fn from_parts(key: bool, timestamp: i64, data: Vec<u8>) -> Self {
+    Self {
+      key,
+      timestamp,
+      data,
+    }
   }
 }
 

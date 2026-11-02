@@ -874,3 +874,139 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
     }, "NotSupportedError");
   }
 });
+
+async function takeAudioData(): Promise<AudioData> {
+  const root = new URL("./fixtures/webcodecs/", import.meta.url);
+  const load = async (name: string) =>
+    new Uint8Array(await (await fetch(new URL(name, root))).arrayBuffer());
+  const packets = await load("aac.frames");
+  const parts: AudioData[] = [];
+  let failed = "";
+  const decoder = new AudioDecoder({
+    output: (data) => {
+      parts.push(data);
+    },
+    error: (error) => {
+      failed = error instanceof DOMException ? error.name : String(error);
+    },
+  });
+  decoder.configure({
+    codec: "mp4a.40.2",
+    description: await load("aac.asc"),
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  const view = new DataView(
+    packets.buffer,
+    packets.byteOffset,
+    packets.byteLength,
+  );
+  let offset = 0;
+  let timestamp = 0;
+  while (offset + 4 <= packets.byteLength) {
+    const length = view.getUint32(offset);
+    offset += 4;
+    decoder.decode(
+      new EncodedAudioChunk({
+        type: "key",
+        timestamp,
+        data: packets.subarray(offset, offset + length),
+      }),
+    );
+    offset += length;
+    timestamp += 20_000;
+  }
+  await decoder.flush();
+  assert(failed === "", failed);
+  decoder.close();
+  assert(parts.length > 0, "no audio");
+  const first = parts[0];
+  assert(first.numberOfFrames > 0, "empty audio");
+  for (const extra of parts.slice(1)) {
+    extra.close();
+  }
+  return first;
+}
+
+async function takeFrame(): Promise<VideoFrame> {
+  const url = new URL("./fixtures/images/corners.png", import.meta.url);
+  const encoded = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const decoder = new ImageDecoder({ type: "image/png", data: encoded });
+  const result = await decoder.decode();
+  decoder.close();
+  return result.image;
+}
+
+Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () => {
+  const context = new AudioContext();
+  try {
+    const script = new URL("./fixtures/audio/clone-processor.js", import.meta.url);
+    await context.audioWorklet.addModule(script.href);
+    const pending: unknown[] = [];
+    let wake = () => {};
+    const node = new AudioWorkletNode(context, "clone");
+    node.port.onmessage = (event: MessageEvent) => {
+      pending.push(event.data);
+      wake();
+    };
+    const next = () => {
+      const queued = pending.shift();
+      if (queued !== undefined) {
+        return Promise.resolve(queued);
+      }
+      return new Promise((resolve) => {
+        wake = () => {
+          resolve(pending.shift());
+        };
+      });
+    };
+    const ready = await next() as { kind: string };
+    assert(ready.kind === "ready", ready.kind);
+
+    const audio = await takeAudioData();
+    const local = new Float32Array(audio.numberOfFrames);
+    audio.copyTo(local, { planeIndex: 0 });
+    node.port.postMessage({ kind: "audio", value: audio });
+    const copied = await next() as {
+      kind: string;
+      frames: number;
+      channels: number;
+      rate: number;
+      sample: number;
+      hasAudioData: boolean;
+      message?: string;
+    };
+    assert(copied.kind === "audio", copied.message || copied.kind);
+    assert(copied.frames === audio.numberOfFrames, "frames");
+    assert(copied.channels === audio.numberOfChannels, "channels");
+    assert(copied.rate === audio.sampleRate, "rate");
+    assert(copied.sample === local[0], "sample");
+    assert(copied.hasAudioData === false, "worklet AudioData");
+    assert(audio.numberOfFrames > 0, "source stays open");
+
+    node.port.postMessage({ kind: "audio", value: audio }, [audio]);
+    const moved = await next() as { kind: string; sample: number; message?: string };
+    assert(moved.kind === "audio", moved.message || moved.kind);
+    assert(moved.sample === local[0], "transferred sample");
+    await assertThrows(() => audio.numberOfFrames, "InvalidStateError");
+
+    const frame = await takeFrame();
+    const width = frame.displayWidth;
+    const height = frame.displayHeight;
+    node.port.postMessage({ kind: "frame", value: frame }, [frame]);
+    const painted = await next() as {
+      kind: string;
+      width: number;
+      height: number;
+      hasVideoFrame: boolean;
+      message?: string;
+    };
+    assert(painted.kind === "frame", painted.message || painted.kind);
+    assert(painted.width === width, "frame width");
+    assert(painted.height === height, "frame height");
+    assert(painted.hasVideoFrame === false, "worklet VideoFrame");
+    await assertThrows(() => frame.codedWidth, "InvalidStateError");
+  } finally {
+    await context.close();
+  }
+});

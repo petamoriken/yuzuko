@@ -183,30 +183,42 @@ fn structured_clone(
     Ok(transfers) => transfers,
     Err(()) => return,
   };
-  match clone_value(scope, args.get(0)) {
-    Ok(cloned) => {
-      for buffer in &transfers {
-        let buffer = v8::Local::new(scope, buffer);
-        let _ = buffer.detach(None);
+  let cloned = {
+    let _guard = clone::StructuredTransferGuard::install(transfers.objects);
+    match clone_value(scope, args.get(0)) {
+      Ok(cloned) => {
+        clone::detach_structured_transfers(scope);
+        cloned
       }
-      ret.set(cloned);
+      Err(Some(thrown)) => {
+        let thrown = v8::Local::new(scope, thrown);
+        scope.throw_exception(thrown);
+        return;
+      }
+      Err(None) => {
+        clone::reject_clone(scope);
+        return;
+      }
     }
-    Err(Some(thrown)) => {
-      let thrown = v8::Local::new(scope, thrown);
-      scope.throw_exception(thrown);
-    }
-    Err(None) => clone::reject_clone(scope),
+  };
+  for buffer in &transfers.buffers {
+    let buffer = v8::Local::new(scope, buffer);
+    let _ = buffer.detach(None);
   }
+  ret.set(cloned);
 }
 
-/// `structuredClone`'s `transfer` list. ArrayBuffers are detached after the
-/// value is copied. Other transferable types are rejected.
+/// `structuredClone`'s `transfer` list. Buffers and host objects detach after
+/// a successful copy.
 fn transfer_list(
   scope: &mut v8::PinScope,
   options: v8::Local<v8::Value>,
-) -> Result<Vec<v8::Global<v8::ArrayBuffer>>, ()> {
+) -> Result<clone::TransferList, ()> {
   if options.is_null_or_undefined() {
-    return Ok(Vec::new());
+    return Ok(clone::TransferList {
+      objects: Vec::new(),
+      buffers: Vec::new(),
+    });
   }
   let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
     js::throw_type(scope, "The structuredClone options are not an object");
@@ -217,40 +229,27 @@ fn transfer_list(
     return Err(());
   };
   if transfer.is_undefined() {
-    return Ok(Vec::new());
+    return Ok(clone::TransferList {
+      objects: Vec::new(),
+      buffers: Vec::new(),
+    });
   }
   let Ok(list) = v8::Local::<v8::Array>::try_from(transfer) else {
     js::throw_type(scope, "The structuredClone transfer list is not an array");
     return Err(());
   };
-  let mut buffers = Vec::new();
-  for index in 0..list.length() {
-    let Some(item) = list.get_index(scope, index) else {
-      return Err(());
-    };
-    let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(item) else {
-      clone::throw_data_clone(scope, "The value cannot be transferred");
-      return Err(());
-    };
-    if buffer.was_detached() || !buffer.is_detachable() {
-      clone::throw_data_clone(scope, "The ArrayBuffer cannot be transferred");
-      return Err(());
+  match clone::collect_transfers(
+    scope,
+    list,
+    clone::TransferKind::StructuredClone,
+  ) {
+    Ok(transfers) => Ok(transfers),
+    Err(clone::TransferReject::Pending) => Err(()),
+    Err(clone::TransferReject::DataClone(message)) => {
+      clone::throw_data_clone(scope, message);
+      Err(())
     }
-    let duplicate = buffers.iter().any(|existing| {
-      let existing: v8::Local<v8::ArrayBuffer> =
-        v8::Local::new(scope, existing);
-      existing.strict_equals(buffer.into())
-    });
-    if duplicate {
-      clone::throw_data_clone(
-        scope,
-        "The ArrayBuffer is already in the transfer list",
-      );
-      return Err(());
-    }
-    buffers.push(v8::Global::new(scope, buffer));
   }
-  Ok(buffers)
 }
 
 struct CloneHost;

@@ -287,7 +287,7 @@ interface ReadableStreamReadDoneResult<T> {
   done: true;
   value: T | undefined;
 }
-type ReadableStreamType = "bytes";
+type ReadableStreamType = "bytes" | "owning";
 type RenderingContext = OffscreenCanvasRenderingContext2D | BitmapContext | GPUCanvasContext;
 type RequestCache = "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload";
 type RequestCredentials = "include" | "omit" | "same-origin";
@@ -296,6 +296,7 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
+/** Host values a transfer list can name. Stream objects throw `DataCloneError`. */
 type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
@@ -2915,12 +2916,20 @@ declare function reportError(error: any): void;
  *
  * Supported values include the WinterTC built-ins in this runtime,
  * `ArrayBuffer`, typed arrays, `Map`, `Set`, `Date`, `RegExp`, and `Error`.
+ * It also copies `Blob`, `File`, `DOMException`, `DOMPoint`,
+ * `DOMPointReadOnly`, `DOMRect`, `DOMRectReadOnly`, `DOMQuad`, `DOMMatrix`,
+ * `DOMMatrixReadOnly`, `CryptoKey`, `ImageData`, `ImageBitmap`, `AudioData`,
+ * `VideoFrame`, `EncodedAudioChunk`, and `EncodedVideoChunk`.
  *
  * @param value - The value to clone.
- * @param options - `transfer` moves the listed objects.
+ * @param options - `transfer` moves an `ArrayBuffer`, a `MessagePort`, an
+ * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, or a `VideoFrame`.
  * @throws {@link DOMException} `DataCloneError` when `value` contains a host
  * object this runtime cannot clone, including a {@link Yuzuko.Window}, a
- * {@link Yuzuko.WindowSurface}, or a {@link VideoFrame}.
+ * {@link Yuzuko.WindowSurface}, a closed {@link VideoFrame} or
+ * {@link AudioData}, a detached {@link ImageBitmap}, or a listed value that
+ * cannot be transferred. `ReadableStream`, `WritableStream`, and
+ * `TransformStream` throw that exception from a transfer list.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/structuredClone)
  */
@@ -4073,6 +4082,8 @@ declare var MessageEvent: {
 /**
  * One end of a message channel.
  *
+ * `postMessage` carries the values {@link structuredClone} can carry.
+ *
  * @throws {@link TypeError} Illegal constructor. Use {@link MessageChannel}.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort)
@@ -5147,8 +5158,19 @@ interface ReadableStreamDefaultController<R = any> {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamDefaultController/desiredSize) */
   readonly desiredSize: number | null;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamDefaultController/enqueue) */
+  /**
+   * Enqueues `chunk`. On an owning stream the second argument is
+   * `{ transfer }`, and that list moves an `ArrayBuffer`, a `MessagePort`,
+   * an `ImageBitmap`, an `AudioData`, or a `VideoFrame`.
+   *
+   * @throws {@link DOMException} `DataCloneError` when a listed value cannot
+   * be transferred.
+   * @throws {@link TypeError} when a non-owning stream is given a transfer list.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamDefaultController/enqueue)
+   */
   enqueue(chunk?: R): void;
+  enqueue(chunk: R, options: StructuredSerializeOptions): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamDefaultController/close) */
   close(): void;
@@ -7087,9 +7109,14 @@ interface ImageDataSettings {
  * `rgba-unorm8` is stored in a `Uint8ClampedArray`. `rgba-float16` is stored
  * in a `Float16Array`. Alpha is unpremultiplied. Float16 components are the
  * encoded values of the stored color space and are not clamped to 0..1.
+ * `structuredClone` copies the pixels, color space, and pixel format into a
+ * new typed array. `ImageData` is not transferable. Transferring `data`'s
+ * buffer detaches that buffer, and the clone keeps the pixels.
  *
  * @throws {@link DOMException} `InvalidStateError` when the typed array does
  * not match `pixelFormat`.
+ * @throws {@link DOMException} `DataCloneError` when an `ImageData` is listed
+ * for transfer, or when its data buffer is detached.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageData)
  */
@@ -7122,9 +7149,12 @@ declare var ImageData: {
  *
  * Color space and sample format are not exposed. Animated images contribute
  * the first frame. The longer edge is at most 16384 pixels and the bitmap is
- * at most 100 million pixels.
+ * at most 100 million pixels. `structuredClone` copies the bitmap and leaves
+ * this one open. Listing it in a transfer list detaches it: `width` and
+ * `height` become 0. `close()` does the same.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link createImageBitmap}.
+ * @throws {@link DOMException} `DataCloneError` when a detached bitmap is cloned.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageBitmap)
  */
@@ -8880,7 +8910,14 @@ interface PeriodicWaveOptions extends PeriodicWaveConstraints {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet)
  */
 interface AudioWorklet extends EventTarget {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/port) */
+  /**
+   * Exchanges the values {@link structuredClone} can carry, including a
+   * transferred {@link AudioData} or {@link VideoFrame}. The processor realm
+   * does not define those constructors. Methods on the received object still
+   * run.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/port)
+   */
   readonly port: MessagePort;
 
   /**
@@ -9414,11 +9451,15 @@ interface ChannelSplitterOptions extends AudioNodeOptions {
  * A video frame.
  *
  * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` accept a
- * frame. `close()` releases it. A later draw fails. `postMessage` of a frame
- * throws `DataCloneError`. `VideoColorSpace` is absent, so `colorSpace` is a
- * string (`"srgb"` or `"display-p3"`) rather than that interface.
+ * frame. `close()` releases it. A later use throws `InvalidStateError`.
+ * `structuredClone` and `postMessage` copy the frame and leave it open.
+ * Listing it in a transfer list closes it, and the receiver gets the pixels.
+ * `VideoColorSpace` is absent, so `colorSpace` is a string (`"srgb"` or
+ * `"display-p3"`) rather than that interface.
  *
  * @throws {@link TypeError} Illegal constructor.
+ * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
+ * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame)
  */
@@ -9465,6 +9506,12 @@ declare var VideoFrame: {
 
 /**
  * An encoded video chunk.
+ *
+ * `structuredClone` and `postMessage` copy `type`, `timestamp`, and the
+ * bytes. The chunk is not transferable.
+ *
+ * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
+ * transfer.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk)
  */
@@ -9565,6 +9612,14 @@ interface VideoDecoderConfig {
 /**
  * Decoded audio samples.
  *
+ * `format` is `"f32-planar"`. `structuredClone` and `postMessage` copy the
+ * samples and leave this object open. Listing it in a transfer list closes
+ * it. `close()` releases it, and a later use throws `InvalidStateError`.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
+ * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned.
+ *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData)
  */
 interface AudioData {
@@ -9597,7 +9652,7 @@ interface AudioData {
 }
 declare var AudioData: {
   prototype: AudioData;
-  new(init: AudioDataInit): AudioData;
+  new(): AudioData;
 };
 
 
@@ -9621,6 +9676,12 @@ interface AudioDataCopyToOptions {
 
 /**
  * An encoded audio chunk.
+ *
+ * `structuredClone` and `postMessage` copy `type`, `timestamp`, and the
+ * bytes. The chunk is not transferable.
+ *
+ * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
+ * transfer.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk)
  */
@@ -10380,7 +10441,10 @@ declare class WebTransportError extends DOMException {
  *
  * `new Worker(url)` runs a classic script. `{ type: "module" }` runs an ES
  * module. There is no `SharedWorker`. `postMessage` carries values
- * `structuredClone` can carry. A {@link Yuzuko.Window} cannot be transferred.
+ * `structuredClone` can carry, including a transferred `ArrayBuffer`,
+ * `MessagePort`, `OffscreenCanvas`, `ImageBitmap`, `AudioData`, or
+ * `VideoFrame`, and a cloned `ImageData`, `EncodedAudioChunk`, or
+ * `EncodedVideoChunk`. A {@link Yuzuko.Window} cannot be transferred.
  * A WebGPU device stays on the thread that created it.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid.

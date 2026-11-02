@@ -3,6 +3,7 @@
 mod audio;
 mod backend;
 mod classes;
+mod clone;
 mod color;
 mod error;
 #[cfg(any(test, target_os = "linux", target_os = "windows"))]
@@ -15,6 +16,7 @@ use std::sync::Once;
 pub fn register() {
   static ONCE: Once = Once::new();
   ONCE.call_once(|| {
+    clone::register();
     yuzuko_image::install_frame_lookup(classes::lookup_frame);
     yuzuko_core::add_extension(&install);
   });

@@ -5580,12 +5580,7 @@
   },
   "html/webappapis/structured-clone/structured-clone.any.js": {
     "expectedFailures": [
-      "A detached platform object cannot be transferred",
-      "An object whose interface is deleted from the global object must still be received",
-      "Growable SharedArrayBuffer",
-      "ImageBitmap",
-      "MessagePort",
-      "OffscreenCanvas"
+      "Growable SharedArrayBuffer"
     ]
   },
   "html/webappapis/timers/arguments.html": true,

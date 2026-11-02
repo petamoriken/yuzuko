@@ -23,9 +23,12 @@ mod timers;
 mod worker;
 
 pub use clone::{
-  ReadResult, WriteResult, add_host_clone, clear_structured_transfer,
-  cross_agent, cross_target, is_structured_transfer, read_bytes, read_text,
-  reject_clone, set_structured_transfer, write_bytes, write_text,
+  ReadResult, StructuredTransferGuard, TransferKind, TransferList,
+  TransferReject, TransferStatus, WriteResult, add_host_clone, add_host_detach,
+  add_host_transfer, clear_structured_transfer, collect_transfers, cross_agent,
+  cross_target, detach_structured_transfers, is_structured_transfer,
+  read_bytes, read_text, reject_clone, set_structured_transfer, write_bytes,
+  write_text,
 };
 pub use extensions::{add_extension, on_realm_drop};
 #[cfg(feature = "fs")]

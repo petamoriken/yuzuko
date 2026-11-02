@@ -262,3 +262,46 @@ Yuzuko.test("WindowSurface transfers control, not itself, to a worker", async ()
   worker.terminate();
   window.close();
 });
+
+Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () => {
+  const worker = new Worker(script("clone.js"));
+  const image = new ImageData(new Uint8ClampedArray([4, 5, 6, 7]), 1, 1);
+  const imageReply = nextMessage(worker);
+  worker.postMessage(image);
+  const imageSummary = await imageReply as {
+    kind: string;
+    width: number;
+    height: number;
+    colorSpace: string;
+    pixelFormat: string;
+    pixel: number;
+  };
+  assert(imageSummary.kind === "image", imageSummary.kind);
+  assert(imageSummary.width === 1 && imageSummary.height === 1, "image size");
+  assert(imageSummary.colorSpace === "srgb", imageSummary.colorSpace);
+  assert(imageSummary.pixelFormat === "rgba-unorm8", imageSummary.pixelFormat);
+  assert(imageSummary.pixel === 4, String(imageSummary.pixel));
+  assert(image.data[0] === 4, "image source");
+
+  const bitmap = await createImageBitmap(image);
+  const bitmapReply = nextMessage(worker);
+  worker.postMessage(bitmap, [bitmap]);
+  assert(bitmap.width === 0 && bitmap.height === 0, "bitmap detached");
+  const bitmapSummary = await bitmapReply as {
+    kind: string;
+    width: number;
+    height: number;
+  };
+  assert(bitmapSummary.kind === "bitmap", bitmapSummary.kind);
+  assert(bitmapSummary.width === 1 && bitmapSummary.height === 1, "bitmap size");
+
+  const kept = await createImageBitmap(
+    new ImageData(new Uint8ClampedArray([1, 2, 3, 4]), 1, 1),
+  );
+  const keptReply = nextMessage(worker);
+  worker.postMessage(kept);
+  const keptSummary = await keptReply as { kind: string; width: number };
+  assert(keptSummary.kind === "bitmap", keptSummary.kind);
+  assert(kept.width === 1 && keptSummary.width === 1, "bitmap copy");
+  worker.terminate();
+});

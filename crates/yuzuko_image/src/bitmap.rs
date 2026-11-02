@@ -44,6 +44,11 @@ impl ImageBitmap {
     self.detached.set(true);
     self.raster.borrow_mut().take()
   }
+
+  pub(crate) fn neuter(&self) {
+    self.detached.set(true);
+    *self.raster.borrow_mut() = None;
+  }
 }
 
 #[op]
@@ -75,7 +80,6 @@ impl ImageBitmap {
   }
 
   fn close(&self) {
-    self.detached.set(true);
-    *self.raster.borrow_mut() = None;
+    self.neuter();
   }
 }

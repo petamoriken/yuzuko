@@ -551,6 +551,23 @@ static NEXT_TICKET: AtomicU64 = AtomicU64::new(1);
 
 pub fn register_transfer() {
   yuzuko_core::add_host_clone(write_canvas, read_canvas);
+  yuzuko_core::add_host_transfer(probe_canvas);
+}
+
+fn probe_canvas(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> yuzuko_core::TransferStatus {
+  let Some(canvas) =
+    (unsafe { yuzuko_core::op::host_ref::<OffscreenCanvas>(scope, object) })
+  else {
+    return yuzuko_core::TransferStatus::Skip;
+  };
+  if canvas.get().is_detached() {
+    yuzuko_core::TransferStatus::Detached
+  } else {
+    yuzuko_core::TransferStatus::Ready
+  }
 }
 
 fn write_canvas(

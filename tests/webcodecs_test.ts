@@ -254,6 +254,51 @@ async function decodeAudio(
   return Float32Array.from(plane);
 }
 
+async function takeAudioData(): Promise<AudioData> {
+  const parts: AudioData[] = [];
+  let failed = "";
+  const decoder = new AudioDecoder({
+    output: (data) => {
+      parts.push(data);
+    },
+    error: (error) => {
+      failed = error instanceof DOMException ? error.name : String(error);
+    },
+  });
+  decoder.configure({
+    codec: "mp4a.40.2",
+    description: await bytes("aac.asc"),
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  let timestamp = 0;
+  for (const packet of framesOf(await bytes("aac.frames"))) {
+    decoder.decode(
+      new EncodedAudioChunk({ type: "key", timestamp, data: packet }),
+    );
+    timestamp += 20_000;
+  }
+  await decoder.flush();
+  assert(failed === "", failed);
+  decoder.close();
+  assert(parts.length > 0, "no audio");
+  const first = parts[0];
+  assert(first.numberOfFrames > 0, "empty audio");
+  for (const extra of parts.slice(1)) {
+    extra.close();
+  }
+  return first;
+}
+
+async function takeFrame(): Promise<VideoFrame> {
+  const url = new URL("./fixtures/images/corners.png", import.meta.url);
+  const encoded = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const decoder = new ImageDecoder({ type: "image/png", data: encoded });
+  const result = await decoder.decode();
+  decoder.close();
+  return result.image;
+}
+
 function assertTone(samples: Float32Array, rate: number, label: string): void {
   let peak = 0;
   for (const sample of samples) {
@@ -285,6 +330,13 @@ Yuzuko.test("WebCodecs constructors exist and encoders do not", () => {
     name = error instanceof TypeError ? error.name : "";
   }
   assert(name === "TypeError", name);
+  name = "";
+  try {
+    new AudioData();
+  } catch (error) {
+    name = error instanceof TypeError ? error.name : "";
+  }
+  assert(name === "TypeError", "AudioData " + name);
 });
 
 Yuzuko.test("an unconfigured decoder rejects decode and flush", async () => {
@@ -457,36 +509,108 @@ Yuzuko.test("AAC samples fill an AudioBuffer", async () => {
   assertTone(samples, 48000, "aac");
 });
 
-Yuzuko.test({
-  name: "a VideoFrame cannot be transferred",
-  ignore: !hardwareAvc,
-  async fn() {
-    const frames = await decodeVideo(
-      "avc1.64000B",
-      await bytes("avc1.avcC"),
-      await bytes("avc1.idr"),
-    );
-    const frame = frames[0];
-    let cloned = "";
-    try {
-      structuredClone(frame);
-    } catch (error) {
-      cloned = error instanceof DOMException ? error.name : "";
-    }
-    assert(cloned === "DataCloneError", cloned);
-    const worker = new Worker(
-      new URL("./fixtures/webcodecs/recv.js", import.meta.url),
-    );
-    let transfer = "";
-    try {
-      worker.postMessage(frame);
-    } catch (error) {
-      transfer = error instanceof DOMException ? error.name : "";
-    }
-    worker.terminate();
-    assert(transfer === "DataCloneError", transfer);
-    frame.close();
-  },
+Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
+  const frame = await takeFrame();
+  const copy = structuredClone(frame);
+  assert(copy !== frame, "frame identity");
+  assert(copy.displayWidth === 2 && copy.displayHeight === 2, "frame copy");
+  assert(copy.timestamp === frame.timestamp, "frame time");
+  assert(frame.displayWidth === 2, "frame stays open");
+  const drawn = await drawFrame(copy);
+  copy.close();
+
+  const worker = new Worker(new URL("./workers/clone.js", import.meta.url));
+  const copied = new Promise<unknown>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(frame);
+  const copiedSummary = await copied as {
+    kind: string;
+    width: number;
+    height: number;
+    pixel: number[];
+  };
+  assert(copiedSummary.kind === "frame", copiedSummary.kind);
+  assert(copiedSummary.width === 2 && copiedSummary.height === 2, "posted frame");
+  assert(copiedSummary.pixel.join() === String([
+    drawn.data[0],
+    drawn.data[1],
+    drawn.data[2],
+    drawn.data[3],
+  ]), copiedSummary.pixel.join());
+  assert(frame.displayWidth === 2, "post leaves the frame open");
+
+  const transferred = new Promise<unknown>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(frame, [frame]);
+  const transferredSummary = await transferred as { kind: string; width: number };
+  assert(transferredSummary.kind === "frame", transferredSummary.kind);
+  assert(transferredSummary.width === 2, "transferred frame");
+  await assertThrows(() => frame.displayWidth, "InvalidStateError");
+
+  const audio = await takeAudioData();
+  const frames = audio.numberOfFrames;
+  const channels = audio.numberOfChannels;
+  const local = new Float32Array(frames);
+  audio.copyTo(local, { planeIndex: 0 });
+  const audioCopy = structuredClone(audio);
+  const copiedSamples = new Float32Array(audioCopy.numberOfFrames);
+  audioCopy.copyTo(copiedSamples, { planeIndex: 0 });
+  assert(audioCopy !== audio, "audio identity");
+  assert(audioCopy.numberOfFrames === frames, "audio frames");
+  assert(audioCopy.sampleRate === audio.sampleRate, "audio rate");
+  assert(copiedSamples[0] === local[0], "audio sample");
+  assert(audio.numberOfFrames > 0, "audio stays open");
+  audioCopy.close();
+
+  const audioReply = new Promise<unknown>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(audio, [audio]);
+  const audioSummary = await audioReply as {
+    kind: string;
+    frames: number;
+    channels: number;
+    rate: number;
+    sample: number;
+  };
+  assert(audioSummary.kind === "audio", audioSummary.kind);
+  assert(audioSummary.frames === frames, "worker frames");
+  assert(audioSummary.channels === channels, "worker channels");
+  assert(audioSummary.rate === 48000, String(audioSummary.rate));
+  assert(audioSummary.sample === local[0], "worker sample");
+  await assertThrows(() => audio.numberOfFrames, "InvalidStateError");
+
+  const chunk = new EncodedAudioChunk({
+    type: "key",
+    timestamp: 20,
+    data: new Uint8Array([1, 2, 3]),
+  });
+  const chunkReply = new Promise<unknown>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(chunk);
+  const chunkSummary = await chunkReply as {
+    kind: string;
+    type: string;
+    timestamp: number;
+    byteLength: number;
+  };
+  assert(chunkSummary.kind === "audio-chunk", chunkSummary.kind);
+  assert(chunkSummary.type === "key", chunkSummary.type);
+  assert(chunkSummary.timestamp === 20, String(chunkSummary.timestamp));
+  assert(chunkSummary.byteLength === 3, String(chunkSummary.byteLength));
+  await assertThrows(
+    () => worker.postMessage(chunk, [chunk]),
+    "DataCloneError",
+  );
+  assert(chunk.byteLength === 3, "chunk stays");
+  worker.terminate();
 });
 
 Yuzuko.test({

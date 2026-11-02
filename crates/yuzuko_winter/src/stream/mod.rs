@@ -6018,49 +6018,22 @@ fn enqueue_transfers(
   };
   let list = v8::Local::<v8::Array>::try_from(transfer)
     .map_err(|_| OpError::type_("The transfer list is not an array"))?;
-  let mut buffers = Vec::new();
-  let mut hosts = Vec::new();
-  for index in 0..list.length() {
-    let Some(item) = list.get_index(scope, index) else {
-      return Err(OpError::type_("The transfer list is invalid"));
-    };
-    if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(item) {
-      if buffer.was_detached() || !buffer.is_detachable() {
-        return Err(OpError::dom(
-          "DataCloneError",
-          "The ArrayBuffer cannot be transferred",
-        ));
-      }
-      let duplicate = buffers.iter().any(|existing| {
-        let existing: v8::Local<v8::ArrayBuffer> =
-          v8::Local::new(scope, existing);
-        existing.strict_equals(buffer.into())
-      });
-      if duplicate {
-        return Err(OpError::dom(
-          "DataCloneError",
-          "The value is already in the transfer list",
-        ));
-      }
-      buffers.push(v8::Global::new(scope, buffer));
-      continue;
+  match yuzuko_core::collect_transfers(
+    scope,
+    list,
+    yuzuko_core::TransferKind::Owning,
+  ) {
+    Ok(transfers) => Ok(EnqueueTransfer {
+      buffers: transfers.buffers,
+      hosts: transfers.objects,
+    }),
+    Err(yuzuko_core::TransferReject::Pending) => {
+      Err(OpError::type_("The transfer list is invalid"))
     }
-    let object = v8::Local::<v8::Object>::try_from(item).map_err(|_| {
-      OpError::dom("DataCloneError", "The value cannot be transferred")
-    })?;
-    let duplicate = hosts.iter().any(|existing| {
-      let existing: v8::Local<v8::Object> = v8::Local::new(scope, existing);
-      existing.strict_equals(object.into())
-    });
-    if duplicate {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The value is already in the transfer list",
-      ));
+    Err(yuzuko_core::TransferReject::DataClone(message)) => {
+      Err(OpError::dom("DataCloneError", message))
     }
-    hosts.push(v8::Global::new(scope, object));
   }
-  Ok(EnqueueTransfer { buffers, hosts })
 }
 
 fn clone_for_owning<'s>(
@@ -6068,22 +6041,24 @@ fn clone_for_owning<'s>(
   chunk: v8::Local<v8::Value>,
   transfer: EnqueueTransfer,
 ) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  yuzuko_core::set_structured_transfer(transfer.hosts);
-  let cloned = match yuzuko_core::clone_value(scope, chunk) {
-    Ok(cloned) => cloned,
-    Err(Some(thrown)) => {
-      yuzuko_core::clear_structured_transfer();
-      return Err(OpError::Thrown(Box::new(thrown)));
-    }
-    Err(None) => {
-      yuzuko_core::clear_structured_transfer();
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The chunk could not be cloned",
-      ));
+  let cloned = {
+    let _guard = yuzuko_core::StructuredTransferGuard::install(transfer.hosts);
+    match yuzuko_core::clone_value(scope, chunk) {
+      Ok(cloned) => {
+        yuzuko_core::detach_structured_transfers(scope);
+        cloned
+      }
+      Err(Some(thrown)) => {
+        return Err(OpError::Thrown(Box::new(thrown)));
+      }
+      Err(None) => {
+        return Err(OpError::dom(
+          "DataCloneError",
+          "The chunk could not be cloned",
+        ));
+      }
     }
   };
-  yuzuko_core::clear_structured_transfer();
   for buffer in &transfer.buffers {
     let buffer = v8::Local::new(scope, buffer);
     if buffer.was_detached() || !buffer.is_detachable() {

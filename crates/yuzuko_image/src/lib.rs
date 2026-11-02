@@ -1,6 +1,7 @@
 //! Image decoders, `ImageData`, `ImageBitmap`, and `createImageBitmap`.
 
 mod bitmap;
+mod clone;
 mod create;
 mod data;
 mod frame;
@@ -9,6 +10,7 @@ mod raster;
 use std::sync::Once;
 
 pub use bitmap::ImageBitmap;
+pub use clone::{read_raster, write_raster};
 pub use data::ImageData;
 pub use frame::{FramePixels, frame_pixels, install_frame_lookup};
 pub use raster::color::{convert, convert_encoded};
@@ -23,6 +25,7 @@ pub use raster::{
 pub fn register() {
   static ONCE: Once = Once::new();
   ONCE.call_once(|| {
+    clone::register();
     yuzuko_core::add_extension(&install);
   });
 }

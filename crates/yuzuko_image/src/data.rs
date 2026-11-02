@@ -66,6 +66,58 @@ impl ImageData {
     ))
   }
 
+  pub(crate) fn parts(&self) -> (u32, u32, ColorSpace, SampleFormat) {
+    (self.width, self.height, self.color_space, self.format)
+  }
+
+  pub(crate) fn data_local<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    traced_local(scope, &self.data.borrow())
+  }
+
+  /// Rebuilds an `ImageData` around a deserialized typed array.
+  pub(crate) fn holding(
+    scope: &mut v8::PinScope,
+    width: u32,
+    height: u32,
+    color_space: ColorSpace,
+    format: SampleFormat,
+    data: v8::Local<v8::Object>,
+  ) -> Result<ImageData, ()> {
+    if !within_limits(width, height) {
+      return Err(());
+    }
+    let view =
+      v8::Local::<v8::ArrayBufferView>::try_from(data).map_err(|_| ())?;
+    if view
+      .buffer(scope)
+      .is_none_or(|buffer| buffer.was_detached())
+    {
+      return Err(());
+    }
+    let bytes_per_pixel = match format {
+      SampleFormat::Unorm8 => {
+        if v8::Local::<v8::Uint8ClampedArray>::try_from(data).is_err() {
+          return Err(());
+        }
+        4
+      }
+      SampleFormat::Float16 => {
+        if v8::Local::<v8::Float16Array>::try_from(data).is_err() {
+          return Err(());
+        }
+        8
+      }
+    };
+    let expected = u64::from(width) * u64::from(height) * bytes_per_pixel;
+    if view.byte_length() as u64 != expected {
+      return Err(());
+    }
+    Ok(host(scope, width, height, color_space, format, data))
+  }
+
   pub fn snapshot(&self, scope: &mut v8::PinScope) -> Result<Raster, OpError> {
     let object = traced_local(scope, &self.data.borrow())
       .ok_or_else(|| invalid("ImageData data is detached"))?;
