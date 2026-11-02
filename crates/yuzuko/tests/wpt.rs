@@ -76,6 +76,7 @@ const ENROLLED: &[(&str, &[&str])] = &[
   ("css", &["css/geometry", "css/css-font-loading"]),
   ("gamepad", &["gamepad"]),
   ("clipboard-apis", &["clipboard-apis"]),
+  ("screen-wake-lock", &["screen-wake-lock"]),
   ("workers", &["workers"]),
   ("webaudio", &["webaudio"]),
   ("requestidlecallback", &["requestidlecallback"]),

@@ -16,6 +16,7 @@ mod session;
 mod shell;
 mod surface;
 mod test_api;
+mod wake;
 
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -83,6 +84,7 @@ fn install(scope: &mut v8::PinScope) {
   shell::dock::install(scope);
   surface::install(scope);
   shell::clipboard::install(scope);
+  wake::install(scope);
   input::gamepad::install(scope);
   if TEST_INPUT.load(Ordering::SeqCst) && test_inject_enabled() {
     test_api::install(scope);
@@ -96,4 +98,5 @@ fn shutdown() {
   os::shutdown();
   inbox::clear();
   input::gamepad::clear();
+  wake::clear();
 }

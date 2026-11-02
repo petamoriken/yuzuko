@@ -3143,8 +3143,8 @@ declare var performance: Performance;
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
  * `"Win32"` on Windows, `"MacIntel"` on macOS, and `"Linux"` on Linux.
- * `clipboard`, `gpu`, and `getGamepads` exist on the main global. A worker
- * navigator has `userAgent` and `platform` only.
+ * `clipboard`, `gpu`, `wakeLock`, and `getGamepads` exist on the main global.
+ * A worker navigator has `userAgent` and `platform` only.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -3170,6 +3170,17 @@ interface Navigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/clipboard)
    */
   readonly clipboard: Clipboard;
+
+  /**
+   * Screen wake lock for this realm. Main global only.
+   *
+   * Absent without the `window` feature, and absent on a dedicated worker.
+   * There is no permission prompt and no document. Hiding a window does not
+   * release a sentinel.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/wakeLock)
+   */
+  readonly wakeLock: WakeLock;
 
   /**
    * The process WebGPU entry. Main global only.
@@ -3199,6 +3210,86 @@ declare var Navigator: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/navigator)
  */
 declare var navigator: Navigator;
+
+/**
+ * Screen wake lock for the main realm.
+ *
+ * `request()` asks the operating system to keep the display awake while a
+ * sentinel is held. macOS creates an IOPMAssertion of type
+ * `PreventUserIdleDisplaySleep` named `Yuzuko`. Windows calls
+ * `SetThreadExecutionState` with `ES_DISPLAY_REQUIRED`. Linux starts
+ * `systemd-inhibit` for `idle:sleep`.
+ *
+ * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.wakeLock}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLock)
+ */
+interface WakeLock {
+  /**
+   * Acquires a screen wake lock.
+   *
+   * An omitted type, or `"screen"`, resolves a sentinel. Any other type
+   * rejects `TypeError`.
+   *
+   * @param type Wake lock type. The only accepted value is `"screen"`.
+   * @returns A sentinel while the operating system holds the display awake.
+   * @throws {@link TypeError} `The wake lock type is invalid` when `type` is
+   * not `"screen"`.
+   * @throws {@link DOMException} `NotAllowedError` with
+   * `The platform refused the screen wake lock` when the operating system
+   * refuses the request. On Linux this includes a missing `systemd-inhibit`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLock/request)
+   */
+  request(type?: WakeLockType): Promise<WakeLockSentinel>;
+}
+
+/** The only wake lock type is `"screen"`. */
+type WakeLockType = "screen";
+
+declare var WakeLock: {
+  prototype: WakeLock;
+  new(): WakeLock;
+};
+
+/**
+ * One hold on the screen wake lock.
+ *
+ * `release()` sets `released` and dispatches `release` before the promise
+ * resolves. A second call resolves and does not dispatch again. The operating
+ * system assertion stays until the last held sentinel releases.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLockSentinel)
+ */
+interface WakeLockSentinel extends EventTarget {
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLockSentinel/released)
+   */
+  readonly released: boolean;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLockSentinel/type)
+   */
+  readonly type: WakeLockType;
+
+  /**
+   * Ends this sentinel's hold.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLockSentinel/release)
+   */
+  release(): Promise<void>;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WakeLockSentinel/release_event)
+   */
+  onrelease: ((this: WakeLockSentinel, ev: Event) => any) | null;
+}
+declare var WakeLockSentinel: {
+  prototype: WakeLockSentinel;
+  new(): WakeLockSentinel;
+};
 
 /**
  * Target of events.

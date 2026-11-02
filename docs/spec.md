@@ -48,7 +48,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 | `fetch` | `fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, `EventSource`, and the HTTP client, including HTTP/3 | |
 | `fs` | The `Yuzuko` file system | |
 | `socket` | `WebSocket`, `WebSocketStream`, `WebTransport` | |
-| `window` | `Yuzuko.Window`, pointer events including `pointerrawupdate`, key, and the other input events, the application menu, tray, dock, clipboard, and gamepad. `OffscreenCanvas` is installed here | |
+| `window` | `Yuzuko.Window`, pointer events including `pointerrawupdate`, key, and the other input events, the application menu, tray, dock, clipboard, gamepad, and screen Wake Lock. `OffscreenCanvas` is installed here | |
 | `image` | `createImageBitmap`, `ImageBitmap`, `ImageData` | `window` |
 | `canvas` | Canvas 2D, `bitmaprenderer`, `Path2D`, `DOMMatrix`, `FontFace`, `Yuzuko.fonts`, `Yuzuko.canvasRenderer` | `image` |
 | `webgpu` | `navigator.gpu` and the WebGPU surface | `image` |
@@ -89,7 +89,7 @@ Do not add these as a side effect. Update this section before adding one.
 
 | Place | Contents |
 | --- | --- |
-| `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
+| `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `navigator.wakeLock` requires `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
 | `Yuzuko` | Present on the main realm and in a dedicated worker in every build. Runtime-specific APIs live here. `Window` requires `window`. `canvasRenderer` and `fonts` require `canvas`. `Yuzuko.test` exists only under `yuzuko test`. `Yuzuko.Menu` and `Yuzuko.setMenu` install the application menu when `window` is enabled. On the main global, `Yuzuko.fonts` is the `FontFaceSet` and `globalThis.fonts` is absent. A dedicated worker exposes that set as `self.fonts` and `globalThis.fonts` instead. `Yuzuko.readFile`, `Yuzuko.FsFile`, and the other file-system members are installed when the runtime is built with `fs`, on the main global and in a dedicated worker. `Yuzuko.updater` is installed only on a packaged application's main global |
 
 `Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are installed with that object in every build, including a build with no Cargo features. A dedicated worker has them. An AudioWorklet processor context does not receive the `Yuzuko` object.
@@ -595,7 +595,7 @@ The first runner is single-process and sequential, because V8 and winit stay on 
 
 A change that adds or changes a web API enrolls the upstream directories for that API and runs them. Tests in those directories that need an absent host stay ignored in expectations, with the reason in the review of that change.
 
-The enrolled upstream directories are `url`, `encoding`, `hr-time`, `html/webappapis/atob`, `html/webappapis/timers`, `FileAPI`, `dom/events`, `wasm/jsapi`, `console`, constructor tests under `pointerevents` and `uievents` that do not need an element, `html/canvas` image and `createImageBitmap` tests that operate on blobs (plus the image fixtures those tests use), `html/canvas/offscreen` and the 2D context tests that do not need a displayed HTML canvas (run on the CPU renderer), `webgpu`, `fetch`, `streams`, `compression`, `urlpattern`, `WebCryptoAPI`, `mimesniff`, `wasm/webapi`, `css/geometry`, `gamepad`, `clipboard-apis`, `css/css-font-loading`, dedicated-worker tests that do not need a document, and `webaudio`.
+The enrolled upstream directories are `url`, `encoding`, `hr-time`, `html/webappapis/atob`, `html/webappapis/timers`, `FileAPI`, `dom/events`, `wasm/jsapi`, `console`, constructor tests under `pointerevents` and `uievents` that do not need an element, `html/canvas` image and `createImageBitmap` tests that operate on blobs (plus the image fixtures those tests use), `html/canvas/offscreen` and the 2D context tests that do not need a displayed HTML canvas (run on the CPU renderer), `webgpu`, `fetch`, `streams`, `compression`, `urlpattern`, `WebCryptoAPI`, `mimesniff`, `wasm/webapi`, `css/geometry`, `gamepad`, `clipboard-apis`, `screen-wake-lock`, `css/css-font-loading`, dedicated-worker tests that do not need a document, and `webaudio`.
 
 `requestidlecallback` is enrolled with the main-global idle callbacks. `eventsource` and `websockets` are enrolled with those clients. `webcodecs` is enrolled with `VideoDecoder`, `AudioDecoder`, `VideoFrame`, `AudioData`, and `ImageDecoder`. The JPEG XL `ImageDecoder` documents are enrolled with that decoder. `dom/abort` is enrolled with `AbortSignal`. `html/webappapis/microtask-queuing` and `html/webappapis/structured-clone` are enrolled with `queueMicrotask` and `structuredClone`. `imagebitmap-renderingcontext` is enrolled with `ImageBitmapRenderingContext`. Files that need a document, a frame, or `requestAnimationFrame` on `globalThis` stay ignored or fail as recorded.
 
@@ -610,6 +610,18 @@ The web Gamepad API. `navigator.getGamepads()` returns the connected gamepads. `
 ## Clipboard
 
 `navigator.clipboard` `writeText`, `readText`, and `ClipboardItem` for `text/plain` and `image/png`. Reads and writes succeed only after a pointer or key press on the focused `Window`. The same calls reject with `NotAllowedError` without that action, and when the window is not focused. There is no permission prompt. `copy`, `cut`, and `paste` are dispatched on that surface. `ClipboardChangeEvent` is absent.
+
+## Screen Wake Lock
+
+`navigator.wakeLock` is installed with the `window` feature on the main global. It is the same object on every read. A dedicated worker does not have `navigator.wakeLock`, `WakeLock`, or `WakeLockSentinel`. Those names are absent when `window` is off.
+
+`request()` with an omitted type, or with `"screen"`, resolves a `WakeLockSentinel`. Any other value is converted with `ToString`. A result other than `"screen"` rejects `TypeError` with `The wake lock type is invalid`. If that conversion throws, `request()` throws the same exception. `type` is `"screen"`. `released` is false until `release()`. `onrelease` starts as null.
+
+`release()` sets `released` to true, dispatches a trusted `release` event on that sentinel, and then resolves `undefined`. The event does not bubble and cannot be cancelled. `released` is already true while the listeners run. A second `release()` resolves `undefined` and does not dispatch again.
+
+The runtime asks the operating system to keep the display awake while at least one sentinel is unreleased. The first successful `request()` creates the platform assertion. The last `release()` drops it. macOS calls `IOPMAssertionCreateWithName` with type `PreventUserIdleDisplaySleep`, level on, and name `Yuzuko`, and drops it with `IOPMAssertionRelease`. Windows calls `SetThreadExecutionState` with `ES_CONTINUOUS | ES_DISPLAY_REQUIRED`, and calls it with `ES_CONTINUOUS` when the last sentinel releases. Linux spawns `systemd-inhibit --what=idle:sleep --who=Yuzuko --why=screen wake lock --mode=block sleep infinity` and kills that child when the last sentinel releases. If the operating system refuses the request, `request()` rejects `NotAllowedError` with `The platform refused the screen wake lock`.
+
+There is no permission prompt and no document. Hiding a window does not release a sentinel. `new WakeLock()` and `new WakeLockSentinel()` throw `TypeError` with `Illegal constructor`.
 
 ## Menu bar
 

@@ -1723,6 +1723,12 @@ impl Navigator {
     crate::shell::clipboard::instance(scope)
   }
 
+  #[getter]
+  fn wake_lock(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    crate::wake::instance(scope)
+  }
+
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {
     let _ = self;
     let slots = STORE.with(|slot| slot.borrow().slots.clone());

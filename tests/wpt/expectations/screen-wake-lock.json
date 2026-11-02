@@ -1,0 +1,45 @@
+{
+  "screen-wake-lock/chrome-bug-1348019.https.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/idlharness.https.window.js": false,
+  "screen-wake-lock/wakelock-active-document.https.window.js": {
+    "expectedFailures": [
+      "navigator.wakeLock.request() aborts if the document becomes not active.",
+      "navigator.wakeLock.request() aborts if the document is active, but not fully active.",
+      "navigator.wakeLock.request() aborts if the document is not fully active."
+    ]
+  },
+  "screen-wake-lock/wakelock-disabled-by-permissions-policy.https.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/wakelock-document-hidden.https.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/wakelock-enabled-by-permissions-policy-attribute-redirect-on-load.https.html": false,
+  "screen-wake-lock/wakelock-enabled-by-permissions-policy-attribute.https.html": false,
+  "screen-wake-lock/wakelock-enabled-by-permissions-policy.https.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/wakelock-enabled-on-self-origin-by-permissions-policy.https.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/wakelock-insecure-context.any.js": {
+    "expectedFailures": [
+      "Wake Lock API is not exposed in an insecure context"
+    ]
+  },
+  "screen-wake-lock/wakelock-onrelease.https.html": false,
+  "screen-wake-lock/wakelock-released.https.html": false,
+  "screen-wake-lock/wakelock-request-denied.https.html": false,
+  "screen-wake-lock/wakelock-screen-type-on-worker.https.worker.js": {
+    "expectedFailures": [
+      "Screen wake lock should not be allowed in dedicated worker"
+    ]
+  },
+  "screen-wake-lock/wakelock-supported-by-permissions-policy.html": {
+    "ignore": true
+  },
+  "screen-wake-lock/wakelock-type.https.window.js": false,
+  "screen-wake-lock/wakelockpermissiondescriptor.https.html": false
+}
