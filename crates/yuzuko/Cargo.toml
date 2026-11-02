@@ -20,6 +20,7 @@ default = [
   "http",
   "signal",
   "child",
+  "ffi",
   "window",
   "image",
   "canvas",
@@ -35,6 +36,7 @@ tcp = ["yuzuko_core/tcp"]
 http = ["yuzuko_core/http"]
 signal = ["yuzuko_core/signal"]
 child = ["yuzuko_core/child"]
+ffi = ["yuzuko_core/ffi"]
 window = ["dep:yuzuko_window", "yuzuko_dom/window"]
 image = ["dep:yuzuko_image", "window"]
 canvas = ["dep:yuzuko_canvas", "image"]

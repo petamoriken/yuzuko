@@ -9,7 +9,7 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `window`, `image`, `canvas`,
+ * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `ffi`, `window`, `image`, `canvas`,
  * `webgpu`, `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
@@ -18,7 +18,7 @@
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
- * listeners, a child process, {@link WebSocket}, {@link Window},
+ * listeners, a child process, foreign functions, {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -2348,6 +2348,116 @@ declare namespace Yuzuko {
     command: string,
     options?: SpawnOptions | null,
   ): Child;
+
+  /** A parameter type {@link dlopen} can pass to a C function. */
+  type ForeignType = "i32" | "f64";
+
+  /** A result type {@link dlopen} can return from a C function. */
+  type ForeignResult = "void" | "i32" | "f64";
+
+  /**
+   * The `extern "C"` shape of one symbol passed to {@link dlopen}.
+   *
+   * Omitted `parameters` means no arguments. Omitted `result` means `void`.
+   * At most two parameters are accepted, and they must all be the same type.
+   * `result` is `void` or that same type. The supported shapes are
+   * `() -> void`, `() -> i32`, `(i32) -> i32`, `(i32, i32) -> i32`,
+   * `(i32) -> void`, `(i32, i32) -> void`, `() -> f64`, `(f64) -> f64`,
+   * `(f64, f64) -> f64`, `(f64) -> void`, and `(f64, f64) -> void`.
+   */
+  interface ForeignFunction {
+    /** Argument types. A string primitive `"i32"` or `"f64"`. */
+    parameters?: ForeignType[] | null;
+    /** Return type. A string primitive `"void"`, `"i32"`, or `"f64"`. */
+    result?: ForeignResult | null;
+  }
+
+  /**
+   * A native library opened by {@link dlopen}.
+   *
+   * `symbols` and `close` run on the caller thread. An open library does
+   * not keep the event loop alive. Dropping this object unloads the
+   * library, so it must stay reachable while a symbol function runs.
+   * Realm shutdown unloads a library that is still open.
+   */
+  class Library {
+    private constructor();
+
+    /**
+     * The functions resolved when the library was opened.
+     *
+     * Each read returns the same object. Its own properties are host
+     * functions named by the C symbol. A function's `length` is its
+     * parameter count. `i32` arguments use `ToInt32`. `f64` arguments use
+     * `ToNumber`. A `void` result is `undefined`. An `i32` or `f64` result
+     * is a number. Extra arguments are ignored.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Library`, or when the called function is not one of these
+     * symbols. `Not enough arguments` when a symbol call omits a
+     * parameter. `The argument could not be converted.` when `ToInt32` or
+     * `ToNumber` fails without throwing.
+     * @throws {@link Error} `The library is closed.` when a symbol is
+     * called after {@link Library.close} or after this object is dropped.
+     */
+    readonly symbols: {
+      [name: string]: (...args: number[]) => number | undefined;
+    };
+
+    /**
+     * Unloads the library.
+     *
+     * On Unix this is `dlclose`. On Windows this is `FreeLibrary`. A
+     * second call throws. Calls through `symbols` then throw as well.
+     * If the operating system refuses to unload, the library still stays
+     * closed to JavaScript.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Library`.
+     * @throws {@link Error} `The library is closed.` when the library was
+     * already closed.
+     */
+    close(): void;
+  }
+
+  /**
+   * Loads a native library and returns functions for its C symbols.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `ffi` feature, which is enabled by default. Absent
+   * from an `AudioWorklet` processor realm. A build that does not enable
+   * `ffi` leaves this function and {@link Library} absent. The feature does
+   * not enable `window`. There is no permission prompt. The call blocks
+   * while the operating system loads `path` and resolves every symbol.
+   * On Unix this is `dlopen` with `RTLD_NOW` and `RTLD_LOCAL`, then
+   * `dlsym`. The C name has no Mach-O underscore. On Windows this is
+   * `LoadLibraryW`, then `GetProcAddress`. Symbol definitions are checked
+   * before the library is opened.
+   *
+   * @param path - Library path. A non-empty string primitive.
+   * @param symbols - Own enumerable string keys are C names. Each value
+   * describes that function's parameters and result.
+   * @throws {@link TypeError} `Not enough arguments` when an argument is
+   * missing. `The path must be a string.` when `path` is not a string.
+   * `The path must not be empty.` when it is empty.
+   * `The path must not contain a null character.` when it contains one.
+   * `The symbols must be an object.` when `symbols` is not an object.
+   * `The symbols could not be read.` when the object cannot be read.
+   * `The symbol name must be a string.` when a name is not a string.
+   * `The symbol name must not be empty.` when a name is empty.
+   * `The symbol name must not contain a null character.` when it contains
+   * one. `There are too many symbols.` when there are more than 256.
+   * `The symbol definition must be an object.` when a value is not an
+   * object. `The function type is not supported.` when the parameters and
+   * result are not one of the supported shapes.
+   * @throws {@link Error} `The library could not be opened.` when the
+   * operating system refuses the library or a symbol is missing. No
+   * library is returned.
+   */
+  function dlopen(
+    path: string,
+    symbols: { [name: string]: ForeignFunction },
+  ): Library;
 
   /**
    * Result of {@link Updater.check}.

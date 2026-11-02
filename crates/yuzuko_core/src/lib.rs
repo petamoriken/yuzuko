@@ -2,17 +2,17 @@
 
 extern crate self as yuzuko_core;
 
+#[cfg(feature = "child")]
+mod child;
 mod clone;
 mod extensions;
+#[cfg(feature = "ffi")]
+mod ffi;
 #[cfg(feature = "fs")]
 mod fs;
 mod host;
 #[cfg(feature = "http")]
 mod http_server;
-#[cfg(feature = "signal")]
-mod signal;
-#[cfg(feature = "child")]
-mod child;
 mod idle;
 mod jobs;
 mod js;
@@ -25,6 +25,8 @@ mod process;
 mod realm;
 mod repl;
 mod runtime;
+#[cfg(feature = "signal")]
+mod signal;
 #[cfg(feature = "tcp")]
 mod tcp;
 mod timers;

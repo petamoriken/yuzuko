@@ -21,7 +21,7 @@ v8.workspace = true
 yuzuko_macros.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
 
 [features]
 default = ["fs"]
@@ -31,3 +31,4 @@ tcp = []
 http = []
 signal = []
 child = []
+ffi = []

@@ -27,6 +27,8 @@ const names = [
   typeof Yuzuko.removeSignalListener,
   typeof Yuzuko.spawn,
   typeof Yuzuko.Child,
+  typeof Yuzuko.dlopen,
+  typeof Yuzuko.Library,
   typeof Yuzuko.Window,
   typeof PointerEvent,
   typeof OffscreenCanvas,
