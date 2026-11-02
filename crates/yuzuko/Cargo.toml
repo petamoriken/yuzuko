@@ -17,6 +17,7 @@ default = [
   "socket",
   "udp",
   "tcp",
+  "http",
   "window",
   "image",
   "canvas",
@@ -29,6 +30,7 @@ fs = ["yuzuko_core/fs"]
 socket = ["yuzuko_dom/socket", "yuzuko_winter/socket"]
 udp = ["yuzuko_core/udp"]
 tcp = ["yuzuko_core/tcp"]
+http = ["yuzuko_core/http"]
 window = ["dep:yuzuko_window", "yuzuko_dom/window"]
 image = ["dep:yuzuko_image", "window"]
 canvas = ["dep:yuzuko_canvas", "image"]

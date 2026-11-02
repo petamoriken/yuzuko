@@ -313,6 +313,8 @@ pub(crate) fn run_worker_isolate(
     crate::udp::install(scope);
     #[cfg(feature = "tcp")]
     crate::tcp::install(scope);
+    #[cfg(feature = "http")]
+    crate::http_server::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget on the main
     // realm. A worker keeps the original object. Install after either path.
     install_process(scope);
@@ -364,6 +366,8 @@ pub(crate) fn run_worker_isolate(
     crate::udp::clear();
     #[cfg(feature = "tcp")]
     crate::tcp::clear();
+    #[cfg(feature = "http")]
+    crate::http_server::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
   }
@@ -1058,6 +1062,8 @@ pub(crate) fn with_runtime<T>(
     crate::udp::install(scope);
     #[cfg(feature = "tcp")]
     crate::tcp::install(scope);
+    #[cfg(feature = "http")]
+    crate::http_server::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget. Process
     // members are installed after that replacement.
     install_process(scope);
@@ -1073,6 +1079,8 @@ pub(crate) fn with_runtime<T>(
     crate::udp::clear();
     #[cfg(feature = "tcp")]
     crate::tcp::clear();
+    #[cfg(feature = "http")]
+    crate::http_server::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
     result

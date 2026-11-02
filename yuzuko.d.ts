@@ -9,15 +9,15 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
- * `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
+ * `fs`, `socket`, `udp`, `tcp`, `http`, `window`, `image`, `canvas`, `webgpu`,
+ * `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
  * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
- * the file system, datagram sockets, TCP sockets, {@link WebSocket}, {@link Window},
+ * the file system, datagram sockets, TCP sockets, an HTTP server, {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -2000,6 +2000,178 @@ declare namespace Yuzuko {
    * created.
    */
   function connectTcp(addr: TcpAddr): Promise<TcpConn>;
+
+  /**
+   * Bound HTTP server address.
+   *
+   * `hostname` is an IP address without brackets, or `localhost` on input.
+   * A returned address uses the IP the socket is bound to.
+   */
+  interface HttpAddr {
+    /** IP address, or `localhost` when naming a bind. */
+    hostname?: string;
+
+    /**
+     * TCP port.
+     *
+     * `0` on {@link listenHttp} asks for an ephemeral port.
+     */
+    port?: number;
+  }
+
+  /** Options for {@link listenHttp}. Omitted fields use the defaults. */
+  interface ListenHttpOptions {
+    /**
+     * Address to bind.
+     *
+     * @defaultValue `"127.0.0.1"`
+     */
+    hostname?: string;
+
+    /**
+     * Port to bind. `0` asks the operating system for a free port.
+     *
+     * @defaultValue 0
+     */
+    port?: number;
+  }
+
+  /**
+   * An HTTP/1 server.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `http` feature, which is enabled by default. Absent
+   * from an `AudioWorklet` processor realm. A build that does not enable
+   * `http` leaves this class and {@link listenHttp} absent. The feature does
+   * not enable `tcp` or `fetch`. There is no permission prompt. There is no
+   * TLS and no HTTP/2.
+   */
+  class HttpServer {
+    private constructor();
+
+    /**
+     * The bound address.
+     *
+     * Each read returns a new object. `hostname` is the bound IP, and `port`
+     * is not `0` after an ephemeral bind.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpServer`.
+     */
+    readonly addr: HttpAddr;
+
+    /**
+     * Accepts the next HTTP/1 request.
+     *
+     * At most one accept waits. The promise rejects {@link Error} with
+     * `The socket is closed.` when the server is closed, including when
+     * {@link HttpServer.close} runs while this call is waiting, and with
+     * `An accept is already waiting.` when another accept is waiting.
+     * A header block longer than 65536 bytes, or a body longer than
+     * 1048576 bytes, rejects `The request is too large.` A malformed
+     * request rejects `The request could not be read.` An operating-system
+     * failure while accepting the connection rejects
+     * `The connection could not be accepted.`
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpServer`. `The socket operation failed.` when the promise cannot
+     * be created.
+     */
+    accept(): Promise<HttpRequest>;
+
+    /**
+     * Closes the listening socket.
+     *
+     * A waiting {@link HttpServer.accept} rejects. An accepted request stays
+     * open. Dropping the last handle also closes the listener.
+     *
+     * @throws {@link Error} `The socket is closed.` when the server is
+     * already closed.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpServer`.
+     */
+    close(): void;
+  }
+
+  /**
+   * One HTTP request on a connection accepted by {@link HttpServer}.
+   *
+   * `respond` writes one HTTP/1.1 response and closes the connection.
+   * A bad argument throws {@link TypeError} before a promise is returned.
+   */
+  class HttpRequest {
+    private constructor();
+
+    /**
+     * The request method.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpRequest`.
+     */
+    readonly method: string;
+
+    /**
+     * The origin-form request target, including the query.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpRequest`.
+     */
+    readonly url: string;
+
+    /**
+     * The request body.
+     *
+     * Each read returns a new `Uint8Array`. An absent `Content-Length` is
+     * empty.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * an `HttpRequest`.
+     */
+    readonly body: Uint8Array;
+
+    /**
+     * Writes the response and closes the connection.
+     *
+     * A string is encoded as UTF-8 and sent as `text/plain;charset=UTF-8`.
+     * A buffer is sent as `application/octet-stream`. The bytes are copied
+     * before the promise is returned. `status` defaults to `200`.
+     *
+     * @param body - Response payload. A view sends only its own bytes.
+     * @param status - HTTP status from 100 through 599.
+     * @throws {@link TypeError} `Not enough arguments` when `body` is
+     * missing. `The data must be a string or a BufferSource.` when it is
+     * neither. `The buffer is detached.` when it is detached.
+     * `The data is too large.` when it is longer than 1048576 bytes.
+     * `The status must be an integer from 100 through 599.` when `status`
+     * is present and is not. `illegal invocation` when the receiver is not
+     * an `HttpRequest`. `The socket operation failed.` when the promise
+     * cannot be created.
+     */
+    respond(
+      body: string | AllowSharedBufferSource,
+      status?: number,
+    ): Promise<void>;
+  }
+
+  /**
+   * Binds an HTTP/1 server.
+   *
+   * An omitted argument, `null`, or `undefined` binds `127.0.0.1` and an
+   * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
+   * that address. Any other hostname must be an IP address without brackets.
+   * There is no DNS lookup. `port` defaults to `0`. The call blocks the
+   * caller for the bind.
+   *
+   * @throws {@link TypeError} `Options must be an object.` when `options` is
+   * not an object, `null`, or `undefined`.
+   * `The options could not be read.` when the options cannot be read.
+   * `The hostname must be an IP address or "localhost".` when the hostname
+   * is not. `The port must be an integer from 0 through 65535.` when the
+   * port is not.
+   * @throws {@link Error} `The socket could not bind.` when the operating
+   * system refuses the address.
+   */
+  function listenHttp(options?: ListenHttpOptions | null): HttpServer;
 
   /**
    * Result of {@link Updater.check}.

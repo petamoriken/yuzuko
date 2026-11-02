@@ -7,6 +7,8 @@ mod extensions;
 #[cfg(feature = "fs")]
 mod fs;
 mod host;
+#[cfg(feature = "http")]
+mod http_server;
 mod idle;
 mod jobs;
 mod js;
