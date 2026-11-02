@@ -13,11 +13,7 @@
   "dom/abort/crashtests/timeout-close.html": {
     "ignore": true
   },
-  "dom/abort/event.any.js": {
-    "expectedFailures": [
-      "the abort event should have the right properties"
-    ]
-  },
+  "dom/abort/event.any.js": true,
   "dom/abort/reason-constructor.html": {
     "ignore": true
   },

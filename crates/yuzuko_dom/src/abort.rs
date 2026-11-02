@@ -9,7 +9,7 @@ use yuzuko_core::op::{
 };
 use yuzuko_macros::op;
 
-use crate::event::Event;
+use crate::event::{Event, define_is_trusted};
 use crate::target::{self, EventTarget};
 use crate::util::key;
 
@@ -641,9 +641,11 @@ fn dispatch_abort(scope: &mut v8::PinScope, signal: v8::Local<v8::Object>) {
   let event = unsafe {
     yuzuko_core::op::wrap_instance(
       scope,
-      Event::new("abort", false, false, false, false),
+      Event::new("abort", false, false, false, true),
     )
   };
+  // Host-created events skip the constructor, so install `isTrusted` here.
+  define_is_trusted(scope, event);
   let _ = target::dispatch(scope, signal, event);
 }
 
