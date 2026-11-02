@@ -251,12 +251,19 @@ impl Window {
           tracker.last_y = pointer.y;
           sum_x += movement.0;
           sum_y += movement.1;
+          let pressure = pressure_of(pointer, tracker.buttons);
+          steps.push(Step::Pointer(raw_update_event(
+            pointer,
+            tracker.buttons,
+            pressure,
+            movement,
+          )));
           let mut child = pointer_event(
             "pointermove",
             pointer,
             -1,
             tracker.buttons,
-            pressure_of(pointer, tracker.buttons),
+            pressure,
             movement,
             0,
           );
@@ -585,6 +592,38 @@ fn click_detail(tracker: &mut Tracker, pointer: &RawPointer) -> i32 {
   tracker.last_click_y = pointer.y;
   tracker.last_click_button = pointer.button;
   tracker.click_count as i32
+}
+
+fn raw_update_event(
+  pointer: &RawPointer,
+  buttons: u16,
+  pressure: f64,
+  movement: (f64, f64),
+) -> FiredPointer {
+  let mut event = pointer_event(
+    "pointerrawupdate",
+    pointer,
+    -1,
+    buttons,
+    pressure,
+    movement,
+    0,
+  );
+  event.cancelable = false;
+  let mut child = pointer_event(
+    "pointerrawupdate",
+    pointer,
+    -1,
+    buttons,
+    pressure,
+    movement,
+    0,
+  );
+  child.bubbles = false;
+  child.cancelable = false;
+  child.composed = false;
+  event.coalesced = vec![child];
+  event
 }
 
 fn pointer_event(

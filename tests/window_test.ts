@@ -122,6 +122,8 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
     ]);
     assert(rightEvents.length === 0, "right stayed quiet");
     assert(describe(leftEvents) === [
+      "pointerrawupdate:1:mouse:4,6:-1:0,0:0",
+      "pointerrawupdate:1:mouse:8,9:-1:4,3:0",
       "pointermove:1:mouse:8,9:-1:4,3:0",
       "mousemove:1:mouse:8,9:0:4,3:0",
       "pointerdown:1:mouse:8,9:0:0,0:0.5",
@@ -145,15 +147,21 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
       "compositionend:か",
       "beforeinput:insertText:か:false",
     ].join("\n"), describe(leftEvents));
-    const move = leftEvents[0];
+    const move = leftEvents[2];
+    assert(move.type === "pointermove", "coalesced host");
     assert(move.clientX === 8 && move.clientY === 9, "client origin");
     assert(move.offsetX === 8 && move.offsetY === 9, "offset origin");
     assert(move.pageX === 8 && move.pageY === 9, "page origin");
     assert(move.getCoalescedEvents().length === 2, "coalesced");
     assert(move.getCoalescedEvents()[1].clientX === 8, "last coalesced");
     assert(move.getCoalescedEvents()[1].clientY === 9, "last coalesced y");
-    assert(leftEvents[6].detail === 1, "click detail");
-    assert(leftEvents[12].detail === 2, "dblclick detail");
+    assert(leftEvents[0].getCoalescedEvents().length === 1, "raw coalesced");
+    assert(
+      leftEvents[0].getCoalescedEvents()[0].type === "pointerrawupdate",
+      "raw coalesced type",
+    );
+    assert(leftEvents[8].detail === 1, "click detail");
+    assert(leftEvents[14].detail === 2, "dblclick detail");
 
     left.close();
     let closed = false;
@@ -175,10 +183,113 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
       "auxclick:1:mouse:3,4:2:0,0:0",
       "contextmenu:1:mouse:3,4:2:0,0:0",
     ].join("\n"), describe(rightEvents));
-    assert(leftEvents.length === 22, "left did not grow");
+    assert(leftEvents.length === 24, "left did not grow");
   } finally {
     left.close();
     right.close();
+  }
+});
+
+Yuzuko.test("pointerrawupdate fires for each move, including while locked", async () => {
+  const window = new Yuzuko.Window({ width: 80, height: 60 });
+  const order = [];
+  const raw = [];
+  const moves = [];
+  window.addEventListener("pointerrawupdate", (event) => {
+    order.push("capture");
+    assert(event.eventPhase === Event.CAPTURING_PHASE, "capture phase");
+    assert(event.target === window.surface, "capture target");
+    assert(event.bubbles === true, "bubbles");
+    assert(event.cancelable === false, "cancelable");
+    assert(event.composed === true, "composed");
+  }, true);
+  window.surface.addEventListener("pointerrawupdate", (event) => {
+    order.push("surface");
+    raw.push(event);
+    assert(event.eventPhase === Event.AT_TARGET, "target phase");
+    assert(event.currentTarget === window.surface, "surface current");
+  });
+  window.addEventListener("pointerrawupdate", () => {
+    order.push("bubble");
+  });
+  window.addEventListener("pointermove", (event) => {
+    moves.push(event);
+  });
+  try {
+    Yuzuko.__test.inject(window, [
+      {
+        kind: "pointer",
+        type: "pointermove",
+        x: 4,
+        y: 6,
+        pointerId: 3,
+        pointerType: "mouse",
+      },
+      {
+        kind: "pointer",
+        type: "pointermove",
+        x: 11,
+        y: 8,
+        pointerId: 3,
+      },
+    ]);
+    assert(
+      order.join(",") === "capture,surface,bubble,capture,surface,bubble",
+      order.join(","),
+    );
+    assert(raw.length === 2, "two raw updates");
+    assert(raw[0].clientX === 4 && raw[0].clientY === 6, "first point");
+    assert(raw[0].movementX === 0 && raw[0].movementY === 0, "first movement");
+    assert(raw[0].pointerId === 3, "pointer id");
+    const first = raw[0].getCoalescedEvents();
+    assert(first.length === 1, "one coalesced raw");
+    assert(first[0].type === "pointerrawupdate", "coalesced type");
+    assert(first[0].isTrusted === true, "coalesced trusted");
+    assert(first[0].bubbles === false, "coalesced bubbles");
+    assert(first[0].cancelable === false, "coalesced cancelable");
+    assert(first[0].composed === false, "coalesced composed");
+    assert(first[0].clientX === 4 && first[0].clientY === 6, "coalesced point");
+    assert(first[0].pointerId === 3, "coalesced id");
+    assert(raw[1].clientX === 11 && raw[1].clientY === 8, "second point");
+    assert(raw[1].movementX === 7 && raw[1].movementY === 2, "second movement");
+    assert(moves.length === 1, "one coalesced move");
+    assert(moves[0].movementX === 7 && moves[0].movementY === 2, "summed movement");
+    assert(moves[0].getCoalescedEvents().length === 2, "move coalesced");
+    assert(moves[0].getCoalescedEvents()[0].clientX === 4, "move matches first raw");
+    assert(moves[0].getCoalescedEvents()[0].type === "pointermove", "move child type");
+
+    await window.requestPointerLock();
+    order.length = 0;
+    raw.length = 0;
+    moves.length = 0;
+    Yuzuko.__test.inject(window, [
+      {
+        kind: "pointer",
+        type: "pointermove",
+        x: 11,
+        y: 8,
+        pointerId: 3,
+        movementX: 2,
+        movementY: -5,
+      },
+    ]);
+    assert(order.join(",") === "capture,surface,bubble", order.join(","));
+    assert(raw.length === 1, "locked raw");
+    assert(raw[0].target === window.surface, "locked target");
+    assert(raw[0].movementX === 2 && raw[0].movementY === -5, "locked movement");
+    assert(raw[0].clientX === 11 && raw[0].clientY === 8, "locked position");
+    const lockedChild = raw[0].getCoalescedEvents();
+    assert(lockedChild.length === 1, "locked coalesced");
+    assert(lockedChild[0].type === "pointerrawupdate", "locked coalesced type");
+    assert(
+      lockedChild[0].movementX === 2 && lockedChild[0].movementY === -5,
+      "locked child movement",
+    );
+    assert(moves.length === 1, "locked move");
+    assert(moves[0].movementX === 2 && moves[0].movementY === -5, "locked move movement");
+  } finally {
+    await window.exitPointerLock();
+    window.close();
   }
 });
 
@@ -807,6 +918,7 @@ function nextFrames(window, count) {
 
 function record(window, into) {
   const types = [
+    "pointerrawupdate",
     "pointermove",
     "pointerdown",
     "pointerup",

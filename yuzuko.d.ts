@@ -558,6 +558,7 @@ declare namespace Yuzuko {
     pointerdown: PointerEvent;
     pointerup: PointerEvent;
     pointermove: PointerEvent;
+    pointerrawupdate: PointerEvent;
     pointercancel: PointerEvent;
     pointerover: PointerEvent;
     pointerout: PointerEvent;
@@ -1049,6 +1050,7 @@ declare namespace Yuzuko {
     pointerdown: PointerEvent;
     pointerup: PointerEvent;
     pointermove: PointerEvent;
+    pointerrawupdate: PointerEvent;
     pointercancel: PointerEvent;
     pointerover: PointerEvent;
     pointerout: PointerEvent;
@@ -3888,10 +3890,11 @@ interface PointerEventInit extends MouseEventInit {
  * A pointer event.
  *
  * The host target is {@link Yuzuko.Window.surface}. The path is the surface,
- * then the window. `pointerId` is per window. `pointerrawupdate` is not
- * implemented. Missing OS values are 0. A mouse uses `pressure` 0.5 while a
- * button is down and 0 otherwise. `movementX` and `movementY` are relative
- * while the pointer is locked.
+ * then the window. `pointerId` is per window. `pointerrawupdate` is dispatched
+ * for each pointer move, including while the pointer is locked, before
+ * `pointermove`. It bubbles and is not cancelable. Missing OS values are 0.
+ * A mouse uses `pressure` 0.5 while a button is down and 0 otherwise.
+ * `movementX` and `movementY` are relative while the pointer is locked.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PointerEvent)
  */
@@ -3937,7 +3940,8 @@ interface PointerEvent extends MouseEvent {
   readonly persistentDeviceId: number;
 
   /**
-   * Moves coalesced into this `pointermove`. Other types return an empty list.
+   * Moves coalesced into this `pointermove`, or the single move carried by
+   * this `pointerrawupdate`. Other types return an empty list.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PointerEvent/getCoalescedEvents)
    */

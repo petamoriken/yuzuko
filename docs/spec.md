@@ -48,7 +48,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 | `fetch` | `fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, `EventSource`, and the HTTP client, including HTTP/3 | |
 | `fs` | The `Yuzuko` file system | |
 | `socket` | `WebSocket`, `WebSocketStream`, `WebTransport` | |
-| `window` | `Yuzuko.Window`, pointer, key, and the other input events, the application menu, tray, dock, clipboard, and gamepad. `OffscreenCanvas` is installed here | |
+| `window` | `Yuzuko.Window`, pointer events including `pointerrawupdate`, key, and the other input events, the application menu, tray, dock, clipboard, and gamepad. `OffscreenCanvas` is installed here | |
 | `image` | `createImageBitmap`, `ImageBitmap`, `ImageData` | `window` |
 | `canvas` | Canvas 2D, `bitmaprenderer`, `Path2D`, `DOMMatrix`, `FontFace`, `Yuzuko.fonts`, `Yuzuko.canvasRenderer` | `image` |
 | `webgpu` | `navigator.gpu` and the WebGPU surface | `image` |
@@ -230,12 +230,12 @@ A `PointerEvent` carries:
 - `pressure`, `tangentialPressure`, `tiltX`, `tiltY`, `twist`, `width`, and `height`. Missing OS values are 0. A mouse uses `pressure` 0.5 while a button is down and 0 otherwise
 - `movementX` / `movementY`, which are relative while the pointer is locked
 - `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, and `timeStamp`
-- `getCoalescedEvents()` on `pointermove`, returning the moves coalesced into that frame
+- `getCoalescedEvents()` on `pointermove` and `pointerrawupdate`. A `pointermove` returns the moves coalesced into that frame. A `pointerrawupdate` returns one event, and that event's type is `pointerrawupdate`
 - `setPointerCapture`, `releasePointerCapture`, and `hasPointerCapture` on that surface
 
-`pointerrawupdate` is not implemented.
+`pointerrawupdate` is a `PointerEvent` for each pointer move the operating system reports, including while the pointer is locked. It is dispatched on that surface before the `pointermove` for the same samples. It bubbles and is not cancelable. Its `movementX` and `movementY` are that sample's movement. Several moves that one turn coalesces into a single `pointermove` each dispatch their own `pointerrawupdate`. An unlocked move comes from winit `WindowEvent::CursorMoved`. While the pointer is locked, a move comes from winit `DeviceEvent::MouseMotion` and `CursorMoved` is not turned into a pointer event.
 
-Pointer lock is `surface.requestPointerLock()` and returns a promise. Success dispatches `pointerlockchange` on that surface. Failure dispatches `pointerlockerror` on that surface. The implementation is winit cursor grab plus hiding the cursor. Lock is per window.
+Pointer lock is `surface.requestPointerLock()` and returns a promise. Success dispatches `pointerlockchange` on that surface. Failure dispatches `pointerlockerror` on that surface. The implementation is winit cursor grab plus hiding the cursor. Lock is per window. `movementX` and `movementY` on the locked move are that motion's delta.
 
 Fullscreen is `surface.requestFullscreen()`. Leaving it is `surface.exitFullscreen()`.
 
