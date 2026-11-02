@@ -1,9 +1,12 @@
-//! `XMLHttpRequest` for header normalization tests.
+//! `XMLHttpRequest` for header normalization and response text.
 //!
-//! `open`, `setRequestHeader`, `send`, and `getResponseHeader` follow the
-//! XHR specification. Forbidden headers stay allowed under the fetch posture.
-//! `setRequestHeader` throws `SyntaxError` for a value that is not a header
-//! value after HTTP whitespace is removed.
+//! `open`, `setRequestHeader`, `send`, `overrideMimeType`, and
+//! `getResponseHeader` follow the XHR specification. Forbidden headers stay
+//! allowed under the fetch posture. `setRequestHeader` throws `SyntaxError`
+//! for a value that is not a header value after HTTP whitespace is removed.
+//! `responseText` uses the legacy decode hook: the `Content-Type` charset,
+//! replaced by `overrideMimeType` when that MIME type has a charset, then a
+//! BOM sniff. An XML charset prescan is not done.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -37,6 +40,8 @@ pub struct XMLHttpRequest {
   headers: RefCell<Vec<(String, String)>>,
   response_headers: RefCell<Vec<(String, String)>>,
   response_body: RefCell<Vec<u8>>,
+  /// Parsed override MIME type. `open` does not clear it.
+  override_mime: RefCell<Option<crate::text::mime::Mime>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for XMLHttpRequest {
@@ -61,7 +66,17 @@ impl XMLHttpRequest {
       headers: RefCell::new(Vec::new()),
       response_headers: RefCell::new(Vec::new()),
       response_body: RefCell::new(Vec::new()),
+      override_mime: RefCell::new(None),
     }
+  }
+
+  #[rename("overrideMimeType")]
+  fn override_mime_type(&self, mime: String) -> Result<(), OpError> {
+    if self.state.get() == DONE {
+      return Err(OpError::dom("InvalidStateError", "The request is done"));
+    }
+    *self.override_mime.borrow_mut() = Some(parsed_override(&mime));
+    Ok(())
   }
 
   fn open(&self, method: String, url: String) -> Result<(), OpError> {
@@ -110,32 +125,36 @@ impl XMLHttpRequest {
     }
     self.sent.set(true);
     let url = resolve_fetch_url(&self.url.borrow())?;
-    let method = self.method.borrow().clone();
-    let headers = self.headers.borrow().clone();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let outcome = crate::http::perform(
-      method,
-      url.to_string(),
-      headers,
-      Vec::new(),
-      "follow".to_string(),
-      cancel,
-    );
-    let event = match outcome {
-      Ok(response) => {
-        *self.response_body.borrow_mut() = collect_body(&response.body);
-        *self.response_headers.borrow_mut() = response.headers;
-        self.status_code.set(response.status);
-        *self.status_text.borrow_mut() = response.status_text;
-        self.state.set(DONE);
-        "onload"
-      }
-      Err(HttpFailure::Abort | HttpFailure::Network(_)) => {
-        self.state.set(DONE);
-        "onerror"
-      }
-      Err(HttpFailure::Type(message)) => {
-        return Err(OpError::type_(message));
+    let event = if url.scheme() == "data" {
+      finish_data(self, &url)
+    } else {
+      let method = self.method.borrow().clone();
+      let headers = self.headers.borrow().clone();
+      let cancel = Arc::new(AtomicBool::new(false));
+      let outcome = crate::http::perform(
+        method,
+        url.to_string(),
+        headers,
+        Vec::new(),
+        "follow".to_string(),
+        cancel,
+      );
+      match outcome {
+        Ok(response) => {
+          *self.response_body.borrow_mut() = collect_body(&response.body);
+          *self.response_headers.borrow_mut() = response.headers;
+          self.status_code.set(response.status);
+          *self.status_text.borrow_mut() = response.status_text;
+          self.state.set(DONE);
+          "onload"
+        }
+        Err(HttpFailure::Abort | HttpFailure::Network(_)) => {
+          self.state.set(DONE);
+          "onerror"
+        }
+        Err(HttpFailure::Type(message)) => {
+          return Err(OpError::type_(message));
+        }
       }
     };
     // `load` is a task. Callers assign `onload` after `send()` returns.
@@ -193,7 +212,11 @@ impl XMLHttpRequest {
     if self.state.get() != DONE {
       return String::new();
     }
-    crate::blob::decode_utf8(&self.response_body.borrow())
+    decode_xhr_text(
+      &self.response_body.borrow(),
+      &self.response_headers.borrow(),
+      self.override_mime.borrow().as_ref(),
+    )
   }
 
   #[rename("getAllResponseHeaders")]
@@ -220,6 +243,68 @@ impl XMLHttpRequest {
       out.push_str("\r\n");
     }
     out
+  }
+}
+
+fn parsed_override(mime: &str) -> crate::text::mime::Mime {
+  crate::text::mime::parse(mime).unwrap_or_else(|| {
+    crate::text::mime::parse("application/octet-stream").expect("octet-stream")
+  })
+}
+
+fn response_mime(headers: &[(String, String)]) -> crate::text::mime::Mime {
+  let xml = || crate::text::mime::parse("text/xml").expect("text/xml");
+  let present = headers.iter().any(|(name, _)| name == "content-type");
+  if !present {
+    return xml();
+  }
+  crate::text::mime::parse(&header_list_value(headers, "content-type"))
+    .unwrap_or_else(xml)
+}
+
+/// Legacy Encoding Standard decode used by `responseText`.
+///
+/// `Encoding::for_label` keeps the replacement encoding. `Encoding::decode`
+/// sniffs a leading BOM and then decodes with replacement.
+fn decode_xhr_text(
+  bytes: &[u8],
+  headers: &[(String, String)],
+  override_mime: Option<&crate::text::mime::Mime>,
+) -> String {
+  let mut label = response_mime(headers)
+    .parameter("charset")
+    .map(str::to_owned);
+  if let Some(mime) = override_mime
+    && let Some(charset) = mime.parameter("charset")
+  {
+    label = Some(charset.to_owned());
+  }
+  let encoding = label
+    .as_deref()
+    .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
+    .unwrap_or(encoding_rs::UTF_8);
+  encoding.decode(bytes).0.into_owned()
+}
+
+fn finish_data(xhr: &XMLHttpRequest, url: &url::Url) -> &'static str {
+  match crate::text::mime::data_url(url) {
+    Some((bytes, mime)) => {
+      *xhr.response_body.borrow_mut() = bytes;
+      *xhr.response_headers.borrow_mut() =
+        vec![("content-type".to_string(), mime)];
+      xhr.status_code.set(200);
+      *xhr.status_text.borrow_mut() = "OK".to_string();
+      xhr.state.set(DONE);
+      "onload"
+    }
+    None => {
+      xhr.response_body.borrow_mut().clear();
+      xhr.response_headers.borrow_mut().clear();
+      xhr.status_code.set(0);
+      xhr.status_text.borrow_mut().clear();
+      xhr.state.set(DONE);
+      "onerror"
+    }
   }
 }
 
@@ -258,4 +343,65 @@ fn call_handler(
     return;
   };
   let _ = function.call(scope, object.into(), &[]);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::decode_xhr_text;
+  use crate::text::mime::parse;
+
+  fn headers(value: &str) -> Vec<(String, String)> {
+    vec![("content-type".to_string(), value.to_string())]
+  }
+
+  #[test]
+  fn replacement_override_decodes_to_one_character() {
+    let mime = parse("text/plain; charset=\"iso-2022-kr\"").unwrap();
+    let text = decode_xhr_text(&[0x41, 0x42, 0xA0], &[], Some(&mime));
+    assert_eq!(text, "\u{FFFD}");
+    assert_eq!(decode_xhr_text(&[], &[], Some(&mime)), "");
+  }
+
+  #[test]
+  fn unknown_label_is_utf8_and_a_bom_switches_encoding() {
+    let utf7 = parse("text/plain; charset=\"utf-7\"").unwrap();
+    assert_eq!(decode_xhr_text(b"+AD4", &[], Some(&utf7)), "+AD4");
+    let utf32 = parse("text/plain; charset=UTF-32").unwrap();
+    let bom = [
+      0xFF, 0xFE, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00,
+    ];
+    assert_eq!(
+      decode_xhr_text(&bom, &[], Some(&utf32)),
+      "\u{0000}\u{0041}\u{0000}\u{0042}\u{0000}"
+    );
+    let no_bom = [0x41, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0xC2, 0x80];
+    assert_eq!(
+      decode_xhr_text(&no_bom, &[], Some(&utf32)),
+      "\u{0041}\u{0000}\u{0000}\u{0000}\u{0042}\u{0000}\u{0000}\u{0080}"
+    );
+  }
+
+  #[test]
+  fn override_charset_replaces_the_content_type() {
+    let over = parse("text/plain; charset=windows-1252").unwrap();
+    let text = decode_xhr_text(
+      &[0x80],
+      &headers("text/plain;charset=ibm866"),
+      Some(&over),
+    );
+    assert_eq!(text, "\u{20AC}");
+    let ibm =
+      decode_xhr_text(&[0x80], &headers("text/plain;charset=ibm866"), None);
+    assert_ne!(ibm, "\u{20AC}");
+  }
+
+  #[test]
+  fn data_url_body_uses_the_override_charset() {
+    let url = url::Url::parse("data:text/plain,%41%42%43%A0").unwrap();
+    let (bytes, mime) = crate::text::mime::data_url(&url).unwrap();
+    assert_eq!(mime, "text/plain");
+    let over = parse("text/plain; charset=replacement").unwrap();
+    let text = decode_xhr_text(&bytes, &headers(&mime), Some(&over));
+    assert_eq!(text, "\u{FFFD}");
+  }
 }

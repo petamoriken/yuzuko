@@ -11,6 +11,17 @@ pub(crate) struct Mime {
   parameters: Vec<(String, String)>,
 }
 
+impl Mime {
+  /// The first parameter value for `name`, already ASCII-lowercased.
+  pub(crate) fn parameter(&self, name: &str) -> Option<&str> {
+    self
+      .parameters
+      .iter()
+      .find(|(key, _)| key == name)
+      .map(|(_, value)| value.as_str())
+  }
+}
+
 /// Parse `input`, or `None` when the type or subtype is not a token.
 pub(crate) fn parse(input: &str) -> Option<Mime> {
   let chars: Vec<char> = input.chars().collect();

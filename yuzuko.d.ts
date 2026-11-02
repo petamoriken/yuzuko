@@ -4793,12 +4793,12 @@ declare var CacheStorage: {
 declare var caches: CacheStorage;
 
 /**
- * A small request helper used to normalize headers.
+ * A request helper.
  *
- * `responseType`, upload progress, and the event attributes other than the
- * `load` and `error` tasks fired by `send` are absent. The call is synchronous
- * until the response headers and body are collected, then `onload` or
- * `onerror` runs as a task.
+ * `send` loads `http:`, `https:`, and `data:`, collects the response, then
+ * queues `onload` or `onerror`. `responseText` uses the `Content-Type`
+ * charset, unless `overrideMimeType` set one. `responseType`, upload
+ * progress, and event handlers other than `onload` and `onerror` are absent.
  */
 interface XMLHttpRequest {
 
@@ -4838,8 +4838,21 @@ interface XMLHttpRequest {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/statusText) */
   readonly statusText: string;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/responseText) */
+  /**
+   * The decoded response, or `""` before the request is done.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/responseText)
+   */
   readonly responseText: string;
+
+  /**
+   * Replaces the charset used by `responseText`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the response is done.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/overrideMimeType)
+   */
+  overrideMimeType(mime: string): void;
 
   onload: ((this: XMLHttpRequest, ev: Event) => any) | null;
   onerror: ((this: XMLHttpRequest, ev: Event) => any) | null;

@@ -650,6 +650,8 @@ fn network_base(key: &str) -> Option<&'static str> {
     || key.starts_with("webcodecs/")
     || key.starts_with("jpegxl/")
     || (key.starts_with("WebCryptoAPI/") && !key.contains(".https."))
+    // The XMLHttpRequest variant fetches resources/single-byte-raw.py.
+    || key == "encoding/single-byte-decoder.any.js"
   {
     Some(WPT_HTTP)
   } else {
