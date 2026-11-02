@@ -532,3 +532,345 @@ Yuzuko.test("sinkId names an output device", async () => {
     "NotFoundError",
   );
 });
+
+function constant(context: BaseAudioContext, offset: number): ConstantSourceNode {
+  return new ConstantSourceNode(context, { offset });
+}
+
+Yuzuko.test("delay of zero is identity and ten samples land the impulse", async () => {
+  const identity = new OfflineAudioContext(1, 128, 48000);
+  const impulse = identity.createBuffer(1, 128, 48000);
+  impulse.getChannelData(0)[0] = 1;
+  const source = identity.createBufferSource();
+  source.buffer = impulse;
+  const delay = new DelayNode(identity, { delayTime: 0, maxDelayTime: 1 });
+  source.connect(delay).connect(identity.destination);
+  source.start();
+  const same = await identity.startRendering();
+  assertClose(same.getChannelData(0)[0], 1, "delay zero");
+  assertClose(same.getChannelData(0)[1], 0, "delay zero tail");
+
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const shifted = context.createBuffer(1, 128, 48000);
+  shifted.getChannelData(0)[0] = 1;
+  const shiftedSource = context.createBufferSource();
+  shiftedSource.buffer = shifted;
+  const ten = context.createDelay(1);
+  ten.delayTime.value = 10 / 48000;
+  shiftedSource.connect(ten).connect(context.destination);
+  shiftedSource.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[9], 0, "sample before the delay");
+  assertClose(channel[10], 1, "sample 10");
+  await assertThrows(
+    () => new DelayNode(context, { maxDelayTime: 0 }),
+    "NotSupportedError",
+  );
+  await assertThrows(() => context.createDelay(180), "NotSupportedError");
+});
+
+Yuzuko.test("stereo pan places a mono source", async () => {
+  async function pan(value: number): Promise<Float32Array[]> {
+    const context = new OfflineAudioContext(2, 128, 48000);
+    const source = constant(context, 1);
+    const panner = new StereoPannerNode(context, { pan: value });
+    source.connect(panner).connect(context.destination);
+    source.start();
+    const rendered = await context.startRendering();
+    return [rendered.getChannelData(0), rendered.getChannelData(1)];
+  }
+  const hardLeft = await pan(-1);
+  assertClose(hardLeft[0][0], 1, "hard left");
+  assertClose(hardLeft[1][0], 0, "hard left right");
+  const center = await pan(0);
+  const gain = Math.SQRT1_2;
+  assertClose(center[0][64], gain, "center left");
+  assertClose(center[1][64], gain, "center right");
+});
+
+Yuzuko.test("splitter and merger route and downmix channels", async () => {
+  const context = new OfflineAudioContext(2, 128, 48000);
+  const buffer = context.createBuffer(2, 128, 48000);
+  buffer.getChannelData(0).fill(0.25);
+  buffer.getChannelData(1).fill(0.75);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const splitter = new ChannelSplitterNode(context, { numberOfOutputs: 2 });
+  const merger = new ChannelMergerNode(context, { numberOfInputs: 2 });
+  source.connect(splitter);
+  splitter.connect(merger, 0, 0);
+  splitter.connect(merger, 1, 1);
+  merger.connect(context.destination);
+  source.start();
+  const routed = await context.startRendering();
+  assertClose(routed.getChannelData(0)[0], 0.25, "splitter left");
+  assertClose(routed.getChannelData(1)[0], 0.75, "splitter right");
+
+  const down = new OfflineAudioContext(1, 128, 48000);
+  const stereo = down.createBuffer(2, 128, 48000);
+  stereo.getChannelData(0).fill(0.25);
+  stereo.getChannelData(1).fill(0.75);
+  const downSource = down.createBufferSource();
+  downSource.buffer = stereo;
+  const one = new ChannelMergerNode(down, { numberOfInputs: 1 });
+  downSource.connect(one).connect(down.destination);
+  downSource.start();
+  const mixed = await down.startRendering();
+  assertClose(mixed.getChannelData(0)[0], 0.5, "merger average");
+
+  const locked = new OfflineAudioContext(1, 8, 48000);
+  await assertThrows(() => {
+    new ChannelMergerNode(locked).channelCount = 2;
+  }, "InvalidStateError");
+  await assertThrows(
+    () => new ChannelSplitterNode(locked, { numberOfOutputs: 0 }),
+    "IndexSizeError",
+  );
+  await assertThrows(
+    () => new ChannelSplitterNode(locked, { numberOfOutputs: 33 }),
+    "IndexSizeError",
+  );
+});
+
+Yuzuko.test("waveshaper maps the curve", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const buffer = context.createBuffer(1, 128, 48000);
+  const samples = buffer.getChannelData(0);
+  samples[0] = -1;
+  samples[1] = 0;
+  samples[2] = 1;
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const shaper = new WaveShaperNode(context, { curve: new Float32Array([0, 1]) });
+  source.connect(shaper).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[0], 0, "curve start");
+  assertClose(channel[1], 0.5, "curve middle");
+  assertClose(channel[2], 1, "curve end");
+  await assertThrows(() => {
+    shaper.curve = new Float32Array([1]);
+  }, "InvalidStateError");
+});
+
+Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
+  async function filtered(type: BiquadFilterType): Promise<number> {
+    const context = new OfflineAudioContext(1, 128, 48000);
+    const source = constant(context, 0.5);
+    const filter = new BiquadFilterNode(context, { type, frequency: 0 });
+    source.connect(filter).connect(context.destination);
+    source.start();
+    const rendered = await context.startRendering();
+    return rendered.getChannelData(0)[64];
+  }
+  assertClose(await filtered("lowpass"), 0.5, "lowpass dc");
+  assertClose(await filtered("highpass"), 0, "highpass dc");
+
+  const context = new OfflineAudioContext(1, 8, 48000);
+  const filter = context.createBiquadFilter();
+  const frequency = new Float32Array([0, 24000]);
+  const magnitude = new Float32Array(2);
+  const phase = new Float32Array(2);
+  filter.getFrequencyResponse(frequency, magnitude, phase);
+  assertClose(magnitude[0], 1, "response at 0 Hz");
+  assert(Math.abs(magnitude[1]) < 1e-3, `nyquist ${magnitude[1]}`);
+});
+
+Yuzuko.test("IIR halves a constant and rejects coefficients", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const source = constant(context, 1);
+  const filter = new IIRFilterNode(context, {
+    feedforward: [0.5],
+    feedback: [1],
+  });
+  source.connect(filter).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  assertClose(rendered.getChannelData(0)[0], 0.5, "iir half");
+  assertClose(rendered.getChannelData(0)[32], 0.5, "iir holds");
+  await assertThrows(
+    () => new IIRFilterNode(context, { feedforward: [], feedback: [1] }),
+    "NotSupportedError",
+  );
+  await assertThrows(
+    () =>
+      context.createIIRFilter(new Array(21).fill(1), [1]),
+    "NotSupportedError",
+  );
+  await assertThrows(
+    () => new IIRFilterNode(context, { feedforward: [0], feedback: [1] }),
+    "InvalidStateError",
+  );
+  await assertThrows(
+    () => new IIRFilterNode(context, { feedforward: [1], feedback: [0] }),
+    "InvalidStateError",
+  );
+});
+
+Yuzuko.test("the compressor identity, hard knee, and automatic makeup", async () => {
+  const identity = new OfflineAudioContext(1, 128, 48000);
+  const quiet = constant(identity, 0.5);
+  const flat = new DynamicsCompressorNode(identity, {
+    threshold: 0,
+    knee: 0,
+    ratio: 1,
+    makeupGain: 0,
+  });
+  quiet.connect(flat).connect(identity.destination);
+  quiet.start();
+  const plain = await identity.startRendering();
+  assertClose(plain.getChannelData(0)[64], 0.5, "ratio one");
+
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const source = constant(context, 1);
+  const compressor = new DynamicsCompressorNode(context, {
+    threshold: -24,
+    knee: 0,
+    ratio: 20,
+    attack: 0,
+    release: 0,
+    makeupGain: 0,
+  });
+  source.connect(compressor).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  const threshold = 10 ** (-24 / 20);
+  const expected = threshold + (1 - threshold) / 20;
+  assertClose(channel[0], expected, "hard knee start");
+  assertClose(channel[127], expected, "hard knee end");
+
+  const automatic = new DynamicsCompressorNode(context);
+  assert(automatic.threshold.automationRate === "k-rate", "k-rate");
+  await assertThrows(() => {
+    automatic.makeupGain.value = 1;
+  }, "InvalidStateError");
+  await assertThrows(
+    () => automatic.makeupGain.setValueAtTime(1, 0),
+    "InvalidStateError",
+  );
+  await assertThrows(() => {
+    automatic.threshold.automationRate = "a-rate";
+  }, "InvalidStateError");
+});
+
+Yuzuko.test("convolution reproduces a short impulse response", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const impulseResponse = context.createBuffer(1, 3, 48000);
+  const kernel = impulseResponse.getChannelData(0);
+  kernel[0] = 1;
+  kernel[1] = 0;
+  kernel[2] = 0.5;
+  const convolver = new ConvolverNode(context, {
+    buffer: impulseResponse,
+    disableNormalization: true,
+  });
+  assert(convolver.buffer === impulseResponse, "buffer identity");
+  const impulse = context.createBuffer(1, 128, 48000);
+  impulse.getChannelData(0)[0] = 1;
+  const source = context.createBufferSource();
+  source.buffer = impulse;
+  source.connect(convolver).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[0], 1, "impulse");
+  assertClose(channel[1], 0, "gap");
+  assertClose(channel[2], 0.5, "tail");
+  const wide = context.createBuffer(3, 4, 48000);
+  await assertThrows(() => {
+    convolver.buffer = wide;
+  }, "NotSupportedError");
+  assert(convolver.buffer === impulseResponse, "rejected buffer stays");
+});
+
+Yuzuko.test("an analyser reads a side chain", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const source = constant(context, 0.5);
+  const analyser = new AnalyserNode(context);
+  source.connect(context.destination);
+  source.connect(analyser);
+  source.start();
+  await context.startRendering();
+  assert(analyser.frequencyBinCount === 1024, "bins");
+  const time = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(time);
+  assertClose(time[0], 0, "unfilled prefix");
+  assertClose(time[analyser.fftSize - 1], 0.5, "newest sample");
+  assertClose(time[analyser.fftSize - 128], 0.5, "quantum start");
+  const bytes = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(bytes);
+  assert(bytes[0] === 128, `silence byte ${bytes[0]}`);
+  await assertThrows(() => {
+    analyser.fftSize = 30;
+  }, "IndexSizeError");
+  await assertThrows(() => {
+    analyser.minDecibels = analyser.maxDecibels;
+  }, "IndexSizeError");
+  await assertThrows(() => {
+    analyser.smoothingTimeConstant = 1.5;
+  }, "IndexSizeError");
+});
+
+Yuzuko.test("equalpower panning follows the listener", async () => {
+  async function render(
+    place: (panner: PannerNode, listener: AudioListener) => void,
+  ): Promise<Float32Array[]> {
+    const context = new OfflineAudioContext(2, 128, 48000);
+    const source = constant(context, 1);
+    const panner = new PannerNode(context);
+    place(panner, context.listener);
+    source.connect(panner).connect(context.destination);
+    source.start();
+    const rendered = await context.startRendering();
+    return [rendered.getChannelData(0), rendered.getChannelData(1)];
+  }
+  const right = await render((panner) => {
+    panner.positionX.value = 1;
+  });
+  assertClose(right[0][64], 0, "right left");
+  assertClose(right[1][64], 1, "right right");
+  const center = await render((panner, listener) => {
+    panner.positionX.value = 1;
+    listener.setPosition(1, 0, 0);
+  });
+  const gain = Math.SQRT1_2;
+  assertClose(center[0][32], gain, "same point left");
+  assertClose(center[1][32], gain, "same point right");
+  const left = await render((_panner, listener) => {
+    listener.setPosition(1, 0, 0);
+  });
+  assertClose(left[0][32], 1, "listener left");
+  assertClose(left[1][32], 0, "listener right");
+
+  const context = new OfflineAudioContext(1, 8, 48000);
+  assert(context.listener === context.listener, "listener identity");
+  assertClose(context.listener.forwardZ.value, -1, "forward");
+  assertName(() => new AudioListener(), "TypeError");
+  await assertThrows(
+    () => new PannerNode(context, { panningModel: "HRTF" }),
+    "NotSupportedError",
+  );
+  const panner = new PannerNode(context);
+  await assertThrows(() => {
+    panner.panningModel = "HRTF";
+  }, "NotSupportedError");
+  assertName(() => {
+    panner.panningModel = "room";
+  }, "TypeError");
+  assertName(() => {
+    panner.refDistance = -1;
+  }, "RangeError");
+  for (const node of [
+    panner,
+    new StereoPannerNode(context),
+    new ConvolverNode(context),
+    new DynamicsCompressorNode(context),
+  ]) {
+    await assertThrows(() => {
+      node.channelCount = 3;
+    }, "NotSupportedError");
+  }
+});

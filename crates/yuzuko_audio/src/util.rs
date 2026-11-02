@@ -90,6 +90,53 @@ pub fn f32_to_bytes(samples: &[f32]) -> Vec<u8> {
   bytes
 }
 
+pub fn write_f32_view(
+  scope: &mut v8::PinScope,
+  view: v8::Local<v8::Float32Array>,
+  samples: &[f32],
+) {
+  let count = samples.len().min(view.length());
+  write_bytes(
+    scope,
+    view.into(),
+    view.byte_offset(),
+    &f32_to_bytes(&samples[..count]),
+  );
+}
+
+pub fn write_u8_view(
+  scope: &mut v8::PinScope,
+  view: v8::Local<v8::Uint8Array>,
+  samples: &[u8],
+) {
+  let count = samples.len().min(view.length());
+  write_bytes(scope, view.into(), view.byte_offset(), &samples[..count]);
+}
+
+fn write_bytes(
+  scope: &mut v8::PinScope,
+  view: v8::Local<v8::ArrayBufferView>,
+  offset: usize,
+  bytes: &[u8],
+) {
+  if bytes.is_empty() {
+    return;
+  }
+  let Some(buffer) = view.buffer(scope) else {
+    return;
+  };
+  let Some(data) = buffer.data() else {
+    return;
+  };
+  unsafe {
+    std::ptr::copy_nonoverlapping(
+      bytes.as_ptr(),
+      data.as_ptr().cast::<u8>().add(offset),
+      bytes.len(),
+    );
+  }
+}
+
 pub fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
   let count = bytes.len() / 4;
   let mut samples = vec![0f32; count];

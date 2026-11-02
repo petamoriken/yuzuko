@@ -18,11 +18,11 @@ fn trace_event(target: &EventTarget, visitor: &mut v8::cppgc::Visitor) {
   v8::cppgc::GarbageCollected::trace(target, visitor);
 }
 
-fn op_fault(fault: Fault) -> OpError {
+pub(crate) fn op_fault(fault: Fault) -> OpError {
   fault.op()
 }
 
-fn as_u32(
+pub(crate) fn as_u32(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<u32, OpError> {
@@ -125,13 +125,13 @@ fn check_latency(
   Err(OpError::type_("latencyHint is invalid"))
 }
 
-struct NodeOpts {
-  count: u32,
-  mode: &'static str,
-  interpretation: &'static str,
+pub(crate) struct NodeOpts {
+  pub count: u32,
+  pub mode: &'static str,
+  pub interpretation: &'static str,
 }
 
-fn node_options(
+pub(crate) fn node_options(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
   count: u32,
@@ -187,7 +187,7 @@ fn node_options(
   })
 }
 
-fn option_number(
+pub(crate) fn option_number(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
   name: &str,
@@ -204,7 +204,7 @@ fn option_number(
   Ok(Some(util::finite_number(scope, raw)?))
 }
 
-fn shell(
+pub(crate) fn shell(
   context: u64,
   opts: &NodeOpts,
   inputs: u32,
@@ -222,7 +222,7 @@ fn shell(
   }
 }
 
-fn make_param(
+pub(crate) fn make_param(
   scope: &mut v8::PinScope,
   context: u64,
   value: f64,
@@ -239,7 +239,7 @@ fn make_param(
   id
 }
 
-fn param_js(scope: &mut v8::PinScope, id: u64) -> Js {
+pub(crate) fn param_js(scope: &mut v8::PinScope, id: u64) -> Js {
   engine::param_object(id)
     .map(|object| {
       let local: v8::Local<v8::Value> = v8::Local::new(scope, object).into();
@@ -423,7 +423,7 @@ fn to_f64(
   yuzuko_core::op::FromV8::from_v8(scope, value)
 }
 
-fn curve_values(
+pub(crate) fn curve_values(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<f32>, OpError> {
@@ -902,7 +902,11 @@ fn start_source(
   engine::source_start(scope, id, when, offset, duration).map_err(op_fault)
 }
 
-fn remember(scope: &mut v8::PinScope, id: u64, object: v8::Local<v8::Object>) {
+pub(crate) fn remember(
+  scope: &mut v8::PinScope,
+  id: u64,
+  object: v8::Local<v8::Object>,
+) {
   engine::set_node_object(scope, id, object);
 }
 
@@ -1258,7 +1262,7 @@ fn build_buffer_source(
   })
 }
 
-fn option_bool(
+pub(crate) fn option_bool(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
   name: &str,
@@ -1292,7 +1296,7 @@ fn source_buffer_option(
   buffer_id(scope, raw).map(Some)
 }
 
-fn buffer_id(
+pub(crate) fn buffer_id(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<u64, OpError> {
@@ -1568,6 +1572,13 @@ impl BaseAudioContext {
   }
 
   #[getter]
+  fn listener(&self, scope: &mut v8::PinScope) -> Js {
+    engine::listener_object(self.id)
+      .map(|object| global_object(scope, object))
+      .unwrap_or_else(|| Js::null(scope))
+  }
+
+  #[getter]
   fn audio_worklet(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     if let Some(object) = worklet_object(self.id) {
       return Ok(global_object(scope, object));
@@ -1714,6 +1725,177 @@ impl BaseAudioContext {
     };
     Ok(New(build_wave(scope, self.id, real, imag, disable)?))
   }
+
+  fn create_analyser(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::AnalyserNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_analyser(scope, self.id, options)?))
+  }
+
+  fn create_biquad_filter(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::BiquadFilterNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_biquad(scope, self.id, options)?))
+  }
+
+  fn create_channel_merger(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::ChannelMergerNode>, OpError> {
+    let count = optional_u32(scope, args)?;
+    let options = v8::undefined(scope);
+    Ok(New(crate::nodes::build_merger(
+      scope,
+      self.id,
+      options.into(),
+      count,
+    )?))
+  }
+
+  fn create_channel_splitter(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::ChannelSplitterNode>, OpError> {
+    let count = optional_u32(scope, args)?;
+    let options = v8::undefined(scope);
+    Ok(New(crate::nodes::build_splitter(
+      scope,
+      self.id,
+      options.into(),
+      count,
+    )?))
+  }
+
+  fn create_convolver(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::ConvolverNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_convolver(scope, self.id, options)?))
+  }
+
+  fn create_delay(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::DelayNode>, OpError> {
+    let max = if args.length() > 0 && !args.get(0).is_undefined() {
+      Some(util::finite_number(scope, args.get(0))?)
+    } else {
+      None
+    };
+    let options = v8::undefined(scope);
+    Ok(New(crate::nodes::build_delay(
+      scope,
+      self.id,
+      options.into(),
+      max,
+    )?))
+  }
+
+  fn create_dynamics_compressor(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::DynamicsCompressorNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_dynamics(scope, self.id, options)?))
+  }
+
+  #[length(2)]
+  #[rename("createIIRFilter")]
+  fn create_iir_filter(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::IIRFilterNode>, OpError> {
+    let feedforward = args.get(0);
+    let feedback = args.get(1);
+    Ok(New(crate::nodes::build_iir(
+      scope,
+      self.id,
+      feedforward,
+      feedback,
+    )?))
+  }
+
+  fn create_panner(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::PannerNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_panner(scope, self.id, options)?))
+  }
+
+  fn create_stereo_panner(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::StereoPannerNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_stereo_panner(
+      scope, self.id, options,
+    )?))
+  }
+
+  fn create_wave_shaper(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<crate::nodes::WaveShaperNode>, OpError> {
+    let options = if args.length() > 0 {
+      args.get(0)
+    } else {
+      v8::undefined(scope).into()
+    };
+    Ok(New(crate::nodes::build_wave_shaper(
+      scope, self.id, options,
+    )?))
+  }
+}
+
+fn optional_u32(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Option<u32>, OpError> {
+  if args.length() == 0 || args.get(0).is_undefined() {
+    return Ok(None);
+  }
+  Ok(Some(as_u32(scope, args.get(0))?))
 }
 
 enum DecodeSettle {
@@ -1853,6 +2035,7 @@ impl AudioContext {
       destination_object,
       sink,
     );
+    crate::nodes::install_listener(scope, id);
     Ok(AudioContext {
       base: BaseAudioContext {
         base: EventTarget::new(),
@@ -1997,6 +2180,7 @@ impl OfflineAudioContext {
       destination_object,
       String::new(),
     );
+    crate::nodes::install_listener(scope, id);
     Ok(OfflineAudioContext {
       base: BaseAudioContext {
         base: EventTarget::new(),
@@ -2475,4 +2659,5 @@ pub fn install(scope: &mut v8::PinScope) {
   OfflineAudioContext::install(scope);
   AudioWorklet::install(scope);
   AudioWorkletNode::install(scope);
+  crate::nodes::install(scope);
 }

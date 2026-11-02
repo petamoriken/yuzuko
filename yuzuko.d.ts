@@ -49,8 +49,12 @@ type CanvasLineCap = "butt" | "round" | "square";
 type CanvasLineJoin = "bevel" | "miter" | "round";
 type CanvasTextAlign = "center" | "end" | "left" | "right" | "start";
 type CanvasTextBaseline = "alphabetic" | "bottom" | "hanging" | "ideographic" | "middle" | "top";
+type BiquadFilterType = "allpass" | "bandpass" | "highpass" | "highshelf" | "lowpass" | "lowshelf" | "notch" | "peaking";
 type ChannelCountMode = "clamped-max" | "explicit" | "max";
 type ChannelInterpretation = "discrete" | "speakers";
+type DistanceModelType = "exponential" | "inverse" | "linear";
+type OverSampleType = "2x" | "4x" | "none";
+type PanningModelType = "HRTF" | "equalpower";
 type CodecState = "closed" | "configured" | "unconfigured";
 type ColorSpaceConversion = "default" | "none";
 type DOMHighResTimeStamp = number;
@@ -8257,8 +8261,8 @@ interface OfflineAudioContextOptions {
  *
  * There is no audio output device. The rendered {@link AudioBuffer} is the
  * signal. A new {@link AudioContext} starts `"running"`. There is no
- * secure-context gate, so `audioWorklet` is available. Node types outside
- * this surface are absent.
+ * secure-context gate, so `audioWorklet` is available. Media-element
+ * sources, media-stream nodes, and `ScriptProcessorNode` stay absent.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8290,6 +8294,9 @@ interface BaseAudioContext extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/audioWorklet) */
   readonly audioWorklet: AudioWorklet;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/listener) */
+  readonly listener: AudioListener;
 
   /**
    * Decodes WAV, FLAC, MP3, or Ogg Vorbis.
@@ -8337,6 +8344,61 @@ interface BaseAudioContext extends EventTarget {
     imag: Float32Array,
     constraints?: PeriodicWaveConstraints,
   ): PeriodicWave;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createAnalyser) */
+  createAnalyser(): AnalyserNode;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `maxDelayTime` is
+   * not greater than 0 and less than 180.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createDelay)
+   */
+  createDelay(maxDelayTime?: number): DelayNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createBiquadFilter) */
+  createBiquadFilter(): BiquadFilterNode;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when either coefficient
+   * list length is outside 1 through 20.
+   * @throws {@link DOMException} `InvalidStateError` when every feedforward
+   * coefficient is 0 or the first feedback coefficient is 0.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createIIRFilter)
+   */
+  createIIRFilter(feedforward: number[], feedback: number[]): IIRFilterNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createWaveShaper) */
+  createWaveShaper(): WaveShaperNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createPanner) */
+  createPanner(): PannerNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createStereoPanner) */
+  createStereoPanner(): StereoPannerNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createConvolver) */
+  createConvolver(): ConvolverNode;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createDynamicsCompressor) */
+  createDynamicsCompressor(): DynamicsCompressorNode;
+
+  /**
+   * @throws {@link DOMException} `IndexSizeError` when `numberOfInputs` is
+   * outside 1 through 32.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createChannelMerger)
+   */
+  createChannelMerger(numberOfInputs?: number): ChannelMergerNode;
+
+  /**
+   * @throws {@link DOMException} `IndexSizeError` when `numberOfOutputs` is
+   * outside 1 through 32.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createChannelSplitter)
+   */
+  createChannelSplitter(numberOfOutputs?: number): ChannelSplitterNode;
 }
 declare var BaseAudioContext: {
   prototype: BaseAudioContext;
@@ -8872,6 +8934,480 @@ interface AudioWorkletNodeOptions extends AudioNodeOptions {
   outputChannelCount?: number[];
   parameterData?: Record<string, number>;
   processorOptions?: any;
+}
+
+/**
+ * The listener a `PannerNode` spatializes against.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener)
+ */
+interface AudioListener {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/positionX) */
+  readonly positionX: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/positionY) */
+  readonly positionY: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/positionZ) */
+  readonly positionZ: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/forwardX) */
+  readonly forwardX: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/forwardY) */
+  readonly forwardY: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/forwardZ) */
+  readonly forwardZ: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/upX) */
+  readonly upX: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/upY) */
+  readonly upY: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/upZ) */
+  readonly upZ: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setPosition) */
+  setPosition(x: number, y: number, z: number): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setOrientation) */
+  setOrientation(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void;
+}
+declare var AudioListener: {
+  prototype: AudioListener;
+  new(): AudioListener;
+};
+
+
+/**
+ * Delays the input by `delayTime` seconds.
+ *
+ * @throws {@link DOMException} `NotSupportedError` when `maxDelayTime` is not
+ * greater than 0 and less than 180.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DelayNode)
+ */
+interface DelayNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DelayNode/delayTime) */
+  readonly delayTime: AudioParam;
+}
+declare var DelayNode: {
+  prototype: DelayNode;
+  new(context: BaseAudioContext, options?: DelayOptions): DelayNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DelayNode/DelayNode) */
+interface DelayOptions extends AudioNodeOptions {
+  delayTime?: number;
+  maxDelayTime?: number;
+}
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode)
+ */
+interface BiquadFilterNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/type) */
+  type: BiquadFilterType;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/frequency) */
+  readonly frequency: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/detune) */
+  readonly detune: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/Q) */
+  readonly Q: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/gain) */
+  readonly gain: AudioParam;
+
+  /**
+   * @throws {@link DOMException} `InvalidAccessError` when the arrays have
+   * different lengths.
+   * @throws {@link TypeError} When an argument is not a `Float32Array`, or a
+   * `Float32Array` is shared.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/getFrequencyResponse)
+   */
+  getFrequencyResponse(frequencyHz: Float32Array, magResponse: Float32Array, phaseResponse: Float32Array): void;
+}
+declare var BiquadFilterNode: {
+  prototype: BiquadFilterNode;
+  new(context: BaseAudioContext, options?: BiquadFilterOptions): BiquadFilterNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/BiquadFilterNode) */
+interface BiquadFilterOptions extends AudioNodeOptions {
+  type?: BiquadFilterType;
+  frequency?: number;
+  detune?: number;
+  Q?: number;
+  gain?: number;
+}
+
+/**
+ * @throws {@link DOMException} `NotSupportedError` when a coefficient list
+ * length is outside 1 through 20.
+ * @throws {@link DOMException} `InvalidStateError` when every feedforward
+ * coefficient is 0 or the first feedback coefficient is 0.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IIRFilterNode)
+ */
+interface IIRFilterNode extends AudioNode {
+  /**
+   * @throws {@link DOMException} `InvalidAccessError` when the arrays have
+   * different lengths.
+   * @throws {@link TypeError} When an argument is not a `Float32Array`, or a
+   * `Float32Array` is shared.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IIRFilterNode/getFrequencyResponse)
+   */
+  getFrequencyResponse(frequencyHz: Float32Array, magResponse: Float32Array, phaseResponse: Float32Array): void;
+}
+declare var IIRFilterNode: {
+  prototype: IIRFilterNode;
+  new(context: BaseAudioContext, options: IIRFilterOptions): IIRFilterNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/IIRFilterNode/IIRFilterNode) */
+interface IIRFilterOptions extends AudioNodeOptions {
+  feedforward: number[];
+  feedback: number[];
+}
+
+/**
+ * Oversampling interpolates from the previous sample, shapes each step, and
+ * averages back down. It does not use a half-band filter.
+ *
+ * @throws {@link DOMException} `InvalidStateError` when `curve` has fewer
+ * than two values.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode)
+ */
+interface WaveShaperNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/curve) */
+  curve: Float32Array | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/oversample) */
+  oversample: OverSampleType;
+}
+declare var WaveShaperNode: {
+  prototype: WaveShaperNode;
+  new(context: BaseAudioContext, options?: WaveShaperOptions): WaveShaperNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/WaveShaperNode) */
+interface WaveShaperOptions extends AudioNodeOptions {
+  curve?: Float32Array | number[] | null;
+  oversample?: OverSampleType;
+}
+
+/**
+ * Equal-power stereo pan. The output is stereo.
+ *
+ * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
+ * above 2 or `channelCountMode` is `"max"`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/StereoPannerNode)
+ */
+interface StereoPannerNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/StereoPannerNode/pan) */
+  readonly pan: AudioParam;
+}
+declare var StereoPannerNode: {
+  prototype: StereoPannerNode;
+  new(context: BaseAudioContext, options?: StereoPannerOptions): StereoPannerNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/StereoPannerNode/StereoPannerNode) */
+interface StereoPannerOptions extends AudioNodeOptions {
+  pan?: number;
+}
+
+/**
+ * Equal-power panner. `"HRTF"` throws `NotSupportedError`. The output is
+ * stereo. The cone points from the source toward the listener.
+ *
+ * @throws {@link DOMException} `NotSupportedError` when `panningModel` is
+ * `"HRTF"`, `channelCount` is above 2, or `channelCountMode` is `"max"`.
+ * @throws {@link TypeError} When `panningModel` or `distanceModel` is not a
+ * supported value.
+ * @throws {@link RangeError} When `refDistance` is negative, `maxDistance` is
+ * not positive, `rolloffFactor` is negative, or `coneOuterGain` is outside
+ * 0 through 1.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode)
+ */
+interface PannerNode extends AudioNode {
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when the value is `"HRTF"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/panningModel)
+   */
+  panningModel: PanningModelType;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/positionX) */
+  readonly positionX: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/positionY) */
+  readonly positionY: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/positionZ) */
+  readonly positionZ: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/orientationX) */
+  readonly orientationX: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/orientationY) */
+  readonly orientationY: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/orientationZ) */
+  readonly orientationZ: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/distanceModel) */
+  distanceModel: DistanceModelType;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/refDistance) */
+  refDistance: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/maxDistance) */
+  maxDistance: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/rolloffFactor) */
+  rolloffFactor: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneInnerAngle) */
+  coneInnerAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneOuterAngle) */
+  coneOuterAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneOuterGain) */
+  coneOuterGain: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setPosition) */
+  setPosition(x: number, y: number, z: number): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setOrientation) */
+  setOrientation(x: number, y: number, z: number): void;
+}
+declare var PannerNode: {
+  prototype: PannerNode;
+  new(context: BaseAudioContext, options?: PannerOptions): PannerNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/PannerNode) */
+interface PannerOptions extends AudioNodeOptions {
+  panningModel?: PanningModelType;
+  distanceModel?: DistanceModelType;
+  positionX?: number;
+  positionY?: number;
+  positionZ?: number;
+  orientationX?: number;
+  orientationY?: number;
+  orientationZ?: number;
+  refDistance?: number;
+  maxDistance?: number;
+  rolloffFactor?: number;
+  coneInnerAngle?: number;
+  coneOuterAngle?: number;
+  coneOuterGain?: number;
+}
+
+/**
+ * Convolution. A buffer whose sample rate differs from the context is
+ * linearly resampled. Changing `normalize` does not rescale until `buffer`
+ * is set again. `buffer` returns the same object that was assigned.
+ *
+ * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
+ * above 2, `channelCountMode` is `"max"`, or the impulse response has a
+ * channel count other than 1, 2, or 4.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode)
+ */
+interface ConvolverNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/buffer) */
+  buffer: AudioBuffer | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/normalize) */
+  normalize: boolean;
+}
+declare var ConvolverNode: {
+  prototype: ConvolverNode;
+  new(context: BaseAudioContext, options?: ConvolverOptions): ConvolverNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/ConvolverNode) */
+interface ConvolverOptions extends AudioNodeOptions {
+  buffer?: AudioBuffer | null;
+  disableNormalization?: boolean;
+}
+
+/**
+ * Dynamics compression without look-ahead. `threshold`, `knee`, `ratio`,
+ * `attack`, `release`, and `makeupGain` are k-rate. `"automatic"` locks
+ * `makeupGain`. `reduction` is the last sample of the quantum, in decibels,
+ * and includes makeup gain.
+ *
+ * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
+ * above 2 or `channelCountMode` is `"max"`.
+ * @throws {@link TypeError} When `makeupGain` is neither a number nor
+ * `"automatic"`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode)
+ */
+interface DynamicsCompressorNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/threshold) */
+  readonly threshold: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/knee) */
+  readonly knee: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/ratio) */
+  readonly ratio: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/attack) */
+  readonly attack: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/release) */
+  readonly release: AudioParam;
+
+  /**
+   * @throws {@link DOMException} `InvalidStateError` when the parameter is
+   * automatic and a script modifies it.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/makeupGain)
+   */
+  readonly makeupGain: AudioParam;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/reduction) */
+  readonly reduction: number;
+}
+declare var DynamicsCompressorNode: {
+  prototype: DynamicsCompressorNode;
+  new(context: BaseAudioContext, options?: DynamicsCompressorOptions): DynamicsCompressorNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DynamicsCompressorNode/DynamicsCompressorNode) */
+interface DynamicsCompressorOptions extends AudioNodeOptions {
+  threshold?: number;
+  knee?: number;
+  ratio?: number;
+  attack?: number;
+  release?: number;
+  makeupGain?: number | "automatic";
+}
+
+/**
+ * Pass-through analysis. Time-domain data is a speakers down-mix to mono.
+ * An analyser that is not upstream of the destination is still rendered.
+ *
+ * @throws {@link DOMException} `IndexSizeError` when `fftSize` is not a power
+ * of two from 32 through 32768, `minDecibels` is not below `maxDecibels`, or
+ * `smoothingTimeConstant` is outside 0 through 1.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode)
+ */
+interface AnalyserNode extends AudioNode {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/fftSize) */
+  fftSize: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/frequencyBinCount) */
+  readonly frequencyBinCount: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/minDecibels) */
+  minDecibels: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/maxDecibels) */
+  maxDecibels: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/smoothingTimeConstant) */
+  smoothingTimeConstant: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getFloatTimeDomainData) */
+  getFloatTimeDomainData(array: Float32Array): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getByteTimeDomainData) */
+  getByteTimeDomainData(array: Uint8Array): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getFloatFrequencyData) */
+  getFloatFrequencyData(array: Float32Array): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getByteFrequencyData) */
+  getByteFrequencyData(array: Uint8Array): void;
+}
+declare var AnalyserNode: {
+  prototype: AnalyserNode;
+  new(context: BaseAudioContext, options?: AnalyserOptions): AnalyserNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/AnalyserNode) */
+interface AnalyserOptions extends AudioNodeOptions {
+  fftSize?: number;
+  minDecibels?: number;
+  maxDecibels?: number;
+  smoothingTimeConstant?: number;
+}
+
+/**
+ * One mono input per output channel. `channelCount` stays 1 and
+ * `channelCountMode` stays `"explicit"`.
+ *
+ * @throws {@link DOMException} `IndexSizeError` when `numberOfInputs` is
+ * outside 1 through 32.
+ * @throws {@link DOMException} `InvalidStateError` when `channelCount` is not
+ * 1 or `channelCountMode` is not `"explicit"`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ChannelMergerNode)
+ */
+interface ChannelMergerNode extends AudioNode {}
+declare var ChannelMergerNode: {
+  prototype: ChannelMergerNode;
+  new(context: BaseAudioContext, options?: ChannelMergerOptions): ChannelMergerNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ChannelMergerNode/ChannelMergerNode) */
+interface ChannelMergerOptions extends AudioNodeOptions {
+  numberOfInputs?: number;
+}
+
+/**
+ * Splits each input channel into its own mono output. `channelCount` stays
+ * equal to `numberOfOutputs`, `channelCountMode` stays `"explicit"`, and
+ * `channelInterpretation` stays `"discrete"`.
+ *
+ * @throws {@link DOMException} `IndexSizeError` when `numberOfOutputs` is
+ * outside 1 through 32.
+ * @throws {@link DOMException} `InvalidStateError` when `channelCount`,
+ * `channelCountMode`, or `channelInterpretation` differs from those locked
+ * values.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ChannelSplitterNode)
+ */
+interface ChannelSplitterNode extends AudioNode {}
+declare var ChannelSplitterNode: {
+  prototype: ChannelSplitterNode;
+  new(context: BaseAudioContext, options?: ChannelSplitterOptions): ChannelSplitterNode;
+};
+
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ChannelSplitterNode/ChannelSplitterNode) */
+interface ChannelSplitterOptions extends AudioNodeOptions {
+  numberOfOutputs?: number;
 }
 
 /**

@@ -4,7 +4,9 @@ mod classes;
 mod decode;
 mod engine;
 mod hardware;
+mod nodes;
 mod playback;
+mod process;
 mod util;
 
 use std::sync::Once;

@@ -643,7 +643,7 @@ Shared workers, service workers, and worklets stay out of scope.
 
 `AudioContext` `sinkId` names an output device. `""` is the default device and does not require a device to exist. Any other string is a host output-device name. An unknown name throws `NotFoundError` when the context is constructed. The `sinkId` attribute reads back the requested name. `setSinkId` is absent. There is no `mediaDevices.enumerateDevices`.
 
-`AudioBuffer`, `PeriodicWave`, `AudioParam`, `AudioParamMap`, `AudioNode`, `AudioScheduledSourceNode`, `AudioDestinationNode`, `GainNode`, `AudioBufferSourceNode`, `OscillatorNode`, `ConstantSourceNode`, `AudioWorklet`, and `AudioWorkletNode` are part of this surface. `BaseAudioContext` is not constructable. Update this section before adding more node types.
+`DelayNode`, `BiquadFilterNode`, `IIRFilterNode`, `WaveShaperNode`, `StereoPannerNode`, `PannerNode`, `ConvolverNode`, `DynamicsCompressorNode`, `AnalyserNode`, `ChannelMergerNode`, and `ChannelSplitterNode` run in that graph. `BaseAudioContext.listener` is the `AudioListener` a `PannerNode` spatializes against. Setting `panningModel` to `"HRTF"` throws `NotSupportedError`. `AudioBuffer`, `PeriodicWave`, `AudioParam`, `AudioParamMap`, `AudioNode`, `AudioScheduledSourceNode`, `AudioDestinationNode`, `GainNode`, `AudioBufferSourceNode`, `OscillatorNode`, `ConstantSourceNode`, `AudioWorklet`, `AudioWorkletNode`, `AudioListener`, and those processing nodes are part of this surface. `BaseAudioContext` is not constructable. `MediaElementAudioSourceNode`, `MediaStreamAudioSourceNode`, `MediaStreamAudioDestinationNode`, and `ScriptProcessorNode` stay absent.
 
 ## Server messages
 

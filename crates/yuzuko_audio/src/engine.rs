@@ -2,12 +2,13 @@
 //! Realtime output copies rendered quanta into a playback ring.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use yuzuko_core::op::{Js, OpError, OpException};
 
 use crate::playback::{self, Pace};
+use crate::process::{self, BiquadKind, DistanceModel};
 use crate::util::{self, f32_array, f32_to_bytes};
 
 const MAX_CHANNELS: u32 = 32;
@@ -158,6 +159,79 @@ pub enum Kind {
     output_channels: Vec<u32>,
     active: bool,
   },
+  Delay {
+    delay: u64,
+    frames: usize,
+  },
+  Biquad {
+    filter: BiquadKind,
+    frequency: u64,
+    detune: u64,
+    q: u64,
+    gain: u64,
+  },
+  Iir {
+    feedforward: Vec<f32>,
+    feedback: Vec<f32>,
+  },
+  WaveShaper {
+    oversample: u8,
+  },
+  Panner {
+    position: [u64; 3],
+    orientation: [u64; 3],
+    distance: DistanceModel,
+    ref_distance: f64,
+    max_distance: f64,
+    rolloff: f64,
+    cone_inner: f64,
+    cone_outer: f64,
+    cone_gain: f64,
+  },
+  StereoPanner {
+    pan: u64,
+  },
+  Convolver {
+    normalize: bool,
+  },
+  Dynamics {
+    threshold: u64,
+    knee: u64,
+    ratio: u64,
+    attack: u64,
+    release: u64,
+    makeup: u64,
+    automatic: bool,
+  },
+  Analyser {
+    fft_size: u32,
+    min_decibels: f64,
+    max_decibels: f64,
+    smoothing: f64,
+  },
+  Merger,
+  Splitter,
+}
+
+enum Tail {
+  Delay(process::DelayState),
+  Biquad(Vec<process::BiquadMemory>),
+  Iir(Vec<process::IirMemory>),
+  Shape(process::ShapeState),
+  Analyser(process::AnalyserState),
+  Convolver {
+    kernels: Vec<Vec<f32>>,
+    history: Vec<Vec<f32>>,
+    scale: f32,
+  },
+  Compressor(process::CompressorState),
+}
+
+struct ListenerRec {
+  position: [u64; 3],
+  forward: [u64; 3],
+  up: [u64; 3],
+  object: v8::Global<v8::Object>,
 }
 
 enum ConnTarget {
@@ -222,6 +296,8 @@ pub struct ParamRec {
   min: f64,
   max: f64,
   a_rate: bool,
+  locked: bool,
+  k_only: bool,
   context: u64,
   events: Vec<AutomationEvent>,
   object: Option<v8::Global<v8::Object>>,
@@ -308,6 +384,12 @@ thread_local! {
   static WAVES: RefCell<HashMap<u64, WaveRec>> = RefCell::new(HashMap::new());
   static HANDLERS: RefCell<HashMap<(u64, &'static str), v8::Global<v8::Value>>> =
     RefCell::new(HashMap::new());
+  static TAILS: RefCell<HashMap<u64, Tail>> = RefCell::new(HashMap::new());
+  static CURVES: RefCell<HashMap<u64, Vec<f32>>> = RefCell::new(HashMap::new());
+  static LISTENERS: RefCell<HashMap<u64, ListenerRec>> =
+    RefCell::new(HashMap::new());
+  static CONVOLVER_BUFFERS: RefCell<HashMap<u64, v8::Global<v8::Object>>> =
+    RefCell::new(HashMap::new());
 }
 
 pub fn clear() {
@@ -318,6 +400,10 @@ pub fn clear() {
   BUFFERS.with(|slot| slot.borrow_mut().clear());
   WAVES.with(|slot| slot.borrow_mut().clear());
   HANDLERS.with(|slot| slot.borrow_mut().clear());
+  TAILS.with(|slot| slot.borrow_mut().clear());
+  CURVES.with(|slot| slot.borrow_mut().clear());
+  LISTENERS.with(|slot| slot.borrow_mut().clear());
+  CONVOLVER_BUFFERS.with(|slot| slot.borrow_mut().clear());
   DRIVING.with(|slot| slot.set(0));
 }
 
@@ -517,6 +603,8 @@ pub fn insert_param(
         min,
         max,
         a_rate,
+        locked: false,
+        k_only: false,
         context,
         events: Vec::new(),
         object: None,
@@ -576,7 +664,44 @@ pub fn param_view(id: u64) -> Option<ParamView> {
   })
 }
 
+pub fn lock_param(id: u64) {
+  PARAMS.with(|params| {
+    if let Some(param) = params.borrow_mut().get_mut(&id) {
+      param.locked = true;
+    }
+  });
+}
+
+pub fn set_k_rate_only(id: u64) {
+  PARAMS.with(|params| {
+    if let Some(param) = params.borrow_mut().get_mut(&id) {
+      param.k_only = true;
+      param.a_rate = false;
+    }
+  });
+}
+
+pub fn set_intrinsic(id: u64, value: f64) {
+  PARAMS.with(|params| {
+    if let Some(param) = params.borrow_mut().get_mut(&id) {
+      param.value = clamp_param(value, param.min, param.max);
+    }
+  });
+}
+
+fn ensure_unlocked(id: u64) -> Result<(), Fault> {
+  PARAMS.with(|params| match params.borrow().get(&id) {
+    None => Err(Fault::type_("Invalid AudioParam")),
+    Some(param) if param.locked => Err(Fault::dom(
+      "InvalidStateError",
+      "The AudioParam cannot be modified",
+    )),
+    Some(_) => Ok(()),
+  })
+}
+
 pub fn set_param_value(id: u64, value: f64) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   if value.is_nan() {
     return Ok(());
   }
@@ -598,6 +723,7 @@ pub fn set_param_value(id: u64, value: f64) -> Result<(), Fault> {
 }
 
 pub fn set_value_at_time(id: u64, value: f64, time: f64) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = check_time(time)?;
   let value = check_finite(value)?;
   with_param(id, |param| {
@@ -618,6 +744,7 @@ pub fn linear_ramp_to_value_at_time(
   value: f64,
   time: f64,
 ) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   let value = check_finite(value)?;
   with_param(id, |param| {
@@ -639,6 +766,7 @@ pub fn exponential_ramp_to_value_at_time(
   value: f64,
   time: f64,
 ) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   let value = check_finite(value)?;
   if value <= 0.0 {
@@ -667,6 +795,7 @@ pub fn set_target_at_time(
   time: f64,
   time_constant: f64,
 ) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   let target = check_finite(target)?;
   if !time_constant.is_finite() {
@@ -699,6 +828,7 @@ pub fn set_value_curve_at_time(
   time: f64,
   duration: f64,
 ) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   if values.len() < 2 {
     return Err(Fault::dom(
@@ -736,6 +866,7 @@ pub fn set_value_curve_at_time(
 }
 
 pub fn cancel_scheduled_values(id: u64, time: f64) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   with_param(id, |param| {
     param.events.retain(|event| event.time < time);
@@ -744,6 +875,7 @@ pub fn cancel_scheduled_values(id: u64, time: f64) -> Result<(), Fault> {
 }
 
 pub fn cancel_and_hold_at_time(id: u64, time: f64) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   let time = clamp_past(id, check_time(time)?)?;
   with_param(id, |param| {
     hold_at(&mut param.events, param.value, time);
@@ -752,11 +884,18 @@ pub fn cancel_and_hold_at_time(id: u64, time: f64) -> Result<(), Fault> {
 }
 
 pub fn set_param_rate(id: u64, a_rate: bool) -> Result<(), Fault> {
+  ensure_unlocked(id)?;
   PARAMS.with(|params| {
     let mut params = params.borrow_mut();
     let Some(param) = params.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioParam"));
     };
+    if param.k_only && a_rate {
+      return Err(Fault::dom(
+        "InvalidStateError",
+        "The automation rate cannot be changed",
+      ));
+    }
     param.a_rate = a_rate;
     Ok(())
   })
@@ -1455,6 +1594,20 @@ pub fn set_channel_count(id: u64, count: u32) -> Result<(), Fault> {
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
+    if matches!(node.kind, Kind::Merger | Kind::Splitter)
+      && count != node.channel_count
+    {
+      return Err(Fault::dom(
+        "InvalidStateError",
+        "The channel count cannot be changed",
+      ));
+    }
+    if stereo_limited(&node.kind) && count > 2 {
+      return Err(Fault::dom(
+        "NotSupportedError",
+        "The channel count is not supported",
+      ));
+    }
     if count == 0 || count > MAX_CHANNELS {
       return Err(Fault::dom(
         "NotSupportedError",
@@ -1488,6 +1641,20 @@ pub fn set_channel_mode(id: u64, mode: &str) -> Result<(), Fault> {
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
+    if node.mode != mode {
+      if matches!(node.kind, Kind::Merger | Kind::Splitter) {
+        return Err(Fault::dom(
+          "InvalidStateError",
+          "The channel count mode cannot be changed",
+        ));
+      }
+      if stereo_limited(&node.kind) && mode == ChannelMode::Max {
+        return Err(Fault::dom(
+          "NotSupportedError",
+          "The channel count mode is not supported",
+        ));
+      }
+    }
     node.mode = mode;
     Ok(())
   })
@@ -1506,6 +1673,14 @@ pub fn set_interpretation(id: u64, value: &str) -> Result<(), Fault> {
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
+    if node.interpretation != interpretation
+      && matches!(node.kind, Kind::Splitter)
+    {
+      return Err(Fault::dom(
+        "InvalidStateError",
+        "The channel interpretation cannot be changed",
+      ));
+    }
     node.interpretation = interpretation;
     Ok(())
   })
@@ -1576,6 +1751,7 @@ pub fn connect_param(
   param: u64,
   output: u32,
 ) -> Result<(), Fault> {
+  ensure_unlocked(param)?;
   let (source_ctx, outputs) = NODES.with(|nodes| {
     let nodes = nodes.borrow();
     let Some(node) = nodes.get(&source) else {
@@ -2477,6 +2653,9 @@ fn playback_matches(context: &ContextRec, generation: u64) -> bool {
     && context.sample_rate > 0.0
 }
 
+type Block = Vec<Vec<f32>>;
+type RenderCache = HashMap<u64, Vec<Block>>;
+
 fn render_destination(
   scope: &mut v8::PinScope,
   ctx: u64,
@@ -2492,7 +2671,7 @@ fn render_destination(
   let Some(destination) = destination else {
     return Vec::new();
   };
-  let mut cache = HashMap::new();
+  let mut cache = RenderCache::new();
   let mut stack = Vec::new();
   let mut ended = Vec::new();
   let output = pull(
@@ -2509,10 +2688,7 @@ fn render_destination(
       .borrow()
       .iter()
       .filter_map(|(id, node)| {
-        if node.context == ctx
-          && scheduled(&node.kind)
-          && !cache.contains_key(id)
-        {
+        if node.context == ctx && !cache.contains_key(id) {
           Some(*id)
         } else {
           None
@@ -2531,39 +2707,45 @@ fn render_destination(
   output
 }
 
-fn scheduled(kind: &Kind) -> bool {
-  matches!(
-    kind,
-    Kind::Constant { .. } | Kind::Oscillator { .. } | Kind::Buffer { .. }
-  )
-}
-
 fn pull(
   scope: &mut v8::PinScope,
   id: u64,
   origin: u64,
   quantum: usize,
-  cache: &mut HashMap<u64, Vec<Vec<f32>>>,
+  cache: &mut RenderCache,
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
-) -> Vec<Vec<f32>> {
+) -> Block {
+  pull_output(scope, id, 0, origin, quantum, cache, stack, ended)
+}
+
+fn pull_output(
+  scope: &mut v8::PinScope,
+  id: u64,
+  output: u32,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
   if let Some(hit) = cache.get(&id) {
-    return hit.clone();
+    return cached_output(hit, output, quantum);
   }
   if stack.contains(&id) {
-    return vec![vec![0.0; quantum]];
+    return silent_block(quantum);
   }
   stack.push(id);
   let kind =
     NODES.with(|nodes| nodes.borrow().get(&id).map(|node| node.kind.clone()));
   let Some(kind) = kind else {
     stack.pop();
-    return vec![vec![0.0; quantum]];
+    return silent_block(quantum);
   };
-  let output = match kind {
-    Kind::Destination => {
-      mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended)
-    }
+  let outputs = match kind {
+    Kind::Destination => one(mix_inputs(
+      scope, id, 0, origin, quantum, cache, stack, ended,
+    )),
     Kind::Gain { param } => {
       let mut mixed =
         mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
@@ -2574,7 +2756,7 @@ fn pull(
           *sample *= *value as f32;
         }
       }
-      mixed
+      one(mixed)
     }
     Kind::Constant { offset, play } => {
       let curve =
@@ -2585,7 +2767,7 @@ fn pull(
         mark_pending(id);
         ended.push(id);
       }
-      block
+      one(block)
     }
     Kind::Oscillator {
       frequency,
@@ -2606,7 +2788,7 @@ fn pull(
         mark_pending(id);
         ended.push(id);
       }
-      block
+      one(block)
     }
     Kind::Buffer {
       buffer,
@@ -2650,7 +2832,7 @@ fn pull(
         mark_pending(id);
         ended.push(id);
       }
-      block
+      one(block)
     }
     Kind::Worklet {
       instance,
@@ -2658,7 +2840,7 @@ fn pull(
       output_channels,
       active,
     } => {
-      if !active {
+      let block = if !active {
         silence_outputs(&output_channels, quantum)
       } else {
         render_worklet(
@@ -2673,12 +2855,118 @@ fn pull(
           stack,
           ended,
         )
-      }
+      };
+      one(block)
+    }
+    Kind::Delay { delay, frames } => one(render_delay(
+      scope, id, delay, frames, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Biquad {
+      filter,
+      frequency,
+      detune,
+      q,
+      gain,
+    } => one(render_biquad(
+      scope, id, filter, frequency, detune, q, gain, origin, quantum, cache,
+      stack, ended,
+    )),
+    Kind::Iir {
+      feedforward,
+      feedback,
+    } => one(render_iir(
+      scope,
+      id,
+      &feedforward,
+      &feedback,
+      origin,
+      quantum,
+      cache,
+      stack,
+      ended,
+    )),
+    Kind::WaveShaper { oversample } => one(render_waveshaper(
+      scope, id, oversample, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Panner {
+      position,
+      orientation,
+      distance,
+      ref_distance,
+      max_distance,
+      rolloff,
+      cone_inner,
+      cone_outer,
+      cone_gain,
+    } => one(render_panner(
+      scope,
+      id,
+      position,
+      orientation,
+      distance,
+      ref_distance,
+      max_distance,
+      rolloff,
+      cone_inner,
+      cone_outer,
+      cone_gain,
+      origin,
+      quantum,
+      cache,
+      stack,
+      ended,
+    )),
+    Kind::StereoPanner { pan } => one(render_stereo_panner(
+      scope, id, pan, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Convolver { .. } => one(render_convolver(
+      scope, id, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Dynamics {
+      threshold,
+      knee,
+      ratio,
+      attack,
+      release,
+      makeup,
+      automatic,
+    } => one(render_dynamics(
+      scope, id, threshold, knee, ratio, attack, release, makeup, automatic,
+      origin, quantum, cache, stack, ended,
+    )),
+    Kind::Analyser {
+      fft_size,
+      smoothing,
+      ..
+    } => one(render_analyser(
+      scope, id, fft_size, smoothing, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Merger => one(render_merger(
+      scope, id, origin, quantum, cache, stack, ended,
+    )),
+    Kind::Splitter => {
+      render_splitter(scope, id, origin, quantum, cache, stack, ended)
     }
   };
   stack.pop();
-  cache.insert(id, output.clone());
-  output
+  let block = cached_output(&outputs, output, quantum);
+  cache.insert(id, outputs);
+  block
+}
+
+fn one(block: Block) -> Vec<Block> {
+  vec![block]
+}
+
+fn silent_block(quantum: usize) -> Block {
+  vec![vec![0.0; quantum]]
+}
+
+fn cached_output(outputs: &[Block], output: u32, quantum: usize) -> Block {
+  outputs
+    .get(output as usize)
+    .cloned()
+    .unwrap_or_else(|| silent_block(quantum))
 }
 
 fn write_play(id: u64, play: Play) {
@@ -2699,7 +2987,7 @@ fn param_block(
   id: u64,
   origin: u64,
   quantum: usize,
-  cache: &mut HashMap<u64, Vec<Vec<f32>>>,
+  cache: &mut RenderCache,
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
 ) -> Vec<f64> {
@@ -2783,7 +3071,7 @@ fn mix_inputs(
   input: u32,
   origin: u64,
   quantum: usize,
-  cache: &mut HashMap<u64, Vec<Vec<f32>>>,
+  cache: &mut RenderCache,
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
 ) -> Vec<Vec<f32>> {
@@ -2804,8 +3092,10 @@ fn mix_inputs(
     return vec![vec![0.0; quantum]; channels.max(1)];
   }
   let mut blocks = Vec::new();
-  for source in sources {
-    blocks.push(pull(scope, source, origin, quantum, cache, stack, ended));
+  for (source, output) in sources {
+    blocks.push(pull_output(
+      scope, source, output, origin, quantum, cache, stack, ended,
+    ));
   }
   let computed = computed_channels(mode, count, &blocks);
   let mut mixed = vec![vec![0.0; quantum]; computed];
@@ -2880,7 +3170,7 @@ fn fit(
   output
 }
 
-fn incoming(dest: u64, input: u32) -> Vec<u64> {
+fn incoming(dest: u64, input: u32) -> Vec<(u64, u32)> {
   NODES.with(|nodes| {
     let nodes = nodes.borrow();
     let mut sources = Vec::new();
@@ -2893,7 +3183,7 @@ fn incoming(dest: u64, input: u32) -> Vec<u64> {
           && target == dest
           && slot == input
         {
-          sources.push(*id);
+          sources.push((*id, connection.output));
         }
       }
     }
@@ -3685,7 +3975,7 @@ fn render_worklet(
   output_channels: &[u32],
   origin: u64,
   quantum: usize,
-  cache: &mut HashMap<u64, Vec<Vec<f32>>>,
+  cache: &mut RenderCache,
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
 ) -> Vec<Vec<f32>> {
@@ -3710,8 +4000,10 @@ fn render_worklet(
       continue;
     }
     let mut blocks = Vec::new();
-    for source in sources {
-      blocks.push(pull(scope, source, origin, quantum, cache, stack, ended));
+    for (source, output) in sources {
+      blocks.push(pull_output(
+        scope, source, output, origin, quantum, cache, stack, ended,
+      ));
     }
     let width = blocks.iter().map(|block| block.len()).max().unwrap_or(0);
     if width == 0 {
@@ -3894,6 +4186,1091 @@ pub fn create_port_pair(
     v8::Global::new(scope, main),
     v8::Global::new(scope, processor),
   )
+}
+
+fn stereo_limited(kind: &Kind) -> bool {
+  matches!(
+    kind,
+    Kind::Convolver { .. }
+      | Kind::Dynamics { .. }
+      | Kind::Panner { .. }
+      | Kind::StereoPanner { .. }
+  )
+}
+
+fn with_kind<T>(
+  id: u64,
+  body: impl FnOnce(&mut Kind) -> Result<T, Fault>,
+) -> Result<T, Fault> {
+  NODES.with(|nodes| {
+    let mut nodes = nodes.borrow_mut();
+    let Some(node) = nodes.get_mut(&id) else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    body(&mut node.kind)
+  })
+}
+
+fn cloned_kind(id: u64) -> Option<Kind> {
+  NODES.with(|nodes| nodes.borrow().get(&id).map(|node| node.kind.clone()))
+}
+
+fn take_tail(id: u64) -> Option<Tail> {
+  TAILS.with(|tails| tails.borrow_mut().remove(&id))
+}
+
+fn put_tail(id: u64, tail: Tail) {
+  TAILS.with(|tails| {
+    tails.borrow_mut().insert(id, tail);
+  });
+}
+
+fn take_curve(id: u64) -> Option<Vec<f32>> {
+  CURVES.with(|curves| curves.borrow_mut().remove(&id))
+}
+
+fn put_curve(id: u64, curve: Vec<f32>) {
+  CURVES.with(|curves| {
+    curves.borrow_mut().insert(id, curve);
+  });
+}
+
+fn in_cycle(start: u64) -> bool {
+  let mut pending = successors(start);
+  let mut seen = HashSet::from([start]);
+  while let Some(current) = pending.pop() {
+    if current == start {
+      return true;
+    }
+    if !seen.insert(current) {
+      continue;
+    }
+    pending.extend(successors(current));
+  }
+  false
+}
+
+fn successors(id: u64) -> Vec<u64> {
+  NODES.with(|nodes| {
+    nodes
+      .borrow()
+      .get(&id)
+      .map(|node| {
+        node
+          .connections
+          .iter()
+          .filter_map(|connection| match connection.target {
+            ConnTarget::Node { id, .. } => Some(id),
+            ConnTarget::Param(_) => None,
+          })
+          .collect()
+      })
+      .unwrap_or_default()
+  })
+}
+
+fn head(values: &[f64], fallback: f64) -> f64 {
+  values.first().copied().unwrap_or(fallback)
+}
+
+fn render_delay(
+  scope: &mut v8::PinScope,
+  id: u64,
+  delay: u64,
+  frames: usize,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let cycled = in_cycle(id);
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let curve = param_block(scope, delay, origin, quantum, cache, stack, ended)
+    .into_iter()
+    .map(|seconds| seconds * rate)
+    .collect::<Vec<_>>();
+  let mut state = match take_tail(id) {
+    Some(Tail::Delay(state)) => state,
+    _ => process::DelayState {
+      lines: Vec::new(),
+      write: 0,
+    },
+  };
+  let minimum = if cycled { quantum as f64 } else { 0.0 };
+  let block = process::delay_block(&mixed, &curve, frames, minimum, &mut state);
+  put_tail(id, Tail::Delay(state));
+  block
+}
+
+fn render_biquad(
+  scope: &mut v8::PinScope,
+  id: u64,
+  filter: BiquadKind,
+  frequency: u64,
+  detune: u64,
+  q: u64,
+  gain: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let frequency =
+    param_block(scope, frequency, origin, quantum, cache, stack, ended);
+  let detune = param_block(scope, detune, origin, quantum, cache, stack, ended);
+  let q = param_block(scope, q, origin, quantum, cache, stack, ended);
+  let gain = param_block(scope, gain, origin, quantum, cache, stack, ended);
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let mut memory = match take_tail(id) {
+    Some(Tail::Biquad(memory)) => memory,
+    _ => Vec::new(),
+  };
+  let block = process::biquad_block(
+    &mixed,
+    filter,
+    &frequency,
+    &detune,
+    &q,
+    &gain,
+    rate,
+    &mut memory,
+  );
+  put_tail(id, Tail::Biquad(memory));
+  block
+}
+
+fn render_iir(
+  scope: &mut v8::PinScope,
+  id: u64,
+  feedforward: &[f32],
+  feedback: &[f32],
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let mut memory = match take_tail(id) {
+    Some(Tail::Iir(memory)) => memory,
+    _ => Vec::new(),
+  };
+  let block = process::iir_block(&mixed, feedforward, feedback, &mut memory);
+  put_tail(id, Tail::Iir(memory));
+  block
+}
+
+fn render_waveshaper(
+  scope: &mut v8::PinScope,
+  id: u64,
+  oversample: u8,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let curve = take_curve(id);
+  let mut state = match take_tail(id) {
+    Some(Tail::Shape(state)) => state,
+    _ => process::ShapeState::default(),
+  };
+  let block =
+    process::shape_block(&mixed, curve.as_deref(), oversample, &mut state);
+  if let Some(curve) = curve {
+    put_curve(id, curve);
+  }
+  put_tail(id, Tail::Shape(state));
+  block
+}
+
+fn render_panner(
+  scope: &mut v8::PinScope,
+  id: u64,
+  position: [u64; 3],
+  orientation: [u64; 3],
+  distance: DistanceModel,
+  ref_distance: f64,
+  max_distance: f64,
+  rolloff: f64,
+  cone_inner: f64,
+  cone_outer: f64,
+  cone_gain: f64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let mut source = Vec::with_capacity(6);
+  for param in position.into_iter().chain(orientation) {
+    source.push(param_block(
+      scope, param, origin, quantum, cache, stack, ended,
+    ));
+  }
+  let listener = listener_curves(
+    scope,
+    context_of(id).unwrap_or(0),
+    origin,
+    quantum,
+    cache,
+    stack,
+    ended,
+  );
+  process::panner_block(
+    &mixed,
+    [&source[0], &source[1], &source[2]],
+    [&source[3], &source[4], &source[5]],
+    [&listener[0], &listener[1], &listener[2]],
+    [&listener[3], &listener[4], &listener[5]],
+    [&listener[6], &listener[7], &listener[8]],
+    distance,
+    ref_distance,
+    max_distance,
+    rolloff,
+    cone_inner,
+    cone_outer,
+    cone_gain,
+  )
+}
+
+fn listener_curves(
+  scope: &mut v8::PinScope,
+  context: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Vec<Vec<f64>> {
+  let Some((position, forward, up)) = listener_params(context) else {
+    return vec![
+      vec![0.0; quantum],
+      vec![0.0; quantum],
+      vec![0.0; quantum],
+      vec![0.0; quantum],
+      vec![0.0; quantum],
+      vec![-1.0; quantum],
+      vec![0.0; quantum],
+      vec![1.0; quantum],
+      vec![0.0; quantum],
+    ];
+  };
+  let mut curves = Vec::with_capacity(9);
+  for param in position.into_iter().chain(forward).chain(up) {
+    curves.push(param_block(
+      scope, param, origin, quantum, cache, stack, ended,
+    ));
+  }
+  curves
+}
+
+fn render_stereo_panner(
+  scope: &mut v8::PinScope,
+  id: u64,
+  pan: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let pan = param_block(scope, pan, origin, quantum, cache, stack, ended);
+  process::stereo_pan_block(&mixed, &pan)
+}
+
+fn render_convolver(
+  scope: &mut v8::PinScope,
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let Some(Tail::Convolver {
+    kernels,
+    mut history,
+    scale,
+  }) = take_tail(id)
+  else {
+    return vec![vec![0.0; quantum]; mixed.len().max(1)];
+  };
+  let mut block =
+    process::convolve_block(&mixed, &kernels, &mut history, quantum);
+  for channel in &mut block {
+    for sample in channel.iter_mut() {
+      *sample *= scale;
+    }
+  }
+  put_tail(
+    id,
+    Tail::Convolver {
+      kernels,
+      history,
+      scale,
+    },
+  );
+  block
+}
+
+fn render_dynamics(
+  scope: &mut v8::PinScope,
+  id: u64,
+  threshold: u64,
+  knee: u64,
+  ratio: u64,
+  attack: u64,
+  release: u64,
+  makeup: u64,
+  automatic: bool,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let threshold =
+    param_block(scope, threshold, origin, quantum, cache, stack, ended);
+  let knee = param_block(scope, knee, origin, quantum, cache, stack, ended);
+  let ratio = param_block(scope, ratio, origin, quantum, cache, stack, ended);
+  let attack = param_block(scope, attack, origin, quantum, cache, stack, ended);
+  let release =
+    param_block(scope, release, origin, quantum, cache, stack, ended);
+  let makeup_db =
+    param_block(scope, makeup, origin, quantum, cache, stack, ended);
+  let threshold = head(&threshold, -24.0);
+  let knee = head(&knee, 30.0);
+  let ratio = head(&ratio, 12.0);
+  let attack = head(&attack, 0.003);
+  let release = head(&release, 0.25);
+  let makeup = if automatic {
+    let db = process::automatic_makeup_db(threshold, knee, ratio);
+    set_intrinsic(makeup, db);
+    process::automatic_makeup_linear(threshold, knee, ratio)
+  } else {
+    process::db_to_lin(head(&makeup_db, 0.0))
+  };
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let mut state = match take_tail(id) {
+    Some(Tail::Compressor(state)) => state,
+    _ => process::CompressorState::default(),
+  };
+  let block = process::compress_block(
+    &mixed, threshold, knee, ratio, attack, release, makeup, rate, &mut state,
+  );
+  put_tail(id, Tail::Compressor(state));
+  block
+}
+
+fn render_analyser(
+  scope: &mut v8::PinScope,
+  id: u64,
+  fft_size: u32,
+  smoothing: f64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let mono = process::downmix_mono(&mixed, quantum);
+  let mut state = match take_tail(id) {
+    Some(Tail::Analyser(state)) => state,
+    _ => process::analyser_reset(fft_size as usize),
+  };
+  process::analyser_process(&mut state, &mono, smoothing);
+  put_tail(id, Tail::Analyser(state));
+  mixed
+}
+
+fn render_merger(
+  scope: &mut v8::PinScope,
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let inputs = node_info(id).map(|info| info.inputs).unwrap_or(1);
+  let mut output = Vec::with_capacity(inputs as usize);
+  for input in 0..inputs {
+    let mixed =
+      mix_inputs(scope, id, input, origin, quantum, cache, stack, ended);
+    output.push(
+      mixed
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| vec![0.0; quantum]),
+    );
+  }
+  if output.is_empty() {
+    output.push(vec![0.0; quantum]);
+  }
+  output
+}
+
+fn render_splitter(
+  scope: &mut v8::PinScope,
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Vec<Block> {
+  let count = node_info(id).map(|info| info.outputs).unwrap_or(1);
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let mut outputs = Vec::with_capacity(count as usize);
+  for index in 0..count {
+    let channel = mixed
+      .get(index as usize)
+      .cloned()
+      .unwrap_or_else(|| vec![0.0; quantum]);
+    outputs.push(vec![channel]);
+  }
+  if outputs.is_empty() {
+    outputs.push(silent_block(quantum));
+  }
+  outputs
+}
+
+pub fn buffer_channels(
+  scope: &mut v8::PinScope,
+  id: u64,
+) -> Result<(f64, Vec<Vec<f32>>), Fault> {
+  let view = buffer_view(id)
+    .ok_or_else(|| Fault::type_("The buffer is not an AudioBuffer"))?;
+  let mut channels = Vec::with_capacity(view.channels as usize);
+  for index in 0..view.channels {
+    channels.push(read_channel(scope, id, index)?);
+  }
+  Ok((view.rate, channels))
+}
+
+pub fn store_listener(
+  context: u64,
+  position: [u64; 3],
+  forward: [u64; 3],
+  up: [u64; 3],
+  object: v8::Global<v8::Object>,
+) {
+  LISTENERS.with(|listeners| {
+    listeners.borrow_mut().insert(
+      context,
+      ListenerRec {
+        position,
+        forward,
+        up,
+        object,
+      },
+    );
+  });
+}
+
+pub fn listener_object(context: u64) -> Option<v8::Global<v8::Object>> {
+  LISTENERS.with(|listeners| {
+    listeners
+      .borrow()
+      .get(&context)
+      .map(|listener| listener.object.clone())
+  })
+}
+
+fn listener_params(context: u64) -> Option<([u64; 3], [u64; 3], [u64; 3])> {
+  LISTENERS.with(|listeners| {
+    listeners
+      .borrow()
+      .get(&context)
+      .map(|listener| (listener.position, listener.forward, listener.up))
+  })
+}
+
+fn finite_attr(value: f64) -> Result<f64, Fault> {
+  if value.is_finite() {
+    Ok(value)
+  } else {
+    Err(Fault::type_("The value is not finite"))
+  }
+}
+
+pub fn biquad_type_name(id: u64) -> &'static str {
+  match cloned_kind(id) {
+    Some(Kind::Biquad { filter, .. }) => match filter {
+      BiquadKind::Lowpass => "lowpass",
+      BiquadKind::Highpass => "highpass",
+      BiquadKind::Bandpass => "bandpass",
+      BiquadKind::Lowshelf => "lowshelf",
+      BiquadKind::Highshelf => "highshelf",
+      BiquadKind::Peaking => "peaking",
+      BiquadKind::Notch => "notch",
+      BiquadKind::Allpass => "allpass",
+    },
+    _ => "lowpass",
+  }
+}
+
+pub fn set_biquad_type(id: u64, value: &str) -> Result<(), Fault> {
+  let filter = match value {
+    "lowpass" => BiquadKind::Lowpass,
+    "highpass" => BiquadKind::Highpass,
+    "bandpass" => BiquadKind::Bandpass,
+    "lowshelf" => BiquadKind::Lowshelf,
+    "highshelf" => BiquadKind::Highshelf,
+    "peaking" => BiquadKind::Peaking,
+    "notch" => BiquadKind::Notch,
+    "allpass" => BiquadKind::Allpass,
+    _ => return Err(Fault::type_("The filter type is invalid")),
+  };
+  with_kind(id, |kind| {
+    let Kind::Biquad { filter: slot, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *slot = filter;
+    Ok(())
+  })
+}
+
+pub fn biquad_response(
+  id: u64,
+  probes: &[f32],
+) -> Result<(Vec<f32>, Vec<f32>), Fault> {
+  let Some(Kind::Biquad {
+    filter,
+    frequency,
+    detune,
+    q,
+    gain,
+  }) = cloned_kind(id)
+  else {
+    return Err(Fault::type_("Invalid AudioNode"));
+  };
+  let frequency = param_view(frequency)
+    .map(|param| param.value)
+    .unwrap_or(350.0);
+  let detune = param_view(detune).map(|param| param.value).unwrap_or(0.0);
+  let q = param_view(q).map(|param| param.value).unwrap_or(1.0);
+  let gain = param_view(gain).map(|param| param.value).unwrap_or(0.0);
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let mut magnitude = Vec::with_capacity(probes.len());
+  let mut phase = Vec::with_capacity(probes.len());
+  for probe in probes {
+    let (mag, angle) = process::biquad_response_at(
+      filter,
+      frequency,
+      detune,
+      q,
+      gain,
+      rate,
+      f64::from(*probe),
+    );
+    magnitude.push(mag);
+    phase.push(angle);
+  }
+  Ok((magnitude, phase))
+}
+
+pub fn iir_response(
+  id: u64,
+  probes: &[f32],
+) -> Result<(Vec<f32>, Vec<f32>), Fault> {
+  let Some(Kind::Iir {
+    feedforward,
+    feedback,
+  }) = cloned_kind(id)
+  else {
+    return Err(Fault::type_("Invalid AudioNode"));
+  };
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let mut magnitude = Vec::with_capacity(probes.len());
+  let mut phase = Vec::with_capacity(probes.len());
+  for probe in probes {
+    let (mag, angle) = process::iir_response_at(
+      &feedforward,
+      &feedback,
+      rate,
+      f64::from(*probe),
+    );
+    magnitude.push(mag);
+    phase.push(angle);
+  }
+  Ok((magnitude, phase))
+}
+
+pub fn wave_curve(id: u64) -> Option<Vec<f32>> {
+  CURVES.with(|curves| curves.borrow().get(&id).cloned())
+}
+
+pub fn set_wave_curve(id: u64, curve: Option<Vec<f32>>) -> Result<(), Fault> {
+  if let Some(values) = &curve
+    && values.len() < 2
+  {
+    return Err(Fault::dom(
+      "InvalidStateError",
+      "The curve needs at least two values",
+    ));
+  }
+  with_kind(id, |kind| {
+    if !matches!(kind, Kind::WaveShaper { .. }) {
+      return Err(Fault::type_("Invalid AudioNode"));
+    }
+    Ok(())
+  })?;
+  CURVES.with(|curves| {
+    let mut curves = curves.borrow_mut();
+    match curve {
+      Some(values) => {
+        curves.insert(id, values);
+      }
+      None => {
+        curves.remove(&id);
+      }
+    }
+  });
+  Ok(())
+}
+
+pub fn oversample_name(id: u64) -> &'static str {
+  match cloned_kind(id) {
+    Some(Kind::WaveShaper { oversample: 2, .. }) => "2x",
+    Some(Kind::WaveShaper { oversample: 4, .. }) => "4x",
+    _ => "none",
+  }
+}
+
+pub fn set_oversample(id: u64, mode: &str) -> Result<(), Fault> {
+  let factor = match mode {
+    "none" => 1,
+    "2x" => 2,
+    "4x" => 4,
+    _ => return Err(Fault::type_("The oversample mode is invalid")),
+  };
+  with_kind(id, |kind| {
+    let Kind::WaveShaper { oversample } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *oversample = factor;
+    Ok(())
+  })
+}
+
+pub fn remember_convolver_buffer(
+  id: u64,
+  object: Option<v8::Global<v8::Object>>,
+) {
+  CONVOLVER_BUFFERS.with(|buffers| {
+    let mut buffers = buffers.borrow_mut();
+    match object {
+      Some(object) => {
+        buffers.insert(id, object);
+      }
+      None => {
+        buffers.remove(&id);
+      }
+    }
+  });
+}
+
+pub fn convolver_buffer_object(id: u64) -> Option<v8::Global<v8::Object>> {
+  CONVOLVER_BUFFERS.with(|buffers| buffers.borrow().get(&id).cloned())
+}
+
+pub fn convolver_normalize(id: u64) -> bool {
+  matches!(cloned_kind(id), Some(Kind::Convolver { normalize: true }))
+}
+
+pub fn set_convolver_normalize(id: u64, value: bool) -> Result<(), Fault> {
+  with_kind(id, |kind| {
+    let Kind::Convolver { normalize } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *normalize = value;
+    Ok(())
+  })
+}
+
+pub fn set_convolver_buffer(
+  scope: &mut v8::PinScope,
+  id: u64,
+  buffer: Option<u64>,
+) -> Result<(), Fault> {
+  let normalize = match cloned_kind(id) {
+    Some(Kind::Convolver { normalize }) => normalize,
+    _ => return Err(Fault::type_("Invalid AudioNode")),
+  };
+  let Some(buffer) = buffer else {
+    TAILS.with(|tails| {
+      let mut tails = tails.borrow_mut();
+      if matches!(tails.get(&id), Some(Tail::Convolver { .. })) {
+        tails.remove(&id);
+      }
+    });
+    return Ok(());
+  };
+  let (rate, channels) = buffer_channels(scope, buffer)?;
+  if !matches!(channels.len(), 1 | 2 | 4) {
+    return Err(Fault::dom(
+      "NotSupportedError",
+      "The impulse response channel count is not supported",
+    ));
+  }
+  let scale = process::convolver_scale(&channels, rate, normalize);
+  let target = context_of(id).and_then(context_rate).unwrap_or(rate);
+  let kernels = channels
+    .iter()
+    .map(|channel| process::resample_linear(channel, rate, target))
+    .collect();
+  put_tail(
+    id,
+    Tail::Convolver {
+      kernels,
+      history: Vec::new(),
+      scale,
+    },
+  );
+  Ok(())
+}
+
+pub fn set_panning_model(id: u64, model: &str) -> Result<(), Fault> {
+  with_kind(id, |kind| {
+    if !matches!(kind, Kind::Panner { .. }) {
+      return Err(Fault::type_("Invalid AudioNode"));
+    }
+    match model {
+      "equalpower" => Ok(()),
+      "HRTF" => Err(Fault::dom(
+        "NotSupportedError",
+        "HRTF panning is not implemented",
+      )),
+      _ => Err(Fault::type_("The panning model is invalid")),
+    }
+  })
+}
+
+pub fn distance_model_name(id: u64) -> &'static str {
+  match cloned_kind(id) {
+    Some(Kind::Panner {
+      distance: DistanceModel::Linear,
+      ..
+    }) => "linear",
+    Some(Kind::Panner {
+      distance: DistanceModel::Exponential,
+      ..
+    }) => "exponential",
+    _ => "inverse",
+  }
+}
+
+pub fn set_distance_model(id: u64, model: &str) -> Result<(), Fault> {
+  let distance = match model {
+    "linear" => DistanceModel::Linear,
+    "inverse" => DistanceModel::Inverse,
+    "exponential" => DistanceModel::Exponential,
+    _ => return Err(Fault::type_("The distance model is invalid")),
+  };
+  with_kind(id, |kind| {
+    let Kind::Panner { distance: slot, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *slot = distance;
+    Ok(())
+  })
+}
+
+fn panner_value(
+  id: u64,
+  read: impl FnOnce(&Kind) -> Option<f64>,
+  fallback: f64,
+) -> f64 {
+  cloned_kind(id).as_ref().and_then(read).unwrap_or(fallback)
+}
+
+pub fn ref_distance(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { ref_distance, .. } => Some(*ref_distance),
+      _ => None,
+    },
+    1.0,
+  )
+}
+
+pub fn set_ref_distance(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  if value < 0.0 {
+    return Err(Fault::range("The reference distance is negative"));
+  }
+  with_kind(id, |kind| {
+    let Kind::Panner { ref_distance, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *ref_distance = value;
+    Ok(())
+  })
+}
+
+pub fn max_distance(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { max_distance, .. } => Some(*max_distance),
+      _ => None,
+    },
+    10000.0,
+  )
+}
+
+pub fn set_max_distance(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  if value <= 0.0 {
+    return Err(Fault::range("The maximum distance is not positive"));
+  }
+  with_kind(id, |kind| {
+    let Kind::Panner { max_distance, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *max_distance = value;
+    Ok(())
+  })
+}
+
+pub fn rolloff(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { rolloff, .. } => Some(*rolloff),
+      _ => None,
+    },
+    1.0,
+  )
+}
+
+pub fn set_rolloff(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  if value < 0.0 {
+    return Err(Fault::range("The rolloff factor is negative"));
+  }
+  with_kind(id, |kind| {
+    let Kind::Panner { rolloff, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *rolloff = value;
+    Ok(())
+  })
+}
+
+pub fn cone_inner(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { cone_inner, .. } => Some(*cone_inner),
+      _ => None,
+    },
+    360.0,
+  )
+}
+
+pub fn set_cone_inner(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  with_kind(id, |kind| {
+    let Kind::Panner { cone_inner, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *cone_inner = value;
+    Ok(())
+  })
+}
+
+pub fn cone_outer(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { cone_outer, .. } => Some(*cone_outer),
+      _ => None,
+    },
+    360.0,
+  )
+}
+
+pub fn set_cone_outer(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  with_kind(id, |kind| {
+    let Kind::Panner { cone_outer, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *cone_outer = value;
+    Ok(())
+  })
+}
+
+pub fn cone_gain(id: u64) -> f64 {
+  panner_value(
+    id,
+    |kind| match kind {
+      Kind::Panner { cone_gain, .. } => Some(*cone_gain),
+      _ => None,
+    },
+    0.0,
+  )
+}
+
+pub fn set_cone_gain(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  if !(0.0..=1.0).contains(&value) {
+    return Err(Fault::range("The cone outer gain is out of range"));
+  }
+  with_kind(id, |kind| {
+    let Kind::Panner { cone_gain, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *cone_gain = value;
+    Ok(())
+  })
+}
+
+pub fn reset_analyser(id: u64, fft_size: u32) {
+  put_tail(
+    id,
+    Tail::Analyser(process::analyser_reset(fft_size as usize)),
+  );
+}
+
+pub fn fft_size(id: u64) -> u32 {
+  match cloned_kind(id) {
+    Some(Kind::Analyser { fft_size, .. }) => fft_size,
+    _ => 2048,
+  }
+}
+
+pub fn set_fft_size(id: u64, size: u32) -> Result<(), Fault> {
+  if !size.is_power_of_two() || !(32..=32768).contains(&size) {
+    return Err(Fault::dom(
+      "IndexSizeError",
+      "The FFT size is not supported",
+    ));
+  }
+  with_kind(id, |kind| {
+    let Kind::Analyser { fft_size, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *fft_size = size;
+    Ok(())
+  })?;
+  reset_analyser(id, size);
+  Ok(())
+}
+
+pub fn min_decibels(id: u64) -> f64 {
+  match cloned_kind(id) {
+    Some(Kind::Analyser { min_decibels, .. }) => min_decibels,
+    _ => -100.0,
+  }
+}
+
+pub fn set_min_decibels(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  with_kind(id, |kind| {
+    let Kind::Analyser {
+      min_decibels,
+      max_decibels,
+      ..
+    } = kind
+    else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    if value >= *max_decibels {
+      return Err(Fault::dom("IndexSizeError", "The decibel range is invalid"));
+    }
+    *min_decibels = value;
+    Ok(())
+  })
+}
+
+pub fn max_decibels(id: u64) -> f64 {
+  match cloned_kind(id) {
+    Some(Kind::Analyser { max_decibels, .. }) => max_decibels,
+    _ => -30.0,
+  }
+}
+
+pub fn set_max_decibels(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  with_kind(id, |kind| {
+    let Kind::Analyser {
+      min_decibels,
+      max_decibels,
+      ..
+    } = kind
+    else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    if value <= *min_decibels {
+      return Err(Fault::dom("IndexSizeError", "The decibel range is invalid"));
+    }
+    *max_decibels = value;
+    Ok(())
+  })
+}
+
+pub fn smoothing(id: u64) -> f64 {
+  match cloned_kind(id) {
+    Some(Kind::Analyser { smoothing, .. }) => smoothing,
+    _ => 0.8,
+  }
+}
+
+pub fn set_smoothing(id: u64, value: f64) -> Result<(), Fault> {
+  let value = finite_attr(value)?;
+  if !(0.0..=1.0).contains(&value) {
+    return Err(Fault::dom(
+      "IndexSizeError",
+      "The smoothing constant is out of range",
+    ));
+  }
+  with_kind(id, |kind| {
+    let Kind::Analyser { smoothing, .. } = kind else {
+      return Err(Fault::type_("Invalid AudioNode"));
+    };
+    *smoothing = value;
+    Ok(())
+  })
+}
+
+pub fn analyser_time(id: u64) -> Vec<f32> {
+  let fft = fft_size(id) as usize;
+  TAILS.with(|tails| match tails.borrow().get(&id) {
+    Some(Tail::Analyser(state)) => {
+      process::time_domain(&state.ring, state.write, state.count)
+    }
+    _ => vec![0.0; fft],
+  })
+}
+
+pub fn analyser_magnitudes(id: u64) -> Vec<f32> {
+  let bins = fft_size(id) as usize / 2;
+  TAILS.with(|tails| match tails.borrow().get(&id) {
+    Some(Tail::Analyser(state)) => state.mag.clone(),
+    _ => vec![0.0; bins],
+  })
+}
+
+pub fn compressor_reduction(id: u64) -> f32 {
+  TAILS.with(|tails| match tails.borrow().get(&id) {
+    Some(Tail::Compressor(state)) => state.reduction,
+    _ => 0.0,
+  })
 }
 
 #[cfg(test)]
