@@ -8329,7 +8329,10 @@ interface BaseAudioContext extends EventTarget {
   readonly listener: AudioListener;
 
   /**
-   * Decodes WAV, FLAC, MP3, or Ogg Vorbis.
+   * Decodes WAV, FLAC, MP3, Ogg Vorbis, or Ogg Opus.
+   *
+   * Ogg Opus becomes an `AudioBuffer` at 48000 Hz. The channel count
+   * comes from the Opus header.
    *
    * The `ArrayBuffer` is detached. A panic rejects `InvalidStateError`.
    *

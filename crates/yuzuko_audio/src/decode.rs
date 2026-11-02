@@ -1,4 +1,4 @@
-//! Pure-Rust decoders for WAV, FLAC, MP3, and Ogg Vorbis.
+//! Pure-Rust decoders for WAV, FLAC, MP3, Ogg Vorbis, and Ogg Opus.
 //!
 //! A panic inside a decoder becomes `InvalidStateError` at the Web Audio
 //! boundary. Bad bytes are an `EncodingError`.
@@ -44,7 +44,11 @@ fn decode_inner(bytes: &[u8]) -> Result<Pcm, ()> {
   } else if bytes.starts_with(b"fLaC") {
     decode_flac(bytes)
   } else if bytes.starts_with(b"OggS") {
-    decode_vorbis(bytes)
+    if looks_like_opus(bytes) {
+      decode_opus(bytes)
+    } else {
+      decode_vorbis(bytes)
+    }
   } else {
     decode_mp3(bytes)
   }
@@ -96,6 +100,21 @@ fn decode_flac(bytes: &[u8]) -> Result<Pcm, ()> {
     sample_rate: rate,
     channels: channels_pcm,
   })
+}
+
+fn looks_like_opus(bytes: &[u8]) -> bool {
+  let head = &bytes[..bytes.len().min(512)];
+  head.windows(8).any(|window| window == b"OpusHead")
+}
+
+fn decode_opus(bytes: &[u8]) -> Result<Pcm, ()> {
+  let (interleaved, head) = ruopus::decode_ogg_opus(bytes).map_err(|_| ())?;
+  let channels = usize::from(head.channel_count);
+  if channels == 0 || channels > 32 {
+    return Err(());
+  }
+  // Opus playback is 48 kHz. `input_sample_rate` is original-file metadata.
+  Ok(deinterleave(interleaved, channels, 48_000.0))
 }
 
 fn decode_vorbis(bytes: &[u8]) -> Result<Pcm, ()> {
@@ -230,6 +249,87 @@ mod tests {
     assert_tone("tone.flac");
     assert_tone("tone.mp3");
     assert_tone("tone.ogg");
+    assert_opus_sine();
+  }
+
+  fn assert_opus_sine() {
+    let bytes = fixture("tone.opus");
+    assert_opus_pcm(&decode(&bytes).expect("tone.opus"));
+    // `OpusHead.input_sample_rate` is original-file metadata.
+    let mut retagged = bytes;
+    stamp_opus_input_rate(&mut retagged, 44_100);
+    let retagged = decode(&retagged).expect("retagged opus");
+    assert!(
+      (retagged.sample_rate - 48_000.0).abs() < 1.0,
+      "retagged rate {}",
+      retagged.sample_rate
+    );
+    assert_eq!(retagged.channels.len(), 1, "retagged channels");
+  }
+
+  fn assert_opus_pcm(pcm: &super::Pcm) {
+    assert!(
+      (pcm.sample_rate - 48_000.0).abs() < 1.0,
+      "opus rate {}",
+      pcm.sample_rate
+    );
+    assert_eq!(pcm.channels.len(), 1, "opus channels");
+    let channel = &pcm.channels[0];
+    // 100 ms at 48 kHz is 4800 frames. This 96 kb/s stream records a
+    // 120-sample pre-skip and does not drain another frame after it.
+    assert_eq!(channel.len(), 4_680, "opus length {}", channel.len());
+    for (frame, sample) in channel.iter().enumerate() {
+      let expected = sine_sample(440.0, 48_000.0, frame as u64) * 0.5;
+      let delta = (sample - expected).abs();
+      assert!(
+        delta < 0.02,
+        "opus frame {frame} got {sample} expected {expected}"
+      );
+    }
+  }
+
+  /// Writes `rate` into the identification header and repairs that page's CRC.
+  fn stamp_opus_input_rate(bytes: &mut [u8], rate: u32) {
+    assert!(bytes.starts_with(b"OggS"), "opus page");
+    let head = bytes
+      .windows(8)
+      .position(|window| window == b"OpusHead")
+      .expect("OpusHead");
+    bytes[head + 12..head + 16].copy_from_slice(&rate.to_le_bytes());
+    let segments = usize::from(bytes[26]);
+    let body = 27 + segments;
+    let payload: usize =
+      bytes[27..body].iter().map(|seg| usize::from(*seg)).sum();
+    let total = body + payload;
+    let crc = ogg_crc(&bytes[..22], &bytes[26..total]);
+    bytes[22..26].copy_from_slice(&crc.to_le_bytes());
+  }
+
+  fn ogg_crc(prefix: &[u8], rest: &[u8]) -> u32 {
+    const POLY: u32 = 0x04C1_1DB7;
+    let mut table = [0u32; 256];
+    for (index, slot) in table.iter_mut().enumerate() {
+      let mut value = (index as u32) << 24;
+      for _ in 0..8 {
+        value = if value & 0x8000_0000 != 0 {
+          (value << 1) ^ POLY
+        } else {
+          value << 1
+        };
+      }
+      *slot = value;
+    }
+    fn update(table: &[u32; 256], mut crc: u32, data: &[u8]) -> u32 {
+      for byte in data {
+        crc = (crc << 8) ^ table[((crc >> 24) as u8 ^ byte) as usize];
+      }
+      crc
+    }
+    update(
+      &table,
+      update(&table, update(&table, 0, prefix), &[0, 0, 0, 0]),
+      rest,
+    )
   }
 
   #[test]

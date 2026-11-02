@@ -24,12 +24,18 @@ async function assertThrows(
 
 const tones = new URL("./fixtures/audio/", import.meta.url);
 
-async function decodeTone(name: string): Promise<AudioBuffer> {
+async function decodeTone(
+  name: string,
+  sampleRate: number,
+): Promise<AudioBuffer> {
   const bytes = await (await fetch(new URL(name, tones))).arrayBuffer();
   const context = new AudioContext();
   try {
     const buffer = await context.decodeAudioData(bytes);
-    assert(buffer.sampleRate === 44100, `${name} rate ${buffer.sampleRate}`);
+    assert(
+      buffer.sampleRate === sampleRate,
+      `${name} rate ${buffer.sampleRate}`,
+    );
     assert(buffer.numberOfChannels >= 1, `${name} channels`);
     const channel = buffer.getChannelData(0);
     assert(channel.length > 0, `${name} length`);
@@ -44,11 +50,35 @@ async function decodeTone(name: string): Promise<AudioBuffer> {
   }
 }
 
-Yuzuko.test("decodeAudioData reads WAV, FLAC, MP3, and Vorbis", async () => {
-  await decodeTone("tone.wav");
-  await decodeTone("tone.flac");
-  await decodeTone("tone.mp3");
-  await decodeTone("tone.ogg");
+function sineSample(
+  frequency: number,
+  sampleRate: number,
+  frame: number,
+): number {
+  return Math.sin((2 * Math.PI * frequency * frame) / sampleRate);
+}
+
+Yuzuko.test("decodeAudioData reads WAV, FLAC, MP3, Vorbis, and Opus", async () => {
+  const wav = await decodeTone("tone.wav", 44100);
+  assert(wav.getChannelData(0).length > 0, "wav samples");
+  await decodeTone("tone.flac", 44100);
+  await decodeTone("tone.mp3", 44100);
+  await decodeTone("tone.ogg", 44100);
+  const opus = await decodeTone("tone.opus", 48000);
+  assert(
+    opus.numberOfChannels === 1,
+    `opus channels ${opus.numberOfChannels}`,
+  );
+  const channel = opus.getChannelData(0);
+  // 4800 source frames, minus the 120-sample Opus pre-skip.
+  assert(channel.length === 4680, `opus length ${channel.length}`);
+  for (let frame = 0; frame < channel.length; frame += 1) {
+    const expected = sineSample(440, 48000, frame) * 0.5;
+    assert(
+      Math.abs(channel[frame] - expected) < 0.02,
+      `opus sample ${frame}: ${channel[frame]} expected ${expected}`,
+    );
+  }
 });
 
 Yuzuko.test("gain scales a buffer played into an offline context", async () => {
