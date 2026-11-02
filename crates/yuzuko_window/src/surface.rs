@@ -359,8 +359,6 @@ pub struct Window {
   max_height: Cell<Option<f64>>,
   transparent: Cell<bool>,
   positioned: Cell<bool>,
-  #[cfg(feature = "accessibility")]
-  accessible_root: RefCell<Option<v8::TracedReference<v8::Object>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for Window {
@@ -380,12 +378,6 @@ unsafe impl v8::cppgc::GarbageCollected for Window {
       for query in queries.iter() {
         visitor.trace(query);
       }
-    }
-    #[cfg(feature = "accessibility")]
-    if let Ok(root) = self.accessible_root.try_borrow()
-      && let Some(root) = root.as_ref()
-    {
-      visitor.trace(root);
     }
   }
 
@@ -407,15 +399,6 @@ impl Window {
     &self,
   ) -> &RefCell<Vec<v8::TracedReference<v8::Object>>> {
     &self.queries
-  }
-
-  #[cfg(feature = "accessibility")]
-  pub(crate) fn store_accessible_root(
-    &self,
-    scope: &mut v8::PinScope,
-    object: v8::Local<v8::Object>,
-  ) {
-    *self.accessible_root.borrow_mut() = Some(traced(scope, object));
   }
 
   pub(crate) fn close_object(
@@ -1021,8 +1004,6 @@ impl Window {
       max_height: Cell::new(options.max_height),
       transparent: Cell::new(options.transparent),
       positioned: Cell::new(positioned),
-      #[cfg(feature = "accessibility")]
-      accessible_root: RefCell::new(None),
     })
   }
 
@@ -1602,12 +1583,20 @@ pub struct WindowSurface {
   window_id: u64,
   visible: Cell<bool>,
   transferred: Cell<bool>,
+  #[cfg(feature = "accessibility")]
+  accessible_root: RefCell<Option<v8::TracedReference<v8::Object>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for WindowSurface {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
     v8::cppgc::GarbageCollected::trace(&self.canvas, visitor);
+    #[cfg(feature = "accessibility")]
+    if let Ok(root) = self.accessible_root.try_borrow()
+      && let Some(root) = root.as_ref()
+    {
+      visitor.trace(root);
+    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -1634,11 +1623,27 @@ impl WindowSurface {
       window_id,
       visible: Cell::new(true),
       transferred: Cell::new(false),
+      #[cfg(feature = "accessibility")]
+      accessible_root: RefCell::new(None),
     }
   }
 
   fn id(&self) -> u64 {
     self.canvas.id()
+  }
+
+  #[cfg(feature = "accessibility")]
+  pub(crate) fn window_id(&self) -> u64 {
+    self.window_id
+  }
+
+  #[cfg(feature = "accessibility")]
+  pub(crate) fn store_accessible_root(
+    &self,
+    scope: &mut v8::PinScope,
+    object: v8::Local<v8::Object>,
+  ) {
+    *self.accessible_root.borrow_mut() = Some(traced(scope, object));
   }
 
   /// The canvas this surface draws into.

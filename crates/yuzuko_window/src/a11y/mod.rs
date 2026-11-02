@@ -28,7 +28,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   let _ = global.delete(scope, key.into());
   let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
   yuzuko.set(scope, key.into(), constructor);
-  install_window(scope);
+  install_surface(scope);
 }
 
 pub(crate) fn clear() {
@@ -230,9 +230,9 @@ fn fail(error: forest::Fail) -> OpError {
   }
 }
 
-fn install_window(scope: &mut v8::PinScope) {
+fn install_surface(scope: &mut v8::PinScope) {
   let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
-  let key = v8::String::new(scope, "Window").unwrap();
+  let key = v8::String::new(scope, "WindowSurface").unwrap();
   let Some(constructor) = yuzuko.get(scope, key.into()) else {
     return;
   };
@@ -289,11 +289,11 @@ fn attach_root(
   let object = args.this();
   let id = {
     let Some(host) =
-      (unsafe { host_ref::<crate::surface::Window>(scope, object) })
+      (unsafe { host_ref::<crate::surface::WindowSurface>(scope, object) })
     else {
       return Err(OpError::type_("illegal invocation"));
     };
-    host.get().id()
+    host.get().window_id()
   };
   if !inbox::contains(id) || forest::is_closed(id) {
     return Err(fail(forest::Fail::Closed));
@@ -309,7 +309,7 @@ fn attach_root(
     return Err(fail(error));
   }
   if let Some(host) =
-    unsafe { host_ref::<crate::surface::Window>(scope, object) }
+    unsafe { host_ref::<crate::surface::WindowSurface>(scope, object) }
   {
     host.get().store_accessible_root(scope, wrapped);
   }
@@ -337,11 +337,11 @@ fn read_root(
   let object = args.this();
   let id = {
     let Some(host) =
-      (unsafe { host_ref::<crate::surface::Window>(scope, object) })
+      (unsafe { host_ref::<crate::surface::WindowSurface>(scope, object) })
     else {
       return Err(OpError::type_("illegal invocation"));
     };
-    host.get().id()
+    host.get().window_id()
   };
   if !inbox::contains(id) || forest::is_closed(id) {
     return Err(fail(forest::Fail::Closed));

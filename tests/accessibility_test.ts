@@ -54,7 +54,7 @@ Yuzuko.test("an accessible root is one authored tree", () => {
   assert(sample.parent === null, "detached parent");
   assert(sample.focusable === false, "focusable default");
 
-  const attach = Yuzuko.Window.prototype.attachAccessibleRoot;
+  const attach = Yuzuko.WindowSurface.prototype.attachAccessibleRoot;
   assert(attach.length === 0, "attach length");
   assertThrows(
     () => attach.call({}),
@@ -63,7 +63,7 @@ Yuzuko.test("an accessible root is one authored tree", () => {
     "illegal invocation",
   );
   const descriptor = Object.getOwnPropertyDescriptor(
-    Yuzuko.Window.prototype,
+    Yuzuko.WindowSurface.prototype,
     "accessibleRoot",
   );
   assert(descriptor?.get !== undefined, "accessibleRoot getter");
@@ -79,24 +79,24 @@ Yuzuko.test("an accessible root is one authored tree", () => {
   try {
     closed.close();
     assertThrows(
-      () => closed.attachAccessibleRoot(),
+      () => closed.surface.attachAccessibleRoot(),
       "dom",
       "InvalidStateError",
       "The window is closed.",
     );
     assertThrows(
-      () => closed.accessibleRoot,
+      () => closed.surface.accessibleRoot,
       "dom",
       "InvalidStateError",
       "The window is closed.",
     );
 
-    assert(window.accessibleRoot === null, "no root yet");
-    const root = window.attachAccessibleRoot();
-    assert(window.accessibleRoot === root, "getter returns the root");
+    assert(window.surface.accessibleRoot === null, "no root yet");
+    const root = window.surface.attachAccessibleRoot();
+    assert(window.surface.accessibleRoot === root, "getter returns the root");
     assert(root.parent === null, "root parent");
     assertThrows(
-      () => window.attachAccessibleRoot(),
+      () => window.surface.attachAccessibleRoot(),
       "dom",
       "InvalidStateError",
       "An accessible root is already attached.",
@@ -207,13 +207,13 @@ Yuzuko.test("an accessible root is one authored tree", () => {
 
     window.close();
     assertThrows(
-      () => window.accessibleRoot,
+      () => window.surface.accessibleRoot,
       "dom",
       "InvalidStateError",
       "The window is closed.",
     );
     assertThrows(
-      () => window.attachAccessibleRoot(),
+      () => window.surface.attachAccessibleRoot(),
       "dom",
       "InvalidStateError",
       "The window is closed.",
@@ -239,7 +239,7 @@ Yuzuko.test("accessible properties and offsets round-trip", () => {
     title: "props",
   });
   try {
-    const root = window.attachAccessibleRoot();
+    const root = window.surface.attachAccessibleRoot();
     const mid = new Yuzuko.AccessibleNode();
     const child = new Yuzuko.AccessibleNode();
     const sibling = new Yuzuko.AccessibleNode();

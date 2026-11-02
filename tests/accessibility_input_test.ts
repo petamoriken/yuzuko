@@ -20,7 +20,7 @@ Yuzuko.test("assistive actions bubble through the authored tree", () => {
     title: "input",
   });
   try {
-    const root = window.attachAccessibleRoot();
+    const root = window.surface.attachAccessibleRoot();
     const child = new Yuzuko.AccessibleNode();
     child.role = "button";
     root.appendChild(child);

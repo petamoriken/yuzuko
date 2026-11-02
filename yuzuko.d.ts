@@ -614,7 +614,7 @@ declare namespace Yuzuko {
    * A virtual accessibility node.
    *
    * This is the Accessibility Object Model Phase 3 draft, attached to a
-   * {@link Window} because there is no document. It is not on `globalThis`.
+   * {@link WindowSurface} because there is no document. It is not on `globalThis`.
    * A dedicated worker does not have it. Phase 4 `ComputedAccessibleNode` is
    * not implemented. `parent` and the sibling getters read the authored tree.
    *
@@ -1324,27 +1324,6 @@ declare namespace Yuzuko {
      */
     hasPointerCapture(pointerId: number): boolean;
 
-    /**
-     * Attaches one new virtual accessibility root and returns it.
-     *
-     * A second call throws `InvalidStateError`. After `close()`, this throws
-     * `InvalidStateError` before the already-attached check. Closing keeps
-     * the stored root. Further platform updates stop. Tree edits still succeed.
-     *
-     * @throws {@link DOMException} `InvalidStateError` when the window is
-     * closed, or when a root is already attached.
-     * @throws {@link TypeError} On illegal invocation.
-     */
-    attachAccessibleRoot(): AccessibleNode;
-
-    /**
-     * The attached root, or `null` before one is attached.
-     *
-     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
-     * @throws {@link TypeError} On illegal invocation.
-     */
-    readonly accessibleRoot: AccessibleNode | null;
-
     addEventListener<K extends keyof WindowEventMap>(
       type: K,
       listener: (this: Window, ev: WindowEventMap[K]) => any,
@@ -1553,6 +1532,29 @@ declare namespace Yuzuko {
      * exists or control was already transferred.
      */
     transferControlToOffscreen(): OffscreenCanvas;
+
+    /**
+     * Attaches one new virtual accessibility root and returns it.
+     *
+     * The explainer hangs this tree from a canvas. Children are added with
+     * `appendChild` on the returned node. A second call throws
+     * `InvalidStateError`. After the window's `close()`, this throws
+     * `InvalidStateError` before the already-attached check. Closing keeps
+     * the stored root. Further platform updates stop. Tree edits still succeed.
+     *
+     * @throws {@link DOMException} `InvalidStateError` when the window is
+     * closed, or when a root is already attached.
+     * @throws {@link TypeError} On illegal invocation.
+     */
+    attachAccessibleRoot(): AccessibleNode;
+
+    /**
+     * The attached root, or `null` before one is attached.
+     *
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     * @throws {@link TypeError} On illegal invocation.
+     */
+    readonly accessibleRoot: AccessibleNode | null;
 
     addEventListener<K extends keyof WindowSurfaceEventMap>(
       type: K,
