@@ -3,6 +3,7 @@ import {
   drawBitmap,
   drawTriangle,
   readPixel,
+  triangleShader,
 } from "./webgpu_draw.ts";
 
 function assert(condition, message) {
@@ -54,6 +55,13 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
     rejected = error instanceof TypeError;
   }
   assert(rejected, "required feature");
+  rejected = false;
+  try {
+    await adapter.requestDevice({ requiredFeatures: ["not-a-feature"] });
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  assert(rejected, "invalid feature name");
   const device = await adapter.requestDevice();
   const above = device.limits.maxTextureDimension2D + 1;
   rejected = false;
@@ -135,7 +143,7 @@ Yuzuko.test("two canvases keep distinct textures", async () => {
   device.destroy();
 });
 
-Yuzuko.test("validation scope, lost device, and unsupported compute", async () => {
+Yuzuko.test("validation scope, lost device, and pass validation", async () => {
   const adapter = await adapterOrSkip();
   if (!adapter) {
     return;
@@ -150,27 +158,22 @@ Yuzuko.test("validation scope, lost device, and unsupported compute", async () =
   });
   const error = await device.popErrorScope();
   assert(error instanceof GPUValidationError, "validation error");
-  let unsupported = false;
+  let invalid = false;
   try {
     device.createComputePipeline();
   } catch (caught) {
-    unsupported = caught.name === "NotSupportedError";
+    invalid = caught instanceof TypeError;
   }
-  assert(unsupported, "compute pipeline");
-  unsupported = false;
-  try {
-    device.createCommandEncoder().beginComputePass();
-  } catch (caught) {
-    unsupported = caught.name === "NotSupportedError";
-  }
-  assert(unsupported, "compute pass");
+  assert(invalid, "compute pipeline descriptor");
+  const compute = device.createCommandEncoder().beginComputePass();
+  compute.end();
   const canvas = new OffscreenCanvas(4, 4);
   const context = canvas.getContext("webgpu");
   context.configure({
     device,
     format: navigator.gpu.getPreferredCanvasFormat(),
   });
-  unsupported = false;
+  invalid = false;
   try {
     device.createCommandEncoder().beginRenderPass({
       colorAttachments: [{
@@ -181,9 +184,9 @@ Yuzuko.test("validation scope, lost device, and unsupported compute", async () =
       depthStencilAttachment: {},
     });
   } catch (caught) {
-    unsupported = caught.name === "NotSupportedError";
+    invalid = caught instanceof TypeError;
   }
-  assert(unsupported, "depth attachment");
+  assert(invalid, "depth attachment");
   const lost = device.lost;
   device.destroy();
   const info = await lost;
@@ -231,3 +234,280 @@ function clear(device, texture, color) {
   pass.end();
   device.queue.submit([encoder.finish()]);
 }
+
+const computeShader = `
+@group(0) @binding(0) var<storage, read_write> data: array<u32>;
+
+@compute @workgroup_size(1)
+fn main() {
+  data[0] = data[0] + 1u;
+}
+`;
+
+function depthShader(z, color) {
+  return `
+@vertex
+fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+  const positions = array<vec2f, 3>(
+    vec2f(-1.0, -1.0),
+    vec2f(3.0, -1.0),
+    vec2f(-1.0, 3.0),
+  );
+  return vec4f(positions[vertexIndex], ${z}, 1.0);
+}
+
+@fragment
+fn fs() -> @location(0) vec4f {
+  return vec4f(${color});
+}
+`;
+}
+
+async function readBytes(device, source, size) {
+  const read = device.createBuffer({
+    size,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(source, 0, read, 0, size);
+  device.queue.submit([encoder.finish()]);
+  await read.mapAsync(GPUMapMode.READ);
+  const bytes = new Uint8Array(read.getMappedRange()).slice();
+  read.unmap();
+  return bytes;
+}
+
+Yuzuko.test("a compute shader increments a storage buffer", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const module = device.createShaderModule({ code: computeShader });
+  const pipeline = await device.createComputePipelineAsync({
+    layout: "auto",
+    compute: { module, entryPoint: "main" },
+  });
+  const storage = device.createBuffer({
+    size: 4,
+    usage:
+      GPUBufferUsage.STORAGE |
+      GPUBufferUsage.COPY_SRC |
+      GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(storage, 0, new Uint32Array([7]));
+  const group = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: storage } }],
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, group);
+  pass.dispatchWorkgroups(1);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  const bytes = await readBytes(device, storage, 4);
+  const value = new DataView(bytes.buffer).getUint32(0, true);
+  assert(value === 8, `storage ${value}`);
+  device.destroy();
+});
+
+Yuzuko.test("a nearer fragment wins the depth test", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const color = device.createTexture({
+    size: [16, 16],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const depth = device.createTexture({
+    size: [16, 16],
+    format: "depth24plus",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  function pipeline(z, pixel) {
+    const module = device.createShaderModule({ code: depthShader(z, pixel) });
+    return device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: {
+        module,
+        entryPoint: "fs",
+        targets: [{ format: "rgba8unorm" }],
+      },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: true,
+        depthCompare: "less",
+      },
+    });
+  }
+  const near = pipeline("0.2", "0.0, 1.0, 0.0, 1.0");
+  const far = pipeline("0.8", "1.0, 0.0, 0.0, 1.0");
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+    depthStencilAttachment: {
+      view: depth.createView(),
+      depthClearValue: 1,
+      depthLoadOp: "clear",
+      depthStoreOp: "store",
+    },
+  });
+  pass.setPipeline(near);
+  pass.draw(3);
+  pass.setPipeline(far);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  const pixel = channels(await readPixel(device, color, 8, 8), "rgba8unorm");
+  assert(pixel.g > 200 && pixel.r < 40, `depth pixel ${pixel.r},${pixel.g}`);
+  device.destroy();
+});
+
+Yuzuko.test("an occlusion query counts covered samples", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const queries = device.createQuerySet({ type: "occlusion", count: 1 });
+  assert(queries.count === 1, "query count");
+  assert(queries.type === "occlusion", "query type");
+  const color = device.createTexture({
+    size: [16, 16],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const module = device.createShaderModule({ code: triangleShader });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  const resolved = device.createBuffer({
+    size: 8,
+    usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+    occlusionQuerySet: queries,
+  });
+  pass.setPipeline(pipeline);
+  pass.beginOcclusionQuery(0);
+  pass.draw(3);
+  pass.endOcclusionQuery();
+  pass.end();
+  encoder.resolveQuerySet(queries, 0, 1, resolved, 0);
+  device.queue.submit([encoder.finish()]);
+  const bytes = await readBytes(device, resolved, 8);
+  const view = new DataView(bytes.buffer);
+  const samples = view.getUint32(0, true) + view.getUint32(4, true) * 2 ** 32;
+  assert(samples > 0, `occlusion ${samples}`);
+  device.destroy();
+});
+
+Yuzuko.test("timestamp queries follow the device feature", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  if (device.features.has("timestamp-query")) {
+    const requested = await adapter.requestDevice({
+      requiredFeatures: ["timestamp-query"],
+    });
+    assert(requested.features.has("timestamp-query"), "requested feature");
+    const queries = device.createQuerySet({ type: "timestamp", count: 2 });
+    const resolved = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+    });
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass({
+      timestampWrites: {
+        querySet: queries,
+        beginningOfPassWriteIndex: 0,
+        endOfPassWriteIndex: 1,
+      },
+    });
+    pass.end();
+    encoder.resolveQuerySet(queries, 0, 2, resolved, 0);
+    device.queue.submit([encoder.finish()]);
+    const bytes = await readBytes(device, resolved, 16);
+    assert(bytes.length === 16, "timestamp bytes");
+    requested.destroy();
+  } else {
+    let unsupported = false;
+    try {
+      device.createQuerySet({ type: "timestamp", count: 1 });
+    } catch (caught) {
+      unsupported = caught.name === "NotSupportedError";
+    }
+    assert(unsupported, "timestamp query");
+  }
+  device.destroy();
+});
+
+Yuzuko.test("a render bundle draws the triangle", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const color = device.createTexture({
+    size: [16, 16],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const module = device.createShaderModule({ code: triangleShader });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  const bundles = device.createRenderBundleEncoder({
+    colorFormats: ["rgba8unorm"],
+  });
+  bundles.setPipeline(pipeline);
+  bundles.draw(3);
+  const bundle = bundles.finish();
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.executeBundles([bundle]);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  const pixel = channels(await readPixel(device, color, 8, 8), "rgba8unorm");
+  assert(pixel.g > 200 && pixel.r < 40 && pixel.b < 40, "bundle center");
+  device.destroy();
+});

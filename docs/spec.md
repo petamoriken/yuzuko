@@ -350,15 +350,24 @@ The WebGPU surface is:
 
 - `navigator.gpu.requestAdapter`, `requestDevice`, and `getPreferredCanvasFormat`
 - `GPUCanvasContext.configure`, `getCurrentTexture`, and `unconfigure`. `alphaMode` accepts `"opaque"` and `"premultiplied"`
-- Shader modules, render pipelines, command encoders, and render passes
-- Buffers, textures, samplers, bind groups, bind group layouts, `queue.writeBuffer`, and `queue.submit`
+- Shader modules, render pipelines, compute pipelines, command encoders, render passes, and compute passes
+- Render bundle encoders, `finish`, and `executeBundles`
+- Buffers, textures, samplers, bind groups, bind group layouts, query sets, `queue.writeBuffer`, and `queue.submit`
+- `copyBufferToBuffer`, `copyTextureToBuffer`, `resolveQuerySet`, and indexed and indirect draws (`setIndexBuffer`, `drawIndexed`, `drawIndirect`, `drawIndexedIndirect`, `dispatchWorkgroupsIndirect`)
+- Depth and stencil attachments, occlusion queries, and timestamp queries when `timestamp-query` is enabled
 - `copyExternalImageToTexture` drawing an `ImageBitmap` or a `VideoFrame`
 - `pushErrorScope` / `popErrorScope` for `"validation"` and `"out-of-memory"`. A validation failure reported through `popErrorScope` is a `GPUValidationError`
 - `GPUDevice.lost` and `destroy`. `device.lost` resolves from `destroy`
 - Adapter limits and features published in specification vocabulary
 - Unimplemented methods throw `NotSupportedError`
 
-Render bundles, compute, occlusion queries, timestamp queries, and a depth-stencil attachment throw `NotSupportedError`.
+A bind group layout entry is one binding: a buffer (`"uniform"`, `"storage"`, or `"read-only-storage"`, with `hasDynamicOffset` and `minBindingSize`), a sampler (`"filtering"`, `"non-filtering"`, or `"comparison"`), a sampled texture (`sampleType`, `viewDimension`, and `multisampled`), or a storage texture. Storage texture `access` other than `"write-only"` throws `NotSupportedError`. `externalTexture` throws `NotSupportedError`. `setBindGroup` applies dynamic offsets. A null bind group with a non-empty offset list throws `TypeError`.
+
+A render pipeline accepts `cullMode`, `frontFace`, `stripIndexFormat`, `writeMask`, and a depth-stencil state for `depth16unorm`, `depth24plus`, `depth24plus-stencil8`, `depth32float`, and `stencil8`. `depth32float-stencil8` throws `NotSupportedError`. A blend state, `unclippedDepth: true`, a multisample `count` other than 1, `alphaToCoverageEnabled: true`, and a color attachment `resolveTarget` throw `NotSupportedError`. A render pass keeps a null color attachment in its slot and can draw with only a depth attachment. `createComputePipelineAsync` returns a promise that is already settled. Compilation runs on the calling thread, and a pipeline error rejects that promise.
+
+The process device enables `timestamp-query` when the adapter supports it, and retries device creation without that feature if the request fails. The feature is visible without listing it in `requiredFeatures`. `requestDevice` rejects a feature the shared device does not have. Creating a `"timestamp"` query set without the feature throws `NotSupportedError`. Occlusion queries do not need a feature. Viewport, scissor, and debug markers stay absent.
+
+Accepted texture formats are `bgra8unorm`, `rgba8unorm`, `bgra8unorm-srgb`, `rgba8unorm-srgb`, `r8unorm`, `rg8unorm`, `rgba16float`, `r16float`, `rg16float`, `r32float`, `rg32float`, `rgba32float`, `r8uint`, `r8sint`, `r16uint`, `r16sint`, `r32uint`, `r32sint`, `rg8uint`, `rg8sint`, `rg16uint`, `rg16sint`, `rg32uint`, `rg32sint`, `rgba8uint`, `rgba8sint`, `rgba16uint`, `rgba16sint`, `rgba32uint`, `rgba32sint`, and the depth and stencil formats above. Any other name throws `TypeError`.
 
 ## WinterTC
 

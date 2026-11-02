@@ -85,7 +85,7 @@ interface GPUColorDict {
   r: number;
 }
 type GPUColorWriteFlags = number;
-interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUDebugCommandsMixin, GPUObjectBase {
+interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUObjectBase {
   dispatchWorkgroups(workgroupCountX: GPUSize32, workgroupCountY?: GPUSize32, workgroupCountZ?: GPUSize32): void;
   dispatchWorkgroupsIndirect(indirectBuffer: GPUBuffer, indirectOffset: GPUSize64): void;
   end(): void;
@@ -103,13 +103,8 @@ type GPUSize32 = number;
 interface GPUBindingCommandsMixin {
   setBindGroup(index: GPUIndex32, bindGroup: GPUBindGroup | null, dynamicOffsets?: Iterable<GPUBufferDynamicOffset>): void;
 }
-interface GPUDebugCommandsMixin {
-  insertDebugMarker(markerLabel: string): void;
-  popDebugGroup(): void;
-  pushDebugGroup(groupLabel: string): void;
-}
 interface GPUObjectBase {
-  label: string;
+  readonly label: string;
 }
 interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
 
@@ -156,12 +151,11 @@ type GPUPrimitiveTopology = "line-list" | "line-strip" | "point-list" | "triangl
 interface GPUQuerySet extends GPUObjectBase {
   readonly count: GPUSize32Out;
   readonly type: GPUQueryType;
-  destroy(): void;
 }
 
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
-interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUDebugCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
+interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
 
@@ -176,7 +170,9 @@ interface GPURenderCommandsMixin {
 }
 type GPUSignedOffset32 = number;
 interface GPURenderBundleDescriptor {}
-interface GPURenderBundle {}
+interface GPURenderBundle {
+  readonly label: string;
+}
 interface GPURenderPassDepthStencilAttachment {
   depthClearValue?: number;
   depthLoadOp?: GPULoadOp;
@@ -7189,12 +7185,15 @@ declare function createImageBitmap(
 /**
  * WebGPU entry point.
  *
- * One process device is shared with Canvas 2D and is created with no optional
- * features. `YUZUKO_SKIP_GPU=1` makes {@link GPU.requestAdapter} resolve `null`.
- * `wgslLanguageFeatures` is empty. `label` on GPU objects reads back as `""`.
+ * One process device is shared with Canvas 2D. It enables `timestamp-query`
+ * when the adapter supports it. `YUZUKO_SKIP_GPU=1` makes
+ * {@link GPU.requestAdapter} resolve `null`. `wgslLanguageFeatures` is empty.
+ * `label` on GPU objects reads back as `""`.
  *
- * Render bundles, compute pipelines, compute passes, occlusion queries,
- * timestamp queries, and a depth-stencil attachment throw `NotSupportedError`.
+ * Blend state, a multisample count other than 1, `resolveTarget`,
+ * `unclippedDepth`, alpha to coverage, storage texture access other than
+ * `"write-only"`, `depth32float-stencil8`, and `externalTexture` throw
+ * `NotSupportedError`. Viewport, scissor, and debug markers are absent.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
  *
@@ -7261,12 +7260,14 @@ interface GPUAdapter {
   /**
    * Requests a JavaScript device on the shared wgpu device.
    *
-   * A non-empty `requiredFeatures` list rejects. `requiredLimits` the shared
+   * A feature the shared device does not have rejects. `timestamp-query` is
+   * already enabled when the adapter supports it. `requiredLimits` the shared
    * device cannot satisfy also reject. `destroy` loses that JavaScript device
    * only.
    *
-   * @throws {@link TypeError} When `requiredFeatures` is non-empty or a
-   * required limit is outside the shared device.
+   * @throws {@link TypeError} When a required feature is not enabled on the
+   * shared device, the feature name is invalid, or a required limit is
+   * outside the shared device.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/requestDevice)
    */
@@ -7336,10 +7337,10 @@ interface GPUDevice {
   createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
 
   /**
-   * A storage binding throws `NotSupportedError`.
+   * Storage texture `access` other than `"write-only"`, and `externalTexture`,
+   * throw `NotSupportedError`.
    *
-   * @throws {@link DOMException} `NotSupportedError` when an entry is outside
-   * the implemented binding types.
+   * @throws {@link DOMException} `NotSupportedError` for those bindings.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout)
    */
@@ -7351,35 +7352,46 @@ interface GPUDevice {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroup) */
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline) */
+  /**
+   * A blend state, `unclippedDepth: true`, a multisample `count` other than 1,
+   * `alphaToCoverageEnabled: true`, and `depth32float-stencil8` throw
+   * `NotSupportedError`.
+   *
+   * @throws {@link DOMException} `NotSupportedError` for those states.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline)
+   */
   createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createCommandEncoder) */
   createCommandEncoder(descriptor?: GPUCommandEncoderDescriptor): GPUCommandEncoder;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Render bundles are not implemented.
+   * A `sampleCount` other than 1 throws `NotSupportedError`.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `sampleCount` is not 1.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderBundleEncoder)
    */
   createRenderBundleEncoder(descriptor: GPURenderBundleEncoderDescriptor): GPURenderBundleEncoder;
 
-  /**
-   * @throws {@link DOMException} `NotSupportedError` Compute pipelines are not implemented.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline) */
   createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Compute pipelines are not implemented.
+   * The promise is already settled. Compilation runs on the calling thread.
+   * A pipeline error rejects `OperationError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipelineAsync)
    */
   createComputePipelineAsync(descriptor: GPUComputePipelineDescriptor): Promise<GPUComputePipeline>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Query sets are not implemented.
+   * A `"timestamp"` query set throws `NotSupportedError` when `timestamp-query`
+   * is not enabled.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `timestamp-query` is
+   * not enabled.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createQuerySet)
    */
@@ -7414,19 +7426,34 @@ interface GPUDeviceLostInfo {
 }
 
 
-/** Placeholder for the unimplemented render-bundle descriptor. */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderBundleEncoder) */
 interface GPURenderBundleEncoderDescriptor {
   label?: string;
+  colorFormats: (GPUTextureFormat | null)[];
+  depthStencilFormat?: GPUTextureFormat;
+  sampleCount?: GPUSize32;
+  depthReadOnly?: boolean;
+  stencilReadOnly?: boolean;
 }
 
-/** Placeholder for the unimplemented compute descriptor. */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline) */
 interface GPUComputePipelineDescriptor {
   label?: string;
+  layout: GPUPipelineLayout | "auto";
+  compute: GPUProgrammableStage;
 }
 
-/** Placeholder for the unimplemented query-set descriptor. */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline) */
+interface GPUProgrammableStage {
+  module: GPUShaderModule;
+  entryPoint?: string;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createQuerySet) */
 interface GPUQuerySetDescriptor {
   label?: string;
+  type: GPUQueryType;
+  count: GPUSize32;
 }
 
 /**
@@ -7688,7 +7715,17 @@ interface GPUBindGroupLayoutEntry {
   buffer?: GPUBufferBindingLayout;
   sampler?: GPUSamplerBindingLayout;
   texture?: GPUTextureBindingLayout;
+  storageTexture?: GPUStorageTextureBindingLayout;
 }
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout) */
+interface GPUStorageTextureBindingLayout {
+  access?: GPUStorageTextureAccess;
+  format: GPUTextureFormat;
+  viewDimension?: GPUTextureViewDimension;
+}
+
+type GPUStorageTextureAccess = "atomic" | "read-only" | "read-write" | "write-only";
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout) */
 interface GPUBufferBindingLayout {
@@ -7776,8 +7813,35 @@ interface GPURenderPipelineDescriptor {
   vertex: GPUVertexState;
   fragment?: GPUFragmentState;
   primitive?: GPUPrimitiveState;
+  depthStencil?: GPUDepthStencilState;
   multisample?: GPUMultisampleState;
 }
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDepthStencilState) */
+interface GPUDepthStencilState {
+  format: GPUTextureFormat;
+  depthWriteEnabled?: boolean;
+  depthCompare?: GPUCompareFunction;
+  stencilFront?: GPUStencilFaceState;
+  stencilBack?: GPUStencilFaceState;
+  stencilReadMask?: number;
+  stencilWriteMask?: number;
+  depthBias?: number;
+  depthBiasSlopeScale?: number;
+  depthBiasClamp?: number;
+}
+
+type GPUCompareFunction = "always" | "equal" | "greater" | "greater-equal" | "less" | "less-equal" | "never" | "not-equal";
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUStencilFaceState) */
+interface GPUStencilFaceState {
+  compare?: GPUCompareFunction;
+  failOp?: GPUStencilOperation;
+  depthFailOp?: GPUStencilOperation;
+  passOp?: GPUStencilOperation;
+}
+
+type GPUStencilOperation = "decrement-clamp" | "decrement-wrap" | "increment-clamp" | "increment-wrap" | "invert" | "keep" | "replace" | "zero";
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline) */
 interface GPUVertexState {
@@ -7849,8 +7913,9 @@ interface GPUCommandEncoder {
   readonly label: string;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` when `depthStencilAttachment`,
-   * `occlusionQuerySet`, or `timestampWrites` is set.
+   * A color attachment `resolveTarget` throws `NotSupportedError`.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `resolveTarget` is set.
    * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
    * or a pass is already open.
    *
@@ -7859,11 +7924,25 @@ interface GPUCommandEncoder {
   beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Compute passes are not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
+   * or a pass is already open.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginComputePass)
    */
   beginComputePass(descriptor?: GPUComputePassDescriptor): GPUComputePassEncoder;
+
+  /**
+   * A size of 0 throws `RangeError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyBufferToBuffer)
+   */
+  copyBufferToBuffer(
+    source: GPUBuffer,
+    sourceOffset: number,
+    destination: GPUBuffer,
+    destinationOffset: number,
+    size: number,
+  ): void;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyTextureToBuffer)
@@ -7872,6 +7951,17 @@ interface GPUCommandEncoder {
     source: GPUImageCopyTexture,
     destination: GPUImageCopyBuffer,
     copySize: GPUExtent3D,
+  ): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/resolveQuerySet)
+   */
+  resolveQuerySet(
+    querySet: GPUQuerySet,
+    firstQuery: number,
+    queryCount: number,
+    destination: GPUBuffer,
+    destinationOffset: number,
   ): void;
 
   /**
@@ -7908,9 +7998,17 @@ interface GPURenderPassColorAttachment {
   storeOp: GPUStoreOp;
 }
 
-/** Placeholder. {@link GPUCommandEncoder.beginComputePass} throws. */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginComputePass) */
 interface GPUComputePassDescriptor {
   label?: string;
+  timestampWrites?: GPUComputePassTimestampWrites;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginComputePass) */
+interface GPUComputePassTimestampWrites {
+  beginningOfPassWriteIndex?: GPUSize32;
+  endOfPassWriteIndex?: GPUSize32;
+  querySet: GPUQuerySet;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandBuffer) */
@@ -7931,7 +8029,7 @@ interface GPUCommandBufferDescriptor {
 /**
  * A render pass.
  *
- * `setIndexBuffer`, viewport, scissor, and indirect draws are absent.
+ * Viewport, scissor, and debug markers are absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder)
  */
@@ -7940,6 +8038,14 @@ interface GPURenderPassEncoder {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setPipeline) */
   setPipeline(pipeline: GPURenderPipeline): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setIndexBuffer) */
+  setIndexBuffer(
+    buffer: GPUBuffer,
+    indexFormat: GPUIndexFormat,
+    offset?: number,
+    size?: number,
+  ): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setVertexBuffer) */
   setVertexBuffer(
@@ -7955,6 +8061,13 @@ interface GPURenderPassEncoder {
     bindGroup: GPUBindGroup | null,
     dynamicOffsets?: Iterable<number>,
   ): void;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup | null,
+    dynamicOffsetsData: Uint32Array,
+    dynamicOffsetsDataStart: number,
+    dynamicOffsetsDataLength: number,
+  ): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/draw) */
   draw(
@@ -7963,6 +8076,30 @@ interface GPURenderPassEncoder {
     firstVertex?: number,
     firstInstance?: number,
   ): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/drawIndexed) */
+  drawIndexed(
+    indexCount: number,
+    instanceCount?: number,
+    firstIndex?: number,
+    baseVertex?: number,
+    firstInstance?: number,
+  ): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/drawIndirect) */
+  drawIndirect(indirectBuffer: GPUBuffer, indirectOffset: number): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/drawIndexedIndirect) */
+  drawIndexedIndirect(indirectBuffer: GPUBuffer, indirectOffset: number): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/beginOcclusionQuery) */
+  beginOcclusionQuery(queryIndex: number): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/endOcclusionQuery) */
+  endOcclusionQuery(): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/executeBundles) */
+  executeBundles(bundles: GPURenderBundle[]): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/end) */
   end(): void;

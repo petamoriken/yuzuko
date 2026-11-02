@@ -265,20 +265,49 @@ impl GpuDevice {
     Ok(New(GpuCommandEncoder::create(&handle, label)))
   }
 
-  fn create_render_bundle_encoder(&self) -> Result<(), OpError> {
-    Err(js::unsupported("GPURenderBundleEncoder"))
+  fn create_render_bundle_encoder(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<New<encode::GpuRenderBundleEncoder>, OpError> {
+    encode::create_bundle_encoder(scope, &self.require()?, descriptor)
   }
 
-  fn create_compute_pipeline(&self) -> Result<(), OpError> {
-    Err(js::unsupported("GPUComputePipeline"))
+  fn create_compute_pipeline(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<New<resource::GpuComputePipeline>, OpError> {
+    resource::create_compute_pipeline(scope, &self.require()?, descriptor)
   }
 
-  fn create_compute_pipeline_async(&self) -> Result<(), OpError> {
-    Err(js::unsupported("GPUComputePipeline"))
+  fn create_compute_pipeline_async(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<Js, OpError> {
+    let handle = self.require()?;
+    match resource::create_compute_pipeline(scope, &handle, descriptor) {
+      Ok(New(pipeline)) => {
+        let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };
+        Ok(js::promise(scope, object.into()))
+      }
+      Err(OpError::Dom { name, .. }) if name == "OperationError" => {
+        Ok(js::promise_rejected(
+          scope,
+          OpError::dom("OperationError", "The compute pipeline is invalid"),
+        ))
+      }
+      Err(error) => Err(error),
+    }
   }
 
-  fn create_query_set(&self) -> Result<(), OpError> {
-    Err(js::unsupported("GPUQuerySet"))
+  fn create_query_set(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<New<resource::GpuQuerySet>, OpError> {
+    resource::create_query_set(scope, &self.require()?, descriptor)
   }
 
   fn push_error_scope(&self, filter: String) -> Result<(), OpError> {
@@ -474,9 +503,14 @@ pub fn install(scope: &mut v8::PinScope) {
   resource::GpuBindGroup::install(scope);
   resource::GpuPipelineLayout::install(scope);
   resource::GpuRenderPipeline::install(scope);
+  resource::GpuComputePipeline::install(scope);
+  resource::GpuQuerySet::install(scope);
   GpuCommandEncoder::install(scope);
   encode::GpuCommandBuffer::install(scope);
   encode::GpuRenderPass::install(scope);
+  encode::GpuComputePass::install(scope);
+  encode::GpuRenderBundleEncoder::install(scope);
+  encode::GpuRenderBundle::install(scope);
   crate::canvas::GpuCanvasContext::install(scope);
   install_flags(scope);
   install_navigator(scope);
@@ -594,13 +628,14 @@ fn open_device(
       "The GPU adapter is unavailable",
     ));
   }
-  let (device, queue, limits) =
+  let (device, queue, limits, features) =
     gpu_parts().map(|(_adapter, device, queue)| {
       let limits = device.limits();
-      (device, queue, limits)
+      let features = device.features();
+      (device, queue, limits, features)
     })?;
   if let Some(object) = dictionary(scope, descriptor) {
-    reject_features(scope, object)?;
+    reject_features(scope, object, features)?;
     check_required_limits(scope, object, &limits)?;
   }
   let id = state::alloc_id();
@@ -704,6 +739,7 @@ fn dictionary<'a>(
 fn reject_features(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
+  enabled: wgpu::Features,
 ) -> Result<(), OpError> {
   let Some(value) = js::get(scope, descriptor, "requiredFeatures") else {
     return Ok(());
@@ -713,12 +749,20 @@ fn reject_features(
   }
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("requiredFeatures must be a sequence"))?;
-  if array.length() == 0 {
-    return Ok(());
+  for index in 0..array.length() {
+    let item = array.get_index(scope, index).unwrap();
+    let name = js::string(scope, item)
+      .ok_or_else(|| OpError::type_("The feature name is invalid"))?;
+    let feature = name
+      .parse::<wgpu::Features>()
+      .map_err(|_| OpError::type_("The feature name is invalid"))?;
+    if !enabled.contains(feature) {
+      return Err(OpError::type_(
+        "Required features are not enabled on the shared device",
+      ));
+    }
   }
-  Err(OpError::type_(
-    "Required features are not enabled on the shared device",
-  ))
+  Ok(())
 }
 
 fn check_required_limits(

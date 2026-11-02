@@ -123,18 +123,42 @@ pub(crate) fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
   }
 }
 
-pub(crate) fn request_device(
+/// `timestamp-query` when the adapter has it. Device creation retries
+/// without that feature when the request fails.
+fn timestamp_feature(adapter: &wgpu::Adapter) -> wgpu::Features {
+  if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+    wgpu::Features::TIMESTAMP_QUERY
+  } else {
+    wgpu::Features::empty()
+  }
+}
+
+fn request_with(
   adapter: &wgpu::Adapter,
+  features: wgpu::Features,
 ) -> Result<(wgpu::Device, wgpu::Queue), String> {
   pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
     label: Some("yuzuko"),
-    required_features: wgpu::Features::empty(),
+    required_features: features,
     required_limits: device_limits(adapter),
     experimental_features: wgpu::ExperimentalFeatures::disabled(),
     memory_hints: wgpu::MemoryHints::default(),
     trace: wgpu::Trace::Off,
   }))
   .map_err(|error| error.to_string())
+}
+
+pub(crate) fn request_device(
+  adapter: &wgpu::Adapter,
+) -> Result<(wgpu::Device, wgpu::Queue), String> {
+  let features = timestamp_feature(adapter);
+  match request_with(adapter, features) {
+    Ok(parts) => Ok(parts),
+    Err(_) if !features.is_empty() => {
+      request_with(adapter, wgpu::Features::empty())
+    }
+    Err(error) => Err(error),
+  }
 }
 
 fn create() -> Result<SharedGpu, String> {

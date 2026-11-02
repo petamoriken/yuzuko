@@ -206,6 +206,7 @@ impl GpuTexture {
     let _ = scope;
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
+      format: self.format,
     }))
   }
 
@@ -217,6 +218,7 @@ impl GpuTexture {
 
 pub struct GpuTextureView {
   view: RefCell<Option<wgpu::TextureView>>,
+  format: wgpu::TextureFormat,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuTextureView {
@@ -232,6 +234,10 @@ impl GpuTextureView {
     self.view.borrow().clone().ok_or_else(|| {
       OpError::dom("InvalidStateError", "The texture view is destroyed")
     })
+  }
+
+  pub fn format(&self) -> wgpu::TextureFormat {
+    self.format
   }
 }
 
@@ -401,6 +407,89 @@ impl GpuRenderPipeline {
   fn get_bind_group_layout(&self, index: u32) -> New<GpuBindGroupLayout> {
     let layout = self.pipeline.get_bind_group_layout(index);
     New(GpuBindGroupLayout { layout })
+  }
+}
+
+pub struct GpuComputePipeline {
+  pipeline: wgpu::ComputePipeline,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for GpuComputePipeline {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUComputePipeline"
+  }
+}
+
+impl GpuComputePipeline {
+  pub fn pipeline(&self) -> &wgpu::ComputePipeline {
+    &self.pipeline
+  }
+}
+
+#[op(name = "GPUComputePipeline")]
+impl GpuComputePipeline {
+  #[getter]
+  fn label(&self) -> String {
+    String::new()
+  }
+
+  fn get_bind_group_layout(&self, index: u32) -> New<GpuBindGroupLayout> {
+    let layout = self.pipeline.get_bind_group_layout(index);
+    New(GpuBindGroupLayout { layout })
+  }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum QueryKind {
+  Occlusion,
+  Timestamp,
+}
+
+pub struct GpuQuerySet {
+  set: wgpu::QuerySet,
+  kind: QueryKind,
+  count: u32,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for GpuQuerySet {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUQuerySet"
+  }
+}
+
+impl GpuQuerySet {
+  pub fn query_set(&self) -> wgpu::QuerySet {
+    self.set.clone()
+  }
+
+  pub fn kind(&self) -> QueryKind {
+    self.kind
+  }
+}
+
+#[op(name = "GPUQuerySet")]
+impl GpuQuerySet {
+  #[getter]
+  fn label(&self) -> String {
+    String::new()
+  }
+
+  #[getter]
+  fn count(&self) -> u32 {
+    self.count
+  }
+
+  #[getter]
+  #[rename("type")]
+  fn query_type(&self) -> String {
+    match self.kind {
+      QueryKind::Occlusion => "occlusion".to_string(),
+      QueryKind::Timestamp => "timestamp".to_string(),
+    }
   }
 }
 
@@ -615,10 +704,10 @@ pub fn create_render_pipeline(
   let target_refs = targets
     .iter()
     .map(|target| {
-      Some(wgpu::ColorTargetState {
-        format: *target,
+      target.as_ref().map(|target| wgpu::ColorTargetState {
+        format: target.format,
         blend: None,
-        write_mask: wgpu::ColorWrites::ALL,
+        write_mask: target.write_mask,
       })
     })
     .collect::<Vec<_>>();
@@ -636,7 +725,9 @@ pub fn create_render_pipeline(
   } else {
     None
   };
-  let topology = topology_of(scope, object)?;
+  let primitive = primitive_state(scope, object)?;
+  let depth_stencil = depth_stencil_state(scope, object)?;
+  let multisample = multisample_state(scope, object)?;
   let label = optional_label(scope, object);
   let explicit = explicit_layout(scope, object)?;
   let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -651,12 +742,9 @@ pub fn create_render_pipeline(
           compilation_options: wgpu::PipelineCompilationOptions::default(),
           buffers: &layouts,
         },
-        primitive: wgpu::PrimitiveState {
-          topology,
-          ..Default::default()
-        },
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
+        primitive,
+        depth_stencil: depth_stencil.clone(),
+        multisample,
         fragment: fragment_state,
         multiview_mask: None,
         cache: None,
@@ -668,16 +756,103 @@ pub fn create_render_pipeline(
   Ok(New(GpuRenderPipeline { pipeline }))
 }
 
+pub fn create_compute_pipeline(
+  scope: &mut v8::PinScope,
+  handle: &Handle,
+  descriptor: v8::Local<v8::Value>,
+) -> Result<New<GpuComputePipeline>, OpError> {
+  let object = js::object(scope, descriptor).ok_or_else(|| {
+    OpError::type_("createComputePipeline requires a descriptor")
+  })?;
+  let compute = js::get(scope, object, "compute")
+    .and_then(|value| js::object(scope, value))
+    .ok_or_else(|| {
+      OpError::type_("GPUComputePipelineDescriptor.compute is required")
+    })?;
+  let module = shader_of(scope, compute)?;
+  let entry = js::get(scope, compute, "entryPoint")
+    .and_then(|value| js::string(scope, value));
+  let label = optional_label(scope, object);
+  let explicit = explicit_layout(scope, object)?;
+  let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    handle
+      .device
+      .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: label.as_deref(),
+        layout: explicit.as_ref().map(GpuPipelineLayout::layout),
+        module: module.module(),
+        entry_point: entry.as_deref(),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+      })
+  }));
+  let pipeline = pipeline.map_err(|_| {
+    OpError::dom("OperationError", "The compute pipeline is invalid")
+  })?;
+  Ok(New(GpuComputePipeline { pipeline }))
+}
+
+pub fn create_query_set(
+  scope: &mut v8::PinScope,
+  handle: &Handle,
+  descriptor: v8::Local<v8::Value>,
+) -> Result<New<GpuQuerySet>, OpError> {
+  let object = js::object(scope, descriptor)
+    .ok_or_else(|| OpError::type_("createQuerySet requires a descriptor"))?;
+  let kind = match required_string(scope, object, "type")?.as_str() {
+    "occlusion" => QueryKind::Occlusion,
+    "timestamp" => QueryKind::Timestamp,
+    _ => return Err(OpError::type_("The query type is invalid")),
+  };
+  if kind == QueryKind::Timestamp
+    && !handle
+      .device
+      .features()
+      .contains(wgpu::Features::TIMESTAMP_QUERY)
+  {
+    return Err(OpError::dom(
+      "NotSupportedError",
+      "timestamp-query is not enabled",
+    ));
+  }
+  let count = js::required_u32(scope, object, "count")?;
+  if count == 0 {
+    return Err(OpError::range("The query count must be non-zero"));
+  }
+  let label = optional_label(scope, object);
+  let ty = match kind {
+    QueryKind::Occlusion => wgpu::QueryType::Occlusion,
+    QueryKind::Timestamp => wgpu::QueryType::Timestamp,
+  };
+  let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    handle.device.create_query_set(&wgpu::QuerySetDescriptor {
+      label: label.as_deref(),
+      ty,
+      count,
+    })
+  }));
+  let set = set
+    .map_err(|_| OpError::dom("OperationError", "The query set is invalid"))?;
+  Ok(New(GpuQuerySet { set, kind, count }))
+}
+
 struct VertexSet {
   stride: u64,
   step: wgpu::VertexStepMode,
   attributes: Vec<wgpu::VertexAttribute>,
 }
 
+#[derive(Clone)]
+struct ColorTargetOwned {
+  format: wgpu::TextureFormat,
+  write_mask: wgpu::ColorWrites,
+}
+
+#[derive(Clone)]
 struct FragmentOwned {
   module: wgpu::ShaderModule,
   entry: Option<String>,
-  targets: Vec<wgpu::TextureFormat>,
+  targets: Vec<Option<ColorTargetOwned>>,
 }
 
 enum OwnedBinding {
@@ -734,26 +909,40 @@ fn layout_binding_type(
   scope: &mut v8::PinScope,
   entry: v8::Local<v8::Object>,
 ) -> Result<wgpu::BindingType, OpError> {
-  if js::get(scope, entry, "sampler").is_some() {
-    return Ok(wgpu::BindingType::Sampler(
-      wgpu::SamplerBindingType::Filtering,
+  let buffer = present_object(scope, entry, "buffer")?;
+  let sampler = present_object(scope, entry, "sampler")?;
+  let texture = present_object(scope, entry, "texture")?;
+  let storage = present_object(scope, entry, "storageTexture")?;
+  let external = js::get(scope, entry, "externalTexture")
+    .is_some_and(|value| !value.is_null_or_undefined());
+  let chosen = [
+    buffer.is_some(),
+    sampler.is_some(),
+    texture.is_some(),
+    storage.is_some(),
+    external,
+  ]
+  .into_iter()
+  .filter(|present| *present)
+  .count();
+  if chosen != 1 {
+    return Err(OpError::type_(
+      "A bind group layout entry needs one binding type",
     ));
   }
-  if js::get(scope, entry, "texture").is_some() {
-    return Ok(wgpu::BindingType::Texture {
-      sample_type: wgpu::TextureSampleType::Float { filterable: true },
-      view_dimension: wgpu::TextureViewDimension::D2,
-      multisampled: false,
-    });
+  if external {
+    return Err(js::unsupported("externalTexture"));
   }
-  if js::get(scope, entry, "buffer").is_some() {
-    return Ok(wgpu::BindingType::Buffer {
-      ty: wgpu::BufferBindingType::Uniform,
-      has_dynamic_offset: false,
-      min_binding_size: None,
-    });
+  if let Some(buffer) = buffer {
+    return buffer_binding(scope, buffer);
   }
-  Err(js::unsupported("This bind group layout entry"))
+  if let Some(sampler) = sampler {
+    return Ok(wgpu::BindingType::Sampler(sampler_binding(scope, sampler)?));
+  }
+  if let Some(texture) = texture {
+    return texture_binding(scope, texture);
+  }
+  storage_binding(scope, storage.unwrap())
 }
 
 fn bind_entries(
@@ -881,11 +1070,22 @@ fn fragment_state(
   let mut targets = Vec::new();
   for value in list {
     if value.is_null() {
+      targets.push(None);
       continue;
     }
     let target = js::object(scope, value)
       .ok_or_else(|| OpError::type_("A color target must be an object"))?;
-    targets.push(texture_format(&required_string(scope, target, "format")?)?);
+    if js::get(scope, target, "blend")
+      .is_some_and(|value| !value.is_null_or_undefined())
+    {
+      return Err(js::unsupported("Blend state"));
+    }
+    let format = texture_format(&required_string(scope, target, "format")?)?;
+    let write_mask = match js::field_u32(scope, target, "writeMask")? {
+      Some(bits) => wgpu::ColorWrites::from_bits_truncate(bits),
+      None => wgpu::ColorWrites::ALL,
+    };
+    targets.push(Some(ColorTargetOwned { format, write_mask }));
   }
   Ok(Some(FragmentOwned {
     module: module.module().clone(),
@@ -894,26 +1094,400 @@ fn fragment_state(
   }))
 }
 
-fn topology_of(
+fn primitive_state(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
-) -> Result<wgpu::PrimitiveTopology, OpError> {
-  let Some(primitive) = js::get(scope, descriptor, "primitive") else {
-    return Ok(wgpu::PrimitiveTopology::TriangleList);
-  };
-  let Some(object) = js::object(scope, primitive) else {
-    return Ok(wgpu::PrimitiveTopology::TriangleList);
-  };
-  match js::get(scope, object, "topology")
+) -> Result<wgpu::PrimitiveState, OpError> {
+  let object = js::get(scope, descriptor, "primitive")
+    .filter(|value| !value.is_null_or_undefined())
+    .and_then(|value| js::object(scope, value));
+  let topology = match object
+    .and_then(|object| js::get(scope, object, "topology"))
     .and_then(|value| js::string(scope, value))
     .as_deref()
   {
-    None | Some("triangle-list") => Ok(wgpu::PrimitiveTopology::TriangleList),
-    Some("triangle-strip") => Ok(wgpu::PrimitiveTopology::TriangleStrip),
-    Some("line-list") => Ok(wgpu::PrimitiveTopology::LineList),
-    Some("line-strip") => Ok(wgpu::PrimitiveTopology::LineStrip),
-    Some("point-list") => Ok(wgpu::PrimitiveTopology::PointList),
-    _ => Err(OpError::type_("The primitive topology is invalid")),
+    None | Some("triangle-list") => wgpu::PrimitiveTopology::TriangleList,
+    Some("triangle-strip") => wgpu::PrimitiveTopology::TriangleStrip,
+    Some("line-list") => wgpu::PrimitiveTopology::LineList,
+    Some("line-strip") => wgpu::PrimitiveTopology::LineStrip,
+    Some("point-list") => wgpu::PrimitiveTopology::PointList,
+    _ => return Err(OpError::type_("The primitive topology is invalid")),
+  };
+  let cull_mode = match object
+    .and_then(|object| js::get(scope, object, "cullMode"))
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("none") => None,
+    Some("front") => Some(wgpu::Face::Front),
+    Some("back") => Some(wgpu::Face::Back),
+    _ => return Err(OpError::type_("The cull mode is invalid")),
+  };
+  let front_face = match object
+    .and_then(|object| js::get(scope, object, "frontFace"))
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("ccw") => wgpu::FrontFace::Ccw,
+    Some("cw") => wgpu::FrontFace::Cw,
+    _ => return Err(OpError::type_("The front face is invalid")),
+  };
+  let strip_index_format = match object
+    .and_then(|object| js::get(scope, object, "stripIndexFormat"))
+    .filter(|value| !value.is_null_or_undefined())
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None => None,
+    Some("uint16") => Some(wgpu::IndexFormat::Uint16),
+    Some("uint32") => Some(wgpu::IndexFormat::Uint32),
+    _ => return Err(OpError::type_("The strip index format is invalid")),
+  };
+  if object.is_some_and(|object| {
+    js::get(scope, object, "unclippedDepth")
+      .is_some_and(|value| value.boolean_value(scope))
+  }) {
+    return Err(js::unsupported("unclippedDepth"));
+  }
+  Ok(wgpu::PrimitiveState {
+    topology,
+    strip_index_format,
+    front_face,
+    cull_mode,
+    unclipped_depth: false,
+    polygon_mode: wgpu::PolygonMode::Fill,
+    conservative: false,
+  })
+}
+
+fn depth_stencil_state(
+  scope: &mut v8::PinScope,
+  descriptor: v8::Local<v8::Object>,
+) -> Result<Option<wgpu::DepthStencilState>, OpError> {
+  let Some(value) = js::get(scope, descriptor, "depthStencil") else {
+    return Ok(None);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(None);
+  }
+  let object = js::object(scope, value)
+    .ok_or_else(|| OpError::type_("depthStencil must be an object"))?;
+  let format = texture_format(&required_string(scope, object, "format")?)?;
+  let depth_write_enabled = if format.has_depth_aspect() {
+    Some(
+      js::get(scope, object, "depthWriteEnabled")
+        .ok_or_else(|| OpError::type_("depthWriteEnabled is required"))?
+        .boolean_value(scope),
+    )
+  } else if js::get(scope, object, "depthWriteEnabled")
+    .is_some_and(|value| !value.is_null_or_undefined())
+  {
+    return Err(OpError::type_("The texture format has no depth aspect"));
+  } else {
+    None
+  };
+  let depth_compare = if format.has_depth_aspect() {
+    Some(compare_function(
+      scope,
+      object,
+      "depthCompare",
+      wgpu::CompareFunction::Always,
+    )?)
+  } else if js::get(scope, object, "depthCompare")
+    .is_some_and(|value| !value.is_null_or_undefined())
+  {
+    return Err(OpError::type_("The texture format has no depth aspect"));
+  } else {
+    None
+  };
+  let front = stencil_face(scope, object, "stencilFront")?;
+  let back = stencil_face(scope, object, "stencilBack")?;
+  let read_mask =
+    js::field_u32(scope, object, "stencilReadMask")?.unwrap_or(0xFFFF_FFFF);
+  let write_mask =
+    js::field_u32(scope, object, "stencilWriteMask")?.unwrap_or(0xFFFF_FFFF);
+  Ok(Some(wgpu::DepthStencilState {
+    format,
+    depth_write_enabled,
+    depth_compare,
+    stencil: wgpu::StencilState {
+      front,
+      back,
+      read_mask,
+      write_mask,
+    },
+    bias: wgpu::DepthBiasState {
+      constant: field_i32(scope, object, "depthBias")?,
+      slope_scale: field_f32(scope, object, "depthBiasSlopeScale")?,
+      clamp: field_f32(scope, object, "depthBiasClamp")?,
+    },
+  }))
+}
+
+fn multisample_state(
+  scope: &mut v8::PinScope,
+  descriptor: v8::Local<v8::Object>,
+) -> Result<wgpu::MultisampleState, OpError> {
+  let Some(value) = js::get(scope, descriptor, "multisample") else {
+    return Ok(wgpu::MultisampleState::default());
+  };
+  if value.is_null_or_undefined() {
+    return Ok(wgpu::MultisampleState::default());
+  }
+  let object = js::object(scope, value)
+    .ok_or_else(|| OpError::type_("multisample must be an object"))?;
+  let count = js::field_u32(scope, object, "count")?.unwrap_or(1);
+  if count != 1 {
+    return Err(js::unsupported("Multisample count"));
+  }
+  if js::get(scope, object, "alphaToCoverageEnabled")
+    .is_some_and(|value| value.boolean_value(scope))
+  {
+    return Err(js::unsupported("Alpha to coverage"));
+  }
+  let mask = js::field_u32(scope, object, "mask")?
+    .map(u64::from)
+    .unwrap_or(!0);
+  Ok(wgpu::MultisampleState {
+    count,
+    mask,
+    alpha_to_coverage_enabled: false,
+  })
+}
+
+fn compare_function(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  default: wgpu::CompareFunction,
+) -> Result<wgpu::CompareFunction, OpError> {
+  match js::get(scope, object, name)
+    .filter(|value| !value.is_null_or_undefined())
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None => Ok(default),
+    Some("never") => Ok(wgpu::CompareFunction::Never),
+    Some("less") => Ok(wgpu::CompareFunction::Less),
+    Some("equal") => Ok(wgpu::CompareFunction::Equal),
+    Some("less-equal") => Ok(wgpu::CompareFunction::LessEqual),
+    Some("greater") => Ok(wgpu::CompareFunction::Greater),
+    Some("not-equal") => Ok(wgpu::CompareFunction::NotEqual),
+    Some("greater-equal") => Ok(wgpu::CompareFunction::GreaterEqual),
+    Some("always") => Ok(wgpu::CompareFunction::Always),
+    _ => Err(OpError::type_("The compare function is invalid")),
+  }
+}
+
+fn stencil_face(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<wgpu::StencilFaceState, OpError> {
+  let Some(value) = js::get(scope, object, name) else {
+    return Ok(wgpu::StencilFaceState::IGNORE);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(wgpu::StencilFaceState::IGNORE);
+  }
+  let face = js::object(scope, value)
+    .ok_or_else(|| OpError::type_("A stencil face must be an object"))?;
+  Ok(wgpu::StencilFaceState {
+    compare: compare_function(
+      scope,
+      face,
+      "compare",
+      wgpu::CompareFunction::Always,
+    )?,
+    fail_op: stencil_op(scope, face, "failOp")?,
+    depth_fail_op: stencil_op(scope, face, "depthFailOp")?,
+    pass_op: stencil_op(scope, face, "passOp")?,
+  })
+}
+
+fn stencil_op(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<wgpu::StencilOperation, OpError> {
+  match js::get(scope, object, name)
+    .filter(|value| !value.is_null_or_undefined())
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("keep") => Ok(wgpu::StencilOperation::Keep),
+    Some("zero") => Ok(wgpu::StencilOperation::Zero),
+    Some("replace") => Ok(wgpu::StencilOperation::Replace),
+    Some("invert") => Ok(wgpu::StencilOperation::Invert),
+    Some("increment-clamp") => Ok(wgpu::StencilOperation::IncrementClamp),
+    Some("decrement-clamp") => Ok(wgpu::StencilOperation::DecrementClamp),
+    Some("increment-wrap") => Ok(wgpu::StencilOperation::IncrementWrap),
+    Some("decrement-wrap") => Ok(wgpu::StencilOperation::DecrementWrap),
+    _ => Err(OpError::type_("The stencil operation is invalid")),
+  }
+}
+
+fn field_i32(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<i32, OpError> {
+  let Some(value) = js::get(scope, object, name) else {
+    return Ok(0);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(0);
+  }
+  let number = js::finite_number(scope, value)?;
+  if number < f64::from(i32::MIN) || number > f64::from(i32::MAX) {
+    return Err(OpError::range("The provided value is out of range"));
+  }
+  Ok(number as i32)
+}
+
+fn field_f32(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<f32, OpError> {
+  let Some(value) = js::get(scope, object, name) else {
+    return Ok(0.0);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(0.0);
+  }
+  let number = js::finite_number(scope, value)?;
+  Ok(number as f32)
+}
+
+fn present_object<'a>(
+  scope: &mut v8::PinScope,
+  entry: v8::Local<'a, v8::Object>,
+  name: &str,
+) -> Result<Option<v8::Local<'a, v8::Object>>, OpError> {
+  let Some(value) = js::get(scope, entry, name) else {
+    return Ok(None);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(None);
+  }
+  js::object(scope, value)
+    .map(Some)
+    .ok_or_else(|| OpError::type_(format!("{name} must be an object")))
+}
+
+fn buffer_binding(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::BindingType, OpError> {
+  let ty = match js::get(scope, object, "type")
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("uniform") => wgpu::BufferBindingType::Uniform,
+    Some("storage") => wgpu::BufferBindingType::Storage { read_only: false },
+    Some("read-only-storage") => {
+      wgpu::BufferBindingType::Storage { read_only: true }
+    }
+    _ => return Err(OpError::type_("The buffer binding type is invalid")),
+  };
+  let has_dynamic_offset = js::get(scope, object, "hasDynamicOffset")
+    .is_some_and(|value| value.boolean_value(scope));
+  let min_binding_size = match js::get(scope, object, "minBindingSize") {
+    Some(value) if !value.is_null_or_undefined() => {
+      let size = js::u32_value(scope, value)?;
+      Some(
+        std::num::NonZeroU64::new(u64::from(size))
+          .ok_or_else(|| OpError::range("minBindingSize must be non-zero"))?,
+      )
+    }
+    _ => None,
+  };
+  Ok(wgpu::BindingType::Buffer {
+    ty,
+    has_dynamic_offset,
+    min_binding_size,
+  })
+}
+
+fn sampler_binding(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::SamplerBindingType, OpError> {
+  match js::get(scope, object, "type")
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("filtering") => Ok(wgpu::SamplerBindingType::Filtering),
+    Some("non-filtering") => Ok(wgpu::SamplerBindingType::NonFiltering),
+    Some("comparison") => Ok(wgpu::SamplerBindingType::Comparison),
+    _ => Err(OpError::type_("The sampler binding type is invalid")),
+  }
+}
+
+fn texture_binding(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::BindingType, OpError> {
+  let sample_type = match js::get(scope, object, "sampleType")
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("float") => wgpu::TextureSampleType::Float { filterable: true },
+    Some("unfilterable-float") => {
+      wgpu::TextureSampleType::Float { filterable: false }
+    }
+    Some("depth") => wgpu::TextureSampleType::Depth,
+    Some("sint") => wgpu::TextureSampleType::Sint,
+    Some("uint") => wgpu::TextureSampleType::Uint,
+    _ => return Err(OpError::type_("The texture sample type is invalid")),
+  };
+  Ok(wgpu::BindingType::Texture {
+    sample_type,
+    view_dimension: view_dimension(scope, object)?,
+    multisampled: js::get(scope, object, "multisampled")
+      .is_some_and(|value| value.boolean_value(scope)),
+  })
+}
+
+fn storage_binding(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::BindingType, OpError> {
+  let access =
+    js::get(scope, object, "access").and_then(|value| js::string(scope, value));
+  let access = match access.as_deref() {
+    None | Some("write-only") => wgpu::StorageTextureAccess::WriteOnly,
+    Some("read-only" | "read-write" | "atomic") => {
+      return Err(js::unsupported("Storage texture access"));
+    }
+    _ => {
+      return Err(OpError::type_("The storage texture access is invalid"));
+    }
+  };
+  let format = texture_format(&required_string(scope, object, "format")?)?;
+  Ok(wgpu::BindingType::StorageTexture {
+    access,
+    format,
+    view_dimension: view_dimension(scope, object)?,
+  })
+}
+
+fn view_dimension(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::TextureViewDimension, OpError> {
+  match js::get(scope, object, "viewDimension")
+    .and_then(|value| js::string(scope, value))
+    .as_deref()
+  {
+    None | Some("2d") => Ok(wgpu::TextureViewDimension::D2),
+    Some("1d") => Ok(wgpu::TextureViewDimension::D1),
+    Some("2d-array") => Ok(wgpu::TextureViewDimension::D2Array),
+    Some("cube") => Ok(wgpu::TextureViewDimension::Cube),
+    Some("cube-array") => Ok(wgpu::TextureViewDimension::CubeArray),
+    Some("3d") => Ok(wgpu::TextureViewDimension::D3),
+    _ => Err(OpError::type_("The texture view dimension is invalid")),
   }
 }
 
@@ -953,14 +1527,45 @@ fn texture_size(
 }
 
 pub fn texture_format(name: &str) -> Result<wgpu::TextureFormat, OpError> {
+  if name == "depth32float-stencil8" {
+    return Err(js::unsupported("depth32float-stencil8"));
+  }
   match name {
     "bgra8unorm" => Ok(wgpu::TextureFormat::Bgra8Unorm),
     "rgba8unorm" => Ok(wgpu::TextureFormat::Rgba8Unorm),
     "bgra8unorm-srgb" => Ok(wgpu::TextureFormat::Bgra8UnormSrgb),
     "rgba8unorm-srgb" => Ok(wgpu::TextureFormat::Rgba8UnormSrgb),
-    "rgba16float" => Ok(wgpu::TextureFormat::Rgba16Float),
     "r8unorm" => Ok(wgpu::TextureFormat::R8Unorm),
     "rg8unorm" => Ok(wgpu::TextureFormat::Rg8Unorm),
+    "rgba16float" => Ok(wgpu::TextureFormat::Rgba16Float),
+    "r16float" => Ok(wgpu::TextureFormat::R16Float),
+    "rg16float" => Ok(wgpu::TextureFormat::Rg16Float),
+    "r32float" => Ok(wgpu::TextureFormat::R32Float),
+    "rg32float" => Ok(wgpu::TextureFormat::Rg32Float),
+    "rgba32float" => Ok(wgpu::TextureFormat::Rgba32Float),
+    "r8uint" => Ok(wgpu::TextureFormat::R8Uint),
+    "r8sint" => Ok(wgpu::TextureFormat::R8Sint),
+    "r16uint" => Ok(wgpu::TextureFormat::R16Uint),
+    "r16sint" => Ok(wgpu::TextureFormat::R16Sint),
+    "r32uint" => Ok(wgpu::TextureFormat::R32Uint),
+    "r32sint" => Ok(wgpu::TextureFormat::R32Sint),
+    "rg8uint" => Ok(wgpu::TextureFormat::Rg8Uint),
+    "rg8sint" => Ok(wgpu::TextureFormat::Rg8Sint),
+    "rg16uint" => Ok(wgpu::TextureFormat::Rg16Uint),
+    "rg16sint" => Ok(wgpu::TextureFormat::Rg16Sint),
+    "rg32uint" => Ok(wgpu::TextureFormat::Rg32Uint),
+    "rg32sint" => Ok(wgpu::TextureFormat::Rg32Sint),
+    "rgba8uint" => Ok(wgpu::TextureFormat::Rgba8Uint),
+    "rgba8sint" => Ok(wgpu::TextureFormat::Rgba8Sint),
+    "rgba16uint" => Ok(wgpu::TextureFormat::Rgba16Uint),
+    "rgba16sint" => Ok(wgpu::TextureFormat::Rgba16Sint),
+    "rgba32uint" => Ok(wgpu::TextureFormat::Rgba32Uint),
+    "rgba32sint" => Ok(wgpu::TextureFormat::Rgba32Sint),
+    "depth16unorm" => Ok(wgpu::TextureFormat::Depth16Unorm),
+    "depth24plus" => Ok(wgpu::TextureFormat::Depth24Plus),
+    "depth24plus-stencil8" => Ok(wgpu::TextureFormat::Depth24PlusStencil8),
+    "depth32float" => Ok(wgpu::TextureFormat::Depth32Float),
+    "stencil8" => Ok(wgpu::TextureFormat::Stencil8),
     _ => Err(OpError::type_("The texture format is invalid")),
   }
 }
@@ -971,9 +1576,37 @@ fn format_name(format: wgpu::TextureFormat) -> &'static str {
     wgpu::TextureFormat::Rgba8Unorm => "rgba8unorm",
     wgpu::TextureFormat::Bgra8UnormSrgb => "bgra8unorm-srgb",
     wgpu::TextureFormat::Rgba8UnormSrgb => "rgba8unorm-srgb",
-    wgpu::TextureFormat::Rgba16Float => "rgba16float",
     wgpu::TextureFormat::R8Unorm => "r8unorm",
     wgpu::TextureFormat::Rg8Unorm => "rg8unorm",
+    wgpu::TextureFormat::Rgba16Float => "rgba16float",
+    wgpu::TextureFormat::R16Float => "r16float",
+    wgpu::TextureFormat::Rg16Float => "rg16float",
+    wgpu::TextureFormat::R32Float => "r32float",
+    wgpu::TextureFormat::Rg32Float => "rg32float",
+    wgpu::TextureFormat::Rgba32Float => "rgba32float",
+    wgpu::TextureFormat::R8Uint => "r8uint",
+    wgpu::TextureFormat::R8Sint => "r8sint",
+    wgpu::TextureFormat::R16Uint => "r16uint",
+    wgpu::TextureFormat::R16Sint => "r16sint",
+    wgpu::TextureFormat::R32Uint => "r32uint",
+    wgpu::TextureFormat::R32Sint => "r32sint",
+    wgpu::TextureFormat::Rg8Uint => "rg8uint",
+    wgpu::TextureFormat::Rg8Sint => "rg8sint",
+    wgpu::TextureFormat::Rg16Uint => "rg16uint",
+    wgpu::TextureFormat::Rg16Sint => "rg16sint",
+    wgpu::TextureFormat::Rg32Uint => "rg32uint",
+    wgpu::TextureFormat::Rg32Sint => "rg32sint",
+    wgpu::TextureFormat::Rgba8Uint => "rgba8uint",
+    wgpu::TextureFormat::Rgba8Sint => "rgba8sint",
+    wgpu::TextureFormat::Rgba16Uint => "rgba16uint",
+    wgpu::TextureFormat::Rgba16Sint => "rgba16sint",
+    wgpu::TextureFormat::Rgba32Uint => "rgba32uint",
+    wgpu::TextureFormat::Rgba32Sint => "rgba32sint",
+    wgpu::TextureFormat::Depth16Unorm => "depth16unorm",
+    wgpu::TextureFormat::Depth24Plus => "depth24plus",
+    wgpu::TextureFormat::Depth24PlusStencil8 => "depth24plus-stencil8",
+    wgpu::TextureFormat::Depth32Float => "depth32float",
+    wgpu::TextureFormat::Stencil8 => "stencil8",
     _ => "rgba8unorm",
   }
 }
@@ -1183,6 +1816,44 @@ pub fn host_pipeline<'s>(
   value: v8::Local<v8::Value>,
 ) -> Option<&'s GpuRenderPipeline> {
   host_of(scope, value)
+}
+
+pub fn host_compute_pipeline<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+) -> Option<&'s GpuComputePipeline> {
+  host_of(scope, value)
+}
+
+pub fn host_query_set<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+) -> Option<&'s GpuQuerySet> {
+  host_of(scope, value)
+}
+
+pub fn attachment_view(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(wgpu::TextureView, wgpu::TextureFormat), OpError> {
+  if let Some(view) = host_view(scope, value) {
+    return Ok((view.view()?, view.format()));
+  }
+  if let Some(texture) = host_texture(scope, value) {
+    let format = texture.format;
+    let texture = texture.texture()?;
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    return Ok((view, format));
+  }
+  Err(OpError::type_("A texture view is required"))
+}
+
+pub fn index_format(name: &str) -> Result<wgpu::IndexFormat, OpError> {
+  match name {
+    "uint16" => Ok(wgpu::IndexFormat::Uint16),
+    "uint32" => Ok(wgpu::IndexFormat::Uint32),
+    _ => Err(OpError::type_("The index format is invalid")),
+  }
 }
 
 fn device_of(lost: &AtomicBool) -> Result<Handle, OpError> {
