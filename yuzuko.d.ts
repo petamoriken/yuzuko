@@ -7224,10 +7224,13 @@ declare function createImageBitmap(
  * {@link GPU.requestAdapter} resolve `null`. `wgslLanguageFeatures` is empty.
  * `label` on GPU objects reads back as `""`.
  *
- * Blend state, a multisample count other than 1, `resolveTarget`,
- * `unclippedDepth`, alpha to coverage, storage texture access other than
- * `"write-only"`, `depth32float-stencil8`, and `externalTexture` throw
- * `NotSupportedError`. Viewport, scissor, and debug markers are absent.
+ * Blend state, `unclippedDepth`, alpha to coverage,
+ * `depth32float-stencil8`, and `externalTexture` throw `NotSupportedError`.
+ * Multisample `count` is 1 or 4, and a color attachment may set
+ * `resolveTarget`. Storage texture `access` may be `"read-only"`,
+ * `"read-write"`, or `"atomic"`. An access the format does not allow is a
+ * validation error. `setViewport` and `setScissorRect` are on the render
+ * pass. Debug markers stay absent.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
  *
@@ -7361,7 +7364,13 @@ interface GPUDevice {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBuffer) */
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createTexture) */
+  /**
+   * `sampleCount` is 1 or 4.
+   *
+   * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createTexture)
+   */
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createSampler) */
@@ -7371,10 +7380,11 @@ interface GPUDevice {
   createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
 
   /**
-   * Storage texture `access` other than `"write-only"`, and `externalTexture`,
-   * throw `NotSupportedError`.
+   * Storage texture `access` is `"write-only"`, `"read-only"`, `"read-write"`,
+   * or `"atomic"`. An access the format does not allow is a validation error.
+   * `externalTexture` throws `NotSupportedError`.
    *
-   * @throws {@link DOMException} `NotSupportedError` for those bindings.
+   * @throws {@link DOMException} `NotSupportedError` for `externalTexture`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout)
    */
@@ -7387,11 +7397,12 @@ interface GPUDevice {
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
 
   /**
-   * A blend state, `unclippedDepth: true`, a multisample `count` other than 1,
-   * `alphaToCoverageEnabled: true`, and `depth32float-stencil8` throw
-   * `NotSupportedError`.
+   * A blend state, `unclippedDepth: true`, `alphaToCoverageEnabled: true`,
+   * and `depth32float-stencil8` throw `NotSupportedError`. Multisample
+   * `count` is 1 or 4.
    *
    * @throws {@link DOMException} `NotSupportedError` for those states.
+   * @throws {@link TypeError} When the multisample `count` is not 1 or 4.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline)
    */
@@ -7401,9 +7412,9 @@ interface GPUDevice {
   createCommandEncoder(descriptor?: GPUCommandEncoderDescriptor): GPUCommandEncoder;
 
   /**
-   * A `sampleCount` other than 1 throws `NotSupportedError`.
+   * `sampleCount` is 1 or 4. Viewport and scissor stay absent on the encoder.
    *
-   * @throws {@link DOMException} `NotSupportedError` when `sampleCount` is not 1.
+   * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderBundleEncoder)
    */
@@ -7947,9 +7958,8 @@ interface GPUCommandEncoder {
   readonly label: string;
 
   /**
-   * A color attachment `resolveTarget` throws `NotSupportedError`.
+   * A color attachment may set `resolveTarget`.
    *
-   * @throws {@link DOMException} `NotSupportedError` when `resolveTarget` is set.
    * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
    * or a pass is already open.
    *
@@ -8063,12 +8073,39 @@ interface GPUCommandBufferDescriptor {
 /**
  * A render pass.
  *
- * Viewport, scissor, and debug markers are absent.
+ * `setViewport` and `setScissorRect` restrict later draws. Debug markers
+ * are absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder)
  */
 interface GPURenderPassEncoder {
   readonly label: string;
+
+  /**
+   * @throws {@link TypeError} When an argument is not finite.
+   * @throws {@link RangeError} When `width` or `height` is negative, a depth
+   * is outside 0 through 1, or `minDepth` is greater than `maxDepth`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setViewport)
+   */
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number,
+  ): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setScissorRect)
+   */
+  setScissorRect(
+    x: GPUIntegerCoordinate,
+    y: GPUIntegerCoordinate,
+    width: GPUIntegerCoordinate,
+    height: GPUIntegerCoordinate,
+  ): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setPipeline) */
   setPipeline(pipeline: GPURenderPipeline): void;

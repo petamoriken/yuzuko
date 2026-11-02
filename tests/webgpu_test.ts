@@ -511,3 +511,258 @@ Yuzuko.test("a render bundle draws the triangle", async () => {
   assert(pixel.g > 200 && pixel.r < 40 && pixel.b < 40, "bundle center");
   device.destroy();
 });
+
+const coverShader = `
+@vertex
+fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+  const positions = array<vec2f, 3>(
+    vec2f(-1.0, -1.0),
+    vec2f(3.0, -1.0),
+    vec2f(-1.0, 3.0),
+  );
+  return vec4f(positions[vertexIndex], 0.0, 1.0);
+}
+
+@fragment
+fn fs() -> @location(0) vec4f {
+  return vec4f(1.0, 0.0, 0.0, 1.0);
+}
+`;
+
+const storageShader = `
+@group(0) @binding(0) var tex: texture_storage_2d<r32uint, read_write>;
+
+@compute @workgroup_size(1)
+fn store() {
+  textureStore(tex, vec2u(0, 0), vec4u(11u, 0u, 0u, 0u));
+}
+
+@compute @workgroup_size(1)
+fn bump() {
+  let value = textureLoad(tex, vec2u(0, 0));
+  textureStore(tex, vec2u(0, 0), value + vec4u(1u, 0u, 0u, 0u));
+}
+`;
+
+function uintPixel(pixel) {
+  return (
+    pixel[0] +
+    pixel[1] * 256 +
+    pixel[2] * 65536 +
+    pixel[3] * 16777216
+  );
+}
+
+Yuzuko.test(
+  "viewport, scissor, multisample resolve, and storage read-write",
+  async () => {
+    const adapter = await adapterOrSkip();
+    if (!adapter) {
+      return;
+    }
+    const device = await adapter.requestDevice();
+    const color = device.createTexture({
+      size: [8, 8],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    });
+    const module = device.createShaderModule({ code: coverShader });
+    const pipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: {
+        module,
+        entryPoint: "fs",
+        targets: [{ format: "rgba8unorm" }],
+      },
+    });
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: color.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+    });
+    pass.setViewport(0, 0, 4, 8, 0, 1);
+    pass.setScissorRect(2, 0, 6, 8);
+    pass.setPipeline(pipeline);
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    const outsideScissor = channels(
+      await readPixel(device, color, 0, 4),
+      "rgba8unorm",
+    );
+    const inside = channels(await readPixel(device, color, 3, 4), "rgba8unorm");
+    const outsideViewport = channels(
+      await readPixel(device, color, 6, 4),
+      "rgba8unorm",
+    );
+    assert(
+      outsideScissor.r < 40 && outsideScissor.g < 40,
+      `scissor ${outsideScissor.r}`,
+    );
+    assert(inside.r > 200 && inside.g < 40, `viewport ${inside.r}`);
+    assert(
+      outsideViewport.r < 40 && outsideViewport.g < 40,
+      `viewport edge ${outsideViewport.r}`,
+    );
+
+    const multisample = device.createTexture({
+      size: [8, 8],
+      format: "rgba8unorm",
+      sampleCount: 4,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    const resolved = device.createTexture({
+      size: [8, 8],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    });
+    const triangle = device.createShaderModule({ code: triangleShader });
+    const resolvedPipeline = device.createRenderPipeline({
+      layout: "auto",
+      multisample: { count: 4 },
+      vertex: { module: triangle, entryPoint: "vs" },
+      fragment: {
+        module: triangle,
+        entryPoint: "fs",
+        targets: [{ format: "rgba8unorm" }],
+      },
+    });
+    const resolveEncoder = device.createCommandEncoder();
+    const resolvePass = resolveEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: multisample.createView(),
+        resolveTarget: resolved.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: "clear",
+        storeOp: "discard",
+      }],
+    });
+    resolvePass.setPipeline(resolvedPipeline);
+    resolvePass.draw(3);
+    resolvePass.end();
+    device.queue.submit([resolveEncoder.finish()]);
+    const center = channels(
+      await readPixel(device, resolved, 4, 4),
+      "rgba8unorm",
+    );
+    const corner = channels(
+      await readPixel(device, resolved, 0, 0),
+      "rgba8unorm",
+    );
+    assert(center.g > 200 && center.r < 40, `resolve center ${center.g}`);
+    assert(corner.g < 40 && corner.r < 40, `resolve corner ${corner.g}`);
+
+    const storageModule = device.createShaderModule({ code: storageShader });
+    const storageLayout = device.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        storageTexture: { access: "read-write", format: "r32uint" },
+      }],
+    });
+    const pipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [storageLayout],
+    });
+    const storePipeline = device.createComputePipeline({
+      layout: pipelineLayout,
+      compute: { module: storageModule, entryPoint: "store" },
+    });
+    const bumpPipeline = device.createComputePipeline({
+      layout: pipelineLayout,
+      compute: { module: storageModule, entryPoint: "bump" },
+    });
+    const storage = device.createTexture({
+      size: [1, 1],
+      format: "r32uint",
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC,
+    });
+    const group = device.createBindGroup({
+      layout: storageLayout,
+      entries: [{ binding: 0, resource: storage.createView() }],
+    });
+    const storageEncoder = device.createCommandEncoder();
+    const storePass = storageEncoder.beginComputePass();
+    storePass.setPipeline(storePipeline);
+    storePass.setBindGroup(0, group);
+    storePass.dispatchWorkgroups(1);
+    storePass.end();
+    const bumpPass = storageEncoder.beginComputePass();
+    bumpPass.setPipeline(bumpPipeline);
+    bumpPass.setBindGroup(0, group);
+    bumpPass.dispatchWorkgroups(1);
+    bumpPass.end();
+    device.queue.submit([storageEncoder.finish()]);
+    const stored = uintPixel(await readPixel(device, storage, 0, 0));
+    assert(stored === 12, `storage ${stored}`);
+
+    device.pushErrorScope("validation");
+    device.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        storageTexture: { access: "read-write", format: "rgba8unorm" },
+      }],
+    });
+    const rejected = await device.popErrorScope();
+    assert(rejected instanceof GPUValidationError, "rgba8unorm read-write");
+    device.pushErrorScope("validation");
+    device.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        storageTexture: { access: "atomic", format: "r32uint" },
+      }],
+    });
+    const atomic = await device.popErrorScope();
+    assert(atomic instanceof GPUValidationError, "atomic storage");
+
+    let unsupported = false;
+    try {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: { module, entryPoint: "vs" },
+        fragment: {
+          module,
+          entryPoint: "fs",
+          targets: [{ format: "rgba8unorm" }],
+        },
+        multisample: { alphaToCoverageEnabled: true },
+      });
+    } catch (error) {
+      unsupported = error.name === "NotSupportedError";
+    }
+    assert(unsupported, "alpha to coverage");
+    unsupported = false;
+    try {
+      device.createBindGroupLayout({
+        entries: [{
+          binding: 0,
+          visibility: GPUShaderStage.FRAGMENT,
+          externalTexture: {},
+        }],
+      });
+    } catch (error) {
+      unsupported = error.name === "NotSupportedError";
+    }
+    assert(unsupported, "external texture");
+    let invalidAccess = false;
+    try {
+      device.createBindGroupLayout({
+        entries: [{
+          binding: 0,
+          visibility: GPUShaderStage.COMPUTE,
+          storageTexture: { access: "nope", format: "r32uint" },
+        }],
+      });
+    } catch (error) {
+      invalidAccess = error instanceof TypeError;
+    }
+    assert(invalidAccess, "storage access");
+    device.destroy();
+  },
+);

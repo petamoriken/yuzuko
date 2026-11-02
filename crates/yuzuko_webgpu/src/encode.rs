@@ -36,6 +36,7 @@ struct PassRecord {
 
 struct ColorTarget {
   view: wgpu::TextureView,
+  resolve: Option<wgpu::TextureView>,
   clear: Option<wgpu::Color>,
   store: bool,
 }
@@ -95,6 +96,20 @@ enum PassCommand {
   BeginOcclusion(u32),
   EndOcclusion,
   Bundles(Vec<wgpu::RenderBundle>),
+  Viewport {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    min_depth: f32,
+    max_depth: f32,
+  },
+  Scissor {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+  },
 }
 
 struct ComputeRecord {
@@ -479,6 +494,42 @@ impl GpuRenderPass {
   #[getter]
   fn label(&self) -> String {
     String::new()
+  }
+
+  fn set_viewport(
+    &self,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    min_depth: f64,
+    max_depth: f64,
+  ) -> Result<(), OpError> {
+    let (x, y, width, height, min_depth, max_depth) =
+      viewport_args(x, y, width, height, min_depth, max_depth)?;
+    self.push(PassCommand::Viewport {
+      x,
+      y,
+      width,
+      height,
+      min_depth,
+      max_depth,
+    })
+  }
+
+  fn set_scissor_rect(
+    &self,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+  ) -> Result<(), OpError> {
+    self.push(PassCommand::Scissor {
+      x,
+      y,
+      width,
+      height,
+    })
   }
 
   fn set_pipeline(
@@ -913,13 +964,9 @@ pub fn create_bundle_encoder(
       "A render bundle needs a color or depth format",
     ));
   }
-  let sample_count = js::field_u32(scope, object, "sampleCount")?.unwrap_or(1);
-  if sample_count == 0 {
-    return Err(OpError::type_("The sample count is invalid"));
-  }
-  if sample_count != 1 {
-    return Err(js::unsupported("Multisample count"));
-  }
+  let sample_count = resource::allowed_sample_count(
+    js::field_u32(scope, object, "sampleCount")?.unwrap_or(1),
+  )?;
   let id = NEXT_BUNDLE.fetch_add(1, Ordering::Relaxed);
   BUNDLES.with(|bundles| {
     bundles.borrow_mut().insert(
@@ -1158,7 +1205,7 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
       color.as_ref().map(|color| wgpu::RenderPassColorAttachment {
         view: &color.view,
         depth_slice: None,
-        resolve_target: None,
+        resolve_target: color.resolve.as_ref(),
         ops: wgpu::Operations {
           load: match color.clear {
             Some(color) => wgpu::LoadOp::Clear(color),
@@ -1248,6 +1295,20 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
       PassCommand::BeginOcclusion(index) => pass.begin_occlusion_query(*index),
       PassCommand::EndOcclusion => pass.end_occlusion_query(),
       PassCommand::Bundles(bundles) => pass.execute_bundles(bundles.iter()),
+      PassCommand::Viewport {
+        x,
+        y,
+        width,
+        height,
+        min_depth,
+        max_depth,
+      } => pass.set_viewport(*x, *y, *width, *height, *min_depth, *max_depth),
+      PassCommand::Scissor {
+        x,
+        y,
+        width,
+        height,
+      } => pass.set_scissor_rect(*x, *y, *width, *height),
     }
   }
 }
@@ -1379,6 +1440,40 @@ fn with_idle_encoder(
   })
 }
 
+fn viewport_args(
+  x: f64,
+  y: f64,
+  width: f64,
+  height: f64,
+  min_depth: f64,
+  max_depth: f64,
+) -> Result<(f32, f32, f32, f32, f32, f32), OpError> {
+  let values = [x, y, width, height, min_depth, max_depth];
+  if values.iter().any(|value| !value.is_finite()) {
+    return Err(OpError::type_("setViewport arguments must be finite"));
+  }
+  if width < 0.0
+    || height < 0.0
+    || !(0.0..=1.0).contains(&min_depth)
+    || !(0.0..=1.0).contains(&max_depth)
+    || min_depth > max_depth
+  {
+    return Err(OpError::range("The viewport is out of range"));
+  }
+  let cast = [
+    x as f32,
+    y as f32,
+    width as f32,
+    height as f32,
+    min_depth as f32,
+    max_depth as f32,
+  ];
+  if cast.iter().any(|value| !value.is_finite()) {
+    return Err(OpError::range("The viewport is out of range"));
+  }
+  Ok((cast[0], cast[1], cast[2], cast[3], cast[4], cast[5]))
+}
+
 fn color_targets(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
@@ -1396,11 +1491,12 @@ fn color_targets(
     }
     let attachment = js::object(scope, value)
       .ok_or_else(|| OpError::type_("A color attachment must be an object"))?;
-    if js::get(scope, attachment, "resolveTarget")
-      .is_some_and(|value| !value.is_null_or_undefined())
-    {
-      return Err(js::unsupported("Multisample resolve"));
-    }
+    let resolve = match js::get(scope, attachment, "resolveTarget") {
+      Some(value) if !value.is_null_or_undefined() => {
+        Some(resource::attachment_view(scope, value)?.0)
+      }
+      _ => None,
+    };
     let view = js::get(scope, attachment, "view")
       .ok_or_else(|| OpError::type_("A color attachment view is required"))?;
     let (view, _) = resource::attachment_view(scope, view)?;
@@ -1417,7 +1513,12 @@ fn color_targets(
       .and_then(|value| js::string(scope, value))
       .as_deref()
       != Some("discard");
-    colors.push(Some(ColorTarget { view, clear, store }));
+    colors.push(Some(ColorTarget {
+      view,
+      resolve,
+      clear,
+      store,
+    }));
   }
   Ok(colors)
 }

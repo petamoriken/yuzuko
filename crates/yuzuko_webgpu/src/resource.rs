@@ -525,6 +525,9 @@ pub fn create_texture(
   let (width, height) = texture_size(scope, object)?;
   let format = texture_format(&required_string(scope, object, "format")?)?;
   let usage = js::required_u32(scope, object, "usage")?;
+  let sample_count = allowed_sample_count(
+    js::field_u32(scope, object, "sampleCount")?.unwrap_or(1),
+  )?;
   let label = optional_label(scope, object);
   let texture = handle.device.create_texture(&wgpu::TextureDescriptor {
     label: label.as_deref(),
@@ -534,7 +537,7 @@ pub fn create_texture(
       depth_or_array_layers: 1,
     },
     mip_level_count: 1,
-    sample_count: 1,
+    sample_count,
     dimension: wgpu::TextureDimension::D2,
     format,
     usage: wgpu::TextureUsages::from_bits_truncate(usage),
@@ -1236,10 +1239,8 @@ fn multisample_state(
   }
   let object = js::object(scope, value)
     .ok_or_else(|| OpError::type_("multisample must be an object"))?;
-  let count = js::field_u32(scope, object, "count")?.unwrap_or(1);
-  if count != 1 {
-    return Err(js::unsupported("Multisample count"));
-  }
+  let count =
+    allowed_sample_count(js::field_u32(scope, object, "count")?.unwrap_or(1))?;
   if js::get(scope, object, "alphaToCoverageEnabled")
     .is_some_and(|value| value.boolean_value(scope))
   {
@@ -1458,9 +1459,9 @@ fn storage_binding(
     js::get(scope, object, "access").and_then(|value| js::string(scope, value));
   let access = match access.as_deref() {
     None | Some("write-only") => wgpu::StorageTextureAccess::WriteOnly,
-    Some("read-only" | "read-write" | "atomic") => {
-      return Err(js::unsupported("Storage texture access"));
-    }
+    Some("read-only") => wgpu::StorageTextureAccess::ReadOnly,
+    Some("read-write") => wgpu::StorageTextureAccess::ReadWrite,
+    Some("atomic") => wgpu::StorageTextureAccess::Atomic,
     _ => {
       return Err(OpError::type_("The storage texture access is invalid"));
     }
@@ -1471,6 +1472,15 @@ fn storage_binding(
     format,
     view_dimension: view_dimension(scope, object)?,
   })
+}
+
+/// WebGPU sample counts are 1 and 4.
+pub fn allowed_sample_count(count: u32) -> Result<u32, OpError> {
+  if count == 1 || count == 4 {
+    Ok(count)
+  } else {
+    Err(OpError::type_("The sample count is invalid"))
+  }
 }
 
 fn view_dimension(
