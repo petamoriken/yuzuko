@@ -71,13 +71,48 @@ fn wasm_leave(
 #[derive(Debug)]
 pub struct RuntimeError {
   pub message: String,
+  /// Set when `Yuzuko.exit` requested this status. The message stays empty.
+  pub exit_code: Option<u8>,
 }
 
 impl RuntimeError {
   pub fn message(message: impl Into<String>) -> Self {
     Self {
       message: message.into(),
+      exit_code: None,
     }
+  }
+
+  pub fn exit(code: u8) -> Self {
+    Self {
+      message: String::new(),
+      exit_code: Some(code),
+    }
+  }
+}
+
+/// Maps a finished entry to a process status.
+///
+/// A normal return is 0. `Yuzuko.exit` returns its code and is not an error
+/// to print. Any other failure stays an error.
+pub fn status_of(result: Result<(), RuntimeError>) -> Result<u8, RuntimeError> {
+  match result {
+    Ok(()) => Ok(0),
+    Err(error) => match error.exit_code {
+      Some(code) => Ok(code),
+      None => Err(error),
+    },
+  }
+}
+
+fn exiting() -> bool {
+  crate::process::exit_code().is_some()
+}
+
+fn bail_if_exit() -> Result<(), RuntimeError> {
+  match crate::process::exit_code() {
+    Some(code) => Err(RuntimeError::exit(code)),
+    None => Ok(()),
   }
 }
 
@@ -196,6 +231,7 @@ pub fn run_classic_scripts_at(
           });
         };
         if compiled.run(tc).is_none() {
+          bail_if_exit()?;
           let text = modules::exception_text!(tc, "failed to run script");
           return Ok(ClassicRun {
             value: None,
@@ -235,6 +271,7 @@ pub(crate) fn eval_classic(
     return Err(RuntimeError::message(text));
   };
   if compiled.run(tc).is_none() {
+    bail_if_exit()?;
     let text = modules::exception_text!(tc, "failed to run script");
     return Err(RuntimeError::message(text));
   }
@@ -272,9 +309,12 @@ pub(crate) fn run_worker_isolate(
     crate::extensions::install(scope);
     #[cfg(feature = "fs")]
     crate::fs::install(scope);
+    // The window extension replaces `Yuzuko` with an EventTarget on the main
+    // realm. A worker keeps the original object. Install after either path.
+    install_process(scope);
     bind_wasm_response(scope);
     let result: Result<(), RuntimeError> = (|| {
-      if !crate::worker::agent_alive(id) {
+      if exiting() || !crate::worker::agent_alive(id) {
         return Ok(());
       }
       let loaded = crate::worker::load_worker_source(
@@ -296,13 +336,18 @@ pub(crate) fn run_worker_isolate(
       Ok(())
     })();
     if let Err(error) = result {
-      if crate::worker::agent_alive(id) {
+      // `Yuzuko.exit` from this worker is process shutdown, not an error
+      // event on the parent.
+      if !exiting() && crate::worker::agent_alive(id) {
         report_worker_failure(id, &script.url, error.message);
       }
     } else {
       while crate::worker::agent_alive(id) {
+        if exiting() {
+          break;
+        }
         if !pump_once(scope) {
-          if !crate::worker::agent_alive(id) {
+          if exiting() || !crate::worker::agent_alive(id) {
             break;
           }
           queue.wait(None);
@@ -376,6 +421,7 @@ fn run_script_list(
           }
         };
         if script.run(tc).is_none() {
+          bail_if_exit()?;
           let text = modules::exception_text!(tc, "failed to run script");
           return Err(RuntimeError::message(text));
         }
@@ -464,6 +510,7 @@ fn run_test_file(
             passed += 1;
             println!("ok | {}", test.name);
           }
+          Err(error) if error.exit_code.is_some() => return Err(error),
           Err(error) => {
             failed += 1;
             println!("failed | {}", test.name);
@@ -503,6 +550,7 @@ fn execute_test(
     match function.call(tc, receiver.into(), &[test_context.into()]) {
       Some(value) => Ok(v8::Global::new(tc, value)),
       None => {
+        bail_if_exit()?;
         let text = modules::exception_text!(tc, "test threw");
         Err(RuntimeError::message(text))
       }
@@ -539,21 +587,28 @@ fn settle(
   };
   let promise = v8::Global::new(scope, promise);
   loop {
+    bail_if_exit()?;
     let local = v8::Local::new(scope, &promise);
     match local.state() {
       v8::PromiseState::Pending => {
         // The resolving reaction runs inside `pump_once`. That call can
         // then find an idle queue and return false, so read the state again
         // before treating the promise as stuck.
-        if !pump_once(scope) && promise_is_pending(scope, &promise) {
-          return Err(RuntimeError::message(
-            "the event loop stopped while a promise was still pending"
-              .to_string(),
-          ));
+        if !pump_once(scope) {
+          bail_if_exit()?;
+          if promise_is_pending(scope, &promise) {
+            return Err(RuntimeError::message(
+              "the event loop stopped while a promise was still pending"
+                .to_string(),
+            ));
+          }
         }
       }
       v8::PromiseState::Fulfilled => return Ok(()),
-      v8::PromiseState::Rejected => return rejected(scope, local),
+      v8::PromiseState::Rejected => {
+        bail_if_exit()?;
+        return rejected(scope, local);
+      }
     }
   }
 }
@@ -679,15 +734,17 @@ fn pump_until(
   done_key: &str,
 ) -> Result<(), RuntimeError> {
   loop {
+    bail_if_exit()?;
     if global_string(scope, done_key).is_some() {
-      return Ok(());
+      return bail_if_exit();
     }
     // A worker reply can land as the deadline expires. Deliver what is
     // already queued before treating the harness as unfinished.
     let expired = std::time::Instant::now() >= deadline;
     scope.perform_microtask_checkpoint();
+    bail_if_exit()?;
     if global_string(scope, done_key).is_some() {
-      return Ok(());
+      return bail_if_exit();
     }
     if crate::idle::poll_idle_timeout(scope) {
       continue;
@@ -705,20 +762,22 @@ fn pump_until(
       continue;
     }
     scope.perform_microtask_checkpoint();
+    bail_if_exit()?;
     if global_string(scope, done_key).is_some() {
-      return Ok(());
+      return bail_if_exit();
     }
     if crate::worker::drain_inbound(scope) {
       if global_string(scope, done_key).is_some()
         || std::time::Instant::now() >= deadline
       {
-        return Ok(());
+        return bail_if_exit();
       }
       continue;
     }
     if expired {
-      return Ok(());
+      return bail_if_exit();
     }
+    bail_if_exit()?;
     if !host::is_dedicated_worker() && drive_loop(scope) {
       continue;
     }
@@ -735,10 +794,11 @@ fn pump_until(
       && !crate::idle::idle_has_pending()
     {
       if wasm_in_flight() == 0 || std::time::Instant::now() >= deadline {
-        return Ok(());
+        return bail_if_exit();
       }
       let remaining =
         deadline.saturating_duration_since(std::time::Instant::now());
+      bail_if_exit()?;
       loop_wait(Some(remaining));
       continue;
     }
@@ -749,16 +809,18 @@ fn pump_until(
       let remaining =
         deadline.saturating_duration_since(std::time::Instant::now());
       if remaining.is_zero() {
-        return Ok(());
+        return bail_if_exit();
       }
+      bail_if_exit()?;
       loop_wait(Some(remaining));
       continue;
     };
     let remaining =
       deadline.saturating_duration_since(std::time::Instant::now());
     if remaining.is_zero() {
-      return Ok(());
+      return bail_if_exit();
     }
+    bail_if_exit()?;
     loop_wait(Some(wait.min(remaining)));
   }
 }
@@ -768,6 +830,7 @@ pub(crate) fn pump(
 ) -> Result<(), RuntimeError> {
   loop {
     if !pump_once(scope) {
+      bail_if_exit()?;
       return Ok(());
     }
   }
@@ -781,21 +844,42 @@ pub(crate) fn pump(
 pub(crate) fn poll_repl(
   scope: &mut v8::PinScope<'_, '_>,
 ) -> Option<std::time::Duration> {
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   scope.perform_microtask_checkpoint();
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   let _ = crate::worker::drain_inbound(scope);
   let _ = crate::idle::poll_idle_timeout(scope);
   if let Some(timer) = crate::timers::poll_due() {
     crate::timers::fire(scope, timer);
   }
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   if let Some(task) = host::queue().pop_ready() {
     task.run();
   }
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   let _ = crate::jobs::poll(scope);
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   if !host::is_dedicated_worker() {
     let _ = drive_loop(scope);
   }
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   let _ = crate::idle::poll_idle_period(scope);
   scope.perform_microtask_checkpoint();
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   repl_wait()
 }
 
@@ -831,11 +915,17 @@ fn repl_wait() -> Option<std::time::Duration> {
 }
 
 pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
+  if exiting() {
+    return false;
+  }
   if crate::worker::drain_inbound(scope) {
     scope.perform_microtask_checkpoint();
     return true;
   }
   scope.perform_microtask_checkpoint();
+  if exiting() {
+    return false;
+  }
   if crate::idle::poll_idle_timeout(scope) {
     return true;
   }
@@ -852,11 +942,17 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     return true;
   }
   scope.perform_microtask_checkpoint();
+  if exiting() {
+    return false;
+  }
   if !host::is_dedicated_worker() && drive_loop(scope) {
     return true;
   }
   if crate::idle::poll_idle_period(scope) {
     return true;
+  }
+  if exiting() {
+    return false;
   }
   let interest = if host::is_dedicated_worker() {
     LoopInterest {
@@ -923,6 +1019,7 @@ pub(crate) fn with_runtime<T>(
   body: impl FnOnce(&mut v8::PinScope<'_, '_>) -> Result<T, RuntimeError>,
 ) -> Result<T, RuntimeError> {
   let _guard = RUNTIME.lock().expect("runtime lock");
+  crate::process::clear_exit();
   WASM_IN_FLIGHT.with(|count| count.set(0));
   init_v8();
   let queue = QUEUE.get().expect("task queue").clone();
@@ -931,6 +1028,10 @@ pub(crate) fn with_runtime<T>(
   state.capture_log = capture_log;
   host::enter(state);
   let mut isolate = v8::Isolate::new(isolate_params());
+  crate::worker::set_isolate_handle(
+    crate::worker::MAIN_AGENT,
+    isolate.thread_safe_handle(),
+  );
   configure_isolate(&mut isolate);
   let result = {
     v8::scope!(let scope, &mut isolate);
@@ -945,6 +1046,9 @@ pub(crate) fn with_runtime<T>(
     crate::extensions::install(scope);
     #[cfg(feature = "fs")]
     crate::fs::install(scope);
+    // The window extension replaces `Yuzuko` with an EventTarget. Process
+    // members are installed after that replacement.
+    install_process(scope);
     bind_wasm_response(scope);
     if test_mode {
       install_test_api(scope);
@@ -1211,8 +1315,17 @@ fn namespace_instance(
 /// even when no Cargo feature is enabled. Feature crates attach members
 /// afterwards. An AudioWorklet processor context is created separately and
 /// does not receive this object.
+///
+/// Process members are not installed here. On the main realm the window
+/// extension replaces this object with an `EventTarget`, so
+/// [`install_process`] runs after extensions.
 fn install_yuzuko_namespace(scope: &mut v8::PinScope<'_, '_>) {
-  let _ = crate::js::namespace(scope, "Yuzuko");
+  let _yuzuko = crate::js::namespace(scope, "Yuzuko");
+}
+
+fn install_process(scope: &mut v8::PinScope<'_, '_>) {
+  let yuzuko = crate::js::namespace(scope, "Yuzuko");
+  crate::process::install(scope, yuzuko);
 }
 
 fn install_console(scope: &mut v8::PinScope<'_, '_>) {

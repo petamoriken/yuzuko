@@ -150,6 +150,25 @@ pub fn spawn_worker(parent: u64, script: WorkerScript) -> Result<u64, String> {
   Ok(id)
 }
 
+/// Stops every agent, including the main realm, without marking the main
+/// realm dead. The caller has already chosen the process status.
+pub(crate) fn interrupt_agents() {
+  let agents = {
+    let guard = agents();
+    guard
+      .as_ref()
+      .map(|map| map.values().cloned().collect::<Vec<_>>())
+      .unwrap_or_default()
+  };
+  for agent in agents {
+    let handle = agent.isolate.lock().expect("worker isolate").clone();
+    if let Some(handle) = handle {
+      handle.terminate_execution();
+    }
+    agent.queue.poke();
+  }
+}
+
 pub fn terminate_worker(id: u64) {
   let agent = {
     let agents = agents();

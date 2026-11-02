@@ -44,6 +44,11 @@ fn expected() -> String {
     kind(cfg!(feature = "audio")),
     kind(cfg!(feature = "codec")),
     kind(cfg!(feature = "codec")),
+    "object",
+    "object",
+    "function",
+    "function",
+    "function",
   ]
   .join(" ");
   let worker = [
@@ -55,6 +60,11 @@ fn expected() -> String {
     kind(cfg!(feature = "window")),
     "function",
     "undefined",
+    "object",
+    "object",
+    "function",
+    "function",
+    "function",
   ]
   .join(" ");
   format!("{main}\n{worker}")

@@ -14,7 +14,9 @@
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
- * on the main realm and in a dedicated worker. That build omits `fetch`,
+ * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
+ * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
+ * every build. That build omits `fetch`,
  * the file system, {@link WebSocket}, {@link Window}, canvas, WebGPU, Web
  * Audio, and WebCodecs. `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -1515,6 +1517,128 @@ declare namespace Yuzuko {
    * not change.
    */
   const canvasRenderer: "gpu" | "cpu";
+
+  /**
+   * Arguments recorded for this process.
+   *
+   * The array is frozen. `push` and other mutations throw `TypeError`.
+   * Assigning this property replaces it in the current realm and leaves
+   * another realm's array unchanged. `yuzuko run` records the tokens after
+   * the entry. `yuzuko repl` and `yuzuko test` record an empty array. A
+   * packaged executable records its arguments except every token whose text
+   * starts with `-psn_`. A dedicated worker receives the same strings.
+   */
+  let args: readonly string[];
+
+  /**
+   * Environment variables of this process.
+   *
+   * The methods do not read `this`. A change is visible to a later read in
+   * every realm. On Windows a lookup ignores ASCII case, and {@link Env.set}
+   * of a name that differs only by that case updates the existing variable.
+   * On the other targets the name is case-sensitive. Bytes that are not
+   * UTF-8 become U+FFFD. `get`, `delete`, and `has` have length 1. `set` has
+   * length 2. `toObject` has length 0.
+   */
+  interface Env {
+    /**
+     * Returns the stored string, or `undefined` when `name` is absent.
+     *
+     * @throws {@link TypeError} `The name must be a string.` when `name` is
+     * not a string. `The name must not be empty.` when `name` is empty.
+     * ``The name must not contain `=` or NUL.`` when `name` contains `=` or
+     * NUL.
+     */
+    get(name: string): string | undefined;
+
+    /**
+     * Stores `value` under `name`.
+     *
+     * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
+     * `The value must be a string.` when `value` is not a string.
+     * `The value must not contain NUL.` when `value` contains NUL.
+     */
+    set(name: string, value: string): void;
+
+    /**
+     * Removes `name`. Removing a name that is absent succeeds.
+     *
+     * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
+     */
+    delete(name: string): void;
+
+    /**
+     * Returns whether `name` is present.
+     *
+     * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
+     */
+    has(name: string): boolean;
+
+    /**
+     * Returns a plain object snapshot of the environment at this call.
+     *
+     * Later {@link Env.set} and {@link Env.delete} calls leave the object
+     * unchanged. Property names use the spelling the operating system stores.
+     * A key `__proto__` is an own property and does not change the prototype.
+     */
+    toObject(): { [key: string]: string };
+  }
+
+  /** The process environment. See {@link Env}. */
+  const env: Env;
+
+  /**
+   * Returns the process current directory as an absolute path.
+   *
+   * The string has no trailing separator except for a root. A component that
+   * is not UTF-8 uses U+FFFD for those bytes.
+   *
+   * @throws {@link DOMException} `OperationError` with
+   * `The current directory could not be read.` when the operating system
+   * cannot report the directory.
+   */
+  function cwd(): string;
+
+  /**
+   * Sets the process current directory.
+   *
+   * `directory` is a string or a `file:` URL. A relative string resolves
+   * against the current directory. An empty string names the current
+   * directory and succeeds without changing it. The directory may be inside
+   * a packaged bundle. The call does not modify the bundle. File-system
+   * paths are relative to this directory.
+   *
+   * @throws {@link TypeError} `The path must be a string or a file URL.`
+   * when `directory` is neither. `The URL scheme must be file.` for another
+   * scheme. `The URL is invalid.` when the URL cannot be read.
+   * `The file URL is invalid.` when a `file:` URL is not a path.
+   * `The path must not contain NUL.` when the path contains NUL.
+   * @throws {@link DOMException} `NotFoundError` with
+   * `The directory was not found.` when the path is missing.
+   * `InvalidStateError` with `The path is not a directory.` when the path
+   * exists and is not a directory. `NotAllowedError` with
+   * `The directory could not be changed.` when the operating system denies
+   * the change. `OperationError` with `The directory could not be changed.`
+   * for any other failure.
+   */
+  function chdir(directory: string | URL): void;
+
+  /**
+   * Ends the process with status `code` and does not return.
+   *
+   * An omitted or `undefined` code is 0. `-0` is 0. The code is a number
+   * primitive from 0 through 255 whose fractional part is 0. The function
+   * does not apply `ToNumber`. Extra arguments are ignored. `try` / `catch`
+   * does not observe a call that ends the process. The first call chooses
+   * the status. Open windows, trays, audio, timers, workers, and pending
+   * promises do not keep the process alive after the call. A call from a
+   * dedicated worker ends the whole process and does not dispatch an error
+   * event for that worker.
+   *
+   * @throws {@link TypeError} `The exit code must be an integer from 0 through 255.`
+   * when `code` is not that integer. The process stays alive.
+   */
+  function exit(code?: number): never;
 
   /**
    * Result of {@link Updater.check}.

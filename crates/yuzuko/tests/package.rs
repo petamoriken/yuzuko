@@ -61,6 +61,7 @@ console.log(import.meta.url);
 console.log(mark);
 console.log(typeof Yuzuko.test);
 console.log("updater:" + typeof Yuzuko.updater);
+console.log("args:" + JSON.stringify(Yuzuko.args));
 let blocked = false;
 try {
   await fetch(new URL("/etc/passwd", import.meta.url));
@@ -701,6 +702,7 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   );
   assert!(first.stdout.contains("undefined"), "{}", first.stdout);
   assert!(first.stdout.contains("blocked"), "{}", first.stdout);
+  assert!(first.stdout.contains("args:[]"), "{}", first.stdout);
   assert!(
     first.cwd.contains(sentinel.to_str().unwrap()),
     "{}",
@@ -713,18 +715,30 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   let opened = open_app(&app);
   assert_eq!(opened.0, 0, "{}", opened.1);
 
-  let bundled_run = Command::new(&exe).args(["run"]).output().unwrap();
-  assert_ne!(
-    bundled_run.status.code(),
-    Some(0),
+  let with_run = launch(&exe, &sentinel, &["run"]);
+  assert_eq!(with_run.status, 0, "{}", with_run.stderr);
+  assert!(
+    with_run.stdout.contains("fixture-asset-token"),
     "{}",
-    text(&bundled_run.stdout)
+    with_run.stdout
   );
-  let mixed = Command::new(&exe)
-    .args(["-psn_0_1", "extra"])
-    .output()
-    .unwrap();
-  assert_ne!(mixed.status.code(), Some(0), "{}", text(&mixed.stdout));
+  assert!(
+    with_run.stdout.contains("args:[\"run\"]"),
+    "{}",
+    with_run.stdout
+  );
+  let mixed = launch(&exe, &sentinel, &["-psn_0_1", "extra"]);
+  assert_eq!(mixed.status, 0, "{}", mixed.stderr);
+  assert!(
+    mixed.stdout.contains("fixture-asset-token"),
+    "{}",
+    mixed.stdout
+  );
+  assert!(
+    mixed.stdout.contains("args:[\"extra\"]"),
+    "{}",
+    mixed.stdout
+  );
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -834,16 +848,34 @@ fn directory_bundle_launches_with_assets_and_title() {
   );
   assert!(first.stdout.contains("undefined"), "{}", first.stdout);
   assert!(first.stdout.contains("blocked"), "{}", first.stdout);
+  assert!(first.stdout.contains("args:[]"), "{}", first.stdout);
   if cfg!(target_os = "linux") {
     assert_eq!(first.cwd, sentinel.to_str().unwrap());
   }
 
-  let bundled_run = Command::new(&exe).args(["run"]).output().unwrap();
-  assert_ne!(
-    bundled_run.status.code(),
-    Some(0),
+  let with_run = launch(&exe, &sentinel, &["run"]);
+  assert_eq!(with_run.status, 0, "{}", with_run.stderr);
+  assert!(
+    with_run.stdout.contains("fixture-asset-token"),
     "{}",
-    text(&bundled_run.stdout)
+    with_run.stdout
+  );
+  assert!(
+    with_run.stdout.contains("args:[\"run\"]"),
+    "{}",
+    with_run.stdout
+  );
+  let mixed = launch(&exe, &sentinel, &["-psn_0_1", "extra"]);
+  assert_eq!(mixed.status, 0, "{}", mixed.stderr);
+  assert!(
+    mixed.stdout.contains("fixture-asset-token"),
+    "{}",
+    mixed.stdout
+  );
+  assert!(
+    mixed.stdout.contains("args:[\"extra\"]"),
+    "{}",
+    mixed.stdout
   );
 }
 

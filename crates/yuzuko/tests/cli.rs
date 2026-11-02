@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
@@ -359,4 +360,335 @@ fn delayed_v8_housekeeping_does_not_keep_the_process_alive() {
   let output = child.wait_with_output().expect("yuzuko output");
   assert!(status.success(), "{}", text(&output.stderr));
   assert_eq!(text(&output.stdout).trim(), "allocated");
+}
+
+fn scratch(name: &str) -> PathBuf {
+  let dir = std::env::temp_dir().join(format!(
+    "yuzuko-process-{}-{}-{name}",
+    std::process::id(),
+    std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_nanos()
+  ));
+  let _ = fs::remove_dir_all(&dir);
+  fs::create_dir_all(&dir).unwrap();
+  dir
+}
+
+fn run_deadline(
+  args: &[&str],
+  dir: &Path,
+  env: &[(&str, &str)],
+  limit: Duration,
+) -> Output {
+  let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
+  command.current_dir(dir).args(args);
+  for (key, value) in env {
+    command.env(key, value);
+  }
+  let mut child = command
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn yuzuko");
+  let start = Instant::now();
+  loop {
+    if child.try_wait().expect("poll yuzuko").is_some() {
+      return child.wait_with_output().expect("yuzuko output");
+    }
+    if start.elapsed() > limit {
+      let _ = child.kill();
+      let output = child.wait_with_output().expect("killed yuzuko");
+      panic!(
+        "timed out after {limit:?}\nstdout:\n{}\nstderr:\n{}",
+        text(&output.stdout),
+        text(&output.stderr)
+      );
+    }
+    std::thread::sleep(Duration::from_millis(20));
+  }
+}
+
+fn field<'a>(stdout: &'a str, prefix: &str) -> &'a str {
+  stdout
+    .lines()
+    .find_map(|line| line.strip_prefix(prefix))
+    .unwrap_or_else(|| panic!("missing {prefix} in {stdout}"))
+}
+
+fn same_directory(printed: &str, expected: &Path) {
+  let printed = fs::canonicalize(printed)
+    .unwrap_or_else(|error| panic!("canonicalize {printed}: {error}"));
+  let expected = fs::canonicalize(expected).unwrap();
+  assert_eq!(printed, expected);
+}
+
+#[test]
+fn run_records_script_arguments() {
+  let script = "tests/cli/print_args.ts";
+  let cases = [
+    (
+      &["run", script, "--", "--fullscreen", "a"][..],
+      "[\"--fullscreen\",\"a\"]\nTypeError\n",
+    ),
+    (
+      &["run", script, "--fullscreen"][..],
+      "[\"--fullscreen\"]\nTypeError\n",
+    ),
+    (&["run", script, "--", "--"][..], "[\"--\"]\nTypeError\n"),
+    (
+      &["run", "--", script, "--", "x"][..],
+      "[\"x\"]\nTypeError\n",
+    ),
+  ];
+  for (args, expected) in cases {
+    let output = yuzuko(args);
+    assert_eq!(
+      output.status.code(),
+      Some(0),
+      "{args:?}\n{}",
+      text(&output.stderr)
+    );
+    assert_eq!(text(&output.stdout), expected, "{args:?}");
+  }
+
+  let missing = yuzuko(&["run", "--"]);
+  assert_eq!(missing.status.code(), Some(2));
+  assert!(
+    text(&missing.stderr).contains("yuzuko run <entry.ts>"),
+    "{}",
+    text(&missing.stderr)
+  );
+
+  let dir = scratch("flag-entry");
+  fs::write(
+    dir.join("-entry.ts"),
+    "console.log(JSON.stringify(Yuzuko.args));\n",
+  )
+  .unwrap();
+  let ran = run_deadline(
+    &["run", "--", "-entry.ts", "extra"],
+    &dir,
+    &[],
+    Duration::from_secs(20),
+  );
+  assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+  assert_eq!(text(&ran.stdout), "[\"extra\"]\n");
+  let rejected =
+    run_deadline(&["run", "-entry.ts"], &dir, &[], Duration::from_secs(20));
+  assert_eq!(rejected.status.code(), Some(2));
+  assert!(
+    text(&rejected.stderr).contains("unknown flag -entry.ts"),
+    "{}",
+    text(&rejected.stderr)
+  );
+}
+
+#[test]
+fn exit_returns_the_requested_status() {
+  let script = "tests/cli/process_exit.ts";
+  let limit = Duration::from_secs(20);
+  let root = workspace();
+  let run = |args: &[&str]| run_deadline(args, &root, &[], limit);
+
+  let three = run(&["run", script, "code", "3"]);
+  assert_eq!(three.status.code(), Some(3), "{}", text(&three.stderr));
+  assert!(
+    !text(&three.stdout).contains("after"),
+    "{}",
+    text(&three.stdout)
+  );
+
+  let extra = run(&["run", script, "code", "2"]);
+  assert_eq!(extra.status.code(), Some(2), "{}", text(&extra.stderr));
+  assert!(!text(&extra.stdout).contains("after"));
+
+  let high = run(&["run", script, "code", "255"]);
+  assert_eq!(high.status.code(), Some(255), "{}", text(&high.stderr));
+
+  for mode in ["omit", "negzero", "undef"] {
+    let output = run(&["run", script, mode]);
+    assert_eq!(
+      output.status.code(),
+      Some(0),
+      "{mode}\n{}",
+      text(&output.stderr)
+    );
+    assert!(
+      !text(&output.stdout).contains("after"),
+      "{mode}\n{}",
+      text(&output.stdout)
+    );
+  }
+
+  let caught = run(&["run", script, "catch"]);
+  assert_eq!(caught.status.code(), Some(4), "{}", text(&caught.stderr));
+  let stdout = text(&caught.stdout);
+  assert!(!stdout.contains("caught"), "{stdout}");
+  assert!(!stdout.contains("still"), "{stdout}");
+  assert!(!stdout.contains("after"), "{stdout}");
+
+  let timed = run(&["run", script, "timer"]);
+  assert_eq!(timed.status.code(), Some(7), "{}", text(&timed.stderr));
+
+  let bad = run(&["run", script, "bad"]);
+  assert_eq!(bad.status.code(), Some(0), "{}", text(&bad.stderr));
+  let stdout = text(&bad.stdout);
+  assert!(stdout.contains("stayed\n"), "{stdout}");
+  assert!(
+    stdout.contains("The exit code must be an integer from 0 through 255."),
+    "{stdout}"
+  );
+  assert!(!stdout.contains("exited"), "{stdout}");
+  assert_eq!(
+    stdout
+      .lines()
+      .filter(|line| {
+        *line == "The exit code must be an integer from 0 through 255."
+      })
+      .count(),
+    11,
+    "{stdout}"
+  );
+
+  for mode in ["worker", "worker-module"] {
+    let output = run(&["run", script, mode]);
+    assert_eq!(
+      output.status.code(),
+      Some(9),
+      "{mode}\nstdout:\n{}\nstderr:\n{}",
+      text(&output.stdout),
+      text(&output.stderr)
+    );
+    let stdout = text(&output.stdout);
+    assert!(!stdout.contains("worker-error"), "{stdout}");
+    assert!(!stdout.contains("worker-message"), "{stdout}");
+    assert!(!stdout.contains("worker-ran"), "{stdout}");
+  }
+}
+
+#[test]
+fn process_info_reads_env_and_changes_directory() {
+  let script = workspace().join("tests/cli/process_info.ts");
+  let script = script.to_str().unwrap();
+  let info = run_deadline(
+    &["run", script, "info"],
+    &workspace(),
+    &[("YUZUKO_PROCESS_PROBE", "from-parent")],
+    Duration::from_secs(20),
+  );
+  assert_eq!(info.status.code(), Some(0), "{}", text(&info.stderr));
+  let stdout = text(&info.stdout);
+  assert_eq!(field(&stdout, "probe:"), "from-parent");
+  assert_eq!(field(&stdout, "missing:"), "undefined");
+  assert_eq!(field(&stdout, "lengths:"), "1,2,1,1,0,0,1,0");
+  assert_eq!(field(&stdout, "has:"), "true");
+  assert_eq!(field(&stdout, "get:"), "round");
+  assert_eq!(field(&stdout, "snap:"), "round");
+  assert_eq!(field(&stdout, "after:"), "undefined");
+  assert_eq!(field(&stdout, "empty:"), "\"\"");
+  assert_eq!(
+    field(&stdout, "empty-name:"),
+    "TypeError:The name must not be empty."
+  );
+  assert_eq!(
+    field(&stdout, "equals:"),
+    "TypeError:The name must not contain `=` or NUL."
+  );
+  assert_eq!(
+    field(&stdout, "nul-name:"),
+    "TypeError:The name must not contain `=` or NUL."
+  );
+  assert_eq!(
+    field(&stdout, "nul-value:"),
+    "TypeError:The value must not contain NUL."
+  );
+  assert_eq!(
+    field(&stdout, "name-type:"),
+    "TypeError:The name must be a string."
+  );
+  assert_eq!(
+    field(&stdout, "value-type:"),
+    "TypeError:The value must be a string."
+  );
+  assert_eq!(field(&stdout, "ok:"), "delete-missing");
+  let case = field(&stdout, "case:");
+  if cfg!(windows) {
+    assert_eq!(case, "CaseValue");
+  } else {
+    assert_eq!(case, "undefined");
+  }
+  assert_eq!(field(&stdout, "proto-own:"), "true");
+  assert_eq!(field(&stdout, "proto-value:"), "proto-value");
+  assert_eq!(field(&stdout, "proto-same:"), "true");
+  assert_eq!(field(&stdout, "worker-args:"), "[\"info\"]");
+  same_directory(field(&stdout, "cwd:"), &workspace());
+
+  let dir = scratch("chdir");
+  fs::create_dir_all(dir.join("nested")).unwrap();
+  fs::write(dir.join("nested/note.txt"), b"noted").unwrap();
+  let changed = run_deadline(
+    &["run", script, "chdir"],
+    &dir,
+    &[],
+    Duration::from_secs(20),
+  );
+  assert_eq!(changed.status.code(), Some(0), "{}", text(&changed.stderr));
+  let stdout = text(&changed.stdout);
+  same_directory(field(&stdout, "before:"), &dir);
+  same_directory(field(&stdout, "nested:"), &dir.join("nested"));
+  same_directory(field(&stdout, "back:"), &dir);
+  same_directory(field(&stdout, "empty:"), &dir);
+  same_directory(field(&stdout, "dot:"), &dir);
+  assert_eq!(field(&stdout, "note:"), "noted");
+  assert_eq!(
+    field(&stdout, "missing:"),
+    "NotFoundError:The directory was not found."
+  );
+  assert_eq!(
+    field(&stdout, "file:"),
+    "InvalidStateError:The path is not a directory."
+  );
+  assert_eq!(
+    field(&stdout, "nul:"),
+    "TypeError:The path must not contain NUL."
+  );
+  assert_eq!(
+    field(&stdout, "https:"),
+    "TypeError:The URL scheme must be file."
+  );
+  assert_eq!(
+    field(&stdout, "type:"),
+    "TypeError:The path must be a string or a file URL."
+  );
+  assert_eq!(field(&stdout, "ok:"), "url");
+}
+
+#[test]
+fn test_records_empty_args_and_exit_skips_the_summary() {
+  let listed = yuzuko(&["test", "tests/process_args_test.ts"]);
+  assert_eq!(listed.status.code(), Some(0), "{}", text(&listed.stderr));
+  let stdout = text(&listed.stdout);
+  assert!(
+    stdout.contains("ok | 1 passed | 0 failed | 0 ignored"),
+    "{stdout}"
+  );
+
+  let stopped = run_deadline(
+    &["test", "tests/cli/exit_from_runner.ts"],
+    &workspace(),
+    &[],
+    Duration::from_secs(20),
+  );
+  assert_eq!(stopped.status.code(), Some(6), "{}", text(&stopped.stderr));
+  let stdout = text(&stopped.stdout);
+  let stderr = text(&stopped.stderr);
+  assert!(!stdout.contains("ok |"), "{stdout}");
+  assert!(!stdout.contains("failed |"), "{stdout}");
+  assert!(!stderr.contains("exit_from_runner"), "{stderr}");
+  assert!(
+    !stderr.to_ascii_lowercase().contains("uncaught"),
+    "{stderr}"
+  );
 }

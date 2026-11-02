@@ -5,7 +5,9 @@ use yuzuko::{
   ConfigError, Target, bundled_launch, load_for_run, load_package, package,
   reject_package_extension,
 };
-use yuzuko_core::{run_file, run_file_sandboxed, run_repl, run_tests};
+use yuzuko_core::{
+  run_file, run_file_sandboxed, run_repl, run_tests, set_args, status_of,
+};
 
 fn main() -> ExitCode {
   yuzuko_dom::register();
@@ -23,9 +25,10 @@ fn main() -> ExitCode {
   #[cfg(feature = "audio")]
   yuzuko_audio::register();
   let args = std::env::args().skip(1).collect::<Vec<_>>();
-  if bundled_args(&args)
-    && let Some(bundle) = bundled_launch()
-  {
+  // A packaged executable always runs its entry. It does not dispatch
+  // `run`, `test`, `package`, or `repl`. macOS Launch Services may insert
+  // `-psn_` tokens in any position. Those are not script arguments.
+  if let Some(bundle) = bundled_launch() {
     configure_window(false, false);
     #[cfg(feature = "window")]
     yuzuko_window::set_default_title(&bundle.name);
@@ -36,13 +39,21 @@ fn main() -> ExitCode {
     #[cfg(feature = "fs")]
     yuzuko_core::set_process_bundle_root(&application_bundle_root(&bundle));
     yuzuko::enable_updater(bundle.resources);
-    let code = match run_file_sandboxed(&bundle.entry, Some(&bundle.sandbox)) {
-      Ok(()) => 0,
-      Err(error) => {
-        eprintln!("{error}");
-        1
-      }
-    };
+    set_args(
+      args
+        .into_iter()
+        .filter(|arg| !arg.starts_with("-psn_"))
+        .collect(),
+    );
+    let code =
+      match status_of(run_file_sandboxed(&bundle.entry, Some(&bundle.sandbox)))
+      {
+        Ok(code) => code,
+        Err(error) => {
+          eprintln!("{error}");
+          1
+        }
+      };
     return ExitCode::from(code);
   }
   match dispatch(args) {
@@ -78,45 +89,35 @@ fn dispatch(args: Vec<String>) -> Result<u8, yuzuko_core::RuntimeError> {
 fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
   let mut entry = None;
   let mut index = 0;
-  while index < args.len() {
-    match args[index].as_str() {
-      "--" => {
-        index += 1;
-        break;
-      }
-      flag if flag.starts_with('-') => {
-        eprintln!("unknown flag {flag}");
-        return Ok(2);
-      }
-      _ => {
-        if entry.is_some() {
-          eprintln!("yuzuko run accepts one entry file");
-          return Ok(2);
-        }
-        entry = Some(PathBuf::from(&args[index]));
-        index += 1;
-      }
+  let mut allow_flag_entry = false;
+  while index < args.len() && entry.is_none() {
+    let token = args[index].as_str();
+    if token == "--" {
+      allow_flag_entry = true;
+      index += 1;
+      continue;
     }
-  }
-  if index < args.len() && entry.is_none() {
-    entry = Some(PathBuf::from(&args[index]));
+    if !allow_flag_entry && token.starts_with('-') {
+      eprintln!("unknown flag {token}");
+      return Ok(2);
+    }
+    entry = Some(PathBuf::from(token));
+    index += 1;
   }
   let Some(entry) = entry else {
-    eprintln!("yuzuko run <entry.ts>");
+    eprintln!("yuzuko run <entry.ts> [arg...]");
     return Ok(2);
   };
+  if args.get(index).map(String::as_str) == Some("--") {
+    index += 1;
+  }
+  set_args(args[index..].to_vec());
   if let Err(error) = apply_run_title(&entry) {
     eprintln!("{error}");
     return Ok(1);
   }
   configure_window(false, false);
-  match run_file(&entry) {
-    Ok(()) => Ok(0),
-    Err(error) => {
-      eprintln!("{error}");
-      Ok(1)
-    }
-  }
+  status_of(run_file(&entry))
 }
 
 fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
@@ -148,9 +149,15 @@ fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
       }
     }
   }
+  set_args(Vec::new());
   configure_window(true, true);
-  run_tests(&paths, filter.as_deref())
-    .map(|code| u8::try_from(code).unwrap_or(1))
+  match run_tests(&paths, filter.as_deref()) {
+    Ok(code) => Ok(u8::try_from(code).unwrap_or(1)),
+    Err(error) => match error.exit_code {
+      Some(code) => Ok(code),
+      None => Err(error),
+    },
+  }
 }
 
 fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
@@ -158,14 +165,9 @@ fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     eprintln!("yuzuko repl");
     return Ok(2);
   }
+  set_args(Vec::new());
   configure_window(false, false);
-  match run_repl() {
-    Ok(()) => Ok(0),
-    Err(error) => {
-      eprintln!("{error}");
-      Ok(1)
-    }
-  }
+  status_of(run_repl())
 }
 
 fn configure_window(test_input: bool, headless: bool) {
@@ -176,10 +178,6 @@ fn configure_window(test_input: bool, headless: bool) {
   }
   #[cfg(not(feature = "window"))]
   let _ = (test_input, headless);
-}
-
-fn bundled_args(args: &[String]) -> bool {
-  args.iter().all(|arg| arg.starts_with("-psn_"))
 }
 
 /// The signed bundle. On macOS that is the `.app`. On Windows and Linux it
@@ -325,7 +323,7 @@ fn package_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
 fn usage() {
   eprintln!(
     "\
-yuzuko run <entry.ts>
+yuzuko run <entry.ts> [arg...]
 yuzuko test [<path>...] [--filter <substring>]
 yuzuko package <entry.ts> [--config <file>] [--output <path>]
 yuzuko repl"

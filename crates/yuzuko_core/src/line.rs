@@ -89,6 +89,9 @@ impl Editor {
           wait
         })
       {
+        if crate::process::exit_code().is_some() {
+          return None;
+        }
         if buffer.is_empty() {
           println!();
           return None;
@@ -450,6 +453,9 @@ fn read_pipe_lines(ready: &mut dyn FnMut() -> bool) -> Option<String> {
     prompt(block.is_empty());
     line.clear();
     if !ready() {
+      if crate::process::exit_code().is_some() {
+        return None;
+      }
       if block.is_empty() {
         println!();
         return None;
@@ -768,6 +774,9 @@ fn await_readable(
       StdinWait::Timeout => {}
     }
     let wait = pace();
+    if crate::process::exit_code().is_some() {
+      return false;
+    }
     match term::poll_stdin(timeout_ms(wait)) {
       StdinWait::Data => return true,
       StdinWait::Eof => return false,
@@ -788,6 +797,9 @@ fn await_input(
       StdinWait::Timeout => {}
     }
     let wait = pace();
+    if crate::process::exit_code().is_some() {
+      return false;
+    }
     match term::poll_stdin(0) {
       StdinWait::Data => return term::read_into(bytes),
       StdinWait::Eof => return false,

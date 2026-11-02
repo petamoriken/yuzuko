@@ -124,6 +124,9 @@ pub fn instantiate_and_evaluate<'a>(
   match run_module(scope, module)? {
     ModuleRun::Value(value) => Ok(v8::Local::new(scope, value)),
     ModuleRun::Thrown(thrown) => {
+      if let Some(code) = crate::process::exit_code() {
+        return Err(RuntimeError::exit(code));
+      }
       let thrown = v8::Local::new(scope, thrown);
       let text = exception_stack(scope, thrown).unwrap_or_else(|| {
         thrown
@@ -146,6 +149,9 @@ fn run_module(
       .instantiate_module2(tc, resolve_callback, source_callback)
       .is_none()
     {
+      if let Some(code) = crate::process::exit_code() {
+        return Err(RuntimeError::exit(code));
+      }
       if let Some(exception) = tc.exception() {
         return Ok(ModuleRun::Thrown(v8::Global::new(tc, exception)));
       }
@@ -155,6 +161,9 @@ fn run_module(
     match module.evaluate(tc) {
       Some(value) => ModuleRun::Value(v8::Global::new(tc, value)),
       None => {
+        if let Some(code) = crate::process::exit_code() {
+          return Err(RuntimeError::exit(code));
+        }
         if let Some(exception) = tc.exception() {
           ModuleRun::Thrown(v8::Global::new(tc, exception))
         } else {

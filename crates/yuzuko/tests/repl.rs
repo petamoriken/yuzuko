@@ -958,3 +958,83 @@ fn windows_console_runs_the_event_loop_while_the_prompt_waits() {
   con.send(b"\x04");
   assert_eq!(con.wait_exit(), 0, "{}", con.text);
 }
+
+#[test]
+fn exit_ends_the_session_without_a_completion() {
+  let dir = scratch("exit");
+  let output = pipe_repl(&dir, "Yuzuko.exit(5)\n");
+  assert_eq!(output.status.code(), Some(5), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert!(
+    !stdout.contains("undefined"),
+    "stdout:\n{stdout}\nstderr:\n{stderr}"
+  );
+  assert!(
+    !stderr.to_ascii_lowercase().contains("uncaught"),
+    "{stderr}"
+  );
+  assert!(!stderr.contains("TypeError"), "{stderr}");
+  assert!(
+    !stderr.to_ascii_lowercase().contains("termination"),
+    "{stderr}"
+  );
+  assert!(!stderr.contains("failed to run"), "{stderr}");
+}
+
+#[test]
+fn repl_reports_empty_args_cwd_and_env() {
+  let dir = scratch("process");
+  let output = pipe_repl(
+    &dir,
+    "JSON.stringify(Yuzuko.args)\ntypeof Yuzuko.cwd\ntypeof Yuzuko.env\n",
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(stdout.contains("[]"), "{stdout}");
+  assert!(stdout.contains("function"), "{stdout}");
+  assert!(stdout.contains("object"), "{stdout}");
+}
+
+/// A Windows pipe read blocks until the next line, so a timer cannot exit
+/// while that read is waiting. Unix pipes poll between lines.
+#[cfg(unix)]
+#[test]
+fn timer_exit_ends_a_waiting_prompt() {
+  let dir = scratch("timer-exit");
+  let mut child = Command::new(bin())
+    .current_dir(&dir)
+    .arg("repl")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn yuzuko repl");
+  let mut stdin = child.stdin.take().unwrap();
+  stdin
+    .write_all(b"setTimeout(() => Yuzuko.exit(8), 30)\n")
+    .unwrap();
+  let start = Instant::now();
+  loop {
+    if child.try_wait().unwrap().is_some() {
+      break;
+    }
+    if start.elapsed() > Duration::from_secs(15) {
+      let _ = child.kill();
+      let output = child.wait_with_output().unwrap();
+      panic!(
+        "repl stayed alive\nstdout:\n{}\nstderr:\n{}",
+        text(&output.stdout),
+        text(&output.stderr)
+      );
+    }
+    std::thread::sleep(Duration::from_millis(20));
+  }
+  let output = child.wait_with_output().expect("repl output");
+  drop(stdin);
+  assert_eq!(output.status.code(), Some(8), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert!(!stdout.contains("undefined"), "{stdout}\n{stderr}");
+  assert!(!stderr.contains("failed to run"), "{stderr}");
+}

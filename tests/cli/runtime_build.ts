@@ -24,6 +24,11 @@ const names = [
   typeof AudioContext,
   typeof VideoDecoder,
   typeof ImageDecoder,
+  typeof Yuzuko.args,
+  typeof Yuzuko.env,
+  typeof Yuzuko.cwd,
+  typeof Yuzuko.chdir,
+  typeof Yuzuko.exit,
 ].join(" ");
 
 const worker = new Worker(new URL("./runtime_worker.ts", import.meta.url), {

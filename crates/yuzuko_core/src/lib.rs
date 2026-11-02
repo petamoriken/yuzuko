@@ -15,6 +15,7 @@ mod loader;
 pub mod op;
 mod parcel;
 mod platform;
+mod process;
 mod realm;
 mod repl;
 mod runtime;
@@ -45,6 +46,7 @@ pub use js::{
 };
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
+pub use process::set_args;
 pub use realm::{
   clone_value, delete_intl_v8_break_iterator, delete_object_prototype_proto,
   performance_now_ms, time_origin_ms,
@@ -53,7 +55,7 @@ pub use repl::run_repl;
 pub use runtime::{
   ClassicRun, LoopInterest, RuntimeError, poll_task_poke, run_classic_scripts,
   run_classic_scripts_at, run_file, run_file_sandboxed, run_scripts, run_tests,
-  set_loop_hooks, set_task_waker, wait_for_tasks,
+  set_loop_hooks, set_task_waker, status_of, wait_for_tasks,
 };
 pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,

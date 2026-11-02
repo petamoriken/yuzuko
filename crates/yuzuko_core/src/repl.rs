@@ -41,10 +41,16 @@ pub fn run_repl() -> Result<(), RuntimeError> {
           &mut |object| complete_names(unsafe { &mut *scope_ptr }, object),
           &mut || runtime::poll_repl(unsafe { &mut *scope_ptr }),
         );
+        if let Some(code) = crate::process::exit_code() {
+          return Err(RuntimeError::exit(code));
+        }
         let Some(chunk) = chunk else {
           return Ok(());
         };
         evaluate(scope, &chunk, &origin);
+        if let Some(code) = crate::process::exit_code() {
+          return Err(RuntimeError::exit(code));
+        }
       }
     },
   )
@@ -78,17 +84,26 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
       return;
     };
     let Some(value) = script.run(tc) else {
+      if crate::process::exit_code().is_some() {
+        return;
+      }
       println!("{}", exception_text!(tc, "failed to run"));
       return;
     };
     v8::Global::new(tc, value)
   };
+  if crate::process::exit_code().is_some() {
+    return;
+  }
   let value = v8::Local::new(scope, value);
   let value = if let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) {
     promise.mark_as_handled();
     match wait_for_promise(scope, promise) {
       Ok(value) => value,
       Err(reason) => {
+        if crate::process::exit_code().is_some() {
+          return;
+        }
         println!("{}", describe(scope, reason));
         drain_ready(scope);
         return;
@@ -100,6 +115,9 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
   // A later setTimeout or setInterval must not delay the prompt. Timers
   // whose deadline has already passed, including setTimeout(0), still run.
   drain_ready(scope);
+  if crate::process::exit_code().is_some() {
+    return;
+  }
   println!("{}", display_value(scope, value));
 }
 
@@ -108,11 +126,17 @@ fn wait_for_promise<'a>(
   promise: v8::Local<'a, v8::Promise>,
 ) -> Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>> {
   loop {
+    if crate::process::exit_code().is_some() {
+      return Err(v8::undefined(scope).into());
+    }
     match promise.state() {
       v8::PromiseState::Fulfilled => return Ok(promise.result(scope)),
       v8::PromiseState::Rejected => return Err(promise.result(scope)),
       v8::PromiseState::Pending => {
         drain_ready(scope);
+        if crate::process::exit_code().is_some() {
+          return Err(v8::undefined(scope).into());
+        }
         if promise.state() != v8::PromiseState::Pending {
           continue;
         }
@@ -120,6 +144,9 @@ fn wait_for_promise<'a>(
         // timer or host task that might settle it.
         let wait =
           earliest(crate::timers::next_wait(), host::queue().next_wait());
+        if crate::process::exit_code().is_some() {
+          return Err(v8::undefined(scope).into());
+        }
         if let Some(wait) = wait {
           runtime::loop_wait(Some(wait));
         } else if crate::jobs::pending()
@@ -143,6 +170,9 @@ fn wait_for_promise<'a>(
 fn drain_ready(scope: &mut v8::PinScope) {
   let mut wave = crate::timers::due_ids();
   loop {
+    if crate::process::exit_code().is_some() {
+      break;
+    }
     scope.perform_microtask_checkpoint();
     let mut progressed = false;
     if crate::worker::drain_inbound(scope) {
