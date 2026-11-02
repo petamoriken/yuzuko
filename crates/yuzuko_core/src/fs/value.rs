@@ -13,6 +13,10 @@ use super::io::{
 };
 
 const MODE_MAX: f64 = 262_143.0;
+const MODE_MESSAGE: &str = "mode must be an integer from 0 through 262143.";
+const TIME_MESSAGE: &str = "The time must be a Date or a finite number.";
+const LINK_TYPE_MESSAGE: &str =
+  "The link type must be \"file\", \"dir\", or \"junction\".";
 
 pub(super) fn parse_path(
   scope: &mut v8::PinScope,
@@ -190,6 +194,157 @@ pub(super) fn temp_spec(
     prefix,
     suffix,
   })
+}
+
+pub(super) fn mode_arg(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u32, FsError> {
+  if value.is_null_or_undefined() {
+    return Err(FsError::type_(MODE_MESSAGE));
+  }
+  mode_number(scope, value)
+}
+
+pub(super) fn id_arg(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  message: &str,
+) -> Result<Option<u32>, FsError> {
+  if value.is_null() {
+    return Ok(None);
+  }
+  if value.is_undefined() {
+    return Err(FsError::type_(message));
+  }
+  let Some(number) = finite_number(scope, value) else {
+    return Err(FsError::type_(message));
+  };
+  if number.fract() != 0.0 || !(0.0..=u32::MAX as f64).contains(&number) {
+    return Err(FsError::type_(message));
+  }
+  Ok(Some(number as u32))
+}
+
+pub(super) fn time_arg(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<io::FileTime, FsError> {
+  if value.is_date() {
+    let date = v8::Local::<v8::Date>::try_from(value)
+      .map_err(|_| FsError::type_(TIME_MESSAGE))?;
+    let millis = date.value_of();
+    if !millis.is_finite() {
+      return Err(FsError::type_(TIME_MESSAGE));
+    }
+    return Ok(io::FileTime {
+      seconds: millis / 1000.0,
+    });
+  }
+  if value.is_string() || value.is_boolean() || value.is_null_or_undefined() {
+    return Err(FsError::type_(TIME_MESSAGE));
+  }
+  let Some(seconds) = finite_number(scope, value) else {
+    return Err(FsError::type_(TIME_MESSAGE));
+  };
+  Ok(io::FileTime { seconds })
+}
+
+pub(super) fn exclusive_arg(
+  scope: &mut v8::PinScope,
+  value: Option<v8::Local<v8::Value>>,
+) -> Result<bool, FsError> {
+  let Some(value) = value else {
+    return Ok(false);
+  };
+  if value.is_undefined() {
+    return Ok(false);
+  }
+  let read = {
+    v8::tc_scope!(let tc, scope);
+    let flag = value.boolean_value(tc);
+    if tc.exception().is_some() {
+      None
+    } else {
+      Some(flag)
+    }
+  };
+  read.ok_or_else(|| FsError::type_("The lock mode could not be read."))
+}
+
+pub(super) fn link_kind(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<io::LinkKind, FsError> {
+  if value.is_null_or_undefined() {
+    return Ok(io::LinkKind::File);
+  }
+  let object = object_of(value)?;
+  let value = get_field(scope, object, "type")?;
+  if value.is_null_or_undefined() {
+    return Ok(io::LinkKind::File);
+  }
+  if !value.is_string() {
+    return Err(FsError::type_(LINK_TYPE_MESSAGE));
+  }
+  let Some(text) = value.to_string(scope) else {
+    return Err(FsError::type_(LINK_TYPE_MESSAGE));
+  };
+  match text.to_rust_string_lossy(scope).as_str() {
+    "file" => Ok(io::LinkKind::File),
+    "dir" => Ok(io::LinkKind::Dir),
+    "junction" => Ok(io::LinkKind::Junction),
+    _ => Err(FsError::type_(LINK_TYPE_MESSAGE)),
+  }
+}
+
+pub(super) fn watch_paths(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<PathBuf>, FsError> {
+  if value.is_string() || is_url(scope, value) {
+    return Ok(vec![parse_path(scope, value)?]);
+  }
+  let Ok(array) = v8::Local::<v8::Array>::try_from(value) else {
+    return Err(FsError::type_(
+      "The paths must be a string, a file URL, or an array.",
+    ));
+  };
+  let length = array.length();
+  if length == 0 {
+    return Err(FsError::type_("At least one path is required."));
+  }
+  let mut paths = Vec::with_capacity(length as usize);
+  for index in 0..length {
+    let element = array_element(scope, array, index)?;
+    paths.push(parse_path(scope, element)?);
+  }
+  Ok(paths)
+}
+
+pub(super) fn watch_recursive(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<bool, FsError> {
+  if value.is_null_or_undefined() {
+    return Ok(true);
+  }
+  let object = object_of(value)?;
+  bool_field(scope, object, "recursive", true)
+}
+
+pub(super) fn cbreak_arg(
+  scope: &mut v8::PinScope,
+  value: Option<v8::Local<v8::Value>>,
+) -> Result<bool, FsError> {
+  let Some(value) = value else {
+    return Ok(false);
+  };
+  if value.is_null_or_undefined() {
+    return Ok(false);
+  }
+  let object = object_of(value)?;
+  bool_field(scope, object, "cbreak", false)
 }
 
 pub(super) fn copy_source(
@@ -458,17 +613,40 @@ fn mode_field(
   if value.is_null_or_undefined() {
     return Ok(None);
   }
+  mode_number(scope, value).map(Some)
+}
+
+fn mode_number(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u32, FsError> {
   let Some(number) = finite_number(scope, value) else {
-    return Err(FsError::type_(
-      "mode must be an integer from 0 through 262143.",
-    ));
+    return Err(FsError::type_(MODE_MESSAGE));
   };
   if number.fract() != 0.0 || !(0.0..=MODE_MAX).contains(&number) {
-    return Err(FsError::type_(
-      "mode must be an integer from 0 through 262143.",
-    ));
+    return Err(FsError::type_(MODE_MESSAGE));
   }
-  Ok(Some(number as u32))
+  Ok(number as u32)
+}
+
+fn array_element<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  array: v8::Local<v8::Array>,
+  index: u32,
+) -> Result<v8::Local<'s, v8::Value>, FsError> {
+  let read = {
+    v8::tc_scope!(let tc, scope);
+    match array.get_index(tc, index) {
+      Some(value) if tc.exception().is_none() => Ok(v8::Global::new(tc, value)),
+      _ => Err(()),
+    }
+  };
+  match read {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(()) => Err(FsError::type_(
+      "The paths must be a string, a file URL, or an array.",
+    )),
+  }
 }
 
 fn optional_path(

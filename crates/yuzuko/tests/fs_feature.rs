@@ -38,7 +38,7 @@ fn types() -> String {
 fn fs_feature_installs_the_file_system() {
   assert_eq!(
     types(),
-    "function function function function function function function function function object object undefined"
+    "function function function function function function function function function object object function"
   );
 }
 
@@ -262,8 +262,232 @@ try {
   worker.terminate();
 }
 
+const previousMask = Yuzuko.umask(0o077);
+const duringMask = Yuzuko.umask(previousMask);
+const unix = duringMask === 0o077;
+
+await Yuzuko.writeTextFile("mode.txt", "m");
+Yuzuko.chmodSync("mode.txt", 0o644);
+await Yuzuko.chmod("mode.txt", 0o644);
+if (unix) {
+  const mode = Yuzuko.statSync("mode.txt").mode & 0o777;
+  check(mode === 0o644, "chmod " + mode.toString(8));
+}
+Yuzuko.removeSync("mode.txt");
+
+if (unix) {
+  const info = Yuzuko.statSync("note.txt");
+  Yuzuko.chownSync("note.txt", null, null);
+  Yuzuko.chownSync("note.txt", info.uid, info.gid);
+} else {
+  let owner = false;
+  try {
+    Yuzuko.chownSync("missing-owner.txt", null, null);
+  } catch (error) {
+    owner = error instanceof Yuzuko.errors.NotSupported
+      && error.message === "Changing the owner is not supported on Windows.";
+  }
+  check(owner, "chown");
+}
+
+let badMask = false;
+try {
+  Yuzuko.umask(null);
+} catch (error) {
+  badMask = error instanceof TypeError;
+}
+check(badMask, "umask");
+
+Yuzuko.writeTextFileSync("link-src.txt", "L");
+let hardLinked = false;
+try {
+  Yuzuko.linkSync("link-src.txt", "link-dst.txt");
+  hardLinked = Yuzuko.readTextFileSync("link-dst.txt") === "L";
+} catch (error) {
+  hardLinked = !unix && error instanceof Yuzuko.errors.PermissionDenied;
+}
+check(hardLinked, "link");
+
+let badType = false;
+try {
+  Yuzuko.symlinkSync("link-src.txt", "bad-link", { type: "nope" });
+} catch (error) {
+  badType = error instanceof TypeError;
+}
+check(badType, "link type");
+
+let symlinked = false;
+try {
+  Yuzuko.symlinkSync("link-src.txt", "link-sym");
+  symlinked = Yuzuko.readLinkSync("link-sym") === "link-src.txt";
+  if (symlinked) {
+    symlinked = (await Yuzuko.readLink("link-sym")) === "link-src.txt";
+  }
+} catch (error) {
+  symlinked = !unix && error instanceof Yuzuko.errors.PermissionDenied;
+}
+check(symlinked, "symlink");
+
+let badTime = false;
+try {
+  Yuzuko.utimeSync("note.txt", "1700000000", 0);
+} catch (error) {
+  badTime = error instanceof TypeError
+    && error.message === "The time must be a Date or a finite number.";
+}
+check(badTime, "utime type");
+
+let outOfRange = false;
+try {
+  Yuzuko.utimeSync("note.txt", 1e20, 0);
+} catch (error) {
+  outOfRange = error instanceof TypeError
+    && error.message === "The time is out of range.";
+}
+check(outOfRange, "utime range");
+
+const stamp = new Date(1700000000000);
+Yuzuko.utimeSync("note.txt", stamp, 1700000000);
+const timed = Yuzuko.statSync("note.txt");
+check(
+  timed.mtime instanceof Date
+    && Math.abs(timed.mtime.getTime() - 1700000000000) < 2000,
+  "utime",
+);
+const timedFile = Yuzuko.openSync("note.txt");
+timedFile.utimeSync(1700000000, stamp);
+timedFile.close();
+
+const locked = Yuzuko.openSync("note.txt", { read: true, write: true });
+const tried = locked.tryLockSync();
+check(tried === true || tried === false, "tryLock");
+if (tried) {
+  locked.unlockSync();
+}
+await locked.lock(true);
+await locked.unlock();
+check(locked.isTerminal() === false, "isTerminal");
+let raw = false;
+try {
+  locked.setRaw(true);
+} catch (error) {
+  raw = error instanceof Yuzuko.errors.NotSupported
+    && error.message === "The file is not a terminal.";
+}
+check(raw, "setRaw");
+locked.setRaw(false);
+
+let readableThis = false;
+try {
+  Object.getOwnPropertyDescriptor(
+    Yuzuko.FsFile.prototype,
+    "readable",
+  ).get.call(undefined);
+} catch (error) {
+  readableThis = error instanceof TypeError;
+}
+check(readableThis, "readable this");
+
+check(locked.writable === locked.writable, "writable");
+const writer = locked.writable.getWriter();
+await writer.write(new Uint8Array([33]));
+await writer.close();
+check(locked.readable === locked.readable, "readable");
+const reader = locked.readable.getReader();
+const chunk = await reader.read();
+const streamBytes = chunk.value;
+check(
+  chunk.done === false
+    && streamBytes
+    && streamBytes.length === 4
+    && streamBytes[0] === 101
+    && streamBytes[1] === 108
+    && streamBytes[2] === 108
+    && streamBytes[3] === 111,
+  "stream",
+);
+await reader.cancel();
+const tail = locked.readSync(new Uint8Array(1));
+check(tail === null, "stream left the file open");
+locked.close();
+
+let constructed = false;
+try {
+  new Yuzuko.FsWatcher();
+} catch (error) {
+  constructed = error instanceof TypeError;
+}
+check(constructed, "FsWatcher");
+
+let invoked = false;
+try {
+  Yuzuko.FsWatcher.prototype[Symbol.asyncIterator].call({});
+} catch (error) {
+  invoked = error instanceof TypeError;
+}
+check(invoked, "asyncIterator");
+
+function nextEvent(watcher) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(function () {
+      reject(new Error("watch timed out"));
+    }, 10000);
+    watcher.next().then(function (value) {
+      clearTimeout(timer);
+      resolve(value);
+    }, function (error) {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+Yuzuko.mkdirSync("watched");
+const watcher = Yuzuko.watchFs("watched");
+try {
+  check(watcher[Symbol.asyncIterator]() === watcher, "iterator");
+  Yuzuko.writeTextFileSync("watched/child.txt", "w");
+  const event = await nextEvent(watcher);
+  const kind = event.value && event.value.kind;
+  const paths = event.value && event.value.paths;
+  const known = kind === "access" || kind === "create" || kind === "modify"
+    || kind === "remove" || kind === "rename" || kind === "any"
+    || kind === "other";
+  check(
+    event.done === false && known
+      && (kind === "any" || (paths && paths.length > 0)),
+    "watch " + JSON.stringify(event.value),
+  );
+} finally {
+  watcher.close();
+}
+
+const quiet = Yuzuko.watchFs("watched");
+try {
+  const done = await quiet.return();
+  check(done.done === true, "return");
+  const after = await nextEvent(quiet);
+  check(after.done === true, "next after return");
+} finally {
+  let watcherClosed = false;
+  try {
+    quiet.close();
+  } catch (error) {
+    watcherClosed = error instanceof Yuzuko.errors.BadResource
+      && error.message === "The watcher is closed.";
+  }
+  check(watcherClosed, "watcher closed");
+}
+
+let badPaths = false;
+try {
+  Yuzuko.watchFs([]);
+} catch (error) {
+  badPaths = error instanceof TypeError;
+}
+check(badPaths, "watch paths");
+
 Yuzuko.removeSync("note.txt");
-check(typeof Yuzuko.chmod === "undefined", "chmod");
 console.log("ok");
 "#;
 

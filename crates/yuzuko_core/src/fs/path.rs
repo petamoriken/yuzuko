@@ -80,6 +80,22 @@ fn inside(root: &Path, path: &Path) -> bool {
   path == root || path.starts_with(root)
 }
 
+/// Rejects `path` when a bundle root is set and the path is inside it.
+///
+/// A path that cannot be canonicalized is rejected too. With no bundle root
+/// this is a no-op, so callers that already know the root is absent can skip
+/// the call.
+pub(super) fn ensure_outside_bundle(path: &Path) -> Result<(), FsError> {
+  let Some(root) = super::bundle_root() else {
+    return Ok(());
+  };
+  let canonical = crate::canonicalize(path).map_err(|_| FsError::bundle())?;
+  if inside(&root, &canonical) {
+    return Err(FsError::bundle());
+  }
+  Ok(())
+}
+
 fn resolve_path(path: &Path, link: Link) -> Result<PathBuf, FsError> {
   let absolute = if path.is_absolute() {
     path.to_path_buf()

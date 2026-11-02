@@ -7,6 +7,7 @@
 use super::file::FsFile;
 use super::io::{self, OpenFlags};
 use super::value;
+use super::watch::FsWatcher;
 use super::{complete, ready, settle};
 use crate::op::{Bytes, Js, New, OpError, OpException, ToV8};
 
@@ -46,6 +47,20 @@ pub(super) fn define(scope: &mut v8::PinScope) {
   define_fn(scope, yuzuko, "makeTempDirSync", 0, make_temp_dir_sync);
   define_fn(scope, yuzuko, "makeTempFile", 0, make_temp_file);
   define_fn(scope, yuzuko, "makeTempFileSync", 0, make_temp_file_sync);
+  define_fn(scope, yuzuko, "chmod", 2, chmod);
+  define_fn(scope, yuzuko, "chmodSync", 2, chmod_sync);
+  define_fn(scope, yuzuko, "chown", 3, chown);
+  define_fn(scope, yuzuko, "chownSync", 3, chown_sync);
+  define_fn(scope, yuzuko, "umask", 0, umask);
+  define_fn(scope, yuzuko, "link", 2, link);
+  define_fn(scope, yuzuko, "linkSync", 2, link_sync);
+  define_fn(scope, yuzuko, "symlink", 2, symlink);
+  define_fn(scope, yuzuko, "symlinkSync", 2, symlink_sync);
+  define_fn(scope, yuzuko, "readLink", 1, read_link);
+  define_fn(scope, yuzuko, "readLinkSync", 1, read_link_sync);
+  define_fn(scope, yuzuko, "utime", 3, utime);
+  define_fn(scope, yuzuko, "utimeSync", 3, utime_sync);
+  define_fn(scope, yuzuko, "watchFs", 1, watch_fs);
 }
 
 fn define_fn(
@@ -643,4 +658,231 @@ fn make_temp_file_sync_op(
 ) -> Result<String, OpError> {
   let spec = ready_temp(scope, args.get(0))?;
   ready(scope, io::make_temp(false, spec))
+}
+
+fn ready_mode(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u32, OpError> {
+  let mode = value::mode_arg(scope, value);
+  ready(scope, mode)
+}
+
+fn chown_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, Option<u32>, Option<u32>), OpError> {
+  let path = one_path(scope, args)?;
+  let uid = value::id_arg(
+    scope,
+    args.get(1),
+    "The user id must be an integer or null.",
+  );
+  let uid = ready(scope, uid)?;
+  let gid = value::id_arg(
+    scope,
+    args.get(2),
+    "The group id must be an integer or null.",
+  );
+  let gid = ready(scope, gid)?;
+  Ok((path, uid, gid))
+}
+
+fn symlink_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, std::path::PathBuf, io::LinkKind), OpError> {
+  let (old, new) = two_paths(scope, args)?;
+  let kind = value::link_kind(scope, args.get(2));
+  let kind = ready(scope, kind)?;
+  Ok((old, new, kind))
+}
+
+fn utime_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, io::FileTime, io::FileTime), OpError> {
+  let path = one_path(scope, args)?;
+  let atime = value::time_arg(scope, args.get(1));
+  let atime = ready(scope, atime)?;
+  let mtime = value::time_arg(scope, args.get(2));
+  let mtime = ready(scope, mtime)?;
+  ready(scope, io::check_time(atime))?;
+  ready(scope, io::check_time(mtime))?;
+  Ok((path, atime, mtime))
+}
+
+callback!(chmod, chmod_op);
+fn chmod_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let path = one_path(scope, args)?;
+  let mode = ready_mode(scope, args.get(1))?;
+  settle!(
+    scope,
+    move || io::chmod(&path, mode),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, value::undefined_value)
+    }
+  )
+}
+
+callback!(chmod_sync, chmod_sync_op);
+fn chmod_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  let path = one_path(scope, args)?;
+  let mode = ready_mode(scope, args.get(1))?;
+  ready(scope, io::chmod(&path, mode))
+}
+
+callback!(chown, chown_op);
+fn chown_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (path, uid, gid) = chown_args(scope, args)?;
+  settle!(
+    scope,
+    move || io::chown(&path, uid, gid),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, value::undefined_value)
+    }
+  )
+}
+
+callback!(chown_sync, chown_sync_op);
+fn chown_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  let (path, uid, gid) = chown_args(scope, args)?;
+  ready(scope, io::chown(&path, uid, gid))
+}
+
+callback!(umask, umask_op);
+fn umask_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<u32, OpError> {
+  let value = args.get(0);
+  let mask = if value.is_undefined() {
+    None
+  } else {
+    Some(ready_mode(scope, value)?)
+  };
+  ready(scope, io::umask(mask))
+}
+
+callback!(link, link_op);
+fn link_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (old, new) = two_paths(scope, args)?;
+  settle!(
+    scope,
+    move || io::link(&old, &new),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, value::undefined_value)
+    }
+  )
+}
+
+callback!(link_sync, link_sync_op);
+fn link_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  let (old, new) = two_paths(scope, args)?;
+  ready(scope, io::link(&old, &new))
+}
+
+callback!(symlink, symlink_op);
+fn symlink_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (old, new, kind) = symlink_args(scope, args)?;
+  settle!(
+    scope,
+    move || io::symlink(&old, &new, kind),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, value::undefined_value)
+    }
+  )
+}
+
+callback!(symlink_sync, symlink_sync_op);
+fn symlink_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  let (old, new, kind) = symlink_args(scope, args)?;
+  ready(scope, io::symlink(&old, &new, kind))
+}
+
+callback!(read_link, read_link_op);
+fn read_link_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let path = one_path(scope, args)?;
+  settle!(
+    scope,
+    move || io::read_link(&path),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, |scope, text: String| {
+        value::string_value(scope, &text)
+      })
+    }
+  )
+}
+
+callback!(read_link_sync, read_link_sync_op);
+fn read_link_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<String, OpError> {
+  let path = one_path(scope, args)?;
+  ready(scope, io::read_link(&path))
+}
+
+callback!(utime, utime_op);
+fn utime_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (path, atime, mtime) = utime_args(scope, args)?;
+  settle!(
+    scope,
+    move || io::utime(&path, atime, mtime),
+    |scope, resolver, result| {
+      complete(scope, resolver, result, value::undefined_value)
+    }
+  )
+}
+
+callback!(utime_sync, utime_sync_op);
+fn utime_sync_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  let (path, atime, mtime) = utime_args(scope, args)?;
+  ready(scope, io::utime(&path, atime, mtime))
+}
+
+callback!(watch_fs, watch_fs_op);
+fn watch_fs_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<New<FsWatcher>, OpError> {
+  let paths = value::watch_paths(scope, args.get(0));
+  let paths = ready(scope, paths)?;
+  let recursive = value::watch_recursive(scope, args.get(1));
+  let recursive = ready(scope, recursive)?;
+  let watcher = ready(scope, super::watch::start(paths, recursive))?;
+  Ok(New(watcher))
 }

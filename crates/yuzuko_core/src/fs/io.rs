@@ -540,3 +540,941 @@ fn unix_stat(_meta: &fs::Metadata) -> UnixStat {
     is_socket: false,
   }
 }
+
+/// Seconds since the Unix epoch. Fractional seconds are kept.
+#[derive(Clone, Copy)]
+pub(super) struct FileTime {
+  pub seconds: f64,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum LinkKind {
+  File,
+  Dir,
+  Junction,
+}
+
+/// Saved terminal mode for [`set_raw`]. The first raw transition stores it.
+/// Later transitions start from that copy, and close restores it.
+pub(super) struct TerminalState {
+  #[cfg(unix)]
+  original: Option<libc::termios>,
+  #[cfg(windows)]
+  original: Option<u32>,
+  #[cfg(not(any(unix, windows)))]
+  original: Option<()>,
+}
+
+impl TerminalState {
+  pub(super) fn new() -> Self {
+    Self { original: None }
+  }
+}
+
+struct TimeParts {
+  sec: i64,
+  nsec: i64,
+}
+
+pub(super) fn chmod(path: &Path, mode: u32) -> Result<(), FsError> {
+  let path = path::ensure_mutable(path, Link::Follow)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let meta = fs::metadata(&path).map_err(FsError::io)?;
+    let mut permissions = meta.permissions();
+    permissions.set_mode(mode);
+    return fs::set_permissions(&path, permissions).map_err(FsError::io);
+  }
+  #[cfg(windows)]
+  {
+    let meta = fs::metadata(&path).map_err(FsError::io)?;
+    let mut permissions = meta.permissions();
+    permissions.set_readonly(mode & 0o200 == 0);
+    return fs::set_permissions(&path, permissions).map_err(FsError::io);
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (path, mode);
+    Err(FsError::not_supported(
+      "chmod is not supported on this operating system.",
+    ))
+  }
+}
+
+pub(super) fn chown(
+  path: &Path,
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> Result<(), FsError> {
+  #[cfg(windows)]
+  {
+    let _ = (path, uid, gid);
+    return Err(FsError::not_supported(
+      "Changing the owner is not supported on Windows.",
+    ));
+  }
+  #[cfg(unix)]
+  {
+    let path = path::ensure_mutable(path, Link::Follow)?;
+    let uid = uid.unwrap_or(u32::MAX);
+    let gid = gid.unwrap_or(u32::MAX);
+    let path = path_cstring(&path)?;
+    let rc = unsafe {
+      libc::chown(path.as_ptr(), uid as libc::uid_t, gid as libc::gid_t)
+    };
+    return if rc == 0 {
+      Ok(())
+    } else {
+      Err(FsError::io(io::Error::last_os_error()))
+    };
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (path, uid, gid);
+    Err(FsError::not_supported(
+      "Changing the owner is not supported on this operating system.",
+    ))
+  }
+}
+
+/// Returns the previous mask. On Unix, an omitted mask is read by setting
+/// the mask to 0 and restoring it. That window is visible to other threads.
+pub(super) fn umask(mask: Option<u32>) -> Result<u32, FsError> {
+  #[cfg(unix)]
+  {
+    let previous = unsafe {
+      match mask {
+        Some(mask) => libc::umask(mask as libc::mode_t),
+        None => {
+          let previous = libc::umask(0);
+          libc::umask(previous);
+          previous
+        }
+      }
+    };
+    Ok(previous as u32)
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = mask;
+    Ok(0)
+  }
+}
+
+pub(super) fn link(old: &Path, new: &Path) -> Result<(), FsError> {
+  let old = path::ensure_mutable(old, Link::Entry)?;
+  let new = path::ensure_mutable(new, Link::Entry)?;
+  fs::hard_link(old, new).map_err(FsError::io)
+}
+
+pub(super) fn symlink(
+  old: &Path,
+  new: &Path,
+  kind: LinkKind,
+) -> Result<(), FsError> {
+  let new = path::ensure_mutable(new, Link::Entry)?;
+  #[cfg(unix)]
+  {
+    let _ = kind;
+    return std::os::unix::fs::symlink(old, new).map_err(FsError::io);
+  }
+  #[cfg(windows)]
+  {
+    return match kind {
+      LinkKind::File => {
+        std::os::windows::fs::symlink_file(old, &new).map_err(FsError::io)
+      }
+      LinkKind::Dir => {
+        std::os::windows::fs::symlink_dir(old, &new).map_err(FsError::io)
+      }
+      LinkKind::Junction => junction(&new, old),
+    };
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (old, new, kind);
+    Err(FsError::not_supported(
+      "symlink is not supported on this operating system.",
+    ))
+  }
+}
+
+pub(super) fn read_link(path: &Path) -> Result<String, FsError> {
+  let target = fs::read_link(path).map_err(FsError::io)?;
+  Ok(target.to_string_lossy().replace('\0', "\u{FFFD}"))
+}
+
+pub(super) fn check_time(time: FileTime) -> Result<(), FsError> {
+  let parts = split_time(time.seconds)?;
+  #[cfg(windows)]
+  {
+    filetime_ticks(parts)?;
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = parts;
+  }
+  Ok(())
+}
+
+pub(super) fn utime(
+  path: &Path,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  let path = path::ensure_mutable(path, Link::Follow)?;
+  set_times_path(&path, atime, mtime)
+}
+
+pub(super) fn utime_file(
+  file: &File,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (file, atime, mtime);
+    return Err(FsError::not_supported(
+      "utime is not supported on this operating system.",
+    ));
+  }
+  #[cfg(any(unix, windows))]
+  {
+    if super::bundle_root().is_some() {
+      let path = fd_path(file).map_err(|_| FsError::bundle())?;
+      path::ensure_outside_bundle(&path)?;
+    }
+    set_times_file(file, atime, mtime)
+  }
+}
+
+pub(super) fn lock_file(file: &File, exclusive: bool) -> Result<(), FsError> {
+  lock_with(file, exclusive, false).map(|_| ())
+}
+
+pub(super) fn try_lock_file(
+  file: &File,
+  exclusive: bool,
+) -> Result<bool, FsError> {
+  lock_with(file, exclusive, true)
+}
+
+pub(super) fn unlock_file(file: &File) -> Result<(), FsError> {
+  #[cfg(unix)]
+  {
+    flock_retry(file, libc::LOCK_UN).map_err(FsError::io)
+  }
+  #[cfg(windows)]
+  {
+    windows_lock(file, false, false, true).map(|_| ())
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = file;
+    Err(FsError::not_supported(
+      "lock is not supported on this operating system.",
+    ))
+  }
+}
+
+pub(super) fn is_terminal(file: &File) -> Result<bool, FsError> {
+  #[cfg(unix)]
+  {
+    use std::os::fd::AsRawFd;
+    Ok(unsafe { libc::isatty(file.as_raw_fd()) } == 1)
+  }
+  #[cfg(windows)]
+  {
+    Ok(console_mode(file).is_ok())
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = file;
+    Ok(false)
+  }
+}
+
+pub(super) fn set_raw(
+  file: &File,
+  state: &mut TerminalState,
+  raw: bool,
+  cbreak: bool,
+) -> Result<(), FsError> {
+  #[cfg(unix)]
+  {
+    return set_raw_unix(file, state, raw, cbreak);
+  }
+  #[cfg(windows)]
+  {
+    return set_raw_windows(file, state, raw, cbreak);
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (file, state, raw, cbreak);
+    Err(FsError::not_supported("The file is not a terminal."))
+  }
+}
+
+pub(super) fn restore_terminal(
+  file: &File,
+  state: &mut TerminalState,
+) -> Result<(), FsError> {
+  #[cfg(unix)]
+  {
+    if let Some(original) = state.original.take() {
+      return tcsetattr(file, &original);
+    }
+    return Ok(());
+  }
+  #[cfg(windows)]
+  {
+    if let Some(original) = state.original.take() {
+      return set_console_mode(file, original);
+    }
+    return Ok(());
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (file, state);
+    Ok(())
+  }
+}
+
+fn split_time(seconds: f64) -> Result<TimeParts, FsError> {
+  if !seconds.is_finite() {
+    return Err(FsError::type_(
+      "The time must be a Date or a finite number.",
+    ));
+  }
+  let sec = seconds.floor();
+  if sec < i64::MIN as f64 || sec >= 9223372036854775808.0 {
+    return Err(out_of_range());
+  }
+  let mut tv_sec = sec as i64;
+  let mut nsec = ((seconds - sec) * 1_000_000_000.0).round();
+  if nsec >= 1_000_000_000.0 {
+    if tv_sec == i64::MAX {
+      return Err(out_of_range());
+    }
+    tv_sec += 1;
+    nsec -= 1_000_000_000.0;
+  }
+  if !(0.0..1_000_000_000.0).contains(&nsec) {
+    return Err(out_of_range());
+  }
+  Ok(TimeParts {
+    sec: tv_sec,
+    nsec: nsec as i64,
+  })
+}
+
+fn out_of_range() -> FsError {
+  FsError::type_("The time is out of range.")
+}
+
+fn lock_with(
+  file: &File,
+  exclusive: bool,
+  nonblocking: bool,
+) -> Result<bool, FsError> {
+  #[cfg(unix)]
+  {
+    let mut operation = if exclusive {
+      libc::LOCK_EX
+    } else {
+      libc::LOCK_SH
+    };
+    if nonblocking {
+      operation |= libc::LOCK_NB;
+    }
+    return match flock_retry(file, operation) {
+      Ok(()) => Ok(true),
+      Err(error) if nonblocking && contended(&error) => Ok(false),
+      Err(error) => Err(FsError::io(error)),
+    };
+  }
+  #[cfg(windows)]
+  {
+    windows_lock(file, exclusive, nonblocking, false)
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (file, exclusive, nonblocking);
+    Err(FsError::not_supported(
+      "lock is not supported on this operating system.",
+    ))
+  }
+}
+
+fn contended(error: &io::Error) -> bool {
+  if error.kind() == io::ErrorKind::WouldBlock {
+    return true;
+  }
+  match error.raw_os_error() {
+    #[cfg(unix)]
+    Some(code) if code == libc::EAGAIN || code == libc::EWOULDBLOCK => true,
+    #[cfg(windows)]
+    Some(33) => true,
+    _ => false,
+  }
+}
+
+#[cfg(unix)]
+fn flock_retry(file: &File, operation: libc::c_int) -> io::Result<()> {
+  use std::os::fd::AsRawFd;
+  loop {
+    let rc = unsafe { libc::flock(file.as_raw_fd(), operation) };
+    if rc == 0 {
+      return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if error.kind() == io::ErrorKind::Interrupted {
+      continue;
+    }
+    return Err(error);
+  }
+}
+
+#[cfg(unix)]
+pub(super) fn path_cstring(path: &Path) -> Result<std::ffi::CString, FsError> {
+  use std::os::unix::ffi::OsStrExt;
+  std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+    FsError::io(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "nul byte found in provided data",
+    ))
+  })
+}
+
+#[cfg(unix)]
+fn set_times_path(
+  path: &Path,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  let times = [time_spec(atime)?, time_spec(mtime)?];
+  let path = path_cstring(path)?;
+  let rc = unsafe {
+    libc::utimensat(libc::AT_FDCWD, path.as_ptr(), times.as_ptr(), 0)
+  };
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(FsError::io(io::Error::last_os_error()))
+  }
+}
+
+#[cfg(unix)]
+fn set_times_file(
+  file: &File,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  use std::os::fd::AsRawFd;
+  let times = [time_spec(atime)?, time_spec(mtime)?];
+  let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(FsError::io(io::Error::last_os_error()))
+  }
+}
+
+#[cfg(unix)]
+fn time_spec(time: FileTime) -> Result<libc::timespec, FsError> {
+  let parts = split_time(time.seconds)?;
+  let mut spec = unsafe { std::mem::zeroed::<libc::timespec>() };
+  spec.tv_sec = parts.sec as libc::time_t;
+  spec.tv_nsec = parts.nsec as libc::c_long;
+  Ok(spec)
+}
+
+#[cfg(target_os = "macos")]
+fn fd_path(file: &File) -> io::Result<PathBuf> {
+  use std::os::fd::AsRawFd;
+  let mut buf = [0u8; 1024];
+  let rc = unsafe {
+    libc::fcntl(
+      file.as_raw_fd(),
+      libc::F_GETPATH,
+      buf.as_mut_ptr().cast::<libc::c_char>(),
+    )
+  };
+  if rc == -1 {
+    return Err(io::Error::last_os_error());
+  }
+  let end = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
+  let text = String::from_utf8_lossy(&buf[..end]).replace('\0', "\u{FFFD}");
+  Ok(PathBuf::from(text))
+}
+
+#[cfg(target_os = "linux")]
+fn fd_path(file: &File) -> io::Result<PathBuf> {
+  use std::os::fd::AsRawFd;
+  fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
+fn fd_path(_file: &File) -> io::Result<PathBuf> {
+  Err(io::Error::new(
+    io::ErrorKind::Unsupported,
+    "The file path is unavailable.",
+  ))
+}
+
+#[cfg(unix)]
+fn set_raw_unix(
+  file: &File,
+  state: &mut TerminalState,
+  raw: bool,
+  cbreak: bool,
+) -> Result<(), FsError> {
+  if !raw {
+    if let Some(original) = state.original.take() {
+      return tcsetattr(file, &original);
+    }
+    return Ok(());
+  }
+  if unsafe { libc::isatty(std::os::fd::AsRawFd::as_raw_fd(file)) } != 1 {
+    return Err(FsError::not_supported("The file is not a terminal."));
+  }
+  if state.original.is_none() {
+    let original = tcgetattr(file)?;
+    state.original = Some(copy_termios(&original));
+  }
+  let Some(original) = state.original.as_ref() else {
+    return Err(FsError::not_supported("The file is not a terminal."));
+  };
+  let mut next = copy_termios(original);
+  apply_raw(&mut next, cbreak);
+  tcsetattr(file, &next)
+}
+
+#[cfg(unix)]
+fn copy_termios(source: &libc::termios) -> libc::termios {
+  // `termios` is a plain value without a `Copy` impl. It holds no pointers.
+  unsafe { std::ptr::read(source) }
+}
+
+#[cfg(unix)]
+fn apply_raw(termios: &mut libc::termios, cbreak: bool) {
+  termios.c_iflag &=
+    !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
+  termios.c_oflag &= !libc::OPOST;
+  termios.c_cflag &= !libc::CSIZE;
+  termios.c_cflag |= libc::CS8;
+  let mut local = libc::ECHO | libc::ICANON | libc::IEXTEN;
+  if !cbreak {
+    local |= libc::ISIG;
+  }
+  termios.c_lflag &= !local;
+  termios.c_cc[libc::VMIN] = 1;
+  termios.c_cc[libc::VTIME] = 0;
+}
+
+#[cfg(unix)]
+fn tcgetattr(file: &File) -> Result<libc::termios, FsError> {
+  use std::os::fd::AsRawFd;
+  let mut termios = unsafe { std::mem::zeroed::<libc::termios>() };
+  let rc = unsafe { libc::tcgetattr(file.as_raw_fd(), &mut termios) };
+  if rc == 0 {
+    Ok(termios)
+  } else {
+    Err(FsError::io(io::Error::last_os_error()))
+  }
+}
+
+#[cfg(unix)]
+fn tcsetattr(file: &File, termios: &libc::termios) -> Result<(), FsError> {
+  use std::os::fd::AsRawFd;
+  let rc = unsafe { libc::tcsetattr(file.as_raw_fd(), libc::TCSANOW, termios) };
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(FsError::io(io::Error::last_os_error()))
+  }
+}
+
+#[cfg(windows)]
+fn set_times_path(
+  path: &Path,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  use std::os::windows::io::AsRawHandle;
+  let handle = open_attributes(path)?;
+  set_handle_times(handle.as_raw_handle(), atime, mtime)
+}
+
+#[cfg(windows)]
+fn set_times_file(
+  file: &File,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  use std::os::windows::io::AsRawHandle;
+  set_handle_times(file.as_raw_handle(), atime, mtime)
+}
+
+#[cfg(windows)]
+fn fd_path(file: &File) -> io::Result<PathBuf> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::Storage::FileSystem::{
+    GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
+  };
+  let mut buf = vec![0u16; 32768];
+  let wrote = unsafe {
+    GetFinalPathNameByHandleW(
+      file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+      buf.as_mut_ptr(),
+      buf.len() as u32,
+      VOLUME_NAME_DOS,
+    )
+  };
+  if wrote == 0 || wrote as usize >= buf.len() {
+    return Err(last_windows_error());
+  }
+  let text = String::from_utf16_lossy(&buf[..wrote as usize]);
+  let text = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+    format!(r"\\{rest}")
+  } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+    rest.to_string()
+  } else {
+    text
+  };
+  Ok(PathBuf::from(text))
+}
+
+#[cfg(windows)]
+fn filetime_ticks(parts: TimeParts) -> Result<u64, FsError> {
+  let scaled = parts.sec.checked_mul(10_000_000).ok_or_else(out_of_range)?;
+  let from_unix = scaled
+    .checked_add(parts.nsec / 100)
+    .ok_or_else(out_of_range)?;
+  const OFFSET: u64 = 116_444_736_000_000_000;
+  if from_unix >= 0 {
+    OFFSET
+      .checked_add(from_unix as u64)
+      .ok_or_else(out_of_range)
+  } else {
+    OFFSET
+      .checked_sub(from_unix.unsigned_abs())
+      .ok_or_else(out_of_range)
+  }
+}
+
+#[cfg(windows)]
+fn filetime_from(
+  time: FileTime,
+) -> Result<windows_sys::Win32::Foundation::FILETIME, FsError> {
+  use windows_sys::Win32::Foundation::FILETIME;
+  let ticks = filetime_ticks(split_time(time.seconds)?)?;
+  Ok(FILETIME {
+    dwLowDateTime: ticks as u32,
+    dwHighDateTime: (ticks >> 32) as u32,
+  })
+}
+
+#[cfg(windows)]
+fn open_attributes(
+  path: &Path,
+) -> Result<std::os::windows::io::OwnedHandle, FsError> {
+  use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, OPEN_EXISTING,
+  };
+  let wide = wide_null(path);
+  let handle = unsafe {
+    CreateFileW(
+      wide.as_ptr(),
+      FILE_WRITE_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      std::ptr::null(),
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS,
+      std::ptr::null_mut(),
+    )
+  };
+  owned_handle(handle).map_err(FsError::io)
+}
+
+#[cfg(windows)]
+fn set_handle_times(
+  handle: std::os::windows::io::RawHandle,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  use windows_sys::Win32::Storage::FileSystem::SetFileTime;
+  let atime = filetime_from(atime)?;
+  let mtime = filetime_from(mtime)?;
+  let ok = unsafe {
+    SetFileTime(
+      handle as windows_sys::Win32::Foundation::HANDLE,
+      std::ptr::null(),
+      &atime,
+      &mtime,
+    )
+  };
+  if ok == 0 {
+    Err(FsError::io(last_windows_error()))
+  } else {
+    Ok(())
+  }
+}
+
+#[cfg(windows)]
+fn junction(link: &Path, target: &Path) -> Result<(), FsError> {
+  let absolute = if target.is_absolute() {
+    target.to_path_buf()
+  } else {
+    std::env::current_dir().map_err(FsError::io)?.join(target)
+  };
+  fs::create_dir(link).map_err(FsError::io)?;
+  let created = write_junction(link, &absolute);
+  if created.is_err() {
+    let _ = fs::remove_dir(link);
+  }
+  created
+}
+
+#[cfg(windows)]
+fn write_junction(link: &Path, target: &Path) -> Result<(), FsError> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::Foundation::GENERIC_WRITE;
+  use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+  };
+  use windows_sys::Win32::System::IO::DeviceIoControl;
+  use windows_sys::Win32::System::Ioctl::FSCTL_SET_REPARSE_POINT;
+  let buffer = junction_buffer(target)?;
+  let wide = wide_null(link);
+  let handle = unsafe {
+    CreateFileW(
+      wide.as_ptr(),
+      GENERIC_WRITE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      std::ptr::null(),
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      std::ptr::null_mut(),
+    )
+  };
+  let owned = owned_handle(handle).map_err(FsError::io)?;
+  let mut returned = 0u32;
+  let ok = unsafe {
+    DeviceIoControl(
+      owned.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+      FSCTL_SET_REPARSE_POINT,
+      buffer.as_ptr().cast(),
+      buffer.len() as u32,
+      std::ptr::null_mut(),
+      0,
+      &mut returned,
+      std::ptr::null_mut(),
+    )
+  };
+  if ok == 0 {
+    Err(FsError::io(last_windows_error()))
+  } else {
+    Ok(())
+  }
+}
+
+#[cfg(windows)]
+fn junction_buffer(target: &Path) -> Result<Vec<u8>, FsError> {
+  let text = target.to_string_lossy().replace('\0', "\u{FFFD}");
+  let print = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+    format!(r"\\{rest}")
+  } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+    rest.to_string()
+  } else {
+    text.clone()
+  };
+  let substitute = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+    format!(r"\??\UNC\{rest}")
+  } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+    format!(r"\??\{rest}")
+  } else if let Some(rest) = text.strip_prefix(r"\\") {
+    format!(r"\??\UNC\{rest}")
+  } else {
+    format!(r"\??\{text}")
+  };
+  let substitute: Vec<u16> = substitute.encode_utf16().collect();
+  let print: Vec<u16> = print.encode_utf16().collect();
+  let path_bytes = (substitute.len() + 1 + print.len()) * 2;
+  let data_len = 8 + path_bytes;
+  if data_len > u16::MAX as usize {
+    return Err(FsError::io(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "The junction path is too long.",
+    )));
+  }
+  let mut bytes = vec![0u8; 8 + data_len];
+  bytes[0..4].copy_from_slice(&0xA000_0003u32.to_le_bytes());
+  bytes[4..6].copy_from_slice(&(data_len as u16).to_le_bytes());
+  bytes[8..10].copy_from_slice(&0u16.to_le_bytes());
+  bytes[10..12].copy_from_slice(&((substitute.len() * 2) as u16).to_le_bytes());
+  let print_offset = ((substitute.len() + 1) * 2) as u16;
+  bytes[12..14].copy_from_slice(&print_offset.to_le_bytes());
+  bytes[14..16].copy_from_slice(&((print.len() * 2) as u16).to_le_bytes());
+  let mut cursor = 16;
+  for unit in substitute {
+    bytes[cursor..cursor + 2].copy_from_slice(&unit.to_le_bytes());
+    cursor += 2;
+  }
+  cursor += 2;
+  for unit in print {
+    bytes[cursor..cursor + 2].copy_from_slice(&unit.to_le_bytes());
+    cursor += 2;
+  }
+  Ok(bytes)
+}
+
+#[cfg(windows)]
+fn windows_lock(
+  file: &File,
+  exclusive: bool,
+  nonblocking: bool,
+  unlock: bool,
+) -> Result<bool, FsError> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::Foundation::GetLastError;
+  use windows_sys::Win32::Storage::FileSystem::{
+    LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, LockFileEx,
+    UnlockFileEx,
+  };
+  use windows_sys::Win32::System::IO::OVERLAPPED;
+  let mut overlapped = OVERLAPPED::default();
+  let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+  let ok = if unlock {
+    unsafe { UnlockFileEx(handle, 0, u32::MAX, u32::MAX, &mut overlapped) }
+  } else {
+    let mut flags = 0u32;
+    if exclusive {
+      flags |= LOCKFILE_EXCLUSIVE_LOCK;
+    }
+    if nonblocking {
+      flags |= LOCKFILE_FAIL_IMMEDIATELY;
+    }
+    unsafe { LockFileEx(handle, flags, 0, u32::MAX, u32::MAX, &mut overlapped) }
+  };
+  if ok != 0 {
+    return Ok(true);
+  }
+  let code = unsafe { GetLastError() };
+  let error = io::Error::from_raw_os_error(code as i32);
+  if !unlock && nonblocking && contended(&error) {
+    Ok(false)
+  } else {
+    Err(FsError::io(error))
+  }
+}
+
+#[cfg(windows)]
+fn console_mode(file: &File) -> io::Result<u32> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  let mut mode = 0u32;
+  let ok = unsafe {
+    GetConsoleMode(
+      file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+      &mut mode,
+    )
+  };
+  if ok == 0 {
+    Err(last_windows_error())
+  } else {
+    Ok(mode)
+  }
+}
+
+#[cfg(windows)]
+fn set_console_mode(file: &File, mode: u32) -> Result<(), FsError> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
+  let ok = unsafe {
+    SetConsoleMode(
+      file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+      mode,
+    )
+  };
+  if ok == 0 {
+    Err(FsError::io(last_windows_error()))
+  } else {
+    Ok(())
+  }
+}
+
+#[cfg(windows)]
+fn set_raw_windows(
+  file: &File,
+  state: &mut TerminalState,
+  raw: bool,
+  cbreak: bool,
+) -> Result<(), FsError> {
+  const ENABLE_PROCESSED_INPUT: u32 = 1;
+  const ENABLE_LINE_INPUT: u32 = 2;
+  const ENABLE_ECHO_INPUT: u32 = 4;
+  const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 512;
+  if !raw {
+    if let Some(original) = state.original.take() {
+      return set_console_mode(file, original);
+    }
+    return Ok(());
+  }
+  let current = console_mode(file)
+    .map_err(|_| FsError::not_supported("The file is not a terminal."))?;
+  if state.original.is_none() {
+    state.original = Some(current);
+  }
+  let Some(original) = state.original else {
+    return Err(FsError::not_supported("The file is not a terminal."));
+  };
+  let mut next = original
+    & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
+  if cbreak {
+    next |= ENABLE_PROCESSED_INPUT;
+  }
+  next |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+  set_console_mode(file, next)
+}
+
+#[cfg(windows)]
+fn wide_null(path: &Path) -> Vec<u16> {
+  use std::os::windows::ffi::OsStrExt;
+  let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+  wide.push(0);
+  wide
+}
+
+#[cfg(windows)]
+fn owned_handle(
+  handle: windows_sys::Win32::Foundation::HANDLE,
+) -> io::Result<std::os::windows::io::OwnedHandle> {
+  use std::os::windows::io::{FromRawHandle, OwnedHandle};
+  use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+  if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+    return Err(last_windows_error());
+  }
+  Ok(unsafe { OwnedHandle::from_raw_handle(handle as _) })
+}
+
+#[cfg(windows)]
+fn last_windows_error() -> io::Error {
+  use windows_sys::Win32::Foundation::GetLastError;
+  io::Error::from_raw_os_error(unsafe { GetLastError() } as i32)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn set_times_path(
+  path: &Path,
+  atime: FileTime,
+  mtime: FileTime,
+) -> Result<(), FsError> {
+  let _ = (path, atime, mtime);
+  Err(FsError::not_supported(
+    "utime is not supported on this operating system.",
+  ))
+}

@@ -13,6 +13,7 @@ mod io;
 mod ops;
 mod path;
 mod value;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -39,14 +40,18 @@ pub(super) fn bundle_root() -> Option<PathBuf> {
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
   error::install(scope);
-  publish_file(scope);
+  publish_class(scope, "FsFile", file::FsFile::install);
+  publish_class(scope, "FsWatcher", watch::FsWatcher::install);
   ops::define(scope);
   install_seek_mode(scope);
   error::publish(scope);
   install_dispose(scope);
+  install_async_iterator(scope);
+  install_streams(scope);
 }
 
 pub(crate) fn clear() {
+  watch::clear();
   error::clear();
 }
 
@@ -106,10 +111,14 @@ macro_rules! settle {
 }
 pub(super) use settle;
 
-fn publish_file(scope: &mut v8::PinScope) {
-  file::FsFile::install(scope);
+fn publish_class(
+  scope: &mut v8::PinScope,
+  name: &str,
+  install: fn(&mut v8::PinScope),
+) {
+  install(scope);
   let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, "FsFile") else {
+  let Some(key) = v8::String::new(scope, name) else {
     return;
   };
   let Some(constructor) = global.get(scope, key.into()) else {
@@ -133,7 +142,7 @@ fn install_seek_mode(scope: &mut v8::PinScope) {
 }
 
 fn install_dispose(scope: &mut v8::PinScope) {
-  let Some(proto) = fs_file_prototype(scope) else {
+  let Some(proto) = class_prototype(scope, "FsFile") else {
     return;
   };
   if let Some(symbol) = global_symbol(scope, "dispose") {
@@ -150,11 +159,33 @@ fn install_dispose(scope: &mut v8::PinScope) {
   }
 }
 
-fn fs_file_prototype<'s>(
+fn install_async_iterator(scope: &mut v8::PinScope) {
+  let Some(proto) = class_prototype(scope, "FsWatcher") else {
+    return;
+  };
+  if let Some(symbol) = global_symbol(scope, "asyncIterator") {
+    set_symbol_method(
+      scope,
+      proto,
+      symbol,
+      "asyncIterator",
+      watch::async_iterator,
+    );
+  }
+}
+
+fn install_streams(scope: &mut v8::PinScope) {
+  let source = v8::String::new(scope, STREAMS).expect("file streams");
+  let script = v8::Script::compile(scope, source, None).expect("file streams");
+  script.run(scope).expect("file streams");
+}
+
+fn class_prototype<'s>(
   scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
 ) -> Option<v8::Local<'s, v8::Object>> {
   let yuzuko = crate::namespace(scope, "Yuzuko");
-  let key = v8::String::new(scope, "FsFile")?;
+  let key = v8::String::new(scope, name)?;
   let constructor = yuzuko.get(scope, key.into())?;
   let constructor = v8::Local::<v8::Object>::try_from(constructor).ok()?;
   let proto_key = v8::String::new(scope, "prototype")?;
@@ -194,3 +225,94 @@ fn set_symbol_method(
   function.set_name(label);
   proto.set(scope, symbol.into(), function.into());
 }
+
+/// `readable` and `writable` stay in JavaScript so this crate does not depend
+/// on the stream implementation. A pull reads at most 16384 bytes.
+const STREAMS: &str = r#"(function () {
+  "use strict";
+  const proto = globalThis.Yuzuko.FsFile.prototype;
+  const readableStreams = new WeakMap();
+  const writableStreams = new WeakMap();
+
+  function requireFile(value) {
+    if (!(value instanceof globalThis.Yuzuko.FsFile)) {
+      throw new TypeError("illegal invocation");
+    }
+    return value;
+  }
+
+  function bytesOf(chunk) {
+    if (chunk instanceof Uint8Array) {
+      return chunk;
+    }
+    if (ArrayBuffer.isView(chunk)) {
+      return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    }
+    if (chunk instanceof ArrayBuffer) {
+      return new Uint8Array(chunk);
+    }
+    if (
+      typeof SharedArrayBuffer === "function" &&
+      chunk instanceof SharedArrayBuffer
+    ) {
+      return new Uint8Array(chunk);
+    }
+    throw new TypeError("Data must be a BufferSource.");
+  }
+
+  Object.defineProperty(proto, "readable", {
+    enumerable: true,
+    configurable: true,
+    get: function readable() {
+      const self = requireFile(this);
+      const existing = readableStreams.get(self);
+      if (existing) {
+        return existing;
+      }
+      const stream = new globalThis.ReadableStream({
+        async pull(controller) {
+          const buffer = new Uint8Array(16384);
+          const n = await self.read(buffer);
+          if (n === null) {
+            controller.close();
+            return;
+          }
+          if (n === 0) {
+            return;
+          }
+          controller.enqueue(buffer.subarray(0, n));
+        },
+      });
+      readableStreams.set(self, stream);
+      return stream;
+    },
+  });
+
+  Object.defineProperty(proto, "writable", {
+    enumerable: true,
+    configurable: true,
+    get: function writable() {
+      const self = requireFile(this);
+      const existing = writableStreams.get(self);
+      if (existing) {
+        return existing;
+      }
+      const stream = new globalThis.WritableStream({
+        async write(chunk) {
+          const view = bytesOf(chunk);
+          let offset = 0;
+          while (offset < view.byteLength) {
+            const slice = offset === 0 ? view : view.subarray(offset);
+            const wrote = await self.write(slice);
+            if (wrote === 0) {
+              throw new TypeError("The write wrote no bytes.");
+            }
+            offset += wrote;
+          }
+        },
+      });
+      writableStreams.set(self, stream);
+      return stream;
+    },
+  });
+})()"#;

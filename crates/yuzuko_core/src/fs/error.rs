@@ -175,6 +175,20 @@ impl FsError {
     }
   }
 
+  pub(super) fn not_supported(message: impl Into<String>) -> Self {
+    Self::Os {
+      class: Class::NotSupported,
+      message: message.into(),
+    }
+  }
+
+  pub(super) fn watcher_closed() -> Self {
+    Self::Os {
+      class: Class::BadResource,
+      message: "The watcher is closed.".to_string(),
+    }
+  }
+
   pub(super) fn directory() -> Self {
     Self::Os {
       class: Class::IsADirectory,

@@ -1,7 +1,8 @@
 //! `Yuzuko.FsFile`. The descriptor is shared with background operations.
 //!
-//! Closing waits for an in-flight operation on this file, then drops the
-//! descriptor. Dropping the last handle closes it when the caller did not.
+//! Closing waits for an in-flight operation on this file, then restores a
+//! raw terminal and drops the descriptor. The file mutex is taken before the
+//! terminal mutex. Dropping the last handle closes it when the caller did not.
 
 use std::fs::File;
 use std::sync::{Arc, Mutex};
@@ -9,13 +10,14 @@ use std::sync::{Arc, Mutex};
 use yuzuko_macros::op;
 
 use super::error::{self, FsError};
-use super::io;
+use super::io::{self, FileTime};
 use super::settle;
 use super::value;
 use crate::op::{Js, OpError};
 
 pub struct FsFile {
   inner: Arc<Mutex<Option<File>>>,
+  terminal: Mutex<io::TerminalState>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for FsFile {
@@ -30,17 +32,25 @@ impl FsFile {
   pub(super) fn from_std(file: File) -> Self {
     Self {
       inner: Arc::new(Mutex::new(Some(file))),
+      terminal: Mutex::new(io::TerminalState::new()),
     }
   }
 
   pub(super) fn close_now(&self) -> Result<(), FsError> {
     let mut guard =
       self.inner.lock().unwrap_or_else(|error| error.into_inner());
-    if guard.take().is_none() {
-      Err(FsError::closed())
-    } else {
-      Ok(())
-    }
+    let Some(file) = guard.take() else {
+      return Err(FsError::closed());
+    };
+    let restored = {
+      let mut terminal = self
+        .terminal
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+      io::restore_terminal(&file, &mut terminal)
+    };
+    drop(file);
+    restored
   }
 
   fn with_file<T>(
@@ -252,9 +262,148 @@ impl FsFile {
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     super::ready(scope, self.close_now())
   }
+
+  #[promise]
+  fn lock(
+    &self,
+    scope: &mut v8::PinScope,
+    exclusive: Option<v8::Local<v8::Value>>,
+  ) -> Result<Js, OpError> {
+    let exclusive = value::exclusive_arg(scope, exclusive);
+    let exclusive = super::ready(scope, exclusive)?;
+    let inner = Arc::clone(&self.inner);
+    settle!(
+      scope,
+      move || lock_map(&inner, |file| io::lock_file(file, exclusive)),
+      |scope, resolver, result| {
+        super::complete(scope, resolver, result, value::undefined_value)
+      }
+    )
+  }
+
+  fn lock_sync(
+    &self,
+    scope: &mut v8::PinScope,
+    exclusive: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    let exclusive = value::exclusive_arg(scope, exclusive);
+    let exclusive = super::ready(scope, exclusive)?;
+    super::ready(scope, self.with_file(|file| io::lock_file(file, exclusive)))
+  }
+
+  #[promise]
+  fn try_lock(
+    &self,
+    scope: &mut v8::PinScope,
+    exclusive: Option<v8::Local<v8::Value>>,
+  ) -> Result<Js, OpError> {
+    let exclusive = value::exclusive_arg(scope, exclusive);
+    let exclusive = super::ready(scope, exclusive)?;
+    let inner = Arc::clone(&self.inner);
+    settle!(
+      scope,
+      move || lock_map(&inner, |file| io::try_lock_file(file, exclusive)),
+      |scope, resolver, result| {
+        super::complete(scope, resolver, result, |scope, locked: bool| {
+          Ok(v8::Boolean::new(scope, locked).into())
+        })
+      }
+    )
+  }
+
+  fn try_lock_sync(
+    &self,
+    scope: &mut v8::PinScope,
+    exclusive: Option<v8::Local<v8::Value>>,
+  ) -> Result<bool, OpError> {
+    let exclusive = value::exclusive_arg(scope, exclusive);
+    let exclusive = super::ready(scope, exclusive)?;
+    super::ready(
+      scope,
+      self.with_file(|file| io::try_lock_file(file, exclusive)),
+    )
+  }
+
+  #[promise]
+  fn unlock(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    let inner = Arc::clone(&self.inner);
+    settle!(
+      scope,
+      move || lock_map(&inner, |file| io::unlock_file(file)),
+      |scope, resolver, result| {
+        super::complete(scope, resolver, result, value::undefined_value)
+      }
+    )
+  }
+
+  fn unlock_sync(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
+    super::ready(scope, self.with_file(|file| io::unlock_file(file)))
+  }
+
+  #[promise]
+  fn utime(
+    &self,
+    scope: &mut v8::PinScope,
+    atime: v8::Local<v8::Value>,
+    mtime: v8::Local<v8::Value>,
+  ) -> Result<Js, OpError> {
+    let atime = file_time(scope, atime)?;
+    let mtime = file_time(scope, mtime)?;
+    let inner = Arc::clone(&self.inner);
+    settle!(
+      scope,
+      move || lock_map(&inner, |file| io::utime_file(file, atime, mtime)),
+      |scope, resolver, result| {
+        super::complete(scope, resolver, result, value::undefined_value)
+      }
+    )
+  }
+
+  fn utime_sync(
+    &self,
+    scope: &mut v8::PinScope,
+    atime: v8::Local<v8::Value>,
+    mtime: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    let atime = file_time(scope, atime)?;
+    let mtime = file_time(scope, mtime)?;
+    super::ready(
+      scope,
+      self.with_file(|file| io::utime_file(file, atime, mtime)),
+    )
+  }
+
+  fn is_terminal(&self, scope: &mut v8::PinScope) -> Result<bool, OpError> {
+    super::ready(scope, self.with_file(|file| io::is_terminal(file)))
+  }
+
+  fn set_raw(
+    &self,
+    scope: &mut v8::PinScope,
+    mode: v8::Local<v8::Value>,
+    options: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    let mode = boolean_mode(scope, mode)?;
+    let cbreak = value::cbreak_arg(scope, options);
+    let cbreak = super::ready(scope, cbreak)?;
+    super::ready(scope, self.set_raw_now(mode, cbreak))
+  }
 }
 
 impl FsFile {
+  fn set_raw_now(&self, raw: bool, cbreak: bool) -> Result<(), FsError> {
+    let mut guard =
+      self.inner.lock().unwrap_or_else(|error| error.into_inner());
+    let Some(file) = guard.as_mut() else {
+      return Err(FsError::closed());
+    };
+    let mut terminal = self
+      .terminal
+      .lock()
+      .unwrap_or_else(|error| error.into_inner());
+    io::set_raw(file, &mut terminal, raw, cbreak)
+  }
+
   fn sync_kind(
     &self,
     scope: &mut v8::PinScope,
@@ -298,6 +447,38 @@ pub(super) fn async_dispose(
     Err(error) => {
       let exception = error.exception(scope);
       let _ = resolver.reject(scope, exception);
+    }
+  }
+}
+
+fn file_time(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<FileTime, OpError> {
+  let time = value::time_arg(scope, value);
+  let time = super::ready(scope, time)?;
+  super::ready(scope, io::check_time(time))?;
+  Ok(time)
+}
+
+fn boolean_mode(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<bool, OpError> {
+  let read = {
+    v8::tc_scope!(let tc, scope);
+    let flag = value.boolean_value(tc);
+    if let Some(exception) = tc.exception() {
+      Err(v8::Global::new(tc, exception))
+    } else {
+      Ok(flag)
+    }
+  };
+  match read {
+    Ok(flag) => Ok(flag),
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
     }
   }
 }

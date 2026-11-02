@@ -1741,9 +1741,11 @@ declare namespace Yuzuko {
    * packaged application bundle throws {@link errors.NotSupported}.
    *
    * A path string is absolute or relative to the process current directory.
-   * A {@link URL} must be `file:`. On Windows, `mode` is ignored, and
-   * {@link FileInfo} reports `0` for `mode`, `dev`, `ino`, `nlink`, `uid`,
-   * `gid`, `blksize`, and `blocks`, and `false` for the device-type flags.
+   * A {@link URL} must be `file:`. On Windows, `mode` on {@link open},
+   * {@link writeFile}, and {@link mkdir} is ignored. {@link chmod} uses the
+   * owner write bit as the read-only attribute. {@link FileInfo} reports `0`
+   * for `mode`, `dev`, `ino`, `nlink`, `uid`, `gid`, `blksize`, and `blocks`,
+   * and `false` for the device-type flags.
    *
    * `[Symbol.dispose]` and `[Symbol.asyncDispose]` are installed when those
    * symbols exist. Both close the file.
@@ -1837,6 +1839,110 @@ declare namespace Yuzuko {
     syncDataSync(): void;
 
     /**
+     * Acquires an advisory lock on the whole file.
+     *
+     * An omitted `exclusive` is a shared lock. `null` is shared. The call
+     * waits until the lock is available. {@link FsFile.close} waits for it.
+     * On Unix a second lock in the same process succeeds.
+     *
+     * @throws {@link TypeError} When `exclusive` cannot be read.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    lock(exclusive?: boolean): Promise<void>;
+
+    /** Synchronous {@link FsFile.lock}. It blocks the caller. */
+    lockSync(exclusive?: boolean): void;
+
+    /**
+     * Tries to acquire an advisory lock on the whole file.
+     *
+     * @returns `true` when this call acquired the lock.
+     * @throws {@link TypeError} When `exclusive` cannot be read.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    tryLock(exclusive?: boolean): Promise<boolean>;
+
+    /** Synchronous {@link FsFile.tryLock}. It blocks the caller. */
+    tryLockSync(exclusive?: boolean): boolean;
+
+    /**
+     * Releases an advisory lock.
+     *
+     * On Unix, unlocking a file that is not locked succeeds. On Windows, that
+     * unlock throws a plain {@link Error}.
+     *
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    unlock(): Promise<void>;
+
+    /** Synchronous {@link FsFile.unlock}. It blocks the caller. */
+    unlockSync(): void;
+
+    /**
+     * Sets the access and modification times of the open descriptor.
+     *
+     * Each time is a {@link Date} or a finite number of seconds since the
+     * Unix epoch. A string, boolean, `null`, or `undefined` is rejected.
+     *
+     * @throws {@link TypeError} When a time is not a {@link Date} or a finite
+     * number, or when it is out of range.
+     * @throws {@link errors.BadResource} When the file is closed.
+     * @throws {@link errors.NotSupported} When a bundle root is set and the
+     * descriptor is inside the application bundle, or its path cannot be
+     * resolved.
+     */
+    utime(atime: Date | number, mtime: Date | number): Promise<void>;
+
+    /** Synchronous {@link FsFile.utime}. It blocks the caller. */
+    utimeSync(atime: Date | number, mtime: Date | number): void;
+
+    /**
+     * Reports whether this descriptor is a terminal.
+     *
+     * A regular file returns `false`.
+     *
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    isTerminal(): boolean;
+
+    /**
+     * Puts a terminal into raw mode, or restores the saved mode.
+     *
+     * The first `true` saves the terminal mode. A later `true` starts from
+     * that saved mode. `false` restores it. `false` with nothing saved does
+     * nothing. {@link FsFile.close} restores a saved mode. `cbreak` keeps
+     * signal processing.
+     *
+     * @throws {@link TypeError} When `options` is not an object. A `mode`
+     * conversion that throws is rethrown.
+     * @throws {@link errors.NotSupported} When `mode` is `true` and the file
+     * is not a terminal.
+     * @throws {@link errors.BadResource} When the file is closed.
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
+
+    /**
+     * Byte stream of this file.
+     *
+     * Each pull reads at most 16384 bytes. The same stream is returned for
+     * the life of the file. Cancelling the stream does not close the file.
+     * Calling this getter on a value that is not an {@link FsFile} throws
+     * {@link TypeError}.
+     */
+    readonly readable: ReadableStream<Uint8Array>;
+
+    /**
+     * Byte sink for this file.
+     *
+     * A short write is repeated. An empty chunk writes nothing. The same
+     * stream is returned for the life of the file. Closing the stream does
+     * not close the file. A chunk that is not a buffer source errors the
+     * stream with `Data must be a BufferSource.` A write that returns 0
+     * errors it with `The write wrote no bytes.`
+     */
+    readonly writable: WritableStream<AllowSharedBufferSource>;
+
+    /**
      * Closes the descriptor.
      *
      * @throws {@link errors.BadResource} When the file is already closed.
@@ -1851,6 +1957,74 @@ declare namespace Yuzuko {
      * `Symbol.asyncDispose` exists.
      */
     [Symbol.asyncDispose](): Promise<void>;
+  }
+
+  /**
+   * Options for {@link FsFile.setRaw}.
+   */
+  interface SetRawOptions {
+    /**
+     * Keep the terminal's signal processing.
+     *
+     * @defaultValue false
+     */
+    cbreak?: boolean;
+  }
+
+  /**
+   * One record from {@link FsWatcher.next}.
+   *
+   * `flag` is present only for a rescan.
+   */
+  interface FsEvent {
+    kind: "access" | "create" | "modify" | "remove" | "rename" | "any" | "other";
+    /** Absolute paths. A directory watch on macOS names the directory. */
+    paths: string[];
+    flag?: "rescan";
+  }
+
+  /**
+   * Directory watcher returned by {@link watchFs}. There is no public
+   * constructor.
+   *
+   * Installed with {@link FsFile} when the runtime is built with `fs`. An
+   * open watcher keeps the process alive until {@link FsWatcher.close} or
+   * {@link FsWatcher.return}. On macOS a directory event names the watched
+   * directory. On Windows, more than 60 paths throws {@link errors.NotSupported}.
+   */
+  class FsWatcher {
+    private constructor();
+
+    /**
+     * Resolves the next event, or `{ done: true }` after the watcher is
+     * closed and its queue is empty.
+     *
+     * Queued events are returned before `done`.
+     */
+    next(): Promise<IteratorResult<FsEvent>>;
+
+    /**
+     * Stops the watcher and resolves `{ done: true }`.
+     *
+     * A watcher that is already closed still resolves `{ done: true }`.
+     * This call does not consume a queued event.
+     */
+    return(value?: unknown): Promise<IteratorResult<FsEvent>>;
+
+    /**
+     * Stops the watcher.
+     *
+     * @throws {@link errors.BadResource} When the watcher is already closed.
+     */
+    close(): void;
+
+    /**
+     * Returns this watcher. Installed when `Symbol.asyncIterator` exists.
+     *
+     * Calling it on a value that is not an {@link FsWatcher} throws
+     * {@link TypeError}.
+     */
+    [Symbol.asyncIterator](): FsWatcher;
   }
 
   /**
@@ -2027,6 +2201,28 @@ declare namespace Yuzuko {
      * Delete a directory tree. A symlink is still removed as a file.
      *
      * @defaultValue false
+     */
+    recursive?: boolean;
+  }
+
+  /**
+   * Options for {@link symlink}.
+   *
+   * Unix ignores `type`. Windows creates that kind of link.
+   */
+  interface SymlinkOptions {
+    /**
+     * @defaultValue `"file"`
+     */
+    type?: "file" | "dir" | "junction";
+  }
+
+  /** Options for {@link watchFs}. */
+  interface WatchOptions {
+    /**
+     * Watch nested directories.
+     *
+     * @defaultValue true
      */
     recursive?: boolean;
   }
@@ -2259,6 +2455,159 @@ declare namespace Yuzuko {
 
   /** Synchronous {@link makeTempFile}. It blocks the caller. */
   function makeTempFileSync(options?: MakeTempOptions): string;
+
+  /**
+   * Sets the permissions of `path`. The process umask does not apply.
+   *
+   * On Unix the operating system may store fewer than 18 bits. On macOS the
+   * stored mode is 16 bits. On Windows only the owner write bit is used, as
+   * the read-only attribute.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, or
+   * when `mode` is not an integer from 0 through 262143.
+   * @throws {@link errors.NotSupported} When the resolved path is inside the
+   * application bundle.
+   */
+  function chmod(path: string | URL, mode: number): Promise<void>;
+
+  /** Synchronous {@link chmod}. It blocks the caller. */
+  function chmodSync(path: string | URL, mode: number): void;
+
+  /**
+   * Changes the owner of `path`. `null` leaves that id unchanged.
+   *
+   * On Windows this throws {@link errors.NotSupported} with
+   * `Changing the owner is not supported on Windows.` and does not touch the
+   * file system.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, or
+   * when `uid` or `gid` is not `null` or an integer from 0 through 4294967295.
+   * @throws {@link errors.NotSupported} On Windows.
+   */
+  function chown(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null,
+  ): Promise<void>;
+
+  /** Synchronous {@link chown}. It blocks the caller. */
+  function chownSync(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null,
+  ): void;
+
+  /**
+   * Returns the process file-creation mask.
+   *
+   * An omitted mask is left in place. On Unix, reading the mask sets it to 0
+   * and restores it, and another thread can observe that window. On Windows
+   * the result is `0` and a mask in range is ignored.
+   *
+   * @throws {@link TypeError} When `mask` is present and is not an integer
+   * from 0 through 262143.
+   */
+  function umask(mask?: number): number;
+
+  /**
+   * Creates a hard link from `oldPath` to `newPath`.
+   *
+   * The final component of neither path is followed.
+   *
+   * @throws {@link TypeError} When either path is not a string or a file URL.
+   * @throws {@link errors.NotSupported} When either resolved directory entry
+   * is inside the application bundle.
+   */
+  function link(oldPath: string | URL, newPath: string | URL): Promise<void>;
+
+  /** Synchronous {@link link}. It blocks the caller. */
+  function linkSync(oldPath: string | URL, newPath: string | URL): void;
+
+  /**
+   * Creates a symbolic link at `newPath` whose text is `oldPath`.
+   *
+   * A string is stored as that string. A file URL is stored as its
+   * file-system path. The target does not have to exist. Unix ignores
+   * `options.type`. On Windows, creating a symlink can throw
+   * {@link errors.PermissionDenied} when the process may not create one.
+   *
+   * @throws {@link TypeError} When either path is not a string or a file URL,
+   * when `options` is not an object, or when `type` is not `"file"`,
+   * `"dir"`, or `"junction"`.
+   * @throws {@link errors.NotSupported} When `newPath` is inside the
+   * application bundle.
+   */
+  function symlink(
+    oldPath: string | URL,
+    newPath: string | URL,
+    options?: SymlinkOptions,
+  ): Promise<void>;
+
+  /** Synchronous {@link symlink}. It blocks the caller. */
+  function symlinkSync(
+    oldPath: string | URL,
+    newPath: string | URL,
+    options?: SymlinkOptions,
+  ): void;
+
+  /**
+   * Returns the text stored in the symbolic link at `path`.
+   *
+   * The text is not canonicalized. A NUL becomes U+FFFD.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL.
+   */
+  function readLink(path: string | URL): Promise<string>;
+
+  /** Synchronous {@link readLink}. It blocks the caller. */
+  function readLinkSync(path: string | URL): string;
+
+  /**
+   * Sets the access and modification times of `path`, following a final
+   * symlink.
+   *
+   * Each time is a {@link Date} or a finite number of seconds since the Unix
+   * epoch. A string, boolean, `null`, or `undefined` is rejected.
+   *
+   * @throws {@link TypeError} When `path` is not a string or a file URL, when
+   * a time is not a {@link Date} or a finite number, or when a time is out of
+   * range.
+   * @throws {@link errors.NotSupported} When the resolved path is inside the
+   * application bundle.
+   */
+  function utime(
+    path: string | URL,
+    atime: Date | number,
+    mtime: Date | number,
+  ): Promise<void>;
+
+  /** Synchronous {@link utime}. It blocks the caller. */
+  function utimeSync(
+    path: string | URL,
+    atime: Date | number,
+    mtime: Date | number,
+  ): void;
+
+  /**
+   * Watches `paths` and returns immediately.
+   *
+   * `paths` is a string, a file URL, or an array of those. The paths must
+   * exist. `recursive` defaults to true. On macOS a directory watch reports
+   * the watched directory. On Windows, more than 60 paths throws
+   * {@link errors.NotSupported} before existence is checked.
+   *
+   * @throws {@link TypeError} When `paths` is empty or not a path, or when
+   * `options` is not an object.
+   * @throws {@link errors.NotFound} When a path does not exist.
+   * @throws {@link errors.NotSupported} On Windows, when more than 60 paths
+   * are given or a file path has no parent directory. On an operating system
+   * other than Linux, macOS, and Windows, `watchFs` throws
+   * {@link errors.NotSupported}.
+   */
+  function watchFs(
+    paths: string | URL | readonly (string | URL)[],
+    options?: WatchOptions,
+  ): FsWatcher;
 
   /**
    * Registers a listener on the `Yuzuko` object.
