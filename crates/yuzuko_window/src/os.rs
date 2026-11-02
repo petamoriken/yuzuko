@@ -28,6 +28,39 @@ use crate::session;
 
 struct Wake;
 
+#[cfg(feature = "accessibility")]
+struct Activation {
+  id: u64,
+}
+
+#[cfg(feature = "accessibility")]
+impl accesskit::ActivationHandler for Activation {
+  fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
+    Some(crate::a11y::full_tree(self.id))
+  }
+}
+
+#[cfg(feature = "accessibility")]
+struct ActionBridge {
+  proxy: EventLoopProxy<Wake>,
+}
+
+#[cfg(feature = "accessibility")]
+impl accesskit::ActionHandler for ActionBridge {
+  fn do_action(&mut self, request: accesskit::ActionRequest) {
+    crate::a11y::enqueue(request);
+    let _ = self.proxy.send_event(Wake);
+  }
+}
+
+#[cfg(feature = "accessibility")]
+struct Deactivate;
+
+#[cfg(feature = "accessibility")]
+impl accesskit::DeactivationHandler for Deactivate {
+  fn deactivate_accessibility(&mut self) {}
+}
+
 struct PendingWindow {
   id: u64,
   title: String,
@@ -82,6 +115,10 @@ struct Gpu {
 }
 
 struct HostWindow {
+  /// Dropped before the wgpu surface and the winit window. The adapter borrows
+  /// that window.
+  #[cfg(feature = "accessibility")]
+  adapter: Option<accesskit_winit::Adapter>,
   /// Dropped in `Drop` before `window`. The `'static` lifetime is a lie: the
   /// surface borrows `window` and must not outlive it.
   surface: Option<wgpu::Surface<'static>>,
@@ -99,6 +136,8 @@ struct HostWindow {
 
 impl Drop for HostWindow {
   fn drop(&mut self) {
+    #[cfg(feature = "accessibility")]
+    self.adapter.take();
     #[cfg(target_os = "macos")]
     frame_link::invalidate(&mut self.frame_link);
     self.surface.take();
@@ -115,6 +154,8 @@ struct App {
   gpu_failed: bool,
   modifiers: ModifiersState,
   cursor: PhysicalCursor,
+  #[cfg(feature = "accessibility")]
+  proxy: EventLoopProxy<Wake>,
 }
 
 struct PhysicalCursor {
@@ -285,6 +326,27 @@ pub fn close(id: u64) {
 
 pub fn set_title(id: u64, title: &str) {
   with_window(id, |window| window.set_title(title));
+}
+
+/// Publishes the current author tree when this window has a live adapter.
+#[cfg(feature = "accessibility")]
+pub fn publish_accessible(id: u64) {
+  if session::headless() {
+    return;
+  }
+  OS.with(|slot| {
+    let mut guard = slot.borrow_mut();
+    let Some(os) = guard.as_mut() else {
+      return;
+    };
+    if crate::a11y::is_closed(id) {
+      return;
+    }
+    let Some(window_id) = os.app.by_surface.get(&id).copied() else {
+      return;
+    };
+    os.app.refresh_accessible(window_id);
+  });
 }
 
 /// Outer and client origins. `None` when this process has no OS window.
@@ -790,6 +852,8 @@ fn ensure_loop() -> Result<(), String> {
     .map_err(|error| error.to_string())?;
   let proxy = event_loop.create_proxy();
   let waker = proxy.clone();
+  #[cfg(feature = "accessibility")]
+  let action_proxy = proxy.clone();
   yuzuko_core::set_task_waker(Some(Arc::new(move || {
     let _ = waker.send_event(Wake);
   })));
@@ -811,6 +875,8 @@ fn ensure_loop() -> Result<(), String> {
           y: 0.0,
           valid: false,
         },
+        #[cfg(feature = "accessibility")]
+        proxy: action_proxy,
       },
     });
   });
@@ -876,12 +942,22 @@ impl App {
     let pending = std::mem::take(&mut self.pending);
     for request in pending {
       let attributes = chrome_attributes(&request);
+      // AccessKit attaches before the window is shown for the first time.
+      #[cfg(feature = "accessibility")]
+      let attributes = attributes.with_visible(false);
       match event_loop.create_window(attributes) {
         Ok(window) => {
           if request.position.is_none() {
             center_window(&window);
           }
-          self.attach(request.id, window, request.transparent);
+          self.attach(
+            event_loop,
+            request.id,
+            window,
+            request.transparent,
+            request.visible,
+            request.title,
+          );
         }
         Err(error) => {
           self.errors.insert(request.id, error.to_string());
@@ -890,7 +966,43 @@ impl App {
     }
   }
 
-  fn attach(&mut self, id: u64, window: Window, transparent: bool) {
+  fn attach(
+    &mut self,
+    event_loop: &ActiveEventLoop,
+    id: u64,
+    window: Window,
+    transparent: bool,
+    visible: bool,
+    title: String,
+  ) {
+    #[cfg(feature = "accessibility")]
+    let adapter = {
+      let scale = window.scale_factor();
+      let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+      } else {
+        1.0
+      };
+      let physical = window.inner_size();
+      crate::a11y::note_viewport(
+        id,
+        title,
+        physical.width as f64 / scale,
+        physical.height as f64 / scale,
+        scale,
+      );
+      accesskit_winit::Adapter::with_direct_handlers(
+        event_loop,
+        &window,
+        Activation { id },
+        ActionBridge {
+          proxy: self.proxy.clone(),
+        },
+        Deactivate,
+      )
+    };
+    #[cfg(not(feature = "accessibility"))]
+    let _ = (event_loop, visible, &title);
     if let Some(theme) = window.theme() {
       crate::prefs::note_scheme(theme == winit::window::Theme::Dark);
     }
@@ -899,6 +1011,8 @@ impl App {
     self.windows.insert(
       window_id,
       HostWindow {
+        #[cfg(feature = "accessibility")]
+        adapter: Some(adapter),
         surface,
         window,
         surface_id: id,
@@ -914,6 +1028,10 @@ impl App {
         .lock()
         .expect("transparent windows")
         .insert(id);
+    }
+    #[cfg(feature = "accessibility")]
+    if let Some(host) = self.windows.get(&window_id) {
+      host.window.set_visible(visible);
     }
     self.publish_size(window_id);
     self.configure_surface(window_id);
@@ -1006,26 +1124,51 @@ impl App {
   }
 
   fn publish_size(&mut self, window_id: WindowId) {
-    let Some(host) = self.windows.get(&window_id) else {
-      return;
+    let (id, size) = {
+      let Some(host) = self.windows.get(&window_id) else {
+        return;
+      };
+      let scale = host.window.scale_factor();
+      let physical = host.window.inner_size();
+      let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+      } else {
+        1.0
+      };
+      let size = Size {
+        css_width: physical.width as f64 / scale,
+        css_height: physical.height as f64 / scale,
+        scale,
+        bitmap_width: physical.width as f64,
+        bitmap_height: physical.height as f64,
+      };
+      (host.surface_id, size)
     };
-    let scale = host.window.scale_factor();
-    let physical = host.window.inner_size();
-    let scale = if scale.is_finite() && scale > 0.0 {
-      scale
-    } else {
-      1.0
-    };
-    let size = Size {
-      css_width: physical.width as f64 / scale,
-      css_height: physical.height as f64 / scale,
-      scale,
-      bitmap_width: physical.width as f64,
-      bitmap_height: physical.height as f64,
-    };
-    let id = host.surface_id;
     if inbox::set_size(id, size) {
       inbox::push(id, Raw::Resize);
+    }
+    #[cfg(feature = "accessibility")]
+    {
+      crate::a11y::note_size(id, size.css_width, size.css_height, size.scale);
+      self.refresh_accessible(window_id);
+    }
+  }
+
+  #[cfg(feature = "accessibility")]
+  fn refresh_accessible(&mut self, window_id: WindowId) {
+    let Some(id) = self.windows.get(&window_id).map(|host| host.surface_id)
+    else {
+      return;
+    };
+    if crate::a11y::is_closed(id) {
+      return;
+    }
+    let Some(host) = self.windows.get_mut(&window_id) else {
+      return;
+    };
+    let HostWindow { adapter, .. } = host;
+    if let Some(adapter) = adapter.as_mut() {
+      adapter.update_if_active(|| crate::a11y::full_tree(id));
     }
   }
 
@@ -1211,6 +1354,15 @@ impl App {
     else {
       return;
     };
+    #[cfg(feature = "accessibility")]
+    if let Some(host) = self.windows.get_mut(&window_id) {
+      let HostWindow {
+        adapter, window, ..
+      } = host;
+      if let Some(adapter) = adapter.as_mut() {
+        adapter.process_event(window, &event);
+      }
+    }
     match event {
       WindowEvent::CloseRequested => inbox::push(id, Raw::Close),
       WindowEvent::Destroyed => {

@@ -768,6 +768,43 @@ impl PromiseRejectionEvent {
   }
 }
 
+/// Trusted bubbling event along `path`. The path starts at the target.
+///
+/// An empty path does not dispatch. A listener that throws is reported and
+/// does not stop the rest of the path.
+pub fn dispatch_on_path(
+  scope: &mut v8::PinScope,
+  path: &[v8::Local<v8::Object>],
+  type_name: &str,
+) -> bool {
+  if path.is_empty() {
+    return false;
+  }
+  let event = Event::new(type_name, true, false, false, true);
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  crate::target::dispatch_path(scope, path, object).unwrap_or(false)
+}
+
+/// Trusted bubbling `CustomEvent` along `path`. `None` leaves `detail` null.
+pub fn dispatch_custom_on_path(
+  scope: &mut v8::PinScope,
+  path: &[v8::Local<v8::Object>],
+  type_name: &str,
+  detail: Option<v8::Local<v8::Value>>,
+) -> bool {
+  if path.is_empty() {
+    return false;
+  }
+  let event = CustomEvent {
+    base: Event::new(type_name, true, false, false, true),
+    detail: RefCell::new(detail.map(|value| traced(scope, value))),
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  crate::target::dispatch_path(scope, path, object).unwrap_or(false)
+}
+
 fn traced_value(
   scope: &mut v8::PinScope,
   slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,

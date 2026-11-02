@@ -81,7 +81,14 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
   crate::shell::tray::poll(scope);
   crate::shell::dock::poll(scope);
   os::begin_present_turn();
-  let mut did = gamepad::poll(scope);
+  let mut did = false;
+  #[cfg(feature = "accessibility")]
+  if crate::a11y::drain(scope) {
+    did = true;
+  }
+  if gamepad::poll(scope) {
+    did = true;
+  }
   for id in inbox::ids() {
     if inbox::has_input(id) {
       input::flush(scope, id);

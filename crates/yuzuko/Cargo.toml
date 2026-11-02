@@ -22,6 +22,7 @@ default = [
   "child",
   "ffi",
   "window",
+  "accessibility",
   "image",
   "canvas",
   "webgpu",
@@ -38,6 +39,7 @@ signal = ["yuzuko_core/signal"]
 child = ["yuzuko_core/child"]
 ffi = ["yuzuko_core/ffi"]
 window = ["dep:yuzuko_window", "yuzuko_dom/window"]
+accessibility = ["window", "yuzuko_window/accessibility"]
 image = ["dep:yuzuko_image", "window"]
 canvas = ["dep:yuzuko_canvas", "image"]
 webgpu = ["dep:yuzuko_webgpu", "image"]
@@ -99,6 +101,10 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[[test]]
+name = "accessibility"
+required-features = ["accessibility"]
 
 [[test]]
 name = "audio"

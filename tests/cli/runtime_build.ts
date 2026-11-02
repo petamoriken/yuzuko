@@ -30,6 +30,7 @@ const names = [
   typeof Yuzuko.dlopen,
   typeof Yuzuko.Library,
   typeof Yuzuko.Window,
+  typeof Yuzuko.AccessibleNode,
   typeof PointerEvent,
   typeof OffscreenCanvas,
   typeof createImageBitmap,

@@ -59,9 +59,49 @@ fn inject_events(
       crate::shell::tray::dispatch_primary_click(scope)?;
       continue;
     }
+    if prop_string(scope, record, "kind").as_deref() == Some("accessible") {
+      #[cfg(feature = "accessibility")]
+      {
+        read_accessible(scope, record)?;
+        continue;
+      }
+      #[cfg(not(feature = "accessibility"))]
+      {
+        return Err(OpError::type_("unknown inject kind accessible"));
+      }
+    }
     inbox::push(id, read_event(scope, record)?);
   }
   input::flush(scope, id);
+  Ok(())
+}
+
+#[cfg(feature = "accessibility")]
+fn read_accessible(
+  scope: &mut v8::PinScope,
+  record: v8::Local<v8::Object>,
+) -> Result<(), OpError> {
+  let type_name = prop_string(scope, record, "type").unwrap_or_default();
+  let kind = match type_name.as_str() {
+    "click" => crate::a11y::ActionKind::Click,
+    "contextmenu" => crate::a11y::ActionKind::ContextMenu,
+    "decrement" => crate::a11y::ActionKind::Decrement,
+    "focus" => crate::a11y::ActionKind::Focus,
+    "increment" => crate::a11y::ActionKind::Increment,
+    "scrollintoview" => crate::a11y::ActionKind::ScrollIntoView,
+    "setvalue" => crate::a11y::ActionKind::SetValue,
+    _ => return Err(OpError::type_("The value is not a valid token.")),
+  };
+  let Some(node) = prop(scope, record, "node") else {
+    return Err(OpError::type_("The node must be an AccessibleNode."));
+  };
+  let id = crate::a11y::node_id(scope, node)?;
+  let value = if kind == crate::a11y::ActionKind::SetValue {
+    prop_number(scope, record, "value")?
+  } else {
+    None
+  };
+  crate::a11y::inject_and_drain(scope, id, kind, value);
   Ok(())
 }
 

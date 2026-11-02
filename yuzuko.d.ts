@@ -9,8 +9,9 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `ffi`, `window`, `image`, `canvas`,
- * `webgpu`, `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
+ * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `ffi`, `window`,
+ * `accessibility`, `image`, `canvas`, `webgpu`, `audio`, and `codec`.
+ * `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
@@ -18,10 +19,12 @@
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
- * listeners, a child process, foreign functions, {@link WebSocket}, {@link Window},
+ * listeners, a child process, foreign functions, virtual accessibility nodes,
+ * {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
- * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
+ * subset. `image`, `canvas`, `webgpu`, `codec`, and `accessibility` also
+ * enable `window`.
  * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
  * A web-standard interface or member ends with an MDN link in the form used by
@@ -581,6 +584,331 @@ declare namespace Yuzuko {
     contextmenu: MouseEvent;
   }
 
+  type AccessibleTriState = "true" | "false" | "mixed";
+
+  type AccessibleLive = "off" | "polite" | "assertive";
+
+  type AccessibleOrientation = "horizontal" | "vertical";
+
+  /**
+   * `accessiblesetvalue` dispatched on an {@link AccessibleNode}.
+   *
+   * There is no constructor. The event is a {@link CustomEvent} whose
+   * `detail` is the requested finite number, or `null` when the request has
+   * no number. The event does not change `valueNow` or `valueText`.
+   */
+  interface AccessibleSetValueEvent extends CustomEvent<number | null> {}
+
+  /** Events dispatched on an {@link AccessibleNode}. */
+  interface AccessibleNodeEventMap {
+    accessibleclick: Event;
+    accessiblecontextmenu: Event;
+    accessibledecrement: Event;
+    accessiblefocus: Event;
+    accessibleincrement: Event;
+    accessiblescrollintoview: Event;
+    accessiblesetvalue: AccessibleSetValueEvent;
+  }
+
+  /**
+   * A virtual accessibility node.
+   *
+   * This is the Accessibility Object Model Phase 3 draft, attached to a
+   * {@link Window} because there is no document. It is not on `globalThis`.
+   * A dedicated worker does not have it. Phase 4 `ComputedAccessibleNode` is
+   * not implemented. `parent` and the sibling getters read the authored tree.
+   *
+   * Assistive-technology actions bubble through that tree and are not
+   * cancelable. They do not bubble to the window. There are no
+   * `onaccessible*` handlers. `dispatchEvent` stays single-target.
+   *
+   * `role`, `name`, `description`, `roleDescription`, and `valueText` use
+   * `ToString`. `null` or `undefined` clears them. `checked` and `pressed`
+   * are `"true"`, `"false"`, or `"mixed"`. `disabled`, `expanded`, `hidden`,
+   * `selected`, `busy`, `modal`, `required`, `readOnly`, `multiselectable`,
+   * and `multiline` are booleans or `null`. `valueNow`, `valueMin`, and
+   * `valueMax` are finite numbers or `null`. Counts and indexes are IDL
+   * `long` values or `null`. `live` and `orientation` are the tokens below.
+   * `focusable` defaults to `false`.
+   *
+   * Offsets are CSS pixel lengths. The getter returns `null` or a string
+   * such as `"30px"`. The setter accepts `null`, `undefined`, a finite
+   * number, or a string that is a bare number or a `px` length.
+   */
+  class AccessibleNode extends EventTarget {
+    /** Creates a node that is not attached to a window. */
+    constructor();
+
+    /**
+     * Appends `node` and detaches it from its previous parent.
+     *
+     * @throws {@link TypeError} When `node` is not an `AccessibleNode`, or
+     * when the argument is missing.
+     * @throws {@link DOMException} `HierarchyRequestError` when `node` is an
+     * ancestor, or when it is the accessible root.
+     */
+    appendChild(node: AccessibleNode): AccessibleNode;
+
+    /**
+     * Inserts `node` before `child`. `null` or `undefined` appends.
+     *
+     * `insertBefore(node, node)` keeps `node` in place when it is already a
+     * child.
+     *
+     * @throws {@link TypeError} When `node` is not an `AccessibleNode`, or
+     * when `node` is missing.
+     * @throws {@link DOMException} `NotFoundError` when `child` is not a child.
+     * @throws {@link DOMException} `HierarchyRequestError` when `node` is an
+     * ancestor, or when it is the accessible root.
+     */
+    insertBefore(
+      node: AccessibleNode,
+      child?: AccessibleNode | null,
+    ): AccessibleNode;
+
+    /**
+     * Replaces `child` with `node` and returns `child`.
+     *
+     * When `node` and `child` are the same child, the tree does not change.
+     *
+     * @throws {@link TypeError} When either value is not an `AccessibleNode`,
+     * or when an argument is missing.
+     * @throws {@link DOMException} `NotFoundError` when `child` is not a child.
+     * @throws {@link DOMException} `HierarchyRequestError` when `node` is an
+     * ancestor, or when it is the accessible root.
+     */
+    replaceChild(node: AccessibleNode, child: AccessibleNode): AccessibleNode;
+
+    /**
+     * Removes `node` and returns it.
+     *
+     * @throws {@link TypeError} When `node` is not an `AccessibleNode`, or
+     * when the argument is missing.
+     * @throws {@link DOMException} `NotFoundError` when `node` is not a child.
+     */
+    removeChild(node: AccessibleNode): AccessibleNode;
+
+    /**
+     * Moves accessible focus to this node.
+     *
+     * This does not move operating-system focus and does not dispatch
+     * `focus`, `blur`, or `accessiblefocus`.
+     *
+     * @throws {@link DOMException} `InvalidStateError` when the node is not
+     * focusable, is not connected to a root, or its window is closed.
+     */
+    focus(): void;
+
+    /** ARIA role token. `null` when unset. `""` when set to an empty string. */
+    role: string | null;
+
+    /** Accessible name. There is no `label` property. */
+    name: string | null;
+
+    /** Accessible description. */
+    description: string | null;
+
+    /** Author role description. */
+    roleDescription: string | null;
+
+    /** Value text. This does not clear `valueNow`. */
+    valueText: string | null;
+
+    /**
+     * Checked state.
+     *
+     * @throws {@link TypeError} When the value is not `true`, `false`,
+     * `mixed`, `null`, or `undefined`.
+     */
+    checked: AccessibleTriState | boolean | null;
+
+    /**
+     * Pressed state.
+     *
+     * @throws {@link TypeError} When the value is not `true`, `false`,
+     * `mixed`, `null`, or `undefined`.
+     */
+    pressed: AccessibleTriState | boolean | null;
+
+    /** `null` clears the flag. */
+    disabled: boolean | null;
+
+    /** `null` clears the state. `false` is collapsed. */
+    expanded: boolean | null;
+
+    /** `null` clears the flag. */
+    hidden: boolean | null;
+
+    /** `null` clears the state. `false` is unselected. */
+    selected: boolean | null;
+
+    /** `null` clears the flag. */
+    busy: boolean | null;
+
+    /** `null` clears the flag. */
+    modal: boolean | null;
+
+    /** `null` clears the flag. */
+    required: boolean | null;
+
+    /** `null` clears the flag. */
+    readOnly: boolean | null;
+
+    /** `null` clears the flag. */
+    multiselectable: boolean | null;
+
+    /**
+     * When `true`, a `textbox` is published as a multiline text input.
+     *
+     * `null` clears it.
+     */
+    multiline: boolean | null;
+
+    /**
+     * Current numeric value.
+     *
+     * @throws {@link TypeError} When the value is not finite.
+     */
+    valueNow: number | null;
+
+    /**
+     * Minimum numeric value.
+     *
+     * @throws {@link TypeError} When the value is not finite.
+     */
+    valueMin: number | null;
+
+    /**
+     * Maximum numeric value.
+     *
+     * @throws {@link TypeError} When the value is not finite.
+     */
+    valueMax: number | null;
+
+    /** `null` clears the count. A negative count is stored and not published. */
+    colCount: number | null;
+
+    /** `null` clears the count. */
+    rowCount: number | null;
+
+    /** One-based column index, or `null`. `0` stays `0`. */
+    colIndex: number | null;
+
+    /** `null` clears the span. */
+    colSpan: number | null;
+
+    /** One-based row index, or `null`. `0` stays `0`. */
+    rowIndex: number | null;
+
+    /** `null` clears the span. */
+    rowSpan: number | null;
+
+    /** One-based level, or `null`. `0` stays `0`. */
+    level: number | null;
+
+    /** `null` clears the set size. */
+    setSize: number | null;
+
+    /** One-based position in the set, or `null`. `0` stays `0`. */
+    posInSet: number | null;
+
+    /**
+     * Live-region politeness.
+     *
+     * @throws {@link TypeError} When the value is not a live token, `null`,
+     * or `undefined`.
+     */
+    live: AccessibleLive | null;
+
+    /**
+     * Widget orientation.
+     *
+     * @throws {@link TypeError} When the value is not an orientation token,
+     * `null`, or `undefined`.
+     */
+    orientation: AccessibleOrientation | null;
+
+    /** @defaultValue false */
+    focusable: boolean;
+
+    /**
+     * Horizontal offset in CSS pixels, or `null`.
+     *
+     * @throws {@link TypeError} When the value is not a finite number or a
+     * `px` length.
+     */
+    offsetLeft: string | number | null;
+
+    /**
+     * Vertical offset in CSS pixels, or `null`.
+     *
+     * @throws {@link TypeError} When the value is not a finite number or a
+     * `px` length.
+     */
+    offsetTop: string | number | null;
+
+    /**
+     * Width in CSS pixels, or `null`.
+     *
+     * @throws {@link TypeError} When the value is not a finite number or a
+     * `px` length.
+     */
+    offsetWidth: string | number | null;
+
+    /**
+     * Height in CSS pixels, or `null`.
+     *
+     * @throws {@link TypeError} When the value is not a finite number or a
+     * `px` length.
+     */
+    offsetHeight: string | number | null;
+
+    /**
+     * Ancestor the offsets are relative to, or `null` for the parent.
+     *
+     * @throws {@link TypeError} When the value is not an `AccessibleNode`.
+     * @throws {@link DOMException} `HierarchyRequestError` when the node is
+     * not a strict ancestor.
+     */
+    offsetParent: AccessibleNode | null;
+
+    /** Parent in the authored tree, or `null` for a root or a disconnected node. */
+    readonly parent: AccessibleNode | null;
+
+    /** First authored child, or `null`. */
+    readonly firstChild: AccessibleNode | null;
+
+    /** Last authored child, or `null`. */
+    readonly lastChild: AccessibleNode | null;
+
+    /** Previous authored sibling, or `null`. */
+    readonly previousSibling: AccessibleNode | null;
+
+    /** Next authored sibling, or `null`. */
+    readonly nextSibling: AccessibleNode | null;
+
+    addEventListener<K extends keyof AccessibleNodeEventMap>(
+      type: K,
+      listener: (this: AccessibleNode, ev: AccessibleNodeEventMap[K]) => any,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    addEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    removeEventListener<K extends keyof AccessibleNodeEventMap>(
+      type: K,
+      listener: (this: AccessibleNode, ev: AccessibleNodeEventMap[K]) => any,
+      options?: boolean | EventListenerOptions,
+    ): void;
+    removeEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | EventListenerOptions,
+    ): void;
+  }
+
   /**
    * One native window.
    *
@@ -995,6 +1323,27 @@ declare namespace Yuzuko {
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Element/hasPointerCapture)
      */
     hasPointerCapture(pointerId: number): boolean;
+
+    /**
+     * Attaches one new virtual accessibility root and returns it.
+     *
+     * A second call throws `InvalidStateError`. After `close()`, this throws
+     * `InvalidStateError` before the already-attached check. Closing keeps
+     * the stored root. Further platform updates stop. Tree edits still succeed.
+     *
+     * @throws {@link DOMException} `InvalidStateError` when the window is
+     * closed, or when a root is already attached.
+     * @throws {@link TypeError} On illegal invocation.
+     */
+    attachAccessibleRoot(): AccessibleNode;
+
+    /**
+     * The attached root, or `null` before one is attached.
+     *
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     * @throws {@link TypeError} On illegal invocation.
+     */
+    readonly accessibleRoot: AccessibleNode | null;
 
     addEventListener<K extends keyof WindowEventMap>(
       type: K,

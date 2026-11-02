@@ -1,0 +1,1 @@
+postMessage(typeof Yuzuko.AccessibleNode);

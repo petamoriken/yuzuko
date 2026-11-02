@@ -50,6 +50,7 @@ fn expected() -> String {
     kind(cfg!(feature = "ffi")),
     kind(cfg!(feature = "ffi")),
     kind(cfg!(feature = "window")),
+    kind(cfg!(feature = "accessibility")),
     kind(cfg!(feature = "window")),
     kind(cfg!(feature = "window")),
     kind(cfg!(feature = "image")),
@@ -87,6 +88,7 @@ fn expected() -> String {
     kind(cfg!(feature = "ffi")),
     kind(cfg!(feature = "ffi")),
     "undefined",
+    "undefined",
     kind(cfg!(feature = "window")),
     "function",
     "undefined",
@@ -113,5 +115,26 @@ fn runtime_features_select_the_surface() {
     (output.status.code(), stdout.trim()),
     (Some(0), expected().as_str()),
     "stderr:\n{stderr}"
+  );
+}
+
+#[test]
+fn accessible_inject_is_rejected_without_the_feature() {
+  if !(cfg!(feature = "window") && !cfg!(feature = "accessibility")) {
+    return;
+  }
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/accessibility_off_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .env("YUZUKO_TEST_INPUT", "1")
+    .output()
+    .expect("spawn yuzuko");
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
+  assert!(
+    stdout.contains("ok | 1 passed | 0 failed | 0 ignored"),
+    "{stdout}\n{stderr}"
   );
 }

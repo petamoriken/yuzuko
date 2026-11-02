@@ -359,6 +359,8 @@ pub struct Window {
   max_height: Cell<Option<f64>>,
   transparent: Cell<bool>,
   positioned: Cell<bool>,
+  #[cfg(feature = "accessibility")]
+  accessible_root: RefCell<Option<v8::TracedReference<v8::Object>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for Window {
@@ -378,6 +380,12 @@ unsafe impl v8::cppgc::GarbageCollected for Window {
       for query in queries.iter() {
         visitor.trace(query);
       }
+    }
+    #[cfg(feature = "accessibility")]
+    if let Ok(root) = self.accessible_root.try_borrow()
+      && let Some(root) = root.as_ref()
+    {
+      visitor.trace(root);
     }
   }
 
@@ -399,6 +407,15 @@ impl Window {
     &self,
   ) -> &RefCell<Vec<v8::TracedReference<v8::Object>>> {
     &self.queries
+  }
+
+  #[cfg(feature = "accessibility")]
+  pub(crate) fn store_accessible_root(
+    &self,
+    scope: &mut v8::PinScope,
+    object: v8::Local<v8::Object>,
+  ) {
+    *self.accessible_root.borrow_mut() = Some(traced(scope, object));
   }
 
   pub(crate) fn close_object(
@@ -426,6 +443,8 @@ impl Window {
     // `closing` stays set so a visibility listener cannot re-enter teardown.
     Self::publish_visibility(scope, object, false);
     let Some(host) = (unsafe { host_ref::<Self>(scope, object) }) else {
+      #[cfg(feature = "accessibility")]
+      crate::a11y::release_window(id);
       return;
     };
     let surface = host.get();
@@ -442,6 +461,8 @@ impl Window {
     inbox::forget(id);
     crate::activation::closed(id);
     os::close(id);
+    #[cfg(feature = "accessibility")]
+    crate::a11y::release_window(id);
   }
 
   pub(crate) fn publish_visibility(
@@ -581,6 +602,16 @@ impl Window {
     inbox::set_size(self.id, size);
     self.apply_size(size);
     os::resize(self.id, width, height);
+    #[cfg(feature = "accessibility")]
+    {
+      crate::a11y::note_size(
+        self.id,
+        size.css_width,
+        size.css_height,
+        size.scale,
+      );
+      os::publish_accessible(self.id);
+    }
     if let Some(object) = inbox::object(scope, self.id) {
       dispatch_simple(scope, object, "resize", false, false);
     }
@@ -598,6 +629,11 @@ impl Window {
   fn assign_title(&self, title: String) -> Result<(), OpError> {
     self.require_open()?;
     os::set_title(self.id, &title);
+    #[cfg(feature = "accessibility")]
+    {
+      crate::a11y::note_title(self.id, title.clone());
+      os::publish_accessible(self.id);
+    }
     *self.title.borrow_mut() = title;
     Ok(())
   }
@@ -985,6 +1021,8 @@ impl Window {
       max_height: Cell::new(options.max_height),
       transparent: Cell::new(options.transparent),
       positioned: Cell::new(positioned),
+      #[cfg(feature = "accessibility")]
+      accessible_root: RefCell::new(None),
     })
   }
 
@@ -1041,6 +1079,14 @@ impl Window {
           .get()
           .resize_bitmap(size.bitmap_width, size.bitmap_height);
       }
+      #[cfg(feature = "accessibility")]
+      crate::a11y::note_viewport(
+        self.id,
+        self.title.borrow().clone(),
+        size.css_width,
+        size.css_height,
+        size.scale,
+      );
     }
     *self.surface.borrow_mut() = Some(traced(scope, wrapped));
     Ok(())

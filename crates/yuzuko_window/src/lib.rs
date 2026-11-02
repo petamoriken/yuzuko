@@ -1,5 +1,7 @@
 //! `Yuzuko.Window`, headless frames, and OS windows.
 
+#[cfg(feature = "accessibility")]
+mod a11y;
 mod activation;
 mod canvas;
 mod fit;
@@ -83,6 +85,8 @@ fn install(scope: &mut v8::PinScope) {
   shell::tray::install(scope);
   shell::dock::install(scope);
   surface::install(scope);
+  #[cfg(feature = "accessibility")]
+  a11y::install(scope);
   shell::clipboard::install(scope);
   wake::install(scope);
   input::gamepad::install(scope);
@@ -96,6 +100,8 @@ fn shutdown() {
   shell::dock::clear();
   shell::menu::clear();
   os::shutdown();
+  #[cfg(feature = "accessibility")]
+  a11y::clear();
   inbox::clear();
   input::gamepad::clear();
   wake::clear();
