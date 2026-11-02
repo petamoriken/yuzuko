@@ -19,6 +19,8 @@ mod process;
 mod realm;
 mod repl;
 mod runtime;
+#[cfg(feature = "tcp")]
+mod tcp;
 mod timers;
 #[cfg(feature = "udp")]
 mod udp;

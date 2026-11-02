@@ -9,7 +9,7 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
+ * `fs`, `socket`, `udp`, `tcp`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
  * `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
@@ -17,7 +17,7 @@
  * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
- * the file system, datagram sockets, {@link WebSocket}, {@link Window},
+ * the file system, datagram sockets, TCP sockets, {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -1795,6 +1795,211 @@ declare namespace Yuzuko {
    * system refuses the address.
    */
   function listenDatagram(options?: ListenDatagramOptions | null): Datagram;
+
+  /**
+   * Bound or remote TCP address.
+   *
+   * `hostname` is an IP address without brackets, or `localhost` on input.
+   * A returned address uses the IP the socket is bound to or the peer
+   * connected from.
+   */
+  interface TcpAddr {
+    /** IP address, or `localhost` when naming a destination or a bind. */
+    hostname?: string;
+
+    /**
+     * TCP port.
+     *
+     * `0` on {@link listenTcp} asks for an ephemeral port. A destination
+     * port must be from 1 through 65535.
+     */
+    port?: number;
+  }
+
+  /** Options for {@link listenTcp}. Omitted fields use the defaults. */
+  interface ListenTcpOptions {
+    /**
+     * Address to bind.
+     *
+     * @defaultValue `"127.0.0.1"`
+     */
+    hostname?: string;
+
+    /**
+     * Port to bind. `0` asks the operating system for a free port.
+     *
+     * @defaultValue 0
+     */
+    port?: number;
+  }
+
+  /**
+   * A bound TCP listener.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `tcp` feature, which is enabled by default. Absent from
+   * an `AudioWorklet` processor realm. A build that does not enable `tcp`
+   * leaves this class and {@link listenTcp} absent. There is no permission
+   * prompt.
+   */
+  class TcpListener {
+    private constructor();
+
+    /**
+     * The bound address.
+     *
+     * Each read returns a new object. `hostname` is the bound IP, and `port`
+     * is not `0` after an ephemeral bind.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpListener`.
+     */
+    readonly addr: TcpAddr;
+
+    /**
+     * Accepts the next connection.
+     *
+     * At most one accept waits. The promise rejects {@link Error} with
+     * `The socket is closed.` when the listener is closed, including when
+     * {@link TcpListener.close} runs while this call is waiting, and with
+     * `An accept is already waiting.` when another accept is waiting.
+     * Another operating-system failure rejects
+     * `The connection could not be accepted.`
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpListener`. `The socket operation failed.` when the promise cannot
+     * be created.
+     */
+    accept(): Promise<TcpConn>;
+
+    /**
+     * Closes the listener.
+     *
+     * A waiting {@link TcpListener.accept} rejects. Dropping the last handle
+     * also closes it.
+     *
+     * @throws {@link Error} `The socket is closed.` when the listener is
+     * already closed.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpListener`.
+     */
+    close(): void;
+  }
+
+  /**
+   * One TCP connection.
+   *
+   * `read` and `write` run the operating-system call on a background thread.
+   * A bad argument throws {@link TypeError} before a promise is returned.
+   * Nagle's algorithm is disabled when the operating system allows it.
+   * There is no TLS and no half-close.
+   */
+  class TcpConn {
+    private constructor();
+
+    /**
+     * The local address. Each read returns a new object.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpConn`.
+     */
+    readonly localAddr: TcpAddr;
+
+    /**
+     * The peer address. Each read returns a new object.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpConn`.
+     */
+    readonly remoteAddr: TcpAddr;
+
+    /**
+     * Reads bytes into `buffer`.
+     *
+     * Resolves the number of bytes copied, which may be shorter than
+     * `buffer`. Resolves `null` when the peer ended the stream. A
+     * zero-length buffer resolves `0` and does not wait. At most one read
+     * waits. A write may wait at the same time.
+     *
+     * @param buffer - Destination. A view receives bytes only in its own range.
+     * @throws {@link TypeError} `Not enough arguments` when `buffer` is
+     * missing. `The data must be a BufferSource.` when it is not a buffer
+     * source. `The buffer is detached.` when it is detached.
+     * `The buffer is too large.` when it is longer than 2147483647 bytes.
+     * `illegal invocation` when the receiver is not a `TcpConn`.
+     * `The socket operation failed.` when the promise cannot be created.
+     */
+    read(buffer: AllowSharedBufferSource): Promise<number | null>;
+
+    /**
+     * Writes every byte of `data`.
+     *
+     * The bytes are copied before the promise is returned. An empty buffer
+     * resolves `0`. The promise resolves the number of bytes written, which
+     * is `data.byteLength`.
+     *
+     * @param data - Payload. A view sends only its own bytes.
+     * @throws {@link TypeError} `Not enough arguments` when `data` is
+     * missing. `The data must be a BufferSource.` when it is not a buffer
+     * source. `The buffer is detached.` when it is detached.
+     * `The buffer is too large.` when it is longer than 2147483647 bytes.
+     * `illegal invocation` when the receiver is not a `TcpConn`.
+     * `The socket operation failed.` when the promise cannot be created.
+     */
+    write(data: AllowSharedBufferSource): Promise<number>;
+
+    /**
+     * Closes the connection.
+     *
+     * A waiting {@link TcpConn.read} or {@link TcpConn.write} rejects.
+     * Dropping the last handle also closes it.
+     *
+     * @throws {@link Error} `The socket is closed.` when the connection is
+     * already closed.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `TcpConn`.
+     */
+    close(): void;
+  }
+
+  /**
+   * Binds a TCP socket.
+   *
+   * An omitted argument, `null`, or `undefined` binds `127.0.0.1` and an
+   * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
+   * that address. Any other hostname must be an IP address without brackets.
+   * There is no DNS lookup. `port` defaults to `0`. The call blocks the
+   * caller for the bind.
+   *
+   * @throws {@link TypeError} `Options must be an object.` when `options` is
+   * not an object, `null`, or `undefined`.
+   * `The options could not be read.` when the options cannot be read.
+   * `The hostname must be an IP address or "localhost".` when the hostname
+   * is not. `The port must be an integer from 0 through 65535.` when the
+   * port is not.
+   * @throws {@link Error} `The socket could not bind.` when the operating
+   * system refuses the address.
+   */
+  function listenTcp(options?: ListenTcpOptions | null): TcpListener;
+
+  /**
+   * Connects a TCP socket.
+   *
+   * `addr.hostname` defaults to `"127.0.0.1"`. `localhost` means that
+   * address. Any other hostname must be an IP address without brackets.
+   * There is no DNS lookup. The call returns a promise and does not block
+   * the caller for the handshake.
+   *
+   * @param addr - Destination. An omitted hostname is `127.0.0.1`.
+   * @throws {@link TypeError} `Not enough arguments` when `addr` is missing.
+   * `The address must be an object.` when it is not an object.
+   * `The address could not be read.` when it cannot be read.
+   * `The hostname must be an IP address or "localhost".` when the hostname
+   * is not. `The port must be an integer from 1 through 65535.` when the
+   * port is not. `The socket operation failed.` when the promise cannot be
+   * created.
+   */
+  function connectTcp(addr: TcpAddr): Promise<TcpConn>;
 
   /**
    * Result of {@link Updater.check}.
