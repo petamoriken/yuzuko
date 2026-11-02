@@ -5,6 +5,8 @@ self.onmessage = () => {
       typeof fetch,
       typeof WebSocket,
       typeof Yuzuko.readFile,
+      typeof Yuzuko.listenDatagram,
+      typeof Yuzuko.Datagram,
       typeof Yuzuko.Window,
       typeof OffscreenCanvas,
       typeof requestAnimationFrame,

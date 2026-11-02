@@ -20,6 +20,8 @@ mod realm;
 mod repl;
 mod runtime;
 mod timers;
+#[cfg(feature = "udp")]
+mod udp;
 mod worker;
 
 pub use clone::{

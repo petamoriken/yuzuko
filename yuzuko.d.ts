@@ -9,7 +9,7 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
+ * `fs`, `socket`, `udp`, `window`, `image`, `canvas`, `webgpu`, `audio`, and
  * `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
@@ -17,8 +17,9 @@
  * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
- * the file system, {@link WebSocket}, {@link Window}, canvas, WebGPU, Web
- * Audio, and WebCodecs. `--no-default-features --features name` selects a
+ * the file system, datagram sockets, {@link WebSocket}, {@link Window},
+ * canvas, WebGPU, Web Audio, and WebCodecs.
+ * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
  * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
  *
@@ -1642,6 +1643,158 @@ declare namespace Yuzuko {
    * when `code` is not that integer. The process stays alive.
    */
   function exit(code?: number): never;
+
+  /**
+   * Bound or remote UDP address.
+   *
+   * `hostname` is an IP address without brackets, or `localhost` on input.
+   * A returned address uses the IP the socket is bound to or the datagram
+   * came from.
+   */
+  interface DatagramAddr {
+    /** IP address, or `localhost` when naming a destination or a bind. */
+    hostname?: string;
+
+    /**
+     * UDP port.
+     *
+     * `0` on {@link listenDatagram} asks for an ephemeral port. A
+     * destination port must be from 1 through 65535.
+     */
+    port?: number;
+  }
+
+  /** Options for {@link listenDatagram}. Omitted fields use the defaults. */
+  interface ListenDatagramOptions {
+    /**
+     * Address to bind.
+     *
+     * @defaultValue `"127.0.0.1"`
+     */
+    hostname?: string;
+
+    /**
+     * Port to bind. `0` asks the operating system for a free port.
+     *
+     * @defaultValue 0
+     */
+    port?: number;
+  }
+
+  /**
+   * One received datagram.
+   *
+   * `hostname` and `port` are the source. `data` is a copy of the payload.
+   */
+  interface DatagramMessage {
+    /** Payload bytes. Empty when the datagram was empty. */
+    data: Uint8Array;
+
+    /** Source IP address, without brackets. */
+    hostname: string;
+
+    /** Source port, from 1 through 65535. */
+    port: number;
+  }
+
+  /**
+   * A bound UDP socket.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `udp` feature, which is enabled by default. Absent from
+   * an `AudioWorklet` processor realm. A build that does not enable `udp`
+   * leaves `Datagram` and {@link listenDatagram} absent. There is no
+   * permission prompt.
+   *
+   * `send` and `receive` run the operating-system call on a background
+   * thread. A bad argument throws {@link TypeError} before a promise is
+   * returned. A closed socket rejects {@link Error}. There is no multicast,
+   * broadcast option, or connected mode.
+   */
+  class Datagram {
+    private constructor();
+
+    /**
+     * The bound address.
+     *
+     * Each read returns a new object. `hostname` is the bound IP, and `port`
+     * is not `0` after an ephemeral bind.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `Datagram`.
+     */
+    readonly addr: DatagramAddr;
+
+    /**
+     * Sends one datagram to `addr`.
+     *
+     * @param data - Payload. A view sends only its own bytes.
+     * @param addr - Destination. An omitted hostname is `127.0.0.1`.
+     * @returns The number of bytes the operating system accepted.
+     * @throws {@link TypeError} `Not enough arguments` when an argument is
+     * missing. `The data must be a BufferSource.` when `data` is not a buffer
+     * source. `The buffer is detached.` when it is detached.
+     * `The datagram is too large.` when it is longer than 65507 bytes.
+     * `The address must be an object.` when `addr` is not an object.
+     * `The address could not be read.` when `addr` cannot be read.
+     * `The hostname must be an IP address or "localhost".` when the hostname
+     * is not an IP address or `localhost`.
+     * `The port must be an integer from 1 through 65535.` when the port is
+     * not in that range. `The address family does not match the socket.` when
+     * the destination family differs. `illegal invocation` when the receiver
+     * is not a `Datagram`. `The socket operation failed.` when the promise
+     * cannot be created.
+     */
+    send(data: AllowSharedBufferSource, addr: DatagramAddr): Promise<number>;
+
+    /**
+     * Receives the next datagram.
+     *
+     * At most one receive waits. The promise rejects {@link Error} with
+     * `The socket is closed.` when the socket is closed, including when
+     * {@link Datagram.close} runs while this call is waiting, and with
+     * `A receive is already waiting.` when another receive is waiting.
+     * Another operating-system failure rejects `The datagram could not be received.`
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `Datagram`. `The socket operation failed.` when the promise cannot
+     * be created.
+     */
+    receive(): Promise<DatagramMessage>;
+
+    /**
+     * Closes the socket.
+     *
+     * A waiting {@link Datagram.receive} rejects. Dropping the last handle
+     * also closes it.
+     *
+     * @throws {@link Error} `The socket is closed.` when the socket is
+     * already closed.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is not
+     * a `Datagram`.
+     */
+    close(): void;
+  }
+
+  /**
+   * Binds a UDP socket.
+   *
+   * An omitted argument, `null`, or `undefined` binds `127.0.0.1` and an
+   * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
+   * that address. Any other hostname must be an IP address without brackets.
+   * There is no DNS lookup. `port` defaults to `0`. The call blocks the
+   * caller for the bind.
+   *
+   * @throws {@link TypeError} `Options must be an object.` when `options` is
+   * not an object, `null`, or `undefined`.
+   * `The options could not be read.` when the options cannot be read.
+   * `The hostname must be an IP address or "localhost".` when the hostname
+   * is not. `The port must be an integer from 0 through 65535.` when the
+   * port is not.
+   * @throws {@link Error} `The socket could not bind.` when the operating
+   * system refuses the address.
+   */
+  function listenDatagram(options?: ListenDatagramOptions | null): Datagram;
 
   /**
    * Result of {@link Updater.check}.

@@ -15,6 +15,7 @@ default = [
   "fetch",
   "fs",
   "socket",
+  "udp",
   "window",
   "image",
   "canvas",
@@ -25,6 +26,7 @@ default = [
 fetch = ["yuzuko_dom/fetch", "yuzuko_winter/fetch"]
 fs = ["yuzuko_core/fs"]
 socket = ["yuzuko_dom/socket", "yuzuko_winter/socket"]
+udp = ["yuzuko_core/udp"]
 window = ["dep:yuzuko_window", "yuzuko_dom/window"]
 image = ["dep:yuzuko_image", "window"]
 canvas = ["dep:yuzuko_canvas", "image"]
