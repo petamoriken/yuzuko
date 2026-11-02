@@ -9,15 +9,16 @@
  * here with this runtime's members, so a program that loads both reports
  * duplicate identifiers. The ambient declarations describe the main realm of a
  * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `http`, `window`, `image`, `canvas`, `webgpu`,
- * `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
+ * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `window`, `image`, `canvas`,
+ * `webgpu`, `audio`, and `codec`. `cargo build -p yuzuko --no-default-features` is the JavaScript
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
  * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
- * the file system, datagram sockets, TCP sockets, an HTTP server, {@link WebSocket}, {@link Window},
+ * the file system, datagram sockets, TCP sockets, an HTTP server, signal
+ * listeners, {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
  * subset. `image`, `canvas`, `webgpu`, and `codec` also enable `window`.
@@ -2172,6 +2173,77 @@ declare namespace Yuzuko {
    * system refuses the address.
    */
   function listenHttp(options?: ListenHttpOptions | null): HttpServer;
+
+  /** A process signal `addSignalListener` can catch. */
+  type SignalName = "SIGINT" | "SIGTERM";
+
+  /**
+   * Runs `listener` when this process receives `signal`.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `signal` feature, which is enabled by default. Absent
+   * from an `AudioWorklet` processor realm. A build that does not enable
+   * `signal` leaves this function and {@link removeSignalListener} absent.
+   * The feature does not enable `window`. There is no permission prompt.
+   * The same function object is registered once for a signal. Listeners run
+   * on that realm's thread, with no arguments, and do not keep the process
+   * alive. While one is registered, that signal does not terminate the
+   * process. On Windows, `"SIGTERM"` is `CTRL_BREAK_EVENT` and `"SIGINT"` is
+   * `CTRL_C_EVENT`. A Windows process without a console does not observe
+   * those events.
+   *
+   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @param listener - Called once for each delivery, in registration order.
+   * @throws {@link TypeError} `Not enough arguments` when an argument is
+   * missing. `The signal must be a string.` when `signal` is not a string.
+   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * `The listener must be a function.` when `listener` is not a function.
+   * @throws {@link Error} `The signal could not be caught.` when the
+   * operating system refuses the handler.
+   */
+  function addSignalListener(
+    signal: SignalName,
+    listener: () => void,
+  ): void;
+
+  /**
+   * Removes a listener registered with {@link addSignalListener}.
+   *
+   * Removing a function that is not registered succeeds. The last listener
+   * for a signal, across every realm, restores that signal's previous
+   * disposition. Shutting down one realm does not remove another realm's
+   * listeners.
+   *
+   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @param listener - The function passed to {@link addSignalListener}.
+   * @throws {@link TypeError} `Not enough arguments` when an argument is
+   * missing. `The signal must be a string.` when `signal` is not a string.
+   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * `The listener must be a function.` when `listener` is not a function.
+   */
+  function removeSignalListener(
+    signal: SignalName,
+    listener: () => void,
+  ): void;
+
+  /**
+   * Asks the operating system to deliver `signal` to this process.
+   *
+   * Installed only for `yuzuko test` when the `signal` feature is enabled.
+   * Absent during `yuzuko run` and `yuzuko repl`. The call returns after the
+   * delivery has been queued for this realm. It does not call `listener`.
+   * On Unix this is `raise`. On Windows it is `GenerateConsoleCtrlEvent`
+   * for the console process group.
+   *
+   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @throws {@link TypeError} `Not enough arguments` when `signal` is
+   * missing. `The signal must be a string.` when it is not a string.
+   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * @throws {@link Error} `The signal is not caught.` when this realm has
+   * no listener for `signal`. `The signal could not be delivered.` when
+   * the operating system does not accept it.
+   */
+  function raiseSignal(signal: SignalName): void;
 
   /**
    * Result of {@link Updater.check}.

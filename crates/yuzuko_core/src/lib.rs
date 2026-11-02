@@ -9,6 +9,8 @@ mod fs;
 mod host;
 #[cfg(feature = "http")]
 mod http_server;
+#[cfg(feature = "signal")]
+mod signal;
 mod idle;
 mod jobs;
 mod js;

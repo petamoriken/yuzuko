@@ -14,6 +14,8 @@ self.onmessage = () => {
       typeof Yuzuko.listenHttp,
       typeof Yuzuko.HttpServer,
       typeof Yuzuko.HttpRequest,
+      typeof Yuzuko.addSignalListener,
+      typeof Yuzuko.removeSignalListener,
       typeof Yuzuko.Window,
       typeof OffscreenCanvas,
       typeof requestAnimationFrame,

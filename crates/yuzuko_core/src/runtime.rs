@@ -315,6 +315,8 @@ pub(crate) fn run_worker_isolate(
     crate::tcp::install(scope);
     #[cfg(feature = "http")]
     crate::http_server::install(scope);
+    #[cfg(feature = "signal")]
+    crate::signal::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget on the main
     // realm. A worker keeps the original object. Install after either path.
     install_process(scope);
@@ -368,6 +370,8 @@ pub(crate) fn run_worker_isolate(
     crate::tcp::clear();
     #[cfg(feature = "http")]
     crate::http_server::clear();
+    #[cfg(feature = "signal")]
+    crate::signal::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
   }
@@ -773,6 +777,10 @@ fn pump_until(
     if crate::jobs::poll(scope) {
       continue;
     }
+    if poll_signals(scope) {
+      scope.perform_microtask_checkpoint();
+      continue;
+    }
     scope.perform_microtask_checkpoint();
     bail_if_exit()?;
     if global_string(scope, done_key).is_some() {
@@ -801,6 +809,7 @@ fn pump_until(
     if !crate::timers::has_pending()
       && queue.is_idle()
       && !crate::jobs::pending()
+      && !signals_pending()
       && !interest.keep_alive
       && !workers
       && !crate::idle::idle_has_pending()
@@ -881,6 +890,12 @@ pub(crate) fn poll_repl(
   if exiting() {
     return Some(std::time::Duration::ZERO);
   }
+  if poll_signals(scope) {
+    return Some(std::time::Duration::ZERO);
+  }
+  if exiting() {
+    return Some(std::time::Duration::ZERO);
+  }
   if !host::is_dedicated_worker() {
     let _ = drive_loop(scope);
   }
@@ -912,6 +927,7 @@ fn repl_wait() -> Option<std::time::Duration> {
   let live = interest.keep_alive
     || !queue.is_idle()
     || crate::jobs::pending()
+    || signals_pending()
     || crate::worker::keeps_alive(host::agent_id())
     || crate::idle::idle_has_pending()
     || wasm_in_flight() > 0;
@@ -929,6 +945,10 @@ fn repl_wait() -> Option<std::time::Duration> {
 pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   if exiting() {
     return false;
+  }
+  if poll_signals(scope) {
+    scope.perform_microtask_checkpoint();
+    return true;
   }
   if crate::worker::drain_inbound(scope) {
     scope.perform_microtask_checkpoint();
@@ -978,6 +998,7 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   if crate::timers::has_pending()
     || !queue.is_idle()
     || crate::jobs::pending()
+    || signals_pending()
     || wasm_in_flight() > 0
     || interest.keep_alive
     || workers
@@ -989,6 +1010,26 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     ));
     return true;
   }
+  false
+}
+
+#[cfg(feature = "signal")]
+fn poll_signals(scope: &mut v8::PinScope) -> bool {
+  crate::signal::poll(scope)
+}
+
+#[cfg(not(feature = "signal"))]
+fn poll_signals(_scope: &mut v8::PinScope) -> bool {
+  false
+}
+
+#[cfg(feature = "signal")]
+fn signals_pending() -> bool {
+  crate::signal::pending()
+}
+
+#[cfg(not(feature = "signal"))]
+fn signals_pending() -> bool {
   false
 }
 
@@ -1024,6 +1065,16 @@ fn report_unhandled() -> Result<(), RuntimeError> {
   )))
 }
 
+#[cfg(feature = "signal")]
+struct SignalTestGuard;
+
+#[cfg(feature = "signal")]
+impl Drop for SignalTestGuard {
+  fn drop(&mut self) {
+    crate::signal::set_test_process(false);
+  }
+}
+
 pub(crate) fn with_runtime<T>(
   capture_log: bool,
   test_mode: bool,
@@ -1031,6 +1082,10 @@ pub(crate) fn with_runtime<T>(
   body: impl FnOnce(&mut v8::PinScope<'_, '_>) -> Result<T, RuntimeError>,
 ) -> Result<T, RuntimeError> {
   let _guard = RUNTIME.lock().expect("runtime lock");
+  #[cfg(feature = "signal")]
+  crate::signal::set_test_process(test_mode);
+  #[cfg(feature = "signal")]
+  let _signal_test = SignalTestGuard;
   crate::process::clear_exit();
   WASM_IN_FLIGHT.with(|count| count.set(0));
   init_v8();
@@ -1064,6 +1119,8 @@ pub(crate) fn with_runtime<T>(
     crate::tcp::install(scope);
     #[cfg(feature = "http")]
     crate::http_server::install(scope);
+    #[cfg(feature = "signal")]
+    crate::signal::install(scope);
     // The window extension replaces `Yuzuko` with an EventTarget. Process
     // members are installed after that replacement.
     install_process(scope);
@@ -1081,6 +1138,8 @@ pub(crate) fn with_runtime<T>(
     crate::tcp::clear();
     #[cfg(feature = "http")]
     crate::http_server::clear();
+    #[cfg(feature = "signal")]
+    crate::signal::clear();
     crate::jobs::clear();
     crate::extensions::cleanup();
     result
