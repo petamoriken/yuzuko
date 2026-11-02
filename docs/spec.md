@@ -92,7 +92,7 @@ Do not add these as a side effect. Update this section before adding one.
 | `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
 | `Yuzuko` | Present on the main realm and in a dedicated worker in every build. Runtime-specific APIs live here. `Window` requires `window`. `canvasRenderer` and `fonts` require `canvas`. `Yuzuko.test` exists only under `yuzuko test`. `Yuzuko.Menu` and `Yuzuko.setMenu` install the application menu when `window` is enabled. On the main global, `Yuzuko.fonts` is the `FontFaceSet` and `globalThis.fonts` is absent. A dedicated worker exposes that set as `self.fonts` and `globalThis.fonts` instead. `Yuzuko.readFile`, `Yuzuko.FsFile`, and the other file-system members are installed when the runtime is built with `fs`, on the main global and in a dedicated worker. `Yuzuko.updater` is installed only on a packaged application's main global |
 
-`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`. `onerror` and `onunhandledrejection` are delivered here. Pointer and key events are not.
+`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `onerror` and `onunhandledrejection` are delivered here. Pointer and key events are not.
 
 `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`. It is chosen once at process startup and does not change. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. A GPU request that fails to produce a device selects `"cpu"`.
 

@@ -51,7 +51,14 @@ pub fn install(scope: &mut v8::PinScope) {
   delete_object_prototype_proto(scope);
   delete_intl_v8_break_iterator(scope);
   let global = js::global(scope);
-  js::set_value(scope, global, "self", global.into());
+  // `self` names this realm. Assignment does not replace it.
+  let self_key = v8::String::new(scope, "self").unwrap();
+  let _ = global.define_own_property(
+    scope,
+    self_key.into(),
+    global.into(),
+    v8::PropertyAttribute::READ_ONLY,
+  );
   if !host::is_dedicated_worker() {
     js::set_value(scope, global, "window", global.into());
   }

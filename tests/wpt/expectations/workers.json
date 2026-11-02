@@ -71,11 +71,7 @@
   "workers/Worker-postMessage-happens-in-parallel.https.html": true,
   "workers/Worker-replace-event-handler.any.js": true,
   "workers/Worker-replace-global-constructor.any.js": true,
-  "workers/Worker-replace-self.any.js": {
-    "expectedFailures": [
-      "Test that self is not replaceable."
-    ]
-  },
+  "workers/Worker-replace-self.any.js": true,
   "workers/Worker-simultaneous-errors.html": true,
   "workers/Worker-structure-message.html": true,
   "workers/Worker-terminate-forever-during-evaluation.html": true,
@@ -283,12 +279,7 @@
       ""
     ]
   },
-  "workers/constructors/Worker/expected-self-properties.worker.js": {
-    "expectedFailures": [
-      "existence of EventSource",
-      "existence of WebSocket"
-    ]
-  },
+  "workers/constructors/Worker/expected-self-properties.worker.js": true,
   "workers/constructors/Worker/same-origin.html": {
     "expectedFailures": [
       "http_post_8012",
@@ -491,11 +482,7 @@
   "workers/interfaces/WorkerGlobalScope/onerror/propagate-to-window-onerror.html": {
     "ignore": true
   },
-  "workers/interfaces/WorkerGlobalScope/self.any.js": {
-    "expectedFailures": [
-      "self = 1"
-    ]
-  },
+  "workers/interfaces/WorkerGlobalScope/self.any.js": true,
   "workers/interfaces/WorkerUtils/WindowTimers/001.html": true,
   "workers/interfaces/WorkerUtils/WindowTimers/002.html": true,
   "workers/interfaces/WorkerUtils/WindowTimers/003.html": true,

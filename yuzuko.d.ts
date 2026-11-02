@@ -2649,11 +2649,11 @@ declare namespace Yuzuko {
 }
 
 /**
- * Alias of `globalThis` in every realm.
+ * Alias of `globalThis` in every realm. Assignment does not replace it.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
  */
-declare var self: Window & typeof globalThis;
+declare const self: Window & typeof globalThis;
 
 /**
  * Alias of `globalThis` on the main realm.
