@@ -13,6 +13,7 @@ fn virtual_nodes_pass_under_yuzuko_test() {
       "test",
       "tests/accessibility_test.ts",
       "tests/accessibility_input_test.ts",
+      "tests/accessibility_computed_test.ts",
     ])
     .env_remove("YUZUKO_HEADLESS")
     .env("YUZUKO_TEST_INPUT", "1")
@@ -22,7 +23,7 @@ fn virtual_nodes_pass_under_yuzuko_test() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
   assert!(
-    stdout.contains("ok | 4 passed | 0 failed | 0 ignored"),
+    stdout.contains("ok | 5 passed | 0 failed | 0 ignored"),
     "{stdout}\n{stderr}"
   );
 }

@@ -899,7 +899,7 @@ fn optional_offset(
   Err(OpError::type_("The offset must be a CSS pixel length."))
 }
 
-fn format_px(value: Option<f64>) -> Option<String> {
+pub(super) fn format_px(value: Option<f64>) -> Option<String> {
   let value = value?;
   let text = if value.fract() == 0.0 && value.abs() < 1e15 {
     format!("{}px", value as i64)

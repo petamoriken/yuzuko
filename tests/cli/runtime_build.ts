@@ -31,6 +31,7 @@ const names = [
   typeof Yuzuko.Library,
   typeof Yuzuko.Window,
   typeof Yuzuko.AccessibleNode,
+  typeof Yuzuko.ComputedAccessibleNode,
   typeof PointerEvent,
   typeof OffscreenCanvas,
   typeof createImageBitmap,

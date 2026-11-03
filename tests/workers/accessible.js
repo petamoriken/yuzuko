@@ -1,1 +1,6 @@
-postMessage(typeof Yuzuko.AccessibleNode);
+postMessage(
+  [
+    typeof Yuzuko.AccessibleNode,
+    typeof Yuzuko.ComputedAccessibleNode,
+  ].join(" "),
+);

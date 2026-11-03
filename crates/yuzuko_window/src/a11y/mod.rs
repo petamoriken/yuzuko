@@ -1,12 +1,13 @@
 //! Virtual accessibility nodes and the AccessKit tree for one process.
 
 mod class;
+mod computed;
 mod forest;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use yuzuko_core::op::{OpError, OpException, host_ref};
+use yuzuko_core::op::{Js, OpError, OpException, host_ref};
 
 use crate::inbox;
 use crate::os;
@@ -20,19 +21,16 @@ thread_local! {
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
   class::AccessibleNode::install(scope);
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "AccessibleNode").unwrap();
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
+  hoist(scope, "AccessibleNode");
+  computed::ComputedAccessibleNode::install(scope);
+  hoist(scope, "ComputedAccessibleNode");
   install_surface(scope);
+  install_window(scope);
 }
 
 pub(crate) fn clear() {
   WEAKS.with(|slot| slot.borrow_mut().clear());
+  computed::clear();
   if !yuzuko_core::is_dedicated_worker() {
     forest::clear();
   }
@@ -369,6 +367,139 @@ fn event_path<'s>(
     path.push(object);
   }
   path
+}
+
+fn hoist(scope: &mut v8::PinScope, name: &str) {
+  let global = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, name).unwrap();
+  let Some(constructor) = global.get(scope, key.into()) else {
+    return;
+  };
+  let _ = global.delete(scope, key.into());
+  let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
+  yuzuko.set(scope, key.into(), constructor);
+}
+
+fn install_window(scope: &mut v8::PinScope) {
+  let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
+  let key = v8::String::new(scope, "Window").unwrap();
+  let Some(constructor) = yuzuko.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(constructor) = v8::Local::<v8::Object>::try_from(constructor) else {
+    return;
+  };
+  let proto_key = v8::String::new(scope, "prototype").unwrap();
+  let Some(proto) = constructor.get(scope, proto_key.into()) else {
+    return;
+  };
+  let Ok(proto) = v8::Local::<v8::Object>::try_from(proto) else {
+    return;
+  };
+  let method = v8::Function::builder(get_computed_accessible_node)
+    .length(1)
+    .constructor_behavior(v8::ConstructorBehavior::Throw)
+    .build(scope)
+    .expect("getComputedAccessibleNode");
+  let name = v8::String::new(scope, "getComputedAccessibleNode").unwrap();
+  method.set_name(name);
+  proto.set(scope, name.into(), method.into());
+}
+
+fn get_computed_accessible_node(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  if let Err(error) = queue_computed(scope, &args, &mut ret) {
+    OpException::throw(error, scope);
+  }
+}
+
+fn queue_computed(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  ret: &mut v8::ReturnValue,
+) -> Result<(), OpError> {
+  let window = {
+    let Some(host) =
+      (unsafe { host_ref::<crate::surface::Window>(scope, args.this()) })
+    else {
+      return Err(OpError::type_("illegal invocation"));
+    };
+    host.get().id()
+  };
+  if args.length() < 1 {
+    return Err(OpError::type_("Not enough arguments"));
+  }
+  let node = node_id(scope, args.get(0))?;
+  if window_closed(window) {
+    return Err(fail(forest::Fail::Closed));
+  }
+  let resolver = v8::PromiseResolver::new(scope).expect("promise");
+  let promise = resolver.get_promise(scope);
+  let resolver = v8::Global::new(scope, resolver);
+  yuzuko_core::enqueue(move |scope| {
+    settle_computed(scope, resolver, window, node);
+  });
+  ret.set(promise.into());
+  Ok(())
+}
+
+pub(super) fn queue_refresh(scope: &mut v8::PinScope, window: u64) -> Js {
+  let resolver = v8::PromiseResolver::new(scope).expect("promise");
+  let promise = resolver.get_promise(scope);
+  let resolver = v8::Global::new(scope, resolver);
+  yuzuko_core::enqueue(move |scope| {
+    let resolver = v8::Local::new(scope, resolver);
+    if window_closed(window) {
+      reject_closed(scope, resolver);
+      return;
+    }
+    computed::refresh(window);
+    resolver.resolve(scope, v8::undefined(scope).into());
+  });
+  let promise: v8::Local<v8::Value> = promise.into();
+  Js(v8::Global::new(scope, promise))
+}
+
+fn settle_computed(
+  scope: &mut v8::PinScope,
+  resolver: v8::Global<v8::PromiseResolver>,
+  window: u64,
+  node: u64,
+) {
+  let resolver = v8::Local::new(scope, resolver);
+  if window_closed(window) {
+    reject_closed(scope, resolver);
+    return;
+  }
+  computed::refresh(window);
+  if !computed::contains(window, node) {
+    resolver.resolve(scope, v8::null(scope).into());
+    return;
+  }
+  let object = computed::object(scope, window, node);
+  resolver.resolve(scope, object.into());
+}
+
+fn reject_closed(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+) {
+  let message = "The window is closed.";
+  let error =
+    yuzuko_core::op::new_dom_exception(scope, "InvalidStateError", message)
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| {
+        let message = v8::String::new(scope, message).unwrap();
+        v8::Exception::type_error(scope, message)
+      });
+  resolver.reject(scope, error);
+}
+
+fn window_closed(window: u64) -> bool {
+  !inbox::contains(window) || forest::is_closed(window)
 }
 
 fn event_name(kind: ActionKind) -> &'static str {

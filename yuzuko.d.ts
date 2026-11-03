@@ -19,7 +19,8 @@
  * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
  * every build. That build omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
- * listeners, a child process, foreign functions, virtual accessibility nodes,
+ * listeners, a child process, foreign functions, virtual and computed
+ * accessibility nodes,
  * {@link WebSocket}, {@link Window},
  * canvas, WebGPU, Web Audio, and WebCodecs.
  * `--no-default-features --features name` selects a
@@ -679,6 +680,14 @@ declare namespace Yuzuko {
     | "window";
 
   /**
+   * Role token on a {@link ComputedAccessibleNode}.
+   *
+   * `"unknown"` is the published role when the authored token is not
+   * recognized. It is not an {@link AccessibleRole}.
+   */
+  type ComputedAccessibleRole = AccessibleRole | "unknown";
+
+  /**
    * `accessiblesetvalue` dispatched on an {@link AccessibleNode}.
    *
    * There is no constructor. The event is a {@link CustomEvent} whose
@@ -703,8 +712,9 @@ declare namespace Yuzuko {
    *
    * This is the Accessibility Object Model Phase 3 draft, attached to a
    * {@link WindowSurface} because there is no document. It is not on `globalThis`.
-   * A dedicated worker does not have it. Phase 4 `ComputedAccessibleNode` is
-   * not implemented. `parent` and the sibling getters read the authored tree.
+   * A dedicated worker does not have it. `parent` and the sibling getters
+   * read the authored tree. The published tree is a
+   * {@link ComputedAccessibleNode}.
    *
    * Assistive-technology actions bubble through that tree and are not
    * cancelable. They do not bubble to the window. There are no
@@ -1004,6 +1014,175 @@ declare namespace Yuzuko {
   }
 
   /**
+   * One node of the published accessibility tree.
+   *
+   * This is the computed view from
+   * {@link Window.getComputedAccessibleNode}. There is no public constructor.
+   * It is not an `EventTarget` and it is not on `globalThis`. A dedicated
+   * worker does not have it. Reads keep the snapshot until `ensureUpToDate`
+   * or another `getComputedAccessibleNode` for that window.
+   *
+   * The synthetic window node is included. It is not an `AccessibleNode`.
+   * The author root's `parent` is that window node. `role` is the published
+   * token, so an unknown author role is `"unknown"` and `img` is `"image"`.
+   * Indexes are the published zero-based values. Offsets are local CSS pixel
+   * strings.
+   *
+   * @throws {@link TypeError} Illegal constructor.
+   */
+  class ComputedAccessibleNode {
+    /** @throws {@link TypeError} Illegal constructor. */
+    constructor();
+
+    /**
+     * Replaces this window's snapshot and resolves `undefined`.
+     *
+     * A node that has left the tree keeps this object. After the snapshot,
+     * its string and boolean properties are `null`, `focusable` is `false`,
+     * and its links are `null`.
+     *
+     * @throws {@link TypeError} `illegal invocation` when `this` is not a
+     * `ComputedAccessibleNode`. The promise rejects.
+     * @throws {@link DOMException} `InvalidStateError` when the window is
+     * closed. The promise rejects with `The window is closed.`
+     */
+    ensureUpToDate(): Promise<void>;
+
+    /** Published role, or `null` when this node has left the tree. */
+    readonly role: ComputedAccessibleRole | null;
+
+    /** Published name, or `null` when it was omitted. `""` stays empty. */
+    readonly name: string | null;
+
+    /** Published description, or `null`. */
+    readonly description: string | null;
+
+    /** Published role description, or `null`. */
+    readonly roleDescription: string | null;
+
+    /** Published value text, or `null`. */
+    readonly valueText: string | null;
+
+    /** Published checked state, or `null` when pressed was published instead. */
+    readonly checked: AccessibleTriState | null;
+
+    /** Published pressed state, or `null` when checked was published instead. */
+    readonly pressed: AccessibleTriState | null;
+
+    /** `true` when disabled was published, otherwise `null`. */
+    readonly disabled: true | null;
+
+    /** Published expanded state, including `false`, or `null`. */
+    readonly expanded: boolean | null;
+
+    /** `true` when hidden was published, otherwise `null`. */
+    readonly hidden: true | null;
+
+    /** Published selected state, including `false`, or `null`. */
+    readonly selected: boolean | null;
+
+    /** `true` when busy was published, otherwise `null`. */
+    readonly busy: true | null;
+
+    /** `true` when modal was published, otherwise `null`. */
+    readonly modal: true | null;
+
+    /** `true` when required was published, otherwise `null`. */
+    readonly required: true | null;
+
+    /** `true` when read-only was published, otherwise `null`. */
+    readonly readOnly: true | null;
+
+    /** `true` when multiselectable was published, otherwise `null`. */
+    readonly multiselectable: true | null;
+
+    /**
+     * `true` when this text box is published as a multiline text input.
+     * Otherwise `null`.
+     */
+    readonly multiline: true | null;
+
+    /** Published current value, or `null`. */
+    readonly valueNow: number | null;
+
+    /** Published minimum, or `null`. */
+    readonly valueMin: number | null;
+
+    /** Published maximum, or `null`. */
+    readonly valueMax: number | null;
+
+    /** Published column count. `0` stays `0`. A negative count is `null`. */
+    readonly colCount: number | null;
+
+    /** Published row count. `0` stays `0`. A negative count is `null`. */
+    readonly rowCount: number | null;
+
+    /** Published zero-based column index. An authored `1` is `0`. */
+    readonly colIndex: number | null;
+
+    /** Published column span. `0` stays `0`. A negative span is `null`. */
+    readonly colSpan: number | null;
+
+    /** Published zero-based row index. An authored `1` is `0`. */
+    readonly rowIndex: number | null;
+
+    /** Published row span. `0` stays `0`. A negative span is `null`. */
+    readonly rowSpan: number | null;
+
+    /** Published zero-based level. An authored `1` is `0`. */
+    readonly level: number | null;
+
+    /** Published set size. `0` stays `0`. A negative size is `null`. */
+    readonly setSize: number | null;
+
+    /** Published zero-based position. An authored `1` is `0`. */
+    readonly posInSet: number | null;
+
+    /** Published live token, or `null`. */
+    readonly live: AccessibleLive | null;
+
+    /** Published orientation, or `null`. */
+    readonly orientation: AccessibleOrientation | null;
+
+    /**
+     * Published focusable state.
+     *
+     * @defaultValue false
+     */
+    readonly focusable: boolean;
+
+    /** Local CSS pixel offset, such as `"0px"`, or `null` outside the tree. */
+    readonly offsetLeft: string | null;
+
+    /** Local CSS pixel offset, such as `"0px"`, or `null` outside the tree. */
+    readonly offsetTop: string | null;
+
+    /** Local CSS pixel length, such as `"0px"`, or `null` outside the tree. */
+    readonly offsetWidth: string | null;
+
+    /** Local CSS pixel length, such as `"0px"`, or `null` outside the tree. */
+    readonly offsetHeight: string | null;
+
+    /** Computed offset parent when that node is a strict ancestor, or `null`. */
+    readonly offsetParent: ComputedAccessibleNode | null;
+
+    /** Parent in the published tree, or `null`. */
+    readonly parent: ComputedAccessibleNode | null;
+
+    /** First published child, or `null`. */
+    readonly firstChild: ComputedAccessibleNode | null;
+
+    /** Last published child, or `null`. */
+    readonly lastChild: ComputedAccessibleNode | null;
+
+    /** Previous published sibling, or `null`. */
+    readonly previousSibling: ComputedAccessibleNode | null;
+
+    /** Next published sibling, or `null`. */
+    readonly nextSibling: ComputedAccessibleNode | null;
+  }
+
+  /**
    * One native window.
    *
    * Startup does not open a window. Each `new Yuzuko.Window()` opens one.
@@ -1253,6 +1432,27 @@ declare namespace Yuzuko {
      * If `preventDefault()` is not called, only this window is destroyed.
      */
     close(): void;
+
+    /**
+     * Returns the published accessibility node for `node`.
+     *
+     * The promise settles on a queued task, so a write made after this call
+     * and before the task is included. The same published node returns the
+     * same object while that object is reachable. A detached node, or a node
+     * attached to another window, resolves `null`.
+     *
+     * @param node - An authored {@link AccessibleNode}.
+     * @throws {@link TypeError} When `this` is not a `Window`, `node` is
+     * missing, or `node` is not an `AccessibleNode`. These throw before a
+     * promise is returned.
+     * @throws {@link DOMException} `InvalidStateError` when the window is
+     * closed. This throw happens before a promise is returned, and after the
+     * argument checks. If the window closes before the queued task runs, the
+     * promise rejects with the same exception.
+     */
+    getComputedAccessibleNode(
+      node: AccessibleNode,
+    ): Promise<ComputedAccessibleNode | null>;
 
     /**
      * A `MediaQueryList` for this window's CSS size, `devicePixelRatio`, and

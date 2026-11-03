@@ -403,7 +403,7 @@ Yuzuko.test("a dedicated worker has no AccessibleNode", async () => {
         reject(new Error("worker error"));
       };
     });
-    assert(kind === "undefined", kind);
+    assert(kind === "undefined undefined", kind);
   } finally {
     worker.terminate();
   }

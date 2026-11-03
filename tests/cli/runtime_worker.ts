@@ -22,6 +22,7 @@ self.onmessage = () => {
       typeof Yuzuko.Library,
       typeof Yuzuko.Window,
       typeof Yuzuko.AccessibleNode,
+      typeof Yuzuko.ComputedAccessibleNode,
       typeof OffscreenCanvas,
       typeof requestAnimationFrame,
       typeof requestIdleCallback,

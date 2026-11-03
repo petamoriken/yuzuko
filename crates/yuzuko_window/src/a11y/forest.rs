@@ -889,8 +889,28 @@ fn apply_author(node: &mut Node, author: &Author) {
 }
 
 fn publish_toggled(node: &mut Node, author: &Author) {
+  let (checked, pressed) = toggled_pair(author);
+  let toggled = match checked.or(pressed) {
+    Some("true") => Some(Toggled::True),
+    Some("false") => Some(Toggled::False),
+    Some("mixed") => Some(Toggled::Mixed),
+    _ => None,
+  };
+  if let Some(toggled) = toggled {
+    node.set_toggled(toggled);
+  }
+}
+
+fn toggle_token(value: Option<&str>) -> Option<&str> {
+  match value {
+    Some("true" | "false" | "mixed") => value,
+    _ => None,
+  }
+}
+
+fn toggled_pair(author: &Author) -> (Option<&str>, Option<&str>) {
   let role = role_token(author);
-  let state = if matches!(
+  if matches!(
     role,
     "checkbox"
       | "radio"
@@ -899,20 +919,13 @@ fn publish_toggled(node: &mut Node, author: &Author) {
       | "switch"
       | "option"
   ) {
-    author.checked.as_deref()
+    (toggle_token(author.checked.as_deref()), None)
   } else if role == "button" {
-    author.pressed.as_deref()
+    (None, toggle_token(author.pressed.as_deref()))
+  } else if let Some(checked) = toggle_token(author.checked.as_deref()) {
+    (Some(checked), None)
   } else {
-    author.checked.as_deref().or(author.pressed.as_deref())
-  };
-  let toggled = match state {
-    Some("true") => Some(Toggled::True),
-    Some("false") => Some(Toggled::False),
-    Some("mixed") => Some(Toggled::Mixed),
-    _ => None,
-  };
-  if let Some(toggled) = toggled {
-    node.set_toggled(toggled);
+    (None, toggle_token(author.pressed.as_deref()))
   }
 }
 
@@ -1063,6 +1076,281 @@ fn count_value(value: Option<i32>) -> Option<usize> {
   }
 }
 
+/// One node in the published tree, in the units `ComputedAccessibleNode` reads.
+#[derive(Clone)]
+pub(super) struct ComputedNode {
+  pub(super) parent: Option<u64>,
+  pub(super) children: Vec<u64>,
+  pub(super) role: String,
+  pub(super) name: Option<String>,
+  pub(super) description: Option<String>,
+  pub(super) role_description: Option<String>,
+  pub(super) value_text: Option<String>,
+  pub(super) checked: Option<String>,
+  pub(super) pressed: Option<String>,
+  pub(super) disabled: Option<bool>,
+  pub(super) expanded: Option<bool>,
+  pub(super) hidden: Option<bool>,
+  pub(super) selected: Option<bool>,
+  pub(super) busy: Option<bool>,
+  pub(super) modal: Option<bool>,
+  pub(super) required: Option<bool>,
+  pub(super) read_only: Option<bool>,
+  pub(super) multiselectable: Option<bool>,
+  pub(super) multiline: Option<bool>,
+  pub(super) value_now: Option<f64>,
+  pub(super) value_min: Option<f64>,
+  pub(super) value_max: Option<f64>,
+  pub(super) col_count: Option<i32>,
+  pub(super) row_count: Option<i32>,
+  pub(super) col_index: Option<i32>,
+  pub(super) col_span: Option<i32>,
+  pub(super) row_index: Option<i32>,
+  pub(super) row_span: Option<i32>,
+  pub(super) level: Option<i32>,
+  pub(super) set_size: Option<i32>,
+  pub(super) pos_in_set: Option<i32>,
+  pub(super) live: Option<String>,
+  pub(super) orientation: Option<String>,
+  pub(super) focusable: bool,
+  pub(super) offset_left: f64,
+  pub(super) offset_top: f64,
+  pub(super) offset_width: f64,
+  pub(super) offset_height: f64,
+  pub(super) offset_parent: Option<u64>,
+}
+
+pub(super) fn snapshot(window_id: u64) -> HashMap<u64, ComputedNode> {
+  let mut forest = lock();
+  ensure_record(&mut forest, window_id);
+  let record = forest
+    .windows
+    .get(&window_id)
+    .expect("window record")
+    .clone();
+  let mut nodes = HashMap::new();
+  let mut published = HashSet::new();
+  if let Some(root) = record.root
+    && forest.nodes.contains_key(&root)
+  {
+    fill_computed(&forest, root, record.chrome, &mut nodes, &mut published);
+  }
+  let root = record.root.filter(|id| published.contains(id));
+  nodes.insert(record.chrome, chrome_node(&record, root));
+  nodes
+}
+
+fn fill_computed(
+  forest: &Forest,
+  id: u64,
+  parent: u64,
+  nodes: &mut HashMap<u64, ComputedNode>,
+  published: &mut HashSet<u64>,
+) {
+  if !forest.nodes.contains_key(&id) || !published.insert(id) {
+    return;
+  }
+  let children = child_ids(forest, id);
+  nodes.insert(id, computed_author(forest, id, parent, &children));
+  for child in children {
+    fill_computed(forest, child, id, nodes, published);
+  }
+}
+
+fn chrome_node(record: &WindowRec, root: Option<u64>) -> ComputedNode {
+  ComputedNode {
+    parent: None,
+    children: root.into_iter().collect(),
+    role: "window".to_string(),
+    name: Some(record.title.clone()),
+    description: None,
+    role_description: None,
+    value_text: None,
+    checked: None,
+    pressed: None,
+    disabled: None,
+    expanded: None,
+    hidden: None,
+    selected: None,
+    busy: None,
+    modal: None,
+    required: None,
+    read_only: None,
+    multiselectable: None,
+    multiline: None,
+    value_now: None,
+    value_min: None,
+    value_max: None,
+    col_count: None,
+    row_count: None,
+    col_index: None,
+    col_span: None,
+    row_index: None,
+    row_span: None,
+    level: None,
+    set_size: None,
+    pos_in_set: None,
+    live: None,
+    orientation: None,
+    focusable: false,
+    offset_left: 0.0,
+    offset_top: 0.0,
+    offset_width: record.css_width,
+    offset_height: record.css_height,
+    offset_parent: None,
+  }
+}
+
+fn computed_author(
+  forest: &Forest,
+  id: u64,
+  parent: u64,
+  children: &[u64],
+) -> ComputedNode {
+  let author = forest.nodes.get(&id).expect("author");
+  let role = accesskit_role(author);
+  let (checked, pressed) = toggled_pair(author);
+  let offset_parent = author
+    .offset_parent
+    .filter(|ancestor| is_strict_ancestor(forest, *ancestor, id));
+  ComputedNode {
+    parent: Some(parent),
+    children: children.to_vec(),
+    role: computed_role_name(role).to_string(),
+    name: author.name.clone(),
+    description: author.description.clone(),
+    role_description: author.role_description.clone(),
+    value_text: author.value_text.clone(),
+    checked: checked.map(str::to_string),
+    pressed: pressed.map(str::to_string),
+    disabled: published_flag(author.disabled),
+    expanded: author.expanded,
+    hidden: published_flag(author.hidden),
+    selected: author.selected,
+    busy: published_flag(author.busy),
+    modal: published_flag(author.modal),
+    required: published_flag(author.required),
+    read_only: published_flag(author.read_only),
+    multiselectable: published_flag(author.multiselectable),
+    multiline: matches!(role, Role::MultilineTextInput).then_some(true),
+    value_now: author.value_now,
+    value_min: author.value_min,
+    value_max: author.value_max,
+    col_count: published_count(author.col_count),
+    row_count: published_count(author.row_count),
+    col_index: published_index(author.col_index),
+    col_span: published_count(author.col_span),
+    row_index: published_index(author.row_index),
+    row_span: published_count(author.row_span),
+    level: published_index(author.level),
+    set_size: published_count(author.set_size),
+    pos_in_set: published_index(author.pos_in_set),
+    live: author.live.clone(),
+    orientation: author.orientation.clone(),
+    focusable: author.focusable,
+    offset_left: finite_or_zero(author.offset_left.unwrap_or(0.0)),
+    offset_top: finite_or_zero(author.offset_top.unwrap_or(0.0)),
+    offset_width: finite_or_zero(author.offset_width.unwrap_or(0.0)),
+    offset_height: finite_or_zero(author.offset_height.unwrap_or(0.0)),
+    offset_parent,
+  }
+}
+
+fn published_flag(value: Option<bool>) -> Option<bool> {
+  (value == Some(true)).then_some(true)
+}
+
+fn published_index(value: Option<i32>) -> Option<i32> {
+  index_value(value).and_then(|value| i32::try_from(value).ok())
+}
+
+fn published_count(value: Option<i32>) -> Option<i32> {
+  count_value(value).and_then(|value| i32::try_from(value).ok())
+}
+
+fn computed_role_name(role: Role) -> &'static str {
+  match role {
+    Role::GenericContainer => "generic",
+    Role::Alert => "alert",
+    Role::AlertDialog => "alertdialog",
+    Role::Application => "application",
+    Role::Article => "article",
+    Role::Banner => "banner",
+    Role::Blockquote => "blockquote",
+    Role::Button => "button",
+    Role::Caption => "caption",
+    Role::Cell => "cell",
+    Role::CheckBox => "checkbox",
+    Role::Code => "code",
+    Role::ColumnHeader => "columnheader",
+    Role::ComboBox => "combobox",
+    Role::Complementary => "complementary",
+    Role::ContentInfo => "contentinfo",
+    Role::Definition => "definition",
+    Role::Dialog => "dialog",
+    Role::Document => "document",
+    Role::Emphasis => "emphasis",
+    Role::Feed => "feed",
+    Role::Figure => "figure",
+    Role::Form => "form",
+    Role::Grid => "grid",
+    Role::GridCell => "gridcell",
+    Role::Group => "group",
+    Role::Heading => "heading",
+    Role::Image => "image",
+    Role::Link => "link",
+    Role::List => "list",
+    Role::ListBox => "listbox",
+    Role::ListItem => "listitem",
+    Role::Log => "log",
+    Role::Main => "main",
+    Role::Marquee => "marquee",
+    Role::Math => "math",
+    Role::Menu => "menu",
+    Role::MenuBar => "menubar",
+    Role::MenuItem => "menuitem",
+    Role::MenuItemCheckBox => "menuitemcheckbox",
+    Role::MenuItemRadio => "menuitemradio",
+    Role::Meter => "meter",
+    Role::Navigation => "navigation",
+    Role::Note => "note",
+    Role::ListBoxOption => "option",
+    Role::Paragraph => "paragraph",
+    Role::ProgressIndicator => "progressbar",
+    Role::RadioButton => "radio",
+    Role::RadioGroup => "radiogroup",
+    Role::Region => "region",
+    Role::Row => "row",
+    Role::RowGroup => "rowgroup",
+    Role::RowHeader => "rowheader",
+    Role::ScrollBar => "scrollbar",
+    Role::Search => "search",
+    Role::SearchInput => "searchbox",
+    Role::Splitter => "separator",
+    Role::Slider => "slider",
+    Role::SpinButton => "spinbutton",
+    Role::Status => "status",
+    Role::Strong => "strong",
+    Role::Switch => "switch",
+    Role::Tab => "tab",
+    Role::Table => "table",
+    Role::TabList => "tablist",
+    Role::TabPanel => "tabpanel",
+    Role::Term => "term",
+    Role::TextInput | Role::MultilineTextInput => "textbox",
+    Role::Time => "time",
+    Role::Timer => "timer",
+    Role::Toolbar => "toolbar",
+    Role::Tooltip => "tooltip",
+    Role::Tree => "tree",
+    Role::TreeGrid => "treegrid",
+    Role::TreeItem => "treeitem",
+    Role::Window => "window",
+    Role::Unknown => "unknown",
+    _ => "unknown",
+  }
+}
+
 fn finite_or_zero(value: f64) -> f64 {
   if value.is_finite() { value } else { 0.0 }
 }
@@ -1136,11 +1424,12 @@ mod tests {
     Fail, append_child, attach_root, connected_window, create, focus,
     full_tree, insert_before, is_closed, note_size, note_title, note_viewport,
     open_window, release_window, remove_child, replace_child,
-    set_offset_parent, update,
+    set_offset_parent, snapshot, update,
   };
 
   const WINDOW: u64 = 9_000_000_001;
   const WINDOW_B: u64 = 9_000_000_002;
+  const WINDOW_C: u64 = 9_000_000_003;
 
   struct ReleaseGuard(u64);
 
@@ -1361,5 +1650,68 @@ mod tests {
     assert!(!is_closed(9_000_000_099));
     release_window(WINDOW);
     assert!(is_closed(WINDOW));
+  }
+
+  #[test]
+  fn snapshots_the_computed_tree() {
+    let _window = ReleaseGuard(WINDOW_C);
+    note_viewport(WINDOW_C, "Palette".to_string(), 100.0, 50.0, 2.0);
+    let before = snapshot(WINDOW_C);
+    assert_eq!(before.len(), 1);
+    let only = before.values().next().expect("chrome");
+    assert_eq!(only.role, "window");
+    assert_eq!(only.name.as_deref(), Some("Palette"));
+    assert!(only.children.is_empty());
+    assert_eq!(only.parent, None);
+    assert_eq!(only.offset_width, 100.0);
+    let root = create();
+    let directory = create();
+    let textbox = create();
+    let row = create();
+    attach_root(WINDOW_C, root).unwrap();
+    append_child(root, directory).unwrap();
+    append_child(root, textbox).unwrap();
+    append_child(root, row).unwrap();
+    update(root, |author| {
+      author.role = Some("hammer".to_string());
+      author.name = Some(String::new());
+    });
+    update(directory, |author| {
+      author.role = Some("directory".to_string());
+    });
+    update(textbox, |author| {
+      author.role = Some("textbox".to_string());
+      author.multiline = Some(true);
+    });
+    update(row, |author| {
+      author.role = Some("row".to_string());
+      author.row_index = Some(1);
+      author.row_count = Some(-3);
+      author.offset_left = Some(f64::NAN);
+      author.offset_width = None;
+    });
+    let nodes = snapshot(WINDOW_C);
+    let chrome_id = nodes
+      .iter()
+      .find(|(_, node)| node.parent.is_none())
+      .map(|(id, _)| *id)
+      .expect("chrome");
+    assert_eq!(nodes[&chrome_id].role, "window");
+    assert_eq!(nodes[&chrome_id].name.as_deref(), Some("Palette"));
+    assert_eq!(nodes[&chrome_id].offset_width, 100.0);
+    assert_eq!(nodes[&chrome_id].offset_height, 50.0);
+    assert_eq!(nodes[&chrome_id].children, vec![root]);
+    assert_eq!(nodes[&root].parent, Some(chrome_id));
+    assert_eq!(nodes[&root].role, "unknown");
+    assert_eq!(nodes[&root].name.as_deref(), Some(""));
+    assert_eq!(nodes[&directory].role, "list");
+    assert_eq!(nodes[&textbox].role, "textbox");
+    assert_eq!(nodes[&textbox].multiline, Some(true));
+    assert_eq!(nodes[&row].row_index, Some(0));
+    assert_eq!(nodes[&row].row_count, None);
+    assert_eq!(nodes[&row].offset_left, 0.0);
+    assert_eq!(nodes[&row].offset_width, 0.0);
+    let loose = create();
+    assert!(!snapshot(WINDOW_C).contains_key(&loose));
   }
 }
