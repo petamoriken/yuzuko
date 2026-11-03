@@ -31,6 +31,8 @@ pub use http::webtransport::{
   next_stream_id as next_web_transport_stream_id,
 };
 #[cfg(feature = "fetch")]
+pub use http::xhr::set_xhr_progress_hook;
+#[cfg(feature = "fetch")]
 pub use http::{BodyNote, HttpBody, perform};
 pub use stream::{
   ByteWait, byte_controller_enqueue, byte_controller_respond,

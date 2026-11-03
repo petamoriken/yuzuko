@@ -11,7 +11,7 @@ use flate2::read::ZlibDecoder;
 use yuzuko_core::op::{
   Js, OpError, host_ref, new_dom_exception, traced, traced_local,
 };
-use yuzuko_dom::Event;
+use yuzuko_dom::{Event, EventTarget};
 use yuzuko_macros::op;
 
 use crate::text;
@@ -340,17 +340,22 @@ impl FontFace {
   }
 }
 
-struct FontFaceSet;
+#[repr(C)]
+struct FontFaceSet {
+  base: EventTarget,
+}
 
 unsafe impl v8::cppgc::GarbageCollected for FontFaceSet {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"FontFaceSet"
   }
 }
 
-#[op]
+#[op(inherit = EventTarget)]
 impl FontFaceSet {
   #[constructor]
   fn new() -> Result<Self, OpError> {
@@ -360,21 +365,27 @@ impl FontFaceSet {
   fn add(
     &self,
     scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
     value: v8::Local<v8::Value>,
-  ) -> Result<(), OpError> {
+  ) -> Result<Js, OpError> {
     let _ = self;
     let object = font_face_object(scope, value)?;
     SET.with(|slot| {
       let mut set = slot.borrow_mut();
-      if !set
-        .iter()
-        .any(|item| v8::Local::new(scope, item).strict_equals(object.into()))
-      {
-        set.push(v8::Global::new(scope, object));
+      let present = set.iter().any(|item| {
+        item.face.as_ref().is_some_and(|face| {
+          v8::Local::new(scope, face).strict_equals(object.into())
+        })
+      });
+      if !present {
+        set.push(FaceLink {
+          face: Some(v8::Global::new(scope, object)),
+        });
       }
     });
     sync_set(scope);
-    Ok(())
+    let value: v8::Local<v8::Value> = this.into();
+    Ok(Js(v8::Global::new(scope, value)))
   }
 
   fn delete(
@@ -388,11 +399,15 @@ impl FontFaceSet {
     };
     let removed = SET.with(|slot| {
       let mut set = slot.borrow_mut();
-      let before = set.len();
-      set.retain(|item| {
-        !v8::Local::new(scope, item).strict_equals(object.into())
-      });
-      set.len() != before
+      let Some(item) = set.iter_mut().find(|item| {
+        item.face.as_ref().is_some_and(|face| {
+          v8::Local::new(scope, face).strict_equals(object.into())
+        })
+      }) else {
+        return false;
+      };
+      item.face = None;
+      true
     });
     if removed {
       sync_set(scope);
@@ -406,10 +421,11 @@ impl FontFaceSet {
       return false;
     };
     SET.with(|slot| {
-      slot
-        .borrow()
-        .iter()
-        .any(|item| v8::Local::new(scope, item).strict_equals(object.into()))
+      slot.borrow().iter().any(|item| {
+        item.face.as_ref().is_some_and(|face| {
+          v8::Local::new(scope, face).strict_equals(object.into())
+        })
+      })
     })
   }
 
@@ -419,10 +435,85 @@ impl FontFaceSet {
     sync_set(scope);
   }
 
+  #[rename("forEach")]
+  fn for_each(
+    &self,
+    scope: &mut v8::PinScope,
+    #[this] set: v8::Local<v8::Object>,
+    callback: v8::Local<v8::Value>,
+    this_arg: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    let _ = self;
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
+      return Err(OpError::type_("FontFaceSet.forEach requires a function"));
+    };
+    let receiver = this_arg.unwrap_or_else(|| v8::undefined(scope).into());
+    let mut index = 0;
+    loop {
+      let next = SET.with(|slot| {
+        let faces = slot.borrow();
+        while index < faces.len() {
+          let current = index;
+          index += 1;
+          if let Some(face) = faces[current].face.as_ref() {
+            return Some(face.clone());
+          }
+        }
+        None
+      });
+      let Some(face) = next else {
+        break;
+      };
+      let face = v8::Local::new(scope, &face);
+      let called = {
+        v8::tc_scope!(let tc, scope);
+        let result = callback.call(
+          tc,
+          receiver,
+          &[face.into(), face.into(), set.into()],
+        );
+        if result.is_some() && !tc.has_caught() {
+          Ok(())
+        } else {
+          let exception = tc
+            .exception()
+            .unwrap_or_else(|| v8::undefined(tc).into());
+          Err(v8::Global::new(tc, exception))
+        }
+      };
+      if let Err(exception) = called {
+        let exception = v8::Local::new(scope, exception);
+        return Err(OpError::thrown(scope, exception));
+      }
+    }
+    Ok(())
+  }
+
+  fn entries(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    font_iterator(scope, FaceIterKind::Entries)
+  }
+
+  fn keys(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    font_iterator(scope, FaceIterKind::Keys)
+  }
+
+  fn values(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    font_iterator(scope, FaceIterKind::Values)
+  }
+
   #[getter]
   fn size(&self) -> u32 {
     let _ = self;
-    SET.with(|slot| slot.borrow().len() as u32)
+    SET.with(|slot| {
+      slot
+        .borrow()
+        .iter()
+        .filter(|item| item.face.is_some())
+        .count() as u32
+    })
   }
 
   #[getter]
@@ -489,9 +580,13 @@ struct Job {
   face: v8::Global<v8::Object>,
 }
 
+struct FaceLink {
+  /// `None` is a tombstone. Deleting does not shift later indexes.
+  face: Option<v8::Global<v8::Object>>,
+}
+
 std::thread_local! {
-  static SET: RefCell<Vec<v8::Global<v8::Object>>> =
-    const { RefCell::new(Vec::new()) };
+  static SET: RefCell<Vec<FaceLink>> = const { RefCell::new(Vec::new()) };
   static JOBS: RefCell<HashMap<u64, Job>> = RefCell::new(HashMap::new());
 }
 
@@ -499,7 +594,15 @@ pub fn install(scope: &mut v8::PinScope) {
   FontFace::install(scope);
   FontFaceSet::install(scope);
   FontFaceSetLoadEvent::install(scope);
-  let set = unsafe { yuzuko_core::op::wrap_instance(scope, FontFaceSet) };
+  install_font_iterators(scope);
+  let set = unsafe {
+    yuzuko_core::op::wrap_instance(
+      scope,
+      FontFaceSet {
+        base: EventTarget::new(),
+      },
+    )
+  };
   let key = v8::String::new(scope, "fonts").unwrap();
   if yuzuko_core::is_dedicated_worker() {
     let global = scope.get_current_context().global(scope);
@@ -517,7 +620,13 @@ pub fn clear() {
 }
 
 fn sync_set(scope: &mut v8::PinScope) {
-  let globals = SET.with(|slot| slot.borrow().clone());
+  let globals = SET.with(|slot| {
+    slot
+      .borrow()
+      .iter()
+      .filter_map(|item| item.face.clone())
+      .collect::<Vec<_>>()
+  });
   let mut faces = Vec::new();
   for global in globals {
     let object = v8::Local::new(scope, &global);
@@ -537,12 +646,167 @@ fn sync_set(scope: &mut v8::PinScope) {
 }
 
 fn any_loading(scope: &mut v8::PinScope) -> bool {
-  let globals = SET.with(|slot| slot.borrow().clone());
+  let globals = SET.with(|slot| {
+    slot
+      .borrow()
+      .iter()
+      .filter_map(|item| item.face.clone())
+      .collect::<Vec<_>>()
+  });
   globals.iter().any(|global| {
     let object = v8::Local::new(scope, global);
     unsafe { host_ref::<FontFace>(scope, object) }
       .is_some_and(|face| face.get().status.get() == Status::Loading)
   })
+}
+
+#[derive(Clone, Copy)]
+enum FaceIterKind {
+  Entries,
+  Keys,
+  Values,
+}
+
+struct FontSetIter {
+  index: Cell<usize>,
+  kind: FaceIterKind,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for FontSetIter {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"FontFaceSetIterator"
+  }
+}
+
+#[op]
+impl FontSetIter {
+  fn next(&self, scope: &mut v8::PinScope) -> Js {
+    let found = SET.with(|slot| {
+      let faces = slot.borrow();
+      let mut index = self.index.get();
+      let mut chosen = None;
+      while index < faces.len() {
+        if let Some(face) = faces[index].face.as_ref() {
+          chosen = Some(face.clone());
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      self.index.set(index);
+      chosen
+    });
+    match found {
+      Some(face) => {
+        let face = v8::Local::new(scope, &face);
+        let value = match self.kind {
+          FaceIterKind::Keys | FaceIterKind::Values => face.into(),
+          FaceIterKind::Entries => {
+            let array = v8::Array::new(scope, 2);
+            array.set_index(scope, 0, face.into());
+            array.set_index(scope, 1, face.into());
+            array.into()
+          }
+        };
+        iterator_pair(scope, false, value)
+      }
+      None => iterator_pair(scope, true, v8::undefined(scope).into()),
+    }
+  }
+}
+
+fn font_iterator(scope: &mut v8::PinScope, kind: FaceIterKind) -> Js {
+  let _ = FontSetIter::template(scope);
+  let iter = unsafe {
+    yuzuko_core::op::wrap_instance(
+      scope,
+      FontSetIter {
+        index: Cell::new(0),
+        kind,
+      },
+    )
+  };
+  let value: v8::Local<v8::Value> = iter.into();
+  Js(v8::Global::new(scope, value))
+}
+
+fn iterator_pair(
+  scope: &mut v8::PinScope,
+  done: bool,
+  value: v8::Local<v8::Value>,
+) -> Js {
+  let object = v8::Object::new(scope);
+  object.set(
+    scope,
+    v8::String::new(scope, "done").unwrap().into(),
+    v8::Boolean::new(scope, done).into(),
+  );
+  object.set(
+    scope,
+    v8::String::new(scope, "value").unwrap().into(),
+    value,
+  );
+  let value: v8::Local<v8::Value> = object.into();
+  Js(v8::Global::new(scope, value))
+}
+
+fn install_font_iterators(scope: &mut v8::PinScope) {
+  let iter = FontSetIter::template(scope);
+  define_iterator_self(scope, iter);
+  let templ = FontFaceSet::template(scope);
+  let Some(prototype) = constructor_prototype(scope, templ) else {
+    return;
+  };
+  let Some(values) = prototype.get(
+    scope,
+    v8::String::new(scope, "values").unwrap().into(),
+  ) else {
+    return;
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    values,
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn define_iterator_self(
+  scope: &mut v8::PinScope,
+  templ: v8::Local<v8::FunctionTemplate>,
+) {
+  let Some(prototype) = constructor_prototype(scope, templ) else {
+    return;
+  };
+  let function = v8::Function::new(scope, iterator_self).unwrap();
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    function.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn constructor_prototype<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  templ: v8::Local<v8::FunctionTemplate>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let ctor = templ.get_function(scope)?;
+  let key = v8::String::new(scope, "prototype")?;
+  let prototype = ctor.get(scope, key.into())?;
+  v8::Local::<v8::Object>::try_from(prototype).ok()
+}
+
+fn iterator_self(
+  _scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(args.this().into());
 }
 
 fn font_face_object<'s>(

@@ -11,6 +11,7 @@ use yuzuko_macros::op;
 
 use crate::encode::{self, GpuCommandEncoder};
 use crate::js;
+use crate::label::ObjectLabel;
 use crate::resource::{self, GpuBuffer, GpuTexture};
 use crate::state::{self, Handle};
 
@@ -107,6 +108,7 @@ impl GpuAdapter {
 
 pub struct GpuDevice {
   id: u64,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuDevice {
@@ -142,7 +144,12 @@ pub fn device_id(
 impl GpuDevice {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   #[getter]
@@ -332,6 +339,7 @@ impl GpuDevice {
 
 pub struct GpuQueue {
   device_id: u64,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuQueue {
@@ -346,7 +354,12 @@ unsafe impl v8::cppgc::GarbageCollected for GpuQueue {
 impl GpuQueue {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn write_buffer(
@@ -634,16 +647,25 @@ fn open_device(
       let features = device.features();
       (device, queue, limits, features)
     })?;
+  let mut device_label = None;
   if let Some(object) = dictionary(scope, descriptor) {
     reject_features(scope, object, features)?;
     check_required_limits(scope, object, &limits)?;
+    device_label =
+      js::get(scope, object, "label").and_then(|value| js::string(scope, value));
   }
   let id = state::alloc_id();
   let lost = Arc::new(AtomicBool::new(false));
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
   let queue_object = unsafe {
-    yuzuko_core::op::wrap_instance(scope, GpuQueue { device_id: id })
+    yuzuko_core::op::wrap_instance(
+      scope,
+      GpuQueue {
+        device_id: id,
+        label: ObjectLabel::new(None),
+      },
+    )
   };
   state::insert(
     id,
@@ -657,7 +679,10 @@ fn open_device(
       queue_object: Some(v8::Global::new(scope, queue_object)),
     },
   );
-  Ok(GpuDevice { id })
+  Ok(GpuDevice {
+    id,
+    label: ObjectLabel::new(device_label),
+  })
 }
 
 fn pop_scope<'s>(

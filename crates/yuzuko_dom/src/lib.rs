@@ -45,6 +45,8 @@ pub fn register() {
       poll_timeout: idle::poll_timeout,
       poll_idle: idle::poll_idle,
     });
+    #[cfg(feature = "fetch")]
+    yuzuko_winter::set_xhr_progress_hook(event::deliver_xhr_progress);
   });
 }
 

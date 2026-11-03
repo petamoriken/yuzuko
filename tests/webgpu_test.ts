@@ -766,3 +766,53 @@ Yuzuko.test(
     device.destroy();
   },
 );
+
+Yuzuko.test("GPU object labels round-trip", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice({ label: "device" });
+  assert(device.label === "device", device.label);
+  device.label = "device-2";
+  assert(device.label === "device-2", "device set");
+  assert(device.queue.label === "", "queue starts empty");
+  device.queue.label = "queue";
+  assert(device.queue.label === "queue", "queue set");
+  const buffer = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    label: "buf",
+  });
+  assert(buffer.label === "buf", buffer.label);
+  buffer.label = "buf2";
+  assert(buffer.label === "buf2", "buffer set");
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+    label: "tex",
+  });
+  assert(texture.label === "tex", texture.label);
+  const view = texture.createView({ label: "view" });
+  assert(view.label === "view", view.label);
+  const encoder = device.createCommandEncoder({ label: "enc" });
+  assert(encoder.label === "enc", encoder.label);
+  const pass = encoder.beginComputePass({ label: "pass" });
+  assert(pass.label === "pass", pass.label);
+  pass.end();
+  const command = encoder.finish({ label: "cmd" });
+  assert(command.label === "cmd", command.label);
+  const canvas = new OffscreenCanvas(4, 4);
+  const context = canvas.getContext("webgpu");
+  assert(context.label === "", "canvas label");
+  let threw = false;
+  try {
+    context.label = "nope";
+  } catch (error) {
+    threw = error instanceof TypeError;
+  }
+  assert(threw, "canvas label assignment");
+  assert(context.label === "", "canvas label stays empty");
+  device.destroy();
+});

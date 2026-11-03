@@ -9,6 +9,7 @@ use yuzuko_core::op::{New, OpError};
 use yuzuko_macros::op;
 
 use crate::js;
+use crate::label::ObjectLabel;
 use crate::resource::{self, QueryKind};
 use crate::state::Handle;
 
@@ -194,6 +195,7 @@ std::thread_local! {
 
 pub struct GpuCommandEncoder {
   id: u64,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuCommandEncoder {
@@ -230,7 +232,10 @@ impl GpuCommandEncoder {
         },
       );
     });
-    Self { id }
+    Self {
+      id,
+      label: ObjectLabel::new(label),
+    }
   }
 }
 
@@ -238,7 +243,12 @@ impl GpuCommandEncoder {
 impl GpuCommandEncoder {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn begin_render_pass(
@@ -281,6 +291,7 @@ impl GpuCommandEncoder {
     Ok(New(GpuRenderPass {
       encoder: self.id,
       ended: Cell::new(false),
+      label: ObjectLabel::new(resource::optional_label(scope, object)),
     }))
   }
 
@@ -289,14 +300,17 @@ impl GpuCommandEncoder {
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuComputePass>, OpError> {
-    let timestamps = match descriptor {
+    let (timestamps, label) = match descriptor {
       Some(value) if !value.is_null_or_undefined() => {
         let object = js::object(scope, value).ok_or_else(|| {
           OpError::type_("beginComputePass descriptor must be an object")
         })?;
-        timestamp_writes(scope, object)?
+        (
+          timestamp_writes(scope, object)?,
+          resource::optional_label(scope, object),
+        )
       }
-      _ => None,
+      _ => (None, None),
     };
     ENCODERS.with(|encoders| {
       let mut encoders = encoders.borrow_mut();
@@ -318,6 +332,7 @@ impl GpuCommandEncoder {
     Ok(New(GpuComputePass {
       encoder: self.id,
       ended: Cell::new(false),
+      label: ObjectLabel::new(label),
     }))
   }
 
@@ -431,7 +446,11 @@ impl GpuCommandEncoder {
     })
   }
 
-  fn finish(&self) -> Result<New<GpuCommandBuffer>, OpError> {
+  fn finish(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: Option<v8::Local<v8::Value>>,
+  ) -> Result<New<GpuCommandBuffer>, OpError> {
     let encoder = ENCODERS.with(|encoders| {
       let mut encoders = encoders.borrow_mut();
       let slot = encoders.get_mut(&self.id).ok_or_else(|| {
@@ -446,12 +465,14 @@ impl GpuCommandEncoder {
     })?;
     Ok(New(GpuCommandBuffer {
       buffer: RefCell::new(Some(encoder.finish())),
+      label: ObjectLabel::new(descriptor_label(scope, descriptor)),
     }))
   }
 }
 
 pub struct GpuCommandBuffer {
   buffer: RefCell<Option<wgpu::CommandBuffer>>,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuCommandBuffer {
@@ -472,13 +493,19 @@ impl GpuCommandBuffer {
 impl GpuCommandBuffer {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuRenderPass {
   encoder: u64,
   ended: Cell<bool>,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuRenderPass {
@@ -493,7 +520,12 @@ unsafe impl v8::cppgc::GarbageCollected for GpuRenderPass {
 impl GpuRenderPass {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn set_viewport(
@@ -789,6 +821,7 @@ impl GpuRenderPass {
 pub struct GpuComputePass {
   encoder: u64,
   ended: Cell<bool>,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuComputePass {
@@ -803,7 +836,12 @@ unsafe impl v8::cppgc::GarbageCollected for GpuComputePass {
 impl GpuComputePass {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn set_pipeline(
@@ -931,6 +969,7 @@ impl GpuComputePass {
 pub struct GpuRenderBundleEncoder {
   id: u64,
   ended: Cell<bool>,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuRenderBundleEncoder {
@@ -983,6 +1022,7 @@ pub fn create_bundle_encoder(
   Ok(New(GpuRenderBundleEncoder {
     id,
     ended: Cell::new(false),
+    label: ObjectLabel::new(resource::optional_label(scope, object)),
   }))
 }
 
@@ -990,7 +1030,12 @@ pub fn create_bundle_encoder(
 impl GpuRenderBundleEncoder {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn set_pipeline(
@@ -1117,7 +1162,11 @@ impl GpuRenderBundleEncoder {
     })
   }
 
-  fn finish(&self) -> Result<New<GpuRenderBundle>, OpError> {
+  fn finish(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: Option<v8::Local<v8::Value>>,
+  ) -> Result<New<GpuRenderBundle>, OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
         "InvalidStateError",
@@ -1139,7 +1188,10 @@ impl GpuRenderBundleEncoder {
     let bundle = bundle.map_err(|_| {
       OpError::dom("OperationError", "The render bundle is invalid")
     })?;
-    Ok(New(GpuRenderBundle { bundle }))
+    Ok(New(GpuRenderBundle {
+      bundle,
+      label: ObjectLabel::new(descriptor_label(scope, descriptor)),
+    }))
   }
 }
 
@@ -1167,6 +1219,7 @@ impl GpuRenderBundleEncoder {
 
 pub struct GpuRenderBundle {
   bundle: wgpu::RenderBundle,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuRenderBundle {
@@ -1181,8 +1234,25 @@ unsafe impl v8::cppgc::GarbageCollected for GpuRenderBundle {
 impl GpuRenderBundle {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
   }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
+  }
+}
+
+fn descriptor_label(
+  scope: &mut v8::PinScope,
+  descriptor: Option<v8::Local<v8::Value>>,
+) -> Option<String> {
+  let value = descriptor?;
+  if value.is_null_or_undefined() {
+    return None;
+  }
+  let object = js::object(scope, value)?;
+  resource::optional_label(scope, object)
 }
 
 fn host_bundle<'s>(

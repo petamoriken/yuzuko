@@ -4,10 +4,11 @@ use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use yuzuko_core::op::{
-  Js, OpError, host_ref, new_dom_exception, traced, traced_local, wrap_instance,
+  Js, New, OpError, host_ref, new_dom_exception, traced, traced_local,
+  wrap_instance,
 };
 use yuzuko_core::rust_string;
-use yuzuko_image::{FramePixels, Raster};
+use yuzuko_image::{ColorSpace, FramePixels, Raster};
 use yuzuko_macros::op;
 use yuzuko_winter::buffer_source;
 
@@ -110,9 +111,12 @@ impl VideoFrame {
   }
 
   #[getter]
-  fn color_space(&self) -> Result<String, OpError> {
-    self.live()?;
-    Ok("srgb".to_string())
+  fn color_space(
+    &self,
+    _scope: &mut v8::PinScope,
+  ) -> Result<New<VideoColorSpace>, OpError> {
+    let raster = self.live()?;
+    Ok(New(VideoColorSpace::from_stored(raster.color_space)))
   }
 
   #[getter]
@@ -161,6 +165,205 @@ impl VideoFrame {
   fn live(&self) -> Result<Raster, OpError> {
     self.pixels().ok_or_else(closed_frame)
   }
+}
+
+const COLOR_PRIMARIES: &[&str] =
+  &["bt709", "bt470bg", "smpte170m", "bt2020", "smpte432"];
+const COLOR_TRANSFER: &[&str] =
+  &["bt709", "smpte170m", "iec61966-2-1", "linear", "pq", "hlg"];
+const COLOR_MATRIX: &[&str] =
+  &["rgb", "bt709", "bt470bg", "smpte170m", "bt2020-ncl"];
+
+pub(crate) struct VideoColorSpace {
+  primaries: Option<String>,
+  transfer: Option<String>,
+  matrix: Option<String>,
+  full_range: Option<bool>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for VideoColorSpace {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"VideoColorSpace"
+  }
+}
+
+impl VideoColorSpace {
+  fn from_stored(space: ColorSpace) -> Self {
+    match space {
+      ColorSpace::Srgb => Self {
+        primaries: Some("bt709".to_string()),
+        transfer: Some("iec61966-2-1".to_string()),
+        matrix: Some("rgb".to_string()),
+        full_range: Some(true),
+      },
+      ColorSpace::DisplayP3 => Self {
+        primaries: Some("smpte432".to_string()),
+        transfer: Some("iec61966-2-1".to_string()),
+        matrix: Some("rgb".to_string()),
+        full_range: Some(true),
+      },
+    }
+  }
+
+  fn empty() -> Self {
+    Self {
+      primaries: None,
+      transfer: None,
+      matrix: None,
+      full_range: None,
+    }
+  }
+}
+
+#[op]
+impl VideoColorSpace {
+  #[constructor]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    if args.length() == 0 || args.get(0).is_null_or_undefined() {
+      return Ok(Self::empty());
+    }
+    let object = v8::Local::<v8::Object>::try_from(args.get(0))
+      .map_err(|_| OpError::type_("VideoColorSpace init must be an object"))?;
+    Ok(Self {
+      primaries: color_enum(scope, object, "primaries", COLOR_PRIMARIES)?,
+      transfer: color_enum(scope, object, "transfer", COLOR_TRANSFER)?,
+      matrix: color_enum(scope, object, "matrix", COLOR_MATRIX)?,
+      full_range: color_bool(scope, object, "fullRange")?,
+    })
+  }
+
+  #[getter]
+  fn primaries(&self) -> Option<String> {
+    self.primaries.clone()
+  }
+
+  #[getter]
+  fn transfer(&self) -> Option<String> {
+    self.transfer.clone()
+  }
+
+  #[getter]
+  fn matrix(&self) -> Option<String> {
+    self.matrix.clone()
+  }
+
+  #[getter]
+  fn full_range(&self) -> Option<bool> {
+    self.full_range
+  }
+
+  #[rename("toJSON")]
+  fn to_json(&self, scope: &mut v8::PinScope) -> Js {
+    let object = v8::Object::new(scope);
+    put_color_string(scope, object, "primaries", &self.primaries);
+    put_color_string(scope, object, "transfer", &self.transfer);
+    put_color_string(scope, object, "matrix", &self.matrix);
+    let full_range = match self.full_range {
+      Some(value) => v8::Boolean::new(scope, value).into(),
+      None => v8::null(scope).into(),
+    };
+    object.set(
+      scope,
+      v8::String::new(scope, "fullRange").unwrap().into(),
+      full_range,
+    );
+    let value: v8::Local<v8::Value> = object.into();
+    Js(v8::Global::new(scope, value))
+  }
+}
+
+fn color_enum(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  allowed: &[&str],
+) -> Result<Option<String>, OpError> {
+  let Some(value) = color_member(scope, object, name)? else {
+    return Ok(None);
+  };
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match value.to_string(tc) {
+      Some(text) => Ok(text.to_rust_string_lossy(tc)),
+      None => {
+        let exception = tc
+          .exception()
+          .unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  let text = match captured {
+    Ok(text) => text,
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      return Err(OpError::thrown(scope, exception));
+    }
+  };
+  if allowed.iter().any(|item| *item == text) {
+    Ok(Some(text))
+  } else {
+    Err(OpError::type_(format!("The {name} is invalid")))
+  }
+}
+
+fn color_bool(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<bool>, OpError> {
+  let Some(value) = color_member(scope, object, name)? else {
+    return Ok(None);
+  };
+  Ok(Some(value.boolean_value(scope)))
+}
+
+fn color_member<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match object.get(tc, v8::String::new(tc, name).unwrap().into()) {
+      Some(value) if value.is_null() || value.is_undefined() => Ok(None),
+      Some(value) => Ok(Some(v8::Global::new(tc, value))),
+      None => {
+        let exception = tc
+          .exception()
+          .unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  match captured {
+    Ok(Some(value)) => Ok(Some(v8::Local::new(scope, value))),
+    Ok(None) => Ok(None),
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
+    }
+  }
+}
+
+fn put_color_string(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: &Option<String>,
+) {
+  let js = match value {
+    Some(text) => v8::String::new(scope, text)
+      .unwrap_or_else(|| v8::String::empty(scope))
+      .into(),
+    None => v8::null(scope).into(),
+  };
+  object.set(scope, v8::String::new(scope, name).unwrap().into(), js);
 }
 
 pub struct EncodedVideoChunk {

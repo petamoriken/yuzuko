@@ -8,6 +8,7 @@ mod canvas;
 mod device;
 mod encode;
 mod js;
+mod label;
 mod resource;
 mod state;
 

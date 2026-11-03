@@ -55,6 +55,11 @@ console.log(
 console.log("MARK close");
 console.log(new CloseEvent("close", { wasClean: true, code: 1000, reason: "bye" }));
 
+console.log("MARK progress");
+console.log(
+  new ProgressEvent("load", { lengthComputable: true, loaded: 3, total: 8 }),
+);
+
 console.log("MARK pointer");
 console.log(new PointerEvent("move", { clientX: 4, pointerId: 7, bubbles: true }));
 

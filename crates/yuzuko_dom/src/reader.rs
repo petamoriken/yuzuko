@@ -44,6 +44,8 @@ pub struct FileReader {
   on_error: RefCell<Option<v8::TracedReference<v8::Value>>>,
   on_load_end: RefCell<Option<v8::TracedReference<v8::Value>>>,
   pending: RefCell<Option<Pending>>,
+  loaded: Cell<u64>,
+  total: Cell<u64>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for FileReader {
@@ -93,6 +95,8 @@ impl FileReader {
       on_error: RefCell::new(None),
       on_load_end: RefCell::new(None),
       pending: RefCell::new(None),
+      loaded: Cell::new(0),
+      total: Cell::new(0),
     }
   }
 
@@ -250,10 +254,10 @@ impl FileReader {
       *self.error.borrow_mut() = Some(traced(scope, error));
     }
     let generation = self.generation.get();
-    crate::dispatch_trusted_event(scope, this, "abort");
+    dispatch_read_progress(scope, this, self, "abort");
     // A new read started from the abort listener owns the following loadend.
     if self.generation.get() == generation && self.state.get() == DONE {
-      crate::dispatch_trusted_event(scope, this, "loadend");
+      dispatch_read_progress(scope, this, self, "loadend");
     }
   }
 }
@@ -280,6 +284,8 @@ impl FileReader {
     *self.result.borrow_mut() = None;
     *self.error.borrow_mut() = None;
     let empty = bytes.is_empty();
+    self.total.set(bytes.len() as u64);
+    self.loaded.set(0);
     *self.pending.borrow_mut() = Some(Pending {
       bytes,
       mime,
@@ -405,14 +411,15 @@ fn reader_step(
   let loading = reader.state.get() == LOADING;
   match step {
     STEP_START if loading => {
-      crate::dispatch_trusted_event(scope, object, "loadstart");
+      dispatch_read_progress(scope, object, reader, "loadstart");
     }
     STEP_PROGRESS if loading => {
-      crate::dispatch_trusted_event(scope, object, "progress");
+      reader.loaded.set(reader.total.get());
+      dispatch_read_progress(scope, object, reader, "progress");
     }
     STEP_LOAD if loading => finish(scope, object, reader),
     STEP_END if reader.state.get() == DONE => {
-      crate::dispatch_trusted_event(scope, object, "loadend");
+      dispatch_read_progress(scope, object, reader, "loadend");
     }
     _ => {}
   }
@@ -430,7 +437,25 @@ fn finish(
   let value = result_value(scope, &pending);
   *reader.result.borrow_mut() = Some(traced(scope, value));
   reader.state.set(DONE);
-  crate::dispatch_trusted_event(scope, object, "load");
+  reader.loaded.set(reader.total.get());
+  dispatch_read_progress(scope, object, reader, "load");
+}
+
+fn dispatch_read_progress(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  reader: &FileReader,
+  type_name: &str,
+) {
+  let total = reader.total.get();
+  crate::event::dispatch_progress(
+    scope,
+    target,
+    type_name,
+    total != 0,
+    reader.loaded.get() as f64,
+    total as f64,
+  );
 }
 
 fn result_value<'s>(

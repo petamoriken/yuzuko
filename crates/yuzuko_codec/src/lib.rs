@@ -25,6 +25,7 @@ pub fn register() {
 fn install(scope: &mut v8::PinScope) {
   classes::EncodedVideoChunk::install(scope);
   classes::VideoFrame::install(scope);
+  classes::VideoColorSpace::install(scope);
   classes::VideoDecoder::install(scope);
   classes::EncodedAudioChunk::install(scope);
   classes::AudioData::install(scope);

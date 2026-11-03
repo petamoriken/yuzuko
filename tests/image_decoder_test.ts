@@ -50,9 +50,25 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   assert(result.image.displayWidth === 2, "width");
   assert(result.image.displayHeight === 2, "height");
   assert(result.image.format === "RGBA", "format");
+  const space = result.image.colorSpace;
+  assert(space instanceof VideoColorSpace, "color space");
+  assert(space.primaries === "bt709", space.primaries);
+  assert(space.transfer === "iec61966-2-1", space.transfer);
+  assert(space.matrix === "rgb", space.matrix);
+  assert(space.fullRange === true, "full range");
+  const json = space.toJSON();
+  assert(json.primaries === "bt709" && json.fullRange === true, "toJSON");
+  assert(result.image.colorSpace !== space, "fresh color space");
   const decoded = await bitmapPixels(result.image);
   assert(decoded.join() === direct.join(), "pixels match createImageBitmap");
   result.image.close();
+  let closedSpace = false;
+  try {
+    result.image.colorSpace;
+  } catch (error) {
+    closedSpace = error.name === "InvalidStateError";
+  }
+  assert(closedSpace, "closed color space");
   const again = await decoder.decode();
   assert(again.image.displayWidth === 2, "second frame");
   again.image.close();
@@ -64,6 +80,32 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
     closed = error.name === "InvalidStateError";
   }
   assert(closed, "closed decode");
+});
+
+Yuzuko.test("VideoColorSpace keeps the WebCodecs enums", () => {
+  const space = new VideoColorSpace({
+    primaries: "smpte432",
+    transfer: "iec61966-2-1",
+    matrix: "rgb",
+    fullRange: true,
+  });
+  assert(space.primaries === "smpte432", space.primaries);
+  assert(space.transfer === "iec61966-2-1", space.transfer);
+  assert(space.matrix === "rgb", space.matrix);
+  assert(space.fullRange === true, "range");
+  const empty = new VideoColorSpace();
+  assert(empty.primaries === null, "primaries");
+  assert(empty.transfer === null, "transfer");
+  assert(empty.matrix === null, "matrix");
+  assert(empty.fullRange === null, "fullRange");
+  assert(empty.toJSON().primaries === null, "json null");
+  let invalid = false;
+  try {
+    new VideoColorSpace({ primaries: "nope" });
+  } catch (error) {
+    invalid = error instanceof TypeError;
+  }
+  assert(invalid, "bad primaries");
 });
 
 Yuzuko.test("a ReadableStream of JPEG bytes decodes", async () => {

@@ -11,6 +11,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use std::time::Instant;
@@ -29,6 +30,46 @@ use crate::http::fetch::resolve_fetch_url;
 const UNSENT: u8 = 0;
 const OPENED: u8 = 1;
 const DONE: u8 = 4;
+
+/// Creates the `ProgressEvent` and calls the handler. `yuzuko_dom` installs it.
+/// Absent, `onload` and `onerror` are called with no argument.
+pub type XhrProgressHook = fn(
+  &mut v8::PinScope,
+  &v8::Global<v8::Object>,
+  &v8::Global<v8::Function>,
+  &str,
+  bool,
+  f64,
+  f64,
+);
+
+static XHR_PROGRESS: Mutex<Option<XhrProgressHook>> = Mutex::new(None);
+
+pub fn set_xhr_progress_hook(hook: XhrProgressHook) {
+  *XHR_PROGRESS.lock().expect("xhr progress hook") = Some(hook);
+}
+
+fn xhr_progress_hook() -> Option<XhrProgressHook> {
+  *XHR_PROGRESS.lock().expect("xhr progress hook")
+}
+
+struct ProgressNote {
+  property: &'static str,
+  length_computable: bool,
+  loaded: f64,
+  total: f64,
+}
+
+fn progress_note(property: &'static str, bytes: usize) -> ProgressNote {
+  let success = property == "onload";
+  let total = if success { bytes as f64 } else { 0.0 };
+  ProgressNote {
+    property,
+    length_computable: success && bytes != 0,
+    loaded: total,
+    total,
+  }
+}
 
 pub struct XMLHttpRequest {
   state: Cell<u8>,
@@ -141,16 +182,18 @@ impl XMLHttpRequest {
       );
       match outcome {
         Ok(response) => {
-          *self.response_body.borrow_mut() = collect_body(&response.body);
+          let body = collect_body(&response.body);
+          let note = progress_note("onload", body.len());
+          *self.response_body.borrow_mut() = body;
           *self.response_headers.borrow_mut() = response.headers;
           self.status_code.set(response.status);
           *self.status_text.borrow_mut() = response.status_text;
           self.state.set(DONE);
-          "onload"
+          note
         }
         Err(HttpFailure::Abort | HttpFailure::Network(_)) => {
           self.state.set(DONE);
-          "onerror"
+          progress_note("onerror", 0)
         }
         Err(HttpFailure::Type(message)) => {
           return Err(OpError::type_(message));
@@ -161,7 +204,7 @@ impl XMLHttpRequest {
     let object = v8::Global::new(scope, object);
     yuzuko_core::enqueue(move |scope| {
       let object = v8::Local::new(scope, &object);
-      call_handler(scope, object, event);
+      call_handler(scope, object, &event);
     });
     Ok(())
   }
@@ -286,16 +329,17 @@ fn decode_xhr_text(
   encoding.decode(bytes).0.into_owned()
 }
 
-fn finish_data(xhr: &XMLHttpRequest, url: &url::Url) -> &'static str {
+fn finish_data(xhr: &XMLHttpRequest, url: &url::Url) -> ProgressNote {
   match crate::text::mime::data_url(url) {
     Some((bytes, mime)) => {
+      let note = progress_note("onload", bytes.len());
       *xhr.response_body.borrow_mut() = bytes;
       *xhr.response_headers.borrow_mut() =
         vec![("content-type".to_string(), mime)];
       xhr.status_code.set(200);
       *xhr.status_text.borrow_mut() = "OK".to_string();
       xhr.state.set(DONE);
-      "onload"
+      note
     }
     None => {
       xhr.response_body.borrow_mut().clear();
@@ -303,7 +347,7 @@ fn finish_data(xhr: &XMLHttpRequest, url: &url::Url) -> &'static str {
       xhr.status_code.set(0);
       xhr.status_text.borrow_mut().clear();
       xhr.state.set(DONE);
-      "onerror"
+      progress_note("onerror", 0)
     }
   }
 }
@@ -333,16 +377,31 @@ fn collect_body(body: &crate::http::HttpBody) -> Vec<u8> {
 fn call_handler(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-  name: &str,
+  note: &ProgressNote,
 ) {
-  let key = v8::String::new(scope, name).unwrap();
+  let key = v8::String::new(scope, note.property).unwrap();
   let Some(value) = object.get(scope, key.into()) else {
     return;
   };
   let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
     return;
   };
-  let _ = function.call(scope, object.into(), &[]);
+  let Some(hook) = xhr_progress_hook() else {
+    let _ = function.call(scope, object.into(), &[]);
+    return;
+  };
+  let xhr = v8::Global::new(scope, object);
+  let handler = v8::Global::new(scope, function);
+  let type_name = note.property.strip_prefix("on").unwrap_or(note.property);
+  hook(
+    scope,
+    &xhr,
+    &handler,
+    type_name,
+    note.length_computable,
+    note.loaded,
+    note.total,
+  );
 }
 
 #[cfg(test)]

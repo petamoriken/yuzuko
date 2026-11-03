@@ -84,6 +84,7 @@ impl GpuCanvasContext {
 
 #[op(name = "GPUCanvasContext")]
 impl GpuCanvasContext {
+  /// Not a `GPUObjectBase`. The attribute stays `""`.
   #[getter]
   fn label(&self) -> String {
     String::new()
@@ -243,6 +244,7 @@ impl GpuCanvasContext {
       width,
       height,
       format,
+      None,
     );
     let texture_slot = gpu_texture.texture_slot();
     let destroyed = gpu_texture.destroyed_flag();

@@ -11,6 +11,7 @@ use yuzuko_core::op::{Js, New, OpError};
 use yuzuko_macros::op;
 
 use crate::js;
+use crate::label::ObjectLabel;
 use crate::state::Handle;
 
 pub struct GpuBuffer {
@@ -18,6 +19,7 @@ pub struct GpuBuffer {
   lost: Arc<AtomicBool>,
   size: u64,
   mapped: Cell<Option<Vec<u8>>>,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuBuffer {
@@ -29,12 +31,18 @@ unsafe impl v8::cppgc::GarbageCollected for GpuBuffer {
 }
 
 impl GpuBuffer {
-  fn new(buffer: wgpu::Buffer, lost: Arc<AtomicBool>, size: u64) -> Self {
+  fn new(
+    buffer: wgpu::Buffer,
+    lost: Arc<AtomicBool>,
+    size: u64,
+    label: Option<String>,
+  ) -> Self {
     Self {
       buffer: RefCell::new(Some(buffer)),
       lost,
       size,
       mapped: Cell::new(None),
+      label: ObjectLabel::new(label),
     }
   }
 
@@ -52,7 +60,12 @@ impl GpuBuffer {
 impl GpuBuffer {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   #[getter]
@@ -124,6 +137,7 @@ pub struct GpuTexture {
   width: u32,
   height: u32,
   format: wgpu::TextureFormat,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuTexture {
@@ -142,6 +156,7 @@ impl GpuTexture {
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    label: Option<String>,
   ) -> Self {
     Self {
       texture: Rc::new(RefCell::new(Some(texture))),
@@ -150,6 +165,7 @@ impl GpuTexture {
       width,
       height,
       format,
+      label: ObjectLabel::new(label),
     }
   }
 
@@ -179,7 +195,12 @@ impl GpuTexture {
 impl GpuTexture {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   #[getter]
@@ -200,13 +221,17 @@ impl GpuTexture {
   fn create_view(
     &self,
     scope: &mut v8::PinScope,
+    descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuTextureView>, OpError> {
     let texture = self.texture()?;
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let _ = scope;
+    let label = descriptor.and_then(|value| {
+      js::object(scope, value).and_then(|object| optional_label(scope, object))
+    });
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
       format: self.format,
+      label: ObjectLabel::new(label),
     }))
   }
 
@@ -219,6 +244,7 @@ impl GpuTexture {
 pub struct GpuTextureView {
   view: RefCell<Option<wgpu::TextureView>>,
   format: wgpu::TextureFormat,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuTextureView {
@@ -245,12 +271,18 @@ impl GpuTextureView {
 impl GpuTextureView {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuSampler {
   sampler: wgpu::Sampler,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuSampler {
@@ -271,12 +303,18 @@ impl GpuSampler {
 impl GpuSampler {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuShaderModule {
   module: wgpu::ShaderModule,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuShaderModule {
@@ -297,12 +335,18 @@ impl GpuShaderModule {
 impl GpuShaderModule {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuBindGroupLayout {
   layout: wgpu::BindGroupLayout,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuBindGroupLayout {
@@ -323,12 +367,18 @@ impl GpuBindGroupLayout {
 impl GpuBindGroupLayout {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuBindGroup {
   group: wgpu::BindGroup,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuBindGroup {
@@ -349,12 +399,18 @@ impl GpuBindGroup {
 impl GpuBindGroup {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuPipelineLayout {
   layout: wgpu::PipelineLayout,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuPipelineLayout {
@@ -375,12 +431,18 @@ impl GpuPipelineLayout {
 impl GpuPipelineLayout {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 }
 
 pub struct GpuRenderPipeline {
   pipeline: wgpu::RenderPipeline,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuRenderPipeline {
@@ -401,17 +463,26 @@ impl GpuRenderPipeline {
 impl GpuRenderPipeline {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn get_bind_group_layout(&self, index: u32) -> New<GpuBindGroupLayout> {
     let layout = self.pipeline.get_bind_group_layout(index);
-    New(GpuBindGroupLayout { layout })
+    New(GpuBindGroupLayout {
+      layout,
+      label: ObjectLabel::new(None),
+    })
   }
 }
 
 pub struct GpuComputePipeline {
   pipeline: wgpu::ComputePipeline,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuComputePipeline {
@@ -432,12 +503,20 @@ impl GpuComputePipeline {
 impl GpuComputePipeline {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   fn get_bind_group_layout(&self, index: u32) -> New<GpuBindGroupLayout> {
     let layout = self.pipeline.get_bind_group_layout(index);
-    New(GpuBindGroupLayout { layout })
+    New(GpuBindGroupLayout {
+      layout,
+      label: ObjectLabel::new(None),
+    })
   }
 }
 
@@ -451,6 +530,7 @@ pub struct GpuQuerySet {
   set: wgpu::QuerySet,
   kind: QueryKind,
   count: u32,
+  label: ObjectLabel,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuQuerySet {
@@ -475,7 +555,12 @@ impl GpuQuerySet {
 impl GpuQuerySet {
   #[getter]
   fn label(&self) -> String {
-    String::new()
+    self.label.get()
+  }
+
+  #[setter]
+  fn label(&self, value: String) {
+    self.label.set(value);
   }
 
   #[getter]
@@ -512,7 +597,12 @@ pub fn create_buffer(
     usage: wgpu::BufferUsages::from_bits_truncate(usage),
     mapped_at_creation: false,
   });
-  Ok(New(GpuBuffer::new(buffer, Arc::clone(&handle.lost), size)))
+  Ok(New(GpuBuffer::new(
+    buffer,
+    Arc::clone(&handle.lost),
+    size,
+    label,
+  )))
 }
 
 pub fn create_texture(
@@ -550,6 +640,7 @@ pub fn create_texture(
     width,
     height,
     format,
+    label,
   )))
 }
 
@@ -576,7 +667,10 @@ pub fn create_sampler(
     anisotropy_clamp: 1,
     border_color: None,
   });
-  Ok(New(GpuSampler { sampler }))
+  Ok(New(GpuSampler {
+    sampler,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_shader(
@@ -600,7 +694,10 @@ pub fn create_shader(
   let module = module.map_err(|_| {
     OpError::dom("SyntaxError", "The shader module failed to compile")
   })?;
-  Ok(New(GpuShaderModule { module }))
+  Ok(New(GpuShaderModule {
+    module,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_bind_group_layout(
@@ -620,7 +717,10 @@ pub fn create_bind_group_layout(
         label: label.as_deref(),
         entries: &entries,
       });
-  Ok(New(GpuBindGroupLayout { layout }))
+  Ok(New(GpuBindGroupLayout {
+    layout,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_pipeline_layout(
@@ -643,7 +743,10 @@ pub fn create_pipeline_layout(
         bind_group_layouts: &refs,
         immediate_size: 0,
       });
-  Ok(New(GpuPipelineLayout { layout }))
+  Ok(New(GpuPipelineLayout {
+    layout,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_bind_group(
@@ -671,7 +774,10 @@ pub fn create_bind_group(
     layout: layout.layout(),
     entries: &entries,
   });
-  Ok(New(GpuBindGroup { group }))
+  Ok(New(GpuBindGroup {
+    group,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_render_pipeline(
@@ -756,7 +862,10 @@ pub fn create_render_pipeline(
   let pipeline = pipeline.map_err(|_| {
     OpError::dom("OperationError", "The render pipeline is invalid")
   })?;
-  Ok(New(GpuRenderPipeline { pipeline }))
+  Ok(New(GpuRenderPipeline {
+    pipeline,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_compute_pipeline(
@@ -792,7 +901,10 @@ pub fn create_compute_pipeline(
   let pipeline = pipeline.map_err(|_| {
     OpError::dom("OperationError", "The compute pipeline is invalid")
   })?;
-  Ok(New(GpuComputePipeline { pipeline }))
+  Ok(New(GpuComputePipeline {
+    pipeline,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 pub fn create_query_set(
@@ -836,7 +948,12 @@ pub fn create_query_set(
   }));
   let set = set
     .map_err(|_| OpError::dom("OperationError", "The query set is invalid"))?;
-  Ok(New(GpuQuerySet { set, kind, count }))
+  Ok(New(GpuQuerySet {
+    set,
+    kind,
+    count,
+    label: ObjectLabel::new(label),
+  }))
 }
 
 struct VertexSet {
@@ -1661,7 +1778,7 @@ fn map_mode(bits: u32) -> Result<wgpu::MapMode, OpError> {
   }
 }
 
-fn optional_label(
+pub(crate) fn optional_label(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Option<String> {
@@ -1777,6 +1894,7 @@ fn host_shader(
       })?;
   Ok(GpuShaderModule {
     module: host.get().module().clone(),
+    label: ObjectLabel::new(None),
   })
 }
 
@@ -1794,6 +1912,7 @@ fn host_layout(
     })?;
   Ok(GpuBindGroupLayout {
     layout: host.get().layout().clone(),
+    label: ObjectLabel::new(None),
   })
 }
 
@@ -1811,6 +1930,7 @@ fn host_pipeline_layout(
       })?;
   Ok(GpuPipelineLayout {
     layout: host.get().layout().clone(),
+    label: ObjectLabel::new(None),
   })
 }
 

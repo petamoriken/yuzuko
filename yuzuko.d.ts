@@ -114,7 +114,8 @@ interface GPUBindingCommandsMixin {
   setBindGroup(index: GPUIndex32, bindGroup: GPUBindGroup | null, dynamicOffsets?: Iterable<GPUBufferDynamicOffset>): void;
 }
 interface GPUObjectBase {
-  readonly label: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUObjectBase/label) */
+  label: string;
 }
 interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
 
@@ -179,10 +180,10 @@ interface GPURenderCommandsMixin {
   setVertexBuffer(slot: GPUIndex32, buffer: GPUBuffer | null, offset?: GPUSize64, size?: GPUSize64): void;
 }
 type GPUSignedOffset32 = number;
-interface GPURenderBundleDescriptor {}
-interface GPURenderBundle {
-  readonly label: string;
+interface GPURenderBundleDescriptor {
+  label?: string;
 }
+interface GPURenderBundle extends GPUObjectBase {}
 interface GPURenderPassDepthStencilAttachment {
   depthClearValue?: number;
   depthLoadOp?: GPULoadOp;
@@ -329,6 +330,10 @@ interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
 }
 type VideoPixelFormat = "BGRA" | "BGRX" | "I420" | "I420A" | "I422" | "I444" | "NV12" | "RGBA" | "RGBX";
+type VideoColorPrimaries = "bt470bg" | "bt709" | "smpte170m";
+type VideoMatrixCoefficients = "bt470bg" | "bt709" | "rgb" | "smpte170m";
+type VideoTransferCharacteristics = "bt709" | "iec61966-2-1" | "smpte170m";
+type AlphaOption = "discard" | "keep";
 interface WGSLLanguageFeatures {
   forEach(callbackfn: (value: string, key: string, parent: WGSLLanguageFeatures) => void, thisArg?: any): void;
 }
@@ -6327,6 +6332,37 @@ declare var File: {
 
 
 /**
+ * Progress of an underlying read.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent)
+ */
+interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent/lengthComputable) */
+  readonly lengthComputable: boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent/loaded) */
+  readonly loaded: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent/target) */
+  readonly target: T | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent/total) */
+  readonly total: number;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent/ProgressEvent) */
+interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+declare var ProgressEvent: {
+  prototype: ProgressEvent;
+  new(type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
+};
+
+/**
  * Reads a blob asynchronously.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader)
@@ -6343,22 +6379,22 @@ interface FileReader extends EventTarget {
   readonly error: DOMException | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/loadstart_event) */
-  onloadstart: ((this: FileReader, ev: Event) => any) | null;
+  onloadstart: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/progress_event) */
-  onprogress: ((this: FileReader, ev: Event) => any) | null;
+  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/load_event) */
-  onload: ((this: FileReader, ev: Event) => any) | null;
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/abort_event) */
-  onabort: ((this: FileReader, ev: Event) => any) | null;
+  onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/error_event) */
-  onerror: ((this: FileReader, ev: Event) => any) | null;
+  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader/loadend_event) */
-  onloadend: ((this: FileReader, ev: Event) => any) | null;
+  onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
 
   readonly EMPTY: 0;
   readonly LOADING: 1;
@@ -6770,9 +6806,13 @@ declare var caches: CacheStorage;
  * A request helper.
  *
  * `send` loads `http:`, `https:`, and `data:`, collects the response, then
- * queues `onload` or `onerror`. `responseText` uses the `Content-Type`
- * charset, unless `overrideMimeType` set one. `responseType`, upload
- * progress, and event handlers other than `onload` and `onerror` are absent.
+ * queues `onload` or `onerror`. The handler receives a trusted
+ * {@link ProgressEvent}. This object is not an {@link EventTarget}, so the
+ * event is not dispatched: `target` is the request, and `currentTarget` is
+ * the request only while the handler runs. `responseText` uses the
+ * `Content-Type` charset, unless `overrideMimeType` set one. `responseType`,
+ * upload progress, and event handlers other than `onload` and `onerror` are
+ * absent.
  */
 interface XMLHttpRequest {
 
@@ -6828,8 +6868,8 @@ interface XMLHttpRequest {
    */
   overrideMimeType(mime: string): void;
 
-  onload: ((this: XMLHttpRequest, ev: Event) => any) | null;
-  onerror: ((this: XMLHttpRequest, ev: Event) => any) | null;
+  onload: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onerror: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
 }
 declare var XMLHttpRequest: {
   prototype: XMLHttpRequest;
@@ -8098,9 +8138,11 @@ declare var FontFace: {
  * The set of font faces for one realm.
  *
  * On the main global this object is `Yuzuko.fonts`. In a worker it is
- * `self.fonts`. `load`, `check`, `ready`, and the set iterators are absent.
- * A family that has finished `load()` and is in the set can be named from
- * the Canvas 2D `font` property.
+ * `self.fonts`. `add` returns the set. `forEach`, `keys`, `values`,
+ * `entries`, and `@@iterator` walk the faces in insertion order. `load`,
+ * `check`, `ready`, and the `loading`, `loadingdone`, and `loadingerror`
+ * events are absent. A family that has finished `load()` and is in the set
+ * can be named from the Canvas 2D `font` property.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8109,7 +8151,7 @@ declare var FontFace: {
 interface FontFaceSet extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/add) */
-  add(font: FontFace): void;
+  add(font: FontFace): this;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/delete) */
   delete(font: FontFace): boolean;
@@ -8119,6 +8161,20 @@ interface FontFaceSet extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/clear) */
   clear(): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/forEach) */
+  forEach(callbackfn: (value: FontFace, key: FontFace, parent: FontFaceSet) => void, thisArg?: any): void;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/entries) */
+  entries(): SetIterator<[FontFace, FontFace]>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/keys) */
+  keys(): SetIterator<FontFace>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/values) */
+  values(): SetIterator<FontFace>;
+
+  [Symbol.iterator](): SetIterator<FontFace>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/size) */
   readonly size: number;
@@ -9054,7 +9110,6 @@ declare function createImageBitmap(
  * One process device is shared with Canvas 2D. It enables `timestamp-query`
  * when the adapter supports it. `YUZUKO_SKIP_GPU=1` makes
  * {@link GPU.requestAdapter} resolve `null`. `wgslLanguageFeatures` is empty.
- * `label` on GPU objects reads back as `""`.
  *
  * Blend state, `unclippedDepth`, alpha to coverage,
  * `depth32float-stencil8`, and `externalTexture` throw `NotSupportedError`.
@@ -9167,8 +9222,8 @@ interface GPUDeviceDescriptor {
  */
 interface GPUDevice {
 
-  /** Reads back as `""`. [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/label) */
-  readonly label: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/label) */
+  label: string;
 
   /**
    * Resolves `{ reason: "destroyed", message }` from {@link GPUDevice.destroy}.
@@ -9383,8 +9438,8 @@ declare var GPUInternalError: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue)
  */
 interface GPUQueue {
-  /** Reads back as `""`. */
-  readonly label: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/label) */
+  label: string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/writeBuffer) */
   writeBuffer(
@@ -9440,8 +9495,8 @@ interface GPUCopyExternalImageDestInfo {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer)
  */
 interface GPUBuffer {
-  /** Reads back as `""`. */
-  readonly label: string;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/label) */
+  label: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/size) */
   readonly size: number;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/destroy) */
@@ -9477,7 +9532,7 @@ interface GPUBufferDescriptor {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture)
  */
 interface GPUTexture {
-  readonly label: string;
+  label: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/format) */
   readonly format: GPUTextureFormat;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/width) */
@@ -9508,9 +9563,7 @@ interface GPUTextureDescriptor {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTextureView) */
-interface GPUTextureView {
-  readonly label: string;
-}
+interface GPUTextureView extends GPUObjectBase {}
 declare var GPUTextureView: {
   prototype: GPUTextureView;
   new(): GPUTextureView;
@@ -9530,9 +9583,7 @@ interface GPUTextureViewDescriptor {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUSampler) */
-interface GPUSampler {
-  readonly label: string;
-}
+interface GPUSampler extends GPUObjectBase {}
 declare var GPUSampler: {
   prototype: GPUSampler;
   new(): GPUSampler;
@@ -9554,9 +9605,7 @@ interface GPUSamplerDescriptor {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule) */
-interface GPUShaderModule {
-  readonly label: string;
-}
+interface GPUShaderModule extends GPUObjectBase {}
 declare var GPUShaderModule: {
   prototype: GPUShaderModule;
   new(): GPUShaderModule;
@@ -9570,9 +9619,7 @@ interface GPUShaderModuleDescriptor {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBindGroupLayout) */
-interface GPUBindGroupLayout {
-  readonly label: string;
-}
+interface GPUBindGroupLayout extends GPUObjectBase {}
 declare var GPUBindGroupLayout: {
   prototype: GPUBindGroupLayout;
   new(): GPUBindGroupLayout;
@@ -9624,9 +9671,7 @@ interface GPUTextureBindingLayout {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBindGroup) */
-interface GPUBindGroup {
-  readonly label: string;
-}
+interface GPUBindGroup extends GPUObjectBase {}
 declare var GPUBindGroup: {
   prototype: GPUBindGroup;
   new(): GPUBindGroup;
@@ -9654,9 +9699,7 @@ interface GPUBufferBinding {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineLayout) */
-interface GPUPipelineLayout {
-  readonly label: string;
-}
+interface GPUPipelineLayout extends GPUObjectBase {}
 declare var GPUPipelineLayout: {
   prototype: GPUPipelineLayout;
   new(): GPUPipelineLayout;
@@ -9673,7 +9716,7 @@ interface GPUPipelineLayoutDescriptor {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPipeline)
  */
 interface GPURenderPipeline {
-  readonly label: string;
+  label: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPipeline/getBindGroupLayout) */
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
@@ -9787,7 +9830,7 @@ interface GPUMultisampleState {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder)
  */
 interface GPUCommandEncoder {
-  readonly label: string;
+  label: string;
 
   /**
    * A color attachment may set `resolveTarget`.
@@ -9888,9 +9931,7 @@ interface GPUComputePassTimestampWrites {
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandBuffer) */
-interface GPUCommandBuffer {
-  readonly label: string;
-}
+interface GPUCommandBuffer extends GPUObjectBase {}
 declare var GPUCommandBuffer: {
   prototype: GPUCommandBuffer;
   new(): GPUCommandBuffer;
@@ -9911,7 +9952,7 @@ interface GPUCommandBufferDescriptor {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder)
  */
 interface GPURenderPassEncoder {
-  readonly label: string;
+  label: string;
 
   /**
    * @throws {@link TypeError} When an argument is not finite.
@@ -10032,6 +10073,7 @@ declare var GPURenderPassEncoder: {
  */
 interface GPUCanvasContext {
 
+  /** Always `""`. */
   readonly label: string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/canvas) */
@@ -11051,7 +11093,7 @@ declare var WaveShaperNode: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/WaveShaperNode) */
 interface WaveShaperOptions extends AudioNodeOptions {
-  curve?: Float32Array<ArrayBufferLike> | number[] | null;
+  curve?: number[] | Float32Array<ArrayBufferLike>;
   oversample?: OverSampleType;
 }
 
@@ -11362,14 +11404,81 @@ interface ChannelSplitterOptions extends AudioNodeOptions {
 }
 
 /**
+ * Color space of a {@link VideoFrame}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace)
+ */
+interface VideoColorSpace {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/fullRange) */
+  readonly fullRange: boolean | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/matrix) */
+  readonly matrix: VideoMatrixCoefficients | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/primaries) */
+  readonly primaries: VideoColorPrimaries | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/transfer) */
+  readonly transfer: VideoTransferCharacteristics | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/toJSON) */
+  toJSON(): VideoColorSpaceInit;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoColorSpace/VideoColorSpace) */
+interface VideoColorSpaceInit {
+  primaries?: VideoColorPrimaries | null;
+  transfer?: VideoTransferCharacteristics | null;
+  matrix?: VideoMatrixCoefficients | null;
+  fullRange?: boolean | null;
+}
+declare var VideoColorSpace: {
+  prototype: VideoColorSpace;
+  new(init?: VideoColorSpaceInit): VideoColorSpace;
+};
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/VideoFrame) */
+interface VideoFrameInit {
+  duration?: number;
+  timestamp?: number;
+  alpha?: AlphaOption;
+  visibleRect?: DOMRectInit;
+  displayWidth?: number;
+  displayHeight?: number;
+}
+
+/**
+ * Byte layout of one plane.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PlaneLayout)
+ */
+interface PlaneLayout {
+  offset: number;
+  stride: number;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/VideoFrame) */
+interface VideoFrameBufferInit {
+  format: VideoPixelFormat;
+  codedWidth: number;
+  codedHeight: number;
+  timestamp: number;
+  duration?: number;
+  layout?: PlaneLayout[];
+  visibleRect?: DOMRectInit;
+  displayWidth?: number;
+  displayHeight?: number;
+  colorSpace?: VideoColorSpaceInit;
+}
+
+/**
  * A video frame.
  *
  * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` accept a
  * frame. `close()` releases it. A later use throws `InvalidStateError`.
  * `structuredClone` and `postMessage` copy the frame and leave it open.
  * Listing it in a transfer list closes it, and the receiver gets the pixels.
- * `VideoColorSpace` is absent, so `colorSpace` is a string (`"srgb"` or
- * `"display-p3"`) rather than that interface.
  *
  * @throws {@link TypeError} Illegal constructor.
  * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
@@ -11384,12 +11493,8 @@ interface VideoFrame {
    */
   readonly format: VideoPixelFormat | null;
 
-  /**
-   * `"srgb"` or `"display-p3"`.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/colorSpace)
-   */
-  readonly colorSpace: "srgb" | "display-p3";
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/colorSpace) */
+  readonly colorSpace: VideoColorSpace;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/codedWidth) */
   readonly codedWidth: number;
@@ -11414,7 +11519,8 @@ interface VideoFrame {
 }
 declare var VideoFrame: {
   prototype: VideoFrame;
-  new(): VideoFrame;
+  new(image: CanvasImageSource, init?: VideoFrameInit): VideoFrame;
+  new(data: AllowSharedBufferSource, init: VideoFrameBufferInit): VideoFrame;
 };
 
 
@@ -11566,7 +11672,7 @@ interface AudioData {
 }
 declare var AudioData: {
   prototype: AudioData;
-  new(): AudioData;
+  new(init: AudioDataInit): AudioData;
 };
 
 
@@ -12170,13 +12276,14 @@ interface WebTransportSendStreamOptions {
 /**
  * A bidirectional WebTransport stream.
  *
- * `readable` is a readable byte stream. `writable` is a `WritableStream`.
+ * `readable` is a readable byte stream. Chunks on both sides are `Uint8Array`
+ * values.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
  */
 interface WebTransportBidirectionalStream {
-  readable: ReadableStream<Uint8Array<ArrayBuffer>>;
-  writable: WritableStream<Uint8Array<ArrayBuffer>>;
+  readonly readable: ReadableStream;
+  readonly writable: WritableStream;
 }
 
 /**

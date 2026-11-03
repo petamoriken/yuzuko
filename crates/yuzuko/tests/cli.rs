@@ -815,6 +815,10 @@ fn console_inspects_host_instances() {
   assert!(close.contains("wasClean: true"), "{close}");
   assert!(close.contains("code: 1000"), "{close}");
   assert!(close.contains("reason: \"bye\""), "{close}");
+  let progress = section(&stdout, "progress");
+  assert!(progress.contains("lengthComputable: true"), "{progress}");
+  assert!(progress.contains("loaded: 3"), "{progress}");
+  assert!(progress.contains("total: 8"), "{progress}");
   let pointer = section(&stdout, "pointer");
   assert!(pointer.contains("clientX: 4"), "{pointer}");
   assert!(pointer.contains("pointerId: 7"), "{pointer}");

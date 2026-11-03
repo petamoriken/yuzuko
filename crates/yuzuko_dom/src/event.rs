@@ -104,6 +104,25 @@ impl Event {
       trusted,
     ))
   }
+
+  /// Point `target` and `currentTarget` at `xhr` for one handler call.
+  /// `XMLHttpRequest` is not an `EventTarget`, so this is not a dispatch.
+  #[cfg(feature = "fetch")]
+  pub(crate) fn arm_xhr(
+    &self,
+    scope: &mut v8::PinScope,
+    target: v8::Local<v8::Object>,
+  ) {
+    *self.target.borrow_mut() = Some(traced(scope, target));
+    *self.current.borrow_mut() = Some(traced(scope, target));
+    self.phase.set(2);
+  }
+
+  #[cfg(feature = "fetch")]
+  pub(crate) fn disarm_xhr(&self) {
+    *self.current.borrow_mut() = None;
+    self.phase.set(0);
+  }
 }
 
 #[op(inspect = [
@@ -258,6 +277,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   CustomEvent::install(scope);
   ErrorEvent::install(scope);
   PromiseRejectionEvent::install(scope);
+  ProgressEvent::install(scope);
 }
 
 thread_local! {
@@ -818,6 +838,116 @@ pub fn dispatch_custom_on_path(
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, object);
   crate::target::dispatch_path(scope, path, object).unwrap_or(false)
+}
+
+#[repr(C)]
+pub struct ProgressEvent {
+  base: Event,
+  length_computable: bool,
+  loaded: f64,
+  total: f64,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for ProgressEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ProgressEvent"
+  }
+}
+
+#[op(inherit = Event, inspect_after = ["lengthComputable", "loaded", "total"])]
+impl ProgressEvent {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    let base = Event::from_args(scope, args, false)?;
+    let init = util::init_arg(args);
+    Ok(Self {
+      base,
+      length_computable: util::dict_bool(scope, init, "lengthComputable"),
+      loaded: util::dict_number(scope, init, "loaded"),
+      total: util::dict_number(scope, init, "total"),
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn length_computable(&self) -> bool {
+    self.length_computable
+  }
+
+  #[getter]
+  fn loaded(&self) -> f64 {
+    self.loaded
+  }
+
+  #[getter]
+  fn total(&self) -> f64 {
+    self.total
+  }
+}
+
+pub(crate) fn dispatch_progress(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  type_name: &str,
+  length_computable: bool,
+  loaded: f64,
+  total: f64,
+) {
+  let event = ProgressEvent {
+    base: Event::new(type_name, false, false, false, true),
+    length_computable,
+    loaded,
+    total,
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  let _ = crate::target::dispatch(scope, target, object);
+}
+
+/// Build a trusted progress event and call `handler` with the request as `this`.
+///
+/// `target` stays the request. `currentTarget` is the request only during the
+/// call, then becomes null. The request is not an `EventTarget`.
+#[cfg(feature = "fetch")]
+pub(crate) fn deliver_xhr_progress(
+  scope: &mut v8::PinScope,
+  xhr: &v8::Global<v8::Object>,
+  handler: &v8::Global<v8::Function>,
+  type_name: &str,
+  length_computable: bool,
+  loaded: f64,
+  total: f64,
+) {
+  let xhr = v8::Local::new(scope, xhr);
+  let event = ProgressEvent {
+    base: Event::new(type_name, false, false, false, true),
+    length_computable,
+    loaded,
+    total,
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  if let Some(host) = unsafe { host_ref::<ProgressEvent>(scope, object) } {
+    host.get().base.arm_xhr(scope, xhr);
+  }
+  let handler = v8::Local::new(scope, handler);
+  let _ = handler.call(scope, xhr.into(), &[object.into()]);
+  if let Some(host) = unsafe { host_ref::<ProgressEvent>(scope, object) } {
+    host.get().base.disarm_xhr();
+  }
 }
 
 fn traced_value(
