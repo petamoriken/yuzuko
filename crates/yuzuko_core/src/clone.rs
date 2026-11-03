@@ -6,9 +6,13 @@
 //! `MessagePort` and tag `13` is `OffscreenCanvas`; both are transfer-only.
 //! Tag `14` is `ImageBitmap`. Tag `15` is `ImageData`. Tag `16` is
 //! `AudioData`. Tag `17` is `VideoFrame`. Tags `18` and `19` are
-//! `EncodedAudioChunk` and `EncodedVideoChunk`. A transferable also
+//! `EncodedAudioChunk` and `EncodedVideoChunk`. Tag `20` is
+//! `ReadableStream`, tag `21` is `WritableStream`, and tag `22` is
+//! `TransformStream`. All three are transfer-only. A transferable also
 //! registers a probe. `ImageBitmap`, `AudioData`, and `VideoFrame` register
-//! a detacher that runs after a successful serialize.
+//! a detacher that runs after a successful serialize. Finishers run when a
+//! clone leaves V8. A nested read can still be inside `ReadHostObject`, so
+//! JavaScript runs only from the outermost finisher.
 
 use std::sync::Mutex;
 
@@ -100,6 +104,101 @@ thread_local! {
     const { std::cell::RefCell::new(Vec::new()) };
   static CROSS_AGENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
   static CROSS_TARGET: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+  static CLONE_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Called when `clone_value` or `deserialize_parcel` begins, including a
+/// nested call.
+pub type CloneEnterFn = fn();
+
+/// Drops bookkeeping when a clone session unwinds before `exit`.
+pub type CloneDiscardFn = fn();
+
+/// Called when a structured clone leaves V8.
+///
+/// `success` is false when that clone failed. `outermost` is false while a
+/// nested `deserialize_parcel` can still be inside `ReadHostObject`; run
+/// JavaScript only when `outermost` is true.
+pub type CloneFinisher = fn(
+  &mut v8::PinScope,
+  bool,
+  bool,
+) -> Result<(), Option<v8::Global<v8::Value>>>;
+
+static ENTERS: Mutex<Vec<CloneEnterFn>> = Mutex::new(Vec::new());
+static DISCARDS: Mutex<Vec<CloneDiscardFn>> = Mutex::new(Vec::new());
+static FINISHERS: Mutex<Vec<CloneFinisher>> = Mutex::new(Vec::new());
+
+pub fn add_clone_enter(enter: CloneEnterFn) {
+  ENTERS.lock().expect("clone enters").push(enter);
+}
+
+pub fn add_clone_discard(discard: CloneDiscardFn) {
+  DISCARDS.lock().expect("clone discards").push(discard);
+}
+
+pub fn add_clone_finisher(finisher: CloneFinisher) {
+  FINISHERS.lock().expect("clone finishers").push(finisher);
+}
+
+fn enter_hooks() -> Vec<CloneEnterFn> {
+  ENTERS.lock().expect("clone enters").clone()
+}
+
+fn discard_hooks() -> Vec<CloneDiscardFn> {
+  DISCARDS.lock().expect("clone discards").clone()
+}
+
+fn finisher_hooks() -> Vec<CloneFinisher> {
+  FINISHERS.lock().expect("clone finishers").clone()
+}
+
+/// Pairs clone depth with finishers. Dropped sessions discard without
+/// running JavaScript.
+#[must_use]
+pub(crate) struct CloneSession {
+  live: bool,
+}
+
+impl CloneSession {
+  pub(crate) fn enter() -> Self {
+    CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_add(1)));
+    for enter in enter_hooks() {
+      enter();
+    }
+    Self { live: true }
+  }
+
+  pub(crate) fn exit(
+    mut self,
+    scope: &mut v8::PinScope,
+    success: bool,
+  ) -> Result<(), Option<v8::Global<v8::Value>>> {
+    self.live = false;
+    let depth = CLONE_DEPTH.with(|cell| {
+      let next = cell.get().saturating_sub(1);
+      cell.set(next);
+      next
+    });
+    let outermost = depth == 0;
+    for finisher in finisher_hooks() {
+      finisher(scope, success, outermost)?;
+    }
+    Ok(())
+  }
+}
+
+impl Drop for CloneSession {
+  fn drop(&mut self) {
+    if !self.live {
+      return;
+    }
+    self.live = false;
+    CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_sub(1)));
+    for discard in discard_hooks() {
+      discard();
+    }
+  }
 }
 
 /// Marks structured clone as a cross-isolate copy aimed at `target`.

@@ -147,27 +147,38 @@ pub fn clone_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'s, v8::Value>, Option<v8::Global<v8::Value>>> {
+  // Finish outside this block. `ReadHostObject` rejects JavaScript, and the
+  // deserializer has to be gone before a finisher runs.
+  let session = clone::CloneSession::enter();
   let cloned = {
     v8::tc_scope!(let tc, scope);
     let serializer = v8::ValueSerializer::new(tc, Box::new(CloneHost));
     serializer.write_header();
     let context = tc.get_current_context();
     if serializer.write_value(context, value).is_none() {
-      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
+      Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+    } else {
+      let bytes = serializer.release();
+      let deserializer =
+        v8::ValueDeserializer::new(tc, Box::new(CloneHost), &bytes);
+      let context = tc.get_current_context();
+      if deserializer.read_header(context).is_none() {
+        Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+      } else if let Some(cloned) = deserializer.read_value(context) {
+        Ok(v8::Global::new(tc, cloned))
+      } else {
+        Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+      }
     }
-    let bytes = serializer.release();
-    let deserializer =
-      v8::ValueDeserializer::new(tc, Box::new(CloneHost), &bytes);
-    let context = tc.get_current_context();
-    if deserializer.read_header(context).is_none() {
-      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
-    }
-    let Some(cloned) = deserializer.read_value(context) else {
-      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
-    };
-    v8::Global::new(tc, cloned)
   };
-  Ok(v8::Local::new(scope, cloned))
+  let success = cloned.is_ok();
+  if let Err(error) = session.exit(scope, success) {
+    return Err(error);
+  }
+  match cloned {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(error) => Err(error),
+  }
 }
 
 fn structured_clone(

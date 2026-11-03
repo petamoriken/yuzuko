@@ -10,6 +10,7 @@ mod net;
 mod performance;
 mod reader;
 mod report;
+mod stream_transfer;
 mod target;
 mod ui;
 mod util;
@@ -38,6 +39,7 @@ pub fn register() {
     yuzuko_core::on_realm_drop(clear);
     exception::register_clone();
     message::register_clone();
+    stream_transfer::register_clone();
     yuzuko_core::set_inbound_handler(worker::drain);
     yuzuko_core::set_idle_hooks(yuzuko_core::IdleHooks {
       has_pending: idle::has_pending,

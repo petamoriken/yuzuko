@@ -86,13 +86,7 @@
   },
   "streams/readable-streams/tee.any.js": true,
   "streams/readable-streams/templated.any.js": true,
-  "streams/transferable/audioworklet.https.html": {
-    "expectedFailures": [
-      "A ReadableStream can be transferred to an AudioWorkletProcessor",
-      "A TransformStream can be transferred to an AudioWorkletProcessor",
-      "A WritableStream can be transferred to an AudioWorkletProcessor"
-    ]
-  },
+  "streams/transferable/audioworklet.https.html": true,
   "streams/transferable/deserialize-error.window.js": false,
   "streams/transferable/gc-crash.html": {
     "ignore": true
@@ -183,7 +177,7 @@
   "streams/transferable/window.html": {
     "ignore": true
   },
-  "streams/transferable/worker.html": false,
+  "streams/transferable/worker.html": true,
   "streams/transferable/writable-stream.html": {
     "expectedFailures": [
       "a locked WritableStream should not be transferable",

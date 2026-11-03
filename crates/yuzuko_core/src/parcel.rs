@@ -194,6 +194,10 @@ pub fn deserialize_parcel<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   parcel: Parcel,
 ) -> Result<v8::Local<'s, v8::Value>, Option<v8::Global<v8::Value>>> {
+  // Same rule as `clone_value`: finish only after the deserializer is gone.
+  // A port queue calls this again from inside `ReadHostObject`. That nested
+  // exit must not run JavaScript.
+  let session = clone::CloneSession::enter();
   let value = {
     v8::tc_scope!(let tc, scope);
     let deserializer = v8::ValueDeserializer::new(
@@ -209,14 +213,21 @@ pub fn deserialize_parcel<'s>(
     }
     let context = tc.get_current_context();
     if deserializer.read_header(context).is_none() {
-      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
+      Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+    } else if let Some(value) = deserializer.read_value(context) {
+      Ok(v8::Global::new(tc, value))
+    } else {
+      Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
     }
-    let Some(value) = deserializer.read_value(context) else {
-      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
-    };
-    v8::Global::new(tc, value)
   };
-  Ok(v8::Local::new(scope, value))
+  let success = value.is_ok();
+  if let Err(error) = session.exit(scope, success) {
+    return Err(error);
+  }
+  match value {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(error) => Err(error),
+  }
 }
 
 fn copy_buffer(buffer: v8::Local<v8::ArrayBuffer>) -> Vec<u8> {

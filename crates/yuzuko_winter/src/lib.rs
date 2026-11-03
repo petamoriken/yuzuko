@@ -35,8 +35,10 @@ pub use http::xhr::set_xhr_progress_hook;
 #[cfg(feature = "fetch")]
 pub use http::{BodyNote, HttpBody, perform};
 pub use stream::{
-  ByteWait, byte_controller_enqueue, byte_controller_respond,
-  byte_controller_wait,
+  ByteWait, StreamKind, StreamStatus, TransferError, byte_controller_enqueue,
+  byte_controller_respond, byte_controller_wait, export_readable,
+  export_transform, export_writable, prepare_cross_readable,
+  prepare_cross_writable, shell_transform, transfer_status,
 };
 pub use text::mime::is_mime_type;
 
@@ -50,6 +52,7 @@ pub fn register() {
     yuzuko_core::on_realm_drop(stream::clear);
     blob::register_clone();
     crypto::register_clone();
+    stream::register_transfer_hooks();
   });
 }
 

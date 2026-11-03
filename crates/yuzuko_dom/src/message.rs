@@ -142,36 +142,67 @@ fn probe_port(
   }
 }
 
+/// Moves `object` the way a transfer-list entry moves, without consulting
+/// that list.
+pub(crate) fn transfer_port(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<u64, ()> {
+  let id = {
+    let Some(port) =
+      (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) })
+    else {
+      return Err(());
+    };
+    port.get().id
+  };
+  if yuzuko_core::cross_agent() {
+    move_port_cross(scope, id)
+  } else {
+    moved_port(scope, id)
+  }
+}
+
+/// Installs a port moved by [`transfer_port`].
+///
+/// The wrapper is not recorded for `MessageEvent.ports`.
+pub(crate) fn receive_transferred_port(
+  scope: &mut v8::PinScope,
+  id: u64,
+) -> Result<v8::Global<v8::Object>, ()> {
+  if let Some(ticket) = PORT_MOVES.lock().expect("port moves").remove(&id) {
+    return Ok(install_moved_port(scope, ticket));
+  }
+  PORTS
+    .with(|slot| {
+      slot
+        .borrow()
+        .get(&id)
+        .and_then(|state| state.wrapper.clone())
+    })
+    .ok_or(())
+}
+
 fn write_port_clone(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   helper: &dyn v8::ValueSerializerHelper,
 ) -> yuzuko_core::WriteResult {
-  let Some(port) =
-    (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) })
-  else {
-    return yuzuko_core::WriteResult::Skip;
+  let is_port = {
+    unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) }.is_some()
   };
-  let old_id = port.get().id;
+  if !is_port {
+    return yuzuko_core::WriteResult::Skip;
+  }
   if !yuzuko_core::is_structured_transfer(scope, object) {
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::WriteResult::Failed;
   }
-  let new_id = if yuzuko_core::cross_agent() {
-    match move_port_cross(scope, old_id) {
-      Ok(id) => id,
-      Err(()) => {
-        yuzuko_core::reject_clone(scope);
-        return yuzuko_core::WriteResult::Failed;
-      }
-    }
-  } else {
-    match moved_port(scope, old_id) {
-      Ok(id) => id,
-      Err(()) => {
-        yuzuko_core::reject_clone(scope);
-        return yuzuko_core::WriteResult::Failed;
-      }
+  let new_id = match transfer_port(scope, object) {
+    Ok(id) => id,
+    Err(()) => {
+      yuzuko_core::reject_clone(scope);
+      return yuzuko_core::WriteResult::Failed;
     }
   };
   helper.write_uint32(TAG_PORT);
@@ -239,23 +270,16 @@ fn read_port_clone(
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   }
-  if let Some(ticket) = PORT_MOVES.lock().expect("port moves").remove(&id) {
-    let wrapper = install_moved_port(scope, ticket);
-    note_captured(scope, v8::Local::new(scope, &wrapper));
-    return yuzuko_core::ReadResult::Done(wrapper);
+  match receive_transferred_port(scope, id) {
+    Ok(wrapper) => {
+      note_captured(scope, v8::Local::new(scope, &wrapper));
+      yuzuko_core::ReadResult::Done(wrapper)
+    }
+    Err(()) => {
+      yuzuko_core::reject_clone(scope);
+      yuzuko_core::ReadResult::Failed
+    }
   }
-  let wrapper = PORTS.with(|slot| {
-    slot
-      .borrow()
-      .get(&id)
-      .and_then(|state| state.wrapper.clone())
-  });
-  let Some(wrapper) = wrapper else {
-    yuzuko_core::reject_clone(scope);
-    return yuzuko_core::ReadResult::Failed;
-  };
-  note_captured(scope, v8::Local::new(scope, &wrapper));
-  yuzuko_core::ReadResult::Done(wrapper)
 }
 
 fn install_moved_port(

@@ -311,7 +311,7 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
-/** Host values a transfer list can name. Stream objects throw `DataCloneError`. */
+/** Host values a transfer list can move. */
 type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
@@ -4661,13 +4661,14 @@ declare function reportError(error: any): void;
  *
  * @param value - The value to clone.
  * @param options - `transfer` moves an `ArrayBuffer`, a `MessagePort`, an
- * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, or a `VideoFrame`.
+ * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, a `VideoFrame`, a
+ * `ReadableStream`, a `WritableStream`, or a `TransformStream`.
  * @throws {@link DOMException} `DataCloneError` when `value` contains a host
  * object this runtime cannot clone, including a {@link Yuzuko.Window}, a
  * {@link Yuzuko.WindowSurface}, a closed {@link VideoFrame} or
- * {@link AudioData}, a detached {@link ImageBitmap}, or a listed value that
- * cannot be transferred. `ReadableStream`, `WritableStream`, and
- * `TransformStream` throw that exception from a transfer list.
+ * {@link AudioData}, a detached {@link ImageBitmap}, a locked stream, a
+ * stream left out of `transfer`, or a listed value that cannot be
+ * transferred.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/structuredClone)
  */
@@ -6930,6 +6931,11 @@ interface ReadableStreamBYOBReaderReadOptions {
  * A readable stream. {@link ReadableStream.from} creates a stream from an
  * iterable.
  *
+ * A transfer locks this stream. The destination is a new
+ * {@link ReadableStream}. A locked stream, or a stream left out of the
+ * transfer list, throws `DataCloneError`. A transferred byte stream arrives
+ * as a default stream.
+ *
  * @throws {@link TypeError} When the argument of {@link ReadableStream.from}
  * is not iterable.
  *
@@ -7142,6 +7148,10 @@ interface UnderlyingSink<W = any> {
 }
 
 /**
+ * A transfer locks this stream. The destination is a new
+ * {@link WritableStream}. A locked stream, or a stream left out of the
+ * transfer list, throws `DataCloneError`.
+ *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStream)
  */
 interface WritableStream<W = any> {
@@ -7225,6 +7235,10 @@ interface Transformer<I = any, O = any> {
 }
 
 /**
+ * A transfer locks both sides. The destination is a new
+ * {@link TransformStream}. A locked side, or a stream left out of the
+ * transfer list, throws `DataCloneError`.
+ *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStream)
  */
 interface TransformStream<I = any, O = any> {
@@ -12463,9 +12477,10 @@ declare class WebTransportError extends DOMException {
  * `new Worker(url)` runs a classic script. `{ type: "module" }` runs an ES
  * module. There is no `SharedWorker`. `postMessage` carries values
  * `structuredClone` can carry, including a transferred `ArrayBuffer`,
- * `MessagePort`, `OffscreenCanvas`, `ImageBitmap`, `AudioData`, or
- * `VideoFrame`, and a cloned `ImageData`, `EncodedAudioChunk`, or
- * `EncodedVideoChunk`. A {@link Yuzuko.Window} cannot be transferred.
+ * `MessagePort`, `OffscreenCanvas`, `ImageBitmap`, `AudioData`,
+ * `VideoFrame`, `ReadableStream`, `WritableStream`, or `TransformStream`,
+ * and a cloned `ImageData`, `EncodedAudioChunk`, or `EncodedVideoChunk`.
+ * A {@link Yuzuko.Window} cannot be transferred.
  * A WebGPU device stays on the thread that created it.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid.

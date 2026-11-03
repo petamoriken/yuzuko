@@ -1,4 +1,4 @@
-//! WHATWG streams used by fetch bodies, blobs, text, and compression.
+//! WHATWG streams used by fetch bodies, blobs, text, compression, and transfer.
 
 #![allow(clippy::too_many_arguments)]
 
@@ -21,10 +21,16 @@ use yuzuko_macros::op;
 use crate::bytes;
 
 mod byte_stream;
+mod transfer;
 
 pub use byte_stream::{
   ByteWait, byte_controller_enqueue, byte_controller_respond,
   byte_controller_wait,
+};
+pub use transfer::{
+  StreamKind, StreamStatus, TransferError, export_readable, export_transform,
+  export_writable, prepare_cross_readable, prepare_cross_writable,
+  shell_transform, transfer_status,
 };
 
 const DEFAULT_HWM: f64 = 1.0;
@@ -352,6 +358,10 @@ fn alloc() -> u64 {
   NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+pub(crate) fn register_transfer_hooks() {
+  transfer::register_hooks();
+}
+
 pub fn clear() {
   FUNCTION_BIND.with(|slot| *slot.borrow_mut() = None);
   READS.with(|slot| slot.borrow_mut().clear());
@@ -370,6 +380,7 @@ pub fn clear() {
   TEXT_GATES.with(|slot| slot.borrow_mut().clear());
   TEXT_READABLE.with(|slot| slot.borrow_mut().clear());
   byte_stream::clear();
+  transfer::clear();
 }
 
 pub struct ReadableStream {
@@ -8902,4 +8913,5 @@ pub fn install(scope: &mut v8::PinScope) {
   TextDecoderStream::install(scope);
   CompressionStream::install(scope);
   DecompressionStream::install(scope);
+  transfer::install(scope);
 }
