@@ -698,9 +698,8 @@ impl VideoDecoder {
 }
 
 pub struct AudioData {
-  channels: RefCell<Option<Vec<Vec<f32>>>>,
-  rate: f64,
-  timestamp: f64,
+  body: RefCell<Option<crate::samples::AudioSamples>>,
+  timestamp: Cell<f64>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for AudioData {
@@ -712,105 +711,140 @@ unsafe impl v8::cppgc::GarbageCollected for AudioData {
 }
 
 impl AudioData {
-  fn new(channels: Vec<Vec<f32>>, rate: f64, timestamp: f64) -> Self {
-    Self {
-      channels: RefCell::new(Some(channels)),
-      rate,
-      timestamp,
-    }
-  }
-
   pub(crate) fn from_stored(
     channels: Vec<Vec<f32>>,
     rate: f64,
     timestamp: f64,
   ) -> Self {
-    Self::new(channels, rate, timestamp)
+    Self::from_samples(crate::samples::AudioSamples::from_planar_f32(channels, rate), timestamp)
   }
 
-  pub(crate) fn stored(&self) -> Option<(Vec<Vec<f32>>, f64, f64)> {
-    let channels = self.channels.borrow().clone()?;
-    Some((channels, self.rate, self.timestamp))
+  pub(crate) fn from_samples(
+    samples: crate::samples::AudioSamples,
+    timestamp: f64,
+  ) -> Self {
+    Self {
+      body: RefCell::new(Some(samples)),
+      timestamp: Cell::new(timestamp),
+    }
+  }
+
+  pub(crate) fn samples(&self) -> Option<crate::samples::AudioSamples> {
+    self.body.borrow().clone()
+  }
+
+  pub(crate) fn timestamp_us(&self) -> f64 {
+    self.timestamp.get()
   }
 
   pub(crate) fn is_closed(&self) -> bool {
-    self.channels.borrow().is_none()
+    self.body.borrow().is_none()
   }
 
   pub(crate) fn neuter(&self) {
-    *self.channels.borrow_mut() = None;
+    *self.body.borrow_mut() = None;
+  }
+
+  fn metric(&self, read: impl FnOnce(&crate::samples::AudioSamples) -> u32) -> u32 {
+    self.body.borrow().as_ref().map(read).unwrap_or(0)
   }
 }
 
 #[op]
 impl AudioData {
-  #[getter]
-  fn format(&self) -> Result<String, OpError> {
-    self.live()?;
-    Ok("f32-planar".to_string())
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    let built = crate::pcm::construct(scope, args)?;
+    Ok(Self::from_samples(built.samples, built.timestamp))
   }
 
   #[getter]
-  fn sample_rate(&self) -> Result<f64, OpError> {
-    self.live()?;
-    Ok(self.rate)
+  fn format(&self) -> Option<String> {
+    self.body.borrow().as_ref().map(|samples| samples.format_name())
   }
 
   #[getter]
-  fn number_of_frames(&self) -> Result<u32, OpError> {
-    let channels = self.live()?;
-    let frames = channels.first().map(Vec::len).unwrap_or(0);
-    u32::try_from(frames).map_err(|_| closed_data())
+  fn sample_rate(&self) -> f64 {
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|samples| samples.rate)
+      .unwrap_or(0.0)
   }
 
   #[getter]
-  fn number_of_channels(&self) -> Result<u32, OpError> {
-    let channels = self.live()?;
-    u32::try_from(channels.len()).map_err(|_| closed_data())
+  fn number_of_frames(&self) -> u32 {
+    self.metric(|samples| samples.frames)
   }
 
   #[getter]
-  fn timestamp(&self) -> Result<f64, OpError> {
-    self.live()?;
-    Ok(self.timestamp)
+  fn number_of_channels(&self) -> u32 {
+    self.metric(|samples| samples.channels)
   }
 
   #[getter]
-  fn duration(&self) -> Result<Option<f64>, OpError> {
-    let channels = self.live()?;
-    let frames = channels.first().map(Vec::len).unwrap_or(0);
-    if self.rate <= 0.0 {
-      return Ok(None);
-    }
-    Ok(Some(frames as f64 / self.rate * 1_000_000.0))
+  fn timestamp(&self) -> f64 {
+    self.timestamp_us()
   }
 
-  fn close(&self) -> Result<(), OpError> {
-    let mut channels = self.channels.borrow_mut();
-    if channels.is_none() {
+  #[getter]
+  fn duration(&self) -> f64 {
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|samples| samples.duration_us())
+      .unwrap_or(0.0)
+  }
+
+  fn close(&self) {
+    self.neuter();
+  }
+
+  #[rename("clone")]
+  fn clone_data(&self) -> Result<New<Self>, OpError> {
+    let samples = self.samples().ok_or_else(closed_data)?;
+    Ok(New(Self::from_samples(samples, self.timestamp_us())))
+  }
+
+  #[length(1)]
+  fn allocation_size(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<u32, OpError> {
+    if self.is_closed() {
       return Err(closed_data());
     }
-    *channels = None;
-    Ok(())
+    let request = crate::pcm::copy_request(scope, args, 0)?;
+    let body = self.body.borrow();
+    let samples = body.as_ref().ok_or_else(closed_data)?;
+    samples
+      .allocation_size(&request)
+      .map_err(crate::pcm::copy_error)
   }
 
+  #[length(2)]
   fn copy_to(
     &self,
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
   ) -> Result<(), OpError> {
-    let channels = self.live()?;
-    let plane = plane_index(scope, args)?;
-    let samples = channels
-      .get(plane)
-      .ok_or_else(|| OpError::range("planeIndex is out of range"))?;
-    write_f32(scope, args.get(0), samples)
-  }
-}
-
-impl AudioData {
-  fn live(&self) -> Result<Vec<Vec<f32>>, OpError> {
-    self.channels.borrow().clone().ok_or_else(closed_data)
+    if self.is_closed() {
+      return Err(closed_data());
+    }
+    let request = crate::pcm::copy_request(scope, args, 1)?;
+    let bytes = {
+      let body = self.body.borrow();
+      let samples = body.as_ref().ok_or_else(closed_data)?;
+      samples.copy_to(&request).map_err(crate::pcm::copy_error)?
+    };
+    crate::pcm::write_destination(scope, args.get(0), &bytes)
   }
 }
 
@@ -1039,7 +1073,7 @@ impl AudioDecoder {
     };
     let _ = AudioData::template(scope);
     let data = unsafe {
-      wrap_instance(scope, AudioData::new(channels, rate, timestamp))
+      wrap_instance(scope, AudioData::from_stored(channels, rate, timestamp))
     };
     let function = v8::Global::new(scope, function);
     let data = v8::Global::new(scope, data);
@@ -1294,7 +1328,7 @@ fn optional_bytes(
     .ok_or_else(|| OpError::type_(format!("{name} is not a BufferSource")))
 }
 
-fn unsigned(
+pub(crate) fn unsigned(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
   name: &str,
@@ -1331,68 +1365,6 @@ fn software_hint(
     "prefer-software" => Ok(true),
     _ => Err(OpError::type_("hardwareAcceleration is not supported")),
   }
-}
-
-fn plane_index(
-  scope: &mut v8::PinScope,
-  args: &v8::FunctionCallbackArguments,
-) -> Result<usize, OpError> {
-  if args.length() < 2 || args.get(1).is_undefined() {
-    return Ok(0);
-  }
-  let object = dictionary(scope, args.get(1), "AudioDataCopyToOptions")?;
-  let Some(value) = member(scope, object, "planeIndex") else {
-    return Ok(0);
-  };
-  Ok(unsigned(scope, value, "planeIndex")? as usize)
-}
-
-fn write_f32(
-  scope: &mut v8::PinScope,
-  dest: v8::Local<v8::Value>,
-  samples: &[f32],
-) -> Result<(), OpError> {
-  let bytes = samples.len() * 4;
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(dest) {
-    let buffer = view
-      .buffer(scope)
-      .ok_or_else(|| OpError::type_("The destination is detached"))?;
-    if buffer.was_detached() || view.byte_length() < bytes {
-      return Err(OpError::type_("The destination is too small"));
-    }
-    copy_f32(samples, &buffer, view.byte_offset())?;
-    return Ok(());
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(dest) {
-    if buffer.was_detached() || buffer.byte_length() < bytes {
-      return Err(OpError::type_("The destination is too small"));
-    }
-    copy_f32(samples, &buffer, 0)?;
-    return Ok(());
-  }
-  Err(OpError::type_("The destination is not a BufferSource"))
-}
-
-fn copy_f32(
-  samples: &[f32],
-  buffer: &v8::ArrayBuffer,
-  offset: usize,
-) -> Result<(), OpError> {
-  let store = buffer.get_backing_store();
-  let Some(data) = store.data() else {
-    return Err(OpError::type_("The destination is detached"));
-  };
-  if samples.is_empty() {
-    return Ok(());
-  }
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      samples.as_ptr().cast::<u8>(),
-      data.as_ptr().cast::<u8>().add(offset),
-      samples.len() * 4,
-    );
-  }
-  Ok(())
 }
 
 fn callback<'s>(

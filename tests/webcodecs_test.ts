@@ -28,6 +28,20 @@ function assertTypeError(run: () => unknown, message: string): void {
   throw new Error(`${message} was not thrown`);
 }
 
+function assertRangeError(run: () => unknown, message: string): void {
+  try {
+    run();
+  } catch (error) {
+    assert(error instanceof RangeError, `${message}: ${String(error)}`);
+    return;
+  }
+  throw new Error(`${message} was not thrown`);
+}
+
+function assertNear(actual: number, expected: number, message: string): void {
+  assert(Math.abs(actual - expected) < 1e-5, `${message}: ${actual}`);
+}
+
 const fixtures = new URL("./fixtures/webcodecs/", import.meta.url);
 
 async function bytes(name: string): Promise<Uint8Array> {
@@ -570,6 +584,7 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   const audio = await takeAudioData();
   const frames = audio.numberOfFrames;
   const channels = audio.numberOfChannels;
+  const audioTimestamp = audio.timestamp;
   const local = new Float32Array(frames);
   audio.copyTo(local, { planeIndex: 0 });
   const audioCopy = structuredClone(audio);
@@ -599,7 +614,13 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   assert(audioSummary.channels === channels, "worker channels");
   assert(audioSummary.rate === 48000, String(audioSummary.rate));
   assert(audioSummary.sample === local[0], "worker sample");
-  await assertThrows(() => audio.numberOfFrames, "InvalidStateError");
+  assert(audio.format === null, "closed audio format");
+  assert(audio.numberOfFrames === 0, "closed audio frames");
+  assert(audio.sampleRate === 0, "closed audio rate");
+  assert(audio.numberOfChannels === 0, "closed audio channels");
+  assert(audio.duration === 0, "closed audio duration");
+  assert(audio.timestamp === audioTimestamp, "closed audio timestamp");
+  await assertThrows(() => audio.clone(), "InvalidStateError");
 
   const chunk = new EncodedAudioChunk({
     type: "key",
@@ -880,4 +901,162 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
     await stored.copyTo(copy);
     stored.close();
   }
+});
+
+Yuzuko.test("AudioData constructs, copies, and closes", async () => {
+  const planar = new Float32Array([
+    0.25, 0.5, 0.75, 1,
+    -0.25, -0.5, -0.75, -1,
+  ]);
+  const data = new AudioData({
+    format: "f32-planar",
+    sampleRate: 8000,
+    numberOfFrames: 4,
+    numberOfChannels: 2,
+    timestamp: -10,
+    data: planar,
+  });
+  assert(data.format === "f32-planar", data.format ?? "null");
+  assert(data.sampleRate === 8000, "rate");
+  assert(data.numberOfFrames === 4, "frames");
+  assert(data.numberOfChannels === 2, "channels");
+  assert(data.timestamp === -10, "timestamp");
+  assert(data.duration === 500, "duration");
+  assert(data.allocationSize({ planeIndex: 0, frameOffset: 1, frameCount: 2 }) === 8, "size");
+  const window = new Float32Array([9, 9, 9, 9]);
+  data.copyTo(window.subarray(1, 3), {
+    planeIndex: 0,
+    frameOffset: 1,
+    frameCount: 2,
+  });
+  assert(window[0] === 9 && window[3] === 9, "untouched");
+  assert(window[1] === 0.5 && window[2] === 0.75, "planar window");
+  planar[1] = 9;
+  const again = new Float32Array(2);
+  data.copyTo(again, { planeIndex: 0, frameOffset: 1, frameCount: 2 });
+  assert(again[0] === 0.5 && again[1] === 0.75, "source copy");
+  const outside = new AudioData({
+    format: "f32",
+    sampleRate: 8000,
+    numberOfFrames: 2,
+    numberOfChannels: 1,
+    timestamp: 0,
+    data: new Float32Array([2, -2]),
+  });
+  const kept = new Float32Array(2);
+  outside.copyTo(kept, { planeIndex: 0 });
+  assert(kept[0] === 2 && kept[1] === -2, "outside unit");
+  outside.close();
+
+  const interleaved = new Int16Array([
+    -1000, 1000,
+    2000, 3000,
+    -2000, 4000,
+    500, -500,
+  ]);
+  const pcm = new AudioData({
+    format: "s16",
+    sampleRate: 44100,
+    numberOfFrames: 4,
+    numberOfChannels: 2,
+    timestamp: 7,
+    data: interleaved,
+  });
+  const converted = new Float32Array(2);
+  pcm.copyTo(converted, {
+    planeIndex: 0,
+    frameOffset: 1,
+    frameCount: 2,
+    format: "f32-planar",
+  });
+  assertNear(converted[0], 2000 / 32767, "positive s16");
+  assertNear(converted[1], -2000 / 32768, "negative s16");
+  const channel = new Int16Array(2);
+  pcm.copyTo(channel, {
+    planeIndex: 1,
+    frameOffset: 1,
+    frameCount: 2,
+    format: "s16-planar",
+  });
+  assert(channel[0] === 3000 && channel[1] === 4000, "s16 plane");
+  interleaved[2] = 0;
+  const stable = new Int16Array(2);
+  pcm.copyTo(stable, {
+    planeIndex: 1,
+    frameOffset: 1,
+    frameCount: 2,
+    format: "s16-planar",
+  });
+  assert(stable[0] === 3000 && stable[1] === 4000, "s16 copy");
+  assertRangeError(
+    () => pcm.copyTo(new Float32Array(8), { planeIndex: 1 }),
+    "interleaved plane",
+  );
+  assertRangeError(
+    () => pcm.copyTo(new Int16Array(1), {
+      planeIndex: 1,
+      frameOffset: 1,
+      frameCount: 2,
+      format: "s16-planar",
+    }),
+    "short destination",
+  );
+  assertRangeError(
+    () => data.copyTo(new Float32Array(4), { planeIndex: 0, frameOffset: 4 }),
+    "frameOffset",
+  );
+  assertTypeError(
+    () => data.copyTo(new Float32Array(4), {} as AudioDataCopyToOptions),
+    "planeIndex",
+  );
+
+  const cloned = data.clone();
+  data.close();
+  data.close();
+  assert(data.format === null, "closed format");
+  assert(data.sampleRate === 0, "closed rate");
+  assert(data.numberOfFrames === 0, "closed frames");
+  assert(data.numberOfChannels === 0, "closed channels");
+  assert(data.duration === 0, "closed duration");
+  assert(data.timestamp === -10, "closed timestamp");
+  assert(cloned.format === "f32-planar", "clone stays");
+  assert(cloned.numberOfFrames === 4, "clone frames");
+  await assertThrows(() => data.clone(), "InvalidStateError");
+  await assertThrows(
+    () => data.allocationSize({ planeIndex: 0 }),
+    "InvalidStateError",
+  );
+  await assertThrows(
+    () => data.copyTo(new Float32Array(4), { planeIndex: 0 }),
+    "InvalidStateError",
+  );
+  cloned.close();
+  pcm.close();
+
+  const init = {
+    format: "f32-planar" as AudioSampleFormat,
+    sampleRate: 8000,
+    numberOfFrames: 1,
+    numberOfChannels: 1,
+    timestamp: 0,
+    data: new Float32Array([0]),
+  };
+  assertTypeError(() => {
+    const { format: _format, ...rest } = init;
+    new AudioData(rest as AudioDataInit);
+  }, "format");
+  assertTypeError(
+    () => new AudioData({ ...init, numberOfFrames: 0 }),
+    "frames",
+  );
+  assertTypeError(
+    () => new AudioData({
+      ...init,
+      format: "s16",
+      numberOfFrames: 4,
+      numberOfChannels: 2,
+      data: new Int16Array(7),
+    }),
+    "short data",
+  );
 });

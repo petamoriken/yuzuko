@@ -16,16 +16,14 @@ use crate::classes::VideoFrame;
 use crate::layout::FrameColor;
 use crate::layout::FrameData;
 use crate::layout::PixelFormat;
+use crate::samples::MAX_BYTES;
+use crate::samples::kind_from_code;
 
 const TAG_AUDIO: u32 = 16;
 const TAG_FRAME: u32 = 17;
 const TAG_AUDIO_CHUNK: u32 = 18;
 const TAG_VIDEO_CHUNK: u32 = 19;
 
-/// WebCodecs allows at most 32 channels.
-const MAX_CHANNELS: usize = 32;
-/// One plane stays within 16,777,216 frames.
-const MAX_FRAMES: usize = 16_777_216;
 /// An encoded chunk stays within 64 MiB.
 const MAX_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 /// One plane stays within the 8-bit raster limit (100 million pixels, 4 bytes).
@@ -50,21 +48,23 @@ fn write_audio(
   let Some(data) = (unsafe { host_ref::<AudioData>(scope, object) }) else {
     return WriteResult::Skip;
   };
-  let Some((channels, rate, timestamp)) = data.get().stored() else {
+  let Some(samples) = data.get().samples() else {
     reject_clone(scope);
     return WriteResult::Failed;
   };
-  if !audio_fits(&channels) {
+  if samples.channels > crate::samples::MAX_CHANNELS
+    || samples.frames > crate::samples::MAX_FRAMES
+  {
     reject_clone(scope);
     return WriteResult::Failed;
   }
   helper.write_uint32(TAG_AUDIO);
-  helper.write_double(rate);
-  helper.write_double(timestamp);
-  helper.write_uint32(channels.len() as u32);
-  for channel in &channels {
-    write_bytes(helper, &f32_bytes(channel));
-  }
+  helper.write_double(samples.rate);
+  helper.write_double(data.get().timestamp_us());
+  helper.write_uint32(samples.channels);
+  helper.write_uint32(samples.frames);
+  helper.write_uint32(samples.code());
+  write_bytes(helper, &samples.bytes);
   WriteResult::Wrote
 }
 
@@ -76,13 +76,13 @@ fn read_audio(
   if tag != TAG_AUDIO {
     return ReadResult::Skip;
   }
-  let Some((channels, rate, timestamp)) = read_audio_parts(helper) else {
+  let Some((samples, timestamp)) = read_audio_parts(helper) else {
     reject_clone(scope);
     return ReadResult::Failed;
   };
   let _ = AudioData::template(scope);
   let wrapper = unsafe {
-    wrap_instance(scope, AudioData::from_stored(channels, rate, timestamp))
+    wrap_instance(scope, AudioData::from_samples(samples, timestamp))
   };
   ReadResult::Done(v8::Global::new(scope, wrapper))
 }
@@ -465,66 +465,27 @@ fn read_chunk(
   Some((key == 1, timestamp as i64, data))
 }
 
-fn audio_fits(channels: &[Vec<f32>]) -> bool {
-  if channels.len() > MAX_CHANNELS {
-    return false;
-  }
-  let frames = channels.first().map(Vec::len).unwrap_or(0);
-  frames <= MAX_FRAMES && channels.iter().all(|channel| channel.len() == frames)
-}
-
 fn read_audio_parts(
   helper: &dyn v8::ValueDeserializerHelper,
-) -> Option<(Vec<Vec<f32>>, f64, f64)> {
+) -> Option<(crate::samples::AudioSamples, f64)> {
   let mut rate = 0.0;
   let mut timestamp = 0.0;
-  let mut count = 0u32;
+  let mut channels = 0u32;
+  let mut frames = 0u32;
+  let mut code = 0u32;
   if !helper.read_double(&mut rate)
     || !helper.read_double(&mut timestamp)
-    || !helper.read_uint32(&mut count)
-    || count as usize > MAX_CHANNELS
+    || !helper.read_uint32(&mut channels)
+    || !helper.read_uint32(&mut frames)
+    || !helper.read_uint32(&mut code)
   {
     return None;
   }
-  let mut channels = Vec::with_capacity(count as usize);
-  let mut frames = None;
-  for _ in 0..count {
-    let plane = read_plane(helper)?;
-    if let Some(expected) = frames {
-      if plane.len() != expected {
-        return None;
-      }
-    } else {
-      frames = Some(plane.len());
-    }
-    channels.push(plane);
-  }
-  Some((channels, rate, timestamp))
-}
-
-fn read_plane(helper: &dyn v8::ValueDeserializerHelper) -> Option<Vec<f32>> {
-  let bytes = read_limited(helper, MAX_FRAMES * 4)?;
-  if !bytes.len().is_multiple_of(4) {
-    return None;
-  }
-  Some(
-    bytes
-      .chunks_exact(4)
-      .map(|chunk| {
-        let mut array = [0u8; 4];
-        array.copy_from_slice(chunk);
-        f32::from_le_bytes(array)
-      })
-      .collect(),
-  )
-}
-
-fn f32_bytes(samples: &[f32]) -> Vec<u8> {
-  let mut bytes = Vec::with_capacity(samples.len() * 4);
-  for sample in samples {
-    bytes.extend_from_slice(&sample.to_le_bytes());
-  }
-  bytes
+  let (kind, planar) = kind_from_code(code)?;
+  let bytes = read_limited(helper, MAX_BYTES)?;
+  let samples =
+    crate::samples::AudioSamples::from_parts(kind, planar, channels, frames, rate, bytes)?;
+  Some((samples, timestamp))
 }
 
 fn read_limited(

@@ -1083,6 +1083,7 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     assert(ready.kind === "ready", ready.kind);
 
     const audio = await takeAudioData();
+    const audioTimestamp = audio.timestamp;
     const local = new Float32Array(audio.numberOfFrames);
     audio.copyTo(local, { planeIndex: 0 });
     node.port.postMessage({ kind: "audio", value: audio });
@@ -1107,7 +1108,12 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     const moved = await next() as { kind: string; sample: number; message?: string };
     assert(moved.kind === "audio", moved.message || moved.kind);
     assert(moved.sample === local[0], "transferred sample");
-    await assertThrows(() => audio.numberOfFrames, "InvalidStateError");
+    assert(audio.format === null, "closed format");
+    assert(audio.numberOfFrames === 0, "closed frames");
+    assert(audio.sampleRate === 0, "closed rate");
+    assert(audio.numberOfChannels === 0, "closed channels");
+    assert(audio.duration === 0, "closed duration");
+    assert(audio.timestamp === audioTimestamp, "closed timestamp");
 
     const frame = await takeFrame();
     const width = frame.displayWidth;

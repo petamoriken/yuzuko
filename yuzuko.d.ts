@@ -11720,14 +11720,22 @@ interface VideoDecoderConfig {
 }
 
 /**
- * Decoded audio samples.
+ * Decoded or constructed audio samples.
  *
- * `format` is `"f32-planar"`. `structuredClone` and `postMessage` copy the
- * samples and leave this object open. Listing it in a transfer list closes
- * it. `close()` releases it, and a later use throws `InvalidStateError`.
+ * `new AudioData(init)` copies `u8`, `s16`, `s32`, or `f32` samples,
+ * interleaved or planar. `sampleRate`, `numberOfFrames`, and
+ * `numberOfChannels` must be greater than 0. At most 32 channels and
+ * 16,777,216 frames are stored. `timestamp` is a microsecond count and may
+ * be negative. `duration` is `numberOfFrames / sampleRate * 1_000_000`,
+ * truncated toward 0. `close()` may be called more than once. After
+ * `close()`, `format` is null, and `sampleRate`, `numberOfFrames`,
+ * `numberOfChannels`, and `duration` are 0. `timestamp` stays. `clone`,
+ * `allocationSize`, and `copyTo` then throw `InvalidStateError`.
+ * `structuredClone` and `postMessage` copy the samples and leave this object
+ * open. Listing it in a transfer list closes it. `transfer` in `init` does
+ * not detach the listed buffers.
  *
- * @throws {@link TypeError} Illegal constructor.
- * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
+ * @throws {@link TypeError} when an argument is missing or invalid.
  * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData)
@@ -11753,9 +11761,35 @@ interface AudioData {
   readonly duration: number;
 
   /**
+   * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
+   * @throws {@link TypeError} when `options` is missing or invalid.
+   * @throws {@link RangeError} when `planeIndex`, `frameOffset`, or `frameCount` is out of range.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/allocationSize)
+   */
+  allocationSize(options: AudioDataCopyToOptions): number;
+
+  /**
+   * Writes one channel when `format` is planar, or every channel when it is
+   * interleaved. `format` defaults to the stored format. A same-format copy
+   * keeps the stored bytes. A different format converts through the unit
+   * interval.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
+   * @throws {@link TypeError} when `destination` or `options` is invalid.
+   * @throws {@link RangeError} when `planeIndex`, `frameOffset`, or
+   * `frameCount` is out of range, or when `destination` is shorter than the copy.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/copyTo)
    */
-  copyTo(destination: BufferSource, options: AudioDataCopyToOptions): void;
+  copyTo(destination: AllowSharedBufferSource, options: AudioDataCopyToOptions): void;
+
+  /**
+   * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/clone)
+   */
+  clone(): AudioData;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/close) */
   close(): void;
@@ -11773,10 +11807,23 @@ interface AudioDataInit {
   numberOfFrames: number;
   numberOfChannels: number;
   timestamp: number;
-  data: BufferSource;
+  data: AllowSharedBufferSource;
+  /**
+   * Listed buffers stay attached. The constructor copies `data` and ignores
+   * this list.
+   */
+  transfer?: ArrayBuffer[];
 }
 
-/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/copyTo) */
+/**
+ * Options for {@link AudioData.allocationSize} and {@link AudioData.copyTo}.
+ *
+ * `planeIndex` is required. An interleaved destination accepts only `0`. A
+ * planar destination selects one channel. `frameOffset` defaults to 0.
+ * `frameCount` defaults to the frames that remain.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData/copyTo)
+ */
 interface AudioDataCopyToOptions {
   planeIndex: number;
   frameOffset?: number;

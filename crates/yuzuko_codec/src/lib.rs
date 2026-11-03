@@ -11,7 +11,9 @@ mod frame;
 mod h264;
 mod image;
 mod layout;
+mod pcm;
 mod platform;
+mod samples;
 
 use std::sync::Once;
 
