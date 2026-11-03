@@ -426,6 +426,8 @@ impl GpuCommandEncoder {
       resource::host_query_set(scope, query_set).ok_or_else(|| {
         OpError::type_("resolveQuerySet requires a GPUQuerySet")
       })?;
+    let destroyed = query_set.is_destroyed();
+    let stored = query_set.query_count();
     let query_set = query_set.query_set();
     let destination = alive_buffer(
       scope,
@@ -435,13 +437,18 @@ impl GpuCommandEncoder {
     let end = first_query
       .checked_add(query_count)
       .ok_or_else(|| OpError::range("The query range is out of range"))?;
+    // wgpu 29 has no `QuerySet::destroy`. An empty range does not overrun, so
+    // a destroyed set resolves one index past the end. `u32::MAX` cannot, and
+    // a misaligned offset is still a validation error.
+    let (start, end, offset) = if !destroyed {
+      (first_query, end, u64::from(destination_offset))
+    } else if stored < u32::MAX {
+      (stored, stored + 1, u64::from(destination_offset))
+    } else {
+      (first_query, end, 1)
+    };
     with_idle_encoder(self.id, |encoder| {
-      encoder.resolve_query_set(
-        &query_set,
-        first_query..end,
-        &destination,
-        u64::from(destination_offset),
-      );
+      encoder.resolve_query_set(&query_set, start..end, &destination, offset);
       Ok(())
     })
   }
@@ -996,8 +1003,9 @@ pub fn create_bundle_encoder(
   let object = js::object(scope, descriptor).ok_or_else(|| {
     OpError::type_("createRenderBundleEncoder requires a descriptor")
   })?;
-  let colors = bundle_color_formats(scope, object)?;
-  let depth = bundle_depth(scope, object)?;
+  let features = handle.device.features();
+  let colors = bundle_color_formats(scope, object, features)?;
+  let depth = bundle_depth(scope, object, features)?;
   if colors.iter().all(Option::is_none) && depth.is_none() {
     return Err(OpError::type_(
       "A render bundle needs a color or depth format",
@@ -1751,6 +1759,7 @@ fn timestamp_writes(
 fn bundle_color_formats(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
+  features: wgpu::Features,
 ) -> Result<Vec<Option<wgpu::TextureFormat>>, OpError> {
   let value = js::get(scope, descriptor, "colorFormats")
     .ok_or_else(|| OpError::type_("colorFormats is required"))?;
@@ -1765,7 +1774,8 @@ fn bundle_color_formats(
     }
     let name = js::string(scope, value)
       .ok_or_else(|| OpError::type_("A color format is required"))?;
-    formats.push(Some(resource::texture_format(&name)?));
+    let format = resource::texture_format(&name)?;
+    formats.push(Some(resource::require_texture_format(features, format)?));
   }
   Ok(formats)
 }
@@ -1773,6 +1783,7 @@ fn bundle_color_formats(
 fn bundle_depth(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
+  features: wgpu::Features,
 ) -> Result<Option<wgpu::RenderBundleDepthStencil>, OpError> {
   let Some(value) = js::get(scope, descriptor, "depthStencilFormat") else {
     return Ok(None);
@@ -1782,7 +1793,10 @@ fn bundle_depth(
   }
   let name = js::string(scope, value)
     .ok_or_else(|| OpError::type_("depthStencilFormat is invalid"))?;
-  let format = resource::texture_format(&name)?;
+  let format = resource::require_texture_format(
+    features,
+    resource::texture_format(&name)?,
+  )?;
   let depth_read_only = js::get(scope, descriptor, "depthReadOnly")
     .is_some_and(|value| value.boolean_value(scope));
   let stencil_read_only = js::get(scope, descriptor, "stencilReadOnly")

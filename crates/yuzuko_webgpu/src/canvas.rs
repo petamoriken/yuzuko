@@ -111,13 +111,16 @@ impl GpuCanvasContext {
     let device_id = crate::device_id(scope, device).ok_or_else(|| {
       OpError::type_("GPUCanvasConfiguration.device is not a GPUDevice")
     })?;
-    let _ = state::handle(device_id)?;
+    let features = state::handle(device_id)?.device.features();
     let format_name = js::get(scope, object, "format")
       .and_then(|value| js::string(scope, value))
       .ok_or_else(|| {
         OpError::type_("GPUCanvasConfiguration.format is required")
       })?;
-    let format = resource::texture_format(&format_name)?;
+    let format = resource::require_texture_format(
+      features,
+      resource::texture_format(&format_name)?,
+    )?;
     let usage = js::field_u32(scope, object, "usage")?
       .unwrap_or(wgpu::TextureUsages::RENDER_ATTACHMENT.bits());
     let alpha = js::get(scope, object, "alphaMode")
@@ -147,7 +150,8 @@ impl GpuCanvasContext {
       for index in 0..array.length() {
         let name = js::string(scope, array.get_index(scope, index).unwrap())
           .unwrap_or_default();
-        view_formats.push(resource::texture_format(&name)?);
+        let format = resource::texture_format(&name)?;
+        view_formats.push(resource::require_texture_format(features, format)?);
       }
     }
     expire_current(self.id);
@@ -711,6 +715,115 @@ pub fn copy_external_image(
     },
   );
   Ok(())
+}
+
+pub fn import_external_texture(
+  scope: &mut v8::PinScope,
+  handle: &Handle,
+  descriptor: v8::Local<v8::Value>,
+) -> Result<resource::GpuExternalTexture, OpError> {
+  if !handle
+    .device
+    .features()
+    .contains(wgpu::Features::EXTERNAL_TEXTURE)
+  {
+    return Err(js::unsupported("externalTexture"));
+  }
+  let object = js::object(scope, descriptor).ok_or_else(|| {
+    OpError::type_("importExternalTexture requires a descriptor")
+  })?;
+  let source = js::get(scope, object, "source")
+    .ok_or_else(|| OpError::type_("The external texture source is required"))?;
+  let color_space = js::get(scope, object, "colorSpace")
+    .and_then(|value| js::string(scope, value))
+    .unwrap_or_else(|| "srgb".to_string());
+  let color_space = match color_space.as_str() {
+    "srgb" => ColorSpace::Srgb,
+    "display-p3" => ColorSpace::DisplayP3,
+    _ => {
+      return Err(OpError::type_("The external texture color space is invalid"));
+    }
+  };
+  let mut raster = match frame_pixels(scope, source) {
+    FramePixels::Ready(raster) => raster,
+    FramePixels::Closed => {
+      return Err(OpError::dom("InvalidStateError", "The frame is closed"));
+    }
+    FramePixels::NotFrame => {
+      return Err(OpError::type_(
+        "importExternalTexture requires a VideoFrame",
+      ));
+    }
+  };
+  convert(&mut raster, color_space);
+  if raster.width == 0 || raster.height == 0 {
+    return Err(OpError::dom("InvalidStateError", "The frame has no pixels"));
+  }
+  let tight = if raster.format == SampleFormat::Unorm8 {
+    raster.bytes.clone()
+  } else {
+    quantize(&raster, 0, 0, raster.width, raster.height)
+  };
+  let row = (raster.width as usize)
+    .checked_mul(4)
+    .ok_or_else(|| OpError::range("The frame is too wide"))?;
+  let (bytes, stride) = pad_rows(&tight, row, raster.height);
+  let label = resource::optional_label(scope, object);
+  let texture = handle.device.create_texture(&wgpu::TextureDescriptor {
+    label: label.as_deref(),
+    size: wgpu::Extent3d {
+      width: raster.width,
+      height: raster.height,
+      depth_or_array_layers: 1,
+    },
+    mip_level_count: 1,
+    sample_count: 1,
+    dimension: wgpu::TextureDimension::D2,
+    format: wgpu::TextureFormat::Rgba8Unorm,
+    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+    view_formats: &[],
+  });
+  handle.queue.write_texture(
+    wgpu::TexelCopyTextureInfo {
+      texture: &texture,
+      mip_level: 0,
+      origin: wgpu::Origin3d::ZERO,
+      aspect: wgpu::TextureAspect::All,
+    },
+    &bytes,
+    wgpu::TexelCopyBufferLayout {
+      offset: 0,
+      bytes_per_row: Some(stride),
+      rows_per_image: Some(raster.height),
+    },
+    wgpu::Extent3d {
+      width: raster.width,
+      height: raster.height,
+      depth_or_array_layers: 1,
+    },
+  );
+  let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+  let external = handle.device.create_external_texture(
+    &wgpu::ExternalTextureDescriptor {
+      label: label.as_deref(),
+      width: raster.width,
+      height: raster.height,
+      format: wgpu::ExternalTextureFormat::Rgba,
+      yuv_conversion_matrix: [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0,
+      ],
+      gamut_conversion_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+      src_transfer_function: Default::default(),
+      dst_transfer_function: Default::default(),
+      sample_transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+      load_transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    },
+    &[&view],
+  );
+  Ok(resource::GpuExternalTexture::new(
+    external, texture, view, label,
+  ))
 }
 
 fn raster_of(

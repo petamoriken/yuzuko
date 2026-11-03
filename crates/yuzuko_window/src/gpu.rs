@@ -123,14 +123,33 @@ pub(crate) fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
   }
 }
 
-/// `timestamp-query` when the adapter has it. Device creation retries
-/// without that feature when the request fails.
+/// `timestamp-query` when the adapter has it.
 fn timestamp_feature(adapter: &wgpu::Adapter) -> wgpu::Features {
   if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
     wgpu::Features::TIMESTAMP_QUERY
   } else {
     wgpu::Features::empty()
   }
+}
+
+/// Optional features the process device requests when the adapter has them.
+/// A failed request retries with `timestamp-query` alone, then with none,
+/// so a rejected feature cannot drop timestamps.
+fn optional_features(adapter: &wgpu::Adapter) -> wgpu::Features {
+  const WANTED: [wgpu::Features; 4] = [
+    wgpu::Features::TIMESTAMP_QUERY,
+    wgpu::Features::DEPTH_CLIP_CONTROL,
+    wgpu::Features::DEPTH32FLOAT_STENCIL8,
+    wgpu::Features::EXTERNAL_TEXTURE,
+  ];
+  let available = adapter.features();
+  let mut features = wgpu::Features::empty();
+  for feature in WANTED {
+    if available.contains(feature) {
+      features |= feature;
+    }
+  }
+  features
 }
 
 fn request_with(
@@ -151,14 +170,22 @@ fn request_with(
 pub(crate) fn request_device(
   adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), String> {
-  let features = timestamp_feature(adapter);
-  match request_with(adapter, features) {
-    Ok(parts) => Ok(parts),
-    Err(_) if !features.is_empty() => {
-      request_with(adapter, wgpu::Features::empty())
+  let wanted = optional_features(adapter);
+  let timestamp = timestamp_feature(adapter);
+  let attempts = [wanted, timestamp, wgpu::Features::empty()];
+  let mut last = String::from("The GPU device could not be created");
+  let mut previous = None;
+  for features in attempts {
+    if previous == Some(features) {
+      continue;
     }
-    Err(error) => Err(error),
+    previous = Some(features);
+    match request_with(adapter, features) {
+      Ok(parts) => return Ok(parts),
+      Err(error) => last = error,
+    }
   }
+  Err(last)
 }
 
 fn create() -> Result<SharedGpu, String> {

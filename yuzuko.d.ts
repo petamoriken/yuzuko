@@ -81,8 +81,8 @@ interface FrameRequestCallback {
   (time: DOMHighResTimeStamp): void;
 }
 type GPUAddressMode = "clamp-to-edge" | "mirror-repeat" | "repeat";
-type GPUBindingResource = GPUSampler | GPUTexture | GPUTextureView | GPUBuffer | GPUBufferBinding;
-type GPUBlendFactor = "constant" | "dst" | "dst-alpha" | "one" | "one-minus-constant" | "one-minus-dst" | "one-minus-dst-alpha" | "one-minus-src" | "one-minus-src-alpha" | "src" | "src-alpha" | "src-alpha-saturated" | "zero";
+type GPUBindingResource = GPUSampler | GPUTexture | GPUTextureView | GPUBuffer | GPUBufferBinding | GPUExternalTexture;
+type GPUBlendFactor = "constant" | "dst" | "dst-alpha" | "one" | "one-minus-constant" | "one-minus-dst" | "one-minus-dst-alpha" | "one-minus-src" | "one-minus-src-alpha" | "one-minus-src1" | "one-minus-src1-alpha" | "src" | "src-alpha" | "src-alpha-saturated" | "src1" | "src1-alpha" | "zero";
 type GPUBlendOperation = "add" | "max" | "min" | "reverse-subtract" | "subtract";
 type GPUBufferBindingType = "read-only-storage" | "storage" | "uniform";
 type GPUBufferUsageFlags = number;
@@ -162,6 +162,16 @@ type GPUPrimitiveTopology = "line-list" | "line-strip" | "point-list" | "triangl
 interface GPUQuerySet extends GPUObjectBase {
   readonly count: GPUSize32Out;
   readonly type: GPUQueryType;
+
+  /**
+   * Marks this set destroyed.
+   *
+   * A later `resolveQuerySet` of this set is a validation error.
+   * `writeTimestamp` stays absent.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQuerySet/destroy)
+   */
+  destroy(): void;
 }
 
 type GPUSize32Out = number;
@@ -9121,17 +9131,24 @@ declare function createImageBitmap(
 /**
  * WebGPU entry point.
  *
- * One process device is shared with Canvas 2D. It enables `timestamp-query`
- * when the adapter supports it. `YUZUKO_SKIP_GPU=1` makes
- * {@link GPU.requestAdapter} resolve `null`. `wgslLanguageFeatures` is empty.
+ * One process device is shared with Canvas 2D. It enables `timestamp-query`,
+ * `depth-clip-control`, and `depth32float-stencil8` when the adapter
+ * supports them, and wgpu external textures when the adapter supports that
+ * feature. `YUZUKO_SKIP_GPU=1` makes {@link GPU.requestAdapter} resolve
+ * `null`. `wgslLanguageFeatures` is empty.
  *
- * Blend state, `unclippedDepth`, alpha to coverage,
- * `depth32float-stencil8`, and `externalTexture` throw `NotSupportedError`.
- * Multisample `count` is 1 or 4, and a color attachment may set
- * `resolveTarget`. Storage texture `access` may be `"read-only"`,
- * `"read-write"`, or `"atomic"`. An access the format does not allow is a
- * validation error. `setViewport` and `setScissorRect` are on the render
- * pass. Debug markers stay absent.
+ * Blend state and alpha to coverage are applied. `unclippedDepth: true`
+ * throws `NotSupportedError` without `depth-clip-control`.
+ * `depth32float-stencil8` throws `NotSupportedError` without that feature.
+ * `externalTexture` and `importExternalTexture` throw `NotSupportedError`
+ * without wgpu external textures. A `src1` blend factor throws
+ * `NotSupportedError` without `dual-source-blending`. Multisample `count`
+ * is 1 or 4, and a color attachment may set `resolveTarget`. Storage texture
+ * `access` may be `"read-only"`, `"read-write"`, or `"atomic"`. An access
+ * the format does not allow is a validation error. `setViewport` and
+ * `setScissorRect` are on the render pass. Debug markers, bundle viewport
+ * and scissor, and `writeTimestamp` stay absent. `GPUQuerySet.destroy`
+ * makes a later `resolveQuerySet` a validation error.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
  *
@@ -9198,10 +9215,10 @@ interface GPUAdapter {
   /**
    * Requests a JavaScript device on the shared wgpu device.
    *
-   * A feature the shared device does not have rejects. `timestamp-query` is
-   * already enabled when the adapter supports it. `requiredLimits` the shared
-   * device cannot satisfy also reject. `destroy` loses that JavaScript device
-   * only.
+   * A feature the shared device does not have rejects. `timestamp-query`,
+   * `depth-clip-control`, and `depth32float-stencil8` are already enabled
+   * when the adapter supports them. `requiredLimits` the shared device
+   * cannot satisfy also reject. `destroy` loses that JavaScript device only.
    *
    * @throws {@link TypeError} When a required feature is not enabled on the
    * shared device, the feature name is invalid, or a required limit is
@@ -9266,9 +9283,12 @@ interface GPUDevice {
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
 
   /**
-   * `sampleCount` is 1 or 4.
+   * `sampleCount` is 1 or 4. `depth32float-stencil8` throws
+   * `NotSupportedError` when that feature is not enabled.
    *
    * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
+   * @throws {@link DOMException} `NotSupportedError` when the format needs a
+   * feature the process device does not have.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createTexture)
    */
@@ -9283,9 +9303,11 @@ interface GPUDevice {
   /**
    * Storage texture `access` is `"write-only"`, `"read-only"`, `"read-write"`,
    * or `"atomic"`. An access the format does not allow is a validation error.
-   * `externalTexture` throws `NotSupportedError`.
+   * `externalTexture` is a layout entry when the process device supports wgpu
+   * external textures.
    *
-   * @throws {@link DOMException} `NotSupportedError` for `externalTexture`.
+   * @throws {@link DOMException} `NotSupportedError` when `externalTexture` is
+   * set and the process device has no wgpu external textures.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout)
    */
@@ -9298,11 +9320,15 @@ interface GPUDevice {
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
 
   /**
-   * A blend state, `unclippedDepth: true`, `alphaToCoverageEnabled: true`,
-   * and `depth32float-stencil8` throw `NotSupportedError`. Multisample
-   * `count` is 1 or 4.
+   * Blend state and `alphaToCoverageEnabled` are applied. `unclippedDepth:
+   * true` throws `NotSupportedError` without `depth-clip-control`.
+   * `depth32float-stencil8` throws `NotSupportedError` without that feature.
+   * A `src1` blend factor throws `NotSupportedError` without
+   * `dual-source-blending`. Multisample `count` is 1 or 4.
    *
-   * @throws {@link DOMException} `NotSupportedError` for those states.
+   * @throws {@link DOMException} `NotSupportedError` for `unclippedDepth`
+   * without `depth-clip-control`, for `depth32float-stencil8` without that
+   * feature, and for a `src1` factor without `dual-source-blending`.
    * @throws {@link TypeError} When the multisample `count` is not 1 or 4.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline)
@@ -9314,8 +9340,11 @@ interface GPUDevice {
 
   /**
    * `sampleCount` is 1 or 4. Viewport and scissor stay absent on the encoder.
+   * `depth32float-stencil8` throws `NotSupportedError` without that feature.
    *
    * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
+   * @throws {@link DOMException} `NotSupportedError` when a format needs a
+   * feature the process device does not have.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderBundleEncoder)
    */
@@ -9342,6 +9371,23 @@ interface GPUDevice {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createQuerySet)
    */
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
+
+  /**
+   * Copies a `VideoFrame` into an RGBA external texture.
+   *
+   * A fragment shader samples it with `textureSampleBaseClampToEdge`.
+   * `colorSpace` is `"srgb"` or `"display-p3"`. A closed frame throws
+   * `InvalidStateError`. There is no `HTMLVideoElement`. Without wgpu
+   * external-texture support this throws `NotSupportedError`.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when the process device
+   * has no wgpu external textures.
+   * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
+   * @throws {@link TypeError} When `source` is not a `VideoFrame`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/importExternalTexture)
+   */
+  importExternalTexture(descriptor: GPUExternalTextureDescriptor): GPUExternalTexture;
 
   /**
    * `filter` is `"validation"`, `"out-of-memory"`, or `"internal"`.
@@ -9654,6 +9700,33 @@ interface GPUBindGroupLayoutEntry {
   sampler?: GPUSamplerBindingLayout;
   texture?: GPUTextureBindingLayout;
   storageTexture?: GPUStorageTextureBindingLayout;
+  externalTexture?: GPUExternalTextureBindingLayout;
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout) */
+interface GPUExternalTextureBindingLayout {}
+
+/**
+ * A `VideoFrame` imported as an external texture.
+ *
+ * The host keeps the sampled plane until this object is collected.
+ *
+ * @throws {@link TypeError} Illegal constructor. Use
+ * {@link GPUDevice.importExternalTexture}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUExternalTexture)
+ */
+interface GPUExternalTexture extends GPUObjectBase {}
+declare var GPUExternalTexture: {
+  prototype: GPUExternalTexture;
+  new(): GPUExternalTexture;
+};
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/importExternalTexture) */
+interface GPUExternalTextureDescriptor {
+  label?: string;
+  source: VideoFrame;
+  colorSpace?: PredefinedColorSpace;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBindGroupLayout) */
@@ -9831,6 +9904,16 @@ interface GPUPrimitiveState {
   stripIndexFormat?: GPUIndexFormat;
   frontFace?: GPUFrontFace;
   cullMode?: GPUCullMode;
+  /**
+   * Requires `depth-clip-control` when true.
+   *
+   * @throws {@link DOMException} `NotSupportedError` from
+   * {@link GPUDevice.createRenderPipeline} when this is true and the process
+   * device does not have `depth-clip-control`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPrimitiveState/unclippedDepth)
+   */
+  unclippedDepth?: boolean;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline) */
@@ -10094,6 +10177,11 @@ interface GPUCanvasContext {
   readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
 
   /**
+   * `depth32float-stencil8` throws `NotSupportedError` without that feature.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when a format needs a
+   * feature the process device does not have.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/configure)
    */
   configure(configuration: GPUCanvasConfiguration): void;

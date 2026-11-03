@@ -46,16 +46,24 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
   assert(typeof adapter.features.has === "function", "features");
   assert(adapter.limits.maxTextureDimension2D >= 1, "limits");
   assert(adapter.isFallbackAdapter === false, "fallback flag");
-  let rejected = false;
-  try {
-    await adapter.requestDevice({
+  if (adapter.features.has("depth-clip-control")) {
+    const requested = await adapter.requestDevice({
       requiredFeatures: ["depth-clip-control"],
     });
-  } catch (error) {
-    rejected = error instanceof TypeError;
+    assert(requested.features.has("depth-clip-control"), "depth clip");
+    requested.destroy();
+  } else {
+    let rejected = false;
+    try {
+      await adapter.requestDevice({
+        requiredFeatures: ["depth-clip-control"],
+      });
+    } catch (error) {
+      rejected = error instanceof TypeError;
+    }
+    assert(rejected, "required feature");
   }
-  assert(rejected, "required feature");
-  rejected = false;
+  let rejected = false;
   try {
     await adapter.requestDevice({ requiredFeatures: ["not-a-feature"] });
   } catch (error) {
@@ -729,27 +737,22 @@ Yuzuko.test(
         fragment: {
           module,
           entryPoint: "fs",
-          targets: [{ format: "rgba8unorm" }],
+          targets: [{
+            format: "rgba8unorm",
+            blend: {
+              color: { srcFactor: "src1" },
+              alpha: {},
+            },
+          }],
         },
-        multisample: { alphaToCoverageEnabled: true },
       });
     } catch (error) {
       unsupported = error.name === "NotSupportedError";
     }
-    assert(unsupported, "alpha to coverage");
-    unsupported = false;
-    try {
-      device.createBindGroupLayout({
-        entries: [{
-          binding: 0,
-          visibility: GPUShaderStage.FRAGMENT,
-          externalTexture: {},
-        }],
-      });
-    } catch (error) {
-      unsupported = error.name === "NotSupportedError";
-    }
-    assert(unsupported, "external texture");
+    assert(
+      !device.features.has("dual-source-blending") && unsupported,
+      "dual source blending",
+    );
     let invalidAccess = false;
     try {
       device.createBindGroupLayout({
@@ -814,5 +817,421 @@ Yuzuko.test("GPU object labels round-trip", async () => {
   }
   assert(threw, "canvas label assignment");
   assert(context.label === "", "canvas label stays empty");
+  device.destroy();
+});
+
+const alphaBlend = {
+  color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
+  alpha: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
+};
+
+function colorTexture(device) {
+  return device.createTexture({
+    size: [16, 16],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+}
+
+async function overdraw(device, blend) {
+  const color = colorTexture(device);
+  const red = device.createShaderModule({
+    code: depthShader("0.0", "1.0, 0.0, 0.0, 1.0"),
+  });
+  const green = device.createShaderModule({
+    code: depthShader("0.0", "0.0, 1.0, 0.0, 0.5"),
+  });
+  function pipeline(module) {
+    const target = { format: "rgba8unorm" };
+    if (blend) {
+      target.blend = blend;
+    }
+    return device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: { module, entryPoint: "fs", targets: [target] },
+    });
+  }
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.setPipeline(pipeline(red));
+  pass.draw(3);
+  pass.setPipeline(pipeline(green));
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  return channels(await readPixel(device, color, 8, 8), "rgba8unorm");
+}
+
+Yuzuko.test("blend changes a read-back pixel", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const plain = await overdraw(device, null);
+  const mixed = await overdraw(device, alphaBlend);
+  assert(plain.g > 200 && plain.r < 40, `replace ${plain.r},${plain.g}`);
+  assert(mixed.r > 80 && mixed.g > 80, `blend ${mixed.r},${mixed.g}`);
+  assert(Math.abs(mixed.r - plain.r) > 40, "blend differs");
+  device.destroy();
+});
+
+async function coveredPixel(device, alpha) {
+  const multisample = device.createTexture({
+    size: [8, 8],
+    format: "rgba8unorm",
+    sampleCount: 4,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const resolved = device.createTexture({
+    size: [8, 8],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const module = device.createShaderModule({
+    code: depthShader("0.0", `1.0, 0.0, 0.0, ${alpha}`),
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    multisample: { count: 4, alphaToCoverageEnabled: true },
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: multisample.createView(),
+      resolveTarget: resolved.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "discard",
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  return channels(await readPixel(device, resolved, 4, 4), "rgba8unorm");
+}
+
+Yuzuko.test("alpha to coverage resolves covered samples", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const covered = await coveredPixel(device, "1.0");
+  const missed = await coveredPixel(device, "0.0");
+  assert(covered.r > 200, `coverage ${covered.r}`);
+  assert(missed.r < 40, `no coverage ${missed.r}`);
+  device.destroy();
+});
+
+Yuzuko.test("unclipped depth keeps a fragment outside the clip volume", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const module = device.createShaderModule({
+    code: depthShader("2.0", "1.0, 0.0, 0.0, 1.0"),
+  });
+  device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+    primitive: { unclippedDepth: false },
+  });
+  if (!device.features.has("depth-clip-control")) {
+    let threw = false;
+    try {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: { module, entryPoint: "vs" },
+        fragment: {
+          module,
+          entryPoint: "fs",
+          targets: [{ format: "rgba8unorm" }],
+        },
+        primitive: { unclippedDepth: true },
+      });
+    } catch (error) {
+      threw = error.name === "NotSupportedError";
+    }
+    assert(threw, "unclippedDepth");
+    device.destroy();
+    return;
+  }
+  function pipeline(unclipped) {
+    return device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: {
+        module,
+        entryPoint: "fs",
+        targets: [{ format: "rgba8unorm" }],
+      },
+      primitive: { unclippedDepth: unclipped },
+    });
+  }
+  async function pixel(unclipped) {
+    const color = colorTexture(device);
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: color.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+    });
+    pass.setPipeline(pipeline(unclipped));
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    return channels(await readPixel(device, color, 8, 8), "rgba8unorm");
+  }
+  const clipped = await pixel(false);
+  const kept = await pixel(true);
+  assert(clipped.r < 40, `clipped ${clipped.r}`);
+  assert(kept.r > 200, `unclipped ${kept.r}`);
+  device.destroy();
+});
+
+Yuzuko.test("depth32float-stencil8 rejects a farther fragment", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  if (!device.features.has("depth32float-stencil8")) {
+    let threw = false;
+    try {
+      device.createTexture({
+        size: [4, 4],
+        format: "depth32float-stencil8",
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+    } catch (error) {
+      threw = error.name === "NotSupportedError";
+    }
+    assert(threw, "depth32float-stencil8");
+    device.destroy();
+    return;
+  }
+  const color = colorTexture(device);
+  const depth = device.createTexture({
+    size: [16, 16],
+    format: "depth32float-stencil8",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  function pipeline(z, pixel) {
+    const module = device.createShaderModule({ code: depthShader(z, pixel) });
+    return device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: {
+        module,
+        entryPoint: "fs",
+        targets: [{ format: "rgba8unorm" }],
+      },
+      depthStencil: {
+        format: "depth32float-stencil8",
+        depthWriteEnabled: true,
+        depthCompare: "less",
+      },
+    });
+  }
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+    depthStencilAttachment: {
+      view: depth.createView(),
+      depthClearValue: 1,
+      depthLoadOp: "clear",
+      depthStoreOp: "store",
+      stencilLoadOp: "clear",
+      stencilStoreOp: "store",
+    },
+  });
+  pass.setPipeline(pipeline("0.2", "0.0, 1.0, 0.0, 1.0"));
+  pass.draw(3);
+  pass.setPipeline(pipeline("0.8", "1.0, 0.0, 0.0, 1.0"));
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  const pixel = channels(await readPixel(device, color, 8, 8), "rgba8unorm");
+  assert(pixel.g > 200 && pixel.r < 40, `depth32 ${pixel.r},${pixel.g}`);
+  device.destroy();
+});
+
+Yuzuko.test("destroying a query set makes resolve a validation error", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const queries = device.createQuerySet({ type: "occlusion", count: 1 });
+  queries.destroy();
+  queries.destroy();
+  const resolved = device.createBuffer({
+    size: 8,
+    usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+  });
+  device.pushErrorScope("validation");
+  const encoder = device.createCommandEncoder();
+  encoder.resolveQuerySet(queries, 0, 1, resolved, 0);
+  device.queue.submit([encoder.finish()]);
+  const error = await device.popErrorScope();
+  assert(error instanceof GPUValidationError, "destroyed query");
+  device.destroy();
+});
+
+const externalShader = `
+@group(0) @binding(0) var tex: texture_external;
+@group(0) @binding(1) var samp: sampler;
+
+@vertex
+fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+  const positions = array<vec2f, 3>(
+    vec2f(-1.0, -1.0),
+    vec2f(3.0, -1.0),
+    vec2f(-1.0, 3.0),
+  );
+  return vec4f(positions[vertexIndex], 0.0, 1.0);
+}
+
+@fragment
+fn fs() -> @location(0) vec4f {
+  return textureSampleBaseClampToEdge(tex, samp, vec2f(0.5, 0.5));
+}
+`;
+
+Yuzuko.test("an imported video frame samples as an external texture", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const frame = new VideoFrame(new Uint8Array([255, 0, 0, 255]), {
+    format: "RGBA",
+    codedWidth: 1,
+    codedHeight: 1,
+    timestamp: 0,
+  });
+  let external = null;
+  try {
+    external = device.importExternalTexture({ source: frame });
+  } catch (error) {
+    assert(error.name === "NotSupportedError", `external import ${error.name}`);
+    let layoutThrew = false;
+    try {
+      device.createBindGroupLayout({
+        entries: [{
+          binding: 0,
+          visibility: GPUShaderStage.FRAGMENT,
+          externalTexture: {},
+        }],
+      });
+    } catch (layoutError) {
+      layoutThrew = layoutError.name === "NotSupportedError";
+    }
+    assert(layoutThrew, "external layout");
+    frame.close();
+    device.destroy();
+    return;
+  }
+  const module = device.createShaderModule({ code: externalShader });
+  const layout = device.createBindGroupLayout({
+    entries: [
+      {
+        binding: 0,
+        visibility: GPUShaderStage.FRAGMENT,
+        externalTexture: {},
+      },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.FRAGMENT,
+        sampler: { type: "filtering" },
+      },
+    ],
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  const sampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+  });
+  const group = device.createBindGroup({
+    layout,
+    entries: [
+      { binding: 0, resource: external },
+      { binding: 1, resource: sampler },
+    ],
+  });
+  const color = device.createTexture({
+    size: [4, 4],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, group);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  const pixel = channels(await readPixel(device, color, 1, 1), "rgba8unorm");
+  assert(pixel.r > 200 && pixel.g < 40 && pixel.b < 40, `frame ${pixel.r}`);
+  frame.close();
+  let closed = false;
+  try {
+    device.importExternalTexture({ source: frame });
+  } catch (error) {
+    closed = error.name === "InvalidStateError";
+  }
+  assert(closed, "closed frame");
+  let typeError = false;
+  try {
+    device.importExternalTexture({ source: {} });
+  } catch (error) {
+    typeError = error instanceof TypeError;
+  }
+  assert(typeError, "external source");
   device.destroy();
 });

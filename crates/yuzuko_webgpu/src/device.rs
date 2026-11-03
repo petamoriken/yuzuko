@@ -317,6 +317,18 @@ impl GpuDevice {
     resource::create_query_set(scope, &self.require()?, descriptor)
   }
 
+  fn import_external_texture(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<New<resource::GpuExternalTexture>, OpError> {
+    Ok(New(crate::canvas::import_external_texture(
+      scope,
+      &self.require()?,
+      descriptor,
+    )?))
+  }
+
   fn push_error_scope(&self, filter: String) -> Result<(), OpError> {
     let filter = match filter.as_str() {
       "validation" => wgpu::ErrorFilter::Validation,
@@ -518,6 +530,7 @@ pub fn install(scope: &mut v8::PinScope) {
   resource::GpuRenderPipeline::install(scope);
   resource::GpuComputePipeline::install(scope);
   resource::GpuQuerySet::install(scope);
+  resource::GpuExternalTexture::install(scope);
   GpuCommandEncoder::install(scope);
   encode::GpuCommandBuffer::install(scope);
   encode::GpuRenderPass::install(scope);
@@ -781,6 +794,11 @@ fn reject_features(
     let feature = name
       .parse::<wgpu::Features>()
       .map_err(|_| OpError::type_("The feature name is invalid"))?;
+    // `external-texture` parses as a native wgpu feature. It is not a
+    // WebGPU feature name, so a script cannot require it.
+    if !wgpu::Features::all_webgpu_mask().contains(feature) {
+      return Err(OpError::type_("The feature name is invalid"));
+    }
     if !enabled.contains(feature) {
       return Err(OpError::type_(
         "Required features are not enabled on the shared device",
