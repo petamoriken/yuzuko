@@ -180,6 +180,7 @@ function decodeVideo(
   decoder.decode(
     new EncodedVideoChunk({ type: "key", timestamp: 0, data }),
   );
+  assert(frames.length === 0, "output during decode");
   return decoder.flush().then(() => {
     decoder.close();
     return frames;
@@ -240,6 +241,7 @@ async function decodeAudio(
     );
     timestamp += 20_000;
   }
+  assert(parts.length === 0, "output during decode");
   await decoder.flush();
   assert(failed === "", failed);
   decoder.close();
@@ -302,6 +304,7 @@ async function takeAudioData(): Promise<AudioData> {
     );
     timestamp += 20_000;
   }
+  assert(parts.length === 0, "output during decode");
   await decoder.flush();
   assert(failed === "", failed);
   decoder.close();
@@ -448,6 +451,83 @@ Yuzuko.test("a rejected avc1 config yields no VideoFrame", async () => {
 });
 
 Yuzuko.test({
+  name: "VideoDecoder output can be assigned after decode returns",
+  ignore: !hardwareAvc,
+  async fn() {
+    const received: VideoFrame[] = [];
+    const callbacks: { output: ((frame: VideoFrame) => void) | null } = {
+      output: null,
+    };
+    const decoder = new VideoDecoder({
+      output: (frame) => {
+        callbacks.output?.(frame);
+      },
+      error: () => {},
+    });
+    decoder.configure({
+      codec: "avc1.64000B",
+      description: await bytes("avc1.avcC"),
+      codedWidth: 64,
+      codedHeight: 64,
+    });
+    decoder.decode(
+      new EncodedVideoChunk({
+        type: "key",
+        timestamp: 5,
+        duration: 8,
+        data: await bytes("avc1.idr"),
+      }),
+    );
+    assert(received.length === 0, "output during decode");
+    callbacks.output = (frame) => {
+      received.push(frame);
+    };
+    await decoder.flush();
+    assert(received.length === 1, `frames ${received.length}`);
+    assert(received[0].timestamp === 5, `timestamp ${received[0].timestamp}`);
+    assert(received[0].duration === 8, `duration ${received[0].duration}`);
+    received[0].close();
+    decoder.close();
+  },
+});
+
+Yuzuko.test({
+  name: "VideoDecoder error runs after decode returns",
+  ignore: !hardwareAvc,
+  async fn() {
+    let errors = 0;
+    let name = "";
+    const decoder = new VideoDecoder({
+      output: (frame) => {
+        frame.close();
+      },
+      error: (error) => {
+        errors += 1;
+        name = error instanceof DOMException ? error.name : "";
+      },
+    });
+    decoder.configure({
+      codec: "avc1.64000B",
+      description: await bytes("avc1.avcC"),
+      codedWidth: 64,
+      codedHeight: 64,
+    });
+    decoder.decode(
+      new EncodedVideoChunk({
+        type: "key",
+        timestamp: 0,
+        data: new Uint8Array(),
+      }),
+    );
+    assert(errors === 0, "error during decode");
+    assert(decoder.state === "closed", decoder.state);
+    await Promise.resolve();
+    assert(errors === 1, `errors ${errors}`);
+    assert(name === "EncodingError", name);
+  },
+});
+
+Yuzuko.test({
   name: "an H.264 frame matches the golden and then closes",
   ignore: !hardwareAvc,
   async fn() {
@@ -520,6 +600,36 @@ Yuzuko.test({
     await assertThrows(() => later.drawImage(frame, 0, 0), "InvalidStateError");
     device.destroy();
   },
+});
+
+Yuzuko.test("AudioDecoder error runs after decode returns", async () => {
+  let errors = 0;
+  let name = "";
+  const decoder = new AudioDecoder({
+    output: () => {},
+    error: (error) => {
+      errors += 1;
+      name = error instanceof DOMException ? error.name : "";
+    },
+  });
+  decoder.configure({
+    codec: "mp4a.40.2",
+    description: await bytes("aac.asc"),
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  decoder.decode(
+    new EncodedAudioChunk({
+      type: "key",
+      timestamp: 0,
+      data: new Uint8Array(),
+    }),
+  );
+  assert(errors === 0, "error during decode");
+  assert(decoder.state === "closed", decoder.state);
+  await Promise.resolve();
+  assert(errors === 1, `errors ${errors}`);
+  assert(name === "EncodingError", name);
 });
 
 Yuzuko.test("AAC samples fill an AudioBuffer", async () => {

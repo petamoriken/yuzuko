@@ -60,10 +60,6 @@ impl VideoFrame {
     Self::from_data(frame_from_raster(&raster), 0.0, None)
   }
 
-  pub(crate) fn from_stored(raster: Raster, timestamp: f64) -> Self {
-    Self::from_data(frame_from_raster(&raster), timestamp, None)
-  }
-
   pub(crate) fn from_data(
     data: FrameData,
     timestamp: f64,
@@ -589,10 +585,11 @@ impl VideoDecoder {
   fn decode(
     &self,
     scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
     chunk: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
     self.ensure_configured()?;
-    let (bytes, timestamp) = video_chunk(scope, chunk)?;
+    let (bytes, timestamp, duration) = video_chunk(scope, chunk)?;
     let decoded = {
       let mut guard = self.backend.borrow_mut();
       let Some(backend) = guard.as_mut() else {
@@ -603,7 +600,7 @@ impl VideoDecoder {
     match decoded {
       Ok(Ok(frames)) => {
         for raster in frames {
-          self.emit_frame(scope, raster, timestamp)?;
+          self.emit_frame(scope, this, raster, timestamp, duration)?;
         }
         Ok(())
       }
@@ -618,7 +615,11 @@ impl VideoDecoder {
     }
   }
 
-  fn flush(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+  fn flush(
+    &self,
+    scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
+  ) -> Result<Js, OpError> {
     self.ensure_configured()?;
     let frames = {
       let mut guard = self.backend.borrow_mut();
@@ -628,7 +629,7 @@ impl VideoDecoder {
       backend.flush().map_err(config_error)?
     };
     for raster in frames {
-      self.emit_frame(scope, raster, 0.0)?;
+      self.emit_frame(scope, this, raster, 0.0, None)?;
     }
     resolved(scope)
   }
@@ -678,36 +679,35 @@ impl VideoDecoder {
   fn emit_frame(
     &self,
     scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
     raster: Raster,
     timestamp: f64,
+    duration: Option<f64>,
   ) -> Result<(), OpError> {
     let Some(function) = callback(scope, &self.output) else {
       return Ok(());
     };
     let _ = VideoFrame::template(scope);
-    let frame =
-      unsafe { wrap_instance(scope, VideoFrame::from_stored(raster, timestamp)) };
-    let function = v8::Global::new(scope, function);
-    let frame = v8::Global::new(scope, frame);
-    let global = yuzuko_core::global(scope);
-    let global = v8::Global::new(scope, global);
-    let thrown = {
-      v8::tc_scope!(let scope, scope);
-      let function = v8::Local::new(scope, function);
-      let frame = v8::Local::new(scope, frame);
-      let global = v8::Local::new(scope, global);
-      if function
-        .call(scope, global.into(), &[frame.into()])
-        .is_some()
-      {
-        None
-      } else {
-        scope.exception().map(|value| v8::Global::new(scope, value))
-      }
+    let frame = unsafe {
+      wrap_instance(
+        scope,
+        VideoFrame::from_data(
+          frame_from_raster(&raster),
+          timestamp,
+          duration,
+        ),
+      )
     };
-    if let Some(thrown) = thrown {
-      self.fail_value(scope, thrown);
-    }
+    let frame: v8::Local<v8::Value> = frame.into();
+    enqueue_delivery(
+      scope,
+      Delivery::Output {
+        kind: DecoderKind::Video,
+        decoder: v8::Global::new(scope, this),
+        callback: v8::Global::new(scope, function),
+        argument: v8::Global::new(scope, frame),
+      },
+    );
     Ok(())
   }
 
@@ -722,17 +722,9 @@ impl VideoDecoder {
 
   fn fail_value(&self, scope: &mut v8::PinScope, error: v8::Global<v8::Value>) {
     self.shutdown();
-    let error_local = v8::Local::new(scope, &error);
-    if let Some(function) = callback(scope, &self.error) {
-      let global = yuzuko_core::global(scope);
-      v8::tc_scope!(let scope, scope);
-      let function = v8::Local::new(scope, function);
-      let error_local = v8::Local::new(scope, error_local);
-      let global = v8::Local::new(scope, global);
-      let _ = function.call(scope, global.into(), &[error_local]);
-    }
-    let error_local = v8::Local::new(scope, error);
-    yuzuko_dom::report_error(scope, error_local);
+    let callback =
+      callback(scope, &self.error).map(|function| v8::Global::new(scope, function));
+    enqueue_delivery(scope, Delivery::Error { callback, error });
   }
 }
 
@@ -1069,6 +1061,7 @@ impl AudioDecoder {
   fn decode(
     &self,
     scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
     chunk: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
     self.ensure_configured()?;
@@ -1082,7 +1075,7 @@ impl AudioDecoder {
     };
     match decoded {
       Ok(Ok(Some(pcm))) => {
-        self.emit_audio(scope, pcm.channels, pcm.rate, timestamp)
+        self.emit_audio(scope, this, pcm.channels, pcm.rate, timestamp)
       }
       Ok(Ok(None)) => Ok(()),
       Ok(Err(DecodeError::Panic)) | Err(_) => {
@@ -1146,6 +1139,7 @@ impl AudioDecoder {
   fn emit_audio(
     &self,
     scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
     channels: Vec<Vec<f32>>,
     rate: f64,
     timestamp: f64,
@@ -1157,27 +1151,16 @@ impl AudioDecoder {
     let data = unsafe {
       wrap_instance(scope, AudioData::from_stored(channels, rate, timestamp))
     };
-    let function = v8::Global::new(scope, function);
-    let data = v8::Global::new(scope, data);
-    let global = yuzuko_core::global(scope);
-    let global = v8::Global::new(scope, global);
-    let thrown = {
-      v8::tc_scope!(let scope, scope);
-      let function = v8::Local::new(scope, function);
-      let data = v8::Local::new(scope, data);
-      let global = v8::Local::new(scope, global);
-      if function
-        .call(scope, global.into(), &[data.into()])
-        .is_some()
-      {
-        None
-      } else {
-        scope.exception().map(|value| v8::Global::new(scope, value))
-      }
-    };
-    if let Some(thrown) = thrown {
-      self.fail_value(scope, thrown);
-    }
+    let data: v8::Local<v8::Value> = data.into();
+    enqueue_delivery(
+      scope,
+      Delivery::Output {
+        kind: DecoderKind::Audio,
+        decoder: v8::Global::new(scope, this),
+        callback: v8::Global::new(scope, function),
+        argument: v8::Global::new(scope, data),
+      },
+    );
     Ok(())
   }
 
@@ -1192,17 +1175,9 @@ impl AudioDecoder {
 
   fn fail_value(&self, scope: &mut v8::PinScope, error: v8::Global<v8::Value>) {
     self.shutdown();
-    let error_local = v8::Local::new(scope, &error);
-    if let Some(function) = callback(scope, &self.error) {
-      let global = yuzuko_core::global(scope);
-      v8::tc_scope!(let scope, scope);
-      let function = v8::Local::new(scope, function);
-      let error_local = v8::Local::new(scope, error_local);
-      let global = v8::Local::new(scope, global);
-      let _ = function.call(scope, global.into(), &[error_local]);
-    }
-    let error_local = v8::Local::new(scope, error);
-    yuzuko_dom::report_error(scope, error_local);
+    let callback =
+      callback(scope, &self.error).map(|function| v8::Global::new(scope, function));
+    enqueue_delivery(scope, Delivery::Error { callback, error });
   }
 }
 
@@ -1321,7 +1296,7 @@ fn audio_codec(codec: &str) -> Option<AudioCodec> {
 fn video_chunk(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(Vec<u8>, f64), OpError> {
+) -> Result<(Vec<u8>, f64, Option<f64>), OpError> {
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("The chunk is not an EncodedVideoChunk"))?;
   let Some(host) = (unsafe { host_ref::<EncodedVideoChunk>(scope, object) })
@@ -1329,7 +1304,11 @@ fn video_chunk(
     return Err(OpError::type_("The chunk is not an EncodedVideoChunk"));
   };
   let chunk = host.get();
-  Ok((chunk.data.clone(), chunk.timestamp as f64))
+  Ok((
+    chunk.data.clone(),
+    chunk.timestamp as f64,
+    chunk.duration,
+  ))
 }
 
 fn audio_chunk(
@@ -1738,6 +1717,124 @@ fn set_value(
     return;
   };
   object.set(scope, key.into(), value);
+}
+
+enum DecoderKind {
+  Video,
+  Audio,
+}
+
+enum Delivery {
+  Output {
+    kind: DecoderKind,
+    decoder: v8::Global<v8::Object>,
+    callback: v8::Global<v8::Function>,
+    argument: v8::Global<v8::Value>,
+  },
+  Error {
+    callback: Option<v8::Global<v8::Function>>,
+    error: v8::Global<v8::Value>,
+  },
+}
+
+thread_local! {
+  static DELIVERIES: RefCell<Vec<Delivery>> = const { RefCell::new(Vec::new()) };
+}
+
+/// `output` and `error` run after `decode` returns, in the order they were
+/// queued. A `flush` reaction queued after that call therefore sees them.
+fn enqueue_delivery(scope: &mut v8::PinScope, job: Delivery) {
+  let Some(function) = v8::Function::new(scope, deliver_decoder) else {
+    return;
+  };
+  DELIVERIES.with(|jobs| jobs.borrow_mut().push(job));
+  scope.enqueue_microtask(function);
+}
+
+fn deliver_decoder(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  let Some(job) = DELIVERIES.with(|jobs| {
+    let mut jobs = jobs.borrow_mut();
+    if jobs.is_empty() {
+      None
+    } else {
+      Some(jobs.remove(0))
+    }
+  }) else {
+    return;
+  };
+  match job {
+    Delivery::Output {
+      kind,
+      decoder,
+      callback,
+      argument,
+    } => {
+      if let Some(thrown) = call_decoder(scope, callback, argument) {
+        fail_thrown(scope, kind, &decoder, thrown);
+      }
+    }
+    Delivery::Error { callback, error } => match callback {
+      Some(callback) => {
+        if let Some(thrown) = call_decoder(scope, callback, error) {
+          let thrown = v8::Local::new(scope, &thrown);
+          yuzuko_dom::report_error(scope, thrown);
+        }
+      }
+      None => {
+        let error = v8::Local::new(scope, &error);
+        yuzuko_dom::report_error(scope, error);
+      }
+    },
+  }
+}
+
+fn call_decoder(
+  scope: &mut v8::PinScope,
+  function: v8::Global<v8::Function>,
+  argument: v8::Global<v8::Value>,
+) -> Option<v8::Global<v8::Value>> {
+  let receiver = yuzuko_core::global(scope);
+  v8::tc_scope!(let scope, scope);
+  let function = v8::Local::new(scope, &function);
+  let argument = v8::Local::new(scope, &argument);
+  let receiver = v8::Local::new(scope, receiver);
+  if function
+    .call(scope, receiver.into(), &[argument.into()])
+    .is_some()
+  {
+    None
+  } else {
+    scope.exception().map(|value| v8::Global::new(scope, value))
+  }
+}
+
+fn fail_thrown(
+  scope: &mut v8::PinScope,
+  kind: DecoderKind,
+  decoder: &v8::Global<v8::Object>,
+  thrown: v8::Global<v8::Value>,
+) {
+  let object = v8::Local::new(scope, decoder);
+  match kind {
+    DecoderKind::Video => {
+      let Some(host) = (unsafe { host_ref::<VideoDecoder>(scope, object) })
+      else {
+        return;
+      };
+      host.get().fail_value(scope, thrown);
+    }
+    DecoderKind::Audio => {
+      let Some(host) = (unsafe { host_ref::<AudioDecoder>(scope, object) })
+      else {
+        return;
+      };
+      host.get().fail_value(scope, thrown);
+    }
+  }
 }
 
 fn resolved(scope: &mut v8::PinScope) -> Result<Js, OpError> {

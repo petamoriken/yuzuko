@@ -11703,11 +11703,26 @@ interface VideoDecoder extends EventTarget {
   configure(config: VideoDecoderConfig): void;
 
   /**
+   * Returns before `output` or `error` runs. Those callbacks are microtasks.
+   * A sample the decoder rejects closes the decoder and reports
+   * `EncodingError` to `error`. This method does not throw `DataError`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
+   * configured.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decode)
    */
   decode(chunk: EncodedVideoChunk): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/flush) */
+  /**
+   * Resolves without waiting for another hardware picture. Frames `decode`
+   * already produced are delivered before this promise settles.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
+   * configured.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/flush)
+   */
   flush(): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/reset) */
@@ -11941,10 +11956,27 @@ interface AudioDecoder extends EventTarget {
    */
   configure(config: AudioDecoderConfig): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decode) */
+  /**
+   * Returns before `output` or `error` runs. Those callbacks are microtasks.
+   * A packet the decoder rejects closes the decoder and reports
+   * `EncodingError` to `error`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
+   * configured.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decode)
+   */
   decode(chunk: EncodedAudioChunk): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/flush) */
+  /**
+   * Resolves without waiting for more packets. Samples `decode` already
+   * produced are delivered before this promise settles.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
+   * configured.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/flush)
+   */
   flush(): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/reset) */

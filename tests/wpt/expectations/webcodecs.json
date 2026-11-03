@@ -444,7 +444,30 @@
       "Test that isConfigSupported() with orientation"
     ]
   },
-  "webcodecs/videoDecoder-codec-specific.https.any.js": false,
+  "webcodecs/videoDecoder-codec-specific.https.any.js": {
+    "expectedFailures": [
+      "Close while decoding corrupt frame",
+      "Decode a key frame",
+      "Decode a key frame marked as delta fails",
+      "Decode a non key frame first fails",
+      "Decode corrupt frame",
+      "Decode empty frame",
+      "Test closed VideoDecoder operations",
+      "Test configure()",
+      "Test configure, reset, configure does not stall",
+      "Test decoding a corrupt frame after reset in a flush callback",
+      "Test decoding a with negative timestamp",
+      "Test decoding after flush",
+      "Test decoding chunks with duplicate timestamps preserves durations",
+      "Test low-latency decoding",
+      "Test new flush after reset in a flush callback",
+      "Test reset during flush",
+      "Test that isConfigSupported() returns a parsed configuration",
+      "Test unconfigured VideoDecoder operations",
+      "Verify reset() suppresses outputs",
+      "VideoDecoder decodeQueueSize test"
+    ]
+  },
   "webcodecs/videoDecoder-h264-sei.https.any.js": {
     "expectedFailures": [
       "H.264 SEI recovery point frames are treated as keyframes."
