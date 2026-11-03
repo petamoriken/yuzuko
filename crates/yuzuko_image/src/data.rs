@@ -141,7 +141,7 @@ impl ImageData {
   }
 }
 
-#[op]
+#[op(inspect = ["data", "width", "height", "pixelFormat", "colorSpace"])]
 impl ImageData {
   #[constructor]
   fn new(

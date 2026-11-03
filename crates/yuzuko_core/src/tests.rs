@@ -280,3 +280,631 @@ fn op_subclass_reuses_the_base_methods() {
   .expect("subclass");
   assert_eq!(logs, vec!["ok"]);
 }
+
+fn logs_of(source: &str) -> Vec<String> {
+  run_scripts(&[source]).unwrap_or_else(|error| {
+    panic!("{}\n{source}", error.message);
+  })
+}
+
+fn assert_logs(source: &str, expected: &[&str]) {
+  let logs = logs_of(source);
+  let mut mismatches = Vec::new();
+  let len = logs.len().max(expected.len());
+  for index in 0..len {
+    let actual = logs.get(index).map(String::as_str).unwrap_or("<missing>");
+    let want = expected.get(index).copied().unwrap_or("<missing>");
+    if actual != want {
+      mismatches.push(format!(
+        "#{index}\n  actual: {actual:?}\n  expect: {want:?}"
+      ));
+    }
+  }
+  assert!(
+    mismatches.is_empty(),
+    "{}\n--- logs ---\n{}",
+    mismatches.join("\n"),
+    logs
+      .iter()
+      .enumerate()
+      .map(|(index, line)| format!("{index}: {line}"))
+      .collect::<Vec<_>>()
+      .join("\n")
+  );
+}
+
+#[test]
+fn console_prints_values() {
+  assert_logs(
+    r#"
+    console.log();
+    console.log(undefined);
+    console.log(null);
+    console.log(-0);
+    console.log(true, false);
+    console.log(1n);
+    console.log([1], { b: 2 });
+    console.log({ a: 1 });
+    console.log({});
+    class Empty {}
+    console.log(new Empty());
+    class Foo { a = 1 }
+    console.log(new Foo());
+    class Bar { n = 2 }
+    console.log(new Bar());
+    class MyArray extends Array {}
+    console.log(new MyArray(1, 2));
+    class MyMap extends Map {}
+    console.log(new MyMap([["k", 1]]));
+    class Box { [Symbol.iterator]() {} a = 1 }
+    console.log(new Box());
+    let calls = 0;
+    const hidden = { a: 1 };
+    Object.defineProperty(hidden, Symbol.iterator, { value() {} });
+    for (const name of [
+      "Deno.customInspect",
+      "nodejs.util.inspect.custom",
+    ]) {
+      Object.defineProperty(hidden, Symbol.for(name), {
+        value() { calls++; return "hook"; },
+      });
+    }
+    console.log(hidden);
+    console.log(calls);
+    console.log({ [Symbol("a b")]: 1, [Symbol()]: 2 });
+    console.log({ [Symbol("a-b")]: 1, [Symbol("class")]: 2 });
+    console.log(Symbol("a b"));
+    console.log(Symbol.iterator);
+    console.log(Symbol());
+    const tagged = { a: 1 };
+    Object.defineProperty(tagged, Symbol.toStringTag, {
+      get() { throw new Error("tag"); },
+    });
+    console.log(tagged);
+    let gets = 0;
+    console.log({ get x() { gets++; return 1; } });
+    console.log(gets);
+    let both = 0;
+    console.log({
+      get y() { both++; return 1; },
+      set y(_value) { both++; },
+    });
+    console.log(both);
+    let sets = 0;
+    console.log({ set z(_value) { sets++; } });
+    console.log(sets);
+    const parent = { inherited: 1, own: 1 };
+    const child = Object.create(parent);
+    child.own = 2;
+    console.log(child);
+    console.log(Object.create({ toString() { return "hello"; } }));
+    const cycle = { a: 1 };
+    cycle.self = cycle;
+    console.log(cycle);
+    const cycleArray = [1];
+    cycleArray.push(cycleArray);
+    console.log(cycleArray);
+    const cycleMap = new Map();
+    cycleMap.set("k", cycleMap);
+    console.log(cycleMap);
+    console.log(new Proxy({ a: 1 }, {}));
+    console.log(new Proxy(new Proxy([1, 2], {}), {}));
+    console.log(Object.create(null));
+    const nullNum = Object.create(null);
+    nullNum.n = 1;
+    console.log(nullNum);
+    const widget = Object.create(null);
+    widget.n = 1;
+    widget[Symbol.toStringTag] = "Widget";
+    console.log(widget);
+    console.log({ b: 1, "10": "a", "2": "b", "1": "c" });
+    console.log({ "": 1, "a b": 2, "3": 4 });
+    console.log({ z: 1, a: 2, m: 3 });
+    console.log({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 });
+    class OnlyGet { get a() { return 1 } }
+    console.log(new OnlyGet());
+    class Mixed { get a() { return 1 } b = 2 }
+    console.log(new Mixed());
+    class ParentGet { get a() { return 1 } }
+    class ChildGet extends ParentGet {
+      get b() { return 2 }
+      c = 3
+    }
+    console.log(new ChildGet());
+    class OnlySet { set a(_value) {} }
+    console.log(new OnlySet());
+    class BothAccessors {
+      get a() { return 4 }
+      set a(_value) {}
+    }
+    console.log(new BothAccessors());
+    class Methods { m() { return 1 } get a() { return 2 } }
+    console.log(new Methods());
+    class EmptyProto { m() {} }
+    console.log(EmptyProto.prototype);
+    console.log(OnlyGet.prototype);
+    let protoGets = 0;
+    class Counted {
+      get a() { protoGets++; return 1 }
+    }
+    console.log(Counted.prototype);
+    console.log(protoGets);
+    console.log(new Counted());
+    console.log(protoGets);
+    let boom = 0;
+    class Boom {
+      get a() { boom++; throw new Error("nope"); }
+    }
+    console.log(new Boom());
+    console.log(boom);
+    class BoomBoth {
+      get a() { throw new Error("nope"); }
+      set a(_value) {}
+    }
+    console.log(new BoomBoth());
+    const withGetter = Object.create({ get inherited() { return 1 } });
+    withGetter.own = 2;
+    console.log(withGetter);
+    let shadowGets = 0;
+    class ThrowsOnProto {
+      get a() { shadowGets++; throw new Error("proto"); }
+    }
+    class ChildThrows extends ThrowsOnProto {}
+    console.log(ChildThrows.prototype);
+    console.log(shadowGets);
+    "#,
+    &[
+      "",
+      "undefined",
+      "null",
+      "-0",
+      "true false",
+      "1n",
+      "[ 1 ] { b: 2 }",
+      "{ a: 1 }",
+      "{}",
+      "Empty {}",
+      "Foo { a: 1 }",
+      "Bar { n: 2 }",
+      "MyArray(2) [ 1, 2 ]",
+      "MyMap(1) [Map] { \"k\" => 1 }",
+      "Box { a: 1 }",
+      "{ a: 1 }",
+      "0",
+      "{ Symbol(a b): 1, Symbol(): 2 }",
+      "{ Symbol(a-b): 1, Symbol(class): 2 }",
+      "Symbol(\"a b\")",
+      "Symbol(Symbol.iterator)",
+      "Symbol()",
+      "{ a: 1 }",
+      "{ x: [Getter] }",
+      "0",
+      "{ y: [Getter/Setter] }",
+      "0",
+      "{ z: [Setter] }",
+      "0",
+      "{ own: 2 }",
+      "{}",
+      "<ref *1> { a: 1, self: [Circular *1] }",
+      "<ref *1> [ 1, [Circular *1] ]",
+      "<ref *1> Map(1) { \"k\" => [Circular *1] }",
+      "{ a: 1 }",
+      "[ 1, 2 ]",
+      "[Object: null prototype] {}",
+      "[Object: null prototype] { n: 1 }",
+      "[Object: null prototype] [Widget] {\n  n: 1,\n  Symbol(Symbol.toStringTag): \"Widget\"\n}",
+      "{ \"1\": \"c\", \"2\": \"b\", \"10\": \"a\", b: 1 }",
+      "{ \"3\": 4, \"\": 1, \"a b\": 2 }",
+      "{ z: 1, a: 2, m: 3 }",
+      "{ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }",
+      "OnlyGet { a: 1 }",
+      "Mixed { a: 1, b: 2 }",
+      "ChildGet { a: 1, b: 2, c: 3 }",
+      "OnlySet { a: [Setter] }",
+      "BothAccessors { a: 4 }",
+      "Methods { a: 2 }",
+      "EmptyProto {}",
+      "OnlyGet { a: [Getter] }",
+      "Counted { a: [Getter] }",
+      "0",
+      "Counted { a: 1 }",
+      "1",
+      "Boom { a: [Getter] }",
+      "1",
+      "BoomBoth { a: [Getter/Setter] }",
+      "{ inherited: 1, own: 2 }",
+      "ChildThrows { a: [Getter] }",
+      "0",
+    ],
+  );
+}
+
+#[test]
+fn console_prints_layout() {
+  let quote = {
+    let mut text = String::from("{ a: '");
+    text.push_str("\\x01\\t\\r\\n");
+    text.push('"');
+    text.push('\\');
+    text.push('\\');
+    text.push('\u{2028}');
+    text.push_str("' }");
+    text
+  };
+  let logs = logs_of(
+    r#"
+    console.log([1, 2]);
+    console.log([]);
+    console.log([1, , 3]);
+    console.log([,,,,, 1]);
+    console.log(Array(4));
+    console.log([,]);
+    const extra = [1];
+    extra.b = 2;
+    console.log(extra);
+    console.log([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    console.log(Array.from({ length: 120 }, (_, index) => index));
+    console.log({ a: "\u0001\t\r\n\"\\\u2028" });
+    console.log({ a: { b: { c: { d: { e: { f: 1 } } } } } });
+    console.log({ a: { b: { c: { d: { e: {} } } } } });
+    console.log({ text: "hello\n" + "x".repeat(80) });
+    console.log({ s: "a".repeat(10001) });
+    console.log("a".repeat(10001));
+    "#,
+  );
+  assert_eq!(logs[0], "[ 1, 2 ]");
+  assert_eq!(logs[1], "[]");
+  assert_eq!(logs[2], "[ 1, <1 empty item>, 3 ]");
+  assert_eq!(logs[3], "[ <5 empty items>, 1 ]");
+  assert_eq!(logs[4], "[ <4 empty items> ]");
+  assert_eq!(logs[5], "[ <1 empty item> ]");
+  assert_eq!(logs[6], "[ 1, b: 2 ]");
+  assert_eq!(
+    logs[7],
+    "[\n   0,  1, 2, 3, 4,\n   5,  6, 7, 8, 9,\n  10, 11\n]"
+  );
+  assert!(logs[8].contains("99"), "{}", logs[8]);
+  assert!(logs[8].contains("... 20 more items"), "{}", logs[8]);
+  assert!(!logs[8].contains(", 100"), "{}", logs[8]);
+  assert!(!logs[8].contains(" 100,"), "{}", logs[8]);
+  assert!(!logs[8].contains("\n  100"), "{}", logs[8]);
+  assert_eq!(logs[9], quote);
+  assert_eq!(
+    logs[10],
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}"
+  );
+  assert_eq!(
+    logs[11],
+    "{\n  a: {\n    b: { c: { d: { e: {} } } }\n  }\n}"
+  );
+  assert!(logs[12].contains(" +\n"), "{}", logs[12]);
+  assert!(logs[13].contains("... 1 more character"), "{}", logs[13]);
+  assert_eq!(logs[14].len(), 10001, "{}", logs[14].len());
+  assert!(!logs[14].contains("more character"), "{}", &logs[14][..40]);
+}
+
+#[test]
+fn console_prints_collections() {
+  let logs = logs_of(
+    r#"
+    console.log(new Map([["a", 1], [2, "b"]]));
+    console.log(new Set([1, "a", { b: 2 }]));
+    console.log(new Set());
+    console.log(new Map());
+    console.log(new WeakMap());
+    console.log(new WeakSet());
+    console.log(new Map([["a", 1]]).entries());
+    console.log(new Map([["a", 1]]).keys());
+    console.log(new Set([1]).values());
+    console.log([][Symbol.iterator]());
+    console.log(new Promise(() => {}));
+    console.log(Promise.resolve(1));
+    console.log(Promise.resolve(undefined));
+    const rejected = Promise.reject(new Error("boom"));
+    rejected.catch(() => {});
+    console.log(rejected);
+    console.log(new Date(0));
+    console.log(new Date(NaN));
+    const dated = new Date(0);
+    dated.x = 1;
+    console.log(dated);
+    console.log(/a.b/gi);
+    const pattern = /a/;
+    pattern.x = 1;
+    console.log(pattern);
+    function foo() {}
+    console.log(foo);
+    console.log(function () {});
+    console.log(foo.bind(null));
+    class Foo {}
+    console.log(Foo);
+    class Bar extends Array {}
+    console.log(Bar);
+    console.log(class {});
+    function named() {}
+    named.x = 1;
+    console.log(named);
+    console.log(Object);
+    console.log(Math.abs);
+    console.log(parseInt);
+    async function af() {}
+    console.log(af);
+    function* g() {}
+    console.log(g);
+    async function* ag() {}
+    console.log(ag);
+    console.log(Object(1));
+    console.log(Object(1n));
+    console.log(Object(false));
+    console.log(Object("ab"));
+    console.log(Object(Symbol("a b")));
+    const boxed = Object("ab");
+    boxed.z = 1;
+    console.log(boxed);
+    console.log((function () { return arguments; })(1, 2));
+    console.log(new Uint8Array([1, 2, 255]));
+    console.log(new Uint8Array(0));
+    console.log(new BigInt64Array([1n, -2n]));
+    console.log(new Float64Array([1.5, NaN]));
+    console.log(new Uint8Array(1000000));
+    const bytes = new Uint8Array(new ArrayBuffer(5));
+    bytes.set([0, 1, 2, 0xfe, 0xff]);
+    console.log(bytes.buffer);
+    console.log(new ArrayBuffer(0));
+    console.log(new SharedArrayBuffer(2));
+    const moved = new ArrayBuffer(4);
+    if (typeof moved.transfer !== "function") {
+      console.log("no-transfer");
+    } else {
+      moved.transfer();
+      console.log(moved);
+    }
+    const view = new DataView(new ArrayBuffer(8));
+    let viewCalls = 0;
+    Object.defineProperty(view, "extra", {
+      get() { viewCalls++; return 1; },
+      enumerable: true,
+    });
+    console.log(view);
+    console.log(viewCalls);
+    class E extends Error {
+      constructor() {
+        super("boom");
+        this.name = "E";
+        this.code = 7;
+      }
+    }
+    console.log(new E());
+    console.log(new Error("boom", { cause: 5 }));
+    console.log(new AggregateError([1], "agg"));
+    const coded = new Error("deep");
+    coded.code = 1;
+    console.log({ a: { b: { c: { d: { e: coded } } } } });
+    console.log({ a: { b: { c: { d: { e: new Error("bare") } } } } });
+    class DeepE extends Error {
+      constructor() {
+        super("x");
+        this.name = "DeepE";
+        this.code = 1;
+      }
+    }
+    console.log({ a: { b: { c: { d: { e: new DeepE() } } } } });
+    "#,
+  );
+  assert_eq!(logs[0], "Map(2) { \"a\" => 1, 2 => \"b\" }");
+  assert_eq!(logs[1], "Set(3) { 1, \"a\", { b: 2 } }");
+  assert_eq!(logs[2], "Set(0) {}");
+  assert_eq!(logs[3], "Map(0) {}");
+  assert_eq!(logs[4], "WeakMap { <items unknown> }");
+  assert_eq!(logs[5], "WeakSet { <items unknown> }");
+  assert_eq!(logs[6], "[Map Entries] { [ \"a\", 1 ] }");
+  assert_eq!(logs[7], "[Map Iterator] { \"a\" }");
+  assert_eq!(logs[8], "[Set Iterator] { 1 }");
+  assert_eq!(logs[9], "Object [Array Iterator] {}");
+  assert_eq!(logs[10], "Promise { <pending> }");
+  assert_eq!(logs[11], "Promise { 1 }");
+  assert_eq!(logs[12], "Promise { undefined }");
+  assert!(logs[13].contains("<rejected>"), "{}", logs[13]);
+  assert!(logs[13].contains("Error: boom"), "{}", logs[13]);
+  assert!(logs[13].contains("at "), "{}", logs[13]);
+  assert_eq!(logs[14], "1970-01-01T00:00:00.000Z");
+  assert_eq!(logs[15], "Invalid Date");
+  assert_eq!(logs[16], "1970-01-01T00:00:00.000Z { x: 1 }");
+  assert_eq!(logs[17], "/a.b/gi");
+  assert_eq!(logs[18], "/a/ { x: 1 }");
+  assert_eq!(logs[19], "[Function: foo]");
+  assert_eq!(logs[20], "[Function (anonymous)]");
+  assert_eq!(logs[21], "[Function: bound foo]");
+  assert_eq!(logs[22], "[class Foo]");
+  assert_eq!(logs[23], "[class Bar extends Array]");
+  assert_eq!(logs[24], "[class (anonymous)]");
+  assert_eq!(logs[25], "[Function: named] { x: 1 }");
+  assert_eq!(logs[26], "[Function: Object]");
+  assert_eq!(logs[27], "[Function: abs]");
+  assert_eq!(logs[28], "[Function: parseInt]");
+  assert_eq!(logs[29], "[AsyncFunction: af]");
+  assert_eq!(logs[30], "[GeneratorFunction: g]");
+  assert_eq!(logs[31], "[AsyncGeneratorFunction: ag]");
+  assert_eq!(logs[32], "[Number: 1]");
+  assert_eq!(logs[33], "[BigInt: 1n]");
+  assert_eq!(logs[34], "[Boolean: false]");
+  assert_eq!(logs[35], "[String: \"ab\"]");
+  assert_eq!(logs[36], "[Symbol: Symbol(\"a b\")]");
+  assert_eq!(logs[37], "[String: \"ab\"] { z: 1 }");
+  assert_eq!(logs[38], "[Arguments] { \"0\": 1, \"1\": 2 }");
+  assert_eq!(logs[39], "Uint8Array(3) [ 1, 2, 255 ]");
+  assert_eq!(logs[40], "Uint8Array(0) []");
+  assert_eq!(logs[41], "BigInt64Array(2) [ 1n, -2n ]");
+  assert_eq!(logs[42], "Float64Array(2) [ 1.5, NaN ]");
+  assert!(logs[43].contains("... 999900 more items"), "{}", logs[43]);
+  assert_eq!(
+    logs[44],
+    "ArrayBuffer { [Uint8Contents]: <00 01 02 fe ff>, byteLength: 5 }"
+  );
+  assert_eq!(
+    logs[45],
+    "ArrayBuffer { [Uint8Contents]: <>, byteLength: 0 }"
+  );
+  assert_eq!(
+    logs[46],
+    "SharedArrayBuffer { [Uint8Contents]: <00 00>, byteLength: 2 }"
+  );
+  assert_eq!(
+    logs[47], "ArrayBuffer { (detached), byteLength: 0 }",
+    "transfer missing would log no-transfer"
+  );
+  assert!(logs[48].contains("byteLength: 8"), "{}", logs[48]);
+  assert!(logs[48].contains("byteOffset: 0"), "{}", logs[48]);
+  assert!(logs[48].contains("ArrayBuffer"), "{}", logs[48]);
+  assert!(logs[48].contains("[Getter]"), "{}", logs[48]);
+  assert_eq!(logs[49], "0");
+  assert!(logs[50].starts_with("E: boom"), "{}", logs[50]);
+  assert!(logs[50].contains("at "), "{}", logs[50]);
+  assert!(logs[50].contains("code: 7"), "{}", logs[50]);
+  assert!(logs[51].contains("[cause]: 5"), "{}", logs[51]);
+  assert!(logs[52].contains("AggregateError"), "{}", logs[52]);
+  assert!(logs[52].contains("errors"), "{}", logs[52]);
+  assert!(logs[53].contains("e: [Error]"), "{}", logs[53]);
+  assert!(logs[54].contains("Error: bare"), "{}", logs[54]);
+  assert!(logs[54].contains("at "), "{}", logs[54]);
+  assert!(logs[55].contains("e: [DeepE]"), "{}", logs[55]);
+}
+
+#[test]
+fn console_formats_strings() {
+  let logs = logs_of(
+    r#"
+    console.log("%s");
+    console.log("%s", { a: 1 });
+    const proto = { toString() { return "%s %s"; } };
+    console.log(Object.create(proto), "A", "B");
+    console.log("%d", { valueOf() { return 3.9; } });
+    console.log("%d", "10px");
+    console.log("%d %i %f", Symbol("a"), Symbol("b"), Symbol("c"));
+    console.log("%f", Infinity);
+    const circular = {};
+    circular.a = circular;
+    console.log("%j", circular);
+    console.log("%j", { a: 1 });
+    console.log("%j", undefined);
+    console.log("%j %s", function () {}, "ok");
+    console.log("%j", Symbol("a"));
+    console.log("100%%", "x");
+    console.log("100%", 1);
+    console.log("%s %o", "only");
+    console.log("%q %s", "A", "B");
+    console.log("%c%s", "red", "x");
+    console.log("%o", { a: 1 });
+    console.log("%s", "a", { b: 1 });
+    let name = "";
+    try {
+      console.log("%s", Symbol("a"));
+    } catch (error) {
+      name = error.name;
+    }
+    console.log(name);
+    console.log(Symbol("a"));
+    try {
+      console.log("%s", { toString() { throw new Error("nope"); } });
+    } catch (error) {
+      console.log("caught-tostring");
+    }
+    try {
+      console.log("%d", { valueOf() { throw new Error("bad"); } });
+    } catch (error) {
+      console.log("caught-valueof");
+    }
+    try {
+      console.group("%s", { toString() { throw new Error("nope"); } });
+    } catch (error) {}
+    console.log("plain");
+    console.group();
+    console.log("inside");
+    console.groupEnd();
+    console.log("after-group");
+    console.trace("here");
+    console.assert(false, { a: 1 });
+    console.assert(true, "hidden");
+    console.log("after-assert");
+    console.dir({ a: 1 });
+    console.dirxml({ a: 1 });
+    console.table({ a: 1 });
+    console.groupCollapsed("title");
+    console.log("collapsed");
+    console.groupEnd();
+    console.time("t");
+    console.timeLog("t", { a: 1 });
+    let labelCalls = 0;
+    const label = { toString() { labelCalls++; return "lab"; } };
+    console.count(label);
+    console.log(labelCalls);
+    try {
+      console.count({ toString() { throw new Error("label"); } });
+    } catch (error) {
+      console.log("label-threw");
+    }
+    "#,
+  );
+  assert_eq!(logs[0], "%s");
+  assert_eq!(logs[1], "[object Object]");
+  assert_eq!(logs[2], "{} A B");
+  assert_eq!(logs[3], "3");
+  assert_eq!(logs[4], "NaN");
+  assert_eq!(logs[5], "NaN NaN NaN");
+  assert_eq!(logs[6], "inf");
+  assert_eq!(logs[7], "[Circular]");
+  assert_eq!(logs[8], "{\"a\":1}");
+  assert_eq!(logs[9], "%j");
+  assert_eq!(logs[10], "%j ok");
+  assert_eq!(logs[11], "%j");
+  assert_eq!(logs[12], "100% x");
+  assert_eq!(logs[13], "100% 1");
+  assert_eq!(logs[14], "only %o");
+  assert_eq!(logs[15], "%q A B");
+  assert_eq!(logs[16], "x");
+  assert_eq!(logs[17], "{ a: 1 }");
+  assert_eq!(logs[18], "a { b: 1 }");
+  assert_eq!(logs[19], "TypeError");
+  assert_eq!(logs[20], "Symbol(a)");
+  assert_eq!(logs[21], "caught-tostring");
+  assert_eq!(logs[22], "caught-valueof");
+  assert_eq!(logs[23], "plain");
+  assert_eq!(logs[24], "console.group");
+  assert_eq!(logs[25], "  inside");
+  assert_eq!(logs[26], "after-group");
+  assert_eq!(logs[27], "after-assert");
+  assert_eq!(logs[28], "{ a: 1 }");
+  assert_eq!(logs[29], "{ a: 1 }");
+  assert_eq!(logs[30], "{ a: 1 }");
+  assert_eq!(logs[31], "title");
+  assert_eq!(logs[32], "  collapsed");
+  assert!(logs[33].contains("t: "), "{}", logs[33]);
+  assert!(logs[33].contains("ms { a: 1 }"), "{}", logs[33]);
+  assert_eq!(logs[34], "lab: 1");
+  assert_eq!(logs[35], "1");
+  assert_eq!(logs[36], "label-threw");
+}
+
+#[test]
+fn console_rejects_a_revoked_proxy() {
+  let logs = logs_of(
+    r#"
+    let name = "";
+    let message = "";
+    try {
+      const holder = Proxy.revocable({ a: 1 }, {});
+      holder.revoke();
+      console.log(holder.proxy);
+    } catch (error) {
+      name = error.name;
+      message = error.message;
+    }
+    console.log(name);
+    console.log(message);
+    "#,
+  );
+  assert_eq!(
+    logs,
+    vec!["TypeError", "Cannot inspect a proxy that has been revoked.",]
+  );
+}

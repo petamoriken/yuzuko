@@ -212,17 +212,13 @@ fn display_value(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> String {
-  if value.is_undefined() {
-    return "undefined".to_string();
+  match crate::inspect::format_value(scope, value) {
+    Ok(text) => text,
+    Err(thrown) => {
+      let thrown = v8::Local::new(scope, thrown.0);
+      describe(scope, thrown)
+    }
   }
-  if value.is_null() {
-    return "null".to_string();
-  }
-  v8::tc_scope!(let tc, scope);
-  value
-    .to_string(tc)
-    .map(|text| text.to_rust_string_lossy(tc))
-    .unwrap_or_else(|| "undefined".to_string())
 }
 
 fn describe(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> String {

@@ -106,7 +106,10 @@ impl AbortSignal {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = ["aborted", "reason", "onabort"]
+)]
 impl AbortSignal {
   #[constructor]
   fn new() -> Result<AbortSignal, OpError> {
@@ -238,7 +241,7 @@ unsafe impl v8::cppgc::GarbageCollected for AbortController {
   }
 }
 
-#[op]
+#[op(inspect = ["signal"])]
 impl AbortController {
   #[constructor]
   fn new(scope: &mut v8::PinScope) -> AbortController {

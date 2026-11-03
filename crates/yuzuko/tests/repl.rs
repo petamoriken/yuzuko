@@ -38,7 +38,8 @@ fn printed_line(text: &str, line: &str) -> bool {
 
 fn printed_id(text: &str, prefix: &str) -> bool {
   text.lines().any(|line| {
-    let Some(rest) = line.trim().strip_prefix(prefix) else {
+    let line = line.trim().trim_matches('"');
+    let Some(rest) = line.strip_prefix(prefix) else {
       return false;
     };
     !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit())
@@ -381,7 +382,7 @@ fn terminal_session_completes_and_recalls_history() {
   pty.send(
     b"await new Promise((r) => setTimeout(() => r(\"zero-await\"), 0))\n",
   );
-  pty.wait_until(|text| printed_line(text, "zero-await"), step);
+  pty.wait_until(|text| printed_line(text, "\"zero-await\""), step);
 
   pty.send(b"throw new Error(\"repl-boom\")\n");
   pty.wait_until(|text| text.contains("Error: repl-boom"), step);
@@ -980,6 +981,24 @@ fn exit_ends_the_session_without_a_completion() {
     "{stderr}"
   );
   assert!(!stderr.contains("failed to run"), "{stderr}");
+}
+
+#[test]
+fn repl_quotes_strings_and_inspects_objects() {
+  let dir = scratch("inspect");
+  let output = pipe_repl(
+    &dir,
+    "Promise.resolve(1)\n({ a: 1, b: \"x\" })\n\"id:\" + 3\n",
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.lines().any(|line| line == "1"),
+    "promise completion should be the value\n{stdout}"
+  );
+  assert!(stdout.contains("{ a: 1, b: \"x\" }"), "{stdout}");
+  assert!(stdout.contains("\"id:3\""), "{stdout}");
+  assert!(!stdout.contains("Promise {"), "{stdout}");
 }
 
 #[test]

@@ -3,7 +3,10 @@
 //! A function becomes one callback. An impl becomes a JavaScript class:
 //! `#[constructor]`, `#[getter]`, `#[setter]`, `#[static_method]`, and methods
 //! that take `&self`. The type must implement `v8::cppgc::GarbageCollected`.
-//! Fast calls and async ops are not supported yet.
+//! `#[op(inspect = ["href"])]` names the attributes `console` prints, in
+//! order. That list replaces an ancestor's list. `inspect_after` adds
+//! names after the ancestor list. Fast calls and async ops are not
+//! supported yet.
 
 use proc_macro::TokenStream;
 use quote::quote;

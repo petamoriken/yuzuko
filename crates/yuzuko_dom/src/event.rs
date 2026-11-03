@@ -106,7 +106,19 @@ impl Event {
   }
 }
 
-#[op]
+#[op(inspect = [
+  "bubbles",
+  "cancelable",
+  "composed",
+  "currentTarget",
+  "defaultPrevented",
+  "eventPhase",
+  "srcElement",
+  "target",
+  "returnValue",
+  "timeStamp",
+  "type",
+])]
 impl Event {
   #[constructor]
   fn new(
@@ -494,7 +506,7 @@ unsafe impl v8::cppgc::GarbageCollected for CustomEvent {
   }
 }
 
-#[op(inherit = Event)]
+#[op(inherit = Event, inspect_after = ["detail"])]
 impl CustomEvent {
   #[constructor]
   fn new(
@@ -598,7 +610,10 @@ impl ErrorEvent {
   }
 }
 
-#[op(inherit = Event)]
+#[op(
+  inherit = Event,
+  inspect_after = ["message", "filename", "lineno", "colno", "error"]
+)]
 impl ErrorEvent {
   #[constructor]
   fn new(
@@ -728,7 +743,7 @@ impl PromiseRejectionEvent {
   }
 }
 
-#[op(inherit = Event)]
+#[op(inherit = Event, inspect_after = ["promise", "reason"])]
 impl PromiseRejectionEvent {
   #[constructor]
   fn new(

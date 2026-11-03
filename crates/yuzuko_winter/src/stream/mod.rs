@@ -564,7 +564,7 @@ unsafe impl v8::cppgc::GarbageCollected for DecompressionStream {
   }
 }
 
-#[op]
+#[op(inspect = ["highWaterMark", "size"])]
 impl CountQueuingStrategy {
   #[constructor]
   fn new(
@@ -581,7 +581,7 @@ impl CountQueuingStrategy {
   }
 }
 
-#[op]
+#[op(inspect = ["highWaterMark", "size"])]
 impl ByteLengthQueuingStrategy {
   #[constructor]
   fn new(
@@ -598,7 +598,7 @@ impl ByteLengthQueuingStrategy {
   }
 }
 
-#[op]
+#[op(inspect = ["locked", "state", "supportsBYOB"])]
 impl ReadableStream {
   #[constructor]
   fn new(
@@ -1305,7 +1305,7 @@ pub fn consume_buffered(
   Ok(output)
 }
 
-#[op]
+#[op(inspect = ["closed"])]
 impl ReadableStreamDefaultReader {
   #[constructor]
   fn new(
@@ -1366,7 +1366,7 @@ impl ReadableStreamDefaultReader {
   }
 }
 
-#[op]
+#[op(inspect = ["desiredSize"])]
 impl ReadableStreamDefaultController {
   fn enqueue(
     &self,
@@ -1420,7 +1420,7 @@ fn desired_size(id: u64) -> Option<f64> {
   })
 }
 
-#[op]
+#[op(inspect = ["locked"])]
 impl WritableStream {
   #[constructor]
   fn new(
@@ -1538,7 +1538,7 @@ fn writable_locked(stream: u64) -> bool {
   })
 }
 
-#[op]
+#[op(inspect = ["closed", "desiredSize", "ready"])]
 impl WritableStreamDefaultWriter {
   #[constructor]
   fn new(
@@ -1636,7 +1636,7 @@ fn write_desired(id: u64) -> Option<f64> {
   })
 }
 
-#[op]
+#[op(inspect = ["signal"])]
 impl WritableStreamDefaultController {
   #[getter]
   fn signal(&self, scope: &mut v8::PinScope) -> Js {
@@ -1669,7 +1669,7 @@ impl WritableStreamDefaultController {
   }
 }
 
-#[op]
+#[op(inspect = ["desiredSize"])]
 impl TransformStreamDefaultController {
   #[getter]
   fn desired_size(&self) -> Option<f64> {
@@ -1701,7 +1701,7 @@ impl TransformStreamDefaultController {
   }
 }
 
-#[op]
+#[op(inspect = ["readable", "writable"])]
 impl TransformStream {
   #[constructor]
   fn new(
@@ -1766,7 +1766,7 @@ impl TransformStream {
   }
 }
 
-#[op]
+#[op(inspect = ["encoding", "readable", "writable"])]
 impl TextEncoderStream {
   #[constructor]
   fn new(scope: &mut v8::PinScope) -> Result<Self, OpError> {
@@ -1797,7 +1797,13 @@ impl TextEncoderStream {
   }
 }
 
-#[op]
+#[op(inspect = [
+  "encoding",
+  "fatal",
+  "ignoreBOM",
+  "readable",
+  "writable",
+])]
 impl TextDecoderStream {
   #[constructor]
   fn new(
@@ -1857,7 +1863,7 @@ impl TextDecoderStream {
   }
 }
 
-#[op]
+#[op(inspect = ["readable", "writable"])]
 impl CompressionStream {
   #[constructor]
   fn new(scope: &mut v8::PinScope, format: String) -> Result<Self, OpError> {
@@ -1877,7 +1883,7 @@ impl CompressionStream {
   }
 }
 
-#[op]
+#[op(inspect = ["readable", "writable"])]
 impl DecompressionStream {
   #[constructor]
   fn new(scope: &mut v8::PinScope, format: String) -> Result<Self, OpError> {

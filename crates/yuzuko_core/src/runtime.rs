@@ -1488,8 +1488,7 @@ fn console_log(
   args: v8::FunctionCallbackArguments,
   mut _return: v8::ReturnValue,
 ) {
-  let line = format_console(scope, &args);
-  emit(&line, false);
+  let _ = console_emit(scope, &args, 0, false);
 }
 
 fn console_warn(
@@ -1497,8 +1496,7 @@ fn console_warn(
   args: v8::FunctionCallbackArguments,
   mut _return: v8::ReturnValue,
 ) {
-  let line = format_console(scope, &args);
-  emit(&line, true);
+  let _ = console_emit(scope, &args, 0, true);
 }
 
 fn console_trace(
@@ -1506,7 +1504,9 @@ fn console_trace(
   args: v8::FunctionCallbackArguments,
   mut _return: v8::ReturnValue,
 ) {
-  let detail = format_console(scope, &args);
+  let Ok(detail) = console_format(scope, &args, 0) else {
+    return;
+  };
   let mut line = if detail.is_empty() {
     "Trace".to_string()
   } else {
@@ -1547,11 +1547,10 @@ fn console_assert(
   let detail = if args.length() <= 1 {
     String::new()
   } else {
-    let mut parts = Vec::new();
-    for index in 1..args.length() {
-      parts.push(console_string(scope, args.get(index)));
-    }
-    parts.join(" ")
+    let Ok(detail) = console_format(scope, &args, 1) else {
+      return;
+    };
+    detail
   };
   let line = if detail.is_empty() {
     "Assertion failed".to_string()
@@ -1633,12 +1632,11 @@ fn console_time_log(
   let elapsed = crate::performance_now_ms() - started;
   let mut line = format!("{label}: {elapsed:.3} ms");
   if args.length() > 1 {
-    let mut parts = Vec::new();
-    for index in 1..args.length() {
-      parts.push(console_string(scope, args.get(index)));
-    }
+    let Ok(extra) = console_format(scope, &args, 1) else {
+      return;
+    };
     line.push(' ');
-    line.push_str(&parts.join(" "));
+    line.push_str(&extra);
   }
   emit(&line, false);
 }
@@ -1708,7 +1706,10 @@ fn console_group(
   let label = if args.length() == 0 {
     "console.group".to_string()
   } else {
-    format_console(scope, &args)
+    let Ok(label) = console_format(scope, &args, 0) else {
+      return;
+    };
+    label
   };
   emit(&label, false);
   CONSOLE.with(|slot| {
@@ -1758,94 +1759,28 @@ fn emit(line: &str, stderr: bool) {
   }
 }
 
-fn format_console(
-  scope: &mut v8::PinScope,
-  args: &v8::FunctionCallbackArguments,
-) -> String {
-  if args.length() == 0 {
-    return String::new();
-  }
-  let first_value = args.get(0);
-  // A symbol is not a format string. `ToString` on a symbol throws.
-  let first = console_string(scope, first_value);
-  if first_value.is_symbol() || !first.contains('%') {
-    return join_args(scope, args, 0);
-  }
-  let chars: Vec<char> = first.chars().collect();
-  let mut out = String::new();
-  let mut next = 1;
-  let mut index = 0;
-  while index < chars.len() {
-    if chars[index] == '%' && index + 1 < chars.len() {
-      let spec = chars[index + 1];
-      if spec == '%' {
-        out.push('%');
-        index += 2;
-        continue;
-      }
-      if matches!(spec, 's' | 'd' | 'i' | 'f' | 'o' | 'O' | 'c') {
-        if next < args.length() {
-          out.push_str(&format_specifier(scope, spec, args.get(next)));
-          next += 1;
-        }
-        index += 2;
-        continue;
-      }
-    }
-    out.push(chars[index]);
-    index += 1;
-  }
-  while next < args.length() {
-    out.push(' ');
-    out.push_str(&console_string(scope, args.get(next)));
-    next += 1;
-  }
-  out
-}
-
-fn join_args(
+fn console_emit(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
   start: i32,
-) -> String {
-  let mut parts = Vec::new();
-  for index in start..args.length() {
-    parts.push(console_string(scope, args.get(index)));
-  }
-  parts.join(" ")
+  stderr: bool,
+) -> Result<(), ()> {
+  let line = console_format(scope, args, start)?;
+  emit(&line, stderr);
+  Ok(())
 }
 
-fn console_string(
+fn console_format(
   scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> String {
-  if let Ok(symbol) = v8::Local::<v8::Symbol>::try_from(value) {
-    let description = symbol.description(scope);
-    if description.is_undefined() {
-      return "Symbol()".to_string();
+  args: &v8::FunctionCallbackArguments,
+  start: i32,
+) -> Result<String, ()> {
+  match crate::inspect::format_callback_args(scope, args, start) {
+    Ok(line) => Ok(line),
+    Err(thrown) => {
+      crate::inspect::rethrow(scope, thrown);
+      Err(())
     }
-    let text = crate::js::rust_string(scope, description);
-    return format!("Symbol({text})");
-  }
-  crate::js::rust_string(scope, value)
-}
-
-fn format_specifier(
-  scope: &mut v8::PinScope,
-  spec: char,
-  value: v8::Local<v8::Value>,
-) -> String {
-  match spec {
-    'd' | 'i' => value
-      .number_value(scope)
-      .map(|number| format!("{}", number as i64))
-      .unwrap_or_else(|| "NaN".to_string()),
-    'f' => value
-      .number_value(scope)
-      .map(|number| number.to_string())
-      .unwrap_or_else(|| "NaN".to_string()),
-    'c' => String::new(),
-    _ => console_string(scope, value),
   }
 }
 

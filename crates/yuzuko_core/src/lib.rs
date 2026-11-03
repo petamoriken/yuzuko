@@ -14,6 +14,7 @@ mod host;
 #[cfg(feature = "http")]
 mod http_server;
 mod idle;
+mod inspect;
 mod jobs;
 mod js;
 mod line;
@@ -55,6 +56,7 @@ pub use idle::{
   next_host_delay, poll_idle_period, poll_idle_timeout, set_idle_frame_delay,
   set_idle_hooks,
 };
+pub use inspect::{InspectFields, register_inspect};
 pub use jobs::{Listen, enqueue, listen, pending as jobs_pending, spawn};
 pub use js::{
   global, namespace, rust_string, set_function, set_value, throw_type,

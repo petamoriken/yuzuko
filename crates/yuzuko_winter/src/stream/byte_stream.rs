@@ -2439,7 +2439,7 @@ unsafe impl v8::cppgc::GarbageCollected for ReadableStreamBYOBReader {
   }
 }
 
-#[op]
+#[op(inspect = ["closed"])]
 impl ReadableStreamBYOBReader {
   #[constructor]
   fn new(

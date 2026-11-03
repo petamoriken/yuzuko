@@ -254,7 +254,14 @@ fn number(
   <f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)
 }
 
-#[op(name = "DOMMatrixReadOnly")]
+#[op(
+  name = "DOMMatrixReadOnly",
+  inspect = [
+    "a", "b", "c", "d", "e", "f", "m11", "m12", "m13", "m14", "m21", "m22",
+    "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42", "m43", "m44",
+    "is2D", "isIdentity",
+  ]
+)]
 impl DomMatrixReadOnly {
   #[constructor]
   fn new(
@@ -610,7 +617,15 @@ impl DomMatrixReadOnly {
   }
 }
 
-#[op(name = "DOMMatrix", inherit = DomMatrixReadOnly)]
+#[op(
+  name = "DOMMatrix",
+  inherit = DomMatrixReadOnly,
+  inspect = [
+    "a", "b", "c", "d", "e", "f", "m11", "m12", "m13", "m14", "m21", "m22",
+    "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42", "m43", "m44",
+    "is2D", "isIdentity",
+  ]
+)]
 impl DomMatrix {
   #[constructor]
   fn new(

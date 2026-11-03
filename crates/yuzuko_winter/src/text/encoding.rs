@@ -24,7 +24,7 @@ unsafe impl v8::cppgc::GarbageCollected for TextEncoder {
   }
 }
 
-#[op]
+#[op(inspect = ["encoding"])]
 impl TextEncoder {
   #[constructor]
   fn new() -> TextEncoder {
@@ -111,7 +111,7 @@ unsafe impl v8::cppgc::GarbageCollected for TextDecoder {
   }
 }
 
-#[op]
+#[op(inspect = ["encoding", "fatal", "ignoreBOM"])]
 impl TextDecoder {
   #[constructor]
   fn new(

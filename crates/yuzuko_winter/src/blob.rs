@@ -577,7 +577,7 @@ unsafe impl v8::cppgc::GarbageCollected for Blob {
   }
 }
 
-#[op]
+#[op(inspect = ["size", "type"])]
 impl Blob {
   #[constructor]
   fn new(
@@ -675,7 +675,10 @@ unsafe impl v8::cppgc::GarbageCollected for File {
   }
 }
 
-#[op(inherit = Blob)]
+#[op(
+  inherit = Blob,
+  inspect = ["name", "lastModified", "size", "type"]
+)]
 impl File {
   // `fileBits` and `fileName` are required. `options` is optional.
   #[constructor]

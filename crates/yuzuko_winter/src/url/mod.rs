@@ -43,7 +43,22 @@ impl Url {
   }
 }
 
-#[op(name = "URL")]
+#[op(
+  name = "URL",
+  inspect = [
+    "href",
+    "origin",
+    "protocol",
+    "username",
+    "password",
+    "host",
+    "hostname",
+    "port",
+    "pathname",
+    "hash",
+    "search",
+  ]
+)]
 impl Url {
   #[constructor]
   fn new(input: String, base: Option<String>) -> Result<Url, OpError> {

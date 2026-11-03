@@ -692,3 +692,213 @@ fn test_records_empty_args_and_exit_skips_the_summary() {
     "{stderr}"
   );
 }
+
+#[test]
+fn console_inspects_url_headers_and_search_params() {
+  let output = yuzuko(&["run", "tests/cli/console_inspect.js"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains(
+      "URL {\n  href: \"https://example.com/a\",\n  origin: \"https://example.com\",\n  protocol: \"https:\",\n  username: \"\",\n  password: \"\",\n  host: \"example.com\",\n  hostname: \"example.com\",\n  port: \"\",\n  pathname: \"/a\",\n  hash: \"\",\n  search: \"\"\n}"
+    ),
+    "{stdout}"
+  );
+  let extra = stdout
+    .split("extra\n")
+    .nth(1)
+    .unwrap_or("")
+    .split("nested\n")
+    .next()
+    .unwrap_or("");
+  assert!(!extra.contains("extra"), "{extra}");
+  assert!(!extra.contains("searchParams"), "{extra}");
+  assert!(stdout.contains("https://example.com/a"), "{stdout}");
+  assert!(
+    stdout.contains("Headers { a: \"3\", b: \"1, 3\", m: \"2\", z: \"1\" }"),
+    "{stdout}"
+  );
+  assert!(
+    stdout
+      .contains("Headers { \"content-type\": \"text/plain\", \"x-a\": \"1\" }"),
+    "{stdout}"
+  );
+  assert!(stdout.contains("Headers {}"), "{stdout}");
+  assert!(
+    stdout.contains("URLSearchParams { \"a\" => \"1\", \"b\" => \"2\" }"),
+    "{stdout}"
+  );
+  assert!(
+    stdout.contains(
+      "URLSearchParams {\n  \"a\" => \"1\",\n  \"b\" => \"2\",\n  \"c\" => \"3\",\n  \"d\" => \"4\",\n  \"e\" => \"5\",\n  \"f\" => \"6\",\n  \"g\" => \"7\",\n  \"h\" => \"8\" }"
+    ),
+    "{stdout}"
+  );
+  assert!(
+    stdout.contains("URLSearchParams { \"z\" => \"1\", \"a\" => \"2\" }"),
+    "{stdout}"
+  );
+  assert!(stdout.contains("URLSearchParams {}"), "{stdout}");
+  assert!(stdout.contains("MyURL {"), "{stdout}");
+  assert!(stdout.contains("MyHeaders { a: \"1\" }"), "{stdout}");
+  assert!(stdout.contains("MyParams { \"a\" => \"1\" }"), "{stdout}");
+  assert!(
+    stdout.contains("\n0\n") || stdout.ends_with("0\n"),
+    "{stdout}"
+  );
+  assert!(!stdout.contains("Symbol("), "{stdout}");
+  assert!(!stdout.contains("hook"), "{stdout}");
+}
+
+fn section<'a>(text: &'a str, name: &str) -> &'a str {
+  let marker = format!("MARK {name}\n");
+  let rest = text.split(&marker).nth(1).unwrap_or("");
+  rest.split("\nMARK ").next().unwrap_or(rest)
+}
+
+#[test]
+fn console_inspects_host_instances() {
+  let output = yuzuko(&["run", "tests/cli/console_instances.js"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  let controller = section(&stdout, "controller");
+  assert!(
+    controller.contains(
+      "AbortController {\n  signal: AbortSignal { aborted: false, reason: undefined, onabort: null }\n}"
+    ),
+    "{controller}"
+  );
+  let stopped = section(&stdout, "stopped");
+  assert!(stopped.contains("aborted: true"), "{stopped}");
+  assert!(stopped.contains("reason: \"stop\""), "{stopped}");
+  assert!(stopped.contains("onabort: null"), "{stopped}");
+  let subclass = section(&stdout, "subclass");
+  assert!(subclass.contains("MyController {"), "{subclass}");
+  assert!(subclass.contains("signal:"), "{subclass}");
+  assert!(subclass.contains("more: 7"), "{subclass}");
+  assert!(!subclass.contains("extra"), "{subclass}");
+  let cycle = section(&stdout, "cycle");
+  assert!(cycle.contains("<ref *1>"), "{cycle}");
+  assert!(cycle.contains("[Circular *1]"), "{cycle}");
+  assert!(cycle.contains("aborted: true"), "{cycle}");
+  let prototype = section(&stdout, "prototype");
+  assert!(prototype.contains("AbortController {"), "{prototype}");
+  assert!(prototype.contains("signal: [Getter]"), "{prototype}");
+  assert!(!prototype.contains("aborted:"), "{prototype}");
+  let unbound = section(&stdout, "unbound");
+  assert!(unbound.contains("signal: [Getter]"), "{unbound}");
+  assert!(!unbound.contains("AbortSignal {"), "{unbound}");
+  let event = section(&stdout, "event");
+  assert!(event.contains("bubbles: true"), "{event}");
+  assert!(event.contains("type: \"go\""), "{event}");
+  assert!(event.contains("cancelable: false"), "{event}");
+  assert!(
+    event.find("bubbles:").unwrap() < event.find("type:").unwrap(),
+    "{event}"
+  );
+  let custom = section(&stdout, "custom");
+  assert!(custom.contains("detail: \"x\""), "{custom}");
+  let myevent = section(&stdout, "myevent");
+  assert!(myevent.contains("MyEvent {"), "{myevent}");
+  assert!(myevent.contains("more: 3"), "{myevent}");
+  assert!(!myevent.contains("extra"), "{myevent}");
+  let message = section(&stdout, "message");
+  assert!(message.contains("data: \"hi\""), "{message}");
+  assert!(
+    message.contains("origin: \"https://example.com\""),
+    "{message}"
+  );
+  assert!(message.contains("lastEventId: \"1\""), "{message}");
+  assert!(message.contains("source: null"), "{message}");
+  assert!(message.contains("ports: []"), "{message}");
+  let close = section(&stdout, "close");
+  assert!(close.contains("wasClean: true"), "{close}");
+  assert!(close.contains("code: 1000"), "{close}");
+  assert!(close.contains("reason: \"bye\""), "{close}");
+  let pointer = section(&stdout, "pointer");
+  assert!(pointer.contains("clientX: 4"), "{pointer}");
+  assert!(pointer.contains("pointerId: 7"), "{pointer}");
+  assert!(pointer.contains("bubbles: true"), "{pointer}");
+  assert!(
+    pointer.find("bubbles:").unwrap() < pointer.find("clientX:").unwrap(),
+    "{pointer}"
+  );
+  assert_eq!(
+    section(&stdout, "blob").trim(),
+    "Blob { size: 2, type: \"text/plain\" }"
+  );
+  let file = section(&stdout, "file");
+  assert!(file.contains("name: \"a.txt\""), "{file}");
+  assert!(file.contains("lastModified:"), "{file}");
+  assert!(file.contains("size: 2"), "{file}");
+  assert!(file.contains("type: \"text/plain\""), "{file}");
+  let myfile = section(&stdout, "myfile");
+  assert!(myfile.contains("MyFile {"), "{myfile}");
+  assert!(myfile.contains("more: 5"), "{myfile}");
+  assert!(myfile.contains("name: \"a.txt\""), "{myfile}");
+  assert!(myfile.contains("lastModified:"), "{myfile}");
+  assert!(!myfile.contains("extra"), "{myfile}");
+  assert_eq!(
+    section(&stdout, "encoder").trim(),
+    "TextEncoder { encoding: \"utf-8\" }"
+  );
+  assert_eq!(
+    section(&stdout, "decoder").trim(),
+    "TextDecoder { encoding: \"utf-8\", fatal: false, ignoreBOM: false }"
+  );
+  let request = section(&stdout, "request");
+  assert!(request.contains("method: \"GET\""), "{request}");
+  assert!(request.contains("bodyUsed: false"), "{request}");
+  assert!(request.contains("redirect: \"follow\""), "{request}");
+  assert!(request.contains("https://example.com"), "{request}");
+  assert!(request.contains("Headers"), "{request}");
+  assert!(request.contains("cache: \"no-store\""), "{request}");
+  assert!(request.contains("duplex: \"half\""), "{request}");
+  assert!(request.contains("signal: AbortSignal {"), "{request}");
+  assert!(request.contains("body: null"), "{request}");
+  let response = section(&stdout, "response");
+  assert!(response.contains("status: 200"), "{response}");
+  assert!(response.contains("ok: true"), "{response}");
+  assert!(response.contains("ReadableStream {"), "{response}");
+  assert!(response.contains("locked: false"), "{response}");
+  assert!(response.contains("type: \"default\""), "{response}");
+  assert_eq!(section(&stdout, "target").trim(), "EventTarget { a: 1 }");
+  assert!(
+    section(&stdout, "performance").contains("timeOrigin:"),
+    "{stdout}"
+  );
+  let channel = section(&stdout, "channel");
+  assert!(channel.contains("port1:"), "{channel}");
+  assert!(channel.contains("port2:"), "{channel}");
+  assert!(channel.contains("MessagePort {"), "{channel}");
+  assert!(channel.contains("onmessage: null"), "{channel}");
+  let reader = section(&stdout, "reader");
+  assert!(reader.contains("readyState: 0"), "{reader}");
+  assert!(reader.contains("result: null"), "{reader}");
+  assert!(reader.contains("error: null"), "{reader}");
+  assert_eq!(
+    section(&stdout, "point").trim(),
+    "DOMPoint { x: 1, y: 2, z: 3, w: 4 }"
+  );
+  let exception = section(&stdout, "exception");
+  assert!(exception.contains("NotFoundError: boom"), "{exception}");
+  assert!(!exception.contains("DOMException {"), "{exception}");
+  let shadow = section(&stdout, "shadow");
+  assert!(shadow.contains("signal: [Getter]"), "{shadow}");
+  assert!(
+    shadow.contains("\n0\n") || shadow.trim_end().ends_with("\n0"),
+    "{shadow}"
+  );
+  let hook = section(&stdout, "hook");
+  assert!(hook.contains("AbortSignal {"), "{hook}");
+  assert!(!hook.contains("hook"), "{hook}");
+  assert!(
+    hook.contains("\n0\n") || hook.trim_end().ends_with("\n0"),
+    "{hook}"
+  );
+  let deep = section(&stdout, "deep");
+  assert!(deep.contains("AbortSignal {"), "{deep}");
+  let deeper = section(&stdout, "deeper");
+  assert!(deeper.contains("[Object]"), "{deeper}");
+  assert!(!deeper.contains("AbortSignal"), "{deeper}");
+}

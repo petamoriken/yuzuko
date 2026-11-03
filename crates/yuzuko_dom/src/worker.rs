@@ -479,7 +479,10 @@ unsafe impl v8::cppgc::GarbageCollected for Worker {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = ["onerror", "onmessage", "onmessageerror"]
+)]
 impl Worker {
   #[constructor]
   fn new(

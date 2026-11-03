@@ -67,7 +67,7 @@ impl DomPointReadOnly {
   }
 }
 
-#[op(name = "DOMPointReadOnly")]
+#[op(name = "DOMPointReadOnly", inspect = ["x", "y", "z", "w"])]
 impl DomPointReadOnly {
   #[constructor]
   fn new(
@@ -160,7 +160,11 @@ unsafe impl v8::cppgc::GarbageCollected for DomPoint {
   }
 }
 
-#[op(name = "DOMPoint", inherit = DomPointReadOnly)]
+#[op(
+  name = "DOMPoint",
+  inherit = DomPointReadOnly,
+  inspect = ["x", "y", "z", "w"]
+)]
 impl DomPoint {
   #[constructor]
   fn new(
@@ -268,7 +272,10 @@ impl DomRectReadOnly {
   }
 }
 
-#[op(name = "DOMRectReadOnly")]
+#[op(
+  name = "DOMRectReadOnly",
+  inspect = ["x", "y", "width", "height", "top", "right", "bottom", "left"]
+)]
 impl DomRectReadOnly {
   #[constructor]
   fn new(
@@ -358,7 +365,11 @@ unsafe impl v8::cppgc::GarbageCollected for DomRect {
   }
 }
 
-#[op(name = "DOMRect", inherit = DomRectReadOnly)]
+#[op(
+  name = "DOMRect",
+  inherit = DomRectReadOnly,
+  inspect = ["x", "y", "width", "height", "top", "right", "bottom", "left"]
+)]
 impl DomRect {
   #[constructor]
   fn new(
@@ -495,7 +506,7 @@ fn point_js(
   Js(v8::Global::new(scope, value))
 }
 
-#[op(name = "DOMQuad")]
+#[op(name = "DOMQuad", inspect = ["p1", "p2", "p3", "p4"])]
 impl DomQuad {
   #[constructor]
   fn new(

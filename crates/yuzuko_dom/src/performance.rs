@@ -21,7 +21,7 @@ unsafe impl v8::cppgc::GarbageCollected for Performance {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(inherit = EventTarget, inspect = ["timeOrigin"])]
 impl Performance {
   #[getter]
   fn time_origin(&self) -> f64 {

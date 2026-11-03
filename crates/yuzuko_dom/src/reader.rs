@@ -73,7 +73,10 @@ fn trace_slot(
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = ["error", "readyState", "result"]
+)]
 impl FileReader {
   #[constructor]
   fn new() -> FileReader {

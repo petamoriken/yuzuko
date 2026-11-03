@@ -814,7 +814,17 @@ impl yuzuko_core::op::ToV8 for ResponsePromise {
   }
 }
 
-#[op]
+#[op(inspect = [
+  "body",
+  "bodyUsed",
+  "headers",
+  "ok",
+  "redirected",
+  "status",
+  "statusText",
+  "url",
+  "type",
+])]
 impl Response {
   #[constructor]
   fn new(

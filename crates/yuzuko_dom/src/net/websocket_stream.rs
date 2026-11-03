@@ -81,7 +81,7 @@ unsafe impl v8::cppgc::GarbageCollected for WebSocketStream {
   }
 }
 
-#[op]
+#[op(inspect = ["closed", "opened", "url"])]
 impl WebSocketStream {
   #[constructor]
   #[length(1)]

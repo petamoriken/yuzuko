@@ -63,7 +63,17 @@ struct Built {
   request: Request,
 }
 
-#[op]
+#[op(inspect = [
+  "bodyUsed",
+  "headers",
+  "method",
+  "redirect",
+  "url",
+  "cache",
+  "duplex",
+  "signal",
+  "body",
+])]
 impl Request {
   #[constructor]
   fn new(

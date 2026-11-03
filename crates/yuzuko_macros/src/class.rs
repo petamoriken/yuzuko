@@ -19,8 +19,11 @@
 //! }
 //! ```
 //!
-//! `#[op(inherit = Parent)]` sets the prototype. The Rust struct is
-//! `#[repr(C)]` with a first field named `base`. `#[rename("encodeInto")]`
+//! `#[op(inherit = Parent)]` sets the prototype. `#[op(inspect = ["href"])]`
+//! registers the attributes `console` prints, in that order, replacing an
+//! ancestor list. `inspect_after = ["detail"]` prints the ancestor list
+//! first. The Rust struct is `#[repr(C)]` with a first field named `base`.
+//! `#[rename("encodeInto")]`
 //! sets the JavaScript name. A snake_case Rust name otherwise becomes
 //! camelCase. `#[this]` passes the JavaScript receiver instead of unwrapping
 //! it. `#[construct_hook]` runs after the instance is wrapped and is not
@@ -73,10 +76,16 @@ struct Member {
   promise: bool,
 }
 
+enum InspectAttr {
+  List(Vec<String>),
+  After(Vec<String>),
+}
+
 struct ClassArgs {
   inherit: Option<Type>,
   name: Option<String>,
   tag: Option<u16>,
+  inspect: Option<InspectAttr>,
 }
 
 impl syn::parse::Parse for ClassArgs {
@@ -84,6 +93,7 @@ impl syn::parse::Parse for ClassArgs {
     let mut inherit = None;
     let mut name = None;
     let mut tag = None;
+    let mut inspect = None;
     while !input.is_empty() {
       let ident: syn::Ident = input.parse()?;
       input.parse::<Token![=]>()?;
@@ -102,17 +112,69 @@ impl syn::parse::Parse for ClassArgs {
           ));
         }
         tag = Some(value);
+      } else if ident == "inspect" || ident == "inspect_after" {
+        if inspect.is_some() {
+          return Err(syn::Error::new(ident.span(), "inspect is already set"));
+        }
+        let fields = parse_string_list(input)?;
+        inspect = Some(if ident == "inspect" {
+          InspectAttr::List(fields)
+        } else {
+          InspectAttr::After(fields)
+        });
       } else {
         return Err(syn::Error::new(
           ident.span(),
-          "expected inherit, name, or tag",
+          "expected inherit, name, tag, inspect, or inspect_after",
         ));
       }
       if input.peek(Token![,]) {
         input.parse::<Token![,]>()?;
       }
     }
-    Ok(Self { inherit, name, tag })
+    Ok(Self {
+      inherit,
+      name,
+      tag,
+      inspect,
+    })
+  }
+}
+
+fn parse_string_list(input: ParseStream) -> syn::Result<Vec<String>> {
+  let inner;
+  syn::bracketed!(inner in input);
+  let mut fields = Vec::new();
+  while !inner.is_empty() {
+    let literal: LitStr = inner.parse()?;
+    fields.push(literal.value());
+    if inner.peek(Token![,]) {
+      inner.parse::<Token![,]>()?;
+    }
+  }
+  Ok(fields)
+}
+
+fn inspect_registration(
+  class_name: &str,
+  inspect: Option<&InspectAttr>,
+) -> TokenStream {
+  let Some(inspect) = inspect else {
+    return TokenStream::new();
+  };
+  let (variant, fields) = match inspect {
+    InspectAttr::List(fields) => (quote! { List }, fields),
+    InspectAttr::After(fields) => (quote! { After }, fields),
+  };
+  let field = fields.iter();
+  quote! {
+    {
+      static FIELDS: &'static [&'static str] = &[#(#field),*];
+      ::yuzuko_core::register_inspect(
+        #class_name,
+        ::yuzuko_core::InspectFields::#variant(FIELDS),
+      );
+    }
   }
 }
 
@@ -144,6 +206,8 @@ fn expand_result(
   let class_name = args.name.unwrap_or_else(|| type_ident(&self_ty));
   let _ = args.tag;
   let inherit = args.inherit;
+  let inspect_register =
+    inspect_registration(&class_name, args.inspect.as_ref());
 
   let mut extras = Vec::new();
   let mut members = Vec::new();
@@ -335,6 +399,7 @@ fn expand_result(
       }
 
       pub fn install(scope: &mut ::v8::PinScope) {
+        #inspect_register
         let templ = Self::template(scope);
         let ctor = templ.get_function(scope).unwrap();
         let proto_key = ::v8::String::new(scope, "prototype").unwrap();

@@ -66,7 +66,21 @@ unsafe impl v8::cppgc::GarbageCollected for WebSocket {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = [
+    "url",
+    "readyState",
+    "extensions",
+    "protocol",
+    "binaryType",
+    "bufferedAmount",
+    "onmessage",
+    "onerror",
+    "onclose",
+    "onopen",
+  ]
+)]
 impl WebSocket {
   #[constructor]
   #[length(1)]
@@ -307,7 +321,7 @@ unsafe impl v8::cppgc::GarbageCollected for CloseEvent {
   }
 }
 
-#[op(inherit = Event)]
+#[op(inherit = Event, inspect_after = ["wasClean", "code", "reason"])]
 impl CloseEvent {
   #[constructor]
   #[length(1)]

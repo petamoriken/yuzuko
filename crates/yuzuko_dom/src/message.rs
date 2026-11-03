@@ -409,7 +409,10 @@ unsafe impl v8::cppgc::GarbageCollected for MessagePort {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = ["active", "refed", "onmessage", "onmessageerror"]
+)]
 impl MessagePort {
   #[constructor]
   fn new() -> Result<Self, OpError> {
@@ -570,7 +573,7 @@ unsafe impl v8::cppgc::GarbageCollected for MessageChannel {
   }
 }
 
-#[op]
+#[op(inspect = ["port1", "port2"])]
 impl MessageChannel {
   #[constructor]
   fn new(scope: &mut v8::PinScope) -> Self {
@@ -613,7 +616,16 @@ unsafe impl v8::cppgc::GarbageCollected for MessageEvent {
   }
 }
 
-#[op(inherit = Event)]
+#[op(
+  inherit = Event,
+  inspect_after = [
+    "data",
+    "origin",
+    "lastEventId",
+    "source",
+    "ports",
+  ]
+)]
 impl MessageEvent {
   #[constructor]
   fn new(

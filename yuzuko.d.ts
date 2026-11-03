@@ -4498,8 +4498,14 @@ declare var IdleDeadline: {
 /**
  * Logging object.
  *
- * `dirxml` and `table` print like `log`. `clear` succeeds and does not erase
- * a surface. `time`, `timeLog`, and `timeEnd` share one table.
+ * `dirxml` and `table` print like `log`. `table` does not draw a grid.
+ * `clear` succeeds and does not erase a surface. `time`, `timeLog`, and
+ * `timeEnd` share one table. Objects print their contents, uncolored.
+ * A host class instance prints that class's attributes, so
+ * `AbortController` includes `signal`. A getter on a user class is
+ * printed too. Inherited data properties stay hidden. The printer
+ * does not call a user inspection hook. A revoked proxy throws
+ * `TypeError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/console)
  */

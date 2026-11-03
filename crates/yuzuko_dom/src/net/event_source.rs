@@ -113,7 +113,17 @@ unsafe impl v8::cppgc::GarbageCollected for EventSource {
   }
 }
 
-#[op(inherit = EventTarget)]
+#[op(
+  inherit = EventTarget,
+  inspect = [
+    "readyState",
+    "url",
+    "withCredentials",
+    "onopen",
+    "onmessage",
+    "onerror",
+  ]
+)]
 impl EventSource {
   #[constructor]
   #[length(1)]
