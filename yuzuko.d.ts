@@ -591,6 +591,94 @@ declare namespace Yuzuko {
   type AccessibleOrientation = "horizontal" | "vertical";
 
   /**
+   * Recognized ARIA role token.
+   *
+   * `generic`, `none`, and `presentation` publish a generic container.
+   * Any other string is still stored and published as an unknown role.
+   */
+  type AccessibleRole =
+    | "alert"
+    | "alertdialog"
+    | "application"
+    | "article"
+    | "banner"
+    | "blockquote"
+    | "button"
+    | "caption"
+    | "cell"
+    | "checkbox"
+    | "code"
+    | "columnheader"
+    | "combobox"
+    | "complementary"
+    | "contentinfo"
+    | "definition"
+    | "dialog"
+    | "directory"
+    | "document"
+    | "emphasis"
+    | "feed"
+    | "figure"
+    | "form"
+    | "generic"
+    | "grid"
+    | "gridcell"
+    | "group"
+    | "heading"
+    | "image"
+    | "img"
+    | "link"
+    | "list"
+    | "listbox"
+    | "listitem"
+    | "log"
+    | "main"
+    | "marquee"
+    | "math"
+    | "menu"
+    | "menubar"
+    | "menuitem"
+    | "menuitemcheckbox"
+    | "menuitemradio"
+    | "meter"
+    | "navigation"
+    | "none"
+    | "note"
+    | "option"
+    | "paragraph"
+    | "presentation"
+    | "progressbar"
+    | "radio"
+    | "radiogroup"
+    | "region"
+    | "row"
+    | "rowgroup"
+    | "rowheader"
+    | "scrollbar"
+    | "search"
+    | "searchbox"
+    | "separator"
+    | "slider"
+    | "spinbutton"
+    | "status"
+    | "strong"
+    | "switch"
+    | "tab"
+    | "table"
+    | "tablist"
+    | "tabpanel"
+    | "term"
+    | "textbox"
+    | "time"
+    | "timer"
+    | "toolbar"
+    | "tooltip"
+    | "tree"
+    | "treegrid"
+    | "treeitem"
+    | "window";
+
+  /**
    * `accessiblesetvalue` dispatched on an {@link AccessibleNode}.
    *
    * There is no constructor. The event is a {@link CustomEvent} whose
@@ -628,7 +716,8 @@ declare namespace Yuzuko {
    * `selected`, `busy`, `modal`, `required`, `readOnly`, `multiselectable`,
    * and `multiline` are booleans or `null`. `valueNow`, `valueMin`, and
    * `valueMax` are finite numbers or `null`. Counts and indexes are IDL
-   * `long` values or `null`. `live` and `orientation` are the tokens below.
+   * `long` values or `null`. `role` is an {@link AccessibleRole} or any
+   * other string. `live` and `orientation` are the tokens below.
    * `focusable` defaults to `false`.
    *
    * Offsets are CSS pixel lengths. The getter returns `null` or a string
@@ -699,8 +788,13 @@ declare namespace Yuzuko {
      */
     focus(): void;
 
-    /** ARIA role token. `null` when unset. `""` when set to an empty string. */
-    role: string | null;
+    /**
+     * ARIA role token. `null` when unset. `""` when set to an empty string.
+     *
+     * {@link AccessibleRole} is the recognized set. Any other string is
+     * stored and published as an unknown role.
+     */
+    role: AccessibleRole | (string & {}) | null;
 
     /** Accessible name. There is no `label` property. */
     name: string | null;
