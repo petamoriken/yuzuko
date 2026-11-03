@@ -1191,9 +1191,11 @@ fn platform_handle() -> v8::SharedRef<v8::Platform> {
 
 fn init_v8() {
   V8_INIT.call_once(|| {
-    // Source-phase `import source` is how Wasm modules compile without
-    // instantiating. V8 still gates the syntax on this flag.
-    v8::V8::set_flags_from_string("--js-source-phase-imports");
+    // Source-phase `import source` compiles Wasm without instantiating.
+    // `import defer` is the deferred-evaluation syntax. V8 gates both.
+    v8::V8::set_flags_from_string(
+      "--js-source-phase-imports --js-defer-import-eval",
+    );
     // rusty_v8 links the full ICU dataset into the binary, so ECMA-402
     // `Intl` resolves locales beyond English without a separate icudtl.dat.
     let queue = TaskQueue::new();
@@ -1395,18 +1397,36 @@ fn namespace_instance(
   mut ret: v8::ReturnValue,
 ) {
   let value = args.get(0);
-  let found = if value.is_object() {
-    let map = host::wasm_instances(scope);
-    map.get(scope, value)
-  } else {
+  if let Some(found) = wasm_namespace_instance(scope, value) {
+    ret.set(found);
+    return;
+  }
+  // A deferred Wasm module evaluates after the import that first linked it.
+  // Index namespaces that have stored an instance since the last pass.
+  modules::record_wasm_namespaces(scope);
+  if let Some(found) = wasm_namespace_instance(scope, value) {
+    ret.set(found);
+    return;
+  }
+  crate::js::throw_type(
+    scope,
+    "WebAssembly.namespaceInstance requires a WebAssembly module namespace",
+  );
+}
+
+fn wasm_namespace_instance<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if !value.is_object() {
+    return None;
+  }
+  let map = host::wasm_instances(scope);
+  let found = map.get(scope, value)?;
+  if found.is_null_or_undefined() {
     None
-  };
-  match found {
-    Some(found) if !found.is_null_or_undefined() => ret.set(found),
-    _ => crate::js::throw_type(
-      scope,
-      "WebAssembly.namespaceInstance requires a WebAssembly module namespace",
-    ),
+  } else {
+    Some(found)
   }
 }
 
@@ -2162,6 +2182,13 @@ fn on_dynamic_import_phase<'s>(
 ) -> Option<v8::Local<'s, v8::Promise>> {
   if phase == v8::ModuleImportPhase::kSource {
     modules::dynamic_import_source(scope, resource_name, specifier)
+  } else if phase == v8::ModuleImportPhase::kDefer {
+    modules::dynamic_import_defer(
+      scope,
+      resource_name,
+      specifier,
+      import_attributes,
+    )
   } else {
     dynamic_import(scope, resource_name, specifier, import_attributes)
   }

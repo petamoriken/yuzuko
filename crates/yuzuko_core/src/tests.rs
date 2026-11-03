@@ -125,6 +125,58 @@ fn wasm_source_import_of_typescript_is_rejected() {
 }
 
 #[test]
+fn import_defer_waits_for_namespace_observation() {
+  let root = workspace();
+  let code = crate::run_tests(
+    &[
+      root.join("tests/defer_static_test.ts"),
+      root.join("tests/defer_eager_test.ts"),
+    ],
+    None,
+  )
+  .expect("defer tests");
+  assert_eq!(code, 0);
+}
+
+#[test]
+fn import_defer_in_javascript_waits() {
+  run_file(&workspace().join("tests/defer/js_importer.js")).expect("js defer");
+}
+
+#[test]
+fn import_defer_rejects_named_imports() {
+  let error = run_file(&workspace().join("tests/defer/syntax_named.ts"))
+    .expect_err("named defer");
+  assert!(
+    error.message.contains("deferred import"),
+    "{}",
+    error.message
+  );
+}
+
+#[test]
+fn import_defer_rejects_a_default_binding() {
+  let error = run_file(&workspace().join("tests/defer/syntax_default.ts"))
+    .expect_err("default defer");
+  assert!(
+    error.message.contains("deferred import"),
+    "{}",
+    error.message
+  );
+}
+
+#[test]
+fn import_defer_reports_a_missing_module() {
+  let error = run_file(&workspace().join("tests/defer/missing.ts"))
+    .expect_err("missing defer");
+  assert!(
+    error.message.contains("failed to resolve"),
+    "{}",
+    error.message
+  );
+}
+
+#[test]
 fn realm_globals_cover_phase_one_basics() {
   let logs = run_scripts(&[r#"
     const original = { n: 1, nested: { ok: true } };

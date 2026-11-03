@@ -390,7 +390,7 @@ The realm includes:
 - `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `self`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
 - `AbortController`, `AbortSignal`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
-- V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`
+- V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`. A deferred `.wasm` import instantiates on the first observation of its namespace
 - `fetch`, `Headers`, `Request`, and `Response` for `file:`, `blob:`, `data:`, `http:`, and `https:`, when the runtime is built with the `fetch` feature
 - `createImageBitmap`, `ImageBitmap`, `ImageData`, when the runtime is built with the `image` feature
 - `OffscreenCanvas`, when the runtime is built with the `window` feature. `CanvasRenderingContext2D`, `ImageBitmapRenderingContext`, `Path2D`, and `DOMMatrix`, when it is built with the `canvas` feature
@@ -472,7 +472,7 @@ Host objects are allocated with cppgc so V8 owns their lifetime. GPU resources t
 
 ## Modules
 
-Every static import, dynamic `import()`, and entry path goes through `oxc_resolver`, then, for TypeScript, through `oxc_transformer`. The loader does not invoke `tsc` or the oxc CLI. `import.meta.url` is the absolute `file:` URL of the source file that was resolved, including a `.ts` or `.mts` URL.
+Every static import, dynamic `import()`, `import defer`, `import.defer()`, `import.source()`, and entry path goes through `oxc_resolver`, then, for TypeScript, through `oxc_transformer`. The loader does not invoke `tsc` or the oxc CLI. `import.meta.url` is the absolute `file:` URL of the source file that was resolved, including a `.ts` or `.mts` URL.
 
 Resolution options:
 
@@ -495,6 +495,8 @@ import { add } from "./add.wasm";
 
 `await import("./add.wasm")` does the same. The namespace follows the WebAssembly ES module integration. A function export is a JavaScript function. A memory export is a `WebAssembly.Memory`. A table export is a `WebAssembly.Table`. A global export is the value it holds.
 
+`import defer * as ns from "./add.wasm"` compiles and links that module. `new WebAssembly.Instance`, and evaluation of the Wasm module's own imports, run on the first observation of `ns`.
+
 Imports declared inside the Wasm module are specifiers. The loader resolves each one relative to the `.wasm` file with `oxc_resolver`, evaluates that module, and passes its exports as the import object. The target may be JavaScript, TypeScript, or another `.wasm` module. A missing export or a type mismatch fails instantiation and rejects the module graph.
 
 A source-phase import compiles the bytes and does not instantiate them:
@@ -507,6 +509,20 @@ import source mod from "./add.wasm";
 The Wasm module's own imports are not evaluated for a source-phase import. `WebAssembly.instantiate` is how that `Module` is instantiated later. oxc parses `import source` and leaves it in the graph. A source-phase import of JavaScript or TypeScript throws `TypeError`.
 
 The pinned `v8` must report the module request phase to the host resolver. Invalid Wasm bytes reject evaluation. Dedicated workers use this same loader.
+
+### Deferred evaluation
+
+`import defer` fetches and links the module with the rest of the graph. The module body runs when code first observes the deferred namespace. The static form is `import defer * as ns from "./mod.ts"`. `import defer from "./mod.ts"` is an ordinary default import whose local name is `defer`. `import defer { x } from "./mod.ts"` and `import defer name from "./mod.ts"` are syntax errors.
+
+A string key other than `"then"` observes the namespace through `[[Get]]`, `[[GetOwnProperty]]`, `[[HasProperty]]`, `[[DefineOwnProperty]]`, and `[[Delete]]`. `[[OwnPropertyKeys]]` observes it for every key, so `Object.keys`, `Object.getOwnPropertySymbols`, `Object.isFrozen`, and `Object.isSealed` evaluate the module. Reading `"then"` or a symbol, including `Symbol.toStringTag`, leaves the module unevaluated. `ns[Symbol.toStringTag]` is `"Deferred Module"` before and after evaluation. `Object.prototype.toString` reports `[object Deferred Module]`.
+
+When the module does not export `then`, `ns.then` is `undefined`. When it does export `then`, that binding stays on the deferred namespace. Reading it before evaluation throws `ReferenceError` and leaves the module unevaluated. `"then" in ns` is true and leaves the module unevaluated. After another observation evaluates the module, the read returns the export.
+
+A deferred namespace and the ordinary namespace of the same module are different objects. Repeated `import defer` of one module share one deferred namespace. An ordinary import evaluates the module once, and the deferred namespace then reads that same module state.
+
+A module with top-level await, and the modules its evaluation needs, runs while the importer is evaluated. A synchronous module reached only through `import defer` stays unevaluated until observation. `import.defer(specifier)` fulfills with the deferred namespace after asynchronous dependencies settle, and rejects when one of those dependencies throws. A parse error, a link error, or a missing module fails the importer immediately. An evaluation error is thrown by the observation, and a later observation throws that same error.
+
+JSON still requires `with { type: "json" }`. The text is parsed when the deferred namespace is observed. `import.defer(specifier, { with })` accepts the same import attributes as `import()`. Dedicated workers use this same loader.
 
 TypeScript source (`.ts`, `.mts`) is parsed with oxc and passed through oxc's TypeScript transform before V8 compiles the module. The transform erases types, interfaces, type aliases, type-only imports and exports, assertions, `satisfies`, and generics. It also rewrites runtime TypeScript syntax that erasure cannot delete: `enum`, `namespace`, and parameter properties. JavaScript syntax is not downleveled. The JSX transform is off, and `.tsx` fails to load.
 
@@ -943,6 +959,8 @@ The synthetic window node is in the snapshot. It is not an `AccessibleNode`. Its
 ## Packaging
 
 `yuzuko package` produces an application that starts from a double click. The bundle contains the `yuzuko` executable that ran the command, the entry module graph, and the assets listed in the config. That executable keeps the Cargo features it was built with. `yuzuko package` does not rebuild it. A packager built with `--no-default-features` is the JavaScript runtime from Build features. `--features` selects the subset. The default packager includes every feature. The targets are the five triples in Platforms. The macOS output is a `.app`. Windows and Linux outputs are directories. There is no WebView and no `backend` choice. The `Contents/MacOS` binary and opening the `.app` both run the packaged entry. A bundled executable always runs that entry. Arguments other than a `-psn_` token become `Yuzuko.args`, and the executable does not dispatch `run`, `test`, `package`, or `repl`. `codesign --verify` succeeds for an ad-hoc signature. `import.meta.url` is a `file:` URL under `Contents/Resources/app/`. A listed asset outside the entry directory is fetched from that tree, and a `file:` URL outside it fails. An omitted window title is the config `name`. The launch directory stays the caller's current directory. Windows and Linux directories from the same packager store the AppUserModelID, the `.desktop` id, and the icon bytes. The Windows executable in a bundle is marked as a GUI-subsystem image, so a double click opens no console window. Standard handles a parent passes in still receive output. A Windows bundle sets that AppUserModelID for the process before its first window and uses `AppIcon.ico` for the window and taskbar icon. A Linux bundle sets the X11 `WM_CLASS` and the Wayland `app_id` to the identifier, uses the widest PNG under `icons/` as the window icon, and its `.desktop` entry names the identifier as `StartupWMClass`.
+
+The module graph follows static imports and exports, including `import defer` and `import source`. Type-only imports stay unloaded. `import()`, `import.defer()`, and `import.source()` are followed when the argument reduces to one specifier and that specifier resolves to a file. The specifier may be a string literal, a template literal with no substitution, or those strings joined by `+`. It may also be `import.meta.resolve` of such a specifier. A second argument is part of that form only when it is `import.meta.url`. It may also be `new URL(specifier, import.meta.url)`, or that expression's `.href` or `.toString()`. Parentheses and TypeScript `as`, `satisfies`, angle assertions, and non-null assertions wrap the same forms. A dynamic specifier that fails to resolve stays out of the bundle, so a missing file, a `node:` specifier, or a remote URL does not fail `yuzuko package`. A computed argument, a template substitution, a binding, and a `Worker` URL stay out. `.wasm` and `.json` files in the graph are copied as bytes. Imports written inside those files are followed only from a parsed JavaScript or TypeScript module.
 
 The config file is `yuzuko.json` or `yuzuko.jsonc`. `yuzuko.jsonc` is JSON with `//` and `/* */` comments and with trailing commas. `yuzuko.json` is strict JSON. Discovery starts at the entry file's directory and walks toward the root. The nearest directory that contains either file wins. Both names in that directory is an error. The entry is the path argument. `yuzuko package` with no path fails before anything is written. `--config` names the file and skips the walk. `--output` replaces the output path for the host OS. A command-line value wins over the file.
 

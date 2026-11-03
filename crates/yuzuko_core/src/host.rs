@@ -40,6 +40,14 @@ pub struct DeferredRejection {
   pub reason: Option<v8::Global<v8::Value>>,
 }
 
+/// A dynamic `import.defer()` whose asynchronous dependencies are still
+/// running. The id is callback data. The globals stay on this state so they
+/// drop while the isolate is alive.
+pub(crate) struct DeferredImport {
+  pub resolver: v8::Global<v8::PromiseResolver>,
+  pub module: v8::Global<v8::Module>,
+}
+
 pub struct Timer {
   pub id: i32,
   pub generation: u32,
@@ -78,6 +86,9 @@ pub struct HostState {
   /// Rejections waiting for the notification task. A handler attached before
   /// that task removes the entry and no event is fired.
   pub deferred_rejections: HashMap<i32, DeferredRejection>,
+  pub deferred_imports: HashMap<i32, DeferredImport>,
+  /// Next id for [`DeferredImport`]. `0` is skipped.
+  pub next_deferred_import: i32,
   pub rejection_notify_queued: bool,
   pub capture_log: bool,
   pub logs: Vec<String>,
@@ -122,6 +133,8 @@ impl HostState {
       templates: HashMap::new(),
       unhandled: HashMap::new(),
       deferred_rejections: HashMap::new(),
+      deferred_imports: HashMap::new(),
+      next_deferred_import: 1,
       rejection_notify_queued: false,
       capture_log: false,
       logs: Vec::new(),

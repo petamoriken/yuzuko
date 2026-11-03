@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 oxc_allocator.workspace = true
 oxc_ast.workspace = true
+oxc_ast_visit.workspace = true
 oxc_codegen.workspace = true
 # The parser drops tokens on an incomplete line. Highlighting reads
 # the lexer, which the `benchmarking` feature exposes.

@@ -10,7 +10,7 @@ use oxc_resolver::{
 use url::Url;
 
 use crate::RuntimeError;
-use crate::host::{self, ModuleEntry};
+use crate::host::{self, DeferredImport, ModuleEntry};
 use crate::loader::typescript::prepare_source;
 
 macro_rules! exception_text {
@@ -180,8 +180,10 @@ fn run_module(
 }
 
 /// Sync Wasm wrappers store their instance before `evaluate` returns.
-/// Point each evaluated module namespace at that instance.
-fn record_wasm_namespaces(scope: &mut v8::PinScope) {
+/// Point the evaluated namespace and the deferred namespace at that instance.
+/// `WebAssembly.namespaceInstance` calls this again on a miss, so a module
+/// that evaluates later through `import defer` is still found.
+pub(crate) fn record_wasm_namespaces(scope: &mut v8::PinScope) {
   let stored = host::with(|state| state.wasm_instances.clone());
   let Some(stored) = stored else {
     return;
@@ -209,13 +211,7 @@ fn record_wasm_namespaces(scope: &mut v8::PinScope) {
       continue;
     }
     let module = v8::Local::new(scope, module);
-    if !matches!(
-      module.get_status(),
-      v8::ModuleStatus::Instantiated
-        | v8::ModuleStatus::Evaluating
-        | v8::ModuleStatus::Evaluated
-        | v8::ModuleStatus::Errored
-    ) {
+    if !module_linked(module) {
       continue;
     }
     let namespace = module.get_module_namespace();
@@ -224,7 +220,24 @@ fn record_wasm_namespaces(scope: &mut v8::PinScope) {
     if map.set(scope, namespace, instance).is_none() {
       return;
     }
+    let deferred =
+      module.get_module_namespace_with_phase(v8::ModuleImportPhase::kDefer);
+    let deferred = v8::Global::new(scope, deferred);
+    let deferred = v8::Local::new(scope, deferred);
+    if map.set(scope, deferred, instance).is_none() {
+      return;
+    }
   }
+}
+
+fn module_linked(module: v8::Local<v8::Module>) -> bool {
+  matches!(
+    module.get_status(),
+    v8::ModuleStatus::Instantiated
+      | v8::ModuleStatus::Evaluating
+      | v8::ModuleStatus::Evaluated
+      | v8::ModuleStatus::Errored
+  )
 }
 
 fn compile_path<'a>(
@@ -660,6 +673,305 @@ pub fn dynamic_import_source<'s>(
   Some(promise)
 }
 
+/// `import.defer()`. Link the graph and evaluate asynchronous dependencies.
+/// The returned promise fulfills with the deferred namespace. The module body
+/// stays unevaluated until that namespace is observed.
+pub fn dynamic_import_defer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  resource_name: v8::Local<'s, v8::Value>,
+  specifier: v8::Local<'s, v8::String>,
+  import_attributes: v8::Local<'s, v8::FixedArray>,
+) -> Option<v8::Local<'s, v8::Promise>> {
+  let resolver = v8::PromiseResolver::new(scope)?;
+  let promise = resolver.get_promise(scope);
+  let spec = specifier.to_rust_string_lossy(scope);
+  let referrer = resource_name.to_rust_string_lossy(scope);
+  let attribute = import_type(scope, import_attributes);
+  let referrer_path =
+    url_to_path(&referrer).or_else(|_| absolute(Path::new(&referrer)));
+  let loaded = referrer_path.and_then(|path| {
+    resolve_and_compile(scope, &path, &spec, attribute.as_deref())
+  });
+  let module = match loaded {
+    Ok(module) => module,
+    Err(error) => {
+      reject_message(scope, resolver, &error.message, true);
+      return Some(promise);
+    }
+  };
+  if let Err(fail) = link_module(scope, module) {
+    reject_defer(scope, resolver, fail);
+    return Some(promise);
+  }
+  let evaluation = match defer_evaluation(scope, module) {
+    Ok(value) => value,
+    Err(fail) => {
+      reject_defer(scope, resolver, fail);
+      return Some(promise);
+    }
+  };
+  let evaluation = v8::Local::new(scope, evaluation);
+  let Ok(inner) = v8::Local::<v8::Promise>::try_from(evaluation) else {
+    reject_message(
+      scope,
+      resolver,
+      "import.defer did not return a promise",
+      true,
+    );
+    return Some(promise);
+  };
+  match inner.state() {
+    v8::PromiseState::Rejected => {
+      settle_rejected_defer(scope, resolver, inner);
+    }
+    v8::PromiseState::Fulfilled => {
+      resolve_deferred_namespace(scope, resolver, module);
+    }
+    v8::PromiseState::Pending => {
+      watch_deferred_import(scope, resolver, module, inner);
+    }
+  }
+  Some(promise)
+}
+
+enum DeferFail {
+  Thrown(v8::Global<v8::Value>),
+  Message(String),
+}
+
+fn link_module(
+  scope: &mut v8::PinScope,
+  module: v8::Local<v8::Module>,
+) -> Result<(), DeferFail> {
+  v8::tc_scope!(let tc, scope);
+  if module
+    .instantiate_module2(tc, resolve_callback, source_callback)
+    .is_some()
+  {
+    return Ok(());
+  }
+  if let Some(exception) = tc.exception() {
+    return Err(DeferFail::Thrown(v8::Global::new(tc, exception)));
+  }
+  Err(DeferFail::Message(exception_text!(
+    tc,
+    "failed to instantiate module"
+  )))
+}
+
+fn defer_evaluation(
+  scope: &mut v8::PinScope,
+  module: v8::Local<v8::Module>,
+) -> Result<v8::Global<v8::Value>, DeferFail> {
+  v8::tc_scope!(let tc, scope);
+  match module.evaluate_for_import_defer(tc) {
+    Some(value) => Ok(v8::Global::new(tc, value)),
+    None => {
+      if let Some(exception) = tc.exception() {
+        Err(DeferFail::Thrown(v8::Global::new(tc, exception)))
+      } else {
+        Err(DeferFail::Message(exception_text!(
+          tc,
+          "failed to defer module evaluation"
+        )))
+      }
+    }
+  }
+}
+
+fn reject_message(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  message: &str,
+  type_error: bool,
+) {
+  let message = v8::String::new(scope, message).unwrap();
+  let exception = if type_error {
+    v8::Exception::type_error(scope, message)
+  } else {
+    v8::Exception::error(scope, message)
+  };
+  resolver.reject(scope, exception);
+}
+
+fn reject_defer(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  fail: DeferFail,
+) {
+  match fail {
+    DeferFail::Thrown(thrown) => {
+      let reason = v8::Local::new(scope, thrown);
+      resolver.reject(scope, reason);
+    }
+    DeferFail::Message(text) => {
+      reject_message(scope, resolver, &text, false);
+    }
+  }
+}
+
+fn settle_rejected_defer(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  inner: v8::Local<v8::Promise>,
+) {
+  // The user promise rejects with the same reason. Mark the inner promise
+  // handled so it does not also fire `unhandledrejection`.
+  inner.mark_as_handled();
+  if let Some(swallow) = v8::Function::new(scope, swallow_rejection) {
+    let _ = inner.catch(scope, swallow);
+  }
+  let reason = inner.result(scope);
+  resolver.reject(scope, reason);
+}
+
+fn resolve_deferred_namespace(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  module: v8::Local<v8::Module>,
+) {
+  let Some(namespace) = deferred_namespace(scope, module) else {
+    reject_message(
+      scope,
+      resolver,
+      "deferred module namespace is not available",
+      true,
+    );
+    return;
+  };
+  resolver.resolve(scope, namespace);
+}
+
+fn deferred_namespace<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  module: v8::Local<v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if !module_linked(module) {
+    return None;
+  }
+  // The namespace cell is stored on the module before this returns, so the
+  // raw local stays reachable from `module` until it is rooted.
+  let namespace =
+    module.get_module_namespace_with_phase(v8::ModuleImportPhase::kDefer);
+  let namespace = v8::Global::new(scope, namespace);
+  Some(v8::Local::new(scope, namespace))
+}
+
+fn watch_deferred_import(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  module: v8::Local<v8::Module>,
+  inner: v8::Local<v8::Promise>,
+) {
+  let id = alloc_deferred_import(scope, resolver, module);
+  let data = v8::Integer::new(scope, id);
+  let Some(fulfill) = v8::Function::builder(defer_import_fulfilled)
+    .data(data.into())
+    .build(scope)
+  else {
+    abandon_deferred_import(scope, resolver, inner, id);
+    return;
+  };
+  let Some(reject) = v8::Function::builder(defer_import_rejected)
+    .data(data.into())
+    .build(scope)
+  else {
+    abandon_deferred_import(scope, resolver, inner, id);
+    return;
+  };
+  if inner.then2(scope, fulfill, reject).is_none() {
+    abandon_deferred_import(scope, resolver, inner, id);
+  }
+}
+
+fn abandon_deferred_import(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  inner: v8::Local<v8::Promise>,
+  id: i32,
+) {
+  drop_deferred_import(id);
+  inner.mark_as_handled();
+  if let Some(swallow) = v8::Function::new(scope, swallow_rejection) {
+    let _ = inner.catch(scope, swallow);
+  }
+  reject_message(scope, resolver, "failed to defer module evaluation", false);
+}
+
+fn alloc_deferred_import(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  module: v8::Local<v8::Module>,
+) -> i32 {
+  let resolver = v8::Global::new(scope, resolver);
+  let module = v8::Global::new(scope, module);
+  host::with_mut(|state| {
+    loop {
+      let id = state.next_deferred_import;
+      state.next_deferred_import = state.next_deferred_import.wrapping_add(1);
+      if id != 0 && !state.deferred_imports.contains_key(&id) {
+        state
+          .deferred_imports
+          .insert(id, DeferredImport { resolver, module });
+        return id;
+      }
+    }
+  })
+}
+
+fn take_deferred_import(id: i32) -> Option<DeferredImport> {
+  host::with_mut(|state| state.deferred_imports.remove(&id))
+}
+
+fn drop_deferred_import(id: i32) {
+  host::with_mut(|state| {
+    state.deferred_imports.remove(&id);
+  });
+}
+
+fn deferred_import_id(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Option<i32> {
+  let data = args.data();
+  if !data.is_int32() {
+    return None;
+  }
+  data.int32_value(scope)
+}
+
+fn defer_import_fulfilled(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  // A throw here would reject the native `then` promise with no handler.
+  let Some(id) = deferred_import_id(scope, &args) else {
+    return;
+  };
+  let Some(job) = take_deferred_import(id) else {
+    return;
+  };
+  let resolver = v8::Local::new(scope, job.resolver);
+  let module = v8::Local::new(scope, job.module);
+  resolve_deferred_namespace(scope, resolver, module);
+}
+
+fn defer_import_rejected(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  let Some(id) = deferred_import_id(scope, &args) else {
+    return;
+  };
+  let Some(job) = take_deferred_import(id) else {
+    return;
+  };
+  let resolver = v8::Local::new(scope, job.resolver);
+  resolver.reject(scope, args.get(0));
+}
+
 pub fn absolute(path: &Path) -> Result<PathBuf, RuntimeError> {
   if path.is_absolute() {
     Ok(path.to_path_buf())
@@ -727,10 +1039,16 @@ pub fn file_url(path: &Path) -> Result<String, RuntimeError> {
     })
 }
 
-/// Files in the static module graph of `entry`, including `entry`.
+/// Files in the module graph of `entry`, including `entry`.
 ///
-/// Dynamic `import()` and `Worker` specifiers are not followed. Type-only
-/// imports are not followed.
+/// Static imports and re-exports are followed, including `import defer`
+/// and `import source`. Type-only imports are left out. `import()`,
+/// `import.defer()`, and `import.source()` are followed when the argument
+/// is one concrete specifier: a string literal, a template literal with no
+/// substitution, those strings joined by `+`, `import.meta.resolve` of such
+/// a specifier, or `new URL(specifier, import.meta.url)`, including
+/// `.href` and `.toString()`. A dynamic specifier that does not resolve is
+/// left out. A computed specifier and a `Worker` URL are left out.
 pub fn module_graph(entry: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
   let entry = absolute(entry)?;
   let resolver = resolver();
@@ -749,8 +1067,17 @@ pub fn module_graph(entry: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
     let source = fs::read_to_string(&path).map_err(|error| {
       RuntimeError::message(format!("{}: {error}", path.display()))
     })?;
-    for specifier in static_specifiers(&path, &source)? {
-      pending.push(resolve_with(&resolver, &path, &specifier)?);
+    for edge in graph::edges(&path, &source)? {
+      match resolve_with(&resolver, &path, &edge.specifier) {
+        Ok(resolved) => {
+          if edge.dynamic && !resolved.is_file() {
+            continue;
+          }
+          pending.push(resolved);
+        }
+        Err(_) if edge.dynamic => {}
+        Err(error) => return Err(error),
+      }
     }
   }
   Ok(files)
@@ -798,53 +1125,227 @@ fn resolve_with(
   Ok(resolved.path().to_path_buf())
 }
 
-fn static_specifiers(
-  path: &Path,
-  source: &str,
-) -> Result<Vec<String>, RuntimeError> {
-  let allocator = oxc_allocator::Allocator::default();
-  let source_type = oxc_span::SourceType::from_path(path).map_err(|error| {
-    RuntimeError::message(format!("{}: {error}", path.display()))
-  })?;
-  let parsed = oxc_parser::Parser::new(&allocator, source, source_type).parse();
-  if let Some(error) = parsed.diagnostics.first() {
-    return Err(RuntimeError::message(format!(
-      "{}: {error}",
-      path.display()
-    )));
-  }
-  let mut specs = Vec::new();
-  for statement in &parsed.program.body {
-    collect_specifiers(statement, &mut specs);
-  }
-  Ok(specs)
-}
+mod graph {
+  use std::path::Path;
 
-fn collect_specifiers(
-  statement: &oxc_ast::ast::Statement<'_>,
-  specs: &mut Vec<String>,
-) {
-  use oxc_ast::ast::{ImportOrExportKind, Statement};
-  match statement {
-    Statement::ImportDeclaration(declaration) => {
-      if declaration.import_kind == ImportOrExportKind::Type {
+  use oxc_ast::ast::{
+    BinaryOperator, CallExpression, ExportAllDeclaration,
+    ExportFromDeclaration, Expression, ImportDeclaration, ImportExpression,
+    ImportOrExportKind, NewExpression, StaticMemberExpression, StringLiteral,
+    TemplateLiteral,
+  };
+  use oxc_ast_visit::Visit;
+  use oxc_ast_visit::walk::{
+    walk_export_all_declaration, walk_export_from_declaration,
+    walk_import_declaration, walk_import_expression,
+  };
+
+  use crate::RuntimeError;
+
+  pub(super) struct Edge {
+    pub specifier: String,
+    pub dynamic: bool,
+  }
+
+  pub(super) fn edges(
+    path: &Path,
+    source: &str,
+  ) -> Result<Vec<Edge>, RuntimeError> {
+    let allocator = oxc_allocator::Allocator::default();
+    let source_type =
+      oxc_span::SourceType::from_path(path).map_err(|error| {
+        RuntimeError::message(format!("{}: {error}", path.display()))
+      })?;
+    let parsed =
+      oxc_parser::Parser::new(&allocator, source, source_type).parse();
+    if let Some(error) = parsed.diagnostics.first() {
+      return Err(RuntimeError::message(format!(
+        "{}: {error}",
+        path.display()
+      )));
+    }
+    let mut visitor = Visitor { edges: Vec::new() };
+    visitor.visit_program(&parsed.program);
+    Ok(visitor.edges)
+  }
+
+  struct Visitor {
+    edges: Vec<Edge>,
+  }
+
+  impl Visitor {
+    fn push_static(
+      &mut self,
+      kind: ImportOrExportKind,
+      source: &StringLiteral<'_>,
+    ) {
+      if kind == ImportOrExportKind::Type {
         return;
       }
-      specs.push(declaration.source.value.to_string());
+      self.edges.push(Edge {
+        specifier: source.value.to_string(),
+        dynamic: false,
+      });
     }
-    Statement::ExportAllDeclaration(declaration) => {
-      if declaration.export_kind == ImportOrExportKind::Type {
-        return;
+  }
+
+  impl<'a> Visit<'a> for Visitor {
+    fn visit_import_declaration(
+      &mut self,
+      declaration: &ImportDeclaration<'a>,
+    ) {
+      self.push_static(declaration.import_kind, &declaration.source);
+      walk_import_declaration(self, declaration);
+    }
+
+    fn visit_export_from_declaration(
+      &mut self,
+      declaration: &ExportFromDeclaration<'a>,
+    ) {
+      self.push_static(declaration.export_kind, &declaration.source);
+      walk_export_from_declaration(self, declaration);
+    }
+
+    fn visit_export_all_declaration(
+      &mut self,
+      declaration: &ExportAllDeclaration<'a>,
+    ) {
+      self.push_static(declaration.export_kind, &declaration.source);
+      walk_export_all_declaration(self, declaration);
+    }
+
+    fn visit_import_expression(&mut self, expression: &ImportExpression<'a>) {
+      if let Some(specifier) = concrete_specifier(&expression.source) {
+        self.edges.push(Edge {
+          specifier,
+          dynamic: true,
+        });
       }
-      specs.push(declaration.source.value.to_string());
+      walk_import_expression(self, expression);
     }
-    Statement::ExportFromDeclaration(declaration) => {
-      if declaration.export_kind == ImportOrExportKind::Type {
-        return;
+  }
+
+  /// One specifier an `import()` argument can name without execution.
+  fn concrete_specifier(expression: &Expression<'_>) -> Option<String> {
+    match peel(expression) {
+      Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+      Expression::TemplateLiteral(literal) => template_specifier(literal),
+      Expression::BinaryExpression(binary)
+        if binary.operator == BinaryOperator::Addition =>
+      {
+        let left = concrete_specifier(&binary.left)?;
+        let right = concrete_specifier(&binary.right)?;
+        Some(left + &right)
       }
-      specs.push(declaration.source.value.to_string());
+      Expression::SequenceExpression(sequence) => {
+        sequence.expressions.last().and_then(concrete_specifier)
+      }
+      Expression::CallExpression(call) => call_specifier(call),
+      Expression::NewExpression(new) => new_url_specifier(new),
+      Expression::StaticMemberExpression(member) => href_specifier(member),
+      _ => None,
     }
-    _ => {}
+  }
+
+  fn peel<'a>(mut expression: &'a Expression<'a>) -> &'a Expression<'a> {
+    loop {
+      expression = match expression {
+        Expression::ParenthesizedExpression(inner) => &inner.expression,
+        Expression::TSAsExpression(inner) => &inner.expression,
+        Expression::TSSatisfiesExpression(inner) => &inner.expression,
+        Expression::TSTypeAssertion(inner) => &inner.expression,
+        Expression::TSNonNullExpression(inner) => &inner.expression,
+        _ => return expression,
+      };
+    }
+  }
+
+  fn template_specifier(literal: &TemplateLiteral<'_>) -> Option<String> {
+    if !literal.expressions.is_empty() {
+      return None;
+    }
+    let mut specifier = String::new();
+    for quasi in &literal.quasis {
+      specifier.push_str(quasi.value.cooked.as_ref()?.as_str());
+    }
+    Some(specifier)
+  }
+
+  fn call_specifier(call: &CallExpression<'_>) -> Option<String> {
+    if call.optional {
+      return None;
+    }
+    let Expression::StaticMemberExpression(member) = peel(&call.callee) else {
+      return None;
+    };
+    if member.optional {
+      return None;
+    }
+    match member.property.name.as_str() {
+      "resolve" if is_import_meta(&member.object) => resolve_specifier(call),
+      "toString" if call.arguments.is_empty() => new_url_from(&member.object),
+      _ => None,
+    }
+  }
+
+  fn resolve_specifier(call: &CallExpression<'_>) -> Option<String> {
+    let mut arguments = call.arguments.iter();
+    let specifier = concrete_specifier(arguments.next()?.as_expression()?)?;
+    match arguments.next() {
+      None => Some(specifier),
+      Some(parent) => {
+        if arguments.next().is_some()
+          || !is_import_meta_url(parent.as_expression()?)
+        {
+          None
+        } else {
+          Some(specifier)
+        }
+      }
+    }
+  }
+
+  fn href_specifier(member: &StaticMemberExpression<'_>) -> Option<String> {
+    if member.optional || member.property.name.as_str() != "href" {
+      return None;
+    }
+    new_url_from(&member.object)
+  }
+
+  fn new_url_from(expression: &Expression<'_>) -> Option<String> {
+    match peel(expression) {
+      Expression::NewExpression(new) => new_url_specifier(new),
+      _ => None,
+    }
+  }
+
+  fn new_url_specifier(new: &NewExpression<'_>) -> Option<String> {
+    let Expression::Identifier(identifier) = peel(&new.callee) else {
+      return None;
+    };
+    if identifier.name.as_str() != "URL" {
+      return None;
+    }
+    let mut arguments = new.arguments.iter();
+    let specifier = concrete_specifier(arguments.next()?.as_expression()?)?;
+    let base = arguments.next()?.as_expression()?;
+    if arguments.next().is_some() || !is_import_meta_url(base) {
+      return None;
+    }
+    Some(specifier)
+  }
+
+  fn is_import_meta(expression: &Expression<'_>) -> bool {
+    matches!(peel(expression), Expression::ImportMeta(_))
+  }
+
+  fn is_import_meta_url(expression: &Expression<'_>) -> bool {
+    let Expression::StaticMemberExpression(member) = peel(expression) else {
+      return false;
+    };
+    !member.optional
+      && member.property.name.as_str() == "url"
+      && is_import_meta(&member.object)
   }
 }
 
@@ -895,5 +1396,246 @@ mod verbatim_tests {
     let here = canonicalize(Path::new(".")).unwrap();
     let url = url::Url::from_directory_path(&here).unwrap();
     assert!(url.to_file_path().unwrap().starts_with(&here), "{here:?}");
+  }
+}
+
+#[cfg(test)]
+mod graph_tests {
+  use std::fs;
+  use std::path::{Path, PathBuf};
+
+  use super::module_graph;
+
+  struct TempDir(PathBuf);
+
+  impl Drop for TempDir {
+    fn drop(&mut self) {
+      let _ = fs::remove_dir_all(&self.0);
+    }
+  }
+
+  fn scratch() -> TempDir {
+    let nanos = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_nanos();
+    let path = std::env::temp_dir()
+      .join(format!("yuzuko-graph-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&path).unwrap();
+    TempDir(path)
+  }
+
+  fn write(dir: &Path, name: &str, text: &str) {
+    let path = dir.join(name);
+    if let Some(parent) = path.parent() {
+      fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(path, text).unwrap();
+  }
+
+  const ENTRY: &str = r#"
+import { value } from "./static.ts";
+import defer * as deferred from "./deferred.ts";
+import source wasm from "./add.wasm";
+import type { Missing } from "./missing-type.ts";
+export type { Missing as Again } from "./missing-type-export.ts";
+export type * from "./missing-type-all.ts";
+export { reexported } from "./reexport.ts";
+export * from "./star.ts";
+import("./dynamic.ts");
+import(import.meta.resolve("./meta.ts"));
+import(import.meta.resolve("./meta-parent.ts", import.meta.url));
+import(import.meta.resolve("./joined" + "-meta.ts"));
+import.defer("./defer-dyn.ts");
+import.source("./source.wasm");
+import(`./template.ts`);
+import(`./esca\u0070e.ts`);
+import("./plus" + ".ts");
+import(new URL("./url.ts", import.meta.url).href);
+import(new URL("./url-string.ts", import.meta.url).toString());
+import(new URL("./url-bare.ts", import.meta.url));
+import((new URL("./url-paren.ts", import.meta.url)).href);
+import(new URL("./url-as.ts", import.meta.url).href as string);
+import("./alias.js");
+import("./data.json", { with: { type: "json" } });
+import(("skip", "./sequence.ts"));
+import("./asserted.ts" as string);
+import(("./satisfies.ts" satisfies string));
+import(("./nonnull.ts"!));
+import((<string>"./angle.ts"));
+import((import.meta.resolve(("./paren.ts"))));
+import("./js-importer.js");
+import(import("./nested-outer.ts"));
+const bound = "./bound.ts";
+import(bound);
+import(`./dir/${bound}.ts`);
+import(`./${"folded"}.ts`);
+import(flag ? "./branch-a.ts" : "./branch-b.ts");
+import(import.meta.resolve("./other-parent.ts", "./elsewhere.ts"));
+import(import.meta.resolve("./three.ts", import.meta.url, "extra"));
+import(import.meta.resolve?.("./optional.ts"));
+import.meta.resolve("./alone.ts");
+new URL("./alone-url.ts", import.meta.url);
+new Worker("./worker.ts");
+new Worker(new URL("./worker-url.ts", import.meta.url));
+import(new URL("./to-string-args.ts", import.meta.url).toString("utf-8"));
+import(new URL("./one-arg.ts"));
+import("./missing-dynamic.ts");
+import("node:fs");
+import("https://example.invalid/mod.js");
+import("not-a-real-package");
+void value;
+void deferred;
+void wasm;
+"#;
+
+  #[test]
+  fn module_graph_includes_concrete_dynamic_imports() {
+    let dir = scratch();
+    let root = &dir.0;
+    for name in [
+      "static-dep.ts",
+      "deferred-dep.ts",
+      "reexport.ts",
+      "star.ts",
+      "dynamic-dep.ts",
+      "dynamic-nested.ts",
+      "meta-parent.ts",
+      "meta-static.ts",
+      "joined-meta.ts",
+      "defer-dyn.ts",
+      "template.ts",
+      "escape.ts",
+      "plus.ts",
+      "url.ts",
+      "url-string.ts",
+      "url-bare.ts",
+      "url-paren.ts",
+      "url-as.ts",
+      "alias.ts",
+      "sequence.ts",
+      "asserted.ts",
+      "satisfies.ts",
+      "nonnull.ts",
+      "angle.ts",
+      "paren.ts",
+      "from-js.ts",
+      "nested-outer.ts",
+      "file-url.ts",
+      "alone.ts",
+      "alone-url.ts",
+      "bound.ts",
+      "branch-a.ts",
+      "branch-b.ts",
+      "folded.ts",
+      "other-parent.ts",
+      "three.ts",
+      "optional.ts",
+      "worker.ts",
+      "worker-url.ts",
+      "to-string-args.ts",
+      "one-arg.ts",
+      "dir/not-scanned.ts",
+    ] {
+      write(root, name, "export {};\n");
+    }
+    write(
+      root,
+      "static.ts",
+      "import \"./static-dep.ts\";\nexport const value = 1;\n",
+    );
+    write(
+      root,
+      "deferred.ts",
+      "import \"./deferred-dep.ts\";\nexport const deferred = 1;\n",
+    );
+    write(
+      root,
+      "dynamic.ts",
+      "import \"./dynamic-dep.ts\";\nimport(\"./dynamic-nested.ts\");\n",
+    );
+    write(
+      root,
+      "meta.ts",
+      "import \"./meta-static.ts\";\nexport const meta = 1;\n",
+    );
+    write(root, "js-importer.js", "import.defer(\"./from-js.ts\");\n");
+    write(root, "data.json", "{ \"ok\": true }\n");
+    fs::write(root.join("add.wasm"), [0xff, 0xfe]).unwrap();
+    fs::write(root.join("source.wasm"), [0xff, 0xfe]).unwrap();
+    let present = url::Url::from_file_path(root.join("file-url.ts")).unwrap();
+    let missing =
+      url::Url::from_file_path(root.join("absent-file-url.ts")).unwrap();
+    write(
+      root,
+      "entry.ts",
+      &format!("{ENTRY}\nimport(\"{present}\");\nimport(\"{missing}\");\n"),
+    );
+
+    let files = module_graph(&root.join("entry.ts")).unwrap();
+    let mut names: Vec<_> = files
+      .iter()
+      .map(|path| path.file_name().unwrap().to_str().unwrap().to_string())
+      .collect();
+    names.sort();
+    assert_eq!(
+      names,
+      [
+        "add.wasm",
+        "alias.ts",
+        "angle.ts",
+        "asserted.ts",
+        "data.json",
+        "defer-dyn.ts",
+        "deferred-dep.ts",
+        "deferred.ts",
+        "dynamic-dep.ts",
+        "dynamic-nested.ts",
+        "dynamic.ts",
+        "entry.ts",
+        "escape.ts",
+        "file-url.ts",
+        "from-js.ts",
+        "joined-meta.ts",
+        "js-importer.js",
+        "meta-parent.ts",
+        "meta-static.ts",
+        "meta.ts",
+        "nested-outer.ts",
+        "nonnull.ts",
+        "paren.ts",
+        "plus.ts",
+        "reexport.ts",
+        "satisfies.ts",
+        "sequence.ts",
+        "source.wasm",
+        "star.ts",
+        "static-dep.ts",
+        "static.ts",
+        "template.ts",
+        "url-as.ts",
+        "url-bare.ts",
+        "url-paren.ts",
+        "url-string.ts",
+        "url.ts",
+      ]
+    );
+  }
+
+  #[test]
+  fn module_graph_rejects_a_missing_static_import() {
+    let dir = scratch();
+    write(&dir.0, "entry.ts", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
+  }
+
+  #[test]
+  fn module_graph_rejects_a_static_import_from_a_dynamic_module() {
+    let dir = scratch();
+    write(&dir.0, "entry.ts", "import(\"./present.ts\");\n");
+    write(&dir.0, "present.ts", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
   }
 }
