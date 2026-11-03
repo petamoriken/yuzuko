@@ -220,6 +220,15 @@ impl ToV8 for String {
   }
 }
 
+impl ToV8 for &'static str {
+  #[inline]
+  fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {
+    if let Some(value) = v8::String::new(scope, self) {
+      ret.set(value.into());
+    }
+  }
+}
+
 impl ToV8 for f64 {
   #[inline]
   fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {

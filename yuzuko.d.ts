@@ -2901,11 +2901,56 @@ declare namespace Yuzuko {
   /**
    * Arguments for {@link spawn}.
    *
-   * Omitted fields use an empty argument list. Other fields are ignored.
+   * Omitted `args` passes no arguments. Fields other than `args`, `stdin`,
+   * `stdout`, `stderr`, `env`, and `cwd` are ignored.
    */
   interface SpawnOptions {
     /** Arguments passed to the program. There is no shell. */
     args?: string[] | null;
+
+    /**
+     * Standard input.
+     *
+     * `"null"` closes it, `"inherit"` uses the parent's input, and
+     * `"piped"` exposes {@link Child.stdin}. The default is `"null"`.
+     * A string primitive. `"collect"` is rejected.
+     */
+    stdin?: "null" | "inherit" | "piped" | null;
+
+    /**
+     * Standard output.
+     *
+     * `"collect"` retains the bytes for {@link Child.output}. `"null"`
+     * discards them, `"inherit"` uses the parent's output, and `"piped"`
+     * exposes {@link Child.stdout}. The default is `"collect"`. A string
+     * primitive.
+     */
+    stdout?: "null" | "inherit" | "piped" | "collect" | null;
+
+    /**
+     * Standard error. The same modes as {@link SpawnOptions.stdout}.
+     *
+     * The default is `"collect"`.
+     */
+    stderr?: "null" | "inherit" | "piped" | "collect" | null;
+
+    /**
+     * Environment names to set or remove over the inherited environment.
+     *
+     * A string sets that name. `null` removes it. The environment is not
+     * cleared. On Windows, names are case-insensitive and removals are
+     * applied before assignments.
+     */
+    env?: { [name: string]: string | null } | null;
+
+    /**
+     * Working directory for the child.
+     *
+     * A string or a `file:` URL. Omitted, `null`, `undefined`, and `""`
+     * inherit the current directory. A relative string is relative to the
+     * process current directory.
+     */
+    cwd?: string | URL | null;
   }
 
   /**
@@ -2913,6 +2958,7 @@ declare namespace Yuzuko {
    *
    * `code` is `null` when a signal terminated the process. `signal` is
    * `null` when the process exited, and it is always `null` on Windows.
+   * A stream that was `"null"` or `"inherit"` is an empty `Uint8Array`.
    */
   interface ChildOutput {
     code: number | null;
@@ -2922,12 +2968,26 @@ declare namespace Yuzuko {
   }
 
   /**
+   * The exit state of a {@link Child}, without its output.
+   *
+   * `code` is `null` when a signal terminated the process. `signal` is
+   * `null` when the process exited, and it is always `null` on Windows.
+   */
+  interface ChildStatus {
+    code: number | null;
+    signal: number | null;
+  }
+
+  /**
    * A child process started by {@link spawn}.
    *
-   * `output` and `kill` run outside the calling thread. A running child
-   * keeps the event loop alive until it exits and its output is collected.
-   * Dropping this object does not terminate the process. Realm shutdown
-   * does.
+   * `output`, `status`, and piped reads and writes run outside the calling
+   * thread. A running child keeps the event loop alive until it exits. A
+   * collected stream keeps it alive until that collection finishes, and a
+   * piped read or write keeps it alive until that promise settles. Dropping
+   * this object does not terminate the process. It closes a piped standard
+   * input that is still open. Realm shutdown terminates a child that is
+   * still running.
    */
   class Child {
     private constructor();
@@ -2943,26 +3003,178 @@ declare namespace Yuzuko {
     readonly pid: number;
 
     /**
+     * How standard input was opened: `"null"`, `"inherit"`, or `"piped"`.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stdinMode: "null" | "inherit" | "piped";
+
+    /**
+     * How standard output was opened.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stdoutMode: "null" | "inherit" | "piped" | "collect";
+
+    /**
+     * How standard error was opened.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stderrMode: "null" | "inherit" | "piped" | "collect";
+
+    /**
+     * Byte sink for piped standard input.
+     *
+     * `null` unless {@link Child.stdinMode} is `"piped"`. Each read returns
+     * the same stream. A chunk that is not a buffer source errors the
+     * stream with `The data must be a BufferSource.` A write that returns
+     * no bytes errors it with `The write wrote no bytes.` Closing the
+     * stream closes standard input.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stdin: WritableStream<AllowSharedBufferSource> | null;
+
+    /**
+     * Byte stream of piped standard output.
+     *
+     * `null` unless {@link Child.stdoutMode} is `"piped"`. Each read returns
+     * the same stream. A pull reads at most 16384 bytes. There is no byte
+     * cap.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stdout: ReadableStream<Uint8Array<ArrayBuffer>> | null;
+
+    /**
+     * Byte stream of piped standard error.
+     *
+     * `null` unless {@link Child.stderrMode} is `"piped"`. Each read returns
+     * the same stream. A pull reads at most 16384 bytes.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`.
+     */
+    readonly stderr: ReadableStream<Uint8Array<ArrayBuffer>> | null;
+
+    /**
      * Collects the exit status and the captured output.
      *
-     * A second call returns the same promise. `stdout` and `stderr` each
-     * hold at most 1048576 bytes. A larger stream rejects the promise with
+     * A second call returns the same promise. A `"collect"` stream holds at
+     * most 1048576 bytes. A larger stream rejects the promise with
      * {@link Error} `The child output is too large.` and terminates the
-     * process. Another collection failure rejects with {@link Error}
-     * `The child process failed.`
+     * process. {@link Child.status} rejects with that same error. Another
+     * collection failure rejects with {@link Error}
+     * `The child process failed.` A piped standard input still allows this
+     * call.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`. `The child output is not collected.` when standard
+     * output or standard error is `"piped"`. `The child process failed.`
+     * when the promise cannot be created.
+     */
+    output(): Promise<ChildOutput>;
+
+    /**
+     * Resolves when the process exits.
+     *
+     * A second call returns the same promise. This does not read the pipes.
+     * A collected stream that exceeds 1048576 bytes rejects the promise
+     * with {@link Error} `The child output is too large.`
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is
      * not a `Child`. `The child process failed.` when the promise cannot
      * be created.
      */
-    output(): Promise<ChildOutput>;
+    status(): Promise<ChildStatus>;
+
+    /**
+     * Reads piped standard output into `buffer`.
+     *
+     * The promise resolves the number of bytes written into `buffer`, or
+     * `null` at the end of the stream. A zero-length buffer resolves `0`
+     * and does not read. One read can wait.
+     *
+     * @param buffer - Destination bytes. An `ArrayBuffer`, a
+     * `SharedArrayBuffer`, or a view, including a view with a byte offset.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`. `Not enough arguments` when `buffer` is missing.
+     * `The data must be a BufferSource.` when it is not one.
+     * `The buffer is detached.` when it is detached.
+     * `The buffer is too large.` when it is longer than 2147483647 bytes.
+     * `The standard output is not piped.` when standard output is not
+     * `"piped"`. `A read is already waiting.` when a read is in progress.
+     * `The bytes could not be read.` when the promise cannot be created.
+     * @throws {@link Error} `The bytes could not be read.` when the read
+     * fails. The process is left running.
+     */
+    readStdout(buffer: AllowSharedBufferSource): Promise<number | null>;
+
+    /**
+     * Reads piped standard error into `buffer`.
+     *
+     * The promise resolves the number of bytes written into `buffer`, or
+     * `null` at the end of the stream. The checks match
+     * {@link Child.readStdout}, with `The standard error is not piped.`
+     * when standard error is not `"piped"`.
+     *
+     * @param buffer - Destination bytes.
+     * @throws {@link TypeError} The same failures as {@link Child.readStdout}
+     * for a missing receiver, a missing or unusable buffer, a read that is
+     * already waiting, or a promise that cannot be created.
+     * `The standard error is not piped.` when standard error is not
+     * `"piped"`.
+     * @throws {@link Error} `The bytes could not be read.` when the read
+     * fails.
+     */
+    readStderr(buffer: AllowSharedBufferSource): Promise<number | null>;
+
+    /**
+     * Writes `data` to piped standard input.
+     *
+     * The bytes are copied before the call returns. The promise resolves
+     * the number of bytes written. One write can wait.
+     *
+     * @param data - Bytes to write.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`. `Not enough arguments` when `data` is missing.
+     * `The data must be a BufferSource.` when it is not one.
+     * `The buffer is detached.` when it is detached.
+     * `The buffer is too large.` when it is longer than 2147483647 bytes.
+     * `The standard input is not piped.` when standard input is not
+     * `"piped"`. `The standard input is closed.` when it is already closed.
+     * `A write is already waiting.` when a write is in progress.
+     * `The bytes could not be written.` when the promise cannot be created.
+     * @throws {@link Error} `The bytes could not be written.` when the
+     * write fails.
+     */
+    writeStdin(data: AllowSharedBufferSource): Promise<number>;
+
+    /**
+     * Closes piped standard input.
+     *
+     * A write that is already waiting finishes first, and the pipe then
+     * closes. Dropping the {@link Child} closes an input that is still open.
+     *
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Child`. `The standard input is not piped.` when it is not
+     * `"piped"`. `The standard input is closed.` when it is already closed.
+     */
+    closeStdin(): void;
 
     /**
      * Terminates the process if it is still running.
      *
      * A process that has already exited is left alone. Calling `kill`
      * again succeeds. On Unix this sends `SIGKILL`. On Windows this calls
-     * `TerminateProcess` with exit code 1.
+     * `TerminateProcess` with exit code 1. The pipes close, so a blocked
+     * read ends.
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is
      * not a `Child`.
@@ -2978,12 +3190,16 @@ declare namespace Yuzuko {
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `child` leaves this function and {@link Child} absent. The feature does
    * not enable `window`. There is no permission prompt and no shell. The
-   * child inherits the environment and the current directory. Its standard
-   * input is closed. The call blocks only while the operating system
-   * creates the process.
+   * child inherits the environment and the current directory unless
+   * `options.env` or `options.cwd` says otherwise. Standard input defaults
+   * to closed. Standard output and standard error are collected unless a
+   * mode selects another disposition. The call blocks only while the
+   * operating system creates the process.
    *
    * @param command - Program path or name. A non-empty string primitive.
-   * @param options - Arguments. Omitted, `null`, and `undefined` pass none.
+   * @param options - Arguments, standard streams, environment, and working
+   * directory. Omitted, `null`, and `undefined` pass no arguments and use
+   * the defaults.
    * @throws {@link TypeError} `Not enough arguments` when `command` is
    * missing. `The command must be a string.` when it is not a string.
    * `The command must not be empty.` when it is empty.
@@ -2994,34 +3210,65 @@ declare namespace Yuzuko {
    * `There are too many arguments.` when `args` has more than 4096
    * elements. `The command and arguments must not contain a null
    * character.` when one does.
+   * `The standard input must be "null", "inherit", or "piped".` when
+   * `stdin` is another value. `The standard stream must be "null",
+   * "inherit", "piped", or "collect".` when `stdout` or `stderr` is
+   * another value. `The environment must be an object.` when `env` is not
+   * an object. `The name must be a string.`, `The name must not be empty.`,
+   * and `The name must not contain `=` or NUL.` for an environment name.
+   * `The value must be a string or null.` and `The value must not contain
+   * NUL.` for an environment value. `The path must be a string or a file
+   * URL.`, `The URL scheme must be file.`, `The URL is invalid.`,
+   * `The file URL is invalid.`, and `The path must not contain NUL.` for
+   * `cwd`.
    * @throws {@link Error} `The child process could not be started.` when
-   * the operating system refuses the program.
+   * the operating system refuses the program. `The directory was not
+   * found.` when `cwd` is missing. `The path is not a directory.` when
+   * `cwd` is not a directory.
    */
   function spawn(
     command: string,
     options?: SpawnOptions | null,
   ): Child;
 
-  /** A parameter type {@link dlopen} can pass to a C function. */
-  type ForeignType = "i32" | "f64";
+  /**
+   * A parameter type {@link dlopen} can pass to a C function.
+   *
+   * `"i32"`, `"pointer"`, `"buffer"`, and `"cstring"` are the integer class
+   * and may be mixed, up to 4. `"f64"` cannot be mixed with them, and at
+   * most two `"f64"` parameters are accepted.
+   */
+  type ForeignType = "i32" | "f64" | "pointer" | "buffer" | "cstring";
 
-  /** A result type {@link dlopen} can return from a C function. */
-  type ForeignResult = "void" | "i32" | "f64";
+  /**
+   * A result type {@link dlopen} can return from a C function.
+   *
+   * `"buffer"` is not a result. An `"f64"` function returns `"void"` or
+   * `"f64"`. An integer-class function returns `"void"`, `"i32"`,
+   * `"pointer"`, or `"cstring"`.
+   */
+  type ForeignResult = "void" | "i32" | "f64" | "pointer" | "cstring";
 
   /**
    * The `extern "C"` shape of one symbol passed to {@link dlopen}.
    *
    * Omitted `parameters` means no arguments. Omitted `result` means `void`.
-   * At most two parameters are accepted, and they must all be the same type.
-   * `result` is `void` or that same type. The supported shapes are
-   * `() -> void`, `() -> i32`, `(i32) -> i32`, `(i32, i32) -> i32`,
-   * `(i32) -> void`, `(i32, i32) -> void`, `() -> f64`, `(f64) -> f64`,
-   * `(f64, f64) -> f64`, `(f64) -> void`, and `(f64, f64) -> void`.
+   * An array longer than 4 is rejected before its elements are read.
+   * `"f64"` shapes are `() -> void`, `() -> f64`, `(f64) -> f64`,
+   * `(f64, f64) -> f64`, `(f64) -> void`, and `(f64, f64) -> void`. Every
+   * other accepted shape is an integer-class combination of up to 4
+   * parameters with a `void`, `"i32"`, `"pointer"`, or `"cstring"` result.
    */
   interface ForeignFunction {
-    /** Argument types. A string primitive `"i32"` or `"f64"`. */
+    /**
+     * Argument types. Each entry is a string primitive `"i32"`, `"f64"`,
+     * `"pointer"`, `"buffer"`, or `"cstring"`.
+     */
     parameters?: ForeignType[] | null;
-    /** Return type. A string primitive `"void"`, `"i32"`, or `"f64"`. */
+    /**
+     * Return type. A string primitive `"void"`, `"i32"`, `"f64"`,
+     * `"pointer"`, or `"cstring"`.
+     */
     result?: ForeignResult | null;
   }
 
@@ -3042,19 +3289,34 @@ declare namespace Yuzuko {
      * Each read returns the same object. Its own properties are host
      * functions named by the C symbol. A function's `length` is its
      * parameter count. `i32` arguments use `ToInt32`. `f64` arguments use
-     * `ToNumber`. A `void` result is `undefined`. An `i32` or `f64` result
-     * is a number. Extra arguments are ignored.
+     * `ToNumber`. A `pointer` is `null`, a bigint primitive, or a
+     * non-negative integer number primitive, and the result is a bigint
+     * (`0n` for the null pointer). A `buffer` is an `ArrayBuffer`, a
+     * `SharedArrayBuffer`, or a view. A `cstring` argument is a string
+     * primitive, and a `cstring` result is a string or `null`. A `void`
+     * result is `undefined`. An `i32` or `f64` result is a number. A buffer
+     * or C-string pointer is valid only for that call. Extra arguments are
+     * ignored.
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is
      * not a `Library`, or when the called function is not one of these
      * symbols. `Not enough arguments` when a symbol call omits a
-     * parameter. `The argument could not be converted.` when `ToInt32` or
-     * `ToNumber` fails without throwing.
+     * parameter. `The argument could not be converted.` when a number,
+     * bigint, or pointer cannot be converted. `The data must be a
+     * BufferSource.`, `The buffer is detached.`, and `The buffer is too
+     * large.` for a buffer argument. `The string must be a string.` and
+     * `The string must not contain a null character.` for a C string.
      * @throws {@link Error} `The library is closed.` when a symbol is
      * called after {@link Library.close} or after this object is dropped.
+     * `The result is not a C string.` when a string result has no NUL
+     * within 1048576 bytes.
      */
     readonly symbols: {
-      [name: string]: (...args: number[]) => number | undefined;
+      [name: string]: (
+        ...args: Array<
+          number | bigint | null | AllowSharedBufferSource | string
+        >
+      ) => number | bigint | string | null | undefined;
     };
 
     /**

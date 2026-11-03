@@ -1,8 +1,12 @@
 //! Optional `Yuzuko` foreign function calls.
 //!
 //! The `ffi` feature installs `dlopen` and `Library` on the main realm and
-//! on a dedicated worker. The library is loaded on the caller thread. Symbol
-//! calls use one fixed `extern "C"` function type. There is no `libffi`.
+//! on a dedicated worker. The library is loaded on the caller thread. There
+//! is no `libffi`. `f64` calls use one homogeneous `extern "C"` shape.
+//! Integer-class calls (`i32`, `pointer`, `buffer`, and `cstring`) pass each
+//! argument in a pointer-sized register. An `i32` is zero-extended, and only
+//! the low 32 bits of an `i32` result are read. On the supported ABIs the
+//! callee reads those low 32 bits (`edi` / `ecx` / `wN`).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -30,6 +34,16 @@ const UNSUPPORTED: &str = "The function type is not supported.";
 const OPEN_FAIL: &str = "The library could not be opened.";
 const CLOSED: &str = "The library is closed.";
 const ARGUMENT: &str = "The argument could not be converted.";
+const DATA: &str = "The data must be a BufferSource.";
+const DETACHED: &str = "The buffer is detached.";
+const TOO_LARGE: &str = "The buffer is too large.";
+const STRING_TYPE: &str = "The string must be a string.";
+const STRING_NUL: &str = "The string must not contain a null character.";
+const CSTRING: &str = "The result is not a C string.";
+const MAX_PARAMS: u32 = 4;
+const MAX_BUFFER: usize = 2_147_483_647;
+const MAX_CSTRING: usize = 1_048_576;
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
@@ -40,38 +54,54 @@ thread_local! {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
+enum Param {
+  I32,
+  F64,
+  Pointer,
+  Buffer,
+  CString,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Return {
   Void,
   I32,
   F64,
+  Pointer,
+  CString,
 }
 
 #[derive(Clone, Copy)]
-enum Signature {
-  NoneToVoid,
-  NoneToI32,
-  NoneToF64,
-  I32ToI32,
-  I32I32ToI32,
-  I32ToVoid,
-  I32I32ToVoid,
-  F64ToF64,
-  F64F64ToF64,
-  F64ToVoid,
-  F64F64ToVoid,
+struct Signature {
+  params: [Param; 4],
+  len: u8,
+  result: Return,
 }
 
 impl Signature {
   fn arity(self) -> i32 {
-    match self {
-      Self::NoneToVoid | Self::NoneToI32 | Self::NoneToF64 => 0,
-      Self::I32ToI32 | Self::I32ToVoid | Self::F64ToF64 | Self::F64ToVoid => 1,
-      Self::I32I32ToI32
-      | Self::I32I32ToVoid
-      | Self::F64F64ToF64
-      | Self::F64F64ToVoid => 2,
-    }
+    i32::from(self.len)
   }
+
+  fn is_float(self) -> bool {
+    self.result == Return::F64
+      || (0..self.len)
+        .any(|index| self.params[usize::from(index)] == Param::F64)
+  }
+}
+
+enum Returned {
+  Undefined,
+  Number(f64),
+  Bigint(u64),
+  Text(String),
+  Null,
+}
+
+struct IntegerCall {
+  words: [usize; 4],
+  strings: Vec<CString>,
+  stores: Vec<v8::SharedRef<v8::BackingStore>>,
 }
 
 struct Prepared {
@@ -105,13 +135,6 @@ impl Drop for Loaded {
       unload(handle);
     }
   }
-}
-
-struct CallArgs {
-  i0: i32,
-  i1: i32,
-  f0: f64,
-  f1: f64,
 }
 
 pub struct Library {
@@ -230,8 +253,11 @@ fn symbol_callback(
   mut ret: v8::ReturnValue,
 ) {
   match symbol_op(scope, &args) {
-    Ok(None) => ret.set(v8::undefined(scope).into()),
-    Ok(Some(value)) => ret.set(v8::Number::new(scope, value).into()),
+    Ok(returned) => {
+      if let Err(error) = set_returned(scope, &mut ret, returned) {
+        OpException::throw(error, scope);
+      }
+    }
     Err(error) => OpException::throw(error, scope),
   }
 }
@@ -239,7 +265,7 @@ fn symbol_callback(
 fn symbol_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
-) -> Result<Option<f64>, OpError> {
+) -> Result<Returned, OpError> {
   let id = symbol_id(args)?;
   let Some(signature) = lookup_signature(id) else {
     return Err(plain_error(scope, CLOSED));
@@ -247,11 +273,71 @@ fn symbol_op(
   if args.length() < signature.arity() {
     return Err(OpError::type_(ARITY));
   }
-  let converted = convert_args(scope, args, signature)?;
+  if signature.is_float() {
+    return call_float(scope, args, id, signature);
+  }
+  call_integer(scope, args, id, signature)
+}
+
+fn set_returned(
+  scope: &mut v8::PinScope,
+  ret: &mut v8::ReturnValue,
+  returned: Returned,
+) -> Result<(), OpError> {
+  match returned {
+    Returned::Undefined => ret.set(v8::undefined(scope).into()),
+    Returned::Number(value) => ret.set(v8::Number::new(scope, value).into()),
+    Returned::Bigint(value) => {
+      let bigint = v8::BigInt::new_from_u64(scope, value);
+      ret.set(bigint.into());
+    }
+    Returned::Null => ret.set(v8::null(scope).into()),
+    Returned::Text(text) => {
+      let Some(value) = v8::String::new(scope, &text) else {
+        return Err(plain_error(scope, CSTRING));
+      };
+      ret.set(value.into());
+    }
+  }
+  Ok(())
+}
+
+fn call_float(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  id: u64,
+  signature: Signature,
+) -> Result<Returned, OpError> {
+  let mut values = [0.0, 0.0];
+  for index in 0..signature.len {
+    values[usize::from(index)] = to_f64(scope, args.get(i32::from(index)))?;
+  }
   let Some(pointer) = lookup_pointer(id) else {
     return Err(plain_error(scope, CLOSED));
   };
-  Ok(invoke(pointer, signature, converted))
+  Ok(invoke_float(pointer, signature, values))
+}
+
+fn call_integer(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  id: u64,
+  signature: Signature,
+) -> Result<Returned, OpError> {
+  // `i32` and pointer conversion can run JavaScript and may close the
+  // library or detach a buffer. Take buffer pointers only after that, and
+  // only while the library is still open. `call` keeps those pointers
+  // alive until the result has been copied.
+  let mut call = prepare_integer(scope, args, signature)?;
+  let Some(pointer) = lookup_pointer(id) else {
+    return Err(plain_error(scope, CLOSED));
+  };
+  fill_buffers(scope, args, signature, &mut call)?;
+  let len = usize::from(signature.len);
+  let raw = call_usize(pointer, &call.words[..len]);
+  let returned = integer_result(scope, signature.result, raw)?;
+  drop(call);
+  Ok(returned)
 }
 
 fn symbol_id(args: &v8::FunctionCallbackArguments) -> Result<u64, OpError> {
@@ -355,84 +441,91 @@ fn read_definition(
   };
   let params = read_parameters(scope, object)?;
   let result = read_result(scope, object)?;
-  signature(&params, result).ok_or_else(|| OpError::type_(UNSUPPORTED))
+  signature(params, result).ok_or_else(|| OpError::type_(UNSUPPORTED))
 }
 
 fn read_parameters(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<Vec<Kind>, OpError> {
+) -> Result<([Param; 4], u8), OpError> {
   let Some(field) = read_field(scope, object, "parameters")? else {
     return Err(OpError::type_(SYMBOLS_READ));
   };
   if field.is_null_or_undefined() {
-    return Ok(Vec::new());
+    return Ok(([Param::I32; 4], 0));
   }
   let Ok(array) = v8::Local::<v8::Array>::try_from(field) else {
     return Err(OpError::type_(UNSUPPORTED));
   };
   let length = array.length();
-  if length > 2 {
+  if length > MAX_PARAMS {
     return Err(OpError::type_(UNSUPPORTED));
   }
-  let mut kinds = Vec::with_capacity(length as usize);
+  let mut params = [Param::I32; 4];
   for index in 0..length {
     let value = array_element(scope, array, index)?;
     let text = string_primitive(scope, value, UNSUPPORTED)?;
-    kinds.push(parse_kind(&text).ok_or_else(|| OpError::type_(UNSUPPORTED))?);
+    params[index as usize] =
+      parse_param(&text).ok_or_else(|| OpError::type_(UNSUPPORTED))?;
   }
-  Ok(kinds)
+  Ok((params, length as u8))
 }
 
 fn read_result(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<Kind, OpError> {
+) -> Result<Return, OpError> {
   let Some(field) = read_field(scope, object, "result")? else {
     return Err(OpError::type_(SYMBOLS_READ));
   };
   if field.is_null_or_undefined() {
-    return Ok(Kind::Void);
+    return Ok(Return::Void);
   }
   let text = string_primitive(scope, field, UNSUPPORTED)?;
-  match text.as_str() {
-    "void" => Ok(Kind::Void),
-    "i32" => Ok(Kind::I32),
-    "f64" => Ok(Kind::F64),
-    _ => Err(OpError::type_(UNSUPPORTED)),
-  }
+  parse_return(&text).ok_or_else(|| OpError::type_(UNSUPPORTED))
 }
 
-fn parse_kind(text: &str) -> Option<Kind> {
+fn parse_param(text: &str) -> Option<Param> {
   match text {
-    "i32" => Some(Kind::I32),
-    "f64" => Some(Kind::F64),
+    "i32" => Some(Param::I32),
+    "f64" => Some(Param::F64),
+    "pointer" => Some(Param::Pointer),
+    "buffer" => Some(Param::Buffer),
+    "cstring" => Some(Param::CString),
     _ => None,
   }
 }
 
-fn signature(params: &[Kind], result: Kind) -> Option<Signature> {
-  if params.len() > 2 {
-    return None;
-  }
-  if params.len() > 1 && params.iter().any(|kind| *kind != params[0]) {
-    return None;
-  }
-  let param = params.first().copied();
-  match (params.len(), param, result) {
-    (0, None, Kind::Void) => Some(Signature::NoneToVoid),
-    (0, None, Kind::I32) => Some(Signature::NoneToI32),
-    (0, None, Kind::F64) => Some(Signature::NoneToF64),
-    (1, Some(Kind::I32), Kind::I32) => Some(Signature::I32ToI32),
-    (2, Some(Kind::I32), Kind::I32) => Some(Signature::I32I32ToI32),
-    (1, Some(Kind::I32), Kind::Void) => Some(Signature::I32ToVoid),
-    (2, Some(Kind::I32), Kind::Void) => Some(Signature::I32I32ToVoid),
-    (1, Some(Kind::F64), Kind::F64) => Some(Signature::F64ToF64),
-    (2, Some(Kind::F64), Kind::F64) => Some(Signature::F64F64ToF64),
-    (1, Some(Kind::F64), Kind::Void) => Some(Signature::F64ToVoid),
-    (2, Some(Kind::F64), Kind::Void) => Some(Signature::F64F64ToVoid),
+fn parse_return(text: &str) -> Option<Return> {
+  match text {
+    "void" => Some(Return::Void),
+    "i32" => Some(Return::I32),
+    "f64" => Some(Return::F64),
+    "pointer" => Some(Return::Pointer),
+    "cstring" => Some(Return::CString),
     _ => None,
   }
+}
+
+fn signature(params: ([Param; 4], u8), result: Return) -> Option<Signature> {
+  let (params, len) = params;
+  let signature = Signature {
+    params,
+    len,
+    result,
+  };
+  if !signature.is_float() {
+    return Some(signature);
+  }
+  if len > 2 || (result != Return::Void && result != Return::F64) {
+    return None;
+  }
+  for index in 0..len {
+    if params[usize::from(index)] != Param::F64 {
+      return None;
+    }
+  }
+  Some(signature)
 }
 
 fn resolve_all(handle: usize, prepared: &[Prepared]) -> Option<Vec<usize>> {
@@ -526,35 +619,172 @@ fn lookup_pointer(id: u64) -> Option<usize> {
     .with(|symbols| symbols.borrow().get(&id).map(|symbol| symbol.pointer))
 }
 
-fn convert_args(
+fn prepare_integer(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
   signature: Signature,
-) -> Result<CallArgs, OpError> {
-  let mut call = CallArgs {
-    i0: 0,
-    i1: 0,
-    f0: 0.0,
-    f1: 0.0,
+) -> Result<IntegerCall, OpError> {
+  let mut call = IntegerCall {
+    words: [0; 4],
+    strings: Vec::new(),
+    stores: Vec::new(),
   };
-  match signature {
-    Signature::I32I32ToI32 | Signature::I32I32ToVoid => {
-      call.i0 = to_i32(scope, args.get(0))?;
-      call.i1 = to_i32(scope, args.get(1))?;
-    }
-    Signature::I32ToI32 | Signature::I32ToVoid => {
-      call.i0 = to_i32(scope, args.get(0))?;
-    }
-    Signature::F64F64ToF64 | Signature::F64F64ToVoid => {
-      call.f0 = to_f64(scope, args.get(0))?;
-      call.f1 = to_f64(scope, args.get(1))?;
-    }
-    Signature::F64ToF64 | Signature::F64ToVoid => {
-      call.f0 = to_f64(scope, args.get(0))?;
-    }
-    Signature::NoneToVoid | Signature::NoneToI32 | Signature::NoneToF64 => {}
+  for index in 0..signature.len {
+    let param = signature.params[usize::from(index)];
+    let value = args.get(i32::from(index));
+    call.words[usize::from(index)] = match param {
+      Param::I32 => {
+        let number = to_i32(scope, value)?;
+        number as u32 as usize
+      }
+      Param::Pointer => pointer_word(value)?,
+      Param::CString => cstring_word(scope, value, &mut call.strings)?,
+      Param::Buffer => 0,
+      Param::F64 => unreachable!("float parameter on an integer call"),
+    };
   }
   Ok(call)
+}
+
+fn fill_buffers(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  signature: Signature,
+  call: &mut IntegerCall,
+) -> Result<(), OpError> {
+  for index in 0..signature.len {
+    if signature.params[usize::from(index)] != Param::Buffer {
+      continue;
+    }
+    let (word, store) = buffer_word(scope, args.get(i32::from(index)))?;
+    call.words[usize::from(index)] = word;
+    if let Some(store) = store {
+      call.stores.push(store);
+    }
+  }
+  Ok(())
+}
+
+fn pointer_word(value: v8::Local<v8::Value>) -> Result<usize, OpError> {
+  if value.is_null() {
+    return Ok(0);
+  }
+  if value.is_big_int() {
+    let Ok(bigint) = v8::Local::<v8::BigInt>::try_from(value) else {
+      return Err(OpError::type_(ARGUMENT));
+    };
+    let (bits, lossless) = bigint.u64_value();
+    if !lossless {
+      return Err(OpError::type_(ARGUMENT));
+    }
+    return usize::try_from(bits).map_err(|_| OpError::type_(ARGUMENT));
+  }
+  if value.is_number() {
+    let Ok(number) = v8::Local::<v8::Number>::try_from(value) else {
+      return Err(OpError::type_(ARGUMENT));
+    };
+    return number_pointer(number.value());
+  }
+  Err(OpError::type_(ARGUMENT))
+}
+
+fn number_pointer(number: f64) -> Result<usize, OpError> {
+  if !number.is_finite() || number < 0.0 || number > MAX_SAFE_INTEGER {
+    return Err(OpError::type_(ARGUMENT));
+  }
+  if number.fract() != 0.0 {
+    return Err(OpError::type_(ARGUMENT));
+  }
+  usize::try_from(number as u64).map_err(|_| OpError::type_(ARGUMENT))
+}
+
+fn cstring_word(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  strings: &mut Vec<CString>,
+) -> Result<usize, OpError> {
+  if !value.is_string() {
+    return Err(OpError::type_(STRING_TYPE));
+  }
+  let text = string_primitive(scope, value, STRING_TYPE)?;
+  let cstring = CString::new(text).map_err(|_| OpError::type_(STRING_NUL))?;
+  let pointer = cstring.as_ptr() as usize;
+  strings.push(cstring);
+  Ok(pointer)
+}
+
+fn buffer_word(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(usize, Option<v8::SharedRef<v8::BackingStore>>), OpError> {
+  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
+    return shared_word(&buffer);
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    return view_word(scope, view);
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    return array_word(&buffer);
+  }
+  Err(OpError::type_(DATA))
+}
+
+fn shared_word(
+  buffer: &v8::SharedArrayBuffer,
+) -> Result<(usize, Option<v8::SharedRef<v8::BackingStore>>), OpError> {
+  let length = buffer.byte_length();
+  if length > MAX_BUFFER {
+    return Err(OpError::type_(TOO_LARGE));
+  }
+  let store = buffer.get_backing_store();
+  let pointer = store.data().map(|data| data.as_ptr() as usize).unwrap_or(0);
+  if length > 0 && pointer == 0 {
+    return Err(OpError::type_(DETACHED));
+  }
+  Ok((pointer, Some(store)))
+}
+
+fn view_word(
+  scope: &mut v8::PinScope,
+  view: v8::Local<v8::ArrayBufferView>,
+) -> Result<(usize, Option<v8::SharedRef<v8::BackingStore>>), OpError> {
+  if view
+    .buffer(scope)
+    .is_none_or(|buffer| buffer.was_detached())
+  {
+    return Err(OpError::type_(DETACHED));
+  }
+  let length = view.byte_length();
+  if length > MAX_BUFFER {
+    return Err(OpError::type_(TOO_LARGE));
+  }
+  let store = view.get_backing_store();
+  let pointer = view.data() as usize;
+  if length > 0 && (store.is_none() || pointer == 0) {
+    return Err(OpError::type_(DETACHED));
+  }
+  Ok((pointer, store))
+}
+
+fn array_word(
+  buffer: &v8::ArrayBuffer,
+) -> Result<(usize, Option<v8::SharedRef<v8::BackingStore>>), OpError> {
+  if buffer.was_detached() {
+    return Err(OpError::type_(DETACHED));
+  }
+  let length = buffer.byte_length();
+  if length > MAX_BUFFER {
+    return Err(OpError::type_(TOO_LARGE));
+  }
+  let store = buffer.get_backing_store();
+  let pointer = buffer
+    .data()
+    .map(|data| data.as_ptr() as usize)
+    .unwrap_or(0);
+  if length > 0 && pointer == 0 {
+    return Err(OpError::type_(DETACHED));
+  }
+  Ok((pointer, Some(store)))
 }
 
 fn to_i32(
@@ -621,64 +851,129 @@ fn to_f64(
   }
 }
 
-fn invoke(pointer: usize, signature: Signature, args: CallArgs) -> Option<f64> {
+fn integer_result(
+  scope: &mut v8::PinScope,
+  result: Return,
+  raw: usize,
+) -> Result<Returned, OpError> {
+  match result {
+    Return::Void => Ok(Returned::Undefined),
+    Return::I32 => Ok(Returned::Number(f64::from(raw as u32 as i32))),
+    Return::Pointer => Ok(Returned::Bigint(raw as u64)),
+    Return::CString => match read_cstring(raw) {
+      Ok(None) => Ok(Returned::Null),
+      Ok(Some(text)) => Ok(Returned::Text(text)),
+      Err(()) => Err(plain_error(scope, CSTRING)),
+    },
+    Return::F64 => unreachable!("float result on an integer call"),
+  }
+}
+
+/// `pointer` addresses an integer-class `extern "C"` function of `args.len()`
+/// parameters. Each argument occupies one pointer-sized register. An `i32`
+/// is already zero-extended, and the callee reads the low 32 bits. The
+/// returned register is the full word; an `i32` result keeps only its low
+/// 32 bits. A `void` callee is called as a function that returns a word,
+/// and that word is ignored.
+///
+/// On the supported ABIs the caller cleans the stack. Windows x64 shadow
+/// space comes from this `extern "C"` call. Only the declared arguments are
+/// passed.
+fn call_usize(pointer: usize, args: &[usize]) -> usize {
   unsafe {
-    match signature {
-      Signature::NoneToVoid => {
-        let function: unsafe extern "C" fn() = fn_ptr(pointer);
-        function();
-        None
+    match args {
+      [] => {
+        let function: unsafe extern "C" fn() -> usize = fn_ptr(pointer);
+        function()
       }
-      Signature::NoneToI32 => {
-        let function: unsafe extern "C" fn() -> i32 = fn_ptr(pointer);
-        Some(i32_bits(function()))
+      [a] => {
+        let function: unsafe extern "C" fn(usize) -> usize = fn_ptr(pointer);
+        function(*a)
       }
-      Signature::NoneToF64 => {
-        let function: unsafe extern "C" fn() -> f64 = fn_ptr(pointer);
-        Some(function())
+      [a, b] => {
+        let function: unsafe extern "C" fn(usize, usize) -> usize =
+          fn_ptr(pointer);
+        function(*a, *b)
       }
-      Signature::I32ToI32 => {
-        let function: unsafe extern "C" fn(i32) -> i32 = fn_ptr(pointer);
-        Some(i32_bits(function(args.i0)))
+      [a, b, c] => {
+        let function: unsafe extern "C" fn(usize, usize, usize) -> usize =
+          fn_ptr(pointer);
+        function(*a, *b, *c)
       }
-      Signature::I32I32ToI32 => {
-        let function: unsafe extern "C" fn(i32, i32) -> i32 = fn_ptr(pointer);
-        Some(i32_bits(function(args.i0, args.i1)))
+      [a, b, c, d] => {
+        let function: unsafe extern "C" fn(
+          usize,
+          usize,
+          usize,
+          usize,
+        ) -> usize = fn_ptr(pointer);
+        function(*a, *b, *c, *d)
       }
-      Signature::I32ToVoid => {
-        let function: unsafe extern "C" fn(i32) = fn_ptr(pointer);
-        function(args.i0);
-        None
-      }
-      Signature::I32I32ToVoid => {
-        let function: unsafe extern "C" fn(i32, i32) = fn_ptr(pointer);
-        function(args.i0, args.i1);
-        None
-      }
-      Signature::F64ToF64 => {
-        let function: unsafe extern "C" fn(f64) -> f64 = fn_ptr(pointer);
-        Some(function(args.f0))
-      }
-      Signature::F64F64ToF64 => {
-        let function: unsafe extern "C" fn(f64, f64) -> f64 = fn_ptr(pointer);
-        Some(function(args.f0, args.f1))
-      }
-      Signature::F64ToVoid => {
-        let function: unsafe extern "C" fn(f64) = fn_ptr(pointer);
-        function(args.f0);
-        None
-      }
-      Signature::F64F64ToVoid => {
-        let function: unsafe extern "C" fn(f64, f64) = fn_ptr(pointer);
-        function(args.f0, args.f1);
-        None
-      }
+      _ => unreachable!("integer call arity"),
     }
   }
 }
 
-fn i32_bits(value: i32) -> f64 {
-  f64::from(value)
+fn invoke_float(
+  pointer: usize,
+  signature: Signature,
+  args: [f64; 2],
+) -> Returned {
+  unsafe {
+    match (signature.len, signature.result) {
+      (0, Return::Void) => {
+        let function: unsafe extern "C" fn() = fn_ptr(pointer);
+        function();
+        Returned::Undefined
+      }
+      (0, Return::F64) => {
+        let function: unsafe extern "C" fn() -> f64 = fn_ptr(pointer);
+        Returned::Number(function())
+      }
+      (1, Return::F64) => {
+        let function: unsafe extern "C" fn(f64) -> f64 = fn_ptr(pointer);
+        Returned::Number(function(args[0]))
+      }
+      (2, Return::F64) => {
+        let function: unsafe extern "C" fn(f64, f64) -> f64 = fn_ptr(pointer);
+        Returned::Number(function(args[0], args[1]))
+      }
+      (1, Return::Void) => {
+        let function: unsafe extern "C" fn(f64) = fn_ptr(pointer);
+        function(args[0]);
+        Returned::Undefined
+      }
+      (2, Return::Void) => {
+        let function: unsafe extern "C" fn(f64, f64) = fn_ptr(pointer);
+        function(args[0], args[1]);
+        Returned::Undefined
+      }
+      _ => unreachable!("float call shape"),
+    }
+  }
+}
+
+/// Reads UTF-8 bytes at `pointer` until NUL, at most `MAX_CSTRING` bytes.
+///
+/// `Ok(None)` is the null pointer. `Err(())` means no NUL appeared inside
+/// the cap. An invalid address may fault; that is the FFI contract. The
+/// scan does not use `CStr::from_ptr`, which would read without a cap.
+fn read_cstring(pointer: usize) -> Result<Option<String>, ()> {
+  if pointer == 0 {
+    return Ok(None);
+  }
+  unsafe {
+    let start = pointer as *const u8;
+    let mut len = 0usize;
+    while len < MAX_CSTRING {
+      if *start.add(len) == 0 {
+        let bytes = std::slice::from_raw_parts(start, len);
+        return Ok(Some(String::from_utf8_lossy(bytes).into_owned()));
+      }
+      len += 1;
+    }
+  }
+  Err(())
 }
 
 /// `pointer` is the address of an `extern "C"` function of type `T`.
