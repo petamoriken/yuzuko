@@ -253,9 +253,7 @@
       "Test transfering ArrayBuffer to EncodedVideoChunk",
       "Test transfering ArrayBuffer to VideoFrame",
       "Test transfering buffers to VideoFrame with uneven samples",
-      "Test transfering detached buffer to VideoFrame",
       "Test transfering same array buffer twice to ImageDecoder",
-      "Test transfering same array buffer twice to VideoFrame",
       "Test transfering view of an ArrayBuffer to VideoFrame"
     ]
   },
@@ -381,28 +379,7 @@
       "Encode video frames with different orientations after reconfigure"
     ]
   },
-  "webcodecs/video-encoder-rescaling.https.any.js": {
-    "expectedFailures": [
-      "Scaling Image in Encoding from 128 x 128 to 128 x 128 Format: I420",
-      "Scaling Image in Encoding from 128 x 128 to 128 x 128 Format: RGBX",
-      "Scaling Image in Encoding from 128 x 128 to 64 x 64 Format: I420",
-      "Scaling Image in Encoding from 128 x 128 to 64 x 64 Format: RGBX",
-      "Scaling Image in Encoding from 128 x 192 to 64 x 64 Format: I420",
-      "Scaling Image in Encoding from 128 x 192 to 64 x 64 Format: RGBX",
-      "Scaling Image in Encoding from 128 x 256 to 64 x 128 Format: I420",
-      "Scaling Image in Encoding from 128 x 256 to 64 x 128 Format: RGBX",
-      "Scaling Image in Encoding from 192 x 192 to 64 x 64 Format: I420",
-      "Scaling Image in Encoding from 192 x 192 to 64 x 64 Format: RGBX",
-      "Scaling Image in Encoding from 32 x 32 to 96 x 96 Format: I420",
-      "Scaling Image in Encoding from 32 x 32 to 96 x 96 Format: RGBX",
-      "Scaling Image in Encoding from 64 x 32 to 128 x 64 Format: I420",
-      "Scaling Image in Encoding from 64 x 32 to 128 x 64 Format: RGBX",
-      "Scaling Image in Encoding from 64 x 64 to 128 x 128 Format: I420",
-      "Scaling Image in Encoding from 64 x 64 to 128 x 128 Format: RGBX",
-      "Scaling Image in Encoding from 64 x 64 to 128 x 192 Format: I420",
-      "Scaling Image in Encoding from 64 x 64 to 128 x 192 Format: RGBX"
-    ]
-  },
+  "webcodecs/video-encoder-rescaling.https.any.js": false,
   "webcodecs/video-encoder.https.any.js": {
     "expectedFailures": [
       "Encode video preserves unset, zero, and duplicate-timestamp durations",
@@ -419,25 +396,11 @@
   },
   "webcodecs/video-frame-serialization.any.js": {
     "expectedFailures": [
-      "Test we can clone a VideoFrame.",
-      "Verify cloning a closed frame throws.",
-      "Verify closing a frame doesn't affect its clones.",
-      "Verify closing frames does not propagate accross contexts.",
-      "Verify posting closed frames throws.",
-      "Verify storing a frame throws.",
-      "Verify transferring frames closes them."
+      "Verify storing a frame throws."
     ]
   },
-  "webcodecs/videoColorSpace.any.js": {
-    "expectedFailures": [
-      "Test VideoColorSpace toJSON() works."
-    ]
-  },
-  "webcodecs/videoDecoder-444-h264.https.any.js": {
-    "expectedFailures": [
-      "Test decoding h.264 4:4:4 content"
-    ]
-  },
+  "webcodecs/videoColorSpace.any.js": true,
+  "webcodecs/videoDecoder-444-h264.https.any.js": true,
   "webcodecs/videoDecoder-codec-specific-orientation.https.any.js": {
     "expectedFailures": [
       "Decode frames with orientation metadata",
