@@ -9,8 +9,8 @@ use yuzuko_macros::op;
 
 use crate::decode::{self, DecodeFailure};
 use crate::engine::{
-  self, DriveResult, EvalError, Fault, Kind, NodeShell, Play, RenderHint, Wave,
-  WorkletParam,
+  self, AudioSink, DriveResult, EvalError, Fault, Kind, NodeShell, Play,
+  RenderHint, Wave, WorkletParam,
 };
 use crate::util;
 
@@ -48,6 +48,55 @@ fn resolve_undefined(
 ) {
   let value: v8::Local<v8::Value> = v8::undefined(scope).into();
   resolver.resolve(scope, value);
+}
+
+fn parse_sink(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<AudioSink, Fault> {
+  if value.is_null_or_undefined() {
+    return Err(Fault::type_("The audio sink is missing"));
+  }
+  if value.is_object() {
+    let object = v8::Local::<v8::Object>::try_from(value)
+      .map_err(|_| Fault::type_("The audio sink is invalid"))?;
+    let Some(kind) = util::member(scope, object, "type") else {
+      return Err(Fault::type_("The audio sink type is missing"));
+    };
+    if !kind.is_string() {
+      return Err(Fault::type_("The audio sink type is invalid"));
+    }
+    return match util::rust_string(scope, kind).as_str() {
+      "none" => Ok(AudioSink::None),
+      _ => Err(Fault::type_("The audio sink type is invalid")),
+    };
+  }
+  Ok(AudioSink::Device(util::rust_string(scope, value)))
+}
+
+fn require_sink(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<AudioSink, OpError> {
+  let sink = parse_sink(scope, value).map_err(Fault::op)?;
+  engine::known_sink(&sink).map_err(Fault::op)?;
+  Ok(sink)
+}
+
+fn sink_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  sink: AudioSink,
+) -> v8::Local<'s, v8::Value> {
+  match sink {
+    AudioSink::Device(name) => v8::String::new(scope, &name).unwrap().into(),
+    AudioSink::None => {
+      let object = v8::Object::new(scope);
+      let key = v8::String::new(scope, "type").unwrap();
+      let value = v8::String::new(scope, "none").unwrap();
+      object.set(scope, key.into(), value.into());
+      object.into()
+    }
+  }
 }
 
 pub fn require_context(
@@ -2035,7 +2084,7 @@ impl AudioContext {
   ) -> Result<AudioContext, OpError> {
     let mut rate = 48000.0;
     let mut hint = RenderHint::Default;
-    let mut sink = String::new();
+    let mut sink = AudioSink::Device(String::new());
     if args.length() > 0 && !args.get(0).is_null_or_undefined() {
       let init = args.get(0);
       if !init.is_object() {
@@ -2055,13 +2104,7 @@ impl AudioContext {
         check_latency(scope, value)?;
       }
       if let Some(value) = util::member(scope, object, "sinkId") {
-        sink = util::rust_string(scope, value);
-        if !crate::playback::sink_available(&sink) {
-          return Err(OpError::dom(
-            "NotFoundError",
-            "The audio sink was not found",
-          ));
-        }
+        sink = require_sink(scope, value)?;
       }
     }
     let quantum = engine::quantum_for(rate, hint, true).map_err(op_fault)?;
@@ -2104,8 +2147,11 @@ impl AudioContext {
   }
 
   #[getter]
-  fn sink_id(&self) -> String {
-    engine::context_sink(self.base.id).unwrap_or_default()
+  fn sink_id(&self, scope: &mut v8::PinScope) -> Js {
+    let sink = engine::context_sink(self.base.id)
+      .unwrap_or_else(|| AudioSink::Device(String::new()));
+    let value = sink_value(scope, sink);
+    Js(v8::Global::new(scope, value))
   }
 
   #[promise]
@@ -2132,6 +2178,28 @@ impl AudioContext {
   fn close(&self, scope: &mut v8::PinScope) -> Js {
     promise_of(scope, |scope, resolver| {
       match engine::close_context(scope, self.base.id) {
+        Ok(()) => resolve_undefined(scope, resolver),
+        Err(fault) => fault.reject(scope, resolver),
+      }
+    })
+  }
+
+  #[promise]
+  #[length(1)]
+  fn set_sink_id(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Js {
+    let parsed = if args.length() == 0 {
+      Err(Fault::type_("The audio sink is missing"))
+    } else {
+      parse_sink(scope, args.get(0))
+    };
+    let id = self.base.id;
+    promise_of(scope, move |scope, resolver| {
+      let settled = parsed.and_then(|sink| engine::set_audio_sink(id, sink));
+      match settled {
         Ok(()) => resolve_undefined(scope, resolver),
         Err(fault) => fault.reject(scope, resolver),
       }
@@ -2222,7 +2290,7 @@ impl OfflineAudioContext {
       length,
       destination,
       destination_object,
-      String::new(),
+      AudioSink::Device(String::new()),
     );
     crate::nodes::install_listener(scope, id);
     Ok(OfflineAudioContext {

@@ -582,6 +582,76 @@ Yuzuko.test("sinkId names an output device", async () => {
   );
 });
 
+function sinkType(sink: unknown): string {
+  if (typeof sink === "string") {
+    return sink;
+  }
+  if (sink !== null && typeof sink === "object" && "type" in sink) {
+    return String((sink as { type: unknown }).type);
+  }
+  throw new Error(`sink ${String(sink)}`);
+}
+
+async function assertRejected(
+  promise: Promise<unknown>,
+  name: string,
+): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    const caught = error as { name?: string };
+    assert(caught.name === name, `${name} was ${caught.name}`);
+    if (name !== "TypeError") {
+      assert(error instanceof DOMException, String(error));
+    }
+    return;
+  }
+  throw new Error(`${name} was not thrown`);
+}
+
+Yuzuko.test("setSinkId selects the default device or no device", async () => {
+  const context = new AudioContext({ sinkId: "" });
+  try {
+    const selected = context.setSinkId("");
+    assert(selected instanceof Promise, "returns a promise");
+    await selected;
+    assert(context.sinkId === "", "default sink");
+    await context.setSinkId({ type: "none" });
+    assert(sinkType(context.sinkId) === "none", "none type");
+    await context.setSinkId({ type: "none" });
+    assert(sinkType(context.sinkId) === "none", "same none");
+    await assertRejected(
+      context.setSinkId("yuzuko-missing-audio-sink"),
+      "NotFoundError",
+    );
+    assert(sinkType(context.sinkId) === "none", "unknown keeps the sink");
+    await assertRejected(
+      context.setSinkId({ type: "something_else" } as AudioSinkOptions),
+      "TypeError",
+    );
+    assert(sinkType(context.sinkId) === "none", "bad type keeps the sink");
+  } finally {
+    await context.close();
+  }
+  await assertRejected(context.setSinkId(""), "InvalidStateError");
+  const silent = new AudioContext({ sinkId: { type: "none" } });
+  try {
+    assert(sinkType(silent.sinkId) === "none", "constructed none");
+  } finally {
+    await silent.close();
+  }
+  assertName(
+    () => new AudioContext({
+      sinkId: { type: "something_else" } as AudioSinkOptions,
+    }),
+    "TypeError",
+  );
+  await assertThrows(
+    () => new AudioContext({ sinkId: "yuzuko-missing-audio-sink" }),
+    "NotFoundError",
+  );
+});
+
 function constant(context: BaseAudioContext, offset: number): ConstantSourceNode {
   return new ConstantSourceNode(context, { offset });
 }
@@ -958,17 +1028,18 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
   assert(context.listener === context.listener, "listener identity");
   assertClose(context.listener.forwardZ.value, -1, "forward");
   assertName(() => new AudioListener(), "TypeError");
-  await assertThrows(
-    () => new PannerNode(context, { panningModel: "HRTF" }),
-    "NotSupportedError",
-  );
+  const constructed = new PannerNode(context, { panningModel: "HRTF" });
+  assert(constructed.panningModel === "HRTF", "constructed HRTF");
   const panner = new PannerNode(context);
-  await assertThrows(() => {
-    panner.panningModel = "HRTF";
-  }, "NotSupportedError");
+  assert(panner.panningModel === "equalpower", "default model");
+  panner.panningModel = "HRTF";
+  assert(panner.panningModel === "HRTF", "assigned HRTF");
+  panner.panningModel = "equalpower";
+  assert(panner.panningModel === "equalpower", "restored model");
   assertName(() => {
     panner.panningModel = "room";
   }, "TypeError");
+  assert(panner.panningModel === "equalpower", "invalid model stays");
   assertName(() => {
     panner.refDistance = -1;
   }, "RangeError");
@@ -992,6 +1063,35 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
       node.channelCount = 3;
     }, "NotSupportedError");
   }
+});
+
+Yuzuko.test("HRTF delays one ear of a side click", async () => {
+  const context = new OfflineAudioContext(2, 256, 48000);
+  const impulse = context.createBuffer(1, 256, 48000);
+  impulse.getChannelData(0)[127] = 1;
+  const source = context.createBufferSource();
+  source.buffer = impulse;
+  const panner = new PannerNode(context, { panningModel: "HRTF" });
+  panner.positionX.value = 1;
+  source.connect(panner).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const peakAt = (channel: Float32Array): number => {
+    let index = 0;
+    let peak = 0;
+    for (let frame = 0; frame < channel.length; frame += 1) {
+      const value = Math.abs(channel[frame]);
+      if (value > peak) {
+        peak = value;
+        index = frame;
+      }
+    }
+    assert(peak > 0.05, `peak ${peak}`);
+    return index;
+  };
+  const left = peakAt(rendered.getChannelData(0));
+  const right = peakAt(rendered.getChannelData(1));
+  assert(left !== right, `peaks ${left} and ${right}`);
 });
 
 async function takeAudioData(): Promise<AudioData> {

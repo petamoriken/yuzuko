@@ -3,7 +3,9 @@
 //! A few steps differ from the Web Audio specification and are recorded in
 //! `docs/deviations.md`: the compressor has no look-ahead and its detector
 //! settles in one sample, shelf filters treat `Q` as slope, convolution
-//! resamples linearly, and waveshaper oversampling is a causal average.
+//! resamples linearly, waveshaper oversampling is a causal average, and
+//! HRTF panning is an azimuth delay rather than a head-related impulse
+//! response.
 
 use std::f64::consts::PI;
 
@@ -26,6 +28,12 @@ pub enum DistanceModel {
   Exponential,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanningModel {
+  EqualPower,
+  Hrtf,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BiquadMemory {
   pub x1: f32,
@@ -44,6 +52,12 @@ pub struct IirMemory {
 pub struct DelayState {
   pub lines: Vec<Vec<f32>>,
   pub write: usize,
+}
+
+/// Mono history for the azimuth delay. The newest sample is last.
+#[derive(Clone, Debug, Default)]
+pub struct HrtfState {
+  pub history: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -426,6 +440,90 @@ pub fn panner_block(
     let scale = spatial as f32;
     left[index] = sample_l * scale;
     right[index] = sample_r * scale;
+  }
+  vec![left, right]
+}
+
+const HRTF_DELAY_SAMPLES: usize = 16;
+
+/// Positive azimuth delays the left ear. This is not an HRIR.
+fn hrtf_ears(azimuth: f64) -> (usize, usize, f32, f32) {
+  let side = (wrap_azimuth(azimuth) / 90.0).clamp(-1.0, 1.0);
+  let magnitude = side.abs();
+  let samples = HRTF_DELAY_SAMPLES as f64;
+  let delay = (magnitude * samples).round() as usize;
+  let far = (1.0 - 0.45 * magnitude) as f32;
+  if side > 0.0 {
+    (delay, 0, far, 1.0)
+  } else if side < 0.0 {
+    (0, delay, 1.0, far)
+  } else {
+    (0, 0, 1.0, 1.0)
+  }
+}
+
+fn delayed(history: &[f32], delay: usize) -> f32 {
+  let Some(index) = history.len().checked_sub(delay + 1) else {
+    return 0.0;
+  };
+  history[index]
+}
+
+pub fn hrtf_block(
+  input: &[Vec<f32>],
+  source_position: [&[f64]; 3],
+  source_orientation: [&[f64]; 3],
+  listener_position: [&[f64]; 3],
+  listener_forward: [&[f64]; 3],
+  listener_up: [&[f64]; 3],
+  model: DistanceModel,
+  ref_distance: f64,
+  max_distance: f64,
+  rolloff: f64,
+  cone_inner: f64,
+  cone_outer: f64,
+  cone_gain: f64,
+  state: &mut HrtfState,
+) -> Vec<Vec<f32>> {
+  let quantum = block_len(input, source_position[0].len());
+  let stereo = input.len() >= 2;
+  let mut left = vec![0.0; quantum];
+  let mut right = vec![0.0; quantum];
+  let keep = HRTF_DELAY_SAMPLES + 1;
+  for index in 0..quantum {
+    let source = sample_vec(source_position, index);
+    let orientation = sample_vec(source_orientation, index);
+    let listener = sample_vec(listener_position, index);
+    let forward = sample_vec(listener_forward, index);
+    let up = sample_vec(listener_up, index);
+    let (azimuth, _elevation) =
+      azimuth_elevation(source, listener, forward, up);
+    let distance = length(sub(source, listener));
+    let spatial =
+      distance_gain(model, distance, ref_distance, max_distance, rolloff)
+        * cone_gain_of(
+          orientation,
+          source,
+          listener,
+          cone_inner,
+          cone_outer,
+          cone_gain,
+        );
+    let inl = channel_sample(input, 0, index);
+    let inr = if stereo {
+      channel_sample(input, 1, index)
+    } else {
+      inl
+    };
+    let mono = if stereo { 0.5 * (inl + inr) } else { inl };
+    state.history.push(mono * spatial as f32);
+    if state.history.len() > keep {
+      let extra = state.history.len() - keep;
+      state.history.drain(0..extra);
+    }
+    let (delay_l, delay_r, gain_l, gain_r) = hrtf_ears(azimuth);
+    left[index] = delayed(&state.history, delay_l) * gain_l;
+    right[index] = delayed(&state.history, delay_r) * gain_r;
   }
   vec![left, right]
 }
@@ -1506,13 +1604,13 @@ fn clamp_unit(value: f64) -> f64 {
 mod tests {
   use super::{
     BiquadKind, BiquadMemory, CompressorState, DelayState, DistanceModel,
-    IirError, IirMemory, ShapeState, analyser_process, analyser_reset,
-    automatic_makeup_linear, azimuth_elevation, biquad_block,
+    HrtfState, IirError, IirMemory, ShapeState, analyser_process,
+    analyser_reset, automatic_makeup_linear, azimuth_elevation, biquad_block,
     biquad_response_at, blackman, byte_time_sample, compress_block,
     compression_curve, cone_gain_of, convolve_block, db_to_lin, delay_block,
-    distance_gain, downmix_mono, fft_magnitudes, iir_block, mix_speakers,
-    normalize_iir, panner_block, shape_block, shape_sample, stereo_pan_block,
-    time_domain,
+    distance_gain, downmix_mono, fft_magnitudes, hrtf_block, iir_block,
+    mix_speakers, normalize_iir, panner_block, shape_block, shape_sample,
+    stereo_pan_block, time_domain,
   };
 
   fn near(actual: f32, expected: f32) {
@@ -1630,6 +1728,68 @@ mod tests {
         .abs()
         < 1e-9
     );
+  }
+
+  fn peak_index(channel: &[f32]) -> usize {
+    let mut index = 0;
+    let mut peak = 0.0f32;
+    for (frame, sample) in channel.iter().enumerate() {
+      let value = sample.abs();
+      if value > peak {
+        peak = value;
+        index = frame;
+      }
+    }
+    assert!(peak > 0.05, "{peak}");
+    index
+  }
+
+  fn side_hrtf(input: &[Vec<f32>], state: &mut HrtfState) -> Vec<Vec<f32>> {
+    let frames = input[0].len();
+    let zero = vec![0.0; frames];
+    let one = vec![1.0; frames];
+    let forward_z = vec![-1.0; frames];
+    let up_y = vec![1.0; frames];
+    hrtf_block(
+      input,
+      [&one, &zero, &zero],
+      [&one, &zero, &zero],
+      [&zero, &zero, &zero],
+      [&zero, &zero, &forward_z],
+      [&zero, &up_y, &zero],
+      DistanceModel::Inverse,
+      1.0,
+      10000.0,
+      1.0,
+      360.0,
+      360.0,
+      0.0,
+      state,
+    )
+  }
+
+  #[test]
+  fn hrtf_side_click_peaks_on_different_frames() {
+    let mut state = HrtfState::default();
+    let block = side_hrtf(&impulse(32), &mut state);
+    let left = peak_index(&block[0]);
+    let right = peak_index(&block[1]);
+    assert_ne!(left, right);
+    assert_eq!(left.min(right), 0);
+
+    let mut first = vec![vec![0.0; 8]];
+    first[0][7] = 1.0;
+    let mut state = HrtfState::default();
+    let head = side_hrtf(&first, &mut state);
+    let tail = side_hrtf(&[vec![0.0; 24]], &mut state);
+    let mut left_ch = head[0].clone();
+    left_ch.extend_from_slice(&tail[0]);
+    let mut right_ch = head[1].clone();
+    right_ch.extend_from_slice(&tail[1]);
+    let left_at = peak_index(&left_ch);
+    let right_at = peak_index(&right_ch);
+    assert_ne!(left_at, right_at);
+    assert_eq!(left_at.min(right_at), 7);
   }
 
   #[test]

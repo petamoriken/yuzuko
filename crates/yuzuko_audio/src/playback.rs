@@ -127,16 +127,15 @@ pub(crate) fn output_latency(id: u64) -> f64 {
   })
 }
 
-pub(crate) fn ensure(id: u64, rate: f64, quantum: u32, sink: &str) {
+pub(crate) fn ensure(id: u64, rate: f64, quantum: u32, sink: Option<&str>) {
   PLAY.with(|slot| {
     let mut plays = slot.borrow_mut();
     if plays.contains_key(&id) {
       return;
     }
-    let device = if timer_only() {
-      None
-    } else {
-      open_device(rate, quantum, sink)
+    let device = match sink {
+      Some(name) if !timer_only() => open_device(rate, quantum, name),
+      _ => None,
     };
     let latency = if device.is_some() {
       OUTPUT_LATENCY

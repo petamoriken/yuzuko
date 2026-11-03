@@ -771,14 +771,7 @@
   "webaudio/the-audio-api/the-oscillatornode-interface/osc-basic-waveform.html": true,
   "webaudio/the-audio-api/the-oscillatornode-interface/sub-sample-start.html": true,
   "webaudio/the-audio-api/the-pannernode-interface/automation-changes.html": true,
-  "webaudio/the-audio-api/the-pannernode-interface/ctor-panner.html": {
-    "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 1 out of 5 tasks were failed.",
-      "Executing \"constructor with options\"",
-      "X node = new PannerNode(c, {\"panningModel\":\"HRTF\",\"positionX\":1.4142135623730951,\"positionY\":2.8284271247461903,\"positionZ\":4.242640687119286,\"orientationX\":-1.4142135623730951,\"orientationY\":-2.8284271247461903,\"orientationZ\":-4.242640687119286,\"distanceModel\":\"linear\",\"refDistance\":3.141592653589793,\"maxDistance\":6.283185307179586,\"rolloffFactor\":9.42477796076938,\"coneInnerAngle\":12.566370614359172,\"coneOuterAngle\":15.707963267948966,\"coneOuterGain\":0.3141592653589793}) incorrectly threw NotSupportedError: \"HRTF panning is not implemented\".",
-      "X node instanceof PannerNode is not equal to true. Got false."
-    ]
-  },
+  "webaudio/the-audio-api/the-pannernode-interface/ctor-panner.html": true,
   "webaudio/the-audio-api/the-pannernode-interface/distance-exponential.html": true,
   "webaudio/the-audio-api/the-pannernode-interface/distance-inverse.html": true,
   "webaudio/the-audio-api/the-pannernode-interface/distance-linear.html": true,

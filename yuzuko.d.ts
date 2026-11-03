@@ -10279,6 +10279,25 @@ declare const GPUMapMode: {
  */
 type AudioRenderSizeHint = "default" | "hardware" | number;
 
+type AudioSinkType = "none";
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioSinkOptions)
+ */
+interface AudioSinkOptions {
+  type: AudioSinkType;
+}
+
+/**
+ * Returned by {@link AudioContext.sinkId} when no device is selected.
+ * Each read allocates a new object.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioSinkInfo)
+ */
+interface AudioSinkInfo {
+  readonly type: AudioSinkType;
+}
+
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/AudioContext)
  */
@@ -10286,7 +10305,7 @@ interface AudioContextOptions {
   sampleRate?: number;
   latencyHint?: AudioContextLatencyCategory | number;
   renderSizeHint?: AudioRenderSizeHint;
-  sinkId?: string;
+  sinkId?: string | AudioSinkOptions;
 }
 
 /**
@@ -10467,18 +10486,22 @@ interface PeriodicWaveConstraints {
  * A realtime context.
  *
  * `currentTime` stays 0 until a source starts. Playback then opens the output
- * device named by `sinkId`, or the default device when `sinkId` is `""`, and
- * keeps rendering until `suspend` or `close`, which keeps the process alive.
- * The device callback only copies a buffer. When the device cannot be opened,
- * a timer advances the clock. `baseLatency` is `renderQuantumSize / sampleRate`.
- * With a device, `outputLatency` is the 100 ms playback buffer. On the timer
- * it is 0. `setSinkId` is absent.
+ * device named by a string `sinkId`, including the default device when it is
+ * `""`, and keeps rendering until `suspend` or `close`, which keeps the
+ * process alive. `{ type: "none" }` does not open a device. The device
+ * callback only copies a buffer. When no device is open, a timer advances
+ * the clock. `baseLatency` is `renderQuantumSize / sampleRate`. With a
+ * device, `outputLatency` is the 100 ms playback buffer. On the timer it is
+ * 0. `setSinkId` stores the next sink. A device that is already open stays
+ * open.
  *
  * @throws {@link DOMException} `NotSupportedError` when `sampleRate` is outside
  * 3000 through 768000, or when `renderSizeHint` is an integer outside 1 through
  * `floor(6 * sampleRate)`.
  * @throws {@link DOMException} `NotFoundError` when `sinkId` names an output
  * device that is not present. `""` does not require a device.
+ * @throws {@link TypeError} When `sinkId` is an object whose `type` is not
+ * `"none"`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext)
  */
@@ -10491,11 +10514,28 @@ interface AudioContext extends BaseAudioContext {
   readonly outputLatency: number;
 
   /**
-   * The requested output-device name. `""` is the default device.
+   * The requested output. `""` is the default device. `{ type: "none" }`
+   * does not open a device. Each read of that object allocates a new one.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/sinkId)
    */
-  readonly sinkId: string;
+  readonly sinkId: string | AudioSinkInfo;
+
+  /**
+   * Selects the output named by `sinkId`. `""` is the default device.
+   * `{ type: "none" }` selects no device. The same value again resolves.
+   * A device that is already open stays open.
+   *
+   * @throws {@link DOMException} `NotFoundError` when the device name is
+   * unknown. The promise rejects and the previous sink stays.
+   * @throws {@link TypeError} When `type` is not `"none"`, or when `sinkId`
+   * is missing. The promise rejects.
+   * @throws {@link DOMException} `InvalidStateError` after `close()`. The
+   * promise rejects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/setSinkId)
+   */
+  setSinkId(sinkId: string | AudioSinkOptions): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/suspend) */
   suspend(): Promise<void>;
@@ -11223,11 +11263,12 @@ interface StereoPannerOptions extends AudioNodeOptions {
 }
 
 /**
- * Equal-power panner. `"HRTF"` throws `NotSupportedError`. The output is
- * stereo. The cone points from the source toward the listener.
+ * Stereo panner. `"equalpower"` uses equal-power gains. `"HRTF"` delays the
+ * far ear and makes it quieter. The output is stereo. The cone points from
+ * the source toward the listener.
  *
- * @throws {@link DOMException} `NotSupportedError` when `panningModel` is
- * `"HRTF"`, `channelCount` is above 2, or `channelCountMode` is `"max"`.
+ * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
+ * above 2 or `channelCountMode` is `"max"`.
  * @throws {@link TypeError} When `panningModel` or `distanceModel` is not a
  * supported value.
  * @throws {@link RangeError} When `refDistance` is negative, `maxDistance` is
@@ -11239,7 +11280,9 @@ interface StereoPannerOptions extends AudioNodeOptions {
  */
 interface PannerNode extends AudioNode {
   /**
-   * @throws {@link DOMException} `NotSupportedError` when the value is `"HRTF"`.
+   * `"equalpower"` or `"HRTF"`.
+   *
+   * @throws {@link TypeError} When the value is not a supported model.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/panningModel)
    */

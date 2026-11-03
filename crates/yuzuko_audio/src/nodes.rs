@@ -2,7 +2,7 @@
 //!
 //! `MediaElementAudioSourceNode`, `MediaStreamAudioSourceNode`,
 //! `MediaStreamAudioDestinationNode`, and `ScriptProcessorNode` stay absent.
-//! `"HRTF"` throws `NotSupportedError`.
+//! `"HRTF"` delays the far ear. It is not a head-related impulse response.
 
 use yuzuko_core::op::{Js, OpError};
 use yuzuko_dom::EventTarget;
@@ -14,7 +14,7 @@ use crate::classes::{
   require_context, shell,
 };
 use crate::engine::{self, Kind};
-use crate::process::{self, BiquadKind, DistanceModel};
+use crate::process::{self, BiquadKind, DistanceModel, PanningModel};
 use crate::util;
 
 fn node(id: u64) -> AudioNode {
@@ -948,13 +948,10 @@ impl StereoPannerNode {
   }
 }
 
-fn check_panning(model: &str) -> Result<(), OpError> {
+fn check_panning(model: &str) -> Result<PanningModel, OpError> {
   match model {
-    "equalpower" => Ok(()),
-    "HRTF" => Err(OpError::dom(
-      "NotSupportedError",
-      "HRTF panning is not implemented",
-    )),
+    "equalpower" => Ok(PanningModel::EqualPower),
+    "HRTF" => Ok(PanningModel::Hrtf),
     _ => Err(OpError::type_("The panning model is invalid")),
   }
 }
@@ -997,9 +994,10 @@ pub(crate) fn build_panner(
   context: u64,
   options: v8::Local<v8::Value>,
 ) -> Result<PannerNode, OpError> {
-  if let Some(value) = dictionary(scope, options, "panningModel")? {
-    check_panning(&util::rust_string(scope, value))?;
-  }
+  let model = match dictionary(scope, options, "panningModel")? {
+    Some(value) => check_panning(&util::rust_string(scope, value))?,
+    None => PanningModel::EqualPower,
+  };
   let distance = match dictionary(scope, options, "distanceModel")? {
     Some(value) => distance_model(&util::rust_string(scope, value))?,
     None => DistanceModel::Inverse,
@@ -1062,6 +1060,7 @@ pub(crate) fn build_panner(
       cone_inner,
       cone_outer,
       cone_gain,
+      model,
     },
   );
   Ok(PannerNode {
@@ -1095,7 +1094,7 @@ impl PannerNode {
 
   #[getter]
   fn panning_model(&self) -> String {
-    "equalpower".to_string()
+    engine::panning_model_name(self.base.id).to_string()
   }
 
   #[setter]

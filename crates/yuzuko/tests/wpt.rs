@@ -327,8 +327,9 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
 }
 
 /// The file needs a media element, a `MediaStream`, `ScriptProcessorNode`,
-/// or a permissions policy. `getOutputTimestamp`, `playbackStats`, and
-/// `setSinkId` are absent. The main global has no `requestAnimationFrame`.
+/// or a permissions policy. `getOutputTimestamp` and `playbackStats` are
+/// absent. Sink-id pages stay skipped because they need `enumerateDevices`.
+/// The main global has no `requestAnimationFrame`.
 /// Processing nodes, `AudioParam` automation, and `AudioListener` are part
 /// of the runtime and are not skipped here.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {

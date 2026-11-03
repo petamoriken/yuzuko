@@ -8,7 +8,7 @@ use std::time::Duration;
 use yuzuko_core::op::{Js, OpError, OpException};
 
 use crate::playback::{self, Pace};
-use crate::process::{self, BiquadKind, DistanceModel};
+use crate::process::{self, BiquadKind, DistanceModel, PanningModel};
 use crate::util::{self, f32_array, f32_to_bytes};
 
 const MAX_CHANNELS: u32 = 32;
@@ -187,6 +187,7 @@ pub enum Kind {
     cone_inner: f64,
     cone_outer: f64,
     cone_gain: f64,
+    model: PanningModel,
   },
   StereoPanner {
     pan: u64,
@@ -225,6 +226,7 @@ enum Tail {
     scale: f32,
   },
   Compressor(process::CompressorState),
+  Hrtf(process::HrtfState),
 }
 
 struct ListenerRec {
@@ -363,7 +365,22 @@ struct ContextRec {
   // schedule another quantum.
   generation: u64,
   pump_queued: bool,
-  sink: String,
+  sink: AudioSink,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AudioSink {
+  Device(String),
+  None,
+}
+
+impl AudioSink {
+  fn device_name(&self) -> Option<&str> {
+    match self {
+      Self::Device(name) => Some(name.as_str()),
+      Self::None => None,
+    }
+  }
 }
 
 struct WaveRec {
@@ -1432,7 +1449,7 @@ pub fn register_context(
   length: Option<u32>,
   destination: u64,
   destination_object: v8::Global<v8::Object>,
-  sink: String,
+  sink: AudioSink,
 ) {
   let output = if realtime {
     Vec::new()
@@ -1473,7 +1490,7 @@ pub fn register_context(
   });
 }
 
-pub fn context_sink(id: u64) -> Option<String> {
+pub fn context_sink(id: u64) -> Option<AudioSink> {
   CONTEXTS.with(|contexts| {
     contexts
       .borrow()
@@ -2604,7 +2621,7 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
       context.quantum,
       context.frame,
       context.sample_rate,
-      context.sink.clone(),
+      context.sink.device_name().map(str::to_string),
     ))
   }) else {
     release_pump(id, generation);
@@ -2628,7 +2645,7 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
     release_pump(id, generation);
     return;
   }
-  playback::ensure(id, rate, quantum, &sink);
+  playback::ensure(id, rate, quantum, sink.as_deref());
   let pace = playback::submit(id, &block, quantum as usize, rate);
   if !playback_active(id, generation) {
     release_pump(id, generation);
@@ -2909,6 +2926,7 @@ fn pull_output(
       cone_inner,
       cone_outer,
       cone_gain,
+      model,
     } => one(render_panner(
       scope,
       id,
@@ -2921,6 +2939,7 @@ fn pull_output(
       cone_inner,
       cone_outer,
       cone_gain,
+      model,
       origin,
       quantum,
       cache,
@@ -4399,6 +4418,7 @@ fn render_panner(
   cone_inner: f64,
   cone_outer: f64,
   cone_gain: f64,
+  model: PanningModel,
   origin: u64,
   quantum: usize,
   cache: &mut RenderCache,
@@ -4421,21 +4441,54 @@ fn render_panner(
     stack,
     ended,
   );
-  process::panner_block(
-    &mixed,
-    [&source[0], &source[1], &source[2]],
-    [&source[3], &source[4], &source[5]],
-    [&listener[0], &listener[1], &listener[2]],
-    [&listener[3], &listener[4], &listener[5]],
-    [&listener[6], &listener[7], &listener[8]],
-    distance,
-    ref_distance,
-    max_distance,
-    rolloff,
-    cone_inner,
-    cone_outer,
-    cone_gain,
-  )
+  let source_position: [&[f64]; 3] = [&source[0], &source[1], &source[2]];
+  let source_orientation: [&[f64]; 3] = [&source[3], &source[4], &source[5]];
+  let listener_position: [&[f64]; 3] =
+    [&listener[0], &listener[1], &listener[2]];
+  let listener_forward: [&[f64]; 3] =
+    [&listener[3], &listener[4], &listener[5]];
+  let listener_up: [&[f64]; 3] = [&listener[6], &listener[7], &listener[8]];
+  match model {
+    PanningModel::EqualPower => process::panner_block(
+      &mixed,
+      source_position,
+      source_orientation,
+      listener_position,
+      listener_forward,
+      listener_up,
+      distance,
+      ref_distance,
+      max_distance,
+      rolloff,
+      cone_inner,
+      cone_outer,
+      cone_gain,
+    ),
+    PanningModel::Hrtf => {
+      let mut state = match take_tail(id) {
+        Some(Tail::Hrtf(state)) => state,
+        _ => process::HrtfState::default(),
+      };
+      let block = process::hrtf_block(
+        &mixed,
+        source_position,
+        source_orientation,
+        listener_position,
+        listener_forward,
+        listener_up,
+        distance,
+        ref_distance,
+        max_distance,
+        rolloff,
+        cone_inner,
+        cone_outer,
+        cone_gain,
+        &mut state,
+      );
+      put_tail(id, Tail::Hrtf(state));
+      block
+    }
+  }
 }
 
 fn listener_curves(
@@ -4945,18 +4998,76 @@ pub fn set_convolver_buffer(
 }
 
 pub fn set_panning_model(id: u64, model: &str) -> Result<(), Fault> {
-  with_kind(id, |kind| {
-    if !matches!(kind, Kind::Panner { .. }) {
+  let parsed = match model {
+    "equalpower" => PanningModel::EqualPower,
+    "HRTF" => PanningModel::Hrtf,
+    _ => return Err(Fault::type_("The panning model is invalid")),
+  };
+  let changed = with_kind(id, |kind| {
+    let Kind::Panner { model, .. } = kind else {
       return Err(Fault::type_("Invalid AudioNode"));
+    };
+    let changed = *model != parsed;
+    *model = parsed;
+    Ok(changed)
+  })?;
+  if changed && parsed != PanningModel::Hrtf {
+    TAILS.with(|tails| {
+      let mut tails = tails.borrow_mut();
+      if matches!(tails.get(&id), Some(Tail::Hrtf(_))) {
+        tails.remove(&id);
+      }
+    });
+  }
+  Ok(())
+}
+
+pub fn panning_model_name(id: u64) -> &'static str {
+  match cloned_kind(id) {
+    Some(Kind::Panner {
+      model: PanningModel::Hrtf,
+      ..
+    }) => "HRTF",
+    _ => "equalpower",
+  }
+}
+
+pub fn known_sink(sink: &AudioSink) -> Result<(), Fault> {
+  match sink {
+    AudioSink::None => Ok(()),
+    AudioSink::Device(name) if playback::sink_available(name) => Ok(()),
+    AudioSink::Device(_) => {
+      Err(Fault::dom("NotFoundError", "The audio sink was not found"))
     }
-    match model {
-      "equalpower" => Ok(()),
-      "HRTF" => Err(Fault::dom(
-        "NotSupportedError",
-        "HRTF panning is not implemented",
-      )),
-      _ => Err(Fault::type_("The panning model is invalid")),
+  }
+}
+
+pub fn set_audio_sink(id: u64, sink: AudioSink) -> Result<(), Fault> {
+  let open = CONTEXTS.with(|contexts| {
+    let contexts = contexts.borrow();
+    let Some(context) = contexts.get(&id) else {
+      return Err(Fault::type_("Invalid AudioContext"));
+    };
+    if !context.realtime {
+      return Err(Fault::type_("Invalid AudioContext"));
     }
+    if context.state == RunState::Closed {
+      return Err(Fault::dom("InvalidStateError", "The context is closed"));
+    }
+    Ok(())
+  });
+  open?;
+  known_sink(&sink)?;
+  CONTEXTS.with(|contexts| {
+    let mut contexts = contexts.borrow_mut();
+    let Some(context) = contexts.get_mut(&id) else {
+      return Err(Fault::type_("Invalid AudioContext"));
+    };
+    if context.state == RunState::Closed {
+      return Err(Fault::dom("InvalidStateError", "The context is closed"));
+    }
+    context.sink = sink;
+    Ok(())
   })
 }
 
