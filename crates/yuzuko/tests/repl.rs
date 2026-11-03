@@ -14,7 +14,46 @@ fn bin() -> PathBuf {
 }
 
 fn text(bytes: &[u8]) -> String {
-  String::from_utf8_lossy(bytes).into_owned()
+  strip_sgr(&String::from_utf8_lossy(bytes))
+}
+
+/// Drops SGR sequences and keeps cursor movement. Matches `color::strip_sgr`.
+fn strip_sgr(text: &str) -> String {
+  if !text.contains('\u{1b}') {
+    return text.to_string();
+  }
+  let mut out = String::with_capacity(text.len());
+  let mut rest = text;
+  while let Some(pos) = rest.find('\u{1b}') {
+    out.push_str(&rest[..pos]);
+    let after = &rest[pos..];
+    if let Some(len) = sgr_len(after) {
+      rest = &after[len..];
+    } else {
+      out.push('\u{1b}');
+      rest = &after['\u{1b}'.len_utf8()..];
+    }
+  }
+  out.push_str(rest);
+  out
+}
+
+fn sgr_len(text: &str) -> Option<usize> {
+  let bytes = text.as_bytes();
+  if bytes.len() < 3 || bytes[0] != 0x1b || bytes[1] != b'[' {
+    return None;
+  }
+  let mut index = 2;
+  while index < bytes.len()
+    && (bytes[index].is_ascii_digit() || bytes[index] == b';')
+  {
+    index += 1;
+  }
+  if index < bytes.len() && bytes[index] == b'm' {
+    Some(index + 1)
+  } else {
+    None
+  }
 }
 
 fn scratch(name: &str) -> PathBuf {
@@ -85,14 +124,23 @@ fn eval_after_prompt(dir: &Path, script: &str) -> (String, String, Duration) {
 }
 
 fn pipe_repl(dir: &Path, input: &str) -> Output {
-  let mut child = Command::new(bin())
+  pipe_repl_env(dir, input, |_| {})
+}
+
+fn pipe_repl_env(
+  dir: &Path,
+  input: &str,
+  configure: impl FnOnce(&mut Command),
+) -> Output {
+  let mut command = Command::new(bin());
+  command
     .current_dir(dir)
     .arg("repl")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .expect("spawn yuzuko repl");
+    .stderr(Stdio::piped());
+  configure(&mut command);
+  let mut child = command.spawn().expect("spawn yuzuko repl");
   child
     .stdin
     .take()
@@ -216,16 +264,25 @@ fn piped_repl_prints_two_on_two_launches() {
 struct Pty {
   primary: i32,
   child: std::process::Child,
+  /// Visible text. SGR is removed. Cursor movement stays.
   text: String,
+  /// Bytes as the terminal printed them, including color.
+  raw: String,
+  /// A trailing CSI that has not received its final byte yet.
+  pending: String,
 }
 
 #[cfg(unix)]
 impl Pty {
   fn spawn(dir: &Path) -> Self {
-    Self::open(dir, false)
+    Self::open(dir, false, |_| {})
   }
 
-  fn open(dir: &Path, headless: bool) -> Self {
+  fn open(
+    dir: &Path,
+    headless: bool,
+    configure: impl FnOnce(&mut Command),
+  ) -> Self {
     let mut primary = 0;
     let mut secondary = 0;
     let opened = unsafe {
@@ -243,6 +300,7 @@ impl Pty {
     if headless {
       command.env("YUZUKO_HEADLESS", "1");
     }
+    configure(&mut command);
     let child = command
       .stdin(unsafe { Stdio::from_raw_fd(libc::dup(secondary)) })
       .stdout(unsafe { Stdio::from_raw_fd(libc::dup(secondary)) })
@@ -254,6 +312,8 @@ impl Pty {
       primary,
       child,
       text: String::new(),
+      raw: String::new(),
+      pending: String::new(),
     }
   }
 
@@ -288,7 +348,12 @@ impl Pty {
     if count > 0 {
       let chunk =
         String::from_utf8_lossy(&buf[..count as usize]).replace('\r', "");
-      self.text.push_str(&chunk);
+      self.raw.push_str(&chunk);
+      self.pending.push_str(&chunk);
+      let pending = std::mem::take(&mut self.pending);
+      let (ready, rest) = split_pending(&pending);
+      self.text.push_str(&strip_sgr(ready));
+      self.pending = rest.to_string();
     }
   }
 
@@ -332,6 +397,39 @@ impl Drop for Pty {
       let _ = self.child.wait();
     }
   }
+}
+
+/// Holds a trailing CSI that has no final byte yet, so a split read
+/// cannot shrink the stripped text.
+#[cfg(unix)]
+fn split_pending(input: &str) -> (&str, &str) {
+  let Some(pos) = input.rfind('\u{1b}') else {
+    return (input, "");
+  };
+  let tail = &input[pos..];
+  if csi_pending(tail) {
+    (&input[..pos], tail)
+  } else {
+    (input, "")
+  }
+}
+
+#[cfg(unix)]
+fn csi_pending(tail: &str) -> bool {
+  let bytes = tail.as_bytes();
+  if bytes == [0x1b] {
+    return true;
+  }
+  if bytes.len() < 2 || bytes[0] != 0x1b || bytes[1] != b'[' {
+    return false;
+  }
+  let mut index = 2;
+  while index < bytes.len()
+    && (bytes[index].is_ascii_digit() || bytes[index] == b';')
+  {
+    index += 1;
+  }
+  index == bytes.len()
 }
 
 #[cfg(unix)]
@@ -515,7 +613,7 @@ fn terminal_session_completes_and_recalls_history() {
 #[test]
 fn event_loop_runs_while_the_prompt_waits() {
   let dir = scratch("live");
-  let mut pty = Pty::open(&dir, true);
+  let mut pty = Pty::open(&dir, true, |_| {});
   let step = Duration::from_secs(15);
   pty.wait_until(|text| text.contains("> "), step);
 
@@ -1056,4 +1154,156 @@ fn timer_exit_ends_a_waiting_prompt() {
   let stderr = text(&output.stderr);
   assert!(!stdout.contains("undefined"), "{stdout}\n{stderr}");
   assert!(!stderr.contains("failed to run"), "{stderr}");
+}
+
+#[test]
+fn stripped_cursor_sequence_keeps_the_column() {
+  assert_eq!(
+    strip_sgr("\x1b[J> \x1b[33m12\x1b[0m\x1b[3C"),
+    "\x1b[J> 12\x1b[3C"
+  );
+  assert_eq!(strip_sgr("\x1b[38;5;245mundefined\x1b[0m"), "undefined");
+}
+
+#[cfg(unix)]
+#[test]
+fn pending_csi_waits_for_its_final_byte() {
+  assert_eq!(split_pending("ab\x1b[33"), ("ab", "\x1b[33"));
+  assert_eq!(split_pending("ab\x1b[33m"), ("ab\x1b[33m", ""));
+  assert_eq!(split_pending("\x1b[3C"), ("\x1b[3C", ""));
+  assert_eq!(split_pending("x\x1b"), ("x", "\x1b"));
+}
+
+#[test]
+fn repl_colors_a_completion_when_force_color_is_set() {
+  let dir = scratch("color");
+  let script = concat!(
+    "console.log(1)\n",
+    "1\n",
+    "null\n",
+    "undefined\n",
+    "\"a\"\n",
+    "true\n",
+    "1n\n",
+    "/a/g\n",
+    "new Date(0)\n",
+    "(function () {})\n",
+    "Object.defineProperty({}, \"a\", {",
+    " enumerable: true, get() { return 1 } })\n",
+    "new URLSearchParams([[\"a\",\"1\"],[\"b\",\"2\"]])\n",
+    ")\n",
+  );
+  let output = pipe_repl_env(&dir, script, |command| {
+    command.env("FORCE_COLOR", "1");
+    command.env_remove("NO_COLOR");
+  });
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let raw = String::from_utf8_lossy(&output.stdout);
+  let stripped = text(&output.stdout);
+  assert!(
+    raw.lines().any(|line| line == "1"),
+    "console.log stays uncolored\n{raw}"
+  );
+  assert!(raw.contains("\x1b[33m1\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[1mnull\x1b[22m"), "{raw}");
+  assert!(raw.contains("\x1b[90mundefined\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[32m\"a\"\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[33mtrue\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[33m1n\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[31m/a/g\x1b[39m"), "{raw}");
+  assert!(
+    raw.contains("\x1b[35m1970-01-01T00:00:00.000Z\x1b[39m"),
+    "{raw}"
+  );
+  assert!(
+    raw.contains("\x1b[36m[Function (anonymous)]\x1b[39m"),
+    "{raw}"
+  );
+  assert!(raw.contains("a: \x1b[36m[Getter]\x1b[39m"), "{raw}");
+  assert!(
+    stripped.lines().any(|line| {
+      line == "URLSearchParams { \"a\" => \"1\", \"b\" => \"2\" }"
+    }),
+    "{stripped}"
+  );
+  assert!(raw.contains("\x1b[31mSyntaxError"), "{raw}");
+  assert!(stripped.contains("SyntaxError"), "{stripped}");
+}
+
+#[test]
+fn no_color_disables_repl_color() {
+  let dir = scratch("no-color");
+  let output = pipe_repl_env(&dir, "1\n", |command| {
+    command.env_remove("FORCE_COLOR");
+    command.env("NO_COLOR", "1");
+  });
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let raw = String::from_utf8_lossy(&output.stdout);
+  assert!(!raw.contains("\x1b[33m"), "{raw}");
+}
+
+#[test]
+fn a_pipe_without_force_color_stays_plain() {
+  let dir = scratch("plain-pipe");
+  let output = pipe_repl_env(&dir, "1\n", |command| {
+    command.env_remove("FORCE_COLOR");
+    command.env_remove("NO_COLOR");
+  });
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let raw = String::from_utf8_lossy(&output.stdout);
+  assert!(!raw.contains("\x1b["), "{raw}");
+  assert!(text(&output.stdout).contains("\n1\n"), "{raw}");
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_colors_the_input_line_and_the_completion() {
+  let dir = scratch("term-color");
+  let mut pty = Pty::open(&dir, false, |command| {
+    command.env("FORCE_COLOR", "1");
+    command.env_remove("NO_COLOR");
+  });
+  let step = Duration::from_secs(15);
+  pty.wait_until(|text| text.contains("> "), step);
+
+  pty.send(b"const marker = 1\n");
+  pty.wait_until(|text| text.contains("const marker = 1"), step);
+  assert!(pty.raw.contains("\x1b[36mconst\x1b[0m"), "{}", pty.raw);
+
+  let before = pty.text.len();
+  pty.send(b"1 + 1\n");
+  pty.wait_until(|text| text[before..].contains("\n2\n"), step);
+  assert!(pty.raw.contains("\x1b[33m2\x1b[39m"), "{}", pty.raw);
+
+  let before = pty.text.len();
+  pty.send(b")\n");
+  pty.wait_until(|text| text[before..].contains("SyntaxError"), step);
+  assert!(pty.raw.contains("\x1b[31m"), "{}", pty.raw);
+
+  pty.send(b"\x04");
+  assert_eq!(pty.wait_exit(), 0, "{}", pty.text);
+}
+
+#[cfg(unix)]
+#[test]
+fn no_color_leaves_the_terminal_input_plain() {
+  let dir = scratch("term-plain");
+  let mut pty = Pty::open(&dir, false, |command| {
+    command.env_remove("FORCE_COLOR");
+    command.env("NO_COLOR", "1");
+  });
+  let step = Duration::from_secs(15);
+  pty.wait_until(|text| text.contains("> "), step);
+
+  pty.send(b"const marker = 1\n");
+  pty.wait_until(|text| text.contains("const marker = 1"), step);
+  assert!(!pty.raw.contains("\x1b[36m"), "{}", pty.raw);
+
+  let before = pty.text.len();
+  pty.send(b"1 + 1\n");
+  pty.wait_until(|text| text[before..].contains("\n2\n"), step);
+  assert!(!pty.raw.contains("\x1b[33m"), "{}", pty.raw);
+
+  pty.send(b"\x04");
+  assert_eq!(pty.wait_exit(), 0, "{}", pty.text);
 }

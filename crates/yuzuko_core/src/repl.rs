@@ -64,7 +64,7 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
   let prepared = match prepare(source) {
     Ok(prepared) => prepared,
     Err(message) => {
-      println!("SyntaxError: {message}");
+      crate::color::report_error(&format!("SyntaxError: {message}"));
       return;
     }
   };
@@ -74,20 +74,20 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
   let value = {
     v8::tc_scope!(let tc, scope);
     let Some(code) = v8::String::new(tc, &prepared) else {
-      println!("SyntaxError: script is too large");
+      crate::color::report_error("SyntaxError: script is too large");
       return;
     };
     let script_origin = runtime::script_origin(tc, Some(origin));
     let Some(script) = v8::Script::compile(tc, code, script_origin.as_ref())
     else {
-      println!("{}", exception_text!(tc, "failed to compile"));
+      crate::color::report_error(&exception_text!(tc, "failed to compile"));
       return;
     };
     let Some(value) = script.run(tc) else {
       if crate::process::exit_code().is_some() {
         return;
       }
-      println!("{}", exception_text!(tc, "failed to run"));
+      crate::color::report_error(&exception_text!(tc, "failed to run"));
       return;
     };
     v8::Global::new(tc, value)
@@ -104,7 +104,7 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
         if crate::process::exit_code().is_some() {
           return;
         }
-        println!("{}", describe(scope, reason));
+        crate::color::report_error(&describe(scope, reason));
         drain_ready(scope);
         return;
       }
@@ -118,7 +118,10 @@ fn evaluate(scope: &mut v8::PinScope, source: &str, origin: &str) {
   if crate::process::exit_code().is_some() {
     return;
   }
-  println!("{}", display_value(scope, value));
+  match display_value(scope, value) {
+    Ok(text) => println!("{text}"),
+    Err(text) => crate::color::report_error(&text),
+  }
 }
 
 fn wait_for_promise<'a>(
@@ -211,12 +214,18 @@ fn earliest(
 fn display_value(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> String {
-  match crate::inspect::format_value(scope, value) {
-    Ok(text) => text,
+) -> Result<String, String> {
+  let colors = crate::color::repl_color();
+  let formatted = if colors {
+    crate::inspect::format_value_colored(scope, value, true)
+  } else {
+    crate::inspect::format_value(scope, value)
+  };
+  match formatted {
+    Ok(text) => Ok(text),
     Err(thrown) => {
       let thrown = v8::Local::new(scope, thrown.0);
-      describe(scope, thrown)
+      Err(describe(scope, thrown))
     }
   }
 }

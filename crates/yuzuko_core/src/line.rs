@@ -101,7 +101,7 @@ impl Editor {
           self.push_history(&buffer);
           return Some(std::mem::take(&mut buffer));
         }
-        println!("SyntaxError: incomplete input");
+        crate::color::report_error("SyntaxError: incomplete input");
         return None;
       }
       let byte = self.pending.pop_front().unwrap_or(0);
@@ -464,14 +464,14 @@ fn read_pipe_lines(ready: &mut dyn FnMut() -> bool) -> Option<String> {
       if repl::input_is_complete(&block) {
         return Some(block);
       }
-      println!("SyntaxError: incomplete input");
+      crate::color::report_error("SyntaxError: incomplete input");
       return None;
     }
     let read = io::BufRead::read_line(&mut stdin.lock(), &mut line);
     let count = match read {
       Ok(count) => count,
       Err(error) => {
-        println!("SyntaxError: {error}");
+        crate::color::report_error(&format!("SyntaxError: {error}"));
         return None;
       }
     };
@@ -484,7 +484,7 @@ fn read_pipe_lines(ready: &mut dyn FnMut() -> bool) -> Option<String> {
       if repl::input_is_complete(&block) {
         return Some(block);
       }
-      println!("SyntaxError: incomplete input");
+      crate::color::report_error("SyntaxError: incomplete input");
       return None;
     }
     if line.ends_with('\n') {
@@ -565,14 +565,24 @@ fn clear_screen(view: &mut View, buffer: &str, cursor: usize) {
 
 #[cfg(any(unix, windows))]
 fn write_buffer(buffer: &str) {
+  let color = crate::color::repl_color();
   let mut lines = buffer.split('\n');
   if let Some(first) = lines.next() {
-    print!("> {first}");
+    print!("> {}", shown_line(first, color));
   } else {
     print!("> ");
   }
   for line in lines {
-    print!("\n... {line}");
+    print!("\n... {}", shown_line(line, color));
+  }
+}
+
+#[cfg(any(unix, windows))]
+fn shown_line(line: &str, color: bool) -> String {
+  if color {
+    crate::color::highlight_line(line)
+  } else {
+    line.to_string()
   }
 }
 

@@ -5,6 +5,7 @@ extern crate self as yuzuko_core;
 #[cfg(feature = "child")]
 mod child;
 mod clone;
+mod color;
 mod extensions;
 #[cfg(feature = "ffi")]
 mod ffi;

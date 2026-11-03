@@ -4,10 +4,13 @@
 //! user inspection hook. Non-enumerable symbol properties are omitted.
 //! A host class instance prints that class's attributes. A getter on a
 //! user class is printed too. A getter that throws prints as `[Getter]`.
+//! `console` leaves the text uncolored. A REPL completion can paint it.
 
 use std::sync::Mutex;
 
 use unicode_width::UnicodeWidthStr;
+
+use crate::color::{self, Ink};
 
 const DEPTH: i32 = 4;
 const COMPACT: i32 = 3;
@@ -91,7 +94,18 @@ pub(crate) fn format_value(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<String, Thrown> {
-  let mut ctx = Ctx::default();
+  format_value_colored(scope, value, false)
+}
+
+pub(crate) fn format_value_colored(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  colors: bool,
+) -> Result<String, Thrown> {
+  let mut ctx = Ctx {
+    colors,
+    ..Ctx::default()
+  };
   format_with(scope, &mut ctx, value, 0)
 }
 
@@ -118,6 +132,8 @@ struct Ctx {
   /// The value being printed is `Constructor.prototype`. Inherited
   /// accessors are shown and not called.
   prototype_object: bool,
+  /// REPL completions set this. `console` leaves it false.
+  colors: bool,
 }
 
 impl Default for Ctx {
@@ -130,6 +146,7 @@ impl Default for Ctx {
       circular_set: false,
       circular_error_message: None,
       prototype_object: false,
+      colors: false,
     }
   }
 }
@@ -214,7 +231,12 @@ fn slice_utf16(text: &str, end: usize) -> String {
 }
 
 fn display_width(text: &str) -> usize {
-  UnicodeWidthStr::width(text)
+  UnicodeWidthStr::width(color::strip_sgr(text).as_ref())
+}
+
+/// UTF-16 length of the visible text. Color bytes do not count.
+fn visible_utf16(text: &str) -> usize {
+  utf16_length(color::strip_sgr(text).as_ref())
 }
 
 fn meta_escape(ch: char) -> Option<&'static str> {
@@ -627,38 +649,43 @@ fn format_primitive(
   scope: &mut v8::PinScope,
   ctx: &Ctx,
   value: v8::Local<v8::Value>,
+  color: bool,
 ) -> Result<String, Thrown> {
   if value.is_string() {
-    return format_string(scope, ctx, value);
+    return format_string(scope, ctx, value, color);
   }
   if value.is_number() {
-    return number_display(scope, value);
+    let text = number_display(scope, value)?;
+    return Ok(color::paint(Ink::Number, &text, color));
   }
   if value.is_big_int() {
-    return format_bigint(scope, value);
+    let text = format_bigint(scope, value)?;
+    return Ok(color::paint(Ink::Number, &text, color));
   }
   if value.is_boolean() {
-    return Ok(if value.is_true() {
-      "true".to_string()
-    } else {
-      "false".to_string()
-    });
+    let text = if value.is_true() { "true" } else { "false" };
+    return Ok(color::paint(Ink::Number, text, color));
   }
   if value.is_undefined() {
-    return Ok("undefined".to_string());
+    return Ok(color::paint(Ink::Undefined, "undefined", color));
   }
   if value.is_null() {
-    return Ok("null".to_string());
+    return Ok(color::paint(Ink::Null, "null", color));
   }
   let symbol = v8::Local::<v8::Symbol>::try_from(value)
     .map_err(|_| type_error(scope, "Cannot inspect this value."))?;
-  Ok(maybe_quote_symbol(scope, symbol))
+  Ok(color::paint(
+    Ink::String,
+    &maybe_quote_symbol(scope, symbol),
+    color,
+  ))
 }
 
 fn format_string(
   scope: &mut v8::PinScope,
   ctx: &Ctx,
   value: v8::Local<v8::Value>,
+  color: bool,
 ) -> Result<String, Thrown> {
   let text = v8::Local::<v8::String>::try_from(value)
     .map(|text| text.to_rust_string_lossy(scope))
@@ -691,12 +718,15 @@ fn format_string(
     if !current.is_empty() || parts.is_empty() {
       parts.push(current);
     }
-    let quoted: Vec<String> =
-      parts.iter().map(|line| quote_string(line)).collect();
+    let quoted: Vec<String> = parts
+      .iter()
+      .map(|line| color::paint(Ink::String, &quote_string(line), color))
+      .collect();
     let joiner = format!(" +\n{}", spaces(ctx.indent + 2));
     return Ok(quoted.join(&joiner) + &trailer);
   }
-  Ok(quote_string(&body) + &trailer)
+  let quoted = color::paint(Ink::String, &quote_string(&body), color);
+  Ok(quoted + &trailer)
 }
 
 fn format_with(
@@ -706,10 +736,10 @@ fn format_with(
   recurse: i32,
 ) -> Result<String, Thrown> {
   if value.is_null() {
-    return Ok("null".to_string());
+    return Ok(color::paint(Ink::Null, "null", ctx.colors));
   }
   if !value.is_object() && !value.is_function() {
-    return format_primitive(scope, ctx, value);
+    return format_primitive(scope, ctx, value, ctx.colors);
   }
   let value = unwrap_proxy(scope, value)?;
   if is_web_record(scope, value) {
@@ -771,7 +801,7 @@ fn circular_marker(
     ctx.circular.push((v8::Global::new(scope, value), index));
     index
   };
-  format!("[Circular *{index}]")
+  color::paint(Ink::Special, &format!("[Circular *{index}]"), ctx.colors)
 }
 
 fn apply_ref(
@@ -790,7 +820,8 @@ fn apply_ref(
   else {
     return base.to_string();
   };
-  let reference = format!("<ref *{index}>");
+  let reference =
+    color::paint(Ink::Special, &format!("<ref *{index}>"), ctx.colors);
   if base.is_empty() {
     reference
   } else {
@@ -959,7 +990,7 @@ fn format_search_params(
   }
   let body = printed.join(", ");
   let one = format!("{name} {{ {body} }}");
-  if utf16_length(&one) <= BREAK_LENGTH {
+  if visible_utf16(&one) <= BREAK_LENGTH {
     return Ok(one);
   }
   Ok(format!("{name} {{\n  {} }}", printed.join(",\n  ")))
@@ -1440,7 +1471,7 @@ fn format_raw(
     } else if value.is_function() {
       base = function_base(scope, value, constructor_name, &tag)?;
       if keys.is_empty() {
-        return Ok(base);
+        return Ok(color::paint(Ink::Special, &base, ctx.colors));
       }
     } else if value.is_reg_exp() {
       base = regexp_text(scope, value)?;
@@ -1449,7 +1480,7 @@ fn format_raw(
         base = format!("{prefix}{base}");
       }
       if keys.is_empty() || recurse > DEPTH {
-        return Ok(base);
+        return Ok(color::paint(Ink::Regexp, &base, ctx.colors));
       }
     } else if value.is_date() {
       let date = v8::Local::<v8::Date>::try_from(value).unwrap();
@@ -1464,7 +1495,7 @@ fn format_raw(
         base = format!("{prefix}{base}");
       }
       if keys.is_empty() {
-        return Ok(base);
+        return Ok(color::paint(Ink::Date, &base, ctx.colors));
       }
     } else if value.is_native_error() || instance_of_name(scope, value, "Error")
     {
@@ -1533,7 +1564,13 @@ fn format_raw(
   }
 
   if recurse > DEPTH && !listed_interface {
-    return Ok(collapsed(scope, value, constructor.as_deref(), &tag));
+    return Ok(collapsed(
+      scope,
+      value,
+      constructor.as_deref(),
+      &tag,
+      ctx.colors,
+    ));
   }
   let recurse = recurse + 1;
   ctx.seen.push(v8::Global::new(scope, value));
@@ -1551,11 +1588,13 @@ fn format_raw(
         format_iterator(scope, ctx, object, &mut braces, recurse)?
       }
       Kind::Promise => format_promise(scope, ctx, value, recurse)?,
-      Kind::Weak => vec!["<items unknown>".to_string()],
+      Kind::Weak => {
+        vec![color::paint(Ink::Special, "<items unknown>", ctx.colors)]
+      }
       Kind::Namespace => {
         format_namespace(scope, ctx, value, &mut keys, recurse)?
       }
-      Kind::ArrayBuffer => format_array_buffer(scope, value)?,
+      Kind::ArrayBuffer => format_array_buffer(scope, value, ctx.colors)?,
     };
     for key in &keys {
       output.push(format_property(scope, ctx, value, recurse, key, extras)?);
@@ -1583,14 +1622,16 @@ fn collapsed(
   value: v8::Local<v8::Value>,
   constructor: Option<&str>,
   tag: &str,
+  colors: bool,
 ) -> String {
   let style = ctx_style(scope, value, constructor, tag);
   let name = style.trim_end_matches(' ');
-  if constructor.is_some() {
+  let text = if constructor.is_some() {
     format!("[{name}]")
   } else {
     name.to_string()
-  }
+  };
+  color::paint(Ink::Special, &text, colors)
 }
 
 fn get_prefix(
@@ -1953,7 +1994,7 @@ fn format_sparse(
         break;
       }
       let empty = parsed as usize - index;
-      output.push(empty_items(empty));
+      output.push(empty_items(empty, ctx.colors));
       index = parsed as usize;
       if output.len() == max_length {
         break;
@@ -1973,7 +2014,7 @@ fn format_sparse(
   let remaining = array.length() as i64 - index as i64;
   if output.len() != max_length {
     if remaining > 0 {
-      output.push(empty_items(remaining as usize));
+      output.push(empty_items(remaining as usize, ctx.colors));
     }
   } else if remaining > 0 {
     output.push(more_items(remaining as usize));
@@ -1981,8 +2022,12 @@ fn format_sparse(
   Ok(output)
 }
 
-fn empty_items(count: usize) -> String {
-  format!("<{count} empty item{}>", if count > 1 { "s" } else { "" })
+fn empty_items(count: usize, colors: bool) -> String {
+  color::paint(
+    Ink::Undefined,
+    &format!("<{count} empty item{}>", if count > 1 { "s" } else { "" }),
+    colors,
+  )
 }
 
 fn format_set(
@@ -2042,7 +2087,7 @@ fn format_map(
 
 fn format_typed_array(
   scope: &mut v8::PinScope,
-  _ctx: &mut Ctx,
+  ctx: &mut Ctx,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<String>, Thrown> {
   let typed = v8::Local::<v8::TypedArray>::try_from(value).unwrap();
@@ -2058,7 +2103,7 @@ fn format_typed_array(
     } else {
       number_display(scope, element)?
     };
-    output.push(text);
+    output.push(color::paint(Ink::Number, &text, ctx.colors));
   }
   if length > limit {
     output.push(more_items(length - limit));
@@ -2132,7 +2177,9 @@ fn format_promise(
 ) -> Result<Vec<String>, Thrown> {
   let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
   match promise.state() {
-    v8::PromiseState::Pending => Ok(vec!["<pending>".to_string()]),
+    v8::PromiseState::Pending => {
+      Ok(vec![color::paint(Ink::Special, "<pending>", ctx.colors)])
+    }
     state => {
       let result = promise.result(scope);
       ctx.indent += 2;
@@ -2140,7 +2187,8 @@ fn format_promise(
       ctx.indent -= 2;
       let formatted = formatted?;
       if state == v8::PromiseState::Rejected {
-        Ok(vec![format!("<rejected> {formatted}")])
+        let rejected = color::paint(Ink::Special, "<rejected>", ctx.colors);
+        Ok(vec![format!("{rejected} {formatted}")])
       } else {
         Ok(vec![formatted])
       }
@@ -2160,8 +2208,9 @@ fn format_namespace(
     match format_property(scope, ctx, value, recurse, key, OBJECT_TYPE) {
       Ok(text) => output.push(text),
       Err(_) => {
-        let name = property_name(scope, key)?;
-        output.push(format!("{name}: <uninitialized>"));
+        let name = property_name(scope, key, ctx.colors)?;
+        let marker = color::paint(Ink::Special, "<uninitialized>", ctx.colors);
+        output.push(format!("{name}: {marker}"));
       }
     }
   }
@@ -2172,15 +2221,16 @@ fn format_namespace(
 fn format_array_buffer(
   _scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
+  colors: bool,
 ) -> Result<Vec<String>, Thrown> {
   if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
     if buffer.was_detached() {
-      return Ok(vec!["(detached)".to_string()]);
+      return Ok(vec![color::paint(Ink::Special, "(detached)", colors)]);
     }
     let length = buffer.byte_length();
     let shown = MAX_ARRAY_LENGTH.min(length);
     let bytes = copy_optional(buffer.data(), shown);
-    return Ok(vec![contents_line(&bytes, length)]);
+    return Ok(vec![contents_line(&bytes, length, colors)]);
   }
   if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
     let length = buffer.byte_length();
@@ -2188,9 +2238,9 @@ fn format_array_buffer(
     let store = buffer.get_backing_store();
     let available = shown.min(store.byte_length());
     let bytes = copy_optional(store.data(), available);
-    return Ok(vec![contents_line(&bytes, length)]);
+    return Ok(vec![contents_line(&bytes, length, colors)]);
   }
-  Ok(vec!["[Uint8Contents]: <>".to_string()])
+  Ok(vec![contents_line(&[], 0, colors)])
 }
 
 fn copy_optional(
@@ -2216,7 +2266,7 @@ fn copy_optional(
   bytes
 }
 
-fn contents_line(bytes: &[u8], length: usize) -> String {
+fn contents_line(bytes: &[u8], length: usize, colors: bool) -> String {
   let mut hex = String::new();
   for (index, byte) in bytes.iter().enumerate() {
     if index > 0 {
@@ -2231,7 +2281,8 @@ fn contents_line(bytes: &[u8], length: usize) -> String {
       if remaining > 1 { "s" } else { "" }
     ));
   }
-  format!("[Uint8Contents]: <{hex}>")
+  let label = color::paint(Ink::Special, "[Uint8Contents]", colors);
+  format!("{label}: <{hex}>")
 }
 
 fn format_error(
@@ -2559,12 +2610,19 @@ fn boxed_base(
       Some(name) => base.push_str(&format!(" ({name})")),
     }
   }
-  let inner = format_primitive(scope, ctx, primitive)?;
+  let inner = format_primitive(scope, ctx, primitive, false)?;
   base.push_str(&format!(": {inner}]"));
   if !tag.is_empty() && Some(tag) != constructor {
     base.push_str(&format!(" [{tag}]"));
   }
-  Ok(base)
+  if !keys.is_empty() {
+    return Ok(base);
+  }
+  let ink = match ty {
+    "String" | "Symbol" => Ink::String,
+    _ => Ink::Number,
+  };
+  Ok(color::paint(ink, &base, ctx.colors))
 }
 
 fn string_index_key(key: &Key, len: usize) -> bool {
@@ -2670,18 +2728,27 @@ fn format_property(
       }
     }
   };
-  if ty == ARRAY_TYPE {
-    return Ok(formatted);
-  }
-  let mut name = property_name(scope, key)?;
-  // Class accessors and a host attribute shadowed by an own accessor
-  // are non-enumerable. Brackets would hide that the name is the same
-  // field an instance prints. Non-enumerable data, such as `cause`,
-  // stays in brackets.
+  // The marker comparison uses the uncolored text. Painting happens
+  // after that, including a raw descriptor `undefined`.
   let is_accessor = matches!(
     formatted.as_str(),
     "[Getter]" | "[Setter]" | "[Getter/Setter]"
   );
+  let formatted = if is_accessor {
+    color::paint(Ink::Special, &formatted, ctx.colors)
+  } else if ctx.colors && formatted == "undefined" {
+    color::paint(Ink::Undefined, &formatted, true)
+  } else {
+    formatted
+  };
+  if ty == ARRAY_TYPE {
+    return Ok(formatted);
+  }
+  let mut name = property_name(scope, key, ctx.colors)?;
+  // Class accessors and a host attribute shadowed by an own accessor
+  // are non-enumerable. Brackets would hide that the name is the same
+  // field an instance prints. Non-enumerable data, such as `cause`,
+  // stays in brackets.
   if enumerable == Some(false) && !ctx.prototype_object && !is_accessor {
     name = format!("[{name}]");
   }
@@ -2691,11 +2758,13 @@ fn format_property(
 fn property_name(
   scope: &mut v8::PinScope,
   key: &Key,
+  colors: bool,
 ) -> Result<String, Thrown> {
   match key {
     Key::Symbol(symbol) => {
       let symbol = v8::Local::new(scope, symbol);
-      Ok(escape_meta_chars(&symbol_text(scope, symbol)))
+      let text = escape_meta_chars(&symbol_text(scope, symbol));
+      Ok(color::paint(Ink::String, &text, colors))
     }
     Key::Name(name) => {
       if is_identifier_like(name) {
@@ -2705,7 +2774,7 @@ fn property_name(
           Ok(name.clone())
         }
       } else {
-        Ok(quote_string(name))
+        Ok(color::paint(Ink::String, &quote_string(name), colors))
       }
     }
   }
@@ -2797,7 +2866,7 @@ fn is_below_break_length(output: &[String], start: usize, base: &str) -> bool {
     return false;
   }
   for item in output {
-    total += utf16_length(item);
+    total += visible_utf16(item);
     if total > BREAK_LENGTH {
       return false;
     }
@@ -2823,8 +2892,8 @@ fn reduce_to_single_string(
     if ctx.current_depth - recurse < COMPACT && entries == output.len() {
       let start = output.len()
         + ctx.indent.max(0) as usize
-        + utf16_length(&braces.0)
-        + utf16_length(base)
+        + visible_utf16(&braces.0)
+        + visible_utf16(base)
         + 10;
       if is_below_break_length(&output, start, base) {
         let joined = output.join(", ");
@@ -2957,6 +3026,8 @@ fn group_array_elements(
       let mut line = String::new();
       let mut column = index;
       while column < end - 1 {
+        // `data_len` is the visible width. The raw UTF-16 length
+        // still includes color bytes, so those bytes cancel here.
         let padding = max_line_length[column - index]
           + utf16_length(&output[column])
           - data_len[column];
