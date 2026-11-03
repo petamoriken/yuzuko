@@ -177,6 +177,46 @@ fn import_defer_reports_a_missing_module() {
 }
 
 #[test]
+fn text_and_bytes_modules() {
+  let code =
+    crate::run_tests(&[workspace().join("tests/text_bytes_test.ts")], None)
+      .expect("text and bytes");
+  assert_eq!(code, 0);
+}
+
+#[test]
+fn text_module_named_import_fails_to_link() {
+  let error = run_file(&workspace().join("tests/text_bytes/named_text.ts"))
+    .expect_err("named text");
+  assert!(error.message.contains("value"), "{}", error.message);
+}
+
+#[test]
+fn bytes_module_named_import_fails_to_link() {
+  let error = run_file(&workspace().join("tests/text_bytes/named_bytes.ts"))
+    .expect_err("named bytes");
+  assert!(error.message.contains("value"), "{}", error.message);
+}
+
+#[test]
+fn json_module_still_requires_the_attribute() {
+  let error = run_file(&workspace().join("tests/text_bytes/json_plain.ts"))
+    .expect_err("plain json");
+  assert!(
+    error.message.contains("type: \"json\""),
+    "{}",
+    error.message
+  );
+}
+
+#[test]
+fn import_source_of_a_text_file_is_rejected() {
+  let error = run_file(&workspace().join("tests/text_bytes/source_text.ts"))
+    .expect_err("import source text");
+  assert!(error.message.contains("WebAssembly"), "{}", error.message);
+}
+
+#[test]
 fn realm_globals_cover_phase_one_basics() {
   let logs = run_scripts(&[r#"
     const original = { n: 1, nested: { ok: true } };

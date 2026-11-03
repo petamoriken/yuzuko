@@ -13,10 +13,31 @@ use oxc_resolver::Resolver;
 
 use crate::platform::TaskQueue;
 
+/// Which module record a URL occupies.
+///
+/// JavaScript, TypeScript, and a Wasm evaluation import share `Source`.
+/// Text, bytes, and JSON of the same URL are separate records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ModuleRecordKind {
+  Source,
+  Json,
+  Text,
+  Bytes,
+}
+
+/// Source kept until a synthetic module evaluates.
+#[derive(Clone, Debug)]
+pub(crate) enum SyntheticSource {
+  Json(String),
+  Text(String),
+  Bytes(Vec<u8>),
+}
+
 pub struct ModuleEntry {
   pub url: String,
   pub path: PathBuf,
   pub module: v8::Global<v8::Module>,
+  pub kind: ModuleRecordKind,
 }
 
 pub struct RegisteredTest {
@@ -72,7 +93,7 @@ pub struct HostState {
   pub resolver: Resolver,
   pub modules: HashMap<i32, ModuleEntry>,
   pub strip_cache: HashMap<PathBuf, (SystemTime, u64, String)>,
-  pub json_sources: HashMap<i32, String>,
+  pub synthetic_sources: HashMap<i32, SyntheticSource>,
   /// Compiled `WebAssembly.Module` objects, keyed by the module file URL.
   /// Source-phase imports return these without instantiating them.
   pub wasm_modules: HashMap<String, v8::Global<v8::Object>>,
@@ -127,7 +148,7 @@ impl HostState {
       resolver: crate::loader::modules::resolver(),
       modules: HashMap::new(),
       strip_cache: HashMap::new(),
-      json_sources: HashMap::new(),
+      synthetic_sources: HashMap::new(),
       wasm_modules: HashMap::new(),
       wasm_instances: None,
       templates: HashMap::new(),

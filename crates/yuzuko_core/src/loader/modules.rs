@@ -10,7 +10,9 @@ use oxc_resolver::{
 use url::Url;
 
 use crate::RuntimeError;
-use crate::host::{self, DeferredImport, ModuleEntry};
+use crate::host::{
+  self, DeferredImport, ModuleEntry, ModuleRecordKind, SyntheticSource,
+};
 use crate::loader::typescript::prepare_source;
 
 macro_rules! exception_text {
@@ -192,6 +194,7 @@ pub(crate) fn record_wasm_namespaces(scope: &mut v8::PinScope) {
     state
       .modules
       .values()
+      .filter(|entry| entry.kind == ModuleRecordKind::Source)
       .map(|entry| (entry.url.clone(), entry.module.clone()))
       .collect::<Vec<_>>()
   });
@@ -246,10 +249,19 @@ fn compile_path<'a>(
   url: &str,
   attributes: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
-  if let Some(existing) = existing_module(scope, url) {
+  let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+  let kind = module_kind(attributes, extension);
+  if let Some(existing) = existing_module(scope, url, kind) {
     return Ok(existing);
   }
-  let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+  // `type` wins over the extension, so `file.wasm` with `{ type: "text" }`
+  // is the file text and `file.json` with `{ type: "bytes" }` is the raw bytes.
+  if kind == ModuleRecordKind::Text {
+    return synthetic_text(scope, url, path);
+  }
+  if kind == ModuleRecordKind::Bytes {
+    return synthetic_bytes(scope, url, path);
+  }
   if extension == "wasm" {
     let bytes = fs::read(path).map_err(|err| {
       RuntimeError::message(format!("{}: {err}", path.display()))
@@ -287,6 +299,15 @@ fn compile_path<'a>(
   })?;
   let code = cached_source(path, &source)?;
   compile_prepared(scope, url, path, &code)
+}
+
+fn module_kind(attributes: Option<&str>, extension: &str) -> ModuleRecordKind {
+  match attributes {
+    Some("text") => ModuleRecordKind::Text,
+    Some("bytes") => ModuleRecordKind::Bytes,
+    Some("json") if extension == "json" => ModuleRecordKind::Json,
+    _ => ModuleRecordKind::Source,
+  }
 }
 
 fn compile_prepared<'a>(
@@ -327,7 +348,7 @@ fn compile_prepared<'a>(
     }
   };
   let module = v8::Local::new(scope, module);
-  remember(scope, url, path, module);
+  remember(scope, url, path, ModuleRecordKind::Source, module);
   Ok(module)
 }
 
@@ -345,12 +366,88 @@ fn synthetic_json<'a>(
     &[export_name],
     evaluate_json,
   );
+  Ok(bind_synthetic(
+    scope,
+    url,
+    path,
+    ModuleRecordKind::Json,
+    module,
+    SyntheticSource::Json(text.to_string()),
+  ))
+}
+
+fn synthetic_text<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  url: &str,
+  path: &Path,
+) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  let bytes = read_bytes(path)?;
+  let text = String::from_utf8_lossy(&bytes).into_owned();
+  let name = v8::String::new(scope, url).expect("module url");
+  let export_name = v8::String::new(scope, "default").expect("default");
+  let module = v8::Module::create_synthetic_module(
+    scope,
+    name,
+    &[export_name],
+    evaluate_text,
+  );
+  Ok(bind_synthetic(
+    scope,
+    url,
+    path,
+    ModuleRecordKind::Text,
+    module,
+    SyntheticSource::Text(text),
+  ))
+}
+
+fn synthetic_bytes<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  url: &str,
+  path: &Path,
+) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  let bytes = read_bytes(path)?;
+  let name = v8::String::new(scope, url).expect("module url");
+  let export_name = v8::String::new(scope, "default").expect("default");
+  let module = v8::Module::create_synthetic_module(
+    scope,
+    name,
+    &[export_name],
+    evaluate_bytes,
+  );
+  Ok(bind_synthetic(
+    scope,
+    url,
+    path,
+    ModuleRecordKind::Bytes,
+    module,
+    SyntheticSource::Bytes(bytes),
+  ))
+}
+
+fn read_bytes(path: &Path) -> Result<Vec<u8>, RuntimeError> {
+  fs::read(path)
+    .map_err(|err| RuntimeError::message(format!("{}: {err}", path.display())))
+}
+
+fn bind_synthetic<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  url: &str,
+  path: &Path,
+  kind: ModuleRecordKind,
+  module: v8::Local<'a, v8::Module>,
+  payload: SyntheticSource,
+) -> v8::Local<'a, v8::Module> {
   let hash = module.get_identity_hash().get();
   host::with_mut(|state| {
-    state.json_sources.insert(hash, text.to_string());
+    state.synthetic_sources.insert(hash, payload);
   });
-  remember(scope, url, path, module);
-  Ok(module)
+  remember(scope, url, path, kind, module);
+  module
+}
+
+fn synthetic_payload(hash: i32) -> Option<SyntheticSource> {
+  host::with(|state| state.synthetic_sources.get(&hash).cloned())
 }
 
 fn evaluate_json<'s>(
@@ -360,18 +457,73 @@ fn evaluate_json<'s>(
   v8::callback_scope!(unsafe scope, context);
   let scope = &mut v8::ContextScope::new(scope, context);
   let hash = module.get_identity_hash().get();
-  let text = host::with(|state| {
-    state
-      .json_sources
-      .get(&hash)
-      .cloned()
-      .unwrap_or_else(|| "null".to_string())
-  });
+  let text = match synthetic_payload(hash) {
+    Some(SyntheticSource::Json(text)) => text,
+    _ => "null".to_string(),
+  };
   let source = v8::String::new(scope, &text)?;
   let value = v8::json::parse(scope, source)?;
   let name = v8::String::new(scope, "default")?;
   module.set_synthetic_module_export(scope, name, value)?;
   Some(v8::undefined(scope).into())
+}
+
+fn evaluate_text<'s>(
+  context: v8::Local<'s, v8::Context>,
+  module: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  v8::callback_scope!(unsafe scope, context);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let hash = module.get_identity_hash().get();
+  let SyntheticSource::Text(text) = synthetic_payload(hash)? else {
+    return None;
+  };
+  let value = v8::String::new(scope, &text)?;
+  let name = v8::String::new(scope, "default")?;
+  module.set_synthetic_module_export(scope, name, value.into())?;
+  Some(v8::undefined(scope).into())
+}
+
+fn evaluate_bytes<'s>(
+  context: v8::Local<'s, v8::Context>,
+  module: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  v8::callback_scope!(unsafe scope, context);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let hash = module.get_identity_hash().get();
+  let SyntheticSource::Bytes(bytes) = synthetic_payload(hash)? else {
+    return None;
+  };
+  let view = immutable_uint8_array(scope, &bytes)?;
+  let name = v8::String::new(scope, "default")?;
+  module.set_synthetic_module_export(scope, name, view.into())?;
+  Some(v8::undefined(scope).into())
+}
+
+/// rusty_v8 does not expose `MakeImmutable`. `transferToImmutable` detaches
+/// the buffer it is called on and returns the immutable buffer the view uses.
+fn immutable_uint8_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  bytes: &[u8],
+) -> Option<v8::Local<'s, v8::Uint8Array>> {
+  let buffer = v8::ArrayBuffer::new(scope, bytes.len());
+  if !bytes.is_empty() {
+    let data = buffer.data()?;
+    // `data` addresses `bytes.len()` bytes of a buffer that is still attached.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        bytes.as_ptr(),
+        data.as_ptr() as *mut u8,
+        bytes.len(),
+      );
+    }
+  }
+  let key = v8::String::new(scope, "transferToImmutable")?;
+  let method = buffer.get(scope, key.into())?;
+  let function = v8::Local::<v8::Function>::try_from(method).ok()?;
+  let transferred = function.call(scope, buffer.into(), &[])?;
+  let immutable = v8::Local::<v8::ArrayBuffer>::try_from(transferred).ok()?;
+  v8::Uint8Array::new(scope, immutable, 0, bytes.len())
 }
 
 fn resolve_callback<'s>(
@@ -507,12 +659,13 @@ fn locate(
 fn existing_module<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
+  kind: ModuleRecordKind,
 ) -> Option<v8::Local<'a, v8::Module>> {
   let global = host::with(|state| {
     state
       .modules
       .values()
-      .find(|entry| entry.url == url)
+      .find(|entry| entry.url == url && entry.kind == kind)
       .map(|entry| entry.module.clone())
   })?;
   Some(v8::Local::new(scope, global))
@@ -522,6 +675,7 @@ fn remember(
   scope: &mut v8::PinScope<'_, '_>,
   url: &str,
   path: &Path,
+  kind: ModuleRecordKind,
   module: v8::Local<v8::Module>,
 ) {
   let hash = module.get_identity_hash().get();
@@ -532,6 +686,7 @@ fn remember(
       ModuleEntry {
         url: url.to_string(),
         path: path.to_path_buf(),
+        kind,
         module: global,
       },
     );
@@ -1042,24 +1197,29 @@ pub fn file_url(path: &Path) -> Result<String, RuntimeError> {
 /// Files in the module graph of `entry`, including `entry`.
 ///
 /// Static imports and re-exports are followed, including `import defer`
-/// and `import source`. Type-only imports are left out. `import()`,
-/// `import.defer()`, and `import.source()` are followed when the argument
-/// is one concrete specifier: a string literal, a template literal with no
-/// substitution, those strings joined by `+`, `import.meta.resolve` of such
-/// a specifier, or `new URL(specifier, import.meta.url)`, including
-/// `.href` and `.toString()`. A dynamic specifier that does not resolve is
-/// left out. A computed specifier and a `Worker` URL are left out.
+/// and `import source`. Type-only imports are left out. An import whose
+/// attribute is `type: "text"` or `type: "bytes"` copies the file and
+/// leaves its source unread. `import()`, `import.defer()`, and
+/// `import.source()` are followed when the argument is one concrete
+/// specifier: a string literal, a template literal with no substitution,
+/// those strings joined by `+`, `import.meta.resolve` of such a specifier,
+/// or `new URL(specifier, import.meta.url)`, including `.href` and
+/// `.toString()`. A dynamic specifier that does not resolve is left out.
+/// A computed specifier and a `Worker` URL are left out.
 pub fn module_graph(entry: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
   let entry = absolute(entry)?;
   let resolver = resolver();
-  let mut pending = vec![entry];
-  let mut seen = std::collections::BTreeSet::new();
+  let mut pending = vec![(entry, true)];
+  let mut copied = std::collections::BTreeSet::new();
+  let mut parsed = std::collections::BTreeSet::new();
   let mut files = Vec::new();
-  while let Some(path) = pending.pop() {
-    if !seen.insert(path.clone()) {
+  while let Some((path, parse)) = pending.pop() {
+    if copied.insert(path.clone()) {
+      files.push(path.clone());
+    }
+    if !parse || !parsed.insert(path.clone()) {
       continue;
     }
-    files.push(path.clone());
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     if !matches!(extension, "js" | "mjs" | "cjs" | "ts" | "mts") {
       continue;
@@ -1073,7 +1233,7 @@ pub fn module_graph(entry: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
           if edge.dynamic && !resolved.is_file() {
             continue;
           }
-          pending.push(resolved);
+          pending.push((resolved, edge.parse));
         }
         Err(_) if edge.dynamic => {}
         Err(error) => return Err(error),
@@ -1130,9 +1290,10 @@ mod graph {
 
   use oxc_ast::ast::{
     BinaryOperator, CallExpression, ExportAllDeclaration,
-    ExportFromDeclaration, Expression, ImportDeclaration, ImportExpression,
-    ImportOrExportKind, NewExpression, StaticMemberExpression, StringLiteral,
-    TemplateLiteral,
+    ExportFromDeclaration, Expression, ImportAttributeKey, ImportDeclaration,
+    ImportExpression, ImportOrExportKind, NewExpression, ObjectPropertyKind,
+    PropertyKey, PropertyKind, StaticMemberExpression, StringLiteral,
+    TemplateLiteral, WithClause, WithClauseKeyword,
   };
   use oxc_ast_visit::Visit;
   use oxc_ast_visit::walk::{
@@ -1145,6 +1306,9 @@ mod graph {
   pub(super) struct Edge {
     pub specifier: String,
     pub dynamic: bool,
+    /// False for `type: "text"` and `type: "bytes"`. The file is copied
+    /// and its imports stay unread.
+    pub parse: bool,
   }
 
   pub(super) fn edges(
@@ -1178,6 +1342,7 @@ mod graph {
       &mut self,
       kind: ImportOrExportKind,
       source: &StringLiteral<'_>,
+      with_clause: Option<&WithClause<'_>>,
     ) {
       if kind == ImportOrExportKind::Type {
         return;
@@ -1185,6 +1350,7 @@ mod graph {
       self.edges.push(Edge {
         specifier: source.value.to_string(),
         dynamic: false,
+        parse: !clause_is_raw(with_clause),
       });
     }
   }
@@ -1194,7 +1360,11 @@ mod graph {
       &mut self,
       declaration: &ImportDeclaration<'a>,
     ) {
-      self.push_static(declaration.import_kind, &declaration.source);
+      self.push_static(
+        declaration.import_kind,
+        &declaration.source,
+        declaration.with_clause.as_deref(),
+      );
       walk_import_declaration(self, declaration);
     }
 
@@ -1202,7 +1372,11 @@ mod graph {
       &mut self,
       declaration: &ExportFromDeclaration<'a>,
     ) {
-      self.push_static(declaration.export_kind, &declaration.source);
+      self.push_static(
+        declaration.export_kind,
+        &declaration.source,
+        declaration.with_clause.as_deref(),
+      );
       walk_export_from_declaration(self, declaration);
     }
 
@@ -1210,7 +1384,11 @@ mod graph {
       &mut self,
       declaration: &ExportAllDeclaration<'a>,
     ) {
-      self.push_static(declaration.export_kind, &declaration.source);
+      self.push_static(
+        declaration.export_kind,
+        &declaration.source,
+        declaration.with_clause.as_deref(),
+      );
       walk_export_all_declaration(self, declaration);
     }
 
@@ -1219,10 +1397,85 @@ mod graph {
         self.edges.push(Edge {
           specifier,
           dynamic: true,
+          parse: !dynamic_import_is_raw(expression.options.as_ref()),
         });
       }
       walk_import_expression(self, expression);
     }
+  }
+
+  /// `with { type: "text" }` or `with { type: "bytes" }`.
+  fn clause_is_raw(clause: Option<&WithClause<'_>>) -> bool {
+    let Some(clause) = clause else {
+      return false;
+    };
+    if clause.keyword != WithClauseKeyword::With {
+      return false;
+    }
+    clause
+      .with_entries
+      .iter()
+      .find_map(|entry| {
+        let key = match &entry.key {
+          ImportAttributeKey::Identifier(name) => name.name.as_str(),
+          ImportAttributeKey::StringLiteral(literal) => literal.value.as_str(),
+        };
+        (key == "type").then_some(entry.value.value.as_str())
+      })
+      .is_some_and(|value| matches!(value, "text" | "bytes"))
+  }
+
+  /// `import(specifier, { with: { type: "text" | "bytes" } })` when the
+  /// options value is an object literal.
+  fn dynamic_import_is_raw(options: Option<&Expression<'_>>) -> bool {
+    let Some(options) = options else {
+      return false;
+    };
+    let Some(with_value) = object_property(options, "with") else {
+      return false;
+    };
+    let Some(type_value) = object_property(with_value, "type") else {
+      return false;
+    };
+    let Expression::StringLiteral(literal) = type_value else {
+      return false;
+    };
+    matches!(literal.value.as_str(), "text" | "bytes")
+  }
+
+  /// The value of the first property named `name` in an object literal.
+  /// A spread or a computed key hides the rest of the object.
+  fn object_property<'a>(
+    object: &'a Expression<'a>,
+    name: &str,
+  ) -> Option<&'a Expression<'a>> {
+    let Expression::ObjectExpression(object) = peel(object) else {
+      return None;
+    };
+    for property in &object.properties {
+      let ObjectPropertyKind::ObjectProperty(property) = property else {
+        return None;
+      };
+      if property.computed {
+        return None;
+      }
+      let key = match &property.key {
+        PropertyKey::StaticIdentifier(ident) => ident.name.as_str(),
+        PropertyKey::StringLiteral(literal) => literal.value.as_str(),
+        _ => return None,
+      };
+      if key != name {
+        continue;
+      }
+      if property.method
+        || property.shorthand
+        || property.kind != PropertyKind::Init
+      {
+        return None;
+      }
+      return Some(peel(&property.value));
+    }
+    None
   }
 
   /// One specifier an `import()` argument can name without execution.
@@ -1415,12 +1668,13 @@ mod graph_tests {
   }
 
   fn scratch() -> TempDir {
-    let nanos = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_nanos();
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Parallel tests can start in the same clock tick. A counter keeps each
+    // directory unique so one test cannot overwrite another's entry.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir()
-      .join(format!("yuzuko-graph-{}-{nanos}", std::process::id()));
+      .join(format!("yuzuko-graph-{}-{id}", std::process::id()));
     fs::create_dir_all(&path).unwrap();
     TempDir(path)
   }
@@ -1635,6 +1889,107 @@ void wasm;
     let dir = scratch();
     write(&dir.0, "entry.ts", "import(\"./present.ts\");\n");
     write(&dir.0, "present.ts", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
+  }
+
+  #[test]
+  fn module_graph_copies_text_and_bytes_without_parsing() {
+    let dir = scratch();
+    let root = &dir.0;
+    write(
+      root,
+      "entry.ts",
+      r#"
+import "./text.js" with { type: "text" };
+import "./bytes.ts" with { type: "bytes" };
+import("./dyn.js", { with: { type: "text" } });
+import.defer("./defer.js", { with: { type: "bytes" } });
+import("./extra.js", { with: { extra: "x", type: "bytes" } });
+import("./keyed.js", { "with": { "type": "text" } });
+export { value } from "./export.js" with { type: "text" };
+export * from "./star.js" with { type: "bytes" };
+import("./missing-dynamic.js", { with: { type: "text" } });
+"#,
+    );
+    for name in [
+      "text.js",
+      "bytes.ts",
+      "dyn.js",
+      "defer.js",
+      "extra.js",
+      "keyed.js",
+      "export.js",
+      "star.js",
+    ] {
+      write(root, name, "import \"./missing-inside.ts\";\n");
+    }
+    let files = module_graph(&root.join("entry.ts")).unwrap();
+    let mut names: Vec<_> = files
+      .iter()
+      .map(|path| path.file_name().unwrap().to_str().unwrap().to_string())
+      .collect();
+    names.sort();
+    assert_eq!(
+      names,
+      [
+        "bytes.ts",
+        "defer.js",
+        "dyn.js",
+        "entry.ts",
+        "export.js",
+        "extra.js",
+        "keyed.js",
+        "star.js",
+        "text.js",
+      ]
+    );
+  }
+
+  #[test]
+  fn module_graph_parses_a_text_file_imported_as_javascript() {
+    let dir = scratch();
+    write(
+      &dir.0,
+      "entry.ts",
+      "import \"./mod.js\" with { type: \"text\" };\nimport \"./mod.js\";\n",
+    );
+    write(&dir.0, "mod.js", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
+  }
+
+  #[test]
+  fn module_graph_parses_javascript_with_other_attributes() {
+    let dir = scratch();
+    write(
+      &dir.0,
+      "entry.ts",
+      "import \"./mod.js\" with { type: \"css\" };\n",
+    );
+    write(&dir.0, "mod.js", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
+
+    let dir = scratch();
+    write(
+      &dir.0,
+      "entry.ts",
+      "import(\"./mod.js\", { with: { type: \"json\" } });\n",
+    );
+    write(&dir.0, "mod.js", "import \"./missing.ts\";\n");
+    let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
+    assert!(error.to_string().contains("missing.ts"), "{error}");
+  }
+
+  #[test]
+  fn module_graph_rejects_a_missing_static_text_import() {
+    let dir = scratch();
+    write(
+      &dir.0,
+      "entry.ts",
+      "import \"./missing.ts\" with { type: \"text\" };\n",
+    );
     let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
     assert!(error.to_string().contains("missing.ts"), "{error}");
   }

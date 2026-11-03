@@ -1192,9 +1192,10 @@ fn platform_handle() -> v8::SharedRef<v8::Platform> {
 fn init_v8() {
   V8_INIT.call_once(|| {
     // Source-phase `import source` compiles Wasm without instantiating.
-    // `import defer` is the deferred-evaluation syntax. V8 gates both.
+    // `import defer` is the deferred-evaluation syntax.
+    // `transferToImmutable` makes the ArrayBuffer behind a bytes module.
     v8::V8::set_flags_from_string(
-      "--js-source-phase-imports --js-defer-import-eval",
+      "--js-source-phase-imports --js-defer-import-eval --js-immutable-arraybuffer",
     );
     // rusty_v8 links the full ICU dataset into the binary, so ECMA-402
     // `Intl` resolves locales beyond English without a separate icudtl.dat.
