@@ -914,14 +914,95 @@ pub fn downmix_mono(input: &[Vec<f32>], quantum: usize) -> Vec<f32> {
   if input.is_empty() {
     return vec![0.0; quantum];
   }
-  let scale = input.len() as f32;
-  let mut output = vec![0.0; quantum];
-  for channel in input {
-    for (slot, sample) in output.iter_mut().zip(channel) {
-      *slot += *sample / scale;
-    }
+  let mut output = vec![vec![0.0; quantum]];
+  if mix_speakers(input, &mut output, quantum) {
+    return output.remove(0);
   }
-  output
+  let mut mono = vec![0.0; quantum];
+  copy_channel(&input[0], &mut mono, quantum);
+  mono
+}
+
+/// Speaker up-mix and down-mix for the canonical layouts 1, 2, 4, and 6.
+/// `output` starts at zero. Other channel counts return false so the caller
+/// can use discrete mixing.
+pub(crate) fn mix_speakers(
+  input: &[Vec<f32>],
+  output: &mut [Vec<f32>],
+  quantum: usize,
+) -> bool {
+  if input.is_empty() || output.is_empty() {
+    return false;
+  }
+  let half = std::f32::consts::FRAC_1_SQRT_2;
+  match (input.len(), output.len()) {
+    (1, 1) => copy_channel(&input[0], &mut output[0], quantum),
+    (1, 2) | (1, 4) => {
+      copy_channel(&input[0], &mut output[0], quantum);
+      copy_channel(&input[0], &mut output[1], quantum);
+    }
+    (1, 6) => copy_channel(&input[0], &mut output[2], quantum),
+    (2, 4) | (2, 6) | (4, 6) => {
+      copy_channel(&input[0], &mut output[0], quantum);
+      copy_channel(&input[1], &mut output[1], quantum);
+      if input.len() == 4 {
+        copy_channel(&input[2], &mut output[4], quantum);
+        copy_channel(&input[3], &mut output[5], quantum);
+      }
+    }
+    (2, 1) => {
+      add_scaled(&mut output[0], &input[0], quantum, 0.5);
+      add_scaled(&mut output[0], &input[1], quantum, 0.5);
+    }
+    (4, 1) => {
+      for channel in input {
+        add_scaled(&mut output[0], channel, quantum, 0.25);
+      }
+    }
+    (6, 1) => {
+      add_scaled(&mut output[0], &input[0], quantum, half);
+      add_scaled(&mut output[0], &input[1], quantum, half);
+      add_scaled(&mut output[0], &input[2], quantum, 1.0);
+      add_scaled(&mut output[0], &input[4], quantum, 0.5);
+      add_scaled(&mut output[0], &input[5], quantum, 0.5);
+    }
+    (4, 2) => {
+      add_scaled(&mut output[0], &input[0], quantum, 0.5);
+      add_scaled(&mut output[0], &input[2], quantum, 0.5);
+      add_scaled(&mut output[1], &input[1], quantum, 0.5);
+      add_scaled(&mut output[1], &input[3], quantum, 0.5);
+    }
+    (6, 2) => {
+      copy_channel(&input[0], &mut output[0], quantum);
+      copy_channel(&input[1], &mut output[1], quantum);
+      add_scaled(&mut output[0], &input[2], quantum, half);
+      add_scaled(&mut output[0], &input[4], quantum, half);
+      add_scaled(&mut output[1], &input[2], quantum, half);
+      add_scaled(&mut output[1], &input[5], quantum, half);
+    }
+    (6, 4) => {
+      copy_channel(&input[0], &mut output[0], quantum);
+      copy_channel(&input[1], &mut output[1], quantum);
+      add_scaled(&mut output[0], &input[2], quantum, half);
+      add_scaled(&mut output[1], &input[2], quantum, half);
+      copy_channel(&input[4], &mut output[2], quantum);
+      copy_channel(&input[5], &mut output[3], quantum);
+    }
+    _ => return false,
+  }
+  true
+}
+
+fn copy_channel(source: &[f32], dest: &mut [f32], quantum: usize) {
+  let count = quantum.min(source.len()).min(dest.len());
+  dest[..count].copy_from_slice(&source[..count]);
+}
+
+fn add_scaled(dest: &mut [f32], source: &[f32], quantum: usize, scale: f32) {
+  let count = quantum.min(source.len()).min(dest.len());
+  for index in 0..count {
+    dest[index] += source[index] * scale;
+  }
 }
 
 fn biquad_coeffs(
@@ -932,6 +1013,9 @@ fn biquad_coeffs(
   gain_db: f64,
   rate: f64,
 ) -> [f64; 5] {
+  // Lowpass and highpass use sin(ω) / (2 * 10^(Q/20)). Frequency 0, Nyquist,
+  // and Q <= 0 for the other types use the reference limits. Shelf filters
+  // still take Q as the slope.
   let nyquist = if rate.is_finite() && rate > 0.0 {
     rate / 2.0
   } else {
@@ -942,62 +1026,90 @@ fn biquad_coeffs(
   } else {
     0.0
   };
-  if hz <= 0.0 || nyquist == 0.0 {
-    return match kind {
-      BiquadKind::Highpass | BiquadKind::Bandpass => [0.0, 0.0, 0.0, 0.0, 0.0],
-      BiquadKind::Lowshelf => [db_to_lin(gain_db), 0.0, 0.0, 0.0, 0.0],
-      _ => [1.0, 0.0, 0.0, 0.0, 0.0],
-    };
+  let gain_lin = db_to_lin(gain_db);
+  let at_dc = hz <= 0.0 || nyquist == 0.0;
+  if at_dc || hz >= nyquist {
+    return biquad_endpoint(kind, at_dc, gain_lin);
   }
-  let q = if q.is_finite() && q.abs() >= 1e-6 {
-    q
-  } else if q.is_sign_negative() {
-    -1e-6
-  } else {
-    1e-6
-  };
-  let w0 = 2.0 * PI * hz / rate;
+  let w0 = PI * hz / nyquist;
   let (sin, cos) = (w0.sin(), w0.cos());
-  let alpha = sin / (2.0 * q);
-  let a = 10f64.powf(gain_db / 40.0);
-  let (b0, b1, b2, a0, a1, a2) = match kind {
-    BiquadKind::Lowpass => {
-      let b = (1.0 - cos) / 2.0;
-      (b, 1.0 - cos, b, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
+  let q_positive = q.is_finite() && q > 0.0;
+  match kind {
+    BiquadKind::Lowpass | BiquadKind::Highpass => {
+      let q_db = if q.is_finite() { q } else { 0.0 };
+      let alpha = sin / (2.0 * 10f64.powf(q_db / 20.0));
+      if kind == BiquadKind::Lowpass {
+        let b = (1.0 - cos) / 2.0;
+        normalize_biquad(b, 1.0 - cos, b, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
+      } else {
+        let b = (1.0 + cos) / 2.0;
+        normalize_biquad(
+          b,
+          -(1.0 + cos),
+          b,
+          1.0 + alpha,
+          -2.0 * cos,
+          1.0 - alpha,
+        )
+      }
     }
-    BiquadKind::Highpass => {
-      let b = (1.0 + cos) / 2.0;
-      (b, -(1.0 + cos), b, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
+    BiquadKind::Bandpass if !q_positive => [1.0, 0.0, 0.0, 0.0, 0.0],
+    BiquadKind::Notch if !q_positive => [0.0, 0.0, 0.0, 0.0, 0.0],
+    BiquadKind::Allpass if !q_positive => [-1.0, 0.0, 0.0, 0.0, 0.0],
+    BiquadKind::Peaking if !q_positive => constant_gain(gain_lin),
+    BiquadKind::Bandpass
+    | BiquadKind::Notch
+    | BiquadKind::Allpass
+    | BiquadKind::Peaking => {
+      let alpha = sin / (2.0 * q);
+      let a = 10f64.powf(gain_db / 40.0);
+      match kind {
+        BiquadKind::Bandpass => normalize_biquad(
+          alpha,
+          0.0,
+          -alpha,
+          1.0 + alpha,
+          -2.0 * cos,
+          1.0 - alpha,
+        ),
+        BiquadKind::Notch => normalize_biquad(
+          1.0,
+          -2.0 * cos,
+          1.0,
+          1.0 + alpha,
+          -2.0 * cos,
+          1.0 - alpha,
+        ),
+        BiquadKind::Allpass => normalize_biquad(
+          1.0 - alpha,
+          -2.0 * cos,
+          1.0 + alpha,
+          1.0 + alpha,
+          -2.0 * cos,
+          1.0 - alpha,
+        ),
+        _ => normalize_biquad(
+          1.0 + alpha * a,
+          -2.0 * cos,
+          1.0 - alpha * a,
+          1.0 + alpha / a,
+          -2.0 * cos,
+          1.0 - alpha / a,
+        ),
+      }
     }
-    BiquadKind::Bandpass => {
-      (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
-    }
-    BiquadKind::Notch => {
-      (1.0, -2.0 * cos, 1.0, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
-    }
-    BiquadKind::Allpass => (
-      1.0 - alpha,
-      -2.0 * cos,
-      1.0 + alpha,
-      1.0 + alpha,
-      -2.0 * cos,
-      1.0 - alpha,
-    ),
-    BiquadKind::Peaking => (
-      1.0 + alpha * a,
-      -2.0 * cos,
-      1.0 - alpha * a,
-      1.0 + alpha / a,
-      -2.0 * cos,
-      1.0 - alpha / a,
-    ),
     BiquadKind::Lowshelf | BiquadKind::Highshelf => {
-      let slope = q.abs().max(1e-6);
+      let a = 10f64.powf(gain_db / 40.0);
+      let slope = if q.is_finite() {
+        q.abs().max(1e-6)
+      } else {
+        1e-6
+      };
       let inside = (a + 1.0 / a) * (1.0 / slope - 1.0) + 2.0;
       let shelf_alpha = sin / 2.0 * inside.max(0.0).sqrt();
       let a_sqrt = a.sqrt();
       if kind == BiquadKind::Lowshelf {
-        (
+        normalize_biquad(
           a * ((a + 1.0) - (a - 1.0) * cos + 2.0 * a_sqrt * shelf_alpha),
           2.0 * a * ((a - 1.0) - (a + 1.0) * cos),
           a * ((a + 1.0) - (a - 1.0) * cos - 2.0 * a_sqrt * shelf_alpha),
@@ -1006,7 +1118,7 @@ fn biquad_coeffs(
           (a + 1.0) + (a - 1.0) * cos - 2.0 * a_sqrt * shelf_alpha,
         )
       } else {
-        (
+        normalize_biquad(
           a * ((a + 1.0) + (a - 1.0) * cos + 2.0 * a_sqrt * shelf_alpha),
           -2.0 * a * ((a - 1.0) + (a + 1.0) * cos),
           a * ((a + 1.0) + (a - 1.0) * cos - 2.0 * a_sqrt * shelf_alpha),
@@ -1016,7 +1128,62 @@ fn biquad_coeffs(
         )
       }
     }
-  };
+  }
+}
+
+fn biquad_endpoint(kind: BiquadKind, at_dc: bool, gain_lin: f64) -> [f64; 5] {
+  let identity = [1.0, 0.0, 0.0, 0.0, 0.0];
+  let silence = [0.0, 0.0, 0.0, 0.0, 0.0];
+  match kind {
+    BiquadKind::Lowpass => {
+      if at_dc {
+        [0.0, 0.0, 0.0, -2.0, 1.0]
+      } else {
+        identity
+      }
+    }
+    BiquadKind::Highpass => {
+      if at_dc {
+        identity
+      } else {
+        silence
+      }
+    }
+    BiquadKind::Bandpass => silence,
+    BiquadKind::Notch | BiquadKind::Allpass | BiquadKind::Peaking => identity,
+    BiquadKind::Lowshelf => {
+      if at_dc {
+        identity
+      } else {
+        constant_gain(gain_lin)
+      }
+    }
+    BiquadKind::Highshelf => {
+      if at_dc {
+        constant_gain(gain_lin)
+      } else {
+        identity
+      }
+    }
+  }
+}
+
+fn constant_gain(gain: f64) -> [f64; 5] {
+  if gain.is_finite() {
+    [gain, 0.0, 0.0, 0.0, 0.0]
+  } else {
+    [1.0, 0.0, 0.0, 0.0, 0.0]
+  }
+}
+
+fn normalize_biquad(
+  b0: f64,
+  b1: f64,
+  b2: f64,
+  a0: f64,
+  a1: f64,
+  a2: f64,
+) -> [f64; 5] {
   if !a0.is_finite() || a0 == 0.0 {
     return [1.0, 0.0, 0.0, 0.0, 0.0];
   }
@@ -1343,8 +1510,9 @@ mod tests {
     automatic_makeup_linear, azimuth_elevation, biquad_block,
     biquad_response_at, blackman, byte_time_sample, compress_block,
     compression_curve, cone_gain_of, convolve_block, db_to_lin, delay_block,
-    distance_gain, fft_magnitudes, iir_block, normalize_iir, panner_block,
-    shape_block, shape_sample, stereo_pan_block, time_domain,
+    distance_gain, downmix_mono, fft_magnitudes, iir_block, mix_speakers,
+    normalize_iir, panner_block, shape_block, shape_sample, stereo_pan_block,
+    time_domain,
   };
 
   fn near(actual: f32, expected: f32) {
@@ -1515,7 +1683,7 @@ mod tests {
       48000.0,
       &mut memory,
     );
-    near(low[0][7], 1.0);
+    near(low[0][7], 0.0);
     let mut memory = vec![BiquadMemory::default()];
     let high = biquad_block(
       &input,
@@ -1527,7 +1695,43 @@ mod tests {
       48000.0,
       &mut memory,
     );
-    near(high[0][7], 0.0);
+    near(high[0][7], 1.0);
+    let mut memory = vec![BiquadMemory::default()];
+    let shelf = biquad_block(
+      &input,
+      BiquadKind::Lowshelf,
+      &[0.0; 8],
+      &[0.0; 8],
+      &[10.0; 8],
+      &[10.0; 8],
+      48000.0,
+      &mut memory,
+    );
+    near(shelf[0][0], 1.0);
+    let mut memory = vec![BiquadMemory::default()];
+    let nyquist_shelf = biquad_block(
+      &input,
+      BiquadKind::Lowshelf,
+      &[24000.0; 8],
+      &[0.0; 8],
+      &[10.0; 8],
+      &[10.0; 8],
+      48000.0,
+      &mut memory,
+    );
+    near(nyquist_shelf[0][0], 10f32.powf(0.5));
+    let mut memory = vec![BiquadMemory::default()];
+    let allpass = biquad_block(
+      &input,
+      BiquadKind::Allpass,
+      &[12000.0; 8],
+      &[0.0; 8],
+      &[0.0; 8],
+      &[0.0; 8],
+      48000.0,
+      &mut memory,
+    );
+    near(allpass[0][0], -1.0);
     let (magnitude, _) = biquad_response_at(
       BiquadKind::Lowpass,
       350.0,
@@ -1548,6 +1752,39 @@ mod tests {
       24000.0,
     );
     assert!(nyquist.abs() < 1e-3, "{nyquist}");
+  }
+
+  #[test]
+  fn speaker_layouts_follow_the_canonical_mix() {
+    let mono = vec![vec![1.0]];
+    let mut stereo = vec![vec![0.0], vec![0.0]];
+    assert!(mix_speakers(&mono, &mut stereo, 1));
+    near(stereo[0][0], 1.0);
+    near(stereo[1][0], 1.0);
+
+    let mut surround = vec![vec![0.0]; 6];
+    assert!(mix_speakers(&mono, &mut surround, 1));
+    near(surround[2][0], 1.0);
+    near(surround[0][0], 0.0);
+
+    let three = vec![vec![1.0], vec![2.0], vec![3.0]];
+    let mut one = vec![vec![0.0]];
+    assert!(!mix_speakers(&three, &mut one, 1));
+    near(downmix_mono(&three, 1)[0], 1.0);
+
+    let six = vec![
+      vec![1.0],
+      vec![2.0],
+      vec![3.0],
+      vec![4.0],
+      vec![5.0],
+      vec![6.0],
+    ];
+    let mut mixed = vec![vec![0.0]];
+    assert!(mix_speakers(&six, &mut mixed, 1));
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    near(mixed[0][0], half * (1.0 + 2.0) + 3.0 + 0.5 * (5.0 + 6.0));
+    near(downmix_mono(&[vec![1.0], vec![3.0]], 1)[0], 2.0);
   }
 
   #[test]

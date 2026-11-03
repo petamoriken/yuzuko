@@ -1494,6 +1494,15 @@ pub fn set_context_object(
   });
 }
 
+pub fn context_object(id: u64) -> Option<v8::Global<v8::Object>> {
+  CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .get(&id)
+      .and_then(|context| context.object.clone())
+  })
+}
+
 pub fn context_rate(id: u64) -> Option<f64> {
   CONTEXTS.with(|contexts| {
     contexts
@@ -1630,11 +1639,13 @@ pub fn set_channel_count(id: u64, count: u32) -> Result<(), Fault> {
 }
 
 pub fn set_channel_mode(id: u64, mode: &str) -> Result<(), Fault> {
+  // An unrecognized attribute value keeps the previous mode. A constructor
+  // dictionary still rejects that string with TypeError.
   let mode = match mode {
     "max" => ChannelMode::Max,
     "clamped-max" => ChannelMode::ClampedMax,
     "explicit" => ChannelMode::Explicit,
-    _ => return Err(Fault::type_("The channel count mode is invalid")),
+    _ => return Ok(()),
   };
   NODES.with(|nodes| {
     let mut nodes = nodes.borrow_mut();
@@ -2395,7 +2406,7 @@ pub fn suspend_frame(id: u64, time: f64) -> Result<u64, Fault> {
     let quantum = u64::from(context.quantum.max(1));
     let raw = (time * context.sample_rate).round();
     let raw = if raw <= 0.0 { 0 } else { raw as u64 };
-    let frame = ((raw as f64) / (quantum as f64)).round() as u64 * quantum;
+    let frame = raw.div_ceil(quantum) * quantum;
     if frame < context.frame {
       return Err(Fault::dom(
         "InvalidStateError",
@@ -3138,7 +3149,6 @@ fn fit(
   if input.is_empty() || count == 0 {
     return output;
   }
-  let speakers = interpretation == Interpretation::Speakers;
   if input.len() == count {
     for (dest, source) in output.iter_mut().zip(input) {
       let n = quantum.min(source.len());
@@ -3146,21 +3156,9 @@ fn fit(
     }
     return output;
   }
-  if speakers && input.len() == 1 {
-    for channel in &mut output {
-      let n = quantum.min(input[0].len());
-      channel[..n].copy_from_slice(&input[0][..n]);
-    }
-    return output;
-  }
-  if speakers && count == 1 {
-    let scale = input.len() as f32;
-    for (index, channel) in input.iter().enumerate() {
-      let _ = index;
-      for (sample, value) in output[0].iter_mut().zip(channel) {
-        *sample += *value / scale;
-      }
-    }
+  if interpretation == Interpretation::Speakers
+    && process::mix_speakers(input, &mut output, quantum)
+  {
     return output;
   }
   for (dest, source) in output.iter_mut().zip(input) {
@@ -4722,6 +4720,8 @@ pub fn biquad_type_name(id: u64) -> &'static str {
 }
 
 pub fn set_biquad_type(id: u64, value: &str) -> Result<(), Fault> {
+  // An unrecognized attribute value keeps the previous type. A constructor
+  // dictionary still rejects that string with TypeError.
   let filter = match value {
     "lowpass" => BiquadKind::Lowpass,
     "highpass" => BiquadKind::Highpass,
@@ -4731,7 +4731,7 @@ pub fn set_biquad_type(id: u64, value: &str) -> Result<(), Fault> {
     "peaking" => BiquadKind::Peaking,
     "notch" => BiquadKind::Notch,
     "allpass" => BiquadKind::Allpass,
-    _ => return Err(Fault::type_("The filter type is invalid")),
+    _ => return Ok(()),
   };
   with_kind(id, |kind| {
     let Kind::Biquad { filter: slot, .. } = kind else {
@@ -4850,11 +4850,13 @@ pub fn oversample_name(id: u64) -> &'static str {
 }
 
 pub fn set_oversample(id: u64, mode: &str) -> Result<(), Fault> {
+  // An unrecognized attribute value keeps the previous mode. A constructor
+  // dictionary still rejects that string with TypeError.
   let factor = match mode {
     "none" => 1,
     "2x" => 2,
     "4x" => 4,
-    _ => return Err(Fault::type_("The oversample mode is invalid")),
+    _ => return Ok(()),
   };
   with_kind(id, |kind| {
     let Kind::WaveShaper { oversample } = kind else {
@@ -5129,7 +5131,10 @@ pub fn cone_gain(id: u64) -> f64 {
 pub fn set_cone_gain(id: u64, value: f64) -> Result<(), Fault> {
   let value = finite_attr(value)?;
   if !(0.0..=1.0).contains(&value) {
-    return Err(Fault::range("The cone outer gain is out of range"));
+    return Err(Fault::dom(
+      "InvalidStateError",
+      "The cone outer gain is out of range",
+    ));
   }
   with_kind(id, |kind| {
     let Kind::Panner { cone_gain, .. } = kind else {

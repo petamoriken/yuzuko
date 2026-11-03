@@ -301,6 +301,17 @@ Yuzuko.test("offline suspend stops on a quantum boundary", async () => {
   const channel = rendered.getChannelData(0);
   assertClose(channel[0], 0.25, "first sample");
   assertClose(channel[channel.length - 1], 0.25, "last sample");
+
+  const mid = new OfflineAudioContext(1, 44100, 44100);
+  const tone = new ConstantSourceNode(mid, { offset: 1 });
+  tone.connect(mid.destination);
+  tone.start();
+  const paused = mid.suspend(0.25);
+  const rendering = mid.startRendering();
+  await paused;
+  assert(mid.currentTime === 11136 / 44100, `rounded ${mid.currentTime}`);
+  mid.resume();
+  await rendering;
 });
 
 Yuzuko.test("copyToChannel keeps samples outside the written range", () => {
@@ -343,6 +354,14 @@ Yuzuko.test("start acquires the buffer and detaches the previous view", async ()
   channel.fill(1);
   const source = context.createBufferSource();
   source.buffer = buffer;
+  assert(source.playbackRate.automationRate === "k-rate", "playback k-rate");
+  assert(source.detune.automationRate === "k-rate", "detune k-rate");
+  await assertThrows(() => {
+    source.playbackRate.automationRate = "a-rate";
+  }, "InvalidStateError");
+  await assertThrows(() => {
+    source.detune.automationRate = "a-rate";
+  }, "InvalidStateError");
   source.start();
   assert(channel.buffer.byteLength === 0, "previous view detached");
   const again = buffer.getChannelData(0);
@@ -649,6 +668,19 @@ Yuzuko.test("splitter and merger route and downmix channels", async () => {
   const mixed = await down.startRendering();
   assertClose(mixed.getChannelData(0)[0], 0.5, "merger average");
 
+  const wide = new OfflineAudioContext(1, 128, 48000);
+  const triple = wide.createBuffer(3, 128, 48000);
+  triple.getChannelData(0).fill(1);
+  triple.getChannelData(1).fill(2);
+  triple.getChannelData(2).fill(3);
+  const wideSource = wide.createBufferSource();
+  wideSource.buffer = triple;
+  const merged = new ChannelMergerNode(wide, { numberOfInputs: 1 });
+  wideSource.connect(merged).connect(wide.destination);
+  wideSource.start();
+  const first = await wide.startRendering();
+  assertClose(first.getChannelData(0)[0], 1, "merger keeps the first channel");
+
   const locked = new OfflineAudioContext(1, 8, 48000);
   await assertThrows(() => {
     new ChannelMergerNode(locked).channelCount = 2;
@@ -683,6 +715,15 @@ Yuzuko.test("waveshaper maps the curve", async () => {
   await assertThrows(() => {
     shaper.curve = new Float32Array([1]);
   }, "InvalidStateError");
+  shaper.oversample = "invalid" as OverSampleType;
+  assert(shaper.oversample === "none", "bad oversample ignored");
+  assertName(
+    () =>
+      new WaveShaperNode(context, {
+        oversample: "invalid" as OverSampleType,
+      }),
+    "TypeError",
+  );
 });
 
 Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
@@ -695,11 +736,35 @@ Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
     const rendered = await context.startRendering();
     return rendered.getChannelData(0)[64];
   }
-  assertClose(await filtered("lowpass"), 0.5, "lowpass dc");
-  assertClose(await filtered("highpass"), 0, "highpass dc");
+  assertClose(await filtered("lowpass"), 0, "lowpass dc");
+  assertClose(await filtered("highpass"), 0.5, "highpass dc");
 
   const context = new OfflineAudioContext(1, 8, 48000);
   const filter = context.createBiquadFilter();
+  assert(filter.context === context, "node context");
+  assert(context.destination.context === context, "destination context");
+  filter.type = "foobar" as BiquadFilterType;
+  assert(filter.type === "lowpass", "bad type ignored");
+  assertName(
+    () => new BiquadFilterNode(context, { type: "foobar" as BiquadFilterType }),
+    "TypeError",
+  );
+  assertName(
+    () =>
+      new PeriodicWave(context, {
+        real: new Float32Array(512),
+        imag: new Float32Array(4),
+      }),
+    "IndexSizeError",
+  );
+  const cosine = new PeriodicWave(context, {
+    real: new Float32Array([0, 1]),
+  });
+  const sine = new PeriodicWave(context, {
+    imag: new Float32Array([0, 1]),
+  });
+  assert(cosine instanceof PeriodicWave, "omitted imag");
+  assert(sine instanceof PeriodicWave, "omitted real");
   const frequency = new Float32Array([0, 24000]);
   const magnitude = new Float32Array(2);
   const phase = new Float32Array(2);
@@ -736,6 +801,16 @@ Yuzuko.test("IIR halves a constant and rejects coefficients", async () => {
   await assertThrows(
     () => new IIRFilterNode(context, { feedforward: [1], feedback: [0] }),
     "InvalidStateError",
+  );
+  assertName(
+    () =>
+      new IIRFilterNode(context, { feedback: [1] } as IIRFilterOptions),
+    "TypeError",
+  );
+  assertName(
+    () =>
+      new IIRFilterNode(context, { feedforward: [1] } as IIRFilterOptions),
+    "TypeError",
   );
 });
 
@@ -774,6 +849,10 @@ Yuzuko.test("the compressor identity, hard knee, and automatic makeup", async ()
 
   const automatic = new DynamicsCompressorNode(context);
   assert(automatic.threshold.automationRate === "k-rate", "k-rate");
+  assert(
+    automatic.attack.value === Math.fround(0.003),
+    `attack ${automatic.attack.value}`,
+  );
   await assertThrows(() => {
     automatic.makeupGain.value = 1;
   }, "InvalidStateError");
@@ -893,6 +972,16 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
   assertName(() => {
     panner.refDistance = -1;
   }, "RangeError");
+  await assertThrows(() => {
+    panner.coneOuterGain = -1;
+  }, "InvalidStateError");
+  await assertThrows(
+    () => new PannerNode(context, { coneOuterGain: 1.1 }),
+    "InvalidStateError",
+  );
+  assert(panner.coneOuterGain === 0, "cone stays 0");
+  panner.channelCountMode = "foobar" as ChannelCountMode;
+  assert(panner.channelCountMode === "clamped-max", "bad mode ignored");
   for (const node of [
     panner,
     new StereoPannerNode(context),

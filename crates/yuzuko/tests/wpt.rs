@@ -326,8 +326,11 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
   None
 }
 
-/// The file needs a document-only node, a media element, a `MediaStream`,
-/// a permissions policy, or `AudioParam` automation.
+/// The file needs a media element, a `MediaStream`, `ScriptProcessorNode`,
+/// or a permissions policy. `getOutputTimestamp`, `playbackStats`, and
+/// `setSinkId` are absent. The main global has no `requestAnimationFrame`.
+/// Processing nodes, `AudioParam` automation, and `AudioListener` are part
+/// of the runtime and are not skipped here.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
   let test_file = name.ends_with(".html")
     || name.ends_with(".xhtml")
@@ -338,24 +341,11 @@ fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
     return false;
   }
   const DIRS: &[&str] = &[
-    "/the-analysernode-interface/",
-    "/the-audioparam-interface/",
-    "/the-biquadfilternode-interface/",
-    "/the-channelmergernode-interface/",
-    "/the-channelsplitternode-interface/",
-    "/the-convolvernode-interface/",
-    "/the-delaynode-interface/",
-    "/the-dynamicscompressornode-interface/",
-    "/the-iirfilternode-interface/",
     "/the-mediaelementaudiosourcenode-interface/",
     "/the-mediastreamaudiodestinationnode-interface/",
     "/the-mediastreamaudiosourcenode-interface/",
-    "/the-pannernode-interface/",
     "/the-scriptprocessornode-interface/",
-    "/the-stereopanner-interface/",
-    "/the-waveshapernode-interface/",
     "/media-playback-while-not-visible-permission-policy/",
-    "/processing-model/",
   ];
   if DIRS.iter().any(|dir| key.contains(dir)) {
     return true;
@@ -371,38 +361,22 @@ fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
   let Ok(source) = fs::read_to_string(path) else {
     return false;
   };
+  // A dedicated worker has `requestAnimationFrame`. The main global does not.
+  if !name.contains("worker") && source.contains("requestAnimationFrame") {
+    return true;
+  }
   const NEEDLES: &[&str] = &[
-    "AnalyserNode",
-    "AudioListener",
-    "BiquadFilterNode",
-    "ChannelMergerNode",
-    "ChannelSplitterNode",
-    "ConvolverNode",
-    "DelayNode",
-    "DynamicsCompressorNode",
-    "IIRFilterNode",
     "MediaElementAudioSourceNode",
     "MediaStreamAudioDestinationNode",
     "MediaStreamAudioSourceNode",
-    "PannerNode",
     "ScriptProcessorNode",
-    "StereoPannerNode",
-    "WaveShaperNode",
-    "createAnalyser",
-    "createBiquadFilter",
-    "createChannelMerger",
-    "createChannelSplitter",
-    "createConvolver",
-    "createDelay",
-    "createDynamicsCompressor",
-    "createIIRFilter",
     "createMediaElementSource",
     "createMediaStreamDestination",
     "createMediaStreamSource",
-    "createPanner",
     "createScriptProcessor",
-    "createStereoPanner",
-    "createWaveShaper",
+    "getOutputTimestamp",
+    "playbackStats",
+    "setSinkId",
   ];
   NEEDLES.iter().any(|needle| source.contains(needle))
 }
@@ -452,11 +426,35 @@ fn html_can_run(source: &str) -> bool {
   if lower.contains("document.") || lower.contains("document[") {
     return false;
   }
-  const SKIP: &[&str] = &[
+  !contains_skipped_tag(&lower)
+}
+
+/// A layout element. The name must end at a tag boundary so a comparison
+/// such as `i < inputData` is not treated as an `<input>` element.
+fn contains_skipped_tag(lower: &str) -> bool {
+  const TAGS: &[&str] = &[
     "<iframe", "<frame", "<canvas", "<svg", "<video", "<img", "<input",
     "<table", "<object", "<embed",
   ];
-  !SKIP.iter().any(|tag| lower.contains(tag))
+  TAGS.iter().any(|tag| skipped_tag(lower, tag))
+}
+
+fn skipped_tag(haystack: &str, tag: &str) -> bool {
+  let mut rest = haystack;
+  while let Some(index) = rest.find(tag) {
+    let after = index + tag.len();
+    let continues_name = rest.as_bytes().get(after).is_some_and(|byte| {
+      byte.is_ascii_alphanumeric()
+        || *byte == b'_'
+        || *byte == b'-'
+        || *byte == b':'
+    });
+    if !continues_name {
+      return true;
+    }
+    rest = &rest[after..];
+  }
+  false
 }
 
 fn execute(suite: &Path, harness: &str, case: &Case) -> Outcome {

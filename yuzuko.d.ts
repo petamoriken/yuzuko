@@ -271,6 +271,14 @@ interface OnErrorEventHandlerNonNull {
   (event: Event | string, source?: string, lineno?: number, colno?: number, error?: Error): any;
 }
 type OscillatorType = "custom" | "sawtooth" | "sine" | "square" | "triangle";
+/**
+ * An omitted `real` or `imag` is a zero sequence of the other length.
+ * @throws {@link DOMException} `IndexSizeError` when both `real` and `imag`
+ * are present and their lengths differ, or when fewer than two coefficients
+ * remain.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PeriodicWave)
+ */
 interface PeriodicWave {
 
 }
@@ -2334,7 +2342,7 @@ declare namespace Yuzuko {
    */
   interface DatagramMessage {
     /** Payload bytes. Empty when the datagram was empty. */
-    data: Uint8Array;
+    data: Uint8Array<ArrayBuffer>;
 
     /** Source IP address, without brackets. */
     hostname: string;
@@ -2773,7 +2781,7 @@ declare namespace Yuzuko {
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * an `HttpRequest`.
      */
-    readonly body: Uint8Array;
+    readonly body: Uint8Array<ArrayBuffer>;
 
     /**
      * Writes the response and closes the connection.
@@ -2909,8 +2917,8 @@ declare namespace Yuzuko {
   interface ChildOutput {
     code: number | null;
     signal: number | null;
-    stdout: Uint8Array;
-    stderr: Uint8Array;
+    stdout: Uint8Array<ArrayBuffer>;
+    stderr: Uint8Array<ArrayBuffer>;
   }
 
   /**
@@ -3517,7 +3525,7 @@ declare namespace Yuzuko {
      * Calling this getter on a value that is not an {@link FsFile} throws
      * {@link TypeError}.
      */
-    readonly readable: ReadableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
 
     /**
      * Byte sink for this file.
@@ -3855,10 +3863,10 @@ declare namespace Yuzuko {
    * @throws {@link errors.IsADirectory} When `path` is a directory.
    * @throws {@link errors.NotFound} When no file is at `path`.
    */
-  function readFile(path: string | URL): Promise<Uint8Array>;
+  function readFile(path: string | URL): Promise<Uint8Array<ArrayBuffer>>;
 
   /** Synchronous {@link readFile}. It blocks the caller. */
-  function readFileSync(path: string | URL): Uint8Array;
+  function readFileSync(path: string | URL): Uint8Array<ArrayBuffer>;
 
   /**
    * Reads `path` as UTF-8 text.
@@ -5901,14 +5909,14 @@ interface TextEncoder {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextEncoder/encode)
    */
-  encode(input?: string): Uint8Array;
+  encode(input?: string): Uint8Array<ArrayBuffer>;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextEncoder/encodeInto)
    */
   encodeInto(
     source: string,
-    destination: Uint8Array,
+    destination: Uint8Array<ArrayBufferLike>,
   ): TextEncoderEncodeIntoResult;
 }
 declare var TextEncoder: {
@@ -6006,10 +6014,10 @@ interface Blob {
   arrayBuffer(): Promise<ArrayBuffer>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/bytes) */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/stream) */
-  stream(): ReadableStream<Uint8Array>;
+  stream(): ReadableStream<Uint8Array<ArrayBuffer>>;
 
   /**
    * UTF-8 text. The blob type's charset is ignored.
@@ -6231,7 +6239,7 @@ interface Request {
   readonly bodyUsed: boolean;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/body) */
-  readonly body: ReadableStream<Uint8Array> | null;
+  readonly body: ReadableStream<Uint8Array<ArrayBuffer>> | null;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/clone)
@@ -6245,7 +6253,7 @@ interface Request {
   arrayBuffer(): Promise<ArrayBuffer>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/bytes) */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/blob) */
   blob(): Promise<Blob>;
@@ -6320,7 +6328,7 @@ interface Response {
   readonly bodyUsed: boolean;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Response/body) */
-  readonly body: ReadableStream<Uint8Array> | null;
+  readonly body: ReadableStream<Uint8Array<ArrayBuffer>> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Response/clone) */
   clone(): Response;
@@ -6332,7 +6340,7 @@ interface Response {
   arrayBuffer(): Promise<ArrayBuffer>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Response/bytes) */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Response/blob) */
   blob(): Promise<Blob>;
@@ -7489,9 +7497,9 @@ interface DOMMatrixReadOnly {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMMatrixReadOnly/transformPoint) */
   transformPoint(point?: DOMPointInit): DOMPoint;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMMatrixReadOnly/toFloat32Array) */
-  toFloat32Array(): Float32Array;
+  toFloat32Array(): Float32Array<ArrayBuffer>;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMMatrixReadOnly/toFloat64Array) */
-  toFloat64Array(): Float64Array;
+  toFloat64Array(): Float64Array<ArrayBuffer>;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMMatrixReadOnly/toJSON) */
   toJSON(): any;
   /**
@@ -9691,7 +9699,7 @@ interface GPURenderPassEncoder {
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup | null,
-    dynamicOffsetsData: Uint32Array,
+    dynamicOffsetsData: Uint32Array<ArrayBufferLike>,
     dynamicOffsetsDataStart: number,
     dynamicOffsetsDataLength: number,
   ): void;
@@ -9964,10 +9972,15 @@ interface BaseAudioContext extends EventTarget {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createOscillator) */
   createOscillator(): OscillatorNode;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createPeriodicWave) */
+  /**
+   * @throws {@link DOMException} `IndexSizeError` when `real` and `imag` have
+   * different lengths or fewer than two coefficients.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/createPeriodicWave)
+   */
   createPeriodicWave(
-    real: Float32Array,
-    imag: Float32Array,
+    real: Float32Array<ArrayBufferLike>,
+    imag: Float32Array<ArrayBufferLike>,
     constraints?: PeriodicWaveConstraints,
   ): PeriodicWave;
 
@@ -9986,6 +9999,7 @@ interface BaseAudioContext extends EventTarget {
   createBiquadFilter(): BiquadFilterNode;
 
   /**
+   * @throws {@link TypeError} When a coefficient list is missing.
    * @throws {@link DOMException} `NotSupportedError` when either coefficient
    * list length is outside 1 through 20.
    * @throws {@link DOMException} `InvalidStateError` when every feedforward
@@ -10145,13 +10159,13 @@ interface AudioBuffer {
   readonly numberOfChannels: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBuffer/getChannelData) */
-  getChannelData(channel: number): Float32Array;
+  getChannelData(channel: number): Float32Array<ArrayBuffer>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBuffer/copyFromChannel) */
-  copyFromChannel(destination: Float32Array, channelNumber: number, bufferOffset?: number): void;
+  copyFromChannel(destination: Float32Array<ArrayBuffer>, channelNumber: number, bufferOffset?: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBuffer/copyToChannel) */
-  copyToChannel(source: Float32Array, channelNumber: number, bufferOffset?: number): void;
+  copyToChannel(source: Float32Array<ArrayBuffer>, channelNumber: number, bufferOffset?: number): void;
 }
 declare var AudioBuffer: {
   prototype: AudioBuffer;
@@ -10171,7 +10185,8 @@ interface AudioBufferOptions {
  *
  * Reading `value` returns the timeline at `currentTime`, clamped to `minValue`
  * and `maxValue`. That read does not include samples connected to the
- * parameter. Assigning `value` sets the intrinsic value and inserts
+ * parameter. `value`, `defaultValue`, `minValue`, and `maxValue` are
+ * single-precision floats. Assigning `value` sets the intrinsic value and inserts
  * `setValueAtTime` at `currentTime`. `NaN` is ignored. An event at the same
  * time replaces the previous event. A ramp with no earlier event throws
  * `InvalidStateError`. Each method returns this parameter.
@@ -10202,6 +10217,8 @@ interface AudioParam {
    * `"a-rate"` or `"k-rate"`.
    *
    * @throws {@link TypeError} When the assigned value is neither.
+   * @throws {@link DOMException} `InvalidStateError` when this parameter is
+   * k-rate only and the value is `"a-rate"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/automationRate)
    */
@@ -10296,6 +10313,9 @@ declare var AudioParamMap: {
  */
 interface AudioNode extends EventTarget {
 
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/context) */
+  readonly context: BaseAudioContext;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/numberOfInputs) */
   readonly numberOfInputs: number;
 
@@ -10312,7 +10332,11 @@ interface AudioNode extends EventTarget {
    */
   channelCount: number;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/channelCountMode) */
+  /**
+   * An unrecognized value leaves the previous mode.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/channelCountMode)
+   */
   channelCountMode: ChannelCountMode;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/channelInterpretation) */
@@ -10463,10 +10487,18 @@ interface AudioBufferSourceNode extends AudioScheduledSourceNode {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/buffer) */
   buffer: AudioBuffer | null;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/playbackRate) */
+  /**
+   * k-rate. Setting `automationRate` to `"a-rate"` throws `InvalidStateError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/playbackRate)
+   */
   readonly playbackRate: AudioParam;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/detune) */
+  /**
+   * k-rate. Setting `automationRate` to `"a-rate"` throws `InvalidStateError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/detune)
+   */
   readonly detune: AudioParam;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/loop) */
@@ -10641,10 +10673,16 @@ interface DelayOptions extends AudioNodeOptions {
 }
 
 /**
+ * An unrecognized `type` in the constructor dictionary throws `TypeError`.
+ *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode)
  */
 interface BiquadFilterNode extends AudioNode {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/type) */
+  /**
+   * An unrecognized value leaves the previous type.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/type)
+   */
   type: BiquadFilterType;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/frequency) */
@@ -10667,7 +10705,7 @@ interface BiquadFilterNode extends AudioNode {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode/getFrequencyResponse)
    */
-  getFrequencyResponse(frequencyHz: Float32Array, magResponse: Float32Array, phaseResponse: Float32Array): void;
+  getFrequencyResponse(frequencyHz: Float32Array<ArrayBuffer>, magResponse: Float32Array<ArrayBuffer>, phaseResponse: Float32Array<ArrayBuffer>): void;
 }
 declare var BiquadFilterNode: {
   prototype: BiquadFilterNode;
@@ -10685,6 +10723,7 @@ interface BiquadFilterOptions extends AudioNodeOptions {
 }
 
 /**
+ * @throws {@link TypeError} When `feedforward` or `feedback` is missing.
  * @throws {@link DOMException} `NotSupportedError` when a coefficient list
  * length is outside 1 through 20.
  * @throws {@link DOMException} `InvalidStateError` when every feedforward
@@ -10701,7 +10740,7 @@ interface IIRFilterNode extends AudioNode {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IIRFilterNode/getFrequencyResponse)
    */
-  getFrequencyResponse(frequencyHz: Float32Array, magResponse: Float32Array, phaseResponse: Float32Array): void;
+  getFrequencyResponse(frequencyHz: Float32Array<ArrayBuffer>, magResponse: Float32Array<ArrayBuffer>, phaseResponse: Float32Array<ArrayBuffer>): void;
 }
 declare var IIRFilterNode: {
   prototype: IIRFilterNode;
@@ -10717,7 +10756,8 @@ interface IIRFilterOptions extends AudioNodeOptions {
 
 /**
  * Oversampling interpolates from the previous sample, shapes each step, and
- * averages back down. It does not use a half-band filter.
+ * averages back down. It does not use a half-band filter. An unrecognized
+ * `oversample` in the constructor dictionary throws `TypeError`.
  *
  * @throws {@link DOMException} `InvalidStateError` when `curve` has fewer
  * than two values.
@@ -10726,9 +10766,13 @@ interface IIRFilterOptions extends AudioNodeOptions {
  */
 interface WaveShaperNode extends AudioNode {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/curve) */
-  curve: Float32Array | null;
+  curve: Float32Array<ArrayBuffer> | null;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/oversample) */
+  /**
+   * An unrecognized value leaves the previous mode.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/oversample)
+   */
   oversample: OverSampleType;
 }
 declare var WaveShaperNode: {
@@ -10739,7 +10783,7 @@ declare var WaveShaperNode: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WaveShaperNode/WaveShaperNode) */
 interface WaveShaperOptions extends AudioNodeOptions {
-  curve?: Float32Array | number[] | null;
+  curve?: Float32Array<ArrayBufferLike> | number[] | null;
   oversample?: OverSampleType;
 }
 
@@ -10775,8 +10819,9 @@ interface StereoPannerOptions extends AudioNodeOptions {
  * @throws {@link TypeError} When `panningModel` or `distanceModel` is not a
  * supported value.
  * @throws {@link RangeError} When `refDistance` is negative, `maxDistance` is
- * not positive, `rolloffFactor` is negative, or `coneOuterGain` is outside
- * 0 through 1.
+ * not positive, or `rolloffFactor` is negative.
+ * @throws {@link DOMException} `InvalidStateError` when `coneOuterGain` is
+ * outside 0 through 1.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode)
  */
@@ -10824,7 +10869,12 @@ interface PannerNode extends AudioNode {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneOuterAngle) */
   coneOuterAngle: number;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneOuterGain) */
+  /**
+   * @throws {@link DOMException} `InvalidStateError` when the value is outside
+   * 0 through 1.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/coneOuterGain)
+   */
   coneOuterGain: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setPosition) */
@@ -10970,16 +11020,16 @@ interface AnalyserNode extends AudioNode {
   smoothingTimeConstant: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getFloatTimeDomainData) */
-  getFloatTimeDomainData(array: Float32Array): void;
+  getFloatTimeDomainData(array: Float32Array<ArrayBuffer>): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getByteTimeDomainData) */
-  getByteTimeDomainData(array: Uint8Array): void;
+  getByteTimeDomainData(array: Uint8Array<ArrayBuffer>): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getFloatFrequencyData) */
-  getFloatFrequencyData(array: Float32Array): void;
+  getFloatFrequencyData(array: Float32Array<ArrayBuffer>): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AnalyserNode/getByteFrequencyData) */
-  getByteFrequencyData(array: Uint8Array): void;
+  getByteFrequencyData(array: Uint8Array<ArrayBuffer>): void;
 }
 declare var AnalyserNode: {
   prototype: AnalyserNode;
@@ -11729,7 +11779,7 @@ declare class WebSocketStream {
 
 /** The value {@link WebSocketStream.opened} resolves. */
 interface WebSocketConnection {
-  readable: ReadableStream<string | Uint8Array>;
+  readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
   writable: WritableStream<string | BufferSource>;
   protocol: string;
   extensions: string;
@@ -11857,8 +11907,8 @@ interface WebTransportSendStreamOptions {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
  */
 interface WebTransportBidirectionalStream {
-  readable: ReadableStream<Uint8Array>;
-  writable: WritableStream<Uint8Array>;
+  readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+  writable: WritableStream<Uint8Array<ArrayBuffer>>;
 }
 
 /**
@@ -11873,8 +11923,8 @@ interface WebTransportBidirectionalStream {
  * not 1, including a `DataView`, rejects the read with `TypeError`.
  */
 interface WebTransportDatagrams {
-  readable: ReadableStream<Uint8Array>;
-  writable: WritableStream<Uint8Array>;
+  readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+  writable: WritableStream<Uint8Array<ArrayBuffer>>;
 }
 
 /**
@@ -11958,7 +12008,7 @@ declare class WebTransport {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingUnidirectionalStreams)
    */
-  readonly incomingUnidirectionalStreams: ReadableStream<ReadableStream<Uint8Array>>;
+  readonly incomingUnidirectionalStreams: ReadableStream<ReadableStream<Uint8Array<ArrayBuffer>>>;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/congestionControl)
@@ -12001,7 +12051,7 @@ declare class WebTransport {
    */
   createUnidirectionalStream(
     options?: WebTransportSendStreamOptions,
-  ): Promise<WritableStream<Uint8Array>>;
+  ): Promise<WritableStream<Uint8Array<ArrayBuffer>>>;
 }
 
 /**
@@ -12560,22 +12610,22 @@ declare class GamepadPose {
   readonly hasPosition: boolean;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/position) */
-  readonly position: Float32Array | null;
+  readonly position: Float32Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/linearVelocity) */
-  readonly linearVelocity: Float32Array | null;
+  readonly linearVelocity: Float32Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/linearAcceleration) */
-  readonly linearAcceleration: Float32Array | null;
+  readonly linearAcceleration: Float32Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/orientation) */
-  readonly orientation: Float32Array | null;
+  readonly orientation: Float32Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/angularVelocity) */
-  readonly angularVelocity: Float32Array | null;
+  readonly angularVelocity: Float32Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadPose/angularAcceleration) */
-  readonly angularAcceleration: Float32Array | null;
+  readonly angularAcceleration: Float32Array<ArrayBuffer> | null;
 }
 
 /**
@@ -12586,7 +12636,7 @@ declare class GamepadPose {
 interface GamepadTouch {
   touchId: number;
   surfaceId: number;
-  position: Float32Array;
+  position: Float32Array<ArrayBuffer>;
   surfaceDimensions: DOMRectReadOnly | null;
 }
 

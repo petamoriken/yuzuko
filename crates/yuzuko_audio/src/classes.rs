@@ -450,12 +450,16 @@ pub(crate) fn curve_values(
   Ok(samples)
 }
 
+fn idl_float(value: f64) -> f64 {
+  f64::from(value as f32)
+}
+
 #[op]
 impl AudioParam {
   #[getter]
   fn value(&self) -> f64 {
     engine::param_view(self.id)
-      .map(|param| param.value)
+      .map(|param| idl_float(param.value))
       .unwrap_or(0.0)
   }
 
@@ -467,21 +471,21 @@ impl AudioParam {
   #[getter]
   fn default_value(&self) -> f64 {
     engine::param_view(self.id)
-      .map(|param| param.default)
+      .map(|param| idl_float(param.default))
       .unwrap_or(0.0)
   }
 
   #[getter]
   fn min_value(&self) -> f64 {
     engine::param_view(self.id)
-      .map(|param| param.min)
+      .map(|param| idl_float(param.min))
       .unwrap_or(0.0)
   }
 
   #[getter]
   fn max_value(&self) -> f64 {
     engine::param_view(self.id)
-      .map(|param| param.max)
+      .map(|param| idl_float(param.max))
       .unwrap_or(0.0)
   }
 
@@ -650,6 +654,14 @@ unsafe impl v8::cppgc::GarbageCollected for AudioNode {
 
 #[op(inherit = EventTarget)]
 impl AudioNode {
+  #[getter]
+  fn context(&self, scope: &mut v8::PinScope) -> Js {
+    engine::node_info(self.id)
+      .and_then(|info| engine::context_object(info.context))
+      .map(|object| global_object(scope, object))
+      .unwrap_or_else(|| Js::null(scope))
+  }
+
   #[getter]
   fn number_of_inputs(&self) -> u32 {
     engine::node_info(self.id)
@@ -1229,8 +1241,10 @@ fn build_buffer_source(
   let playback = option_number(scope, options, "playbackRate")?.unwrap_or(1.0);
   let detune = option_number(scope, options, "detune")?.unwrap_or(0.0);
   let (min, max) = engine::float_limits();
-  let rate_id = make_param(scope, context, playback, 1.0, min, max, true);
-  let detune_id = make_param(scope, context, detune, 0.0, min, max, true);
+  let rate_id = make_param(scope, context, playback, 1.0, min, max, false);
+  let detune_id = make_param(scope, context, detune, 0.0, min, max, false);
+  engine::set_k_rate_only(rate_id);
+  engine::set_k_rate_only(detune_id);
   let buffer = source_buffer_option(scope, options)?;
   let looped = option_bool(scope, options, "loop");
   let loop_start = option_number(scope, options, "loopStart")?.unwrap_or(0.0);
@@ -1441,6 +1455,37 @@ fn wave_id(
   Ok(host.get().id)
 }
 
+/// An omitted coefficient list is a zero sequence of the other list's length.
+/// Both lists, when present, must already have the same length.
+fn pair_coefficients(
+  real: Option<Vec<f32>>,
+  imag: Option<Vec<f32>>,
+) -> (Vec<f32>, Vec<f32>) {
+  match (real, imag) {
+    (Some(real), None) => {
+      let imag = vec![0.0; real.len()];
+      (real, imag)
+    }
+    (None, Some(imag)) => {
+      let real = vec![0.0; imag.len()];
+      (real, imag)
+    }
+    (Some(real), Some(imag)) => (real, imag),
+    (None, None) => (Vec::new(), Vec::new()),
+  }
+}
+
+fn coefficient_list(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<Vec<f32>>, OpError> {
+  let Some(value) = util::member(scope, object, name) else {
+    return Ok(None);
+  };
+  Ok(Some(util::read_f32_sequence(scope, value)?))
+}
+
 fn build_wave(
   _scope: &mut v8::PinScope,
   context: u64,
@@ -1448,7 +1493,13 @@ fn build_wave(
   imag: Vec<f32>,
   disable_normalization: bool,
 ) -> Result<PeriodicWave, OpError> {
-  let count = real.len().max(imag.len());
+  if real.len() != imag.len() {
+    return Err(OpError::dom(
+      "IndexSizeError",
+      "PeriodicWave real and imag have different lengths",
+    ));
+  }
+  let count = real.len();
   if count < 2 {
     return Err(OpError::dom(
       "IndexSizeError",
@@ -1457,8 +1508,6 @@ fn build_wave(
   }
   let mut real = real;
   let mut imag = imag;
-  real.resize(count, 0.0);
-  imag.resize(count, 0.0);
   if !disable_normalization {
     let mut sum = 0.0f32;
     for index in 1..count {
@@ -1496,14 +1545,9 @@ impl PeriodicWave {
     }
     let object = v8::Local::<v8::Object>::try_from(options)
       .map_err(|_| OpError::type_("PeriodicWave options are not an object"))?;
-    let real = util::member(scope, object, "real")
-      .map(|value| util::read_f32_sequence(scope, value))
-      .transpose()?
-      .unwrap_or_default();
-    let imag = util::member(scope, object, "imag")
-      .map(|value| util::read_f32_sequence(scope, value))
-      .transpose()?
-      .unwrap_or_default();
+    let real = coefficient_list(scope, object, "real")?;
+    let imag = coefficient_list(scope, object, "imag")?;
+    let (real, imag) = pair_coefficients(real, imag);
     let disable = util::member(scope, object, "disableNormalization")
       .is_some_and(|value| value.boolean_value(scope));
     build_wave(scope, context, real, imag, disable)

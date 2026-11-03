@@ -630,14 +630,24 @@ unsafe impl v8::cppgc::GarbageCollected for IIRFilterNode {
   }
 }
 
+fn coefficient_list(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<f32>, OpError> {
+  if value.is_null_or_undefined() {
+    return Err(OpError::type_("The coefficient list is required"));
+  }
+  util::read_f32_sequence(scope, value)
+}
+
 pub(crate) fn build_iir(
   scope: &mut v8::PinScope,
   context: u64,
   feedforward: v8::Local<v8::Value>,
   feedback: v8::Local<v8::Value>,
 ) -> Result<IIRFilterNode, OpError> {
-  let feedforward = util::read_f32_sequence(scope, feedforward)?;
-  let feedback = util::read_f32_sequence(scope, feedback)?;
+  let feedforward = coefficient_list(scope, feedforward)?;
+  let feedback = coefficient_list(scope, feedback)?;
   let (feedforward, feedback) =
     process::normalize_iir(feedforward, feedback).map_err(iir_fault)?;
   let opts =
@@ -662,12 +672,14 @@ fn iir_from_options(
   if !options.is_object() || options.is_null() {
     return Err(OpError::type_("IIRFilter options are not an object"));
   }
-  let feedforward = dictionary(scope, options, "feedforward")?
-    .unwrap_or_else(|| v8::undefined(scope).into());
-  let feedback = dictionary(scope, options, "feedback")?
-    .unwrap_or_else(|| v8::undefined(scope).into());
-  let feedforward = util::read_f32_sequence(scope, feedforward)?;
-  let feedback = util::read_f32_sequence(scope, feedback)?;
+  let Some(feedforward) = dictionary(scope, options, "feedforward")? else {
+    return Err(OpError::type_("The coefficient list is required"));
+  };
+  let Some(feedback) = dictionary(scope, options, "feedback")? else {
+    return Err(OpError::type_("The coefficient list is required"));
+  };
+  let feedforward = coefficient_list(scope, feedforward)?;
+  let feedback = coefficient_list(scope, feedback)?;
   let (feedforward, feedback) =
     process::normalize_iir(feedforward, feedback).map_err(iir_fault)?;
   let opts = node_options(scope, options, 2, "max", "speakers")?;
@@ -1011,7 +1023,10 @@ pub(crate) fn build_panner(
   let cone_gain =
     option_number(scope, options, "coneOuterGain")?.unwrap_or(0.0);
   if !(0.0..=1.0).contains(&cone_gain) {
-    return Err(OpError::range("The cone outer gain is out of range"));
+    return Err(OpError::dom(
+      "InvalidStateError",
+      "The cone outer gain is out of range",
+    ));
   }
   let opts = stereo_shell(scope, options)?;
   let position_x = option_number(scope, options, "positionX")?.unwrap_or(0.0);
