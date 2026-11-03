@@ -18,6 +18,16 @@ async function assertThrows(
   throw new Error(`${name} was not thrown`);
 }
 
+function assertTypeError(run: () => unknown, message: string): void {
+  try {
+    run();
+  } catch (error) {
+    assert(error instanceof TypeError, `${message}: ${String(error)}`);
+    return;
+  }
+  throw new Error(`${message} was not thrown`);
+}
+
 const fixtures = new URL("./fixtures/webcodecs/", import.meta.url);
 
 async function bytes(name: string): Promise<Uint8Array> {
@@ -529,6 +539,7 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
     kind: string;
     width: number;
     height: number;
+    timestamp: number;
     pixel: number[];
   };
   assert(copiedSummary.kind === "frame", copiedSummary.kind);
@@ -549,7 +560,12 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   const transferredSummary = await transferred as { kind: string; width: number };
   assert(transferredSummary.kind === "frame", transferredSummary.kind);
   assert(transferredSummary.width === 2, "transferred frame");
-  await assertThrows(() => frame.displayWidth, "InvalidStateError");
+  assert(frame.format === null, "closed format");
+  assert(frame.displayWidth === 0, "closed display");
+  assert(frame.codedWidth === 0, "closed coded");
+  assert(frame.visibleRect === null, "closed visible");
+  assert(frame.timestamp === copiedSummary.timestamp, "closed timestamp");
+  await assertThrows(() => frame.clone(), "InvalidStateError");
 
   const audio = await takeAudioData();
   const frames = audio.numberOfFrames;
@@ -628,4 +644,240 @@ Yuzuko.test({
     comparePicture(await drawFrame(frames[0]), expected, 16);
     frames[0].close();
   },
+});
+
+function solidBitmap(pixels: number[]): ImageBitmap {
+  const canvas = new OffscreenCanvas(2, 2);
+  const context = canvas.getContext("2d");
+  const data = new ImageData(new Uint8ClampedArray(pixels), 2, 2);
+  context.putImageData(data, 0, 0);
+  return canvas.transferToImageBitmap();
+}
+
+Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async () => {
+  const bitmap = solidBitmap([
+    10, 20, 30, 255,
+    40, 50, 60, 255,
+    70, 80, 90, 255,
+    100, 110, 120, 255,
+  ]);
+  assertTypeError(
+    () => new VideoFrame(bitmap),
+    "timestamp",
+  );
+  const frame = new VideoFrame(bitmap, { timestamp: 10, duration: 15 });
+  assert(frame.format === "RGBA", frame.format ?? "null");
+  assert(frame.timestamp === 10, "timestamp");
+  assert(frame.duration === 15, "duration");
+  assert(frame.codedWidth === 2 && frame.codedHeight === 2, "coded");
+  assert(frame.displayWidth === 2 && frame.displayHeight === 2, "display");
+  assert(frame.visibleRect !== null && frame.visibleRect.width === 2, "visible");
+  assert(frame.codedRect !== null && frame.codedRect.height === 2, "coded rect");
+  assert(frame.colorSpace.primaries === "bt709", "primaries");
+  assert(frame.colorSpace.fullRange === true, "range");
+  assert(frame.allocationSize() === 16, "allocation");
+  const pixels = new Uint8Array(16);
+  const layout = await frame.copyTo(pixels);
+  assert(layout.length === 1 && layout[0].offset === 0 && layout[0].stride === 8, "layout");
+  assert(pixels[0] === 10 && pixels[1] === 20 && pixels[2] === 30 && pixels[3] === 255, "pixel");
+  const cloned = frame.clone();
+  const clonedPixels = new Uint8Array(16);
+  await cloned.copyTo(clonedPixels);
+  assert(clonedPixels[4] === 40 && clonedPixels[7] === 255, "clone");
+  assert(cloned.timestamp === 10 && cloned.duration === 15, "clone time");
+  frame.close();
+  frame.close();
+  assert(frame.format === null, "closed format");
+  assert(frame.codedWidth === 0 && frame.displayWidth === 0, "closed size");
+  assert(frame.visibleRect === null && frame.codedRect === null, "closed rect");
+  assert(frame.colorSpace.primaries === null, "closed primaries");
+  assert(frame.colorSpace.matrix === null && frame.colorSpace.fullRange === null, "closed color");
+  assert(frame.timestamp === 10 && frame.duration === 15, "closed time");
+  await assertThrows(() => frame.clone(), "InvalidStateError");
+  await assertThrows(() => frame.allocationSize(), "InvalidStateError");
+  await assertThrows(() => frame.copyTo(new Uint8Array(16)), "InvalidStateError");
+  cloned.close();
+  bitmap.close();
+  await assertThrows(
+    () => new VideoFrame(bitmap, { timestamp: 1 }),
+    "InvalidStateError",
+  );
+
+  const canvas = new OffscreenCanvas(2, 2);
+  const context = canvas.getContext("2d");
+  context.putImageData(new ImageData(new Uint8ClampedArray([
+    1, 2, 3, 255,
+    5, 6, 7, 255,
+    9, 10, 11, 255,
+    13, 14, 15, 255,
+  ]), 2, 2), 0, 0);
+  const opaque = new VideoFrame(canvas, {
+    timestamp: 5,
+    alpha: "discard",
+    visibleRect: { x: 0, y: 0, width: 2, height: 1 },
+    displayWidth: 4,
+    displayHeight: 2,
+  });
+  assert(opaque.format === "RGBX", opaque.format ?? "null");
+  assert(opaque.codedWidth === 2 && opaque.codedHeight === 2, "canvas coded");
+  assert(opaque.visibleRect !== null && opaque.visibleRect.height === 1, "canvas visible");
+  assert(opaque.displayWidth === 4 && opaque.displayHeight === 2, "canvas display");
+  const row = new Uint8Array(8);
+  await opaque.copyTo(row);
+  assert(row[0] === 1 && row[1] === 2 && row[2] === 3 && row[3] === 255, "discard x");
+  assert(row[4] === 5 && row[7] === 255, "discard x2");
+  opaque.close();
+
+  const rgba = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 255]);
+  const bufferFrame = new VideoFrame(rgba, {
+    format: "RGBA",
+    codedWidth: 2,
+    codedHeight: 1,
+    timestamp: 7,
+  });
+  assert(bufferFrame.colorSpace.primaries === "bt709", "rgb primaries");
+  assert(bufferFrame.colorSpace.transfer === "iec61966-2-1", "rgb transfer");
+  assert(bufferFrame.colorSpace.matrix === "rgb", "rgb matrix");
+  assert(bufferFrame.colorSpace.fullRange === true, "rgb range");
+  const round = new Uint8Array(8);
+  await bufferFrame.copyTo(round);
+  assert(round[0] === 1 && round[3] === 4 && round[4] === 5 && round[7] === 255, "rgba round");
+  const managed = new VideoFrame(new Uint8Array([50, 100, 150, 255]), {
+    format: "RGBA",
+    codedWidth: 1,
+    codedHeight: 1,
+    timestamp: 1,
+  });
+  const p3 = new Uint8Array(4);
+  await managed.copyTo(p3, { format: "RGBA", colorSpace: "display-p3" });
+  assert(p3[0] === 62 && p3[1] === 99 && p3[2] === 146 && p3[3] === 255, "display-p3");
+  const srgb = new Uint8Array(4);
+  await managed.copyTo(srgb, { format: "RGBA", colorSpace: "srgb" });
+  assert(srgb[0] === 50 && srgb[1] === 100 && srgb[2] === 150 && srgb[3] === 255, "srgb");
+  managed.close();
+  const drawn = new OffscreenCanvas(2, 1).getContext("2d");
+  drawn.drawImage(bufferFrame, 0, 0);
+  const sample = drawn.getImageData(1, 0, 1, 1).data;
+  assert(sample[0] === 5 && sample[1] === 6 && sample[2] === 7 && sample[3] === 255, "draw");
+  const child = new VideoFrame(bufferFrame);
+  assert(child.timestamp === 7 && child.format === "RGBA", "child");
+  child.close();
+
+  const padded = new Uint8Array(8);
+  padded.fill(0xAA);
+  const dot = new VideoFrame(new Uint8Array([9, 8, 7, 6]), {
+    format: "RGBA",
+    codedWidth: 1,
+    codedHeight: 1,
+    timestamp: 1,
+  });
+  await dot.copyTo(padded, { layout: [{ offset: 2, stride: 4 }] });
+  assert(padded[0] === 0xAA && padded[1] === 0xAA, "pad head");
+  assert(padded[2] === 9 && padded[5] === 6, "pad sample");
+  assert(padded[6] === 0xAA && padded[7] === 0xAA, "pad tail");
+  dot.close();
+
+  const wide = new Uint8Array([
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+  ]);
+  const cropped = new VideoFrame(wide, {
+    format: "RGBA",
+    codedWidth: 4,
+    codedHeight: 1,
+    timestamp: 1,
+    visibleRect: { x: 2, y: 0, width: 2, height: 1 },
+  });
+  assert(cropped.codedWidth === 2 && cropped.visibleRect !== null && cropped.visibleRect.x === 0, "crop");
+  const cropBytes = new Uint8Array(8);
+  await cropped.copyTo(cropBytes);
+  assert(cropBytes[0] === 9 && cropBytes[4] === 13, "crop bytes");
+  cropped.close();
+  bufferFrame.close();
+
+  const i420 = new Uint8Array([
+    1, 2, 3, 4, 5, 6, 7, 8,
+    9, 10,
+    11, 12,
+  ]);
+  const yuv = new VideoFrame(i420, {
+    format: "I420",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 3,
+  });
+  assert(yuv.allocationSize() === 12, "i420 size");
+  assert(yuv.colorSpace.matrix === "bt709" && yuv.colorSpace.fullRange === false, "i420 color");
+  const yuvOut = new Uint8Array(12);
+  const planes = await yuv.copyTo(yuvOut);
+  assert(planes.length === 3, "i420 planes");
+  assert(yuvOut[0] === 1 && yuvOut[8] === 9 && yuvOut[10] === 11, "i420 bytes");
+  assert(yuv.allocationSize({ format: "RGBA" }) === 32, "i420 rgba size");
+  assertTypeError(
+    () => yuv.allocationSize({ layout: [{ offset: 0, stride: 4 }] }),
+    "plane count",
+  );
+  assertTypeError(
+    () => yuv.allocationSize({
+      layout: [
+        { offset: 0, stride: 1 },
+        { offset: 8, stride: 2 },
+        { offset: 10, stride: 2 },
+      ],
+    }),
+    "stride",
+  );
+  yuv.close();
+
+  const rgbx = new VideoFrame(new Uint8Array([
+    255, 0, 0, 0,
+    0, 255, 0, 0x40,
+  ]), {
+    format: "RGBX",
+    codedWidth: 2,
+    codedHeight: 1,
+    timestamp: 1,
+  });
+  const rgbxOut = new Uint8Array(8);
+  await rgbx.copyTo(rgbxOut);
+  assert(rgbxOut[0] === 255 && rgbxOut[3] === 255, "rgbx opaque");
+  assert(rgbxOut[4] === 0 && rgbxOut[5] === 255 && rgbxOut[7] === 255, "rgbx second");
+  rgbx.close();
+
+  await assertThrows(() => new VideoFrame(new Uint8Array(8), {
+    format: "I420P10",
+    timestamp: 0,
+    codedWidth: 2,
+    codedHeight: 2,
+  }), "NotSupportedError");
+  const again = solidBitmap([
+    1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255,
+  ]);
+  assertTypeError(
+    () => new VideoFrame(again, { timestamp: 1, displayWidth: 4 }),
+    "display pair",
+  );
+  again.close();
+
+  const sizes: Array<[VideoPixelFormat, number]> = [
+    ["BGRA", 32],
+    ["RGBX", 32],
+    ["BGRX", 32],
+    ["I420A", 20],
+    ["I422", 16],
+    ["I444", 24],
+    ["NV12", 12],
+  ];
+  for (const [format, size] of sizes) {
+    const stored = new VideoFrame(new Uint8Array(size), {
+      format,
+      codedWidth: 4,
+      codedHeight: 2,
+      timestamp: 1,
+    });
+    assert(stored.format === format, format);
+    assert(stored.allocationSize() === size, `${format} size`);
+    const copy = new Uint8Array(size);
+    await stored.copyTo(copy);
+    stored.close();
+  }
 });

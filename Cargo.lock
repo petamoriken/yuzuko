@@ -8441,6 +8441,7 @@ dependencies = [
  "yuzuko_dom",
  "yuzuko_image",
  "yuzuko_macros",
+ "yuzuko_window",
  "yuzuko_winter",
 ]
 

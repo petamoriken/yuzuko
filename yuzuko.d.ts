@@ -330,9 +330,9 @@ interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
 }
 type VideoPixelFormat = "BGRA" | "BGRX" | "I420" | "I420A" | "I422" | "I444" | "NV12" | "RGBA" | "RGBX";
-type VideoColorPrimaries = "bt470bg" | "bt709" | "smpte170m";
-type VideoMatrixCoefficients = "bt470bg" | "bt709" | "rgb" | "smpte170m";
-type VideoTransferCharacteristics = "bt709" | "iec61966-2-1" | "smpte170m";
+type VideoColorPrimaries = "bt2020" | "bt470bg" | "bt709" | "smpte170m" | "smpte432";
+type VideoMatrixCoefficients = "bt2020-ncl" | "bt470bg" | "bt709" | "rgb" | "smpte170m";
+type VideoTransferCharacteristics = "bt709" | "hlg" | "iec61966-2-1" | "linear" | "pq" | "smpte170m";
 type AlphaOption = "discard" | "keep";
 interface WGSLLanguageFeatures {
   forEach(callbackfn: (value: string, key: string, parent: WGSLLanguageFeatures) => void, thisArg?: any): void;
@@ -11454,12 +11454,20 @@ declare var VideoColorSpace: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/VideoFrame) */
 interface VideoFrameInit {
-  duration?: number;
+  duration?: number | null;
   timestamp?: number;
   alpha?: AlphaOption;
   visibleRect?: DOMRectInit;
   displayWidth?: number;
   displayHeight?: number;
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when the value is not 0.
+   */
+  rotation?: number;
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when the value is true.
+   */
+  flip?: boolean;
 }
 
 /**
@@ -11478,24 +11486,60 @@ interface VideoFrameBufferInit {
   codedWidth: number;
   codedHeight: number;
   timestamp: number;
-  duration?: number;
+  duration?: number | null;
   layout?: PlaneLayout[];
   visibleRect?: DOMRectInit;
   displayWidth?: number;
   displayHeight?: number;
   colorSpace?: VideoColorSpaceInit;
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when the value is not 0.
+   */
+  rotation?: number;
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when the value is true.
+   */
+  flip?: boolean;
+}
+
+/**
+ * Options for {@link VideoFrame.copyTo}.
+ *
+ * `format` may be the source format or `RGBA`, `BGRA`, `RGBX`, or `BGRX`.
+ * Another format rejects `NotSupportedError`. An RGB `format` is written in
+ * `colorSpace`, which defaults to `srgb`. `display-p3` converts from the
+ * frame's sRGB or Display P3 samples. `colorSpace` is ignored otherwise.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/copyTo)
+ */
+interface VideoFrameCopyToOptions {
+  rect?: DOMRectInit;
+  layout?: PlaneLayout[];
+  format?: VideoPixelFormat;
+  colorSpace?: PredefinedColorSpace;
 }
 
 /**
  * A video frame.
  *
+ * `new VideoFrame(image, init)` copies an `ImageBitmap`, an `OffscreenCanvas`,
+ * or another `VideoFrame`. `new VideoFrame(buffer, init)` copies an 8-bit
+ * buffer. `timestamp` is required unless the source is a `VideoFrame`.
  * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` accept a
- * frame. `close()` releases it. A later use throws `InvalidStateError`.
+ * frame. `close()` releases it. A second `close()` does nothing. After
+ * `close()`, `format` is null, the sizes are 0, `visibleRect` and `codedRect`
+ * are null, and `colorSpace` members are null. `timestamp` and `duration`
+ * stay. `clone`, `allocationSize`, `copyTo`, `drawImage`, and
+ * `createImageBitmap` then throw `InvalidStateError`.
  * `structuredClone` and `postMessage` copy the frame and leave it open.
  * Listing it in a transfer list closes it, and the receiver gets the pixels.
+ * `drawImage` uses those pixels at their pixel size.
  *
- * @throws {@link TypeError} Illegal constructor.
- * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
+ * @throws {@link TypeError} when an argument is missing or invalid.
+ * @throws {@link DOMException} `NotSupportedError` for a 10-bit or 12-bit
+ * pixel format, or for a non-zero `rotation` or `flip: true`.
+ * @throws {@link DOMException} `InvalidStateError` when the source image or
+ * canvas is closed or has no pixels.
  * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame)
@@ -11522,11 +11566,43 @@ interface VideoFrame {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/displayHeight) */
   readonly displayHeight: number;
 
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/visibleRect)
+   */
+  readonly visibleRect: DOMRectReadOnly | null;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/codedRect)
+   */
+  readonly codedRect: DOMRectReadOnly | null;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/timestamp) */
   readonly timestamp: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/duration) */
   readonly duration: number | null;
+
+  /**
+   * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/allocationSize)
+   */
+  allocationSize(options?: VideoFrameCopyToOptions): number;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `options.format` is
+   * not the source format and not an RGB format.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/copyTo)
+   */
+  copyTo(destination: AllowSharedBufferSource, options?: VideoFrameCopyToOptions): Promise<PlaneLayout[]>;
+
+  /**
+   * @throws {@link DOMException} `InvalidStateError` when the frame is closed.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/clone)
+   */
+  clone(): VideoFrame;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/close) */
   close(): void;

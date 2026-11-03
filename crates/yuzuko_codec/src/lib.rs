@@ -6,9 +6,11 @@ mod classes;
 mod clone;
 mod color;
 mod error;
+mod frame;
 #[cfg(any(test, target_os = "linux", target_os = "windows"))]
 mod h264;
 mod image;
+mod layout;
 mod platform;
 
 use std::sync::Once;

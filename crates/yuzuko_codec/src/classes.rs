@@ -8,13 +8,14 @@ use yuzuko_core::op::{
   wrap_instance,
 };
 use yuzuko_core::rust_string;
-use yuzuko_image::{ColorSpace, FramePixels, Raster};
+use yuzuko_image::{FramePixels, Raster};
 use yuzuko_macros::op;
 use yuzuko_winter::buffer_source;
 
 use crate::audio::{AudioBackend, AudioCodec};
 use crate::backend::{Codec, VideoBackend, VideoConfig};
 use crate::error::DecodeError;
+use crate::layout::{FrameColor, FrameData, frame_from_raster};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -40,8 +41,9 @@ struct ChunkParts {
 }
 
 pub struct VideoFrame {
-  raster: RefCell<Option<Raster>>,
-  timestamp: f64,
+  body: RefCell<Option<FrameData>>,
+  timestamp: Cell<f64>,
+  duration: Cell<Option<f64>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for VideoFrame {
@@ -54,34 +56,51 @@ unsafe impl v8::cppgc::GarbageCollected for VideoFrame {
 
 impl VideoFrame {
   pub(crate) fn from_raster(raster: Raster) -> Self {
-    Self::new(raster, 0.0)
-  }
-
-  fn new(raster: Raster, timestamp: f64) -> Self {
-    Self {
-      raster: RefCell::new(Some(raster)),
-      timestamp,
-    }
-  }
-
-  fn pixels(&self) -> Option<Raster> {
-    self.raster.borrow().clone()
-  }
-
-  pub(crate) fn stored(&self) -> Option<(Raster, f64)> {
-    self.pixels().map(|raster| (raster, self.timestamp))
-  }
-
-  pub(crate) fn is_closed(&self) -> bool {
-    self.raster.borrow().is_none()
-  }
-
-  pub(crate) fn neuter(&self) {
-    *self.raster.borrow_mut() = None;
+    Self::from_data(frame_from_raster(&raster), 0.0, None)
   }
 
   pub(crate) fn from_stored(raster: Raster, timestamp: f64) -> Self {
-    Self::new(raster, timestamp)
+    Self::from_data(frame_from_raster(&raster), timestamp, None)
+  }
+
+  pub(crate) fn from_data(
+    data: FrameData,
+    timestamp: f64,
+    duration: Option<f64>,
+  ) -> Self {
+    Self {
+      body: RefCell::new(Some(data)),
+      timestamp: Cell::new(timestamp),
+      duration: Cell::new(duration),
+    }
+  }
+
+  pub(crate) fn snapshot(&self) -> Option<FrameData> {
+    self.body.borrow().clone()
+  }
+
+  pub(crate) fn timestamp_us(&self) -> f64 {
+    self.timestamp.get()
+  }
+
+  pub(crate) fn duration_us(&self) -> Option<f64> {
+    self.duration.get()
+  }
+
+  fn pixels(&self) -> Option<Raster> {
+    self.body.borrow().as_ref().map(|data| data.raster.clone())
+  }
+
+  fn metric(&self, read: impl FnOnce(&FrameData) -> u32) -> u32 {
+    self.body.borrow().as_ref().map(read).unwrap_or(0)
+  }
+
+  pub(crate) fn is_closed(&self) -> bool {
+    self.body.borrow().is_none()
+  }
+
+  pub(crate) fn neuter(&self) {
+    *self.body.borrow_mut() = None;
   }
 }
 
@@ -104,74 +123,110 @@ pub fn lookup_frame(
 
 #[op]
 impl VideoFrame {
-  #[getter]
-  fn format(&self) -> Result<String, OpError> {
-    self.live()?;
-    Ok("RGBA".to_string())
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    crate::frame::construct(scope, args)
   }
 
   #[getter]
-  fn color_space(
+  fn format(&self) -> Option<String> {
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|data| data.format.name().to_string())
+  }
+
+  #[getter]
+  fn color_space(&self, _scope: &mut v8::PinScope) -> New<VideoColorSpace> {
+    let color = self.body.borrow().as_ref().map(|data| data.color.clone());
+    let space = match color {
+      Some(color) => VideoColorSpace::from_frame(&color),
+      None => VideoColorSpace::empty(),
+    };
+    New(space)
+  }
+
+  #[getter]
+  fn coded_width(&self) -> u32 {
+    self.metric(|data| data.coded_width)
+  }
+
+  #[getter]
+  fn coded_height(&self) -> u32 {
+    self.metric(|data| data.coded_height)
+  }
+
+  #[getter]
+  fn display_width(&self) -> u32 {
+    self.metric(|data| data.display_width)
+  }
+
+  #[getter]
+  fn display_height(&self) -> u32 {
+    self.metric(|data| data.display_height)
+  }
+
+  #[getter]
+  fn timestamp(&self) -> f64 {
+    self.timestamp_us()
+  }
+
+  #[getter]
+  fn duration(&self) -> Option<f64> {
+    self.duration_us()
+  }
+
+  #[getter]
+  fn visible_rect(&self, scope: &mut v8::PinScope) -> Js {
+    crate::frame::visible_rect(scope, self)
+  }
+
+  #[getter]
+  fn coded_rect(&self, scope: &mut v8::PinScope) -> Js {
+    crate::frame::coded_rect(scope, self)
+  }
+
+  fn close(&self) {
+    self.neuter();
+  }
+
+  #[rename("clone")]
+  fn clone_frame(&self) -> Result<New<Self>, OpError> {
+    let data = self.snapshot().ok_or_else(closed_frame)?;
+    Ok(New(Self::from_data(
+      data,
+      self.timestamp_us(),
+      self.duration_us(),
+    )))
+  }
+
+  fn allocation_size(
     &self,
-    _scope: &mut v8::PinScope,
-  ) -> Result<New<VideoColorSpace>, OpError> {
-    let raster = self.live()?;
-    Ok(New(VideoColorSpace::from_stored(raster.color_space)))
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<f64, OpError> {
+    crate::frame::allocation_size(scope, self, args)
   }
 
-  #[getter]
-  fn coded_width(&self) -> Result<u32, OpError> {
-    Ok(self.live()?.width)
-  }
-
-  #[getter]
-  fn coded_height(&self) -> Result<u32, OpError> {
-    Ok(self.live()?.height)
-  }
-
-  #[getter]
-  fn display_width(&self) -> Result<u32, OpError> {
-    Ok(self.live()?.width)
-  }
-
-  #[getter]
-  fn display_height(&self) -> Result<u32, OpError> {
-    Ok(self.live()?.height)
-  }
-
-  #[getter]
-  fn timestamp(&self) -> Result<f64, OpError> {
-    self.live()?;
-    Ok(self.timestamp)
-  }
-
-  #[getter]
-  fn duration(&self) -> Result<Option<f64>, OpError> {
-    self.live()?;
-    Ok(None)
-  }
-
-  fn close(&self) -> Result<(), OpError> {
-    let mut raster = self.raster.borrow_mut();
-    if raster.is_none() {
-      return Err(closed_frame());
-    }
-    *raster = None;
-    Ok(())
+  fn copy_to(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    crate::frame::copy_to(scope, self, args)
   }
 }
 
-impl VideoFrame {
-  fn live(&self) -> Result<Raster, OpError> {
-    self.pixels().ok_or_else(closed_frame)
-  }
-}
-
-const COLOR_PRIMARIES: &[&str] =
+pub(crate) const COLOR_PRIMARIES: &[&str] =
   &["bt709", "bt470bg", "smpte170m", "bt2020", "smpte432"];
-const COLOR_TRANSFER: &[&str] =
+pub(crate) const COLOR_TRANSFER: &[&str] =
   &["bt709", "smpte170m", "iec61966-2-1", "linear", "pq", "hlg"];
-const COLOR_MATRIX: &[&str] =
+pub(crate) const COLOR_MATRIX: &[&str] =
   &["rgb", "bt709", "bt470bg", "smpte170m", "bt2020-ncl"];
 
 pub(crate) struct VideoColorSpace {
@@ -190,29 +245,21 @@ unsafe impl v8::cppgc::GarbageCollected for VideoColorSpace {
 }
 
 impl VideoColorSpace {
-  fn from_stored(space: ColorSpace) -> Self {
-    match space {
-      ColorSpace::Srgb => Self {
-        primaries: Some("bt709".to_string()),
-        transfer: Some("iec61966-2-1".to_string()),
-        matrix: Some("rgb".to_string()),
-        full_range: Some(true),
-      },
-      ColorSpace::DisplayP3 => Self {
-        primaries: Some("smpte432".to_string()),
-        transfer: Some("iec61966-2-1".to_string()),
-        matrix: Some("rgb".to_string()),
-        full_range: Some(true),
-      },
-    }
-  }
-
   fn empty() -> Self {
     Self {
       primaries: None,
       transfer: None,
       matrix: None,
       full_range: None,
+    }
+  }
+
+  fn from_frame(color: &FrameColor) -> Self {
+    Self {
+      primaries: color.primaries.clone(),
+      transfer: color.transfer.clone(),
+      matrix: color.matrix.clone(),
+      full_range: color.full_range,
     }
   }
 }
@@ -277,7 +324,7 @@ impl VideoColorSpace {
   }
 }
 
-fn color_enum(
+pub(crate) fn color_enum(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
@@ -312,7 +359,7 @@ fn color_enum(
   }
 }
 
-fn color_bool(
+pub(crate) fn color_bool(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
@@ -600,7 +647,7 @@ impl VideoDecoder {
     };
     let _ = VideoFrame::template(scope);
     let frame =
-      unsafe { wrap_instance(scope, VideoFrame::new(raster, timestamp)) };
+      unsafe { wrap_instance(scope, VideoFrame::from_stored(raster, timestamp)) };
     let function = v8::Global::new(scope, function);
     let frame = v8::Global::new(scope, frame);
     let global = yuzuko_core::global(scope);
@@ -1163,7 +1210,7 @@ fn decoder_init<'s>(
   Ok((output, error))
 }
 
-fn dictionary<'s>(
+pub(crate) fn dictionary<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<'_, v8::Value>,
   name: &str,
@@ -1176,7 +1223,7 @@ fn dictionary<'s>(
     .map_err(|_| OpError::type_(format!("{name} is not an object")))
 }
 
-fn member<'s>(
+pub(crate) fn member<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
@@ -1261,7 +1308,7 @@ fn unsigned(
   Ok(number as u32)
 }
 
-fn long_long(
+pub(crate) fn long_long(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<i64, OpError> {
@@ -1403,7 +1450,7 @@ fn not_configured() -> OpError {
   OpError::dom("InvalidStateError", "The decoder is not configured")
 }
 
-fn closed_frame() -> OpError {
+pub(crate) fn closed_frame() -> OpError {
   OpError::dom("InvalidStateError", "The frame is closed")
 }
 

@@ -12,6 +12,7 @@ yuzuko_core.workspace = true
 yuzuko_dom.workspace = true
 yuzuko_image.workspace = true
 yuzuko_macros.workspace = true
+yuzuko_window.workspace = true
 yuzuko_winter.workspace = true
 
 [target.'cfg(windows)'.dependencies]

@@ -62,13 +62,12 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   const decoded = await bitmapPixels(result.image);
   assert(decoded.join() === direct.join(), "pixels match createImageBitmap");
   result.image.close();
-  let closedSpace = false;
-  try {
-    result.image.colorSpace;
-  } catch (error) {
-    closedSpace = error.name === "InvalidStateError";
-  }
-  assert(closedSpace, "closed color space");
+  assert(result.image.format === null, "closed format");
+  assert(result.image.colorSpace.primaries === null, "closed primaries");
+  assert(result.image.colorSpace.transfer === null, "closed transfer");
+  assert(result.image.colorSpace.matrix === null, "closed matrix");
+  assert(result.image.colorSpace.fullRange === null, "closed range");
+  assert(result.image.displayWidth === 0, "closed display");
   const again = await decoder.decode();
   assert(again.image.displayWidth === 2, "second frame");
   again.image.close();

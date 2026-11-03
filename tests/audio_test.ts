@@ -1124,7 +1124,9 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     assert(painted.width === width, "frame width");
     assert(painted.height === height, "frame height");
     assert(painted.hasVideoFrame === false, "worklet VideoFrame");
-    await assertThrows(() => frame.codedWidth, "InvalidStateError");
+    assert(frame.format === null, "closed format");
+    assert(frame.codedWidth === 0, "closed coded");
+    assert(frame.displayWidth === 0, "closed display");
   } finally {
     await context.close();
   }
