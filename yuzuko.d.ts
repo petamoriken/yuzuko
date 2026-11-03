@@ -11617,8 +11617,8 @@ declare var VideoFrame: {
 /**
  * An encoded video chunk.
  *
- * `structuredClone` and `postMessage` copy `type`, `timestamp`, and the
- * bytes. The chunk is not transferable.
+ * `structuredClone` and `postMessage` copy `type`, `timestamp`, `duration`,
+ * and the bytes. The chunk is not transferable.
  *
  * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
  * transfer.
@@ -11633,8 +11633,26 @@ interface EncodedVideoChunk {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk/timestamp) */
   readonly timestamp: number;
 
+  /**
+   * Microseconds. Missing or null is null. A non-negative finite number is
+   * truncated toward 0.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk/duration)
+   */
+  readonly duration: number | null;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk/byteLength) */
   readonly byteLength: number;
+
+  /**
+   * Copies the encoded bytes into `destination`.
+   *
+   * @throws {@link TypeError} when `destination` is detached or shorter than
+   * `byteLength`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk/copyTo)
+   */
+  copyTo(destination: AllowSharedBufferSource): void;
 }
 declare var EncodedVideoChunk: {
   prototype: EncodedVideoChunk;
@@ -11671,6 +11689,8 @@ interface VideoDecoder extends EventTarget {
   readonly decodeQueueSize: number;
 
   /**
+   * @throws {@link TypeError} when `config` is missing a required member,
+   * `codec` is empty, `description` is detached, or a present dimension is 0.
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not
    * `avc1` or `avc3`, or when the hardware decoder is missing or rejects a
    * structurally valid `avcC`. On Windows the decoder is missing when no
@@ -11699,6 +11719,15 @@ interface VideoDecoder extends EventTarget {
 declare var VideoDecoder: {
   prototype: VideoDecoder;
   new(init: VideoDecoderInit): VideoDecoder;
+  /**
+   * Resolves `{ supported, config }` without opening a decoder and without
+   * producing a frame. `supported` is true only for an `avc1` or `avc3`
+   * codec string that `configure` accepts, and false for any other codec
+   * string. An invalid config rejects `TypeError`. Too few arguments reject
+   * `TypeError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/isConfigSupported)
+   */
   isConfigSupported(config: VideoDecoderConfig): Promise<VideoDecoderSupport>;
 };
 
@@ -11834,8 +11863,8 @@ interface AudioDataCopyToOptions {
 /**
  * An encoded audio chunk.
  *
- * `structuredClone` and `postMessage` copy `type`, `timestamp`, and the
- * bytes. The chunk is not transferable.
+ * `structuredClone` and `postMessage` copy `type`, `timestamp`, `duration`,
+ * and the bytes. The chunk is not transferable.
  *
  * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
  * transfer.
@@ -11850,8 +11879,26 @@ interface EncodedAudioChunk {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk/timestamp) */
   readonly timestamp: number;
 
+  /**
+   * Microseconds. Missing or null is null. A non-negative finite number is
+   * truncated toward 0.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk/duration)
+   */
+  readonly duration: number | null;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk/byteLength) */
   readonly byteLength: number;
+
+  /**
+   * Copies the encoded bytes into `destination`.
+   *
+   * @throws {@link TypeError} when `destination` is detached or shorter than
+   * `byteLength`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk/copyTo)
+   */
+  copyTo(destination: AllowSharedBufferSource): void;
 }
 declare var EncodedAudioChunk: {
   prototype: EncodedAudioChunk;
@@ -11885,6 +11932,9 @@ interface AudioDecoder extends EventTarget {
   readonly decodeQueueSize: number;
 
   /**
+   * @throws {@link TypeError} when `config` is missing a required member,
+   * `codec` is empty, `description` is detached, or `sampleRate` or
+   * `numberOfChannels` is not greater than 0.
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not `mp4a`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/configure)
@@ -11906,6 +11956,14 @@ interface AudioDecoder extends EventTarget {
 declare var AudioDecoder: {
   prototype: AudioDecoder;
   new(init: AudioDecoderInit): AudioDecoder;
+  /**
+   * Resolves `{ supported, config }` without opening a decoder and without
+   * producing samples. `supported` is true only for an `mp4a` codec string
+   * that `configure` accepts, and false for any other codec string. An
+   * invalid config rejects `TypeError`. Too few arguments reject `TypeError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/isConfigSupported)
+   */
   isConfigSupported(config: AudioDecoderConfig): Promise<AudioDecoderSupport>;
 };
 

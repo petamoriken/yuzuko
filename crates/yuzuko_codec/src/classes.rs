@@ -10,7 +10,7 @@ use yuzuko_core::op::{
 use yuzuko_core::rust_string;
 use yuzuko_image::{FramePixels, Raster};
 use yuzuko_macros::op;
-use yuzuko_winter::buffer_source;
+use yuzuko_winter::{array_buffer, buffer_source};
 
 use crate::audio::{AudioBackend, AudioCodec};
 use crate::backend::{Codec, VideoBackend, VideoConfig};
@@ -37,6 +37,7 @@ impl State {
 struct ChunkParts {
   key: bool,
   timestamp: i64,
+  duration: Option<f64>,
   data: Vec<u8>,
 }
 
@@ -416,6 +417,7 @@ fn put_color_string(
 pub struct EncodedVideoChunk {
   key: bool,
   timestamp: i64,
+  duration: Option<f64>,
   data: Vec<u8>,
 }
 
@@ -439,6 +441,7 @@ impl EncodedVideoChunk {
     Ok(Self {
       key: parts.key,
       timestamp: parts.timestamp,
+      duration: parts.duration,
       data: parts.data,
     })
   }
@@ -459,20 +462,40 @@ impl EncodedVideoChunk {
   }
 
   #[getter]
+  fn duration(&self) -> Option<f64> {
+    self.duration
+  }
+
+  #[getter]
   fn byte_length(&self) -> u32 {
     u32::try_from(self.data.len()).unwrap_or(u32::MAX)
+  }
+
+  #[length(1)]
+  fn copy_to(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    crate::frame::write_bytes(scope, args.get(0), &self.data)
   }
 }
 
 impl EncodedVideoChunk {
-  pub(crate) fn copy_parts(&self) -> (bool, i64, Vec<u8>) {
-    (self.key, self.timestamp, self.data.clone())
+  pub(crate) fn copy_parts(&self) -> (bool, i64, Option<f64>, Vec<u8>) {
+    (self.key, self.timestamp, self.duration, self.data.clone())
   }
 
-  pub(crate) fn from_parts(key: bool, timestamp: i64, data: Vec<u8>) -> Self {
+  pub(crate) fn from_parts(
+    key: bool,
+    timestamp: i64,
+    duration: Option<f64>,
+    data: Vec<u8>,
+  ) -> Self {
     Self {
       key,
       timestamp,
+      duration,
       data,
     }
   }
@@ -521,6 +544,22 @@ impl VideoDecoder {
   #[getter]
   fn decode_queue_size(&self) -> u32 {
     0
+  }
+
+  #[static_method]
+  #[promise]
+  #[length(1)]
+  fn is_config_supported(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Js {
+    match check_video(scope, args.get(0)) {
+      Ok(checked) => {
+        let config = video_support_object(scope, &checked);
+        resolve_support(scope, checked.supported, config)
+      }
+      Err(error) => reject_support(scope, error),
+    }
   }
 
   fn configure(
@@ -851,6 +890,7 @@ impl AudioData {
 pub struct EncodedAudioChunk {
   key: bool,
   timestamp: i64,
+  duration: Option<f64>,
   data: Vec<u8>,
 }
 
@@ -874,6 +914,7 @@ impl EncodedAudioChunk {
     Ok(Self {
       key: parts.key,
       timestamp: parts.timestamp,
+      duration: parts.duration,
       data: parts.data,
     })
   }
@@ -894,20 +935,45 @@ impl EncodedAudioChunk {
   }
 
   #[getter]
+  fn duration(&self) -> Option<f64> {
+    self.duration
+  }
+
+  #[getter]
   fn byte_length(&self) -> u32 {
     u32::try_from(self.data.len()).unwrap_or(u32::MAX)
+  }
+
+  #[length(1)]
+  fn copy_to(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    crate::frame::write_bytes(scope, args.get(0), &self.data)
   }
 }
 
 impl EncodedAudioChunk {
-  pub(crate) fn copy_parts(&self) -> (bool, i64, Vec<u8>) {
-    (self.key, self.timestamp, self.data.clone())
+  pub(crate) fn copy_parts(&self) -> (bool, i64, Option<f64>, Vec<u8>) {
+    (
+      self.key,
+      self.timestamp,
+      self.duration,
+      self.data.clone(),
+    )
   }
 
-  pub(crate) fn from_parts(key: bool, timestamp: i64, data: Vec<u8>) -> Self {
+  pub(crate) fn from_parts(
+    key: bool,
+    timestamp: i64,
+    duration: Option<f64>,
+    data: Vec<u8>,
+  ) -> Self {
     Self {
       key,
       timestamp,
+      duration,
       data,
     }
   }
@@ -956,6 +1022,22 @@ impl AudioDecoder {
   #[getter]
   fn decode_queue_size(&self) -> u32 {
     0
+  }
+
+  #[static_method]
+  #[promise]
+  #[length(1)]
+  fn is_config_supported(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Js {
+    match check_audio(scope, args.get(0)) {
+      Ok(checked) => {
+        let config = audio_support_object(scope, &checked);
+        resolve_support(scope, checked.supported, config)
+      }
+      Err(error) => reject_support(scope, error),
+    }
   }
 
   fn configure(
@@ -1124,26 +1206,38 @@ impl AudioDecoder {
   }
 }
 
+struct VideoChecked {
+  supported: bool,
+  codec: String,
+  description: Option<Vec<u8>>,
+  width: Option<u32>,
+  height: Option<u32>,
+  display_width: Option<u32>,
+  display_height: Option<u32>,
+  acceleration: Option<String>,
+}
+
+struct AudioChecked {
+  supported: bool,
+  codec: String,
+  description: Option<Vec<u8>>,
+  rate: u32,
+  channels: u32,
+}
+
 fn video_config(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<VideoConfig, OpError> {
-  let object = dictionary(scope, value, "VideoDecoder configuration")?;
-  let codec = required_string(scope, object, "codec")?;
-  let Some(codec) = video_codec(&codec) else {
+  let checked = check_video(scope, value)?;
+  if !checked.supported {
     return Err(unsupported_codec());
-  };
-  let description = optional_bytes(scope, object, "description")?;
-  let width = optional_u32(scope, object, "codedWidth")?;
-  let height = optional_u32(scope, object, "codedHeight")?;
-  if let Some(hint) = member(scope, object, "hardwareAcceleration") {
-    let _ignored = software_hint(scope, hint)?;
   }
   Ok(VideoConfig {
-    codec,
-    description,
-    width,
-    height,
+    codec: Codec::Avc,
+    description: checked.description.unwrap_or_default(),
+    width: checked.width.unwrap_or(0),
+    height: checked.height.unwrap_or(0),
   })
 }
 
@@ -1151,15 +1245,61 @@ fn audio_config(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<(AudioCodec, Vec<u8>, u32, u32), OpError> {
-  let object = dictionary(scope, value, "AudioDecoder configuration")?;
-  let codec = required_string(scope, object, "codec")?;
-  let Some(codec) = audio_codec(&codec) else {
+  let checked = check_audio(scope, value)?;
+  if !checked.supported {
     return Err(unsupported_codec());
+  }
+  Ok((
+    AudioCodec::Aac,
+    checked.description.unwrap_or_default(),
+    checked.rate,
+    checked.channels,
+  ))
+}
+
+fn check_video(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<VideoChecked, OpError> {
+  let object = dictionary(scope, value, "VideoDecoder configuration")?;
+  let codec = required_codec(scope, object)?;
+  let description = optional_buffer(scope, object, "description")?;
+  let width = optional_positive(scope, object, "codedWidth")?;
+  let height = optional_positive(scope, object, "codedHeight")?;
+  let display_width = optional_positive(scope, object, "displayAspectWidth")?;
+  let display_height = optional_positive(scope, object, "displayAspectHeight")?;
+  let acceleration = match member(scope, object, "hardwareAcceleration") {
+    Some(hint) => Some(acceleration_hint(scope, hint)?),
+    None => None,
   };
-  let rate = required_u32(scope, object, "sampleRate")?;
-  let channels = required_u32(scope, object, "numberOfChannels")?;
-  let description = optional_bytes(scope, object, "description")?;
-  Ok((codec, description, rate, channels))
+  Ok(VideoChecked {
+    supported: video_codec(&codec).is_some(),
+    codec,
+    description,
+    width,
+    height,
+    display_width,
+    display_height,
+    acceleration,
+  })
+}
+
+fn check_audio(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<AudioChecked, OpError> {
+  let object = dictionary(scope, value, "AudioDecoder configuration")?;
+  let codec = required_codec(scope, object)?;
+  let rate = required_positive(scope, object, "sampleRate")?;
+  let channels = required_positive(scope, object, "numberOfChannels")?;
+  let description = optional_buffer(scope, object, "description")?;
+  Ok(AudioChecked {
+    supported: audio_codec(&codec).is_some(),
+    codec,
+    description,
+    rate,
+    channels,
+  })
 }
 
 fn video_codec(codec: &str) -> Option<Codec> {
@@ -1229,8 +1369,28 @@ fn chunk_parts(
   Ok(ChunkParts {
     key,
     timestamp: long_long(scope, timestamp)?,
+    duration: chunk_duration(scope, object)?,
     data,
   })
+}
+
+fn chunk_duration(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<f64>, OpError> {
+  let Some(value) = member(scope, object, "duration") else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let number = value
+    .number_value(scope)
+    .ok_or_else(|| OpError::type_("duration is not a number"))?;
+  if !number.is_finite() || number < 0.0 || number > u64::MAX as f64 {
+    return Err(OpError::type_("duration is out of range"));
+  }
+  Ok(Some(number.trunc()))
 }
 
 fn decoder_init<'s>(
@@ -1305,27 +1465,76 @@ fn required_u32(
   unsigned(scope, value, name)
 }
 
-fn optional_u32(
+fn optional_buffer(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<Vec<u8>>, OpError> {
+  let Some(value) = member(scope, object, name) else {
+    return Ok(None);
+  };
+  if detached_buffer(scope, value) {
+    return Err(OpError::type_(format!("{name} is detached")));
+  }
+  buffer_source(scope, value)
+    .map(Some)
+    .ok_or_else(|| OpError::type_(format!("{name} is not a BufferSource")))
+}
+
+fn detached_buffer(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  if v8::Local::<v8::SharedArrayBuffer>::try_from(value).is_ok() {
+    return false;
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    return view
+      .buffer(scope)
+      .is_some_and(|buffer| buffer.was_detached());
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    return buffer.was_detached();
+  }
+  false
+}
+
+fn required_codec(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<String, OpError> {
+  let codec = required_string(scope, object, "codec")?;
+  if codec.is_empty() {
+    return Err(OpError::type_("codec is empty"));
+  }
+  Ok(codec)
+}
+
+fn optional_positive(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<u32>, OpError> {
+  let Some(value) = member(scope, object, name) else {
+    return Ok(None);
+  };
+  let number = unsigned(scope, value, name)?;
+  if number == 0 {
+    return Err(OpError::type_(format!("{name} must be greater than 0")));
+  }
+  Ok(Some(number))
+}
+
+fn required_positive(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let Some(value) = member(scope, object, name) else {
-    return Ok(0);
-  };
-  unsigned(scope, value, name)
-}
-
-fn optional_bytes(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-) -> Result<Vec<u8>, OpError> {
-  let Some(value) = member(scope, object, name) else {
-    return Ok(Vec::new());
-  };
-  buffer_source(scope, value)
-    .ok_or_else(|| OpError::type_(format!("{name} is not a BufferSource")))
+  let number = required_u32(scope, object, name)?;
+  if number == 0 {
+    return Err(OpError::type_(format!("{name} must be greater than 0")));
+  }
+  Ok(number)
 }
 
 pub(crate) fn unsigned(
@@ -1356,13 +1565,13 @@ pub(crate) fn long_long(
   Ok(number as i64)
 }
 
-fn software_hint(
+fn acceleration_hint(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<bool, OpError> {
-  match rust_string(scope, value).as_str() {
-    "no-preference" | "prefer-hardware" => Ok(false),
-    "prefer-software" => Ok(true),
+) -> Result<String, OpError> {
+  let text = rust_string(scope, value);
+  match text.as_str() {
+    "no-preference" | "prefer-hardware" | "prefer-software" => Ok(text),
     _ => Err(OpError::type_("hardwareAcceleration is not supported")),
   }
 }
@@ -1383,6 +1592,152 @@ fn trace_fn(
   if let Ok(slot) = slot.try_borrow() {
     visitor.trace(&*slot);
   }
+}
+
+fn video_support_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  checked: &VideoChecked,
+) -> v8::Local<'s, v8::Object> {
+  let object = v8::Object::new(scope);
+  set_string(scope, object, "codec", &checked.codec);
+  if let Some(bytes) = &checked.description {
+    set_bytes(scope, object, "description", bytes);
+  }
+  if let Some(width) = checked.width {
+    set_number(scope, object, "codedWidth", f64::from(width));
+  }
+  if let Some(height) = checked.height {
+    set_number(scope, object, "codedHeight", f64::from(height));
+  }
+  if let Some(width) = checked.display_width {
+    set_number(scope, object, "displayAspectWidth", f64::from(width));
+  }
+  if let Some(height) = checked.display_height {
+    set_number(scope, object, "displayAspectHeight", f64::from(height));
+  }
+  if let Some(hint) = &checked.acceleration {
+    set_string(scope, object, "hardwareAcceleration", hint);
+  }
+  object
+}
+
+fn audio_support_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  checked: &AudioChecked,
+) -> v8::Local<'s, v8::Object> {
+  let object = v8::Object::new(scope);
+  set_string(scope, object, "codec", &checked.codec);
+  set_number(scope, object, "sampleRate", f64::from(checked.rate));
+  set_number(
+    scope,
+    object,
+    "numberOfChannels",
+    f64::from(checked.channels),
+  );
+  if let Some(bytes) = &checked.description {
+    set_bytes(scope, object, "description", bytes);
+  }
+  object
+}
+
+fn resolve_support(
+  scope: &mut v8::PinScope,
+  supported: bool,
+  config: v8::Local<v8::Object>,
+) -> Js {
+  let Some(resolver) = v8::PromiseResolver::new(scope) else {
+    return Js::null(scope);
+  };
+  let object = v8::Object::new(scope);
+  let flag: v8::Local<v8::Value> = v8::Boolean::new(scope, supported).into();
+  set_value(scope, object, "supported", flag);
+  set_value(scope, object, "config", config.into());
+  resolver.resolve(scope, object.into());
+  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
+  Js(v8::Global::new(scope, promise))
+}
+
+fn reject_support(scope: &mut v8::PinScope, error: OpError) -> Js {
+  let Some(resolver) = v8::PromiseResolver::new(scope) else {
+    return Js::null(scope);
+  };
+  let rejected = support_error(scope, error);
+  resolver.reject(scope, rejected);
+  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
+  Js(v8::Global::new(scope, promise))
+}
+
+fn support_error<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  error: OpError,
+) -> v8::Local<'s, v8::Value> {
+  match error {
+    OpError::Type(message) => builtin_exception(scope, &message, false),
+    OpError::Range(message) => builtin_exception(scope, &message, true),
+    OpError::Dom { name, message } => new_dom_exception(scope, &name, &message)
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| v8::undefined(scope).into()),
+    OpError::Thrown(value) => v8::Local::new(scope, *value),
+  }
+}
+
+fn builtin_exception<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  message: &str,
+  range: bool,
+) -> v8::Local<'s, v8::Value> {
+  let Some(text) = v8::String::new(scope, message) else {
+    return v8::undefined(scope).into();
+  };
+  if range {
+    v8::Exception::range_error(scope, text).into()
+  } else {
+    v8::Exception::type_error(scope, text).into()
+  }
+}
+
+fn set_string(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: &str,
+) {
+  let Some(text) = v8::String::new(scope, value) else {
+    return;
+  };
+  set_value(scope, object, name, text.into());
+}
+
+fn set_number(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: f64,
+) {
+  let number: v8::Local<v8::Value> = v8::Number::new(scope, value).into();
+  set_value(scope, object, name, number);
+}
+
+fn set_bytes(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  bytes: &[u8],
+) {
+  let buffer = array_buffer(scope, bytes.to_vec());
+  set_value(scope, object, name, buffer.into());
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let Some(key) = v8::String::new(scope, name) else {
+    return;
+  };
+  object.set(scope, key.into(), value);
 }
 
 fn resolved(scope: &mut v8::PinScope) -> Result<Js, OpError> {

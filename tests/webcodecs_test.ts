@@ -1060,3 +1060,158 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
     "short data",
   );
 });
+
+async function assertRejectsType(
+  run: () => Promise<unknown>,
+  message: string,
+): Promise<void> {
+  let result: Promise<unknown>;
+  try {
+    result = run();
+  } catch (error) {
+    throw new Error(`${message} threw ${String(error)}`);
+  }
+  assert(result instanceof Promise, `${message} did not return a promise`);
+  try {
+    await result;
+  } catch (error) {
+    assert(error instanceof TypeError, `${message}: ${String(error)}`);
+    return;
+  }
+  throw new Error(`${message} was not rejected`);
+}
+
+Yuzuko.test("isConfigSupported and encoded chunks", async () => {
+  const avc = await VideoDecoder.isConfigSupported({
+    codec: "avc1.42001E",
+    codedWidth: 16,
+    codedHeight: 16,
+  });
+  assert(avc.supported === true, "avc1");
+  assert(avc.config?.codec === "avc1.42001E", "avc1 codec");
+  assert(avc.config?.codedWidth === 16, "codedWidth");
+  assert(avc.config?.codedHeight === 16, "codedHeight");
+
+  const avc3 = await VideoDecoder.isConfigSupported({ codec: "avc3.42001E" });
+  assert(avc3.supported === true, "avc3");
+  assert(avc3.config?.codec === "avc3.42001E", "avc3 codec");
+
+  const vp8 = await VideoDecoder.isConfigSupported({ codec: "vp8" });
+  assert(vp8.supported === false, "vp8");
+  assert(vp8.config?.codec === "vp8", "vp8 codec");
+
+  await assertRejectsType(
+    () => VideoDecoder.isConfigSupported({} as VideoDecoderConfig),
+    "missing codec",
+  );
+  await assertRejectsType(
+    () => VideoDecoder.isConfigSupported({ codec: "" }),
+    "empty codec",
+  );
+  await assertRejectsType(
+    () =>
+      VideoDecoder.isConfigSupported({
+        codec: "avc1.42001E",
+        hardwareAcceleration: "maybe" as HardwareAcceleration,
+      }),
+    "hardwareAcceleration",
+  );
+  const software = await VideoDecoder.isConfigSupported({
+    codec: "avc1.42001E",
+    hardwareAcceleration: "prefer-software",
+  });
+  assert(software.supported === true, "prefer-software");
+  await assertRejectsType(
+    () =>
+      VideoDecoder.isConfigSupported({
+        codec: "avc1.42001E",
+        codedWidth: 0,
+      }),
+    "codedWidth",
+  );
+  await assertRejectsType(
+    () =>
+      (VideoDecoder.isConfigSupported as () => Promise<unknown>)(),
+    "video arity",
+  );
+
+  const decoder = new VideoDecoder({ output: () => {}, error: () => {} });
+  assertTypeError(() => decoder.configure({ codec: "" }), "configure empty");
+  assert(decoder.state === "unconfigured", decoder.state);
+  decoder.close();
+
+  const aac = await AudioDecoder.isConfigSupported({
+    codec: "mp4a.40.2",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(aac.supported === true, "mp4a");
+  assert(aac.config?.codec === "mp4a.40.2", "mp4a codec");
+  assert(aac.config?.sampleRate === 48000, "sampleRate");
+  assert(aac.config?.numberOfChannels === 2, "channels");
+
+  const opus = await AudioDecoder.isConfigSupported({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(opus.supported === false, "opus");
+  assert(opus.config?.codec === "opus", "opus codec");
+  await assertRejectsType(
+    () =>
+      AudioDecoder.isConfigSupported({
+        codec: "mp4a.40.2",
+        sampleRate: 0,
+        numberOfChannels: 2,
+      }),
+    "sampleRate",
+  );
+  await assertRejectsType(
+    () =>
+      (AudioDecoder.isConfigSupported as () => Promise<unknown>)(),
+    "audio arity",
+  );
+
+  const source = new Uint8Array([9, 8, 7, 6]);
+  const video = new EncodedVideoChunk({
+    type: "key",
+    timestamp: 20,
+    duration: 15,
+    data: source,
+  });
+  assert(video.duration === 15, "video duration");
+  const copied = new Uint8Array(4);
+  video.copyTo(copied);
+  assert(copied[0] === 9 && copied[3] === 6, "video bytes");
+  source[0] = 1;
+  const again = new Uint8Array(4);
+  video.copyTo(again);
+  assert(again[0] === 9, "source mutation");
+  assertTypeError(() => video.copyTo(new Uint8Array(3)), "short video");
+  const cloned = structuredClone(video);
+  assert(cloned.duration === 15, "cloned duration");
+  assert(cloned.byteLength === 4, "cloned length");
+  const clonedBytes = new Uint8Array(4);
+  cloned.copyTo(clonedBytes);
+  assert(clonedBytes[1] === 8 && clonedBytes[0] === 9, "cloned bytes");
+
+  const audio = new EncodedAudioChunk({
+    type: "delta",
+    timestamp: -5,
+    data: new Uint8Array([1, 2]),
+  });
+  assert(audio.duration === null, "audio duration");
+  assert(audio.timestamp === -5, "audio timestamp");
+  const audioBytes = new Uint8Array(2);
+  audio.copyTo(audioBytes);
+  assert(audioBytes[0] === 1 && audioBytes[1] === 2, "audio bytes");
+
+  const shared = new SharedArrayBuffer(4);
+  const view = new Uint8Array(shared);
+  video.copyTo(view);
+  assert(view[0] === 9 && view[3] === 6, "shared view");
+  const bare = new SharedArrayBuffer(4);
+  video.copyTo(bare);
+  const bareView = new Uint8Array(bare);
+  assert(bareView[2] === 7, "shared buffer");
+});

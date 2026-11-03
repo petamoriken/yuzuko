@@ -838,6 +838,50 @@ fn layout_error(error: LayoutError, constructing: bool) -> OpError {
   }
 }
 
+pub(crate) fn write_bytes(
+  scope: &mut v8::PinScope,
+  dest: v8::Local<v8::Value>,
+  bytes: &[u8],
+) -> Result<(), OpError> {
+  if bytes.is_empty() {
+    return require_buffer(scope, dest);
+  }
+  let size = u64::try_from(bytes.len())
+    .map_err(|_| OpError::type_("The destination is too small"))?;
+  with_destination(scope, dest, size, |slice| {
+    let into = slice
+      .get_mut(..bytes.len())
+      .ok_or_else(|| OpError::type_("The destination is too small"))?;
+    into.copy_from_slice(bytes);
+    Ok(())
+  })
+}
+
+fn require_buffer(
+  scope: &mut v8::PinScope,
+  dest: v8::Local<v8::Value>,
+) -> Result<(), OpError> {
+  if v8::Local::<v8::SharedArrayBuffer>::try_from(dest).is_ok() {
+    return Ok(());
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(dest) {
+    if view
+      .buffer(scope)
+      .is_some_and(|buffer| buffer.was_detached())
+    {
+      return Err(OpError::type_("The destination is detached"));
+    }
+    return Ok(());
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(dest) {
+    if buffer.was_detached() {
+      return Err(OpError::type_("The destination is detached"));
+    }
+    return Ok(());
+  }
+  Err(OpError::type_("The destination is not a BufferSource"))
+}
+
 fn with_destination(
   scope: &mut v8::PinScope,
   dest: v8::Local<v8::Value>,
@@ -847,13 +891,29 @@ fn with_destination(
   let size = usize::try_from(size)
     .map_err(|_| OpError::type_("The layout exceeds the address space"))?;
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(dest) {
-    let buffer = view
-      .buffer(scope)
-      .ok_or_else(|| OpError::type_("The destination is detached"))?;
-    if buffer.was_detached() || view.byte_length() < size {
+    if view.byte_length() < size {
       return Err(OpError::type_("The destination is too small"));
     }
-    return with_buffer(&buffer, view.byte_offset(), view.byte_length(), write);
+    if let Some(buffer) = view.buffer(scope) {
+      if buffer.was_detached() {
+        return Err(OpError::type_("The destination is too small"));
+      }
+      return with_buffer(
+        &buffer,
+        view.byte_offset(),
+        view.byte_length(),
+        write,
+      );
+    }
+    // A SharedArrayBuffer view has no ArrayBuffer. `data` includes the offset.
+    let data = view.data();
+    if data.is_null() {
+      return Err(OpError::type_("The destination is detached"));
+    }
+    let slice = unsafe {
+      std::slice::from_raw_parts_mut(data.cast::<u8>(), view.byte_length())
+    };
+    return write(slice);
   }
   if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(dest) {
     if buffer.was_detached() || buffer.byte_length() < size {

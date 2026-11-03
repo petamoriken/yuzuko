@@ -384,13 +384,16 @@ fn read_audio_chunk(
   if tag != TAG_AUDIO_CHUNK {
     return ReadResult::Skip;
   }
-  let Some((key, timestamp, data)) = read_chunk(helper) else {
+  let Some((key, timestamp, duration, data)) = read_chunk(helper) else {
     reject_clone(scope);
     return ReadResult::Failed;
   };
   let _ = EncodedAudioChunk::template(scope);
   let wrapper = unsafe {
-    wrap_instance(scope, EncodedAudioChunk::from_parts(key, timestamp, data))
+    wrap_instance(
+      scope,
+      EncodedAudioChunk::from_parts(key, timestamp, duration, data),
+    )
   };
   ReadResult::Done(v8::Global::new(scope, wrapper))
 }
@@ -421,13 +424,16 @@ fn read_video_chunk(
   if tag != TAG_VIDEO_CHUNK {
     return ReadResult::Skip;
   }
-  let Some((key, timestamp, data)) = read_chunk(helper) else {
+  let Some((key, timestamp, duration, data)) = read_chunk(helper) else {
     reject_clone(scope);
     return ReadResult::Failed;
   };
   let _ = EncodedVideoChunk::template(scope);
   let wrapper = unsafe {
-    wrap_instance(scope, EncodedVideoChunk::from_parts(key, timestamp, data))
+    wrap_instance(
+      scope,
+      EncodedVideoChunk::from_parts(key, timestamp, duration, data),
+    )
   };
   ReadResult::Done(v8::Global::new(scope, wrapper))
 }
@@ -437,32 +443,51 @@ fn write_chunk(
   object: v8::Local<v8::Object>,
   helper: &dyn v8::ValueSerializerHelper,
   tag: u32,
-  parts: (bool, i64, Vec<u8>),
+  parts: (bool, i64, Option<f64>, Vec<u8>),
 ) -> WriteResult {
-  if is_structured_transfer(scope, object) || parts.2.len() > MAX_CHUNK_BYTES {
+  if is_structured_transfer(scope, object) || parts.3.len() > MAX_CHUNK_BYTES {
     reject_clone(scope);
     return WriteResult::Failed;
   }
   helper.write_uint32(tag);
   helper.write_uint32(u32::from(parts.0));
   helper.write_uint64(parts.1 as u64);
-  write_bytes(helper, &parts.2);
+  match parts.2 {
+    Some(duration) => {
+      helper.write_uint32(1);
+      helper.write_double(duration);
+    }
+    None => helper.write_uint32(0),
+  }
+  write_bytes(helper, &parts.3);
   WriteResult::Wrote
 }
 
 fn read_chunk(
   helper: &dyn v8::ValueDeserializerHelper,
-) -> Option<(bool, i64, Vec<u8>)> {
+) -> Option<(bool, i64, Option<f64>, Vec<u8>)> {
   let mut key = 0u32;
   let mut timestamp = 0u64;
+  let mut present = 0u32;
   if !helper.read_uint32(&mut key)
     || key > 1
     || !helper.read_uint64(&mut timestamp)
+    || !helper.read_uint32(&mut present)
+    || present > 1
   {
     return None;
   }
+  let duration = if present == 1 {
+    let mut duration = 0.0;
+    if !helper.read_double(&mut duration) {
+      return None;
+    }
+    Some(duration)
+  } else {
+    None
+  };
   let data = read_limited(helper, MAX_CHUNK_BYTES)?;
-  Some((key == 1, timestamp as i64, data))
+  Some((key == 1, timestamp as i64, duration, data))
 }
 
 fn read_audio_parts(

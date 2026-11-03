@@ -5,45 +5,17 @@
   "webcodecs/audio-data-serialization.any.js": true,
   "webcodecs/audio-data.any.js": true,
   "webcodecs/audio-data.crossOriginIsolated.https.any.js": true,
-  "webcodecs/audio-decoder.crossOriginIsolated.https.any.js": {
-    "expectedFailures": [
-      "Test isConfigSupported() and configure() using a SharedArrayBuffer",
-      "Test isConfigSupported() and configure() using a Uint8Array(SharedArrayBuffer)"
-    ]
-  },
+  "webcodecs/audio-decoder.crossOriginIsolated.https.any.js": true,
   "webcodecs/audio-decoder.https.any.js": {
     "expectedFailures": [
       "Test that AudioDecoder.configure() doesn't support config: Ambiguous codec",
       "Test that AudioDecoder.configure() doesn't support config: Codec with MIME type",
-      "Test that AudioDecoder.configure() doesn't support config: Opus with more than two channels and with a description that is too short",
-      "Test that AudioDecoder.configure() doesn't support config: Opus with more than two channels and without description",
       "Test that AudioDecoder.configure() doesn't support config: Possible future aac codec string",
       "Test that AudioDecoder.configure() doesn't support config: Possible future opus codec string",
       "Test that AudioDecoder.configure() doesn't support config: Unrecognized codec",
       "Test that AudioDecoder.configure() doesn't support config: Video codec",
       "Test that AudioDecoder.configure() doesn't support config: codec with spaces",
-      "Test that AudioDecoder.configure() doesn't support config: flac requires a description",
-      "Test that AudioDecoder.configure() doesn't support config: vorbis requires a description",
-      "Test that AudioDecoder.configure() rejects invalid config: Empty codec",
-      "Test that AudioDecoder.configure() rejects invalid config: Missing numberOfChannels",
-      "Test that AudioDecoder.configure() rejects invalid config: Missing sampleRate",
-      "Test that AudioDecoder.configure() rejects invalid config: Valid configuration except detached description",
-      "Test that AudioDecoder.configure() rejects invalid config: Zero channels",
-      "Test that AudioDecoder.configure() rejects invalid config: Zero sampleRate",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Ambiguous codec",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Codec with MIME type",
       "Test that AudioDecoder.isConfigSupported() doesn't support config: Possible future aac codec string",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Possible future opus codec string",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Unrecognized codec",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Video codec",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: codec with spaces",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Empty codec",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing codec",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing numberOfChannels",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Missing sampleRate",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Valid configuration except detached description",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Zero channels",
-      "Test that AudioDecoder.isConfigSupported() rejects invalid config: Zero sampleRate",
       "Verify unconfigured AudioDecoder operations"
     ]
   },
@@ -118,35 +90,11 @@
     "ignore": true
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": false,
-  "webcodecs/chunk-serialization.any.js": {
-    "expectedFailures": [
-      "Verify EncodedAudioChunk is serializable.",
-      "Verify EncodedVideoChunk is serializable."
-    ]
-  },
-  "webcodecs/encoded-audio-chunk.any.js": {
-    "expectedFailures": [
-      "Test we can construct an EncodedAudioChunk."
-    ]
-  },
-  "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": {
-    "expectedFailures": [
-      "Test construction and copyTo() using a SharedArrayBuffer",
-      "Test construction and copyTo() using a Uint8Array(SharedArrayBuffer)"
-    ]
-  },
-  "webcodecs/encoded-video-chunk.any.js": {
-    "expectedFailures": [
-      "Test we can construct an EncodedVideoChunk.",
-      "Test we can construct an zero-sized EncodedVideoChunk."
-    ]
-  },
-  "webcodecs/encoded-video-chunk.crossOriginIsolated.https.any.js": {
-    "expectedFailures": [
-      "Test construction and copyTo() using a SharedArrayBuffer",
-      "Test construction and copyTo() using a Uint8Array(SharedArrayBuffer)"
-    ]
-  },
+  "webcodecs/chunk-serialization.any.js": true,
+  "webcodecs/encoded-audio-chunk.any.js": true,
+  "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": true,
+  "webcodecs/encoded-video-chunk.any.js": true,
+  "webcodecs/encoded-video-chunk.crossOriginIsolated.https.any.js": true,
   "webcodecs/encodedVideoChunk-serialization.crossAgentCluster.helper.html": {
     "ignore": true
   },
@@ -163,30 +111,11 @@
   },
   "webcodecs/idlharness.https.any.js": {
     "expectedFailures": [
-      "AudioData interface object length",
-      "AudioData interface: calling allocationSize(AudioDataCopyToOptions) on make_audio_data(1234, 2, 8000, 100) with too few arguments must throw TypeError",
-      "AudioData interface: calling copyTo(AllowSharedBufferSource, AudioDataCopyToOptions) on make_audio_data(1234, 2, 8000, 100) with too few arguments must throw TypeError",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"allocationSize(AudioDataCopyToOptions)\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"clone()\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"close()\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"copyTo(AllowSharedBufferSource, AudioDataCopyToOptions)\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"duration\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"format\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"numberOfChannels\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"numberOfFrames\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"sampleRate\" with the proper type",
-      "AudioData interface: make_audio_data(1234, 2, 8000, 100) must inherit property \"timestamp\" with the proper type",
-      "AudioData interface: operation allocationSize(AudioDataCopyToOptions)",
-      "AudioData interface: operation clone()",
-      "AudioData interface: operation copyTo(AllowSharedBufferSource, AudioDataCopyToOptions)",
-      "AudioData must be primary interface of make_audio_data(1234, 2, 8000, 100)",
       "AudioDecoder interface: attribute ondequeue",
-      "AudioDecoder interface: calling isConfigSupported(AudioDecoderConfig) on new AudioDecoder(defaultCodecInit) with too few arguments must throw TypeError",
       "AudioDecoder interface: existence and properties of interface object",
       "AudioDecoder interface: existence and properties of interface prototype object",
       "AudioDecoder interface: new AudioDecoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
       "AudioDecoder interface: operation flush()",
-      "AudioDecoder interface: operation isConfigSupported(AudioDecoderConfig)",
       "AudioEncoder interface object length",
       "AudioEncoder interface object name",
       "AudioEncoder interface: attribute encodeQueueSize",
@@ -215,58 +144,17 @@
       "AudioEncoder interface: operation isConfigSupported(AudioEncoderConfig)",
       "AudioEncoder interface: operation reset()",
       "AudioEncoder must be primary interface of new AudioEncoder(defaultCodecInit)",
-      "EncodedAudioChunk interface: attribute duration",
-      "EncodedAudioChunk interface: calling copyTo(AllowSharedBufferSource) on new EncodedAudioChunk(defaultAudioChunkInit) with too few arguments must throw TypeError",
-      "EncodedAudioChunk interface: new EncodedAudioChunk(defaultAudioChunkInit) must inherit property \"copyTo(AllowSharedBufferSource)\" with the proper type",
-      "EncodedAudioChunk interface: new EncodedAudioChunk(defaultAudioChunkInit) must inherit property \"duration\" with the proper type",
-      "EncodedAudioChunk interface: operation copyTo(AllowSharedBufferSource)",
-      "EncodedVideoChunk interface: attribute duration",
-      "EncodedVideoChunk interface: calling copyTo(AllowSharedBufferSource) on new EncodedVideoChunk(defaultVideoChunkInit) with too few arguments must throw TypeError",
-      "EncodedVideoChunk interface: new EncodedVideoChunk(defaultVideoChunkInit) must inherit property \"copyTo(AllowSharedBufferSource)\" with the proper type",
-      "EncodedVideoChunk interface: new EncodedVideoChunk(defaultVideoChunkInit) must inherit property \"duration\" with the proper type",
-      "EncodedVideoChunk interface: operation copyTo(AllowSharedBufferSource)",
       "ImageDecoder interface: attribute completed",
       "ImageDecoder interface: calling isTypeSupported(DOMString) on new ImageDecoder({data: self.imageBody, type: 'image/png'}) with too few arguments must throw TypeError",
       "ImageDecoder interface: operation decode(optional ImageDecodeOptions)",
       "ImageTrackList interface: attribute ready",
-      "Stringification of make_audio_data(1234, 2, 8000, 100)",
       "Stringification of new AudioEncoder(defaultCodecInit)",
-      "Stringification of new VideoColorSpace()",
-      "Stringification of new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
       "Stringification of new VideoEncoder(defaultCodecInit)",
-      "Stringification of new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33})",
-      "VideoColorSpace interface object length",
-      "VideoColorSpace interface object name",
-      "VideoColorSpace interface: attribute fullRange",
-      "VideoColorSpace interface: attribute matrix",
-      "VideoColorSpace interface: attribute primaries",
-      "VideoColorSpace interface: attribute transfer",
-      "VideoColorSpace interface: default toJSON operation on new VideoColorSpace()",
-      "VideoColorSpace interface: default toJSON operation on new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
-      "VideoColorSpace interface: existence and properties of interface object",
-      "VideoColorSpace interface: existence and properties of interface prototype object",
-      "VideoColorSpace interface: existence and properties of interface prototype object's \"constructor\" property",
-      "VideoColorSpace interface: existence and properties of interface prototype object's @@unscopables property",
-      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"fullRange\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"matrix\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"primaries\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"toJSON()\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace() must inherit property \"transfer\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"fullRange\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"matrix\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"primaries\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"toJSON()\" with the proper type",
-      "VideoColorSpace interface: new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true}) must inherit property \"transfer\" with the proper type",
-      "VideoColorSpace interface: operation toJSON()",
-      "VideoColorSpace must be primary interface of new VideoColorSpace()",
-      "VideoColorSpace must be primary interface of new VideoColorSpace({primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: true})",
       "VideoDecoder interface: attribute ondequeue",
-      "VideoDecoder interface: calling isConfigSupported(VideoDecoderConfig) on new VideoDecoder(defaultCodecInit) with too few arguments must throw TypeError",
       "VideoDecoder interface: existence and properties of interface object",
       "VideoDecoder interface: existence and properties of interface prototype object",
       "VideoDecoder interface: new VideoDecoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
       "VideoDecoder interface: operation flush()",
-      "VideoDecoder interface: operation isConfigSupported(VideoDecoderConfig)",
       "VideoEncoder interface object length",
       "VideoEncoder interface object name",
       "VideoEncoder interface: attribute encodeQueueSize",
@@ -295,35 +183,13 @@
       "VideoEncoder interface: operation isConfigSupported(VideoEncoderConfig)",
       "VideoEncoder interface: operation reset()",
       "VideoEncoder must be primary interface of new VideoEncoder(defaultCodecInit)",
-      "VideoFrame interface object length",
-      "VideoFrame interface: attribute codedRect",
       "VideoFrame interface: attribute flip",
       "VideoFrame interface: attribute rotation",
-      "VideoFrame interface: attribute visibleRect",
-      "VideoFrame interface: calling allocationSize(optional VideoFrameCopyToOptions) on new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) with too few arguments must throw TypeError",
-      "VideoFrame interface: calling copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions) on new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) with too few arguments must throw TypeError",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"allocationSize(optional VideoFrameCopyToOptions)\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"clone()\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"close()\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedHeight\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedRect\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"codedWidth\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"colorSpace\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions)\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"displayHeight\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"displayWidth\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"duration\" with the proper type",
       "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"flip\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"format\" with the proper type",
       "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"metadata()\" with the proper type",
       "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"rotation\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"timestamp\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"visibleRect\" with the proper type",
-      "VideoFrame interface: operation allocationSize(optional VideoFrameCopyToOptions)",
-      "VideoFrame interface: operation clone()",
       "VideoFrame interface: operation copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions)",
-      "VideoFrame interface: operation metadata()",
-      "VideoFrame must be primary interface of new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33})"
+      "VideoFrame interface: operation metadata()"
     ]
   },
   "webcodecs/image-decoder-animated-zero-delay.https.any.js": true,
@@ -398,12 +264,7 @@
       "Test configure() without setting width and height"
     ]
   },
-  "webcodecs/video-decoder.crossOriginIsolated.https.any.js": {
-    "expectedFailures": [
-      "Test isConfigSupported() and configure() using a SharedArrayBuffer",
-      "Test isConfigSupported() and configure() using a Uint8Array(SharedArrayBuffer)"
-    ]
-  },
+  "webcodecs/video-decoder.crossOriginIsolated.https.any.js": true,
   "webcodecs/video-decoder.https.any.js": {
     "expectedFailures": [
       "Test that VideoDecoder.configure() doesn't support config: Ambiguous codec",
@@ -418,25 +279,10 @@
       "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec",
       "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec with dataview description",
       "Test that VideoDecoder.configure() doesn't support config: codec with spaces",
-      "Test that VideoDecoder.configure() rejects invalid config:Empty codec",
-      "Test that VideoDecoder.configure() rejects invalid config:Valid codec, detached description",
       "Test that VideoDecoder.isConfigSupported() accepts config:variant 1 of h264 codec string",
       "Test that VideoDecoder.isConfigSupported() accepts config:variant 2 of h264 codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Ambiguous codec",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Audio codec",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Codec with MIME type",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Codec with bad casing",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future AV1 codec string",
       "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string (level 2.9)",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future HEVC codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future VP9 codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Unrecognized codec",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Unrecognized codec with dataview description",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: codec with spaces",
-      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Empty codec",
-      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Missing codec",
-      "Test that VideoDecoder.isConfigSupported() rejects invalid config:Valid codec, detached description"
+      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string (level 2.9)"
     ]
   },
   "webcodecs/video-encoder-canvasImageSource.https.html": {
@@ -598,33 +444,7 @@
       "Test that isConfigSupported() with orientation"
     ]
   },
-  "webcodecs/videoDecoder-codec-specific.https.any.js": {
-    "expectedFailures": [
-      "Close while decoding corrupt frame",
-      "Decode a key frame",
-      "Decode a key frame marked as delta fails",
-      "Decode a non key frame first fails",
-      "Decode corrupt frame",
-      "Decode empty frame",
-      "Test closed VideoDecoder operations",
-      "Test configure()",
-      "Test configure, reset, configure does not stall",
-      "Test decoding a corrupt frame after reset in a flush callback",
-      "Test decoding a with negative timestamp",
-      "Test decoding after flush",
-      "Test decoding chunks with duplicate timestamps preserves durations",
-      "Test invalid configs",
-      "Test isConfigSupported()",
-      "Test isConfigSupported() with 1080p crop",
-      "Test low-latency decoding",
-      "Test new flush after reset in a flush callback",
-      "Test reset during flush",
-      "Test that isConfigSupported() returns a parsed configuration",
-      "Test unconfigured VideoDecoder operations",
-      "Verify reset() suppresses outputs",
-      "VideoDecoder decodeQueueSize test"
-    ]
-  },
+  "webcodecs/videoDecoder-codec-specific.https.any.js": false,
   "webcodecs/videoDecoder-h264-sei.https.any.js": {
     "expectedFailures": [
       "H.264 SEI recovery point frames are treated as keyframes."
