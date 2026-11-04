@@ -1401,6 +1401,39 @@ impl Window {
     }
   }
 
+  fn pick_files(
+    &self,
+    scope: &mut v8::PinScope,
+    options: Option<v8::Local<v8::Value>>,
+  ) -> Result<Js, OpError> {
+    let (multiple, filters) = crate::shell::dialog::parse_open(scope, options)?;
+    self.require_dialog()?;
+    let title = self.title.borrow().clone();
+    let picked =
+      crate::shell::dialog::pick_files(self.id, &title, multiple, &filters)
+        .map_err(dialog_unsupported)?;
+    path_list(scope, picked)
+  }
+
+  fn pick_save_file(
+    &self,
+    scope: &mut v8::PinScope,
+    options: Option<v8::Local<v8::Value>>,
+  ) -> Result<Js, OpError> {
+    let (suggested, filters) =
+      crate::shell::dialog::parse_save(scope, options)?;
+    self.require_dialog()?;
+    let title = self.title.borrow().clone();
+    let picked = crate::shell::dialog::pick_save_file(
+      self.id,
+      &title,
+      suggested.as_deref(),
+      &filters,
+    )
+    .map_err(dialog_unsupported)?;
+    path_one(scope, picked)
+  }
+
   fn close(&self, scope: &mut v8::PinScope) {
     let Some(object) = inbox::object(scope, self.id) else {
       return;
@@ -1562,6 +1595,41 @@ pub(crate) fn dispatch_pointer_on_window(
   } else {
     yuzuko_dom::dispatch_pointer(scope, window, fired);
   }
+}
+
+fn path_list(
+  scope: &mut v8::PinScope,
+  picked: Option<Vec<String>>,
+) -> Result<Js, OpError> {
+  let Some(paths) = picked.filter(|paths| !paths.is_empty()) else {
+    return Ok(Js::null(scope));
+  };
+  let array = v8::Array::new(scope, paths.len() as i32);
+  for (index, path) in paths.iter().enumerate() {
+    let Some(text) = v8::String::new(scope, path) else {
+      return Err(OpError::type_("The file dialog failed."));
+    };
+    array.set_index(scope, index as u32, text.into());
+  }
+  let value: v8::Local<v8::Value> = array.into();
+  Ok(Js(v8::Global::new(scope, value)))
+}
+
+fn path_one(
+  scope: &mut v8::PinScope,
+  picked: Option<Vec<String>>,
+) -> Result<Js, OpError> {
+  let Some(path) = picked.and_then(|paths| paths.into_iter().next()) else {
+    return Ok(Js::null(scope));
+  };
+  if path.is_empty() {
+    return Ok(Js::null(scope));
+  }
+  let Some(text) = v8::String::new(scope, &path) else {
+    return Err(OpError::type_("The file dialog failed."));
+  };
+  let value: v8::Local<v8::Value> = text.into();
+  Ok(Js(v8::Global::new(scope, value)))
 }
 
 fn surface_object<'s>(

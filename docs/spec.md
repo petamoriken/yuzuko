@@ -163,6 +163,8 @@ The `fillRect` above is presented on the next turn of the event loop. `requestAn
 | `alert(message)` | Shows a modal dialog with OK. The message is `ToString`. Blocks until the user dismisses it |
 | `confirm(message)` | Shows a modal dialog with OK and Cancel. Returns `true` for OK |
 | `prompt(message, defaultValue)` | Shows a modal dialog with a text field, OK, and Cancel. Returns the entered string, or `null` when cancelled. An omitted `defaultValue` is `""` |
+| `pickFiles(options)` | Shows a modal file dialog. Returns absolute paths, or `null` when cancelled |
+| `pickSaveFile(options)` | Shows a modal save dialog. Returns one absolute path, or `null` when cancelled |
 | `setImeAllowed(allowed)` | IME for this window. The default is `false` |
 | `setCompositionCaret(x, y, width, height)` | IME candidate rectangle, in CSS pixels relative to this window's client origin |
 | `requestPointerLock()` / `exitPointerLock()` | Pointer lock for this window |
@@ -184,6 +186,14 @@ There is no global `requestAnimationFrame` on the main global. A frame belongs t
 A window's animation frames run at the refresh rate of the monitor that window is on. On macOS that rate is the screen's maximum, so a variable-refresh display runs at its maximum while frames are scheduled. Linux and Windows use the monitor's current mode. The next frame after the window moves uses the new monitor. A rate that cannot be read, a rate below 10 Hz or above 1000 Hz, and a headless window run at 60 Hz. A dedicated worker uses the slowest of those rates among the open windows whose canvas it holds. Each worker follows only the canvases it holds. A window that has not transferred a canvas does not count, and `new OffscreenCanvas` does not count. With no transferred window canvas, the worker runs at 60 Hz. Closing a window, or moving one to another monitor, applies the next time that worker schedules a frame.
 
 `requestIdleCallback(callback)` and `cancelIdleCallback(handle)` are on the main `globalThis`. `IdleDeadline` cannot be constructed with `new`. An idle period is at most 50ms. It also ends at the next timer or the next window animation frame when that comes first. The period does not start when less than 5ms remains before that timer or frame. A positive `timeout` still runs the callback then: `didTimeout` is true and `timeRemaining()` is 0. A callback scheduled during an idle period runs in a later period, and that later period does not start until the current deadline. Dedicated workers do not have these functions. A thrown callback is reported on `globalThis`.
+
+### File picker
+
+`pickFiles(options)` and `pickSaveFile(options)` block until the native dialog returns, the same way `alert` does. Omitted `options`, or `undefined`, uses the defaults. `null`, a string, or any other non-object throws `TypeError` before the window is checked. A closed window throws `InvalidStateError`. A headless process, including `yuzuko test` and `YUZUKO_HEADLESS=1`, throws `NotSupportedError`.
+
+`multiple` defaults to `false` and must be a boolean when present. `filters` is an array of `{ name, extensions }`. `extensions` is an array of extensions without a leading dot. A token that is exactly `*` selects every file. Other extensions in that same filter are ignored, and that filter may sit beside other filters. An empty `extensions`, a missing `extensions`, or a value that is not an array throws `TypeError`. An extension that is empty or contains `/`, `\`, `.`, NUL, or `*` throws `TypeError`. `name` and each extension are converted with `ToString`. A `name` that contains NUL throws `TypeError`. An empty or omitted `name` is `All files` when the filter selects every file, and otherwise the extensions joined by `, `. `suggestedName` is a file name for the save dialog. An empty name, `/`, `\`, or NUL throws `TypeError`. `.` is allowed.
+
+`multiple: false` still returns an array of one path. Cancelling, or accepting an empty selection, returns `null`. The paths are absolute and are not canonicalized. Linux shows a GTK 3 file chooser and does not parent it to the winit window. Windows and Linux show each filter, including one that selects every file, as its own choice. macOS keeps one allowed-type list: extensions from every filter are united, and there is no separate choice for each `name`. If any filter selects every file, or `filters` is omitted, macOS allows every file. The dialog selects files.
 
 ### Frame order
 

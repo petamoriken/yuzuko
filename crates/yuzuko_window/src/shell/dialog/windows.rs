@@ -324,3 +324,144 @@ fn edit_text(edit: windows_sys::Win32::Foundation::HWND) -> String {
   }
   String::from_utf16_lossy(&buffer[..written as usize])
 }
+
+pub(super) fn pick_files(
+  parent: windows_sys::Win32::Foundation::HWND,
+  title: &str,
+  multiple: bool,
+  filters: &[super::FileFilter],
+) -> Result<Option<Vec<String>>, String> {
+  pick(parent, title, None, filters, true, multiple)
+}
+
+pub(super) fn pick_save(
+  parent: windows_sys::Win32::Foundation::HWND,
+  title: &str,
+  suggested: Option<&str>,
+  filters: &[super::FileFilter],
+) -> Result<Option<Vec<String>>, String> {
+  pick(parent, title, suggested, filters, false, false)
+}
+
+fn pick(
+  parent: windows_sys::Win32::Foundation::HWND,
+  title: &str,
+  suggested: Option<&str>,
+  filters: &[super::FileFilter],
+  open: bool,
+  multiple: bool,
+) -> Result<Option<Vec<String>>, String> {
+  use std::mem::size_of;
+  use windows_sys::Win32::UI::Controls::Dialogs::{
+    CommDlgExtendedError, GetOpenFileNameW, GetSaveFileNameW,
+    OFN_ALLOWMULTISELECT, OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_NOCHANGEDIR,
+    OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST, OPENFILENAMEW,
+  };
+  let filter = filter_units(filters);
+  let caption = wide(title);
+  let mut buffer = vec![0u16; 32768];
+  if let Some(name) = suggested {
+    let units: Vec<u16> = name.encode_utf16().collect();
+    let count = units.len().min(buffer.len().saturating_sub(1));
+    buffer[..count].copy_from_slice(&units[..count]);
+  }
+  let mut flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+  if open {
+    flags |= OFN_FILEMUSTEXIST;
+    if multiple {
+      flags |= OFN_ALLOWMULTISELECT;
+    }
+  } else {
+    flags |= OFN_OVERWRITEPROMPT;
+  }
+  let mut dialog = OPENFILENAMEW {
+    lStructSize: size_of::<OPENFILENAMEW>() as u32,
+    hwndOwner: parent,
+    lpstrFilter: filter.as_ptr(),
+    lpstrFile: buffer.as_mut_ptr(),
+    nMaxFile: buffer.len() as u32,
+    lpstrTitle: caption.as_ptr(),
+    Flags: flags,
+    ..OPENFILENAMEW::default()
+  };
+  let accepted = unsafe {
+    if open {
+      GetOpenFileNameW(&mut dialog)
+    } else {
+      GetSaveFileNameW(&mut dialog)
+    }
+  };
+  if accepted == 0 {
+    let code = unsafe { CommDlgExtendedError() };
+    if code == 0 {
+      return Ok(None);
+    }
+    return Err(format!("The file dialog failed ({code})."));
+  }
+  let paths: Vec<String> = chosen_paths(&buffer, multiple)
+    .into_iter()
+    .map(super::absolute_path)
+    .collect();
+  if paths.is_empty() {
+    Ok(None)
+  } else {
+    Ok(Some(paths))
+  }
+}
+
+/// `name\0*.ext;*.ext\0` pairs, ended by an extra NUL. `*` is its own pair.
+fn filter_units(filters: &[super::FileFilter]) -> Vec<u16> {
+  let mut buffer = Vec::new();
+  let push = |buffer: &mut Vec<u16>, text: &str| {
+    buffer.extend(text.encode_utf16());
+    buffer.push(0);
+  };
+  if filters.is_empty() {
+    push(&mut buffer, "All files");
+    push(&mut buffer, "*.*");
+  } else {
+    for filter in filters {
+      push(&mut buffer, &filter.name);
+      let pattern = if filter.all {
+        "*.*".to_string()
+      } else {
+        filter
+          .extensions
+          .iter()
+          .map(|extension| format!("*.{extension}"))
+          .collect::<Vec<_>>()
+          .join(";")
+      };
+      push(&mut buffer, &pattern);
+    }
+  }
+  buffer.push(0);
+  buffer
+}
+
+/// Explorer multi-select is `directory\0file\0file\0\0`. One file is one path.
+fn chosen_paths(buffer: &[u16], multiple: bool) -> Vec<std::path::PathBuf> {
+  let mut parts = Vec::new();
+  let mut start = 0usize;
+  for (index, unit) in buffer.iter().enumerate() {
+    if *unit != 0 {
+      continue;
+    }
+    if index == start {
+      break;
+    }
+    parts.push(String::from_utf16_lossy(&buffer[start..index]));
+    start = index + 1;
+  }
+  if parts.is_empty() {
+    return Vec::new();
+  }
+  if !multiple || parts.len() == 1 {
+    return vec![std::path::PathBuf::from(parts.remove(0))];
+  }
+  let directory = parts.remove(0);
+  parts
+    .into_iter()
+    .map(|name| std::path::PathBuf::from(&directory).join(name))
+    .collect()
+}

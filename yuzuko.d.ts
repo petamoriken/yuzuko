@@ -1208,6 +1208,60 @@ declare namespace Yuzuko {
   }
 
   /**
+   * One file filter for {@link Window.pickFiles} and
+   * {@link Window.pickSaveFile}.
+   */
+  interface FileFilter {
+    /**
+     * Label shown for this filter on Windows and Linux.
+     *
+     * macOS does not show a separate choice for each name. Omitted or
+     * empty uses `All files` when an extension is `*`, and otherwise the
+     * extensions joined by `, `.
+     */
+    name?: string;
+
+    /**
+     * Extensions without a leading dot.
+     *
+     * A token that is exactly `*` selects every file. It may sit beside
+     * other extensions in this filter, and this filter may sit beside
+     * other filters. macOS unites every extension into one list, and
+     * allows every file when any filter is `*`.
+     */
+    extensions: string[];
+  }
+
+  /**
+   * Options for {@link Window.pickFiles}.
+   */
+  interface FilePickerOptions {
+    /**
+     * Select more than one file.
+     *
+     * @defaultValue false
+     */
+    multiple?: boolean;
+
+    /** Filters. Omitted accepts every file. */
+    filters?: FileFilter[];
+  }
+
+  /**
+   * Options for {@link Window.pickSaveFile}.
+   */
+  interface FileSaveOptions {
+    /**
+     * Initial file name. A path separator or NUL is rejected. `.` is a
+     * file name.
+     */
+    suggestedName?: string;
+
+    /** Filters. Omitted accepts every file. */
+    filters?: FileFilter[];
+  }
+
+  /**
    * One native window.
    *
    * Startup does not open a window. Each `new Yuzuko.Window()` opens one.
@@ -1547,6 +1601,44 @@ declare namespace Yuzuko {
      * @throws {@link DOMException} `InvalidStateError` when the window is closed.
      */
     prompt(message?: any, defaultValue?: string): string | null;
+
+    /**
+     * Shows a native modal file dialog.
+     *
+     * Returns absolute paths. `multiple: false` still returns a one-element
+     * array. Cancelling, or accepting an empty selection, returns `null`.
+     * `options.filters` selects extensions. An extension has no leading dot.
+     * `*` means every file and may be its own filter beside other filters.
+     * macOS unites every extension into one allowed-type list. If any
+     * filter is `*` or `filters` is omitted, macOS allows every file.
+     * Linux uses GTK 3 and does not parent the dialog to the winit window.
+     *
+     * @param options - Omitted or `undefined` selects a single file of any type.
+     * @returns The selected paths, or `null` when cancelled.
+     * @throws {@link TypeError} When `options` is not an object, `multiple` is
+     * not a boolean, or `filters` / `extensions` is not a usable extension list.
+     * @throws {@link DOMException} `NotSupportedError` when the process is
+     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     */
+    pickFiles(options?: FilePickerOptions): string[] | null;
+
+    /**
+     * Shows a native modal save dialog.
+     *
+     * Returns one absolute path, or `null` when cancelled. `suggestedName` is
+     * a file name. Linux uses GTK 3 and does not parent the dialog to the
+     * winit window.
+     *
+     * @param options - Omitted or `undefined` asks for any file name.
+     * @returns The chosen path, or `null` when cancelled.
+     * @throws {@link TypeError} When `options` is not an object, `suggestedName`
+     * is empty or contains a path separator or NUL, or `filters` is not usable.
+     * @throws {@link DOMException} `NotSupportedError` when the process is
+     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     */
+    pickSaveFile(options?: FileSaveOptions): string | null;
 
     /**
      * Enables or disables IME for this window.

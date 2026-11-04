@@ -1,4 +1,4 @@
-//! Native `alert`, `confirm`, and `prompt` for one `Yuzuko.Window`.
+//! Native `alert`, `confirm`, `prompt`, and file dialogs for one window.
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -100,4 +100,291 @@ fn present(
     let _ = (id, title, message, dialog);
     Err("This system has no dialog.".to_string())
   }
+}
+
+pub(crate) struct FileFilter {
+  /// Windows and Linux show this beside the extensions. AppKit keeps one
+  /// extension list, so macOS does not read it.
+  #[cfg_attr(target_os = "macos", allow(dead_code))]
+  pub name: String,
+  pub extensions: Vec<String>,
+  pub all: bool,
+}
+
+pub(crate) fn parse_open(
+  scope: &mut v8::PinScope,
+  options: Option<v8::Local<v8::Value>>,
+) -> Result<(bool, Vec<FileFilter>), OpError> {
+  let object = options_object(scope, options)?;
+  let Some(object) = object else {
+    return Ok((false, Vec::new()));
+  };
+  let multiple = match get_field(scope, object, "multiple")? {
+    Some(value) if value.is_boolean() => value.is_true(),
+    Some(_) => {
+      return Err(OpError::type_("multiple must be a boolean."));
+    }
+    None => false,
+  };
+  Ok((multiple, parse_filters(scope, object)?))
+}
+
+pub(crate) fn parse_save(
+  scope: &mut v8::PinScope,
+  options: Option<v8::Local<v8::Value>>,
+) -> Result<(Option<String>, Vec<FileFilter>), OpError> {
+  let object = options_object(scope, options)?;
+  let Some(object) = object else {
+    return Ok((None, Vec::new()));
+  };
+  let filters = parse_filters(scope, object)?;
+  let suggested = match get_field(scope, object, "suggestedName")? {
+    Some(value) => {
+      let name = js_string(scope, value)?;
+      if name.is_empty() || name.contains(['/', '\\', '\0']) {
+        return Err(OpError::type_("suggestedName must be a file name."));
+      }
+      Some(name)
+    }
+    None => None,
+  };
+  Ok((suggested, filters))
+}
+
+pub(crate) fn pick_files(
+  id: u64,
+  title: &str,
+  multiple: bool,
+  filters: &[FileFilter],
+) -> Result<Option<Vec<String>>, String> {
+  #[cfg(target_os = "macos")]
+  {
+    let parent = macos::parent(id)?;
+    macos::pick_files(parent.as_deref(), title, multiple, filters)
+  }
+  #[cfg(target_os = "windows")]
+  {
+    let parent = windows::parent(id)?;
+    windows::pick_files(parent, title, multiple, filters)
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let _ = id;
+    linux::pick_files(title, multiple, filters)
+  }
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux"
+  )))]
+  {
+    let _ = (id, title, multiple, filters);
+    Err("This system has no dialog.".to_string())
+  }
+}
+
+pub(crate) fn pick_save_file(
+  id: u64,
+  title: &str,
+  suggested: Option<&str>,
+  filters: &[FileFilter],
+) -> Result<Option<Vec<String>>, String> {
+  #[cfg(target_os = "macos")]
+  {
+    let parent = macos::parent(id)?;
+    macos::pick_save(parent.as_deref(), title, suggested, filters)
+  }
+  #[cfg(target_os = "windows")]
+  {
+    let parent = windows::parent(id)?;
+    windows::pick_save(parent, title, suggested, filters)
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let _ = id;
+    linux::pick_save(title, suggested, filters)
+  }
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux"
+  )))]
+  {
+    let _ = (id, title, suggested, filters);
+    Err("This system has no dialog.".to_string())
+  }
+}
+
+pub(super) fn absolute_path(path: std::path::PathBuf) -> String {
+  let path = if path.is_absolute() {
+    path
+  } else {
+    match std::env::current_dir() {
+      Ok(dir) => dir.join(path),
+      Err(_) => path,
+    }
+  };
+  path.to_string_lossy().into_owned()
+}
+
+fn options_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  options: Option<v8::Local<'_, v8::Value>>,
+) -> Result<Option<v8::Local<'s, v8::Object>>, OpError> {
+  let Some(value) = options else {
+    return Ok(None);
+  };
+  if value.is_undefined() {
+    return Ok(None);
+  }
+  if value.is_null() || value.is_string() || !value.is_object() {
+    return Err(OpError::type_("The file picker options must be an object."));
+  }
+  let global = v8::Global::new(scope, value);
+  let value = v8::Local::new(scope, global);
+  v8::Local::<v8::Object>::try_from(value)
+    .map(Some)
+    .map_err(|_| OpError::type_("The file picker options must be an object."))
+}
+
+fn get_field<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
+  let Some(key) = v8::String::new(scope, name) else {
+    return Err(OpError::type_("The file picker options must be an object."));
+  };
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let object = yuzuko_core::op::root(tc, object);
+    match object.get(tc, key.into()) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  match captured {
+    Ok(global) => {
+      let value = v8::Local::new(scope, global);
+      if value.is_undefined() {
+        Ok(None)
+      } else {
+        Ok(Some(value))
+      }
+    }
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
+    }
+  }
+}
+
+fn array_item<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  list: v8::Local<'_, v8::Array>,
+  index: u32,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let list = yuzuko_core::op::root(tc, list);
+    match list.get_index(tc, index) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Err(v8::Global::new(tc, exception))
+        } else {
+          let missing: v8::Local<v8::Value> = v8::undefined(tc).into();
+          Ok(v8::Global::new(tc, missing))
+        }
+      }
+    }
+  };
+  match captured {
+    Ok(global) => Ok(v8::Local::new(scope, global)),
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
+    }
+  }
+}
+
+fn parse_filters(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Vec<FileFilter>, OpError> {
+  let Some(value) = get_field(scope, object, "filters")? else {
+    return Ok(Vec::new());
+  };
+  let Ok(list) = v8::Local::<v8::Array>::try_from(value) else {
+    return Err(OpError::type_("filters must be an array."));
+  };
+  let mut filters = Vec::new();
+  for index in 0..list.length() {
+    let item = array_item(scope, list, index)?;
+    filters.push(parse_filter(scope, item)?);
+  }
+  Ok(filters)
+}
+
+fn parse_filter(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<FileFilter, OpError> {
+  if value.is_null() || value.is_string() || !value.is_object() {
+    return Err(OpError::type_("A file filter must be an object."));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_("A file filter must be an object."));
+  };
+  let name = match get_field(scope, object, "name")? {
+    Some(text) => js_string(scope, text)?,
+    None => String::new(),
+  };
+  if name.contains('\0') {
+    return Err(OpError::type_("A file filter name must be text."));
+  }
+  let Some(extensions_value) = get_field(scope, object, "extensions")? else {
+    return Err(OpError::type_("extensions must be an array of extensions."));
+  };
+  let Ok(list) = v8::Local::<v8::Array>::try_from(extensions_value) else {
+    return Err(OpError::type_("extensions must be an array of extensions."));
+  };
+  if list.length() == 0 {
+    return Err(OpError::type_("extensions must be an array of extensions."));
+  }
+  let mut extensions = Vec::new();
+  let mut all = false;
+  for index in 0..list.length() {
+    let item = array_item(scope, list, index)?;
+    let text = js_string(scope, item)?;
+    if text == "*" {
+      all = true;
+      continue;
+    }
+    if text.is_empty() || text.contains(['/', '\\', '.', '\0', '*']) {
+      return Err(OpError::type_("A file extension has no separator."));
+    }
+    extensions.push(text);
+  }
+  if all {
+    extensions.clear();
+  }
+  let name = if name.is_empty() {
+    if all {
+      "All files".to_string()
+    } else {
+      extensions.join(", ")
+    }
+  } else {
+    name
+  };
+  Ok(FileFilter {
+    name,
+    extensions,
+    all,
+  })
 }
