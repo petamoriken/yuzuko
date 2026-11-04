@@ -13179,6 +13179,13 @@ interface Clipboard extends EventTarget {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Clipboard/write)
    */
   write(data: ClipboardItem[]): Promise<void>;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Clipboard/clipboardchange_event)
+   */
+  onclipboardchange:
+    | ((this: Clipboard, ev: ClipboardChangeEvent) => any)
+    | null;
 }
 declare var Clipboard: {
   prototype: Clipboard;
@@ -13190,7 +13197,7 @@ declare var Clipboard: {
  * `copy`, `cut`, and `paste` on the focused {@link Yuzuko.WindowSurface}.
  *
  * The host sends these for Ctrl/Cmd+C, X, and V. `clipboardData` is null.
- * `ClipboardChangeEvent` is absent.
+ * {@link ClipboardChangeEvent} is a separate event on {@link Clipboard}.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent)
  */
@@ -13212,6 +13219,44 @@ declare var ClipboardEvent: {
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent/ClipboardEvent) */
 interface ClipboardEventInit extends EventInit {
   clipboardData?: null;
+}
+
+/**
+ * A change to the system clipboard.
+ *
+ * The host event is `clipboardchange` on {@link Clipboard}. It does not
+ * bubble and cannot be cancelled. `types` lists `text/plain`, `text/html`,
+ * and `image/png` when those are present. A constructed event keeps the
+ * `types` it was given. A dedicated worker has no `ClipboardChangeEvent`.
+ *
+ * @throws {@link TypeError} When `types` is present and is not an array, or
+ * when `changeId` is present and does not convert with `ToBigInt`, or when
+ * `changeId` does not fit in 128 bits.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardChangeEvent)
+ */
+interface ClipboardChangeEvent extends Event {
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardChangeEvent/types)
+   */
+  readonly types: readonly string[];
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardChangeEvent/changeId)
+   */
+  readonly changeId: bigint;
+}
+declare var ClipboardChangeEvent: {
+  prototype: ClipboardChangeEvent;
+  new(type: string, eventInitDict?: ClipboardChangeEventInit): ClipboardChangeEvent;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardChangeEvent/ClipboardChangeEvent)
+ */
+interface ClipboardChangeEventInit extends EventInit {
+  types?: string[];
+  changeId?: bigint;
 }
 
 /**

@@ -1,14 +1,17 @@
-//! `navigator.clipboard`, `ClipboardItem`, and `copy` / `cut` / `paste`.
+//! `navigator.clipboard`, `ClipboardItem`, `ClipboardEvent`, and
+//! `ClipboardChangeEvent`.
 //!
 //! Reads and writes require a recent user gesture on the focused window.
 //! Text is published to the OS pasteboard. `image/png` bytes are kept so a
-//! later `getType` returns the same PNG.
+//! later `getType` returns the same PNG. A successful write fires
+//! `clipboardchange` before its promise resolves.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Cursor;
 
 use yuzuko_core::op::Js;
 use yuzuko_core::op::OpError;
+use yuzuko_core::op::{traced, traced_local};
 use yuzuko_dom::Event;
 use yuzuko_dom::EventTarget;
 use yuzuko_dom::define_is_trusted;
@@ -17,6 +20,11 @@ use yuzuko_macros::op;
 use crate::activation;
 
 const TEXT: &str = "text/plain";
+#[cfg_attr(
+  not(any(target_os = "macos", target_os = "windows")),
+  allow(dead_code)
+)]
+const HTML: &str = "text/html";
 const PNG: &str = "image/png";
 
 struct Contents {
@@ -35,12 +43,17 @@ std::thread_local! {
     const { RefCell::new(None) };
   static CLIPBOARD: RefCell<Option<v8::Global<v8::Object>>> =
     const { RefCell::new(None) };
+  static LAST_SEEN: Cell<Option<u64>> = const { Cell::new(None) };
+  static LINUX_SEQUENCE: Cell<u64> = const { Cell::new(0) };
+  static PENDING: RefCell<Option<(Vec<String>, ChangeId)>> =
+    const { RefCell::new(None) };
 }
 
 pub fn install(scope: &mut v8::PinScope) {
   Clipboard::install(scope);
   ClipboardItem::install(scope);
   ClipboardEvent::install(scope);
+  ClipboardChangeEvent::install(scope);
 }
 
 pub fn instance(scope: &mut v8::PinScope) -> Js {
@@ -294,12 +307,14 @@ impl ClipboardItem {
 #[repr(C)]
 struct Clipboard {
   base: EventTarget,
+  on_change: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 impl Clipboard {
   fn new() -> Self {
     Self {
       base: EventTarget::new(),
+      on_change: RefCell::new(None),
     }
   }
 }
@@ -307,6 +322,9 @@ impl Clipboard {
 unsafe impl v8::cppgc::GarbageCollected for Clipboard {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    if let Ok(slot) = self.on_change.try_borrow() {
+      visitor.trace(&*slot);
+    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -342,6 +360,7 @@ impl Clipboard {
     if let Err(message) = store_text(data) {
       return reject_dom(scope, "NotAllowedError", &message);
     }
+    announce(scope);
     resolve(scope, v8::undefined(scope).into())
   }
 
@@ -409,7 +428,22 @@ impl Clipboard {
     if let Err(message) = store_parts(text, png) {
       return reject_dom(scope, "NotAllowedError", &message);
     }
+    announce(scope);
     resolve(scope, v8::undefined(scope).into())
+  }
+
+  #[getter]
+  fn onclipboardchange(&self, scope: &mut v8::PinScope) -> Js {
+    handler_value(scope, &self.on_change)
+  }
+
+  #[setter]
+  fn onclipboardchange(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_handler(scope, &self.base, &self.on_change, "clipboardchange", value);
   }
 }
 
@@ -588,4 +622,512 @@ fn well_formed_clipboard_type(name: &str) -> bool {
 fn js_null(scope: &mut v8::PinScope) -> Js {
   let value: v8::Local<v8::Value> = v8::null(scope).into();
   Js(v8::Global::new(scope, value))
+}
+
+#[derive(Clone, Copy)]
+struct ChangeId {
+  negative: bool,
+  words: [u64; 2],
+}
+
+impl ChangeId {
+  fn zero() -> Self {
+    Self {
+      negative: false,
+      words: [0, 0],
+    }
+  }
+
+  fn from_u64(value: u64) -> Self {
+    Self {
+      negative: false,
+      words: [value, 0],
+    }
+  }
+}
+
+#[repr(C)]
+struct ClipboardChangeEvent {
+  base: Event,
+  types: RefCell<Vec<String>>,
+  change_id: ChangeId,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for ClipboardChangeEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ClipboardChangeEvent"
+  }
+}
+
+#[op(inherit = Event)]
+impl ClipboardChangeEvent {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    let base = Event::from_args(scope, args, false)?;
+    let init = if args.length() > 1 {
+      Some(args.get(1))
+    } else {
+      None
+    };
+    let (types, change_id) = parse_change_init(scope, init)?;
+    Ok(Self {
+      base,
+      types: RefCell::new(types),
+      change_id,
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn types(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    let names = self.types.borrow().clone();
+    frozen_strings(scope, &names)
+  }
+
+  #[getter]
+  fn change_id(&self, scope: &mut v8::PinScope) -> Js {
+    let id = change_bigint(scope, self.change_id);
+    js_value(scope, id.into())
+  }
+}
+
+/// Records one external change while no window is focused.
+pub fn deliver_pending(scope: &mut v8::PinScope) {
+  let pending = PENDING.with(|slot| slot.borrow_mut().take());
+  let Some((types, change_id)) = pending else {
+    return;
+  };
+  dispatch_change(scope, &types, change_id);
+}
+
+/// The first observation records the sequence and does not fire.
+pub fn poll(scope: &mut v8::PinScope) {
+  let Some(sequence) = platform_sequence() else {
+    return;
+  };
+  let previous = LAST_SEEN.with(|cell| cell.get());
+  if previous.is_none() {
+    LAST_SEEN.with(|cell| cell.set(Some(sequence)));
+    return;
+  }
+  if previous == Some(sequence) {
+    return;
+  }
+  LAST_SEEN.with(|cell| cell.set(Some(sequence)));
+  let types = platform_mime_types();
+  let change_id = ChangeId::from_u64(sequence);
+  if activation::focused_id().is_some() {
+    dispatch_change(scope, &types, change_id);
+  } else {
+    PENDING.with(|slot| {
+      *slot.borrow_mut() = Some((types, change_id));
+    });
+  }
+}
+
+fn announce(scope: &mut v8::PinScope) {
+  let types = content_types();
+  let change_id = take_change_id();
+  if activation::focused_id().is_some() {
+    dispatch_change(scope, &types, change_id);
+  } else {
+    PENDING.with(|slot| {
+      *slot.borrow_mut() = Some((types, change_id));
+    });
+  }
+}
+
+fn content_types() -> Vec<String> {
+  CONTENTS.with(|slot| {
+    let contents = slot.borrow();
+    let mut types = Vec::new();
+    if contents.text.is_some() {
+      types.push(TEXT.to_string());
+    }
+    if contents.png.is_some() {
+      types.push(PNG.to_string());
+    }
+    types
+  })
+}
+
+fn take_change_id() -> ChangeId {
+  if let Some(sequence) = platform_sequence() {
+    LAST_SEEN.with(|cell| cell.set(Some(sequence)));
+    return ChangeId::from_u64(sequence);
+  }
+  // Linux has no sequence that matches the pasteboard, so other
+  // applications are not observed. Writes in this process count from 1.
+  LINUX_SEQUENCE.with(|cell| {
+    let next = cell.get().saturating_add(1).max(1);
+    cell.set(next);
+    ChangeId::from_u64(next)
+  })
+}
+
+fn dispatch_change(
+  scope: &mut v8::PinScope,
+  types: &[String],
+  change_id: ChangeId,
+) {
+  let Some(target) = CLIPBOARD.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .map(|value| v8::Local::new(scope, value))
+  }) else {
+    return;
+  };
+  let event = ClipboardChangeEvent {
+    base: Event::new("clipboardchange", false, false, false, true),
+    types: RefCell::new(types.to_vec()),
+    change_id,
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  let _ = yuzuko_dom::dispatch(scope, target, object);
+}
+
+fn parse_change_init(
+  scope: &mut v8::PinScope,
+  init: Option<v8::Local<v8::Value>>,
+) -> Result<(Vec<String>, ChangeId), OpError> {
+  let Some(init) = init.filter(|value| {
+    !value.is_null() && !value.is_undefined() && !value.is_string()
+  }) else {
+    return Ok((Vec::new(), ChangeId::zero()));
+  };
+  if !init.is_object() {
+    return Ok((Vec::new(), ChangeId::zero()));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(init) else {
+    return Ok((Vec::new(), ChangeId::zero()));
+  };
+  let types = match dict_field(scope, object, "types")? {
+    Some(value) => read_type_list(scope, value)?,
+    None => Vec::new(),
+  };
+  let change_id = match dict_field(scope, object, "changeId")? {
+    Some(value) => read_change_id(scope, value)?,
+    None => ChangeId::zero(),
+  };
+  Ok((types, change_id))
+}
+
+fn dict_field<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
+  let Some(key) = v8::String::new(scope, name) else {
+    return Err(OpError::type_(
+      "ClipboardChangeEvent types must be a sequence.",
+    ));
+  };
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let object = yuzuko_core::op::root(tc, object);
+    match object.get(tc, key.into()) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  match captured {
+    Ok(global) => {
+      let value = v8::Local::new(scope, global);
+      if value.is_undefined() {
+        Ok(None)
+      } else {
+        Ok(Some(value))
+      }
+    }
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
+    }
+  }
+}
+
+fn read_type_list(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<String>, OpError> {
+  let Ok(list) = v8::Local::<v8::Array>::try_from(value) else {
+    return Err(OpError::type_(
+      "ClipboardChangeEvent types must be a sequence.",
+    ));
+  };
+  let mut types = Vec::new();
+  for index in 0..list.length() {
+    let item = array_item(scope, list, index)?;
+    types.push(crate::shell::dialog::js_string(scope, item)?);
+  }
+  Ok(types)
+}
+
+fn array_item<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  list: v8::Local<'_, v8::Array>,
+  index: u32,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let list = yuzuko_core::op::root(tc, list);
+    match list.get_index(tc, index) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Err(v8::Global::new(tc, exception))
+        } else {
+          let missing: v8::Local<v8::Value> = v8::undefined(tc).into();
+          Ok(v8::Global::new(tc, missing))
+        }
+      }
+    }
+  };
+  match captured {
+    Ok(global) => Ok(v8::Local::new(scope, global)),
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      Err(OpError::thrown(scope, exception))
+    }
+  }
+}
+
+fn read_change_id(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<ChangeId, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match value.to_big_int(tc) {
+      Some(bigint) => Ok(v8::Global::new(tc, bigint)),
+      None => {
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  let bigint = match captured {
+    Ok(global) => v8::Local::new(scope, global),
+    Err(exception) => {
+      let exception = v8::Local::new(scope, exception);
+      return Err(OpError::thrown(scope, exception));
+    }
+  };
+  if bigint.word_count() > 2 {
+    return Err(OpError::type_(
+      "ClipboardChangeEvent changeId is out of range.",
+    ));
+  }
+  let mut words = [0u64; 2];
+  let (negative, _) = bigint.to_words_array(&mut words);
+  Ok(ChangeId { negative, words })
+}
+
+fn change_bigint<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: ChangeId,
+) -> v8::Local<'s, v8::BigInt> {
+  if id.words == [0, 0] {
+    return v8::BigInt::new_from_i64(scope, 0);
+  }
+  let count = if id.words[1] == 0 { 1 } else { 2 };
+  v8::BigInt::new_from_words(scope, id.negative, &id.words[..count])
+    .unwrap_or_else(|| v8::BigInt::new_from_i64(scope, 0))
+}
+
+fn frozen_strings(
+  scope: &mut v8::PinScope,
+  names: &[String],
+) -> Result<Js, OpError> {
+  let array = v8::Array::new(scope, names.len() as i32);
+  for (index, name) in names.iter().enumerate() {
+    let Some(text) = v8::String::new(scope, name) else {
+      return Err(OpError::type_(
+        "ClipboardChangeEvent types must be a sequence.",
+      ));
+    };
+    array.set_index(scope, index as u32, text.into());
+  }
+  array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  Ok(js_value(scope, array.into()))
+}
+
+fn handler_value(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+) -> Js {
+  let value = slot
+    .borrow()
+    .as_ref()
+    .and_then(|reference| traced_local(scope, reference))
+    .unwrap_or_else(|| v8::null(scope).into());
+  Js(v8::Global::new(scope, value))
+}
+
+fn set_handler(
+  scope: &mut v8::PinScope,
+  target: &EventTarget,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+  type_name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  if let Some(previous) = slot.borrow().as_ref()
+    && let Some(previous) = traced_local(scope, previous)
+  {
+    target.remove_callback(scope, type_name, previous, false);
+  }
+  if value.is_function() {
+    target.add_callback(scope, type_name, value, false, false, false);
+    *slot.borrow_mut() = Some(traced(scope, value));
+  } else {
+    *slot.borrow_mut() = None;
+  }
+}
+
+fn platform_sequence() -> Option<u64> {
+  #[cfg(target_os = "macos")]
+  {
+    return Some(macos_change_count());
+  }
+  #[cfg(target_os = "windows")]
+  {
+    return Some(windows_sequence());
+  }
+  #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+  {
+    None
+  }
+}
+
+fn platform_mime_types() -> Vec<String> {
+  #[cfg(target_os = "macos")]
+  {
+    return macos_mime_types();
+  }
+  #[cfg(target_os = "windows")]
+  {
+    return windows_mime_types();
+  }
+  #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+  {
+    Vec::new()
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_change_count() -> u64 {
+  let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+  u64::try_from(board.changeCount()).unwrap_or(0)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_mime_types() -> Vec<String> {
+  use objc2_app_kit::{
+    NSPasteboardTypeHTML, NSPasteboardTypePNG, NSPasteboardTypeString,
+  };
+  let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+  let Some(types) = board.types() else {
+    return Vec::new();
+  };
+  let mut plain = false;
+  let mut html = false;
+  let mut png = false;
+  for index in 0..types.count() {
+    let kind = types.objectAtIndex(index);
+    unsafe {
+      if kind.isEqualToString(NSPasteboardTypeString) {
+        plain = true;
+      }
+      if kind.isEqualToString(NSPasteboardTypeHTML) {
+        html = true;
+      }
+      if kind.isEqualToString(NSPasteboardTypePNG) {
+        png = true;
+      }
+    }
+  }
+  let mut names = Vec::new();
+  if plain {
+    names.push(TEXT.to_string());
+  }
+  if html {
+    names.push(HTML.to_string());
+  }
+  if png {
+    names.push(PNG.to_string());
+  }
+  names
+}
+
+#[cfg(target_os = "windows")]
+fn windows_sequence() -> u64 {
+  use windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber;
+  unsafe { u64::from(GetClipboardSequenceNumber()) }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_mime_types() -> Vec<String> {
+  const CF_UNICODETEXT: u32 = 13;
+  const CF_DIB: u32 = 8;
+  let mut names = Vec::new();
+  if clipboard_format_available(CF_UNICODETEXT) {
+    names.push(TEXT.to_string());
+  }
+  if clipboard_format_available(html_format()) {
+    names.push(HTML.to_string());
+  }
+  if clipboard_format_available(png_format())
+    || clipboard_format_available(CF_DIB)
+  {
+    names.push(PNG.to_string());
+  }
+  names
+}
+
+#[cfg(target_os = "windows")]
+fn clipboard_format_available(format: u32) -> bool {
+  use windows_sys::Win32::System::DataExchange::IsClipboardFormatAvailable;
+  format != 0 && unsafe { IsClipboardFormatAvailable(format) } != 0
+}
+
+#[cfg(target_os = "windows")]
+fn png_format() -> u32 {
+  use std::sync::OnceLock;
+  static ATOM: OnceLock<u32> = OnceLock::new();
+  *ATOM.get_or_init(|| register_clipboard_format("PNG"))
+}
+
+#[cfg(target_os = "windows")]
+fn html_format() -> u32 {
+  use std::sync::OnceLock;
+  static ATOM: OnceLock<u32> = OnceLock::new();
+  *ATOM.get_or_init(|| register_clipboard_format("HTML Format"))
+}
+
+#[cfg(target_os = "windows")]
+fn register_clipboard_format(name: &str) -> u32 {
+  use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
+  let mut units: Vec<u16> = name.encode_utf16().collect();
+  units.push(0);
+  unsafe { RegisterClipboardFormatW(units.as_ptr()) }
 }

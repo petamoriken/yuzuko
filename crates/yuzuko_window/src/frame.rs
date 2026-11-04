@@ -78,6 +78,7 @@ pub fn wait(timeout: Option<Duration>) {
 /// display refresh before the event loop turns again.
 fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
   crate::shell::menu::poll(scope);
+  crate::shell::clipboard::poll(scope);
   crate::shell::tray::poll(scope);
   crate::shell::dock::poll(scope);
   os::begin_present_turn();

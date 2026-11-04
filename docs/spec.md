@@ -678,7 +678,13 @@ The web Gamepad API. `navigator.getGamepads()` returns the connected gamepads. `
 
 ## Clipboard
 
-`navigator.clipboard` `writeText`, `readText`, and `ClipboardItem` for `text/plain` and `image/png`. Reads and writes succeed only after a pointer or key press on the focused `Window`. The same calls reject with `NotAllowedError` without that action, and when the window is not focused. There is no permission prompt. `copy`, `cut`, and `paste` are dispatched on that surface. `ClipboardChangeEvent` is absent.
+`navigator.clipboard` `writeText`, `readText`, and `ClipboardItem` for `text/plain` and `image/png`. Reads and writes succeed only after a pointer or key press on the focused `Window`. The same calls reject with `NotAllowedError` without that action, and when the window is not focused. There is no permission prompt. `copy`, `cut`, and `paste` are dispatched on that surface.
+
+`ClipboardChangeEvent` is on the main global. `new ClipboardChangeEvent(type, init)` stores `init.types` and `init.changeId`. `types` defaults to an empty sequence. A present value that is not an array, including a string, throws `TypeError`. Each entry is converted with `ToString`. The getter returns a new frozen array. `changeId` defaults to `0n`. A present value is converted with `ToBigInt`. A value that does not fit in 128 bits throws `TypeError`. A user-constructed event keeps the types it was given.
+
+The host event type is `clipboardchange`. It does not bubble and cannot be cancelled. `isTrusted` is true. `types` lists the mandatory types that are present, in the order `text/plain`, `text/html`, `image/png`. Any other type is omitted. An event can list no types. `onclipboardchange` is the handler on `navigator.clipboard`. Assigning a function listens. Assigning any other value, including `null`, clears it.
+
+A successful `write` or `writeText` dispatches the event before the promise resolves when a window is focused. A call that rejects before the pasteboard is updated does not dispatch. Listeners run before `await` continues. macOS uses the pasteboard `changeCount` as `changeId`. Windows uses `GetClipboardSequenceNumber`. On those systems a later poll sees the same sequence and does not dispatch again. The first observation of the pasteboard is not a change. A change observed while no window is focused replaces one pending event, and that event is dispatched once after the next `focus` event. `blur` does not dispatch it. Linux dispatches for `write` and `writeText` only. A dedicated worker has no `Clipboard` and no `ClipboardChangeEvent`.
 
 ## Screen Wake Lock
 

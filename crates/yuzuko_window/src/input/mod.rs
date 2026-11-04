@@ -186,6 +186,9 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
           } else {
             dispatch_simple(scope, object, name, false, false);
           }
+          if name == "focus" {
+            clipboard::deliver_pending(scope);
+          }
           if name == "resize" {
             crate::media::refresh(scope, id);
           }

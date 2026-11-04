@@ -99,18 +99,7 @@
   "clipboard-apis/events/paste-event-manual.html": {
     "ignore": true
   },
-  "clipboard-apis/idlharness.https.window.js": {
-    "expectedFailures": [
-      "ClipboardChangeEvent interface object length",
-      "ClipboardChangeEvent interface object name",
-      "ClipboardChangeEvent interface: attribute changeId",
-      "ClipboardChangeEvent interface: attribute types",
-      "ClipboardChangeEvent interface: existence and properties of interface object",
-      "ClipboardChangeEvent interface: existence and properties of interface prototype object",
-      "ClipboardChangeEvent interface: existence and properties of interface prototype object's \"constructor\" property",
-      "ClipboardChangeEvent interface: existence and properties of interface prototype object's @@unscopables property"
-    ]
-  },
+  "clipboard-apis/idlharness.https.window.js": true,
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-disabled-by-permissions-policy.tentative.https.sub.html": {
     "ignore": true
   },
