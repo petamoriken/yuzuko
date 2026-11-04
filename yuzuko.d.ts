@@ -5142,8 +5142,10 @@ declare var performance: Performance;
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
  * `"Win32"` on Windows, `"MacIntel"` on macOS, and `"Linux"` on Linux.
- * `clipboard`, `gpu`, `wakeLock`, `keyboard`, and `getGamepads` exist on the main global.
- * A worker navigator has `userAgent` and `platform` only.
+ * `hardwareConcurrency` is the number of logical processors available to
+ * the process, and is at least 1. `clipboard`, `gpu`, `wakeLock`,
+ * `keyboard`, and `getGamepads` exist on the main global. A worker
+ * navigator has `userAgent`, `platform`, and `hardwareConcurrency`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -5162,6 +5164,17 @@ interface Navigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/platform)
    */
   readonly platform: string;
+
+  /**
+   * Number of logical processors available to this process.
+   *
+   * The value is an integer and is at least 1. When the operating system
+   * does not report a count, the value is 1. A dedicated worker reports
+   * the same count.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/hardwareConcurrency)
+   */
+  readonly hardwareConcurrency: number;
 
   /**
    * The process clipboard. Main global only.
@@ -13349,6 +13362,16 @@ declare class WorkerNavigator {
   readonly userAgent: string;
 
   readonly platform: string;
+
+  /**
+   * Number of logical processors available to this process.
+   *
+   * The value is an integer and is at least 1. When the operating system
+   * does not report a count, the value is 1.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/hardwareConcurrency)
+   */
+  readonly hardwareConcurrency: number;
 }
 
 /**

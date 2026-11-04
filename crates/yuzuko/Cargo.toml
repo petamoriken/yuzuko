@@ -149,6 +149,10 @@ name = "menu"
 required-features = ["window"]
 
 [[test]]
+name = "navigator"
+required-features = ["window"]
+
+[[test]]
 name = "package"
 required-features = ["window", "fetch"]
 

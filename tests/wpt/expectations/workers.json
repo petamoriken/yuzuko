@@ -89,11 +89,7 @@
   "workers/WorkerLocation-origin.sub.window.js": {
     "ignore": true
   },
-  "workers/WorkerNavigator-hardware-concurrency.any.js": {
-    "expectedFailures": [
-      "Test worker navigator hardware concurrency."
-    ]
-  },
+  "workers/WorkerNavigator-hardware-concurrency.any.js": true,
   "workers/WorkerNavigator.any.js": {
     "expectedFailures": [
       "Testing Navigator properties on workers."

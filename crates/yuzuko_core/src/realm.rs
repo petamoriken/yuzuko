@@ -129,7 +129,19 @@ fn install_navigator(scope: &mut v8::PinScope, global: v8::Local<v8::Object>) {
   js::set_value(scope, navigator, "userAgent", agent.into());
   let platform = v8::String::new(scope, navigator_platform()).unwrap();
   js::set_value(scope, navigator, "platform", platform.into());
+  let cores = v8::Integer::new_from_unsigned(scope, hardware_concurrency());
+  js::set_value(scope, navigator, "hardwareConcurrency", cores.into());
   js::set_value(scope, global, "navigator", navigator.into());
+}
+
+/// Logical processors available to this process.
+///
+/// HTML requires a positive integer and uses 1 when the count is unknown.
+fn hardware_concurrency() -> u32 {
+  let Ok(count) = std::thread::available_parallelism() else {
+    return 1;
+  };
+  u32::try_from(count.get()).unwrap_or(u32::MAX).max(1)
 }
 
 /// Historical `navigator.platform` tokens. Endings tests treat a `Win` prefix
@@ -303,5 +315,15 @@ impl v8::ValueDeserializerImpl for CloneHost {
     value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
     clone::read_host_object(scope, value_deserializer)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::hardware_concurrency;
+
+  #[test]
+  fn hardware_concurrency_is_positive() {
+    assert!(hardware_concurrency() >= 1);
   }
 }

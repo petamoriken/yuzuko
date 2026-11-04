@@ -635,7 +635,7 @@ fn attach_navigator(scope: &mut v8::PinScope) {
   if let Some(previous) =
     previous.and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
   {
-    for name in ["userAgent", "platform"] {
+    for name in ["userAgent", "platform", "hardwareConcurrency"] {
       let name = v8::String::new(scope, name).unwrap();
       if let Some(value) = previous.get(scope, name.into()) {
         navigator.set(scope, name.into(), value);

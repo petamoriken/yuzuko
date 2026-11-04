@@ -32,7 +32,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 
 - `Event`, `EventTarget`, `CustomEvent`, `ErrorEvent`, `PromiseRejectionEvent`, `DOMException`
 - `AbortController`, `AbortSignal`
-- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `console`, `navigator.userAgent`
+- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `console`, `navigator.userAgent`, `navigator.hardwareConcurrency`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `URLPattern`, `Blob`, `File`
 - Streams, `FormData`, `CompressionStream`, `DecompressionStream`
 - `Crypto`, `CryptoKey`, `SubtleCrypto`
@@ -101,6 +101,8 @@ Do not add these as a side effect. Update this section before adding one.
 `Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are installed with that object in every build, including a build with no Cargo features. A dedicated worker has them. An AudioWorklet processor context does not receive the `Yuzuko` object.
 
 `globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `onerror` and `onunhandledrejection` are delivered here. Pointer and key events are not.
+
+`navigator.hardwareConcurrency` is present on the main global and in a dedicated worker in every build. It is the number of logical processors available to the process, and it is at least 1. When the operating system does not report a count, the value is 1.
 
 `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`. It is chosen once at process startup and does not change. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. A GPU request that fails to produce a device selects `"cpu"`.
 
@@ -414,7 +416,7 @@ The baseline is the common API index at <https://min-common-api.proposal.wintert
 The realm includes:
 
 - `Event`, `EventTarget`, `CustomEvent`, `ErrorEvent`, `PromiseRejectionEvent`, `DOMException`
-- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `self`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
+- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `performance`, `self`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, `navigator.hardwareConcurrency`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
 - `AbortController`, `AbortSignal`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
 - V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`. A deferred `.wasm` import instantiates on the first observation of its namespace
