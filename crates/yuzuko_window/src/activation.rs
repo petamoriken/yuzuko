@@ -43,7 +43,11 @@ pub fn observe(id: u64, raw: &Raw) {
 }
 
 pub fn closed(id: u64) {
+  let was_focused = focused(id);
   blur(id);
+  if was_focused {
+    crate::input::keyboard::unlock();
+  }
 }
 
 pub fn focused(id: u64) -> bool {
@@ -89,6 +93,7 @@ fn focus(id: u64) {
     slot.set(state);
   });
   crate::shell::menu::sync_focus(id);
+  crate::input::keyboard::sync();
 }
 
 fn blur(id: u64) {
@@ -99,6 +104,7 @@ fn blur(id: u64) {
     }
     slot.set(state);
   });
+  crate::input::keyboard::sync();
 }
 
 fn gesture(id: u64) {

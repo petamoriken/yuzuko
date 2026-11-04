@@ -99,6 +99,7 @@ fn shutdown() {
   shell::tray::clear();
   shell::dock::clear();
   shell::menu::clear();
+  input::keyboard::clear();
   os::shutdown();
   #[cfg(feature = "accessibility")]
   a11y::clear();

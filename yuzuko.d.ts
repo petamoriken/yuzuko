@@ -5031,7 +5031,7 @@ declare var performance: Performance;
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
  * `"Win32"` on Windows, `"MacIntel"` on macOS, and `"Linux"` on Linux.
- * `clipboard`, `gpu`, `wakeLock`, and `getGamepads` exist on the main global.
+ * `clipboard`, `gpu`, `wakeLock`, `keyboard`, and `getGamepads` exist on the main global.
  * A worker navigator has `userAgent` and `platform` only.
  *
  * @throws {@link TypeError} Illegal constructor.
@@ -5071,6 +5071,18 @@ interface Navigator {
   readonly wakeLock: WakeLock;
 
   /**
+   * Keyboard lock for the focused window. Main global only.
+   *
+   * Absent without the `window` feature, and absent on a dedicated worker.
+   * A headless process records the reservation and does not change
+   * operating-system shortcuts. There is no permission prompt.
+   * `getLayoutMap` is absent.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/keyboard)
+   */
+  readonly keyboard: Keyboard;
+
+  /**
    * The process WebGPU entry. Main global only.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/gpu)
@@ -5098,6 +5110,53 @@ declare var Navigator: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/navigator)
  */
 declare var navigator: Navigator;
+
+/**
+ * Keyboard lock for the focused window.
+ *
+ * `lock` reserves UI Events `code` values. An omitted list or an empty list
+ * reserves every key. The promise settles in the same turn. A headless
+ * process records the reservation and does not change operating-system
+ * shortcuts. macOS, Windows, and Linux inhibit shortcuts only while a
+ * window of this process is focused. Closing that window unlocks.
+ * `getLayoutMap` and `layoutchange` are absent.
+ *
+ * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.keyboard}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Keyboard)
+ */
+interface Keyboard extends EventTarget {
+  /**
+   * Reserves keys for the focused window.
+   *
+   * @param keyCodes UI Events `code` values. Omitted or empty reserves every key.
+   * @returns `undefined` when the reservation is stored.
+   * @throws {@link TypeError} `The key code list is not a sequence` when
+   * `keyCodes` is not iterable, and `The key code list is too long` when it
+   * yields more than 1024 codes.
+   * @throws {@link DOMException} `InvalidStateError` with
+   * `No window is focused` when no window is focused. The previous
+   * reservation stays.
+   * @throws {@link DOMException} `InvalidAccessError` with
+   * `The key code is not a valid code` when a code is not one this runtime
+   * reports. That rejection clears the reservation.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Keyboard/lock)
+   */
+  lock(keyCodes?: Iterable<string>): Promise<void>;
+
+  /**
+   * Clears the reservation.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Keyboard/unlock)
+   */
+  unlock(): void;
+}
+
+declare var Keyboard: {
+  prototype: Keyboard;
+  new(): Keyboard;
+};
 
 /**
  * Screen wake lock for the main realm.

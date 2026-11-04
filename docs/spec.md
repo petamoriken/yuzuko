@@ -87,7 +87,7 @@ Do not add these as a side effect. Update this section before adding one.
 - Node compatibility, an npm client, `node:` builtins, CommonJS evaluation, and JSX or TSX. TypeScript runs by type erasure, not by type checking
 - A dependency on `deno` or `deno_core`.
 - Permission prompts. A shipped app runs as a trusted local application. Which optional surfaces are present is chosen when that app's runtime is built. See Build features
-- WebRTC, WebXR, and Keyboard Lock
+- WebRTC and WebXR
 - `HTMLVideoElement`, container demux, and a media presentation clock
 - CSS `@font-face`
 
@@ -95,7 +95,7 @@ Do not add these as a side effect. Update this section before adding one.
 
 | Place | Contents |
 | --- | --- |
-| `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `navigator.wakeLock` requires `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
+| `globalThis` | The JavaScript runtime in every build, plus the web-standard constructors for the enabled features. `OffscreenCanvas` and `PointerEvent` require `window`. `navigator.wakeLock` and `navigator.keyboard` require `window`. `createImageBitmap` requires `image`. `navigator.gpu` requires `webgpu` |
 | `Yuzuko` | Present on the main realm and in a dedicated worker in every build. Runtime-specific APIs live here. `Window` requires `window`. `canvasRenderer` and `fonts` require `canvas`. `Yuzuko.test` exists only under `yuzuko test`. `Yuzuko.Menu` and `Yuzuko.setMenu` install the application menu when `window` is enabled. On the main global, `Yuzuko.fonts` is the `FontFaceSet` and `globalThis.fonts` is absent. A dedicated worker exposes that set as `self.fonts` and `globalThis.fonts` instead. `Yuzuko.readFile`, `Yuzuko.FsFile`, and the other file-system members are installed when the runtime is built with `fs`, on the main global and in a dedicated worker. `Yuzuko.listenDatagram` and `Yuzuko.Datagram` are installed when the runtime is built with `udp`, on the main global and in a dedicated worker. `Yuzuko.listenTcp`, `Yuzuko.connectTcp`, `Yuzuko.TcpListener`, and `Yuzuko.TcpConn` are installed when the runtime is built with `tcp`, on the main global and in a dedicated worker. `Yuzuko.listenHttp`, `Yuzuko.HttpServer`, and `Yuzuko.HttpRequest` are installed when the runtime is built with `http`, on the main global and in a dedicated worker. `Yuzuko.addSignalListener` and `Yuzuko.removeSignalListener` are installed when the runtime is built with `signal`, on the main global and in a dedicated worker. `Yuzuko.spawn` and `Yuzuko.Child` are installed when the runtime is built with `child`, on the main global and in a dedicated worker. `Yuzuko.dlopen` and `Yuzuko.Library` are installed when the runtime is built with `ffi`, on the main global and in a dedicated worker. `Yuzuko.AccessibleNode`, `Yuzuko.ComputedAccessibleNode`, `WindowSurface.attachAccessibleRoot`, `WindowSurface.accessibleRoot`, and `Window.getComputedAccessibleNode` require `accessibility`. They are installed on the main realm only, are absent in a dedicated worker, and are not on `globalThis`. `Yuzuko.updater` is installed only on a packaged application's main global |
 
 `Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are installed with that object in every build, including a build with no Cargo features. A dedicated worker has them. An AudioWorklet processor context does not receive the `Yuzuko` object.
@@ -277,6 +277,22 @@ While the preedit string is non-empty, the corresponding `keydown` and `keyup` h
 winit and the host OS can disagree with browsers, including a Windows `key` of `"Process"` and `compositionstart` arriving on the other side of `keydown`. Record each observed difference in `docs/deviations.md` with the OS name. The acceptance bar is that the composing string and the committed string are readable from `data`.
 
 If `keydown` calls `preventDefault()`, that key does not produce a normal text input. A `Commit` the OS has already produced is still delivered as `compositionend`.
+
+### Keyboard lock
+
+`navigator.keyboard` is installed with the `window` feature on the main global. It is the same object on every read. `Keyboard` extends `EventTarget`. A dedicated worker does not have `navigator.keyboard` or `Keyboard`. Those names are absent when `window` is off. `getLayoutMap` is absent, and `layoutchange` does not fire.
+
+`lock(keyCodes)` reserves UI Events `code` values for the focused window. An omitted argument, `undefined`, or an empty list reserves every key. Each code is converted with `ToString`. A code is accepted when this runtime can report it from `KeyboardEvent.code`, including `"Unidentified"`. A duplicate is stored once. A list longer than 1024 codes rejects `TypeError` with `The key code list is too long`. A value that is not iterable rejects `TypeError` with `The key code list is not a sequence`. The promise settles in the same turn. A later `lock` replaces the reserved codes and does not reject the earlier call with `AbortError`. Fullscreen is not required. There is no permission prompt. Holding Escape does not show an overlay and does not leave fullscreen.
+
+No focused window rejects `InvalidStateError` with `No window is focused` and leaves the previous reservation. A code this runtime cannot report rejects `InvalidAccessError` with `The key code is not a valid code` and clears the reservation. `unlock()` clears it. Closing the focused window clears it. Losing focus keeps the reservation and drops the operating-system inhibitor until a window of this process is focused again.
+
+Reserved keys still dispatch `keydown` and `keyup` on that window. A headless process records the reservation and does not change operating-system shortcuts.
+
+macOS calls `PushSymbolicHotKeyMode` with `kHIHotKeyModeAllDisabled` while the reserved set is empty or contains `Escape`, `Tab`, `Space`, `MetaLeft`, or `MetaRight`, and only while a window of this process is focused. The mode applies while the process is frontmost. Command-Tab and Command-Option-Escape stay with the system. Without assistive access the call does not change shortcuts. A list that names none of those keys does not change the symbolic hotkey mode.
+
+Windows installs a low-level keyboard hook while a lock is held and a window is focused. The hook swallows a reserved key only when a window of this process is in the foreground, then posts that key to the window. Ctrl+Alt+Delete stays with the system. If the hook cannot be installed, `lock()` still resolves.
+
+Linux calls `XGrabKeyboard` on an X11 window only when the list is empty, and only while that window is focused. A partial list does not grab. Wayland does not grab, so compositor shortcuts stay with the compositor. A failed grab still resolves `lock()`.
 
 Focus changes dispatch `focus` and `blur` as `FocusEvent`s on that `Yuzuko.Window`. They do not bubble or cancel, and `relatedTarget` is null. `WindowSurface` does not receive them. Resize and scale-factor changes dispatch `resize` on the window. Size is read from `clientWidth` and `clientHeight`.
 
@@ -470,7 +486,7 @@ Crates:
 | `yuzuko_core` | Isolate, platform, event loop, module loader (`oxc_resolver`, oxc type erasure), extension trait, timers, console, exception conversion. The `fs` feature compiles the `Yuzuko` file system. The `udp` feature compiles `Yuzuko.listenDatagram`. The `tcp` feature compiles `Yuzuko.listenTcp` and `Yuzuko.connectTcp`. The `http` feature compiles `Yuzuko.listenHttp`. The `signal` feature compiles `Yuzuko.addSignalListener`. The `child` feature compiles `Yuzuko.spawn`. The `ffi` feature compiles `Yuzuko.dlopen` |
 | `yuzuko_dom` | `EventTarget`, event classes, and `AbortController`. The `window` feature installs pointer and key events. The `fetch` feature installs `EventSource`. The `socket` feature installs `WebSocket`, `WebSocketStream`, and `WebTransport` |
 | `yuzuko_winter` | URL, encoding, Blob, crypto, streams. The `fetch` feature compiles the HTTP client. The `socket` feature compiles `WebSocket` and `WebTransport` |
-| `yuzuko_window` | `Yuzuko.Window`, winit, input mapping, IME, pointer lock, fullscreen. Compiled with the `window` feature. The `accessibility` feature compiles virtual and computed accessibility nodes and links AccessKit |
+| `yuzuko_window` | `Yuzuko.Window`, winit, input mapping, IME, pointer lock, keyboard lock, fullscreen. Compiled with the `window` feature. The `accessibility` feature compiles virtual and computed accessibility nodes and links AccessKit |
 | `yuzuko_image` | Decoders and `ImageBitmap` / `createImageBitmap`. Compiled with the `image` feature |
 | `yuzuko_canvas` | Canvas 2D and `bitmaprenderer`. Compiled with the `canvas` feature. `OffscreenCanvas` itself is installed by `yuzuko_window` |
 | `yuzuko_webgpu` | WebGPU. Compiled with the `webgpu` feature |

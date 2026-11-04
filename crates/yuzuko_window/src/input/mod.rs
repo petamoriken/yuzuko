@@ -1,6 +1,7 @@
 //! Turns queued OS and test input into DOM events on one surface.
 
 pub(crate) mod gamepad;
+pub(crate) mod keyboard;
 pub(crate) mod keys;
 
 use std::cell::RefCell;

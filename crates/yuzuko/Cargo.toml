@@ -141,6 +141,10 @@ name = "gamepad"
 required-features = ["window"]
 
 [[test]]
+name = "keyboard_lock"
+required-features = ["window"]
+
+[[test]]
 name = "menu"
 required-features = ["window"]
 

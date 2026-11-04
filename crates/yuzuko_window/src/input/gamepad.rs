@@ -168,6 +168,7 @@ pub fn poll(scope: &mut v8::PinScope) -> bool {
 }
 
 pub fn install(scope: &mut v8::PinScope) {
+  crate::input::keyboard::install(scope);
   Gamepad::install(scope);
   GamepadButton::install(scope);
   GamepadHapticActuator::install(scope);
@@ -1727,6 +1728,12 @@ impl Navigator {
   fn wake_lock(&self, scope: &mut v8::PinScope) -> Js {
     let _ = self;
     crate::wake::instance(scope)
+  }
+
+  #[getter]
+  fn keyboard(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    crate::input::keyboard::instance(scope)
   }
 
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {
