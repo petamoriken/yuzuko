@@ -15,7 +15,8 @@ pub use data::ImageData;
 pub use frame::{FramePixels, frame_pixels, install_frame_lookup};
 pub use raster::color::{convert, convert_encoded};
 pub use raster::decode::{
-  DecodeError as ImageDecodeError, decode as decode_image,
+  DecodeError as ImageDecodeError, ImageFrame, ImageFrames,
+  decode as decode_image, decode_frames,
 };
 pub use raster::{
   ColorSpace, PixelError, Raster, SampleFormat, orient, premultiply,

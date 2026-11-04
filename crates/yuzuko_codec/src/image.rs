@@ -1,14 +1,15 @@
 //! `ImageDecoder`, `ImageTrackList`, and `ImageTrack`.
 //!
 //! Still images use the same pure-Rust decoders as `createImageBitmap`.
-//! An animated file contributes its first frame.
+//! An animated PNG, WebP, or JPEG XL keeps every frame. `createImageBitmap`
+//! still uses the first frame.
 
 use std::cell::{Cell, RefCell};
 
 use yuzuko_core::op::{Js, OpError, host_ref, new_dom_exception, traced};
 use yuzuko_core::rust_string;
 use yuzuko_image::{
-  ImageDecodeError, PixelError, Raster, decode_image, orient,
+  ImageDecodeError, PixelError, Raster, decode_frames, orient,
 };
 use yuzuko_macros::op;
 use yuzuko_winter::buffer_source;
@@ -26,7 +27,7 @@ pub struct ImageDecoder {
   settled: Cell<bool>,
   generation: Cell<u64>,
   bytes: RefCell<Vec<u8>>,
-  raster: RefCell<Option<Raster>>,
+  sequence: RefCell<Option<Sequence>>,
   error_name: RefCell<Option<&'static str>>,
   error_message: RefCell<Option<String>>,
   completed: RefCell<Option<v8::TracedReference<v8::Promise>>>,
@@ -43,6 +44,17 @@ pub struct ImageDecoder {
 struct Waiter {
   index: u32,
   resolver: v8::Global<v8::PromiseResolver>,
+}
+
+struct SequenceFrame {
+  raster: Raster,
+  duration_us: Option<f64>,
+}
+
+struct Sequence {
+  frames: Vec<SequenceFrame>,
+  animated: bool,
+  repetition: f64,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for ImageDecoder {
@@ -132,7 +144,7 @@ impl ImageDecoder {
       settled: Cell::new(false),
       generation: Cell::new(0),
       bytes: RefCell::new(bytes.unwrap_or_default()),
-      raster: RefCell::new(None),
+      sequence: RefCell::new(None),
       error_name: RefCell::new(if supported {
         None
       } else {
@@ -265,7 +277,7 @@ impl ImageDecoder {
     self.generation.set(self.generation.get().wrapping_add(1));
     self.reject_waiters(scope, abort_error());
     if self.data_complete.get()
-      && self.raster.borrow().is_none()
+      && self.sequence.borrow().is_none()
       && self.error_name.borrow().is_none()
     {
       if let Some(object) = self
@@ -287,7 +299,7 @@ impl ImageDecoder {
     self.closed.set(true);
     self.generation.set(self.generation.get().wrapping_add(1));
     self.bytes.borrow_mut().clear();
-    *self.raster.borrow_mut() = None;
+    *self.sequence.borrow_mut() = None;
     self.reject_waiters(scope, closed_error());
     if !self.settled.get() {
       self.fail("InvalidStateError", "The decoder is closed");
@@ -307,7 +319,7 @@ impl ImageDecoder {
     let generation = self.generation.get();
     let handle = v8::Global::new(scope, object);
     yuzuko_core::spawn(
-      move || decode_still(bytes, to_srgb),
+      move || decode_sequence(bytes, to_srgb),
       move |scope, result| {
         let object = v8::Local::new(scope, handle);
         let Some(host) = (unsafe { host_ref::<ImageDecoder>(scope, object) })
@@ -324,14 +336,14 @@ impl ImageDecoder {
     scope: &mut v8::PinScope,
     object: v8::Local<v8::Object>,
     generation: u64,
-    result: Result<Result<Raster, String>, ()>,
+    result: Result<Result<Sequence, String>, ()>,
   ) {
     if self.closed.get() || generation != self.generation.get() {
       return;
     }
     match result {
-      Ok(Ok(raster)) => {
-        *self.raster.borrow_mut() = Some(raster);
+      Ok(Ok(sequence)) => {
+        *self.sequence.borrow_mut() = Some(sequence);
         self.ready.set(true);
         if let Some(track) =
           self.track.borrow().as_ref().and_then(|reference| {
@@ -371,19 +383,32 @@ impl ImageDecoder {
         OpError::dom("InvalidStateError", "No track is selected"),
       );
     }
-    if index != 0 {
-      return rejected_error(
-        scope,
-        OpError::range("The frame index is out of range"),
-      );
-    }
-    let Some(raster) = self.raster.borrow().clone() else {
-      return rejected_error(
-        scope,
-        OpError::dom("EncodingError", "The source image could not be decoded"),
-      );
+    let (raster, timestamp, duration) = match self.frame_at(index) {
+      Ok(frame) => frame,
+      Err(error) => return rejected_error(scope, error),
     };
-    resolve_frame(scope, raster)
+    resolve_frame(scope, raster, timestamp, duration)
+  }
+
+  fn frame_at(
+    &self,
+    index: u32,
+  ) -> Result<(Raster, f64, Option<f64>), OpError> {
+    let borrowed = self.sequence.borrow();
+    let Some(sequence) = borrowed.as_ref() else {
+      return Err(OpError::dom(
+        "EncodingError",
+        "The source image could not be decoded",
+      ));
+    };
+    let Some(frame) = sequence.frames.get(index as usize) else {
+      return Err(OpError::range("The frame index is out of range"));
+    };
+    let mut timestamp = 0.0;
+    for earlier in &sequence.frames[..index as usize] {
+      timestamp += earlier.duration_us.unwrap_or(0.0);
+    }
+    Ok((frame.raster.clone(), timestamp, frame.duration_us))
   }
 
   fn flush_waiters(&self, scope: &mut v8::PinScope) {
@@ -402,27 +427,18 @@ impl ImageDecoder {
         );
         continue;
       }
-      if waiter.index != 0 {
-        reject_with(
-          scope,
-          resolver,
-          OpError::range("The frame index is out of range"),
-        );
-        continue;
-      }
-      let Some(raster) = self.raster.borrow().clone() else {
-        reject_with(
-          scope,
-          resolver,
-          OpError::dom(
-            "EncodingError",
-            "The source image could not be decoded",
-          ),
-        );
-        continue;
+      let (raster, timestamp, duration) = match self.frame_at(waiter.index) {
+        Ok(frame) => frame,
+        Err(error) => {
+          reject_with(scope, resolver, error);
+          continue;
+        }
       };
       let frame = unsafe {
-        yuzuko_core::op::wrap_instance(scope, VideoFrame::from_raster(raster))
+        yuzuko_core::op::wrap_instance(
+          scope,
+          VideoFrame::from_timed(raster, timestamp, duration),
+        )
       };
       let result = decode_result(scope, frame);
       resolver.resolve(scope, result.into());
@@ -560,18 +576,22 @@ impl ImageTrackList {
 #[op]
 impl ImageTrack {
   #[getter]
-  fn animated(&self) -> bool {
-    false
+  fn animated(&self, scope: &mut v8::PinScope) -> bool {
+    track_info(scope, &self.decoder).is_some_and(|info| info.animated)
   }
 
   #[getter]
-  fn frame_count(&self) -> u32 {
-    1
+  fn frame_count(&self, scope: &mut v8::PinScope) -> u32 {
+    track_info(scope, &self.decoder)
+      .map(|info| info.frame_count)
+      .unwrap_or(1)
   }
 
   #[getter]
-  fn repetition_count(&self) -> f64 {
-    0.0
+  fn repetition_count(&self, scope: &mut v8::PinScope) -> f64 {
+    track_info(scope, &self.decoder)
+      .map(|info| info.repetition)
+      .unwrap_or(0.0)
   }
 
   #[getter]
@@ -617,9 +637,45 @@ impl ImageDecoder {
   }
 }
 
-fn decode_still(bytes: Vec<u8>, to_srgb: bool) -> Result<Raster, String> {
-  let decoded = decode_image(&bytes, to_srgb).map_err(decode_message)?;
-  orient(decoded.raster, decoded.orientation).map_err(pixel_message)
+fn decode_sequence(bytes: Vec<u8>, to_srgb: bool) -> Result<Sequence, String> {
+  let decoded = decode_frames(&bytes, to_srgb).map_err(decode_message)?;
+  if decoded.frames.is_empty() {
+    return Err("The source image could not be decoded".to_string());
+  }
+  let mut frames = Vec::with_capacity(decoded.frames.len());
+  for frame in decoded.frames {
+    let raster =
+      orient(frame.raster, frame.orientation).map_err(pixel_message)?;
+    frames.push(SequenceFrame {
+      raster,
+      duration_us: frame.duration_us,
+    });
+  }
+  Ok(Sequence {
+    frames,
+    animated: decoded.animated,
+    repetition: decoded.repetition_count,
+  })
+}
+
+struct TrackInfo {
+  animated: bool,
+  frame_count: u32,
+  repetition: f64,
+}
+
+fn track_info(
+  scope: &mut v8::PinScope,
+  reference: &v8::TracedReference<v8::Object>,
+) -> Option<TrackInfo> {
+  let decoder = open_decoder(scope, reference)?;
+  let sequence = decoder.get().sequence.borrow();
+  let sequence = sequence.as_ref()?;
+  Some(TrackInfo {
+    animated: sequence.animated,
+    frame_count: u32::try_from(sequence.frames.len()).unwrap_or(u32::MAX),
+    repetition: sequence.repetition,
+  })
 }
 
 fn decode_message(error: ImageDecodeError) -> String {
@@ -854,12 +910,20 @@ fn fail_thrown(
     .reject_waiters(scope, OpError::dom("EncodingError", message));
 }
 
-fn resolve_frame(scope: &mut v8::PinScope, raster: Raster) -> Js {
+fn resolve_frame(
+  scope: &mut v8::PinScope,
+  raster: Raster,
+  timestamp: f64,
+  duration: Option<f64>,
+) -> Js {
   let Some(resolver) = v8::PromiseResolver::new(scope) else {
     return Js::null(scope);
   };
   let frame = unsafe {
-    yuzuko_core::op::wrap_instance(scope, VideoFrame::from_raster(raster))
+    yuzuko_core::op::wrap_instance(
+      scope,
+      VideoFrame::from_timed(raster, timestamp, duration),
+    )
   };
   let result = decode_result(scope, frame);
   resolver.resolve(scope, result.into());

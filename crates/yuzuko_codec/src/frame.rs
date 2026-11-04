@@ -3,8 +3,8 @@
 use yuzuko_core::op::{Js, OpError, host_ref, new_dom_exception};
 use yuzuko_core::rust_string;
 use yuzuko_image::{ColorSpace, ImageBitmap, Raster, SampleFormat};
-use yuzuko_winter::buffer_source;
 use yuzuko_window::{CanvasSnapshot, OffscreenCanvas, snapshot_canvas};
+use yuzuko_winter::buffer_source;
 
 use crate::classes::{
   COLOR_MATRIX, COLOR_PRIMARIES, COLOR_TRANSFER, VideoFrame, closed_frame,
@@ -13,8 +13,8 @@ use crate::classes::{
 use crate::layout::{
   FormatClass, FrameColor, FrameData, LayoutError, PixelFormat, PlaneLayoutIn,
   PlaneLayoutOut, RectD, allocation, classify, discard_alpha, display_size,
-  full_rect, limited_range, parse_visible, raster_color, read_buffer, rgba_plane,
-  visible_raster, write_copy,
+  full_rect, limited_range, parse_visible, raster_color, read_buffer,
+  rgba_plane, visible_raster, write_copy,
 };
 
 const MAX_EDGE: u32 = 16_384;
@@ -80,8 +80,8 @@ pub(crate) fn allocation_size(
   let options = copy_options(scope, args, 0)?;
   let data = frame.snapshot().ok_or_else(closed_frame)?;
   let (rect, format, layout) = copy_target(&data, &options)?;
-  let (size, _) =
-    allocation(format, rect, layout).map_err(|error| layout_error(error, false))?;
+  let (size, _) = allocation(format, rect, layout)
+    .map_err(|error| layout_error(error, false))?;
   Ok(size as f64)
 }
 
@@ -216,8 +216,12 @@ fn construct_from_canvas(
     ));
   }
   let (width, height) = canvas.bitmap();
-  if width == 0.0 || height == 0.0 || !width.is_finite() || !height.is_finite() {
-    return Err(OpError::dom("InvalidStateError", "The canvas has no pixels"));
+  if width == 0.0 || height == 0.0 || !width.is_finite() || !height.is_finite()
+  {
+    return Err(OpError::dom(
+      "InvalidStateError",
+      "The canvas has no pixels",
+    ));
   }
   let raster = if let Some(snapshot) = snapshot_canvas(canvas.id()) {
     raster_from_snapshot(snapshot)?
@@ -549,9 +553,9 @@ fn optional_layout(
     .map_err(|_| OpError::type_("layout is not a sequence"))?;
   let mut layouts = Vec::with_capacity(array.length() as usize);
   for index in 0..array.length() {
-    let item = array.get_index(scope, index).ok_or_else(|| {
-      OpError::type_("layout is not a sequence")
-    })?;
+    let item = array
+      .get_index(scope, index)
+      .ok_or_else(|| OpError::type_("layout is not a sequence"))?;
     let plane = dictionary(scope, item, "PlaneLayout")?;
     let offset = required_enforce(scope, plane, "offset")?;
     let stride = required_enforce(scope, plane, "stride")?;
@@ -699,7 +703,8 @@ fn reject_orientation(
       ));
     }
   }
-  if let Some(value) = member(scope, object, "flip") && value.boolean_value(scope)
+  if let Some(value) = member(scope, object, "flip")
+    && value.boolean_value(scope)
   {
     return Err(OpError::dom(
       "NotSupportedError",
@@ -786,7 +791,10 @@ fn ensure_size(width: u32, height: u32) -> Result<(), OpError> {
 
 fn raster_from_snapshot(snapshot: CanvasSnapshot) -> Result<Raster, OpError> {
   if snapshot.width == 0 || snapshot.height == 0 {
-    return Err(OpError::dom("InvalidStateError", "The canvas has no pixels"));
+    return Err(OpError::dom(
+      "InvalidStateError",
+      "The canvas has no pixels",
+    ));
   }
   ensure_size(snapshot.width, snapshot.height)?;
   let color = if snapshot.display_p3 {
@@ -802,7 +810,10 @@ fn raster_from_snapshot(snapshot: CanvasSnapshot) -> Result<Raster, OpError> {
   let mut raster = Raster::new(snapshot.width, snapshot.height, color, format)
     .map_err(|_| OpError::type_("The frame is too large"))?;
   if raster.bytes.len() != snapshot.bytes.len() {
-    return Err(OpError::dom("InvalidStateError", "The canvas has no pixels"));
+    return Err(OpError::dom(
+      "InvalidStateError",
+      "The canvas has no pixels",
+    ));
   }
   raster.bytes = snapshot.bytes;
   Ok(raster)
@@ -930,7 +941,10 @@ fn with_destination(
       return Err(OpError::type_("The destination is detached"));
     };
     let slice = unsafe {
-      std::slice::from_raw_parts_mut(data.as_ptr().cast::<u8>(), buffer.byte_length())
+      std::slice::from_raw_parts_mut(
+        data.as_ptr().cast::<u8>(),
+        buffer.byte_length(),
+      )
     };
     return write(slice);
   }
@@ -948,7 +962,10 @@ fn with_buffer(
     return Err(OpError::type_("The destination is detached"));
   };
   let slice = unsafe {
-    std::slice::from_raw_parts_mut(data.as_ptr().cast::<u8>().add(offset), length)
+    std::slice::from_raw_parts_mut(
+      data.as_ptr().cast::<u8>().add(offset),
+      length,
+    )
   };
   write(slice)
 }
@@ -1076,4 +1093,3 @@ fn builtin_error<'s>(
     v8::Exception::type_error(scope, text).into()
   }
 }
-

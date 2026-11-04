@@ -121,7 +121,10 @@ fn write_frame(
     return WriteResult::Failed;
   };
   if data.planes.len() != data.format.plane_count()
-    || data.planes.iter().any(|plane| plane.len() > MAX_PLANE_BYTES)
+    || data
+      .planes
+      .iter()
+      .any(|plane| plane.len() > MAX_PLANE_BYTES)
   {
     reject_clone(scope);
     return WriteResult::Failed;
@@ -194,7 +197,8 @@ fn read_frame_body(
 ) -> Option<(FrameData, f64, Option<f64>)> {
   let mut timestamp = 0.0;
   let mut duration_flag = 0u32;
-  if !helper.read_double(&mut timestamp) || !helper.read_uint32(&mut duration_flag)
+  if !helper.read_double(&mut timestamp)
+    || !helper.read_uint32(&mut duration_flag)
   {
     return None;
   }
@@ -508,8 +512,9 @@ fn read_audio_parts(
   }
   let (kind, planar) = kind_from_code(code)?;
   let bytes = read_limited(helper, MAX_BYTES)?;
-  let samples =
-    crate::samples::AudioSamples::from_parts(kind, planar, channels, frames, rate, bytes)?;
+  let samples = crate::samples::AudioSamples::from_parts(
+    kind, planar, channels, frames, rate, bytes,
+  )?;
   Some((samples, timestamp))
 }
 

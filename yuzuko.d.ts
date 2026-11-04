@@ -12317,15 +12317,21 @@ interface AudioDecoderConfig {
 }
 
 /**
- * Decodes a still image.
+ * Decodes a PNG, JPEG, WebP, or JPEG XL image.
  *
  * `isTypeSupported` resolves `true` for `image/png`, `image/jpeg`,
  * `image/webp`, and `image/jxl`. The constructor still returns a decoder for
  * any other type. `completed`, `tracks.ready`, and `decode()` then reject
- * `NotSupportedError`. A supported still image has one track, `frameCount` 1,
- * `animated` false, and `repetitionCount` 0. `frameIndex` other than 0
- * rejects `RangeError`. `desiredWidth`, `desiredHeight`, and
- * `preferAnimation` do not change the result. A decoder panic rejects
+ * `NotSupportedError`. A still image has one track, `frameCount` 1,
+ * `animated` false, and `repetitionCount` 0. An animated PNG, WebP, or JPEG
+ * XL reports every frame. `repetitionCount` is the number of extra plays
+ * after the first. `0` plays once and `Infinity` loops forever.
+ * `frameIndex` past the last frame rejects `RangeError`. `timestamp` is the
+ * sum of earlier durations and `duration` is that frame's delay, both in
+ * microseconds. A still frame has `timestamp` 0 and `duration` null.
+ * `createImageBitmap` uses the first frame. This decoder does not advance
+ * frames. `desiredWidth`, `desiredHeight`, and `preferAnimation` do not
+ * change the result. GIF is not supported. A decoder panic rejects
  * `EncodingError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder)
@@ -12350,8 +12356,8 @@ interface ImageDecoder {
   readonly tracks: ImageTrackList;
 
   /**
-   * @param options - `frameIndex` other than 0 rejects `RangeError`.
-   * `completeFramesOnly` is accepted and does not change the still image.
+   * @param options - `frameIndex` past the last frame rejects `RangeError`.
+   * `completeFramesOnly` is accepted and does not change the decoded frames.
    * @throws {@link DOMException} `NotSupportedError` when the type is not
    * supported. The rejection is from this promise.
    * @throws {@link DOMException} `InvalidStateError` when the track is
@@ -12425,27 +12431,31 @@ declare var ImageTrackList: {
 
 
 /**
- * The single still-image track.
+ * One image track.
+ *
+ * A still image reports `animated` false, `frameCount` 1, and
+ * `repetitionCount` 0. An animated PNG, WebP, or JPEG XL reports the frame
+ * count and the extra plays after the first. Forever is `Infinity`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack)
  */
 interface ImageTrack {
   /**
-   * Always false. Animated images contribute the first frame only.
+   * True when the track is an animated PNG, WebP, or JPEG XL.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack/animated)
    */
   readonly animated: boolean;
 
   /**
-   * Always 1 for a supported still image.
+   * The number of frames. A still image is 1.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack/frameCount)
    */
   readonly frameCount: number;
 
   /**
-   * Always 0.
+   * Extra plays after the first. `0` plays once. `Infinity` loops forever.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack/repetitionCount)
    */

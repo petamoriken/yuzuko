@@ -91,6 +91,24 @@ opt-level = 1
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 
+# A 320x320 60-frame JPEG XL exceeds the 8s WPT deadline at opt-level 0.
+[profile.dev.package.jxl-oxide]
+opt-level = 3
+[profile.dev.package.jxl-render]
+opt-level = 3
+[profile.dev.package.jxl-modular]
+opt-level = 3
+[profile.dev.package.jxl-frame]
+opt-level = 3
+[profile.dev.package.jxl-vardct]
+opt-level = 3
+[profile.dev.package.jxl-color]
+opt-level = 3
+[profile.dev.package.jxl-coding]
+opt-level = 3
+[profile.dev.package.jxl-grid]
+opt-level = 3
+
 # Speed for the runtime and the libraries on its hot path. Everything else
 # stays at opt-level "z". Repeated for `bench` so measurements match release.
 # Package overrides do not inherit across profiles.

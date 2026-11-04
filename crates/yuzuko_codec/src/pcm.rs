@@ -5,7 +5,9 @@ use yuzuko_core::rust_string;
 use yuzuko_winter::buffer_source;
 
 use crate::classes::{dictionary, long_long, member, unsigned};
-use crate::samples::{AudioSamples, BuildError, CopyError, CopyRequest, parse_format};
+use crate::samples::{
+  AudioSamples, BuildError, CopyError, CopyRequest, parse_format,
+};
 
 pub(crate) struct BuiltAudio {
   pub samples: AudioSamples,
@@ -31,8 +33,9 @@ pub(crate) fn construct(
   let Some(data) = buffer_source(scope, data_value) else {
     return Err(OpError::type_("data is not a BufferSource"));
   };
-  let samples = AudioSamples::from_pcm(kind, planar, channels, frames, rate, &data)
-    .map_err(build_error)?;
+  let samples =
+    AudioSamples::from_pcm(kind, planar, channels, frames, rate, &data)
+      .map_err(build_error)?;
   Ok(BuiltAudio {
     samples,
     timestamp: timestamp as f64,

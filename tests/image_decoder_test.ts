@@ -211,6 +211,62 @@ Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
   partial.close();
 });
 
+Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
+  async function open(name) {
+    const url = new URL(
+      `./wpt/suite/jpegxl/resources/${name}`,
+      import.meta.url,
+    );
+    const encoded = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const decoder = new ImageDecoder({ type: "image/jxl", data: encoded });
+    await decoder.tracks.ready;
+    return { decoder, encoded };
+  }
+
+  const once = await open("animation-1loop.jxl");
+  const track = once.decoder.tracks.selectedTrack;
+  assert(track.animated === true, "animated");
+  assert(track.frameCount === 4, "frames");
+  assert(track.repetitionCount === 0, "plays once");
+  let total = 0;
+  let previous = -1;
+  for (let index = 0; index < 4; index += 1) {
+    const result = await once.decoder.decode({ frameIndex: index });
+    assert(result.image.timestamp > previous, "timestamp increases");
+    previous = result.image.timestamp;
+    assert(typeof result.image.duration === "number", "duration");
+    total += result.image.duration;
+    result.image.close();
+  }
+  assert(total === 2000000, "cycle duration");
+  const bitmap = await bitmapPixels(
+    new Blob([once.encoded], { type: "image/jxl" }),
+  );
+  const first = await once.decoder.decode({ frameIndex: 0 });
+  const frame = await bitmapPixels(first.image);
+  assert(frame.join() === bitmap.join(), "createImageBitmap uses frame 0");
+  first.image.close();
+  let range = false;
+  try {
+    await once.decoder.decode({ frameIndex: 4 });
+  } catch (error) {
+    range = error instanceof RangeError;
+  }
+  assert(range, "past the last frame");
+  once.decoder.close();
+
+  const forever = await open("animation-infiniteloop.jxl");
+  assert(
+    forever.decoder.tracks.selectedTrack.repetitionCount === Infinity,
+    "forever",
+  );
+  forever.decoder.close();
+
+  const twice = await open("animation-2loops.jxl");
+  assert(twice.decoder.tracks.selectedTrack.repetitionCount === 1, "twice");
+  twice.decoder.close();
+});
+
 Yuzuko.test("a non-detachable transfer throws DataCloneError", () => {
   const memory = new WebAssembly.Memory({ initial: 1 });
   let clone = false;

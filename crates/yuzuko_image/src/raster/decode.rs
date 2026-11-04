@@ -14,6 +14,9 @@ use crate::raster::color::Cicp;
 use crate::raster::color::apply_source;
 use crate::raster::within_limits;
 
+#[path = "animation.rs"]
+mod animation;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DecodeError {
   Unsupported,
@@ -27,9 +30,28 @@ pub struct Decoded {
   pub orientation: u8,
 }
 
+pub use animation::{ImageFrame, ImageFrames};
+
 pub fn decode(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
   let caught =
     std::panic::catch_unwind(AssertUnwindSafe(|| decode_inner(bytes, to_srgb)));
+  match caught {
+    Ok(result) => result,
+    Err(_) => Err(DecodeError::Corrupt),
+  }
+}
+
+/// Every frame of a PNG, WebP, or JPEG XL animation.
+///
+/// A still image is one frame with `animated` false, `repetition_count` 0,
+/// and `duration_us` none. `createImageBitmap` keeps using [`decode`].
+pub fn decode_frames(
+  bytes: &[u8],
+  to_srgb: bool,
+) -> Result<ImageFrames, DecodeError> {
+  let caught = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    animation::decode_all(bytes, to_srgb)
+  }));
   match caught {
     Ok(result) => result,
     Err(_) => Err(DecodeError::Corrupt),
@@ -299,21 +321,42 @@ fn decode_webp(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
 }
 
 fn decode_jxl(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
+  let image = read_jxl(bytes)?;
+  let (mut raster, _) = jxl_frame(&image, 0)?;
+  let (icc, cicp) = jxl_color(&image);
+  finish(&mut raster, icc.as_deref(), cicp, to_srgb, 1)
+}
+
+fn read_jxl(bytes: &[u8]) -> Result<jxl_oxide::JxlImage, DecodeError> {
   let image = jxl_oxide::JxlImage::builder()
     .read(Cursor::new(bytes))
     .map_err(|_| DecodeError::Corrupt)?;
-  let width = image.width();
-  let height = image.height();
-  if !within_limits(width, height) {
+  if !within_limits(image.width(), image.height()) {
     return Err(DecodeError::TooLarge);
   }
-  let bits = image.image_header().metadata.bit_depth.bits_per_sample();
+  Ok(image)
+}
+
+fn jxl_color(image: &jxl_oxide::JxlImage) -> (Option<Vec<u8>>, Option<Cicp>) {
   let icc = image.original_icc().map(|profile| profile.to_vec());
   let cicp = image.rendered_cicp().map(|points| Cicp {
     primaries: points[0],
     transfer: points[1],
   });
-  let render = image.render_frame(0).map_err(|_| DecodeError::Corrupt)?;
+  (icc, cicp)
+}
+
+fn jxl_frame(
+  image: &jxl_oxide::JxlImage,
+  index: usize,
+) -> Result<(Raster, u32), DecodeError> {
+  let width = image.width();
+  let height = image.height();
+  let bits = image.image_header().metadata.bit_depth.bits_per_sample();
+  let render = image
+    .render_frame(index)
+    .map_err(|_| DecodeError::Corrupt)?;
+  let ticks = render.duration();
   let mut stream = render.stream();
   let channels = stream.channels() as usize;
   if channels == 0 {
@@ -324,8 +367,8 @@ fn decode_jxl(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
   if written != samples.len() {
     return Err(DecodeError::Corrupt);
   }
-  let mut raster = jxl_raster(width, height, channels, bits, &samples)?;
-  finish(&mut raster, icc.as_deref(), cicp, to_srgb, 1)
+  let raster = jxl_raster(width, height, channels, bits, &samples)?;
+  Ok((raster, ticks))
 }
 
 fn jxl_raster(

@@ -4,7 +4,9 @@
 //! origin, which is the behavior `videoFrame-copyTo` checks. An image or
 //! another frame keeps the coded planes and stores the visible rectangle.
 
-use yuzuko_image::{ColorSpace, Raster, SampleFormat, convert_encoded, unpremultiply};
+use yuzuko_image::{
+  ColorSpace, Raster, SampleFormat, convert_encoded, unpremultiply,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PixelFormat {
@@ -149,19 +151,8 @@ struct CombinedLayout {
 }
 
 const UNSUPPORTED: &[&str] = &[
-  "I420P10",
-  "I420P12",
-  "I420AP10",
-  "I420AP12",
-  "I422P10",
-  "I422P12",
-  "I422A",
-  "I422AP10",
-  "I422AP12",
-  "I444P10",
-  "I444P12",
-  "I444A",
-  "I444AP10",
+  "I420P10", "I420P12", "I420AP10", "I420AP12", "I422P10", "I422P12", "I422A",
+  "I422AP10", "I422AP12", "I444P10", "I444P12", "I444A", "I444AP10",
   "I444AP12",
 ];
 
@@ -581,12 +572,13 @@ fn compute_layout(
   let height = trunc_unsigned(rect.height)?;
   for index in 0..count {
     let kind = format.plane(index);
-    let source_width_bytes = width.div_ceil(kind.sample_width) * kind.sample_bytes;
+    let source_width_bytes =
+      width.div_ceil(kind.sample_width) * kind.sample_bytes;
     let source_height = height.div_ceil(kind.sample_height);
-    let source_left_bytes =
-      origin_x / kind.sample_width * kind.sample_bytes;
+    let source_left_bytes = origin_x / kind.sample_width * kind.sample_bytes;
     let source_top = origin_y.div_ceil(kind.sample_height);
-    let (destination_offset, destination_stride) = if let Some(layout) = layout {
+    let (destination_offset, destination_stride) = if let Some(layout) = layout
+    {
       let item = layout[index];
       if item.stride < u64::from(source_width_bytes) {
         return Err(LayoutError::Stride);
@@ -693,8 +685,12 @@ fn write_same(
             .ok_or(LayoutError::Overflow)?,
         )
         .ok_or(LayoutError::Overflow)?;
-      let dest_end = dest_at.checked_add(row_bytes).ok_or(LayoutError::Overflow)?;
-      let slot = dest.get_mut(dest_at..dest_end).ok_or(LayoutError::TooSmall)?;
+      let dest_end = dest_at
+        .checked_add(row_bytes)
+        .ok_or(LayoutError::Overflow)?;
+      let slot = dest
+        .get_mut(dest_at..dest_end)
+        .ok_or(LayoutError::TooSmall)?;
       slot.copy_from_slice(src_bytes);
       // An explicit RGB destination converts into `dest_color`. RGBX and BGRX
       // also replace the unused byte with 255.
@@ -744,7 +740,9 @@ fn write_rgb(
         limited,
       )?;
       let pixel = match dest_color {
-        Some(dest_color) => recolor(pixel, raster_color(&frame.color), dest_color),
+        Some(dest_color) => {
+          recolor(pixel, raster_color(&frame.color), dest_color)
+        }
         None => pixel,
       };
       let packed = pack_rgb(dest_format, pixel);
@@ -805,7 +803,8 @@ fn rgba_at(
       sample(planes, format, 2, coded_width, x, y, 0)?,
     )
   };
-  let (red, green, blue) = yuv_to_rgb(i32::from(y_value), i32::from(u), i32::from(v), limited);
+  let (red, green, blue) =
+    yuv_to_rgb(i32::from(y_value), i32::from(u), i32::from(v), limited);
   let alpha = if format == PixelFormat::I420A {
     sample(planes, format, 3, coded_width, x, y, 0)?
   } else {
@@ -827,7 +826,8 @@ fn sample(
   let px = x / kind.sample_width;
   let py = y / kind.sample_height;
   let row = coded_row_bytes(format, plane, coded_width)?;
-  let index = py as usize * row + px as usize * kind.sample_bytes as usize + channel;
+  let index =
+    py as usize * row + px as usize * kind.sample_bytes as usize + channel;
   planes
     .get(plane)
     .and_then(|bytes| bytes.get(index).copied())
@@ -843,7 +843,11 @@ fn unpack_rgb(format: PixelFormat, pixel: &[u8]) -> [u8; 4] {
   }
 }
 
-fn recolor(pixel: [u8; 4], source: ColorSpace, destination: ColorSpace) -> [u8; 4] {
+fn recolor(
+  pixel: [u8; 4],
+  source: ColorSpace,
+  destination: ColorSpace,
+) -> [u8; 4] {
   if source == destination {
     return pixel;
   }
@@ -914,7 +918,8 @@ pub(crate) fn rgba_plane(raster: &Raster) -> Vec<u8> {
   match owned.format {
     SampleFormat::Unorm8 => owned.bytes,
     SampleFormat::Float16 => {
-      let mut bytes = Vec::with_capacity(owned.width as usize * owned.height as usize * 4);
+      let mut bytes =
+        Vec::with_capacity(owned.width as usize * owned.height as usize * 4);
       for y in 0..owned.height {
         for x in 0..owned.width {
           bytes.extend_from_slice(&owned.pixel_u8(x, y));
@@ -935,7 +940,9 @@ mod tests {
       9, 10, // u
       11, 12, // v
     ];
-    let pixels = read_buffer(&data, PixelFormat::I420, 4, 2, full_rect(4, 2), None).unwrap();
+    let pixels =
+      read_buffer(&data, PixelFormat::I420, 4, 2, full_rect(4, 2), None)
+        .unwrap();
     let color = FrameColor::rec709();
     let raster = visible_raster(
       PixelFormat::I420,
@@ -966,32 +973,75 @@ mod tests {
   #[test]
   fn i420_full_copy_is_tight() {
     let frame = i420();
-    let (size, layout) = allocation(frame.format, full_rect(4, 2), None).unwrap();
+    let (size, layout) =
+      allocation(frame.format, full_rect(4, 2), None).unwrap();
     assert_eq!(size, 12);
     assert_eq!(
       layout,
       vec![
-        PlaneLayoutOut { offset: 0, stride: 4 },
-        PlaneLayoutOut { offset: 8, stride: 2 },
-        PlaneLayoutOut { offset: 10, stride: 2 },
+        PlaneLayoutOut {
+          offset: 0,
+          stride: 4
+        },
+        PlaneLayoutOut {
+          offset: 8,
+          stride: 2
+        },
+        PlaneLayoutOut {
+          offset: 10,
+          stride: 2
+        },
       ]
     );
     let mut dest = vec![0u8; 12];
-    write_copy(&frame, full_rect(4, 2), frame.format, None, true, None, &mut dest).unwrap();
+    write_copy(
+      &frame,
+      full_rect(4, 2),
+      frame.format,
+      None,
+      true,
+      None,
+      &mut dest,
+    )
+    .unwrap();
     assert_eq!(dest, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   }
 
   #[test]
   fn i420_left_crop_matches_wpt() {
     let frame = i420();
-    let rect = RectD { x: 2.0, y: 0.0, width: 2.0, height: 2.0 };
+    let rect = RectD {
+      x: 2.0,
+      y: 0.0,
+      width: 2.0,
+      height: 2.0,
+    };
     let (size, layout) = allocation(frame.format, rect, None).unwrap();
     assert_eq!(size, 6);
-    assert_eq!(layout[0], PlaneLayoutOut { offset: 0, stride: 2 });
-    assert_eq!(layout[1], PlaneLayoutOut { offset: 4, stride: 1 });
-    assert_eq!(layout[2], PlaneLayoutOut { offset: 5, stride: 1 });
+    assert_eq!(
+      layout[0],
+      PlaneLayoutOut {
+        offset: 0,
+        stride: 2
+      }
+    );
+    assert_eq!(
+      layout[1],
+      PlaneLayoutOut {
+        offset: 4,
+        stride: 1
+      }
+    );
+    assert_eq!(
+      layout[2],
+      PlaneLayoutOut {
+        offset: 5,
+        stride: 1
+      }
+    );
     let mut dest = vec![0u8; size as usize];
-    write_copy(&frame, rect, frame.format, None, true, None, &mut dest).unwrap();
+    write_copy(&frame, rect, frame.format, None, true, None, &mut dest)
+      .unwrap();
     assert_eq!(dest, [3, 4, 7, 8, 10, 12]);
   }
 
@@ -999,11 +1049,21 @@ mod tests {
   fn custom_layout_keeps_padding() {
     let frame = i420();
     let layout = [
-      PlaneLayoutIn { offset: 9, stride: 5 },
-      PlaneLayoutIn { offset: 1, stride: 3 },
-      PlaneLayoutIn { offset: 5, stride: 3 },
+      PlaneLayoutIn {
+        offset: 9,
+        stride: 5,
+      },
+      PlaneLayoutIn {
+        offset: 1,
+        stride: 3,
+      },
+      PlaneLayoutIn {
+        offset: 5,
+        stride: 3,
+      },
     ];
-    let (size, _) = allocation(frame.format, full_rect(4, 2), Some(&layout)).unwrap();
+    let (size, _) =
+      allocation(frame.format, full_rect(4, 2), Some(&layout)).unwrap();
     assert_eq!(size, 19);
     let mut dest = vec![0u8; size as usize];
     write_copy(
@@ -1026,11 +1086,10 @@ mod tests {
 
   #[test]
   fn odd_i420_is_stored() {
-    let data = [
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-    ];
+    let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
     let pixels =
-      read_buffer(&data, PixelFormat::I420, 3, 3, full_rect(3, 3), None).unwrap();
+      read_buffer(&data, PixelFormat::I420, 3, 3, full_rect(3, 3), None)
+        .unwrap();
     assert_eq!(pixels.coded_width, 3);
     assert_eq!(pixels.planes[0].len(), 9);
     assert_eq!(pixels.planes[1].len(), 4);
@@ -1041,8 +1100,14 @@ mod tests {
   fn visible_rect_crops_buffer_to_origin() {
     let mut data = vec![0u8; 8 * 16 + 2 * (4 * 8)];
     data[2 * 8 + 2] = 76;
-    let visible = RectD { x: 2.0, y: 2.0, width: 4.0, height: 8.0 };
-    let pixels = read_buffer(&data, PixelFormat::I420, 8, 16, visible, None).unwrap();
+    let visible = RectD {
+      x: 2.0,
+      y: 2.0,
+      width: 4.0,
+      height: 8.0,
+    };
+    let pixels =
+      read_buffer(&data, PixelFormat::I420, 8, 16, visible, None).unwrap();
     assert_eq!(pixels.coded_width, 4);
     assert_eq!(pixels.coded_height, 8);
     assert_eq!(pixels.planes[0][0], 76);
@@ -1052,7 +1117,12 @@ mod tests {
   fn misaligned_origin_fails() {
     let error = parse_visible(
       full_rect(4, 2),
-      Some(RectD { x: 1.0, y: 0.0, width: 2.0, height: 2.0 }),
+      Some(RectD {
+        x: 1.0,
+        y: 0.0,
+        width: 2.0,
+        height: 2.0,
+      }),
       4,
       2,
       PixelFormat::I420,
@@ -1074,9 +1144,15 @@ mod tests {
     assert!(display_size(187.0, 40.0, 300.0, 150.0, 1280.0, 1.0).is_err());
   }
 
-  fn rgb_frame(format: PixelFormat, bytes: &[u8], width: u32, height: u32) -> FrameData {
-    let pixels = read_buffer(bytes, format, width, height, full_rect(width, height), None)
-      .unwrap();
+  fn rgb_frame(
+    format: PixelFormat,
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+  ) -> FrameData {
+    let pixels =
+      read_buffer(bytes, format, width, height, full_rect(width, height), None)
+        .unwrap();
     let color = FrameColor::srgb();
     let raster = visible_raster(
       format,
@@ -1106,12 +1182,8 @@ mod tests {
 
   #[test]
   fn rgbx_copy_writes_opaque_padding() {
-    let frame = rgb_frame(
-      PixelFormat::Rgbx,
-      &[255, 0, 0, 0, 0, 255, 0, 0x40],
-      2,
-      1,
-    );
+    let frame =
+      rgb_frame(PixelFormat::Rgbx, &[255, 0, 0, 0, 0, 255, 0, 0x40], 2, 1);
     let mut dest = vec![0u8; 8];
     write_copy(
       &frame,
@@ -1157,14 +1229,23 @@ mod tests {
 
   #[test]
   fn layout_rejects_plane_count_and_overflow() {
-    let short = [PlaneLayoutIn { offset: 0, stride: 4 }];
+    let short = [PlaneLayoutIn {
+      offset: 0,
+      stride: 4,
+    }];
     assert_eq!(
       allocation(PixelFormat::I420, full_rect(4, 2), Some(&short)),
       Err(LayoutError::PlaneCount)
     );
     let overflow = [
-      PlaneLayoutIn { offset: 0, stride: 4 },
-      PlaneLayoutIn { offset: 8, stride: 2 },
+      PlaneLayoutIn {
+        offset: 0,
+        stride: 4,
+      },
+      PlaneLayoutIn {
+        offset: 8,
+        stride: 2,
+      },
       PlaneLayoutIn {
         offset: u64::from(u32::MAX) - 1,
         stride: 2,
@@ -1179,9 +1260,18 @@ mod tests {
   #[test]
   fn stride_too_small_and_short_buffer() {
     let layout = [
-      PlaneLayoutIn { offset: 0, stride: 1 },
-      PlaneLayoutIn { offset: 8, stride: 2 },
-      PlaneLayoutIn { offset: 10, stride: 2 },
+      PlaneLayoutIn {
+        offset: 0,
+        stride: 1,
+      },
+      PlaneLayoutIn {
+        offset: 8,
+        stride: 2,
+      },
+      PlaneLayoutIn {
+        offset: 10,
+        stride: 2,
+      },
     ];
     assert_eq!(
       allocation(PixelFormat::I420, full_rect(4, 2), Some(&layout)),

@@ -216,17 +216,29 @@ impl AudioSamples {
     }
   }
 
-  pub(crate) fn allocation_size(&self, request: &CopyRequest) -> Result<u32, CopyError> {
+  pub(crate) fn allocation_size(
+    &self,
+    request: &CopyRequest,
+  ) -> Result<u32, CopyError> {
     let bytes = self.window(request)?.2;
     u32::try_from(bytes).map_err(|_| CopyError::Count)
   }
 
-  pub(crate) fn copy_to(&self, request: &CopyRequest) -> Result<Vec<u8>, CopyError> {
+  pub(crate) fn copy_to(
+    &self,
+    request: &CopyRequest,
+  ) -> Result<Vec<u8>, CopyError> {
     let (count, kind, bytes) = self.window(request)?;
     let (_, planar) = request.format.unwrap_or((self.kind, self.planar));
     let mut dest = vec![0u8; bytes];
     if self.kind == kind {
-      self.copy_same(planar, request.plane, request.frame_offset, count, &mut dest)?;
+      self.copy_same(
+        planar,
+        request.plane,
+        request.frame_offset,
+        count,
+        &mut dest,
+      )?;
     } else {
       self.copy_convert(
         kind,
@@ -241,7 +253,10 @@ impl AudioSamples {
   }
 
   /// `(frame count, destination kind, byte length)`.
-  fn window(&self, request: &CopyRequest) -> Result<(u32, SampleKind, usize), CopyError> {
+  fn window(
+    &self,
+    request: &CopyRequest,
+  ) -> Result<(u32, SampleKind, usize), CopyError> {
     let (kind, planar) = request.format.unwrap_or((self.kind, self.planar));
     if planar {
       if request.plane >= self.channels {
@@ -286,7 +301,9 @@ impl AudioSamples {
     }
     if dest_planar && self.planar {
       let start = plane_offset(plane, self.frames, frame_offset, width)?;
-      let len = (count as usize).checked_mul(width).ok_or(CopyError::Count)?;
+      let len = (count as usize)
+        .checked_mul(width)
+        .ok_or(CopyError::Count)?;
       return copy_range(&self.bytes, start, dest, len);
     }
     if dest_planar {
@@ -382,7 +399,11 @@ fn byte_len(kind: SampleKind, channels: u32, frames: u32) -> Option<usize> {
     .and_then(|samples| samples.checked_mul(kind.bytes()))
 }
 
-fn sample_offset(frames: u32, channels: u32, width: usize) -> Result<usize, CopyError> {
+fn sample_offset(
+  frames: u32,
+  channels: u32,
+  width: usize,
+) -> Result<usize, CopyError> {
   (frames as usize)
     .checked_mul(channels as usize)
     .and_then(|samples| samples.checked_mul(width))
@@ -402,7 +423,12 @@ fn plane_offset(
     .ok_or(CopyError::Count)
 }
 
-fn copy_range(src: &[u8], start: usize, dest: &mut [u8], len: usize) -> Result<(), CopyError> {
+fn copy_range(
+  src: &[u8],
+  start: usize,
+  dest: &mut [u8],
+  len: usize,
+) -> Result<(), CopyError> {
   let end = start.checked_add(len).ok_or(CopyError::Count)?;
   let from = src.get(start..end).ok_or(CopyError::Count)?;
   let into = dest.get_mut(..len).ok_or(CopyError::Count)?;
@@ -418,13 +444,20 @@ fn copy_sample(
   width: usize,
 ) -> Result<(), CopyError> {
   let from = from.checked_mul(width).ok_or(CopyError::Count)?;
-  copy_range(src, from, dest.get_mut(to..).ok_or(CopyError::Count)?, width)
+  copy_range(
+    src,
+    from,
+    dest.get_mut(to..).ok_or(CopyError::Count)?,
+    width,
+  )
 }
 
-fn read_unit(bytes: &[u8], kind: SampleKind, index: usize) -> Result<f32, CopyError> {
-  let start = index
-    .checked_mul(kind.bytes())
-    .ok_or(CopyError::Count)?;
+fn read_unit(
+  bytes: &[u8],
+  kind: SampleKind,
+  index: usize,
+) -> Result<f32, CopyError> {
+  let start = index.checked_mul(kind.bytes()).ok_or(CopyError::Count)?;
   match kind {
     SampleKind::U8 => {
       let sample = *bytes.get(start).ok_or(CopyError::Count)?;
@@ -457,9 +490,7 @@ fn write_unit(
   index: usize,
   unit: f32,
 ) -> Result<(), CopyError> {
-  let start = index
-    .checked_mul(kind.bytes())
-    .ok_or(CopyError::Count)?;
+  let start = index.checked_mul(kind.bytes()).ok_or(CopyError::Count)?;
   match kind {
     SampleKind::U8 => {
       *dest.get_mut(start).ok_or(CopyError::Count)? = unit_to_u8(unit);
@@ -603,9 +634,15 @@ mod tests {
     for sample in samples {
       match kind {
         SampleKind::U8 => bytes.push(*sample as u8),
-        SampleKind::S16 => bytes.extend_from_slice(&(*sample as i16).to_le_bytes()),
-        SampleKind::S32 => bytes.extend_from_slice(&(*sample as i32).to_le_bytes()),
-        SampleKind::F32 => bytes.extend_from_slice(&(*sample as f32).to_le_bytes()),
+        SampleKind::S16 => {
+          bytes.extend_from_slice(&(*sample as i16).to_le_bytes())
+        }
+        SampleKind::S32 => {
+          bytes.extend_from_slice(&(*sample as i32).to_le_bytes())
+        }
+        SampleKind::F32 => {
+          bytes.extend_from_slice(&(*sample as f32).to_le_bytes())
+        }
       }
     }
     bytes
@@ -617,9 +654,15 @@ mod tests {
       .chunks(width)
       .map(|chunk| match kind {
         SampleKind::U8 => f64::from(chunk[0]),
-        SampleKind::S16 => f64::from(i16::from_le_bytes(chunk.try_into().unwrap())),
-        SampleKind::S32 => f64::from(i32::from_le_bytes(chunk.try_into().unwrap())),
-        SampleKind::F32 => f64::from(f32::from_le_bytes(chunk.try_into().unwrap())),
+        SampleKind::S16 => {
+          f64::from(i16::from_le_bytes(chunk.try_into().unwrap()))
+        }
+        SampleKind::S32 => {
+          f64::from(i32::from_le_bytes(chunk.try_into().unwrap()))
+        }
+        SampleKind::F32 => {
+          f64::from(f32::from_le_bytes(chunk.try_into().unwrap()))
+        }
       })
       .collect()
   }
@@ -628,7 +671,13 @@ mod tests {
     parse_format(name).unwrap().0
   }
 
-  fn assert_close(actual: &[f64], expected: &[f64], source: &str, dest: &str, label: &str) {
+  fn assert_close(
+    actual: &[f64],
+    expected: &[f64],
+    source: &str,
+    dest: &str,
+    label: &str,
+  ) {
     assert_eq!(actual.len(), expected.len(), "{label} length");
     for (index, (got, want)) in actual.iter().zip(expected).enumerate() {
       let eps = epsilon(*want, source, dest);
@@ -653,7 +702,10 @@ mod tests {
         let dest_kind = kind_of(dest_name);
         let source_values = values(source_name);
         let dest_values = values(dest_name);
-        let input: Vec<f64> = input_index.iter().map(|index| source_values[*index]).collect();
+        let input: Vec<f64> = input_index
+          .iter()
+          .map(|index| source_values[*index])
+          .collect();
         let stored = AudioSamples::from_pcm(
           source_kind,
           false,
@@ -669,15 +721,36 @@ mod tests {
           frame_count: None,
           format: Some((dest_kind, planar)),
         };
-        let left = unpack(dest_kind, &stored.copy_to(&request(0, true)).unwrap());
-        let right = unpack(dest_kind, &stored.copy_to(&request(1, true)).unwrap());
-        let both = unpack(dest_kind, &stored.copy_to(&request(0, false)).unwrap());
+        let left =
+          unpack(dest_kind, &stored.copy_to(&request(0, true)).unwrap());
+        let right =
+          unpack(dest_kind, &stored.copy_to(&request(1, true)).unwrap());
+        let both =
+          unpack(dest_kind, &stored.copy_to(&request(0, false)).unwrap());
         let expect = |indexes: &[usize]| -> Vec<f64> {
           indexes.iter().map(|index| dest_values[*index]).collect()
         };
-        assert_close(&left, &expect(&plane0), source_name, dest_name, "interleaved plane 0");
-        assert_close(&right, &expect(&plane1), source_name, dest_name, "interleaved plane 1");
-        assert_close(&both, &expect(&input_index), source_name, dest_name, "interleaved");
+        assert_close(
+          &left,
+          &expect(&plane0),
+          source_name,
+          dest_name,
+          "interleaved plane 0",
+        );
+        assert_close(
+          &right,
+          &expect(&plane1),
+          source_name,
+          dest_name,
+          "interleaved plane 1",
+        );
+        assert_close(
+          &both,
+          &expect(&input_index),
+          source_name,
+          dest_name,
+          "interleaved",
+        );
 
         let planar = AudioSamples::from_pcm(
           source_kind,
@@ -688,12 +761,33 @@ mod tests {
           &pack(source_kind, &input),
         )
         .unwrap();
-        let left = unpack(dest_kind, &planar.copy_to(&request(0, true)).unwrap());
-        let right = unpack(dest_kind, &planar.copy_to(&request(1, true)).unwrap());
-        let both = unpack(dest_kind, &planar.copy_to(&request(0, false)).unwrap());
-        assert_close(&left, &expect(&planar0), source_name, dest_name, "planar plane 0");
-        assert_close(&right, &expect(&planar1), source_name, dest_name, "planar plane 1");
-        assert_close(&both, &expect(&interleaved), source_name, dest_name, "planar to interleaved");
+        let left =
+          unpack(dest_kind, &planar.copy_to(&request(0, true)).unwrap());
+        let right =
+          unpack(dest_kind, &planar.copy_to(&request(1, true)).unwrap());
+        let both =
+          unpack(dest_kind, &planar.copy_to(&request(0, false)).unwrap());
+        assert_close(
+          &left,
+          &expect(&planar0),
+          source_name,
+          dest_name,
+          "planar plane 0",
+        );
+        assert_close(
+          &right,
+          &expect(&planar1),
+          source_name,
+          dest_name,
+          "planar plane 1",
+        );
+        assert_close(
+          &both,
+          &expect(&interleaved),
+          source_name,
+          dest_name,
+          "planar to interleaved",
+        );
       }
     }
   }
@@ -737,7 +831,10 @@ mod tests {
       2,
       3,
       8000.0,
-      &pack(SampleKind::S16, &[0.0, 1000.0, -1000.0, 2000.0, 3000.0, -3000.0]),
+      &pack(
+        SampleKind::S16,
+        &[0.0, 1000.0, -1000.0, 2000.0, 3000.0, -3000.0],
+      ),
     )
     .unwrap();
     assert_eq!(samples.duration_us(), 375.0);

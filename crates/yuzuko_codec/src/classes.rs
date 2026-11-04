@@ -56,8 +56,12 @@ unsafe impl v8::cppgc::GarbageCollected for VideoFrame {
 }
 
 impl VideoFrame {
-  pub(crate) fn from_raster(raster: Raster) -> Self {
-    Self::from_data(frame_from_raster(&raster), 0.0, None)
+  pub(crate) fn from_timed(
+    raster: Raster,
+    timestamp: f64,
+    duration: Option<f64>,
+  ) -> Self {
+    Self::from_data(frame_from_raster(&raster), timestamp, duration)
   }
 
   pub(crate) fn from_data(
@@ -335,9 +339,8 @@ pub(crate) fn color_enum(
     match value.to_string(tc) {
       Some(text) => Ok(text.to_rust_string_lossy(tc)),
       None => {
-        let exception = tc
-          .exception()
-          .unwrap_or_else(|| v8::undefined(tc).into());
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
         Err(v8::Global::new(tc, exception))
       }
     }
@@ -378,9 +381,8 @@ fn color_member<'s>(
       Some(value) if value.is_null() || value.is_undefined() => Ok(None),
       Some(value) => Ok(Some(v8::Global::new(tc, value))),
       None => {
-        let exception = tc
-          .exception()
-          .unwrap_or_else(|| v8::undefined(tc).into());
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
         Err(v8::Global::new(tc, exception))
       }
     }
@@ -691,11 +693,7 @@ impl VideoDecoder {
     let frame = unsafe {
       wrap_instance(
         scope,
-        VideoFrame::from_data(
-          frame_from_raster(&raster),
-          timestamp,
-          duration,
-        ),
+        VideoFrame::from_data(frame_from_raster(&raster), timestamp, duration),
       )
     };
     let frame: v8::Local<v8::Value> = frame.into();
@@ -722,8 +720,8 @@ impl VideoDecoder {
 
   fn fail_value(&self, scope: &mut v8::PinScope, error: v8::Global<v8::Value>) {
     self.shutdown();
-    let callback =
-      callback(scope, &self.error).map(|function| v8::Global::new(scope, function));
+    let callback = callback(scope, &self.error)
+      .map(|function| v8::Global::new(scope, function));
     enqueue_delivery(scope, Delivery::Error { callback, error });
   }
 }
@@ -747,7 +745,10 @@ impl AudioData {
     rate: f64,
     timestamp: f64,
   ) -> Self {
-    Self::from_samples(crate::samples::AudioSamples::from_planar_f32(channels, rate), timestamp)
+    Self::from_samples(
+      crate::samples::AudioSamples::from_planar_f32(channels, rate),
+      timestamp,
+    )
   }
 
   pub(crate) fn from_samples(
@@ -776,7 +777,10 @@ impl AudioData {
     *self.body.borrow_mut() = None;
   }
 
-  fn metric(&self, read: impl FnOnce(&crate::samples::AudioSamples) -> u32) -> u32 {
+  fn metric(
+    &self,
+    read: impl FnOnce(&crate::samples::AudioSamples) -> u32,
+  ) -> u32 {
     self.body.borrow().as_ref().map(read).unwrap_or(0)
   }
 }
@@ -795,7 +799,11 @@ impl AudioData {
 
   #[getter]
   fn format(&self) -> Option<String> {
-    self.body.borrow().as_ref().map(|samples| samples.format_name())
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|samples| samples.format_name())
   }
 
   #[getter]
@@ -948,12 +956,7 @@ impl EncodedAudioChunk {
 
 impl EncodedAudioChunk {
   pub(crate) fn copy_parts(&self) -> (bool, i64, Option<f64>, Vec<u8>) {
-    (
-      self.key,
-      self.timestamp,
-      self.duration,
-      self.data.clone(),
-    )
+    (self.key, self.timestamp, self.duration, self.data.clone())
   }
 
   pub(crate) fn from_parts(
@@ -1175,8 +1178,8 @@ impl AudioDecoder {
 
   fn fail_value(&self, scope: &mut v8::PinScope, error: v8::Global<v8::Value>) {
     self.shutdown();
-    let callback =
-      callback(scope, &self.error).map(|function| v8::Global::new(scope, function));
+    let callback = callback(scope, &self.error)
+      .map(|function| v8::Global::new(scope, function));
     enqueue_delivery(scope, Delivery::Error { callback, error });
   }
 }
@@ -1304,11 +1307,7 @@ fn video_chunk(
     return Err(OpError::type_("The chunk is not an EncodedVideoChunk"));
   };
   let chunk = host.get();
-  Ok((
-    chunk.data.clone(),
-    chunk.timestamp as f64,
-    chunk.duration,
-  ))
+  Ok((chunk.data.clone(), chunk.timestamp as f64, chunk.duration))
 }
 
 fn audio_chunk(

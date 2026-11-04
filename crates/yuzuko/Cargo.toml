@@ -163,6 +163,10 @@ required-features = ["window"]
 name = "update"
 
 [[test]]
+name = "image_decoder"
+required-features = ["codec", "canvas"]
+
+[[test]]
 name = "webcodecs"
 required-features = ["codec"]
 
