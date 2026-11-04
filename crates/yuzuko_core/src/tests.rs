@@ -863,6 +863,155 @@ fn console_prints_collections() {
 }
 
 #[test]
+fn console_prints_temporal_like_to_string() {
+  assert_logs(
+    r#"
+    console.log(Temporal.PlainDate.from("2020-01-02"));
+    console.log(Temporal.PlainTime.from("03:04:05.006007008"));
+    console.log(Temporal.PlainDateTime.from("2020-01-02T03:04:05.006007008"));
+    console.log(Temporal.ZonedDateTime.from(
+      "2020-01-02T03:04:05.006007008+09:00[Asia/Tokyo][u-ca=japanese]"
+    ));
+    console.log(Temporal.Instant.from("2020-01-02T03:04:05.006007008Z"));
+    console.log(Temporal.Instant.fromEpochMilliseconds(1736321470888));
+    console.log(Temporal.Duration.from({
+      years: 1,
+      days: 2,
+      hours: 3,
+      minutes: 4,
+      seconds: 5,
+      milliseconds: 6,
+      microseconds: 7,
+      nanoseconds: 8,
+    }));
+    console.log(new Temporal.Duration());
+    console.log(Temporal.Duration.from({ hours: -1, minutes: -2 }));
+    console.log(Temporal.Duration.from("P1W"));
+    console.log(Temporal.PlainMonthDay.from("01-02"));
+    console.log(Temporal.PlainYearMonth.from("2020-01"));
+    console.log(new Temporal.PlainDate(2021, 7, 1, "hebrew"));
+    console.log(Temporal);
+    console.log(Temporal.Now);
+    const extra = Temporal.PlainDate.from("2020-01-02");
+    extra.extra = 1;
+    console.log(extra);
+    class MyDate extends Temporal.PlainDate {
+      get extra() { return 7; }
+    }
+    console.log(new MyDate(2020, 1, 2));
+    const custom = Temporal.PlainDate.from("2020-01-02");
+    custom.toString = () => "custom";
+    console.log(custom);
+    const numeric = Temporal.PlainDate.from("2020-01-02");
+    numeric.toString = () => 5;
+    console.log(numeric);
+    const both = Temporal.PlainDate.from("2020-01-02");
+    both.toString = () => ({});
+    both.valueOf = () => "from-value";
+    console.log(both);
+    console.log({ d: Temporal.PlainDate.from("2020-01-02"), n: 1 });
+    const repeated = Temporal.PlainDate.from("2020-01-02");
+    console.log([repeated, repeated]);
+    console.log(new Map([["a", repeated]]));
+    console.log(new Proxy(repeated, {}));
+    console.log("%o", repeated);
+    console.log({ a: { b: { c: { d: { e: repeated } } } } });
+    console.log(Object.setPrototypeOf(
+      Temporal.PlainDate.from("2020-01-02"),
+      null,
+    ));
+    const broken = Temporal.PlainDate.from("2020-01-02");
+    broken.toString = () => { throw new Error("boom"); };
+    try {
+      console.log(broken);
+      console.log("reached");
+    } catch (error) {
+      console.log(error.message);
+    }
+    const weird = Temporal.PlainDate.from("2020-01-02");
+    weird.toString = () => ({});
+    try {
+      console.log(weird);
+      console.log("reached");
+    } catch (error) {
+      console.log(error.name);
+    }
+    const sym = Temporal.PlainDate.from("2020-01-02");
+    sym.toString = () => Symbol("x");
+    try {
+      console.log(sym);
+      console.log("reached");
+    } catch (error) {
+      console.log(error.name + ": " + error.message);
+    }
+    "#,
+    &[
+      "2020-01-02",
+      "03:04:05.006007008",
+      "2020-01-02T03:04:05.006007008",
+      "2020-01-02T03:04:05.006007008+09:00[Asia/Tokyo][u-ca=japanese]",
+      "2020-01-02T03:04:05.006007008Z",
+      "2025-01-08T07:31:10.888Z",
+      "P1Y2DT3H4M5.006007008S",
+      "PT0S",
+      "-PT1H2M",
+      "P1W",
+      "01-02",
+      "2020-01",
+      "2021-07-01[u-ca=hebrew]",
+      "Object [Temporal] {}",
+      "Object [Temporal.Now] {}",
+      "2020-01-02",
+      "2020-01-02",
+      "custom",
+      "5",
+      "from-value",
+      "{ d: 2020-01-02, n: 1 }",
+      "[ 2020-01-02, 2020-01-02 ]",
+      "Map(1) { \"a\" => 2020-01-02 }",
+      "2020-01-02",
+      "2020-01-02",
+      "{\n  a: {\n    b: { c: { d: { e: 2020-01-02 } } }\n  }\n}",
+      "[PlainDate: null prototype] {}",
+      "boom",
+      "TypeError",
+      "TypeError: Cannot convert a Symbol value to a string",
+    ],
+  );
+  let logs = logs_of(
+    r#"
+    console.log(Temporal.PlainDate.prototype);
+    console.log({
+      [Symbol.toStringTag]: "Temporal.PlainDate",
+      toString() { return "nope"; },
+    });
+    "#,
+  );
+  assert!(
+    logs[0].contains("calendarId: [Getter]"),
+    "prototype keeps accessors\n{}",
+    logs[0]
+  );
+  assert!(logs[0].contains("[Temporal.PlainDate]"), "{}", logs[0]);
+  assert!(
+    logs[1].contains("Object [Temporal.PlainDate]"),
+    "{}",
+    logs[1]
+  );
+  assert!(
+    logs[1].contains("toString: [Function: toString]"),
+    "{}",
+    logs[1]
+  );
+  assert!(
+    logs[1].contains("Symbol(Symbol.toStringTag): \"Temporal.PlainDate\""),
+    "{}",
+    logs[1]
+  );
+  assert!(!logs[1].contains("nope"), "{}", logs[1]);
+}
+
+#[test]
 fn console_formats_strings() {
   let logs = logs_of(
     r#"

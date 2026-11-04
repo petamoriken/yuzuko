@@ -5,6 +5,7 @@
 //! A host class instance prints that class's attributes. A getter on a
 //! user class is printed too. A getter that throws prints as `[Getter]`.
 //! `console` leaves the text uncolored. A REPL completion can paint it.
+//! A Temporal instance prints as `ToString`. The REPL paints that text cyan.
 
 use std::sync::Mutex;
 
@@ -25,6 +26,18 @@ const ARRAY_TYPE: u8 = 1;
 const ARRAY_EXTRAS_TYPE: u8 = 2;
 
 const QUOTES: [&str; 3] = ["\"", "'", "`"];
+
+/// Classes whose instances print as `ToString`.
+const TEMPORAL_TYPES: [&str; 8] = [
+  "Instant",
+  "ZonedDateTime",
+  "PlainDate",
+  "PlainTime",
+  "PlainDateTime",
+  "PlainYearMonth",
+  "PlainMonthDay",
+  "Duration",
+];
 
 /// Attributes `console` prints for a host class, in that order.
 ///
@@ -742,6 +755,11 @@ fn format_with(
     return format_primitive(scope, ctx, value, ctx.colors);
   }
   let value = unwrap_proxy(scope, value)?;
+  // A prototype fails `instanceof`, so it keeps the ordinary object layout.
+  if is_temporal(scope, value)? {
+    let text = try_to_string(scope, value)?;
+    return Ok(color::paint(Ink::Temporal, &text, ctx.colors));
+  }
   if is_web_record(scope, value) {
     if seen_contains(scope, ctx, value) {
       return Ok(circular_marker(scope, ctx, value));
@@ -827,6 +845,36 @@ fn apply_ref(
   } else {
     format!("{reference} {base}")
   }
+}
+
+fn is_temporal(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<bool, Thrown> {
+  let global = crate::js::global(scope);
+  let key = v8_str(scope, "Temporal");
+  let temporal = try_get(scope, global, key.into())?;
+  let Ok(temporal) = v8::Local::<v8::Object>::try_from(temporal) else {
+    return Ok(false);
+  };
+  for name in TEMPORAL_TYPES {
+    let key = v8_str(scope, name);
+    let ctor = try_get(scope, temporal, key.into())?;
+    let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
+      continue;
+    };
+    let hit = {
+      v8::tc_scope!(let tc, scope);
+      match value.instance_of(tc, ctor) {
+        Some(hit) => Ok(hit),
+        None => Err(stash_exception!(tc)),
+      }
+    }?;
+    if hit {
+      return Ok(true);
+    }
+  }
+  Ok(false)
 }
 
 fn is_web_record(

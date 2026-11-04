@@ -5124,6 +5124,7 @@ declare var IdleDeadline: {
  * `dirxml` and `table` print like `log`. `table` does not draw a grid.
  * `clear` succeeds and does not erase a surface. `time`, `timeLog`, and
  * `timeEnd` share one table. Objects print their contents, uncolored.
+ * A Temporal date, time, instant, or duration prints as `ToString`.
  * A host class instance prints that class's attributes, so
  * `AbortController` includes `signal`. A getter on a user class is
  * printed too. Inherited data properties stay hidden. The printer

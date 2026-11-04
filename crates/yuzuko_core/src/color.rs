@@ -26,6 +26,8 @@ pub(crate) enum Ink {
   String,
   /// Magenta. Dates.
   Date,
+  /// Cyan. A Temporal object's `ToString` text.
+  Temporal,
   /// Red. Regular expressions.
   Regexp,
 }
@@ -68,6 +70,7 @@ pub(crate) fn paint(ink: Ink, text: &str, colors: bool) -> String {
     Ink::Null => (1, 22),
     Ink::String => (32, 39),
     Ink::Date => (35, 39),
+    Ink::Temporal => (36, 39),
     Ink::Regexp => (31, 39),
   };
   format!("\x1b[{open}m{text}\x1b[{close}m")

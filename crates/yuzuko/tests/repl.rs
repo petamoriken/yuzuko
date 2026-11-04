@@ -1187,6 +1187,9 @@ fn repl_colors_a_completion_when_force_color_is_set() {
     "1n\n",
     "/a/g\n",
     "new Date(0)\n",
+    "console.log(Temporal.PlainDate.from(\"2020-01-02\"))\n",
+    "Temporal.PlainDate.from(\"2020-01-02\")\n",
+    "Temporal.Duration.from(\"PT0S\")\n",
     "(function () {})\n",
     "Object.defineProperty({}, \"a\", {",
     " enumerable: true, get() { return 1 } })\n",
@@ -1215,6 +1218,12 @@ fn repl_colors_a_completion_when_force_color_is_set() {
     raw.contains("\x1b[35m1970-01-01T00:00:00.000Z\x1b[39m"),
     "{raw}"
   );
+  assert!(
+    raw.lines().any(|line| line == "2020-01-02"),
+    "console.log stays uncolored\n{raw}"
+  );
+  assert!(raw.contains("\x1b[36m2020-01-02\x1b[39m"), "{raw}");
+  assert!(raw.contains("\x1b[36mPT0S\x1b[39m"), "{raw}");
   assert!(
     raw.contains("\x1b[36m[Function (anonymous)]\x1b[39m"),
     "{raw}"
