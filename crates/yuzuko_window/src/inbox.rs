@@ -148,6 +148,22 @@ pub enum Raw {
   Visibility(bool),
   Close,
   Menu(String),
+  /// One path from a file hover or a file drop.
+  ///
+  /// Consecutive paths of the same phase become one event.
+  File {
+    phase: FilePhase,
+    path: String,
+  },
+  /// The hovered files left the window without a drop.
+  FileCancel,
+}
+
+/// Whether a queued path is a hover or a drop.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FilePhase {
+  Hover,
+  Drop,
 }
 
 struct Pending {
@@ -288,6 +304,22 @@ pub fn push(id: u64, event: Raw) {
   });
 }
 
+/// An absolute path for a dropped or hovered file.
+///
+/// A relative path is joined to the process current directory. The result is
+/// not canonicalized. Non-UTF-8 bytes become U+FFFD.
+pub fn absolute_dropped_path(path: std::path::PathBuf) -> String {
+  let path = if path.is_absolute() {
+    path
+  } else {
+    match std::env::current_dir() {
+      Ok(dir) => dir.join(path),
+      Err(_) => path,
+    }
+  };
+  path.to_string_lossy().into_owned()
+}
+
 pub fn pop(id: u64) -> Option<Raw> {
   SLOTS.with(|slots| {
     slots
@@ -316,6 +348,28 @@ pub fn pop_coalesced_moves(id: u64, pointer_id: i32) -> Vec<RawPointer> {
       }
     }
     moves
+  })
+}
+
+/// Removes queued file paths of `phase` that follow the event just popped.
+pub fn pop_coalesced_files(id: u64, phase: FilePhase) -> Vec<String> {
+  SLOTS.with(|slots| {
+    let mut slots = slots.borrow_mut();
+    let Some(slot) = slots.get_mut(&id) else {
+      return Vec::new();
+    };
+    let mut paths = Vec::new();
+    while matches!(
+      slot.queue.front(),
+      Some(Raw::File {
+        phase: queued, ..
+      }) if *queued == phase
+    ) {
+      if let Some(Raw::File { path, .. }) = slot.queue.pop_front() {
+        paths.push(path);
+      }
+    }
+    paths
   })
 }
 
@@ -430,7 +484,7 @@ pub fn any_open() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::{FRAME, interval_from_millihertz};
+  use super::{FRAME, absolute_dropped_path, interval_from_millihertz};
   use std::time::Duration;
 
   #[test]
@@ -468,5 +522,16 @@ mod tests {
       interval_from_millihertz(Some(1_000_000)),
       Duration::from_millis(1)
     );
+  }
+
+  #[test]
+  fn dropped_path_is_absolute() {
+    let relative = absolute_dropped_path("yuzuko-rel.txt".into());
+    let relative = std::path::PathBuf::from(relative);
+    assert!(relative.is_absolute());
+    assert!(relative.ends_with("yuzuko-rel.txt"));
+    let kept = std::env::current_dir().unwrap().join("kept.txt");
+    let absolute = absolute_dropped_path(kept.clone());
+    assert_eq!(std::path::PathBuf::from(absolute), kept);
   }
 }

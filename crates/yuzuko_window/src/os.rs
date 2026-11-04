@@ -21,7 +21,7 @@ use winit::window::{
 };
 
 use crate::inbox::{
-  self, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel, Size,
+  self, FilePhase, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel, Size,
 };
 use crate::input::keys;
 use crate::session;
@@ -1441,6 +1441,15 @@ impl App {
           inbox::push(id, Raw::Ime(raw));
         }
       }
+      WindowEvent::DroppedFile(path) => {
+        push_file(id, FilePhase::Drop, path);
+      }
+      WindowEvent::HoveredFile(path) => {
+        push_file(id, FilePhase::Hover, path);
+      }
+      WindowEvent::HoveredFileCancelled => {
+        inbox::push(id, Raw::FileCancel);
+      }
       WindowEvent::Touch(touch) => {
         let kind = match touch.phase {
           winit::event::TouchPhase::Started => PointerKind::Down,
@@ -1561,6 +1570,14 @@ impl App {
     pointer.movement_y = Some(delta.1);
     inbox::push(id, Raw::Pointer(pointer));
   }
+}
+
+fn push_file(id: u64, phase: FilePhase, path: std::path::PathBuf) {
+  let path = inbox::absolute_dropped_path(path);
+  if path.is_empty() {
+    return;
+  }
+  inbox::push(id, Raw::File { phase, path });
 }
 
 impl ApplicationHandler<Wake> for App {

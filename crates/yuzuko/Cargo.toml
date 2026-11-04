@@ -127,6 +127,10 @@ name = "dialog"
 required-features = ["window"]
 
 [[test]]
+name = "file_drop"
+required-features = ["window"]
+
+[[test]]
 name = "fetch_feature"
 
 [[test]]

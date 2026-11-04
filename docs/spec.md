@@ -198,6 +198,12 @@ A window's animation frames run at the refresh rate of the monitor that window i
 
 `multiple: false` still returns an array of one path. Cancelling, or accepting an empty selection, returns `null`. The paths are absolute and are not canonicalized. Linux shows a GTK 3 file chooser and does not parent it to the winit window. Windows and Linux show each filter, including one that selects every file, as its own choice. macOS keeps one allowed-type list: extensions from every filter are united, and there is no separate choice for each `name`. If any filter selects every file, or `filters` is omitted, macOS allows every file. The dialog selects files.
 
+### File drop
+
+A file dragged over a window dispatches `filehover` on that window. Leaving without a drop dispatches `filehovercancel`. Releasing the files dispatches `filedrop`. These events do not bubble and cannot be cancelled. They target the window, not `surface`, and they are not delivered to `Yuzuko`. There is no `DataTransfer` and no HTML drag-and-drop.
+
+`filedrop` and `filehover` carry `paths`, a new array of absolute paths in the order the operating system reported them. The paths are not canonicalized. A relative path is joined to the process current directory. Several files in one hover or one drop become one event. `filehovercancel` has no `paths`. macOS, Windows, and X11 deliver these events. Wayland does not. A headless window, including `yuzuko test`, does not receive an operating-system drop. `Yuzuko.__test.inject` delivers the same events when `YUZUKO_TEST_INPUT=1`.
+
 ### Frame order
 
 Canvas 2D drawing, a `bitmaprenderer` update, a bitmap copied from a worker frame, and a change to `objectFit` or `imageRendering` are presented on the next turn of the event loop. That includes drawing at the top level of a script. The present runs once. It does not repeat until one of those changes again, and it does not queue an animation frame. A due animation frame still runs first, and drawing done by that callback is included in the same present. WebGPU still updates only in the steps below.

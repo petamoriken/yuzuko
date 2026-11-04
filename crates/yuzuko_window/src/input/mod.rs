@@ -9,14 +9,14 @@ use std::time::Instant;
 
 use yuzuko_core::op::host_ref;
 use yuzuko_dom::{
-  FiredComposition, FiredInput, FiredKey, FiredPointer, FiredWheel,
-  dispatch_composition, dispatch_focus, dispatch_input, dispatch_key,
-  dispatch_simple, dispatch_wheel,
+  Event, FiredComposition, FiredInput, FiredKey, FiredPointer, FiredWheel,
+  define_is_trusted, dispatch, dispatch_composition, dispatch_focus,
+  dispatch_input, dispatch_key, dispatch_simple, dispatch_wheel,
 };
 
 use crate::activation;
 use crate::inbox::{
-  self, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel,
+  self, FilePhase, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel,
 };
 use crate::shell::clipboard;
 use crate::surface::Window;
@@ -125,6 +125,7 @@ enum Step {
   Media,
   Visibility(bool),
   Close,
+  File(FilePhase, Vec<String>),
 }
 
 pub fn flush(scope: &mut v8::PinScope, id: u64) {
@@ -208,11 +209,41 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
         Step::Menu(action) => {
           crate::shell::menu::dispatch_click(scope, &action);
         }
+        Step::File(phase, paths) => {
+          dispatch_files(scope, object, phase, &paths);
+        }
         Step::Close => Window::close_object(scope, object),
       }
     }
     scope.perform_microtask_checkpoint();
   }
+}
+
+fn dispatch_files(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  phase: FilePhase,
+  paths: &[String],
+) {
+  let type_name = match phase {
+    FilePhase::Hover => "filehover",
+    FilePhase::Drop => "filedrop",
+  };
+  let event = Event::new(type_name, false, false, false, true);
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  define_is_trusted(scope, object);
+  let list = v8::Array::new(scope, paths.len() as i32);
+  let mut index = 0u32;
+  for path in paths {
+    let Some(value) = v8::String::new(scope, path) else {
+      continue;
+    };
+    list.set_index(scope, index, value.into());
+    index += 1;
+  }
+  let key = v8::String::new(scope, "paths").unwrap();
+  object.set(scope, key.into(), list.into());
+  let _ = dispatch(scope, target, object);
 }
 
 /// Right-click's default action shows the menu from `setContextMenu`.
@@ -263,6 +294,12 @@ impl Window {
       Raw::Visibility(visible) => vec![Step::Visibility(visible)],
       Raw::Close => vec![Step::Close],
       Raw::Menu(action) => vec![Step::Menu(action)],
+      Raw::File { phase, path } => {
+        let mut paths = vec![path];
+        paths.extend(inbox::pop_coalesced_files(self.id(), phase));
+        vec![Step::File(phase, paths)]
+      }
+      Raw::FileCancel => vec![Step::Simple("filehovercancel")],
     }
   }
 

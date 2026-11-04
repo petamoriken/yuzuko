@@ -567,11 +567,28 @@ declare namespace Yuzuko {
   }
 
   /**
+   * `filehover` or `filedrop` on a {@link Window}.
+   *
+   * There is no `FileDropEvent` constructor. The event is an {@link Event}
+   * with an own `paths` property. It does not bubble and cannot be cancelled.
+   * There is no `DataTransfer`.
+   */
+  interface FileDropEvent extends Event {
+    /**
+     * Absolute paths, in the order the operating system reported them.
+     *
+     * A new array on each event. The paths are not canonicalized.
+     */
+    readonly paths: readonly string[];
+  }
+
+  /**
    * Events dispatched on a {@link Window}.
    *
    * Pointer events target {@link Window.surface} and propagate through the
-   * window. Key, IME, wheel, focus, blur, resize, close, and `menuclick`
-   * target the window only. `focus` and `blur` do not bubble.
+   * window. Key, IME, wheel, focus, blur, resize, close, `menuclick`,
+   * `filehover`, `filehovercancel`, and `filedrop` target the window only.
+   * `focus`, `blur`, and the file events do not bubble.
    */
   interface WindowEventMap {
     close: Event;
@@ -579,6 +596,9 @@ declare namespace Yuzuko {
     focus: FocusEvent;
     blur: FocusEvent;
     menuclick: MenuClickEvent;
+    filehover: FileDropEvent;
+    filehovercancel: Event;
+    filedrop: FileDropEvent;
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
     wheel: WheelEvent;

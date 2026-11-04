@@ -4,7 +4,7 @@
 use yuzuko_core::op::{OpError, OpException, host_ref};
 
 use crate::inbox::{
-  self, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel,
+  self, FilePhase, PointerKind, Raw, RawIme, RawKey, RawPointer, RawWheel,
 };
 use crate::input;
 use crate::input::gamepad;
@@ -59,6 +59,19 @@ fn inject_events(
       crate::shell::tray::dispatch_primary_click(scope)?;
       continue;
     }
+    if let Some(phase) =
+      file_phase(prop_string(scope, record, "kind").as_deref())
+    {
+      for path in read_paths(scope, record)? {
+        inbox::push(id, Raw::File { phase, path });
+      }
+      continue;
+    }
+    if prop_string(scope, record, "kind").as_deref() == Some("filehovercancel")
+    {
+      inbox::push(id, Raw::FileCancel);
+      continue;
+    }
     if prop_string(scope, record, "kind").as_deref() == Some("accessible") {
       #[cfg(feature = "accessibility")]
       {
@@ -103,6 +116,48 @@ fn read_accessible(
   };
   crate::a11y::inject_and_drain(scope, id, kind, value);
   Ok(())
+}
+
+fn file_phase(kind: Option<&str>) -> Option<FilePhase> {
+  match kind {
+    Some("filedrop") => Some(FilePhase::Drop),
+    Some("filehover") => Some(FilePhase::Hover),
+    _ => None,
+  }
+}
+
+fn read_paths(
+  scope: &mut v8::PinScope,
+  record: v8::Local<v8::Object>,
+) -> Result<Vec<String>, OpError> {
+  let Some(value) = prop(scope, record, "paths") else {
+    return Err(OpError::type_("A file event requires paths"));
+  };
+  let Ok(list) = v8::Local::<v8::Array>::try_from(value) else {
+    return Err(OpError::type_("A file event requires paths"));
+  };
+  if list.length() == 0 {
+    return Err(OpError::type_("A file event requires paths"));
+  }
+  let mut paths = Vec::new();
+  for index in 0..list.length() {
+    let Some(item) = list.get_index(scope, index) else {
+      return Err(OpError::type_("A file path must be a string"));
+    };
+    if !item.is_string() {
+      return Err(OpError::type_("A file path must be a string"));
+    }
+    let text = item.to_rust_string_lossy(scope);
+    if text.is_empty() {
+      return Err(OpError::type_("A file path must not be empty"));
+    }
+    let path = inbox::absolute_dropped_path(std::path::PathBuf::from(text));
+    if path.is_empty() {
+      return Err(OpError::type_("A file path must not be empty"));
+    }
+    paths.push(path);
+  }
+  Ok(paths)
 }
 
 fn read_event(
