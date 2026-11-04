@@ -1,12 +1,14 @@
 //! `crypto` and `SubtleCrypto` for digest, HMAC, AES-GCM, AES-CBC, AES-CTR,
-//! AES-KW, HKDF, PBKDF2, RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, ECDSA, ECDH,
-//! Ed25519, Ed448, X25519, and X448. HMAC and AES accept `raw` and `jwk`. RSA accepts
-//! `pkcs8`, `spki`, and `jwk`. Elliptic-curve and OKP keys accept `raw`,
-//! `pkcs8`, `spki`, and `jwk`.
+//! AES-KW, AES-OCB, ChaCha20-Poly1305, HKDF, PBKDF2, Argon2, KMAC,
+//! RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, ECDSA, ECDH, Ed25519, Ed448, X25519,
+//! X448, ML-KEM, ML-DSA, SLH-DSA-SHA2-128f, and the hybrid KEMs. SHA-3 and
+//! SHAKE are digests. cSHAKE, TurboSHAKE, and KangarooTwelve stay unsupported.
 
 #![allow(clippy::too_many_arguments)]
 
 pub(crate) mod ec_key;
+pub(crate) mod modern;
+pub(crate) mod modern_api;
 pub(crate) mod okp_key;
 pub(crate) mod rsa_key;
 
@@ -396,6 +398,10 @@ impl SubtleCrypto {
         let value = okp_jwk_value(scope, &jwk, &key_ops, ext);
         resolve(scope, value)
       }
+      Ok(Exported::Akp(jwk)) => {
+        let value = modern_api::akp_value(scope, &jwk);
+        resolve(scope, value)
+      }
       Err(error) => reject(scope, error),
     }
   }
@@ -543,56 +549,104 @@ impl SubtleCrypto {
   fn encapsulate_key(
     &self,
     scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    _algorithm: v8::Local<v8::Value>,
-    _key: v8::Local<v8::Value>,
-    _encapsulated: v8::Local<v8::Value>,
-    _extractable: bool,
-    _usages: v8::Local<v8::Value>,
+    algorithm: v8::Local<v8::Value>,
+    key: v8::Local<v8::Value>,
+    encapsulated: v8::Local<v8::Value>,
+    extractable: bool,
+    usages: v8::Local<v8::Value>,
   ) -> Js {
     let _ = self;
-    modern_method(scope, args, 5, "encapsulateKey")
+    match modern_api::encapsulate(scope, algorithm, key, "encapsulateKey") {
+      Ok((ciphertext, secret)) => {
+        match modern_api::shared_secret_key(
+          scope,
+          encapsulated,
+          &secret,
+          extractable,
+          usages,
+        ) {
+          Ok(shared) => {
+            let _ = CryptoKey::template(scope);
+            let wrapped =
+              unsafe { yuzuko_core::op::wrap_instance(scope, shared) };
+            resolve_kem(scope, ciphertext, wrapped.into())
+          }
+          Err(error) => reject(scope, error),
+        }
+      }
+      Err(error) => reject(scope, error),
+    }
   }
 
   #[promise]
   fn encapsulate_bits(
     &self,
     scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    _algorithm: v8::Local<v8::Value>,
-    _key: v8::Local<v8::Value>,
+    algorithm: v8::Local<v8::Value>,
+    key: v8::Local<v8::Value>,
   ) -> Js {
     let _ = self;
-    modern_method(scope, args, 2, "encapsulateBits")
+    match modern_api::encapsulate(scope, algorithm, key, "encapsulateBits") {
+      Ok((ciphertext, shared)) => {
+        let shared = bytes::array_buffer(scope, shared);
+        resolve_kem(scope, ciphertext, shared.into())
+      }
+      Err(error) => reject(scope, error),
+    }
   }
 
   #[promise]
   fn decapsulate_key(
     &self,
     scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    _algorithm: v8::Local<v8::Value>,
-    _key: v8::Local<v8::Value>,
-    _ciphertext: v8::Local<v8::Value>,
-    _unwrapped: v8::Local<v8::Value>,
-    _extractable: bool,
-    _usages: v8::Local<v8::Value>,
+    algorithm: v8::Local<v8::Value>,
+    key: v8::Local<v8::Value>,
+    ciphertext: v8::Local<v8::Value>,
+    shared_algorithm: v8::Local<v8::Value>,
+    extractable: bool,
+    usages: v8::Local<v8::Value>,
   ) -> Js {
     let _ = self;
-    modern_method(scope, args, 6, "decapsulateKey")
+    match modern_api::decapsulate(
+      scope,
+      algorithm,
+      key,
+      ciphertext,
+      "decapsulateKey",
+    ) {
+      Ok(secret) => match modern_api::shared_secret_key(
+        scope,
+        shared_algorithm,
+        &secret,
+        extractable,
+        usages,
+      ) {
+        Ok(shared) => resolve_key(scope, shared),
+        Err(error) => reject(scope, error),
+      },
+      Err(error) => reject(scope, error),
+    }
   }
 
   #[promise]
   fn decapsulate_bits(
     &self,
     scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    _algorithm: v8::Local<v8::Value>,
-    _key: v8::Local<v8::Value>,
-    _ciphertext: v8::Local<v8::Value>,
+    algorithm: v8::Local<v8::Value>,
+    key: v8::Local<v8::Value>,
+    ciphertext: v8::Local<v8::Value>,
   ) -> Js {
     let _ = self;
-    modern_method(scope, args, 3, "decapsulateBits")
+    match modern_api::decapsulate(
+      scope,
+      algorithm,
+      key,
+      ciphertext,
+      "decapsulateBits",
+    ) {
+      Ok(shared) => resolve_bytes(scope, shared),
+      Err(error) => reject(scope, error),
+    }
   }
 
   #[promise]
@@ -600,49 +654,26 @@ impl SubtleCrypto {
   fn get_public_key(
     &self,
     scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    _key: v8::Local<v8::Value>,
-    _usages: v8::Local<v8::Value>,
+    key: v8::Local<v8::Value>,
+    usages: v8::Local<v8::Value>,
   ) -> Js {
     let _ = self;
-    modern_method(scope, args, 2, "getPublicKey")
+    match modern_api::get_public_key(scope, key, usages) {
+      Ok(key) => resolve_key(scope, key),
+      Err(error) => reject(scope, error),
+    }
   }
 
   #[static_method]
   fn supports(
+    scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
     _operation: v8::Local<v8::Value>,
     _algorithm: v8::Local<v8::Value>,
     _third: Option<v8::Local<v8::Value>>,
-  ) -> Result<(), OpError> {
-    if args.length() < 2 {
-      return Err(OpError::type_(
-        "SubtleCrypto.supports requires an operation and an algorithm",
-      ));
-    }
-    Err(OpError::dom(
-      "NotSupportedError",
-      "SubtleCrypto.supports is not supported",
-    ))
+  ) -> Result<bool, OpError> {
+    Ok(modern_api::supports(scope, args))
   }
-}
-
-fn modern_method(
-  scope: &mut v8::PinScope,
-  args: &v8::FunctionCallbackArguments,
-  needed: i32,
-  name: &str,
-) -> Js {
-  if args.length() < needed {
-    return reject(
-      scope,
-      OpError::type_(format!("{name} requires {needed} arguments")),
-    );
-  }
-  reject(
-    scope,
-    OpError::dom("NotSupportedError", format!("{name} is not supported")),
-  )
 }
 
 fn digest_bytes(
@@ -651,6 +682,9 @@ fn digest_bytes(
   data: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
   let name = algorithm_name(scope, algorithm)?;
+  if modern_api::is_sha3(&name) || modern_api::is_shake(&name) {
+    return modern_api::digest(scope, algorithm, &name, data);
+  }
   let bytes = buffer(scope, data)?;
   Ok(match name.as_str() {
     "SHA-1" => Sha1::digest(&bytes).to_vec(),
@@ -700,7 +734,7 @@ fn generate_key(
         bytes,
       ))))
     }
-    "AES-GCM" | "AES-CBC" | "AES-CTR" | "AES-KW" => {
+    "AES-GCM" | "AES-CBC" | "AES-CTR" | "AES-KW" | "AES-OCB" => {
       reject_unknown_usages(&name, &usages)?;
       let length = aes_generate_length(scope, algorithm)?;
       reject_empty_usages(&name, &usages)?;
@@ -730,10 +764,25 @@ fn generate_key(
         "generateKey is not used for this algorithm",
       ))
     }
-    _ => Err(OpError::dom(
-      "NotSupportedError",
-      "The key algorithm is not supported",
-    )),
+    _ => {
+      if modern_api::is_chacha(&name)
+        || modern_api::is_kmac(&name)
+        || modern_api::is_argon(&name)
+        || modern_api::is_asym(&name)
+      {
+        return modern_api::generate(
+          scope,
+          &name,
+          algorithm,
+          extractable,
+          &usages,
+        );
+      }
+      Err(OpError::dom(
+        "NotSupportedError",
+        "The key algorithm is not supported",
+      ))
+    }
   }
 }
 
@@ -747,11 +796,12 @@ fn import_key(
 ) -> Result<CryptoKey, OpError> {
   let name = algorithm_name(scope, algorithm)?;
   let usages = normalize_usages(read_usages(scope, usages)?);
+  let format = modern_api::import_format(&name, format);
   if is_ec(&name) {
     return import_ec(
       scope,
       &name,
-      format,
+      &format,
       key_data,
       algorithm,
       extractable,
@@ -759,18 +809,53 @@ fn import_key(
     );
   }
   if is_okp(&name) {
-    return import_okp(scope, &name, format, key_data, extractable, usages);
+    return import_okp(scope, &name, &format, key_data, extractable, usages);
   }
   if is_rsa(&name) {
     return import_rsa(
       scope,
       &name,
-      format,
+      &format,
       key_data,
       algorithm,
       extractable,
       usages,
     );
+  }
+  if modern_api::is_asym(&name) {
+    return modern_api::import_asym(
+      scope,
+      &name,
+      &format,
+      key_data,
+      extractable,
+      usages,
+    );
+  }
+  if modern_api::is_ocb(&name)
+    || modern_api::is_chacha(&name)
+    || modern_api::is_kmac(&name)
+    || modern_api::is_argon(&name)
+  {
+    check_usages(&name, &usages)?;
+    if format.eq_ignore_ascii_case("raw-secret") {
+      let bytes = buffer(scope, key_data)?;
+      return modern_api::import_secret(&name, bytes, extractable, usages);
+    }
+    if format.eq_ignore_ascii_case("jwk") {
+      return import_jwk(
+        scope,
+        &name,
+        key_data,
+        algorithm,
+        extractable,
+        usages,
+      );
+    }
+    return Err(OpError::dom(
+      "NotSupportedError",
+      "The key format is not supported",
+    ));
   }
   check_usages(&name, &usages)?;
   if format.eq_ignore_ascii_case("raw") {
@@ -850,6 +935,8 @@ struct OctJwk {
   crv: Option<String>,
   x: Option<String>,
   y: Option<String>,
+  pub_b64: Option<String>,
+  priv_b64: Option<String>,
 }
 
 fn import_jwk(
@@ -860,7 +947,12 @@ fn import_jwk(
   extractable: bool,
   usages: Vec<String>,
 ) -> Result<CryptoKey, OpError> {
-  if name != "HMAC" && !is_aes_key(name) {
+  if name != "HMAC"
+    && !is_aes_key(name)
+    && !modern_api::is_ocb(name)
+    && !modern_api::is_chacha(name)
+    && !modern_api::is_kmac(name)
+  {
     return Err(OpError::dom(
       "NotSupportedError",
       "The key format is not supported",
@@ -887,10 +979,29 @@ fn import_jwk(
       aes_jwk_alg(name, &bytes, jwk.alg.as_deref())?;
       check_use(&usages, jwk.use_.as_deref(), "enc")?;
     }
+    name
+      if modern_api::is_ocb(name)
+        || modern_api::is_chacha(name)
+        || modern_api::is_kmac(name) =>
+    {
+      modern_api::accept_jwk_alg(name, &bytes, jwk.alg.as_deref())?;
+      let expected = if modern_api::is_kmac(name) {
+        "sig"
+      } else {
+        "enc"
+      };
+      check_use(&usages, jwk.use_.as_deref(), expected)?;
+    }
     _ => unreachable!(),
   }
   check_key_ops(jwk.key_ops.as_deref(), &usages)?;
   check_ext(jwk.ext, extractable)?;
+  if modern_api::is_ocb(name)
+    || modern_api::is_chacha(name)
+    || modern_api::is_kmac(name)
+  {
+    return modern_api::import_secret(name, bytes, extractable, usages);
+  }
   import_oct_key(scope, name, algorithm, extractable, usages, bytes)
 }
 
@@ -944,6 +1055,9 @@ fn aes_jwk_name(algorithm: &str, bits: u32) -> Option<&'static str> {
     ("AES-KW", 128) => "A128KW",
     ("AES-KW", 192) => "A192KW",
     ("AES-KW", 256) => "A256KW",
+    ("AES-OCB", 128) => "A128OCB",
+    ("AES-OCB", 192) => "A192OCB",
+    ("AES-OCB", 256) => "A256OCB",
     _ => return None,
   })
 }
@@ -959,6 +1073,7 @@ fn aes_key_bits(bytes: &[u8]) -> Result<u32, OpError> {
 
 fn is_derivation_algorithm(name: &str) -> bool {
   matches!(name, "HKDF" | "PBKDF2" | "ECDH" | "X25519" | "X448")
+    || modern_api::is_argon(name)
 }
 
 fn is_aes(name: &str) -> bool {
@@ -1002,6 +1117,10 @@ fn check_key_ops(
         | "unwrapKey"
         | "deriveKey"
         | "deriveBits"
+        | "encapsulateBits"
+        | "encapsulateKey"
+        | "decapsulateBits"
+        | "decapsulateKey"
     ) || seen.contains(operation)
     {
       return Err(OpError::dom("DataError", "The JWK key_ops are invalid"));
@@ -1045,6 +1164,8 @@ fn read_jwk(
     crv: optional_string(scope, object, "crv")?,
     x: optional_string(scope, object, "x")?,
     y: optional_string(scope, object, "y")?,
+    pub_b64: optional_string(scope, object, "pub")?,
+    priv_b64: optional_string(scope, object, "priv")?,
   })
 }
 
@@ -1067,6 +1188,7 @@ enum Exported {
     key_ops: Vec<String>,
     ext: bool,
   },
+  Akp(modern_api::AkpJwk),
 }
 
 struct PublicJwk {
@@ -1096,7 +1218,8 @@ fn export_key(
       "The key is not extractable",
     ));
   }
-  match format.to_ascii_lowercase().as_str() {
+  let format = modern_api::export_format(&key.algorithm, format);
+  match format.as_str() {
     "raw" => {
       if is_ec(&key.algorithm) {
         if key.kind != "public" {
@@ -1131,6 +1254,9 @@ fn export_key(
           "The key is not a private key",
         ));
       }
+      if modern_api::der_private(&key.algorithm) {
+        return Ok(Exported::Raw(modern_api::pkcs8_of(&key)?));
+      }
       return Ok(Exported::Raw(key.bytes));
     }
     "spki" => {
@@ -1138,6 +1264,28 @@ fn export_key(
         return Err(OpError::dom(
           "InvalidAccessError",
           "The key is not a public key",
+        ));
+      }
+      if modern_api::der_private(&key.algorithm) {
+        return Ok(Exported::Raw(modern_api::spki_of(&key)?));
+      }
+      return Ok(Exported::Raw(key.bytes));
+    }
+    "raw-secret" => return Ok(Exported::Raw(key.bytes)),
+    "raw-public" => {
+      if key.kind != "public" {
+        return Err(OpError::dom(
+          "NotSupportedError",
+          "The key format is not supported",
+        ));
+      }
+      return Ok(Exported::Raw(key.bytes));
+    }
+    "raw-seed" | "raw-private" => {
+      if key.kind != "private" {
+        return Err(OpError::dom(
+          "NotSupportedError",
+          "The key format is not supported",
         ));
       }
       return Ok(Exported::Raw(key.bytes));
@@ -1190,6 +1338,9 @@ fn export_key(
         ext: key.extractable,
       });
     }
+    "jwk" if modern_api::is_asym(&key.algorithm) => {
+      return Ok(Exported::Akp(modern_api::akp_jwk(&key)?));
+    }
     _ => {}
   }
   let alg = match key.algorithm.as_str() {
@@ -1208,7 +1359,7 @@ fn export_key(
         }
       }
     }
-    "AES-GCM" | "AES-CBC" | "AES-CTR" | "AES-KW" => {
+    "AES-GCM" | "AES-CBC" | "AES-CTR" | "AES-KW" | "AES-OCB" => {
       let Some(alg) = aes_jwk_name(key.algorithm.as_str(), key.length) else {
         return Err(OpError::dom(
           "NotSupportedError",
@@ -1217,6 +1368,9 @@ fn export_key(
       };
       alg
     }
+    "ChaCha20-Poly1305" => "",
+    "KMAC128" => "K128",
+    "KMAC256" => "K256",
     _ => {
       return Err(OpError::dom(
         "NotSupportedError",
@@ -1298,7 +1452,15 @@ fn wrapping_bytes(
   algorithm: &str,
   usage: &str,
 ) -> Result<Vec<u8>, OpError> {
-  if !matches!(algorithm, "AES-KW" | "AES-GCM" | "AES-CBC" | "AES-CTR") {
+  if !matches!(
+    algorithm,
+    "AES-KW"
+      | "AES-GCM"
+      | "AES-CBC"
+      | "AES-CTR"
+      | "AES-OCB"
+      | "ChaCha20-Poly1305"
+  ) {
     return Err(OpError::dom(
       "NotSupportedError",
       "The wrapping algorithm is not supported",
@@ -1327,7 +1489,8 @@ fn cipher_bytes(
   data: &[u8],
   encrypting: bool,
 ) -> Result<Vec<u8>, OpError> {
-  match algorithm_name(scope, algorithm)?.as_str() {
+  let name = algorithm_name(scope, algorithm)?;
+  match name.as_str() {
     "AES-KW" => {
       if encrypting {
         aes_kw_wrap(key, data)
@@ -1372,6 +1535,9 @@ fn cipher_bytes(
       }
       ctr_crypt(key, &counter, length, data)
     }
+    "AES-OCB" | "ChaCha20-Poly1305" => {
+      modern_api::aead_crypt(scope, &name, algorithm, key, data, encrypting)
+    }
     _ => Err(OpError::dom(
       "NotSupportedError",
       "The wrapping algorithm is not supported",
@@ -1386,10 +1552,14 @@ fn jwk_json(jwk: &PublicJwk) -> String {
     .map(|usage| format!("\"{usage}\""))
     .collect::<Vec<_>>()
     .join(",");
+  let alg = if jwk.alg.is_empty() {
+    String::new()
+  } else {
+    format!(",\"alg\":\"{}\"", jwk.alg)
+  };
   format!(
-    "{{\"kty\":\"oct\",\"k\":\"{}\",\"alg\":\"{}\",\"key_ops\":[{operations}],\"ext\":{}}}",
+    "{{\"kty\":\"oct\",\"k\":\"{}\"{alg},\"key_ops\":[{operations}],\"ext\":{}}}",
     jwk.k,
-    jwk.alg,
     if jwk.ext { "true" } else { "false" }
   )
 }
@@ -1492,7 +1662,9 @@ fn jwk_value<'s>(
   let object = v8::Object::new(scope);
   set_string(scope, object, "kty", "oct");
   set_string(scope, object, "k", &jwk.k);
-  set_string(scope, object, "alg", &jwk.alg);
+  if !jwk.alg.is_empty() {
+    set_string(scope, object, "alg", &jwk.alg);
+  }
   let operations = v8::Array::new(scope, jwk.key_ops.len() as i32);
   for (index, usage) in jwk.key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
@@ -1524,6 +1696,12 @@ fn sign_bytes(
   data: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
   let name = algorithm_name(scope, algorithm)?;
+  if modern_api::is_kmac(&name)
+    || modern::is_mldsa(&name)
+    || modern::is_slh(&name)
+  {
+    return modern_api::sign(scope, &name, algorithm, key, data);
+  }
   if name == "HMAC" {
     return mac_or_error(scope, algorithm, key, data, true);
   }
@@ -1550,6 +1728,12 @@ fn verify_bytes(
   data: v8::Local<v8::Value>,
 ) -> Result<bool, OpError> {
   let name = algorithm_name(scope, algorithm)?;
+  if modern_api::is_kmac(&name)
+    || modern::is_mldsa(&name)
+    || modern::is_slh(&name)
+  {
+    return modern_api::verify(scope, &name, algorithm, key, signature, data);
+  }
   if name == "HMAC" {
     return verify_mac(scope, algorithm, key, signature, data);
   }
@@ -1576,6 +1760,9 @@ fn crypt_bytes(
   encrypting: bool,
 ) -> Result<Vec<u8>, OpError> {
   let name = algorithm_name(scope, algorithm)?;
+  if modern_api::is_ocb(&name) || modern_api::is_chacha(&name) {
+    return modern_api::encrypt(scope, &name, algorithm, key, data, encrypting);
+  }
   if is_aes(&name) {
     return aes_gcm(scope, algorithm, key, data, encrypting);
   }
@@ -2166,6 +2353,9 @@ fn derive_bits_len(
   if bits == 0 {
     return Ok(Vec::new());
   }
+  if modern_api::is_argon(&name) {
+    return modern_api::argon_bits(scope, &name, algorithm, &key.bytes, bits);
+  }
   let mut output = vec![0u8; (bits / 8) as usize];
   match name.as_str() {
     "PBKDF2" => {
@@ -2562,6 +2752,21 @@ fn allowed_usages(algorithm: &str) -> Option<&'static [&'static str]> {
     "HKDF" | "PBKDF2" => &["deriveKey", "deriveBits"],
     "RSASSA-PKCS1-v1_5" | "RSA-PSS" => &["sign", "verify"],
     "RSA-OAEP" => &["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+    "KMAC128" | "KMAC256" => &["sign", "verify"],
+    "AES-OCB" | "ChaCha20-Poly1305" => {
+      &["encrypt", "decrypt", "wrapKey", "unwrapKey"]
+    }
+    "Argon2d" | "Argon2i" | "Argon2id" => &["deriveKey", "deriveBits"],
+    "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" | "SLH-DSA-SHA2-128f" => {
+      &["sign", "verify"]
+    }
+    "ML-KEM-512" | "ML-KEM-768" | "ML-KEM-1024" | "MLKEM768-P256"
+    | "MLKEM768-X25519" | "MLKEM1024-P384" => &[
+      "encapsulateBits",
+      "encapsulateKey",
+      "decapsulateBits",
+      "decapsulateKey",
+    ],
     _ => return None,
   })
 }
@@ -2697,7 +2902,8 @@ fn algorithm_name(
 }
 
 fn canonical_algorithm(name: &str) -> String {
-  match name.to_ascii_lowercase().as_str() {
+  let lower = name.to_ascii_lowercase();
+  match lower.as_str() {
     "hmac" => "HMAC".to_string(),
     "aes-gcm" => "AES-GCM".to_string(),
     "aes-cbc" => "AES-CBC".to_string(),
@@ -2721,7 +2927,9 @@ fn canonical_algorithm(name: &str) -> String {
     "rsassa-pkcs1-v1_5" => "RSASSA-PKCS1-v1_5".to_string(),
     "rsa-pss" => "RSA-PSS".to_string(),
     "rsa-oaep" => "RSA-OAEP".to_string(),
-    _ => name.to_string(),
+    other => modern_api::canonical(other)
+      .map(str::to_string)
+      .unwrap_or_else(|| name.to_string()),
   }
 }
 
@@ -2849,6 +3057,20 @@ fn resolve_key(scope: &mut v8::PinScope, key: CryptoKey) -> Js {
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, key) };
   let value: v8::Local<v8::Value> = object.into();
   resolve(scope, value)
+}
+
+fn resolve_kem(
+  scope: &mut v8::PinScope,
+  ciphertext: Vec<u8>,
+  shared: v8::Local<v8::Value>,
+) -> Js {
+  let object = v8::Object::new(scope);
+  let buffer = bytes::array_buffer(scope, ciphertext);
+  let name = v8::String::new(scope, "ciphertext").unwrap();
+  object.set(scope, name.into(), buffer.into());
+  let name = v8::String::new(scope, "sharedKey").unwrap();
+  object.set(scope, name.into(), shared);
+  resolve(scope, object.into())
 }
 
 fn resolve_bool(scope: &mut v8::PinScope, value: bool) -> Js {
@@ -3984,23 +4206,12 @@ fn export_plaintext(
     Exported::Okp { jwk, key_ops, ext } => {
       Ok(okp_jwk_json(&jwk, &key_ops, ext).into_bytes())
     }
+    Exported::Akp(jwk) => Ok(modern_api::akp_json(&jwk).into_bytes()),
   }
 }
 
 fn export_supported(algorithm: &str, format: &str) -> bool {
-  let format = format.to_ascii_lowercase();
-  match algorithm {
-    "HMAC" | "AES-GCM" | "AES-CBC" | "AES-CTR" | "AES-KW" => {
-      matches!(format.as_str(), "raw" | "jwk")
-    }
-    "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" => {
-      matches!(format.as_str(), "pkcs8" | "spki" | "jwk")
-    }
-    "ECDH" | "ECDSA" | "Ed25519" | "Ed448" | "X25519" | "X448" => {
-      matches!(format.as_str(), "raw" | "pkcs8" | "spki" | "jwk")
-    }
-    _ => false,
-  }
+  modern_api::export_supported(algorithm, format)
 }
 
 fn rsa_jwk_value<'s>(

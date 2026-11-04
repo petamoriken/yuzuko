@@ -398,7 +398,7 @@ The realm includes:
 - The streams interfaces, including byte-stream readers, `ReadableStream.from`, owning streams that transfer `ArrayBuffer`, `MessagePort`, `ImageBitmap`, `AudioData`, and `VideoFrame`, transferable `ReadableStream`, `WritableStream`, and `TransformStream`, `TextEncoderStream`, and `TextDecoderStream`
 - `FormData`, `CompressionStream`, `DecompressionStream`
 - `URLPattern`
-- `Crypto`, `CryptoKey`, `SubtleCrypto`, `crypto`, including Ed448 and X448
+- `Crypto`, `CryptoKey`, `SubtleCrypto`, and `crypto`. Digests are SHA-1, SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-384, SHA3-512, SHAKE128, and SHAKE256. Signatures are HMAC, KMAC128, KMAC256, RSASSA-PKCS1-v1_5, RSA-PSS, ECDSA, Ed25519, Ed448, ML-DSA-44, ML-DSA-65, ML-DSA-87, and SLH-DSA-SHA2-128f. Encryption and wrapping are RSA-OAEP, AES-GCM, AES-CBC, AES-CTR, AES-KW, AES-OCB, and ChaCha20-Poly1305. Derivation is HKDF, PBKDF2, Argon2d, Argon2i, Argon2id, ECDH, X25519, and X448. Encapsulation is ML-KEM-512, ML-KEM-768, ML-KEM-1024, MLKEM768-P256, MLKEM768-X25519, and MLKEM1024-P384. `SubtleCrypto.supports` reports whether an operation is implemented. `getPublicKey` derives a public key from a private key
 - `MessageChannel`, `MessagePort`, `MessageEvent`
 - `caches`, when the runtime is built with the `fetch` feature
 - ECMA-402 `Intl`, as specified under Internationalization

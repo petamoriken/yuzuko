@@ -275,8 +275,8 @@ type ImageBitmapSource = CanvasImageSource | Blob | ImageData;
 type ImageBufferSource = AllowSharedBufferSource | ReadableStream;
 type ImageDataArray = Uint8ClampedArray<ArrayBuffer>;
 type ImageSmoothingQuality = "high" | "low" | "medium";
-type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
-type KeyUsage = "decrypt" | "deriveBits" | "deriveKey" | "encrypt" | "sign" | "unwrapKey" | "verify" | "wrapKey";
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "raw-private" | "raw-public" | "raw-secret" | "raw-seed" | "spki";
+type KeyUsage = "decapsulateBits" | "decapsulateKey" | "decrypt" | "deriveBits" | "deriveKey" | "encapsulateBits" | "encapsulateKey" | "encrypt" | "sign" | "unwrapKey" | "verify" | "wrapKey";
 type OnErrorEventHandler = OnErrorEventHandlerNonNull | null;
 interface OnErrorEventHandlerNonNull {
   (event: Event | string, source?: string, lineno?: number, colno?: number, error?: Error): any;
@@ -437,6 +437,8 @@ interface JsonWebKey {
   n?: string;
   oth?: Array<{ d?: string; r?: string; t?: string }>;
   p?: string;
+  priv?: string;
+  pub?: string;
   q?: string;
   qi?: string;
   use?: string;
@@ -7451,18 +7453,32 @@ interface Algorithm {
 }
 
 /**
+ * Ciphertext and shared secret from {@link SubtleCrypto.encapsulateBits}.
+ */
+interface EncapsulatedBits {
+  ciphertext: ArrayBuffer;
+  sharedKey: ArrayBuffer;
+}
+
+/**
+ * Ciphertext and shared key from {@link SubtleCrypto.encapsulateKey}.
+ */
+interface EncapsulatedKey {
+  ciphertext: ArrayBuffer;
+  sharedKey: CryptoKey;
+}
+
+/**
  * SubtleCrypto.
  *
  * Each operation rejects `NotSupportedError` when the algorithm name, hash,
  * curve, or key format is not implemented. `generateKey` also rejects
- * `NotSupportedError` for HKDF and PBKDF2. An unrecognized hash is
- * `NotSupportedError` before key usages are checked.
+ * `NotSupportedError` for HKDF, PBKDF2, and Argon2. An unrecognized hash is
+ * `NotSupportedError` before key usages are checked. cSHAKE, TurboSHAKE,
+ * KangarooTwelve, and SLH-DSA parameter sets other than SLH-DSA-SHA2-128f
+ * reject `NotSupportedError`.
  *
  * @throws {@link TypeError} Illegal constructor.
- * @throws {@link TypeError} When {@link SubtleCrypto.supports} is called with
- * fewer than two arguments.
- * @throws {@link DOMException} `NotSupportedError`
- * {@link SubtleCrypto.supports} is not implemented.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto)
  */
@@ -7470,7 +7486,9 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the digest is not
-   * SHA-1, SHA-256, SHA-384, or SHA-512.
+   * SHA-1, SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-384, SHA3-512, SHAKE128,
+   * or SHAKE256. SHAKE requires `outputLength`. cSHAKE, TurboSHAKE, and
+   * KangarooTwelve throw `NotSupportedError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/digest)
    */
@@ -7478,7 +7496,7 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the algorithm cannot
-   * generate a key, including HKDF, PBKDF2, and the unsupported suites.
+   * generate a key, including HKDF, PBKDF2, and Argon2.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/generateKey)
    */
@@ -7513,7 +7531,8 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the wrapping
-   * algorithm is not AES-KW, AES-GCM, AES-CBC, or AES-CTR.
+   * algorithm is not AES-KW, AES-GCM, AES-CBC, AES-CTR, AES-OCB,
+   * ChaCha20-Poly1305, or RSA-OAEP.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/wrapKey)
    */
@@ -7539,7 +7558,8 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
-   * HMAC, RSASSA-PKCS1-v1_5, RSA-PSS, ECDSA, Ed25519, or Ed448.
+   * HMAC, KMAC128, KMAC256, RSASSA-PKCS1-v1_5, RSA-PSS, ECDSA, Ed25519, Ed448,
+   * ML-DSA-44, ML-DSA-65, ML-DSA-87, or SLH-DSA-SHA2-128f.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/sign)
    */
@@ -7564,7 +7584,7 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
-   * RSA-OAEP, AES-GCM, AES-CBC, or AES-CTR.
+   * RSA-OAEP, AES-GCM, AES-CBC, AES-CTR, AES-OCB, or ChaCha20-Poly1305.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/encrypt)
    */
@@ -7588,7 +7608,7 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
-   * HKDF, PBKDF2, ECDH, X25519, or X448.
+   * HKDF, PBKDF2, Argon2d, Argon2i, Argon2id, ECDH, X25519, or X448.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/deriveBits)
    */
@@ -7600,7 +7620,8 @@ interface SubtleCrypto {
 
   /**
    * @throws {@link DOMException} `NotSupportedError` when the base algorithm
-   * cannot derive or the derived algorithm is not HMAC or AES.
+   * cannot derive or the derived algorithm is not HMAC, AES-GCM, AES-CBC,
+   * AES-CTR, or AES-KW.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/deriveKey)
    */
@@ -7613,8 +7634,9 @@ interface SubtleCrypto {
   ): Promise<CryptoKey>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` ML-KEM and the hybrid
-   * KEMs are not implemented.
+   * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
+   * ML-KEM-512, ML-KEM-768, ML-KEM-1024, MLKEM768-P256, MLKEM768-X25519, or
+   * MLKEM1024-P384.
    */
   encapsulateKey(
     algorithm: AlgorithmIdentifier,
@@ -7622,18 +7644,20 @@ interface SubtleCrypto {
     encapsulatedKeyAlgorithm: AlgorithmIdentifier,
     extractable: boolean,
     keyUsages: Iterable<KeyUsage>,
-  ): Promise<never>;
+  ): Promise<EncapsulatedKey>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The operation is not implemented.
+   * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
+   * one accepted by {@link SubtleCrypto.encapsulateKey}.
    */
   encapsulateBits(
     algorithm: AlgorithmIdentifier,
     encapsulationKey: CryptoKey,
-  ): Promise<never>;
+  ): Promise<EncapsulatedBits>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The operation is not implemented.
+   * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
+   * one accepted by {@link SubtleCrypto.encapsulateKey}.
    */
   decapsulateKey(
     algorithm: AlgorithmIdentifier,
@@ -7642,26 +7666,40 @@ interface SubtleCrypto {
     decapsulatedKeyAlgorithm: AlgorithmIdentifier,
     extractable: boolean,
     keyUsages: Iterable<KeyUsage>,
-  ): Promise<never>;
+  ): Promise<CryptoKey>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The operation is not implemented.
+   * @throws {@link DOMException} `NotSupportedError` when the algorithm is not
+   * one accepted by {@link SubtleCrypto.encapsulateKey}.
    */
   decapsulateBits(
     algorithm: AlgorithmIdentifier,
     decapsulationKey: CryptoKey,
     ciphertext: BufferSource,
-  ): Promise<never>;
+  ): Promise<ArrayBuffer>;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The operation is not implemented.
+   * @throws {@link DOMException} `NotSupportedError` when the key is secret or
+   * its algorithm has no public key.
    */
-  getPublicKey(key: CryptoKey, keyUsages: Iterable<KeyUsage>): Promise<never>;
+  getPublicKey(key: CryptoKey, keyUsages: Iterable<KeyUsage>): Promise<CryptoKey>;
 
 }
 declare var SubtleCrypto: {
   prototype: SubtleCrypto;
   new(): SubtleCrypto;
+
+  /**
+   * Returns whether `operation` can run for `algorithm`. An unknown algorithm
+   * or operation returns false.
+   *
+   * @throws {@link TypeError} When fewer than two arguments are passed.
+   */
+  supports(
+    operation: string,
+    algorithm: AlgorithmIdentifier,
+    lengthOrAdditionalAlgorithm?: number | AlgorithmIdentifier | null,
+  ): boolean;
 };
 
 

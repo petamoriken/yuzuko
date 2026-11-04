@@ -83,6 +83,15 @@ brotli = "9.0.0"
 ruzstd = { version = "0.9.1", optional = true }
 ed448-goldilocks = { version = "0.14.0-pre.15", default-features = false, features = ["signing", "pkcs8"] }
 x448 = { version = "0.14.0-pre.12", default-features = false }
+sha3 = "0.12"
+chacha20poly1305 = "0.11"
+ocb3 = "0.2"
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
+ml-kem = { version = "0.3", default-features = false, features = ["alloc", "getrandom"] }
+ml-dsa = { version = "0.1", default-features = false, features = ["alloc", "getrandom"] }
+slh-dsa = { version = "0.2.0-rc.5", default-features = false, features = ["alloc"] }
+keccak = "0.2"
+aes = "0.9"
 
 [dev-dependencies]
 rcgen = "0.13"
