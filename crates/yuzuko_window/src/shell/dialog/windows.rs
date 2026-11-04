@@ -53,8 +53,40 @@ fn wide(text: &str) -> Vec<u16> {
   text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// The `prompt` window class. Its OK and Cancel buttons use the dialog IDs
-/// `IDOK` and `IDCANCEL`, so `IsDialogMessageW` maps Enter and Esc onto them.
+/// Width of `text` in the stock dialog font. The prompt treats this as a
+/// 96-DPI width and scales the button. A failed measurement returns 0, and
+/// the button then uses its 86-pixel minimum.
+fn text_width(text: &str) -> i32 {
+  use windows_sys::Win32::Foundation::SIZE;
+  use windows_sys::Win32::Graphics::Gdi::{
+    DEFAULT_GUI_FONT, GetDC, GetStockObject, GetTextExtentPoint32W, ReleaseDC,
+    SelectObject,
+  };
+  let units: Vec<u16> = text.encode_utf16().collect();
+  if units.is_empty() || units.len() > i32::MAX as usize {
+    return 0;
+  }
+  unsafe {
+    let dc = GetDC(std::ptr::null_mut());
+    if dc.is_null() {
+      return 0;
+    }
+    let font = GetStockObject(DEFAULT_GUI_FONT);
+    let previous = SelectObject(dc, font);
+    let mut size = SIZE::default();
+    let measured =
+      GetTextExtentPoint32W(dc, units.as_ptr(), units.len() as i32, &mut size);
+    if !previous.is_null() {
+      SelectObject(dc, previous);
+    }
+    ReleaseDC(std::ptr::null_mut(), dc);
+    if measured == 0 { 0 } else { size.cx }
+  }
+}
+
+/// The `prompt` window class. Its accept and cancel buttons use the dialog
+/// IDs `IDOK` and `IDCANCEL`, so `IsDialogMessageW` maps Enter and Esc onto
+/// them. The titles come from `Yuzuko.setDialogLabels`.
 const PROMPT_CLASS: &str = "YuzukoPrompt";
 
 fn prompt(
@@ -85,8 +117,7 @@ fn prompt(
   };
   const EDIT: isize = 101;
   const EM_SETSEL: u32 = 0x00b1;
-  /// Client size in 96-DPI pixels.
-  const WIDTH: i32 = 404;
+  /// Client height in 96-DPI pixels. The width comes from the label row.
   const HEIGHT: i32 = 134;
   struct State {
     parent: HWND,
@@ -97,6 +128,9 @@ fn prompt(
     default_value: String,
     message: String,
     scale: f64,
+    buttons: super::labels::PromptButtons,
+    ok_label: String,
+    cancel_label: String,
   }
   fn finish(hwnd: HWND, state: &mut State, ok: bool) {
     if ok {
@@ -124,6 +158,13 @@ fn prompt(
       let state = unsafe { &mut *state };
       let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
       let font = unsafe { GetStockObject(DEFAULT_GUI_FONT) };
+      let content_w = state.buttons.width - 24;
+      let ok_label = state.ok_label.clone();
+      let cancel_label = state.cancel_label.clone();
+      let ok_x = state.buttons.ok_x;
+      let ok_w = state.buttons.ok_width;
+      let cancel_x = state.buttons.cancel_x;
+      let cancel_w = state.buttons.cancel_width;
       let px = |value: i32| (f64::from(value) * state.scale).round() as i32;
       let child = |class: &str,
                    text: &str,
@@ -151,26 +192,26 @@ fn prompt(
         unsafe { SendMessageW(control, WM_SETFONT, font as WPARAM, 1) };
         control
       };
-      child("STATIC", &state.message, 0, (12, 12, 380, 40), 0);
+      child("STATIC", &state.message, 0, (12, 12, content_w, 40), 0);
       state.edit = child(
         "EDIT",
         &state.default_value,
         WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL as u32,
-        (12, 56, 380, 24),
+        (12, 56, content_w, 24),
         EDIT,
       );
       child(
         "BUTTON",
-        "OK",
+        &ok_label,
         WS_TABSTOP | BS_DEFPUSHBUTTON as u32,
-        (210, 96, 86, 26),
+        (ok_x, 96, ok_w, 26),
         IDOK as isize,
       );
       child(
         "BUTTON",
-        "Cancel",
+        &cancel_label,
         WS_TABSTOP | BS_PUSHBUTTON as u32,
-        (306, 96, 86, 26),
+        (cancel_x, 96, cancel_w, 26),
         IDCANCEL as isize,
       );
       return 0;
@@ -212,6 +253,14 @@ fn prompt(
   });
   let dpi = unsafe { GetDpiForWindow(parent) };
   let scale = if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 };
+  let labels = super::labels::current();
+  let ok_label = super::labels::win_label(&labels.ok);
+  let cancel_label = super::labels::win_label(&labels.cancel);
+  let buttons = super::labels::prompt_button_row(
+    text_width(&labels.ok),
+    text_width(&labels.cancel),
+  );
+  let client_width = buttons.width;
   // The window procedure writes this state through the pointer it gets at
   // creation, so the loop below reads it through the same pointer.
   let state = Box::into_raw(Box::new(State {
@@ -223,12 +272,15 @@ fn prompt(
     default_value: default_value.to_string(),
     message: message.to_string(),
     scale,
+    buttons,
+    ok_label,
+    cancel_label,
   }));
   let style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   let mut frame = RECT {
     left: 0,
     top: 0,
-    right: (f64::from(WIDTH) * scale).round() as i32,
+    right: (f64::from(client_width) * scale).round() as i32,
     bottom: (f64::from(HEIGHT) * scale).round() as i32,
   };
   unsafe { AdjustWindowRectEx(&mut frame, style, 0, WS_EX_DLGMODALFRAME) };

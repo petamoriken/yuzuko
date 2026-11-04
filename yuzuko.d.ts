@@ -1596,7 +1596,11 @@ declare namespace Yuzuko {
     matchMedia(query: string): MediaQueryList;
 
     /**
-     * Shows a native modal dialog with OK.
+     * Shows a native modal dialog with one accept button.
+     *
+     * The button label starts as `OK`. {@link setDialogLabels} replaces it
+     * on macOS and Linux. Windows uses `MessageBox`, so that button stays in
+     * the operating-system language.
      *
      * `message` is converted with `ToString`. There is no global `alert` and
      * no `<dialog>`. Linux uses GTK 3 and does not parent the dialog to the
@@ -1609,9 +1613,13 @@ declare namespace Yuzuko {
     alert(message?: any): void;
 
     /**
-     * Shows a native modal dialog with OK and Cancel.
+     * Shows a native modal dialog with an accept button and a cancel button.
      *
-     * @returns `true` when the user chooses OK.
+     * The labels start as `OK` and `Cancel`. {@link setDialogLabels} replaces
+     * them on macOS and Linux. Windows uses `MessageBox`, so those buttons
+     * stay in the operating-system language.
+     *
+     * @returns `true` when the user chooses the accept button.
      * @throws {@link DOMException} `NotSupportedError` when the process is
      * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
      * @throws {@link DOMException} `InvalidStateError` when the window is closed.
@@ -1619,7 +1627,11 @@ declare namespace Yuzuko {
     confirm(message?: any): boolean;
 
     /**
-     * Shows a native modal dialog with a text field, OK, and Cancel.
+     * Shows a native modal dialog with a text field, an accept button, and a
+     * cancel button.
+     *
+     * The labels start as `OK` and `Cancel`. {@link setDialogLabels} replaces
+     * them. Windows draws this dialog itself, so the labels apply there too.
      *
      * @param message - Converted with `ToString`.
      * @param defaultValue - The initial field text. An omitted value is `""`.
@@ -1646,6 +1658,9 @@ declare namespace Yuzuko {
      * dialog to the winit window. Windows parents a directory dialog with
      * `SHBrowseForFolder` and sets its caption to the window title.
      * There is no `pickSaveFile`, `pickDirectory`, or File System Access API.
+     * On Linux the accept button is `open`, `save`, or `select` from
+     * {@link setDialogLabels}, and the cancel button is `cancel`. macOS and
+     * Windows file dialogs use the system buttons.
      *
      * @param options - Omitted or `undefined` selects a single file of any type.
      * @returns The selected paths, or `null` when cancelled.
@@ -2093,6 +2108,73 @@ declare namespace Yuzuko {
    * expose a GTK window, so the menu bar cannot be installed.
    */
   function setMenu(menu: Menu): void;
+
+  /**
+   * Labels for buttons the runtime draws on a dialog.
+   *
+   * Omitted fields keep their current text. The initial values are `OK`,
+   * `Cancel`, `Open`, `Save`, and `Select`.
+   */
+  interface DialogLabels {
+    /**
+     * Accept button on `alert`, `confirm`, and `prompt`.
+     *
+     * The initial label is `OK`.
+     */
+    ok?: string;
+
+    /**
+     * Cancel button on `confirm`, `prompt`, and a Linux file chooser.
+     *
+     * The initial label is `Cancel`.
+     */
+    cancel?: string;
+
+    /**
+     * Accept button on a Linux open dialog.
+     *
+     * The initial label is `Open`.
+     */
+    open?: string;
+
+    /**
+     * Accept button on a Linux save dialog.
+     *
+     * The initial label is `Save`.
+     */
+    save?: string;
+
+    /**
+     * Accept button on a Linux directory dialog.
+     *
+     * The initial label is `Select`.
+     */
+    select?: string;
+  }
+
+  /**
+   * Replaces the dialog button labels the runtime draws.
+   *
+   * The call does not open a dialog. It works in a headless process and does
+   * not require a window. A dedicated worker does not have this function.
+   * `undefined` changes nothing. Each present field must be a string. An
+   * empty string or a string that contains NUL is rejected. Unknown
+   * properties are ignored. Fields are read in the order `ok`, `cancel`,
+   * `open`, `save`, `select`. A thrown getter leaves every label unchanged.
+   *
+   * macOS uses `ok` and `cancel` for `alert`, `confirm`, and `prompt`.
+   * Windows uses them for `prompt`. Linux uses the labels for `alert`,
+   * `confirm`, `prompt`, and the file chooser. Windows `alert` and `confirm`
+   * use `MessageBox`, so those buttons stay in the operating-system language.
+   * macOS and Windows file and directory dialogs keep the system buttons.
+   * The message and the window title are not changed. On Linux `_` is shown
+   * as itself. On the Windows prompt `&` is shown as itself.
+   *
+   * @param labels - The labels to replace. An omitted argument changes nothing.
+   * @throws {@link TypeError} When `labels` is not an object, a present field
+   * is not a string, or a string is empty or contains NUL.
+   */
+  function setDialogLabels(labels?: DialogLabels): void;
 
   /**
    * `menuclick` dispatched on `Yuzuko`, a {@link Tray}, {@link Dock}, or a
@@ -13275,6 +13357,7 @@ declare class WorkerGlobalScope extends EventTarget {
  *
  * The worker has the web globals in this file except `requestIdleCallback`,
  * `cancelIdleCallback`, `Yuzuko.Window`, `Yuzuko.Menu`, `Yuzuko.setMenu`,
+ * `Yuzuko.setDialogLabels`,
  * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.updater`, `navigator.clipboard`, and
  * `navigator.getGamepads`. `self.fonts` and `globalThis.fonts` are that
  * worker's {@link FontFaceSet}. `requestAnimationFrame` runs the callback at

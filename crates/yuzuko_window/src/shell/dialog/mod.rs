@@ -1,5 +1,9 @@
 //! Native `alert`, `confirm`, `prompt`, file, and directory dialogs.
+//!
+//! `Yuzuko.setDialogLabels` replaces the labels these dialogs draw.
+//! Windows `MessageBox` and the system file dialogs keep their own buttons.
 
+mod labels;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -7,7 +11,14 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-use yuzuko_core::op::OpError;
+use yuzuko_core::op::{OpError, OpException};
+
+pub(crate) fn install(scope: &mut v8::PinScope) {
+  let yuzuko = crate::shell::menu::yuzuko_object(scope);
+  let function = v8::Function::new(scope, set_dialog_labels).unwrap();
+  let key = v8::String::new(scope, "setDialogLabels").unwrap();
+  yuzuko.set(scope, key.into(), function.into());
+}
 
 pub(crate) fn js_string(
   scope: &mut v8::PinScope,
@@ -501,4 +512,69 @@ fn parse_filter(
     extensions,
     all,
   })
+}
+
+fn set_dialog_labels(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _return: v8::ReturnValue,
+) {
+  if let Err(error) = assign_labels(scope, args.get(0)) {
+    OpException::throw(error, scope);
+  }
+}
+
+/// Reads every field before storing, so a thrown getter leaves the labels
+/// unchanged.
+fn assign_labels(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<(), OpError> {
+  let Some(object) = labels_object(scope, value)? else {
+    return Ok(());
+  };
+  let patch = labels::Patch {
+    ok: read_label(scope, object, "ok")?,
+    cancel: read_label(scope, object, "cancel")?,
+    open: read_label(scope, object, "open")?,
+    save: read_label(scope, object, "save")?,
+    select: read_label(scope, object, "select")?,
+  };
+  labels::replace(patch);
+  Ok(())
+}
+
+fn labels_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Result<Option<v8::Local<'s, v8::Object>>, OpError> {
+  if value.is_undefined() {
+    return Ok(None);
+  }
+  if value.is_null() || value.is_string() || !value.is_object() {
+    return Err(OpError::type_("The dialog labels must be an object."));
+  }
+  let global = v8::Global::new(scope, value);
+  let value = v8::Local::new(scope, global);
+  v8::Local::<v8::Object>::try_from(value)
+    .map(Some)
+    .map_err(|_| OpError::type_("The dialog labels must be an object."))
+}
+
+fn read_label(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<String>, OpError> {
+  let Some(value) = get_field(scope, object, name)? else {
+    return Ok(None);
+  };
+  if !value.is_string() {
+    return Err(OpError::type_(format!("{name} must be a string.")));
+  }
+  let text = js_string(scope, value)?;
+  if !labels::valid_label(&text) {
+    return Err(OpError::type_(format!("{name} must be text.")));
+  }
+  Ok(Some(text))
 }

@@ -40,16 +40,17 @@ pub(super) fn present(
   };
   let _ = parent;
   let alert = NSAlert::new(mtm);
+  let labels = super::labels::current();
   alert.setMessageText(&NSString::from_str(message));
-  alert.addButtonWithTitle(&NSString::from_str("OK"));
+  alert.addButtonWithTitle(&NSString::from_str(&labels.ok));
   let field = match dialog {
     super::Dialog::Alert => None,
     super::Dialog::Confirm => {
-      alert.addButtonWithTitle(&NSString::from_str("Cancel"));
+      alert.addButtonWithTitle(&NSString::from_str(&labels.cancel));
       None
     }
     super::Dialog::Prompt(default_value) => {
-      alert.addButtonWithTitle(&NSString::from_str("Cancel"));
+      alert.addButtonWithTitle(&NSString::from_str(&labels.cancel));
       let field = NSTextField::textFieldWithString(
         &NSString::from_str(default_value),
         mtm,

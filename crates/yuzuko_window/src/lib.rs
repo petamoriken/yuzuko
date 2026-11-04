@@ -82,6 +82,7 @@ fn install(scope: &mut v8::PinScope) {
     return;
   }
   shell::menu::install(scope);
+  shell::dialog::install(scope);
   shell::tray::install(scope);
   shell::dock::install(scope);
   surface::install(scope);

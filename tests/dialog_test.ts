@@ -69,13 +69,117 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "";
 }
 
-Yuzuko.test("file picker options are checked before the dialog", () => {
+Yuzuko.test(
+  "dialog labels and file picker options are checked before the dialog",
+  () => {
+  assert(typeof Yuzuko.setDialogLabels === "function", "setDialogLabels");
+  assert(Yuzuko.setDialogLabels.length === 0, "setDialogLabels length");
+
+  let error = thrown(() => {
+    Yuzuko.setDialogLabels(null);
+  });
+  assert(errorName(error) === "TypeError", errorName(error));
+  assert(
+    errorMessage(error) === "The dialog labels must be an object.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels("OK");
+  });
+  assert(
+    errorMessage(error) === "The dialog labels must be an object.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ ok: 1 });
+  });
+  assert(errorMessage(error) === "ok must be a string.", errorMessage(error));
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ open: false });
+  });
+  assert(
+    errorMessage(error) === "open must be a string.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ select: null });
+  });
+  assert(
+    errorMessage(error) === "select must be a string.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ ok: "" });
+  });
+  assert(errorMessage(error) === "ok must be text.", errorMessage(error));
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ save: "" });
+  });
+  assert(errorMessage(error) === "save must be text.", errorMessage(error));
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({ cancel: "a\0b" });
+  });
+  assert(errorMessage(error) === "cancel must be text.", errorMessage(error));
+
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({
+      get ok() {
+        throw new TypeError("ok getter");
+      },
+    });
+  });
+  assert(error instanceof TypeError, errorName(error));
+  assert(errorMessage(error) === "ok getter", errorMessage(error));
+
+  let later = false;
+  error = thrown(() => {
+    Yuzuko.setDialogLabels({
+      ok: "",
+      get cancel() {
+        later = true;
+        return "Cancel";
+      },
+    });
+  });
+  assert(later === false, "later label");
+  assert(errorMessage(error) === "ok must be text.", errorMessage(error));
+
+  let seen = false;
+  Yuzuko.setDialogLabels({
+    get title() {
+      seen = true;
+      throw new TypeError("title");
+    },
+  });
+  assert(seen === false, "unknown label");
+
+  Yuzuko.setDialogLabels();
+  Yuzuko.setDialogLabels(undefined);
+  Yuzuko.setDialogLabels({});
+  Yuzuko.setDialogLabels([]);
+  Yuzuko.setDialogLabels({ ok: "はい", cancel: "いいえ" });
+  Yuzuko.setDialogLabels({ open: "開く", save: "保存", select: "選択" });
+  Yuzuko.setDialogLabels({
+    ok: "OK",
+    cancel: "Cancel",
+    open: "Open",
+    save: "Save",
+    select: "Select",
+  });
+
   const win = new Yuzuko.Window({ title: "picker", width: 80, height: 60 });
   assert(win.pickFiles.length === 0, "pickFiles length");
   assert(win.pickSaveFile === undefined, "no pickSaveFile");
   assert(win.pickDirectory === undefined, "no pickDirectory");
 
-  let error = thrown(() => {
+  error = thrown(() => {
     win.pickFiles(null);
   });
   assert(errorName(error) === "TypeError", errorName(error));
