@@ -571,7 +571,7 @@ declare namespace Yuzuko {
    *
    * There is no `FileDropEvent` constructor. The event is an {@link Event}
    * with an own `paths` property. It does not bubble and cannot be cancelled.
-   * There is no `DataTransfer`.
+   * The event does not carry a `DataTransfer`.
    */
   interface FileDropEvent extends Event {
     /**
@@ -12045,7 +12045,7 @@ declare var VideoColorSpace: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/VideoFrame) */
 interface VideoFrameInit {
-  duration?: number | null;
+  duration?: number;
   timestamp?: number;
   alpha?: AlphaOption;
   visibleRect?: DOMRectInit;
@@ -12077,7 +12077,7 @@ interface VideoFrameBufferInit {
   codedWidth: number;
   codedHeight: number;
   timestamp: number;
-  duration?: number | null;
+  duration?: number;
   layout?: PlaneLayout[];
   visibleRect?: DOMRectInit;
   displayWidth?: number;
@@ -12442,7 +12442,7 @@ interface AudioDataInit {
   numberOfFrames: number;
   numberOfChannels: number;
   timestamp: number;
-  data: AllowSharedBufferSource;
+  data: BufferSource;
   /**
    * Listed buffers stay attached. The constructor copies `data` and ignores
    * this list.
@@ -13637,21 +13637,103 @@ declare var Clipboard: {
 
 
 /**
+ * String store for a clipboard `copy`, `cut`, or `paste`.
+ *
+ * `new DataTransfer()` is empty, read/write, with `dropEffect` and
+ * `effectAllowed` of `"none"`. A host `paste` is read-only and exposes
+ * `text/plain` from the same cache as {@link Clipboard.readText}. A cancelled
+ * host `copy` or `cut` publishes `text/plain` only. `items`, `files`, and
+ * `setDragImage` are absent. A dedicated worker has no `DataTransfer`.
+ * File drops do not carry one.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer)
+ */
+interface DataTransfer {
+  /**
+   * `"none"`, `"copy"`, `"link"`, or `"move"`. Other strings are ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/dropEffect)
+   */
+  dropEffect: "none" | "copy" | "link" | "move";
+
+  /**
+   * `"none"`, `"copy"`, `"copyLink"`, `"copyMove"`, `"link"`, `"linkMove"`,
+   * `"move"`, `"all"`, or `"uninitialized"`. Other strings are ignored. A
+   * read-only store ignores every assignment.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/effectAllowed)
+   */
+  effectAllowed:
+    | "none"
+    | "copy"
+    | "copyLink"
+    | "copyMove"
+    | "link"
+    | "linkMove"
+    | "move"
+    | "all"
+    | "uninitialized";
+
+  /**
+   * A frozen array of the stored formats, in list order. The same array is
+   * returned until `setData`, or a `clearData` that removes an entry.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/types)
+   */
+  readonly types: readonly string[];
+
+  /**
+   * The stored string, or `""` when the format is absent. `"text"` reads
+   * `text/plain`. `"url"` reads the first URL in `text/uri-list`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/getData)
+   */
+  getData(format: string): string;
+
+  /**
+   * Stores `data` under `format`. `"text"` writes `text/plain` and `"url"`
+   * writes `text/uri-list`. Replacing a format moves it to the end. A
+   * read-only store ignores the call.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/setData)
+   */
+  setData(format: string, data: string): void;
+
+  /**
+   * Removes every string entry when `format` is omitted. Otherwise removes
+   * that format. A read-only store ignores the call.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/clearData)
+   */
+  clearData(format?: string): void;
+}
+declare var DataTransfer: {
+  prototype: DataTransfer;
+  new(): DataTransfer;
+};
+
+/**
  * `copy`, `cut`, and `paste` on the focused {@link Yuzuko.WindowSurface}.
  *
- * The host sends these for Ctrl/Cmd+C, X, and V. `clipboardData` is null.
- * {@link ClipboardChangeEvent} is a separate event on {@link Clipboard}.
+ * The host sends these for Ctrl/Cmd+C, X, and V. Host `copy` and `cut` carry
+ * an empty read/write {@link DataTransfer}. Host `paste` carries a read-only
+ * one. A constructed event stores `clipboardData` and does not write the
+ * system clipboard. {@link ClipboardChangeEvent} is a separate event on
+ * {@link Clipboard}.
+ *
+ * @throws {@link TypeError} When `clipboardData` is present and is not a
+ * {@link DataTransfer} or null.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent)
  */
 interface ClipboardEvent extends Event {
 
   /**
-   * Null for host `copy`, `cut`, and `paste` events.
+   * The store for this event, or null when the constructor omitted it.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent/clipboardData)
    */
-  readonly clipboardData: null;
+  readonly clipboardData: DataTransfer | null;
 }
 declare var ClipboardEvent: {
   prototype: ClipboardEvent;
@@ -13661,7 +13743,11 @@ declare var ClipboardEvent: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardEvent/ClipboardEvent) */
 interface ClipboardEventInit extends EventInit {
-  clipboardData?: null;
+  /**
+   * Stored on the event. Omitted, `undefined`, and `null` leave
+   * {@link ClipboardEvent.clipboardData} null.
+   */
+  clipboardData?: DataTransfer | null;
 }
 
 /**

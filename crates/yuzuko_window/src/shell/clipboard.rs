@@ -1,10 +1,11 @@
-//! `navigator.clipboard`, `ClipboardItem`, `ClipboardEvent`, and
-//! `ClipboardChangeEvent`.
+//! `navigator.clipboard`, `ClipboardItem`, `ClipboardEvent`,
+//! `ClipboardChangeEvent`, and the string `DataTransfer` those events carry.
 //!
 //! Reads and writes require a recent user gesture on the focused window.
 //! Text is published to the OS pasteboard. `image/png` bytes are kept so a
 //! later `getType` returns the same PNG. A successful write fires
-//! `clipboardchange` before its promise resolves.
+//! `clipboardchange` before its promise resolves. A cancelled host `copy` or
+//! `cut` publishes `text/plain` the same way. `paste` is read-only.
 
 use std::cell::{Cell, RefCell};
 use std::io::Cursor;
@@ -52,6 +53,7 @@ std::thread_local! {
 pub fn install(scope: &mut v8::PinScope) {
   Clipboard::install(scope);
   ClipboardItem::install(scope);
+  DataTransfer::install(scope);
   ClipboardEvent::install(scope);
   ClipboardChangeEvent::install(scope);
 }
@@ -79,13 +81,49 @@ pub fn dispatch_command(
   target: v8::Local<v8::Object>,
   type_name: &str,
 ) {
+  let transfer = if type_name == "paste" {
+    DataTransfer::from_paste()
+  } else {
+    DataTransfer::fresh(false)
+  };
+  let transfer_obj = unsafe { yuzuko_core::op::wrap_instance(scope, transfer) };
   let event = ClipboardEvent {
     base: Event::new(type_name, true, true, false, true),
-    clipboard_data: RefCell::new(None),
+    clipboard_data: RefCell::new(Some(traced(scope, transfer_obj))),
   };
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, object);
-  let _ = yuzuko_dom::dispatch(scope, target, object);
+  // Script-constructed events never reach this path, so they cannot publish.
+  let prevented = yuzuko_dom::dispatch(scope, target, object);
+  if matches!(prevented, Ok(false))
+    && (type_name == "copy" || type_name == "cut")
+  {
+    publish_cancelled_copy(scope, transfer_obj);
+  }
+}
+
+/// Publish `text/plain` from a cancelled host `copy` or `cut`.
+///
+/// An empty string is present and replaces the pasteboard. A missing entry
+/// leaves it unchanged. Other formats stay on the `DataTransfer`.
+fn publish_cancelled_copy(
+  scope: &mut v8::PinScope,
+  transfer: v8::Local<v8::Object>,
+) {
+  let text = {
+    let Some(host) =
+      (unsafe { yuzuko_core::op::host_ref::<DataTransfer>(scope, transfer) })
+    else {
+      return;
+    };
+    host.get().plain_text()
+  };
+  let Some(text) = text else {
+    return;
+  };
+  if store_text(text).is_ok() {
+    announce(scope);
+  }
 }
 
 fn require_gesture(scope: &mut v8::PinScope) -> Result<(), Js> {
@@ -447,6 +485,219 @@ impl Clipboard {
   }
 }
 
+const URI_LIST: &str = "text/uri-list";
+
+const DROP_EFFECTS: &[&str] = &["none", "copy", "link", "move"];
+
+const ALLOWED_EFFECTS: &[&str] = &[
+  "none",
+  "copy",
+  "copyLink",
+  "copyMove",
+  "link",
+  "linkMove",
+  "move",
+  "all",
+  "uninitialized",
+];
+
+/// String items for a clipboard `DataTransfer`.
+///
+/// `items`, `files`, and `setDragImage` stay absent. There is no drag data
+/// store mode other than read/write and read-only.
+struct DataTransfer {
+  items: RefCell<Vec<(String, String)>>,
+  read_only: Cell<bool>,
+  drop_effect: RefCell<String>,
+  effect_allowed: RefCell<String>,
+  /// Reused until `setData` or a `clearData` that removes an entry.
+  types: RefCell<Option<v8::TracedReference<v8::Object>>>,
+}
+
+impl DataTransfer {
+  fn fresh(read_only: bool) -> Self {
+    Self {
+      items: RefCell::new(Vec::new()),
+      read_only: Cell::new(read_only),
+      drop_effect: RefCell::new("none".to_string()),
+      effect_allowed: RefCell::new("none".to_string()),
+      types: RefCell::new(None),
+    }
+  }
+
+  /// Read-only store seeded from the same text cache as `readText`.
+  fn from_paste() -> Self {
+    let transfer = Self::fresh(true);
+    if let Some(text) = CONTENTS.with(|slot| slot.borrow().text.clone()) {
+      transfer.items.borrow_mut().push((TEXT.to_string(), text));
+    }
+    transfer
+  }
+
+  fn plain_text(&self) -> Option<String> {
+    self
+      .items
+      .borrow()
+      .iter()
+      .find(|(format, _)| format == TEXT)
+      .map(|(_, text)| text.clone())
+  }
+
+  fn invalidate_types(&self) {
+    *self.types.borrow_mut() = None;
+  }
+}
+
+unsafe impl v8::cppgc::GarbageCollected for DataTransfer {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    if let Ok(types) = self.types.try_borrow() {
+      visitor.trace(&*types);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DataTransfer"
+  }
+}
+
+#[op]
+impl DataTransfer {
+  #[constructor]
+  fn new() -> Self {
+    Self::fresh(false)
+  }
+
+  #[getter]
+  fn drop_effect(&self) -> String {
+    self.drop_effect.borrow().clone()
+  }
+
+  #[setter]
+  fn drop_effect(&self, value: String) {
+    if DROP_EFFECTS.contains(&value.as_str()) {
+      *self.drop_effect.borrow_mut() = value;
+    }
+  }
+
+  #[getter]
+  fn effect_allowed(&self) -> String {
+    self.effect_allowed.borrow().clone()
+  }
+
+  #[setter]
+  fn effect_allowed(&self, value: String) {
+    if self.read_only.get() {
+      return;
+    }
+    if ALLOWED_EFFECTS.contains(&value.as_str()) {
+      *self.effect_allowed.borrow_mut() = value;
+    }
+  }
+
+  #[getter]
+  fn types(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    let cached = self
+      .types
+      .borrow()
+      .as_ref()
+      .and_then(|reference| traced_local(scope, reference));
+    if let Some(object) = cached {
+      return Ok(js_value(scope, object.into()));
+    }
+    let names: Vec<String> = self
+      .items
+      .borrow()
+      .iter()
+      .map(|(format, _)| format.clone())
+      .collect();
+    let array = v8::Array::new(scope, names.len() as i32);
+    for (index, name) in names.iter().enumerate() {
+      let Some(text) = v8::String::new(scope, name) else {
+        return Err(OpError::type_("The data type could not be represented"));
+      };
+      array.set_index(scope, index as u32, text.into());
+    }
+    array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+    let object: v8::Local<v8::Object> = array.into();
+    *self.types.borrow_mut() = Some(traced(scope, object));
+    Ok(js_value(scope, object.into()))
+  }
+
+  fn get_data(&self, format: String) -> String {
+    let (format, convert_url) = canonical_format(&format);
+    let items = self.items.borrow();
+    let Some((_, data)) = items.iter().find(|(stored, _)| stored == &format)
+    else {
+      return String::new();
+    };
+    if convert_url {
+      first_uri(data)
+    } else {
+      data.clone()
+    }
+  }
+
+  fn set_data(&self, format: String, data: String) {
+    if self.read_only.get() {
+      return;
+    }
+    let (format, _) = canonical_format(&format);
+    let mut items = self.items.borrow_mut();
+    if let Some(index) = items.iter().position(|(stored, _)| stored == &format)
+    {
+      items.remove(index);
+    }
+    items.push((format, data));
+    drop(items);
+    self.invalidate_types();
+  }
+
+  fn clear_data(&self, format: Option<String>) {
+    if self.read_only.get() {
+      return;
+    }
+    let mut items = self.items.borrow_mut();
+    let before = items.len();
+    match format {
+      None => items.clear(),
+      Some(format) => {
+        let (format, _) = canonical_format(&format);
+        items.retain(|(stored, _)| stored != &format);
+      }
+    }
+    let changed = items.len() != before;
+    drop(items);
+    if changed {
+      self.invalidate_types();
+    }
+  }
+}
+
+/// ASCII-lowercase `format`, then map `text` and `url` to their MIME types.
+///
+/// `url` asks `getData` to return the first URI-list entry. `setData` and
+/// `clearData` only use the mapped type.
+fn canonical_format(format: &str) -> (String, bool) {
+  let format = format.to_ascii_lowercase();
+  match format.as_str() {
+    "text" => (TEXT.to_string(), false),
+    "url" => (URI_LIST.to_string(), true),
+    _ => (format, false),
+  }
+}
+
+/// First non-empty, non-comment line of a `text/uri-list` payload.
+fn first_uri(list: &str) -> String {
+  for line in list.split('\n') {
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    if line.is_empty() || line.starts_with('#') {
+      continue;
+    }
+    return line.to_string();
+  }
+  String::new()
+}
+
 #[repr(C)]
 struct ClipboardEvent {
   base: Event,
@@ -476,7 +727,7 @@ impl ClipboardEvent {
   ) -> Result<Self, OpError> {
     Ok(Self {
       base: Event::from_args(scope, args, false)?,
-      clipboard_data: RefCell::new(None),
+      clipboard_data: RefCell::new(read_clipboard_data(scope, args)?),
     })
   }
 
@@ -488,8 +739,55 @@ impl ClipboardEvent {
 
   #[getter]
   fn clipboard_data(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    js_null(scope)
+    let value = self
+      .clipboard_data
+      .borrow()
+      .as_ref()
+      .and_then(|reference| traced_local(scope, reference))
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| v8::null(scope).into());
+    js_value(scope, value)
+  }
+}
+
+fn read_clipboard_data(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Option<v8::TracedReference<v8::Object>>, OpError> {
+  let Some(init) = event_init(args) else {
+    return Ok(None);
+  };
+  let Ok(object) = v8::Local::<v8::Object>::try_from(init) else {
+    return Ok(None);
+  };
+  let Some(value) = dict_field(scope, object, "clipboardData")? else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let Ok(data) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_("clipboardData is not a DataTransfer"));
+  };
+  if unsafe { yuzuko_core::op::host_ref::<DataTransfer>(scope, data) }.is_none()
+  {
+    return Err(OpError::type_("clipboardData is not a DataTransfer"));
+  }
+  Ok(Some(traced(scope, data)))
+}
+
+/// The event init object, or nothing when the argument is missing or not an object.
+fn event_init<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if args.length() < 2 {
+    return None;
+  }
+  let value = args.get(1);
+  if value.is_null() || value.is_undefined() || !value.is_object() {
+    None
+  } else {
+    Some(value)
   }
 }
 
@@ -617,11 +915,6 @@ fn well_formed_clipboard_type(name: &str) -> bool {
     name
   };
   yuzuko_winter::is_mime_type(mime)
-}
-
-fn js_null(scope: &mut v8::PinScope) -> Js {
-  let value: v8::Local<v8::Value> = v8::null(scope).into();
-  Js(v8::Global::new(scope, value))
 }
 
 #[derive(Clone, Copy)]

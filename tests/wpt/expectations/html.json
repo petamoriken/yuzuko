@@ -4548,6 +4548,24 @@
   "html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html": {
     "ignore": true
   },
+  "html/editing/dnd/datastore/datatransfer-constructor-001.html": {
+    "expectedFailures": [
+      "Verify DataTransfer constructor"
+    ]
+  },
+  "html/editing/dnd/datastore/datatransfer-getdata-url.html": {
+    "expectedFailures": [
+      "Requesting text/uri-list does not convert to a URL",
+      "The format is matched ASCII case-insensitively after stripping whitespace"
+    ]
+  },
+  "html/editing/dnd/datastore/datatransfer-text-plain-prefix-format.html": true,
+  "html/editing/dnd/datastore/datatransfer-types.html": {
+    "expectedFailures": [
+      "DataTransfer containing files",
+      "Relationship between types and items"
+    ]
+  },
   "html/webappapis/atob/base64.any.js": true,
   "html/webappapis/microtask-queuing/queue-microtask-cross-realm-callback-report-exception.html": {
     "ignore": true
