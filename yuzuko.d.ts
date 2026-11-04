@@ -2581,6 +2581,23 @@ declare namespace Yuzuko {
   }
 
   /**
+   * Lists host audio output names.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `audio` feature. Absent from an `AudioWorklet`
+   * processor realm. A build without `audio` leaves this function absent.
+   * Each name can be passed to `AudioContext` `sinkId` or `setSinkId`.
+   * `""`, the default device, is not included. An empty host name is
+   * omitted, and a repeated name is listed once. The call is synchronous
+   * and returns a new array.
+   *
+   * @throws {@link DOMException} `NotSupportedError`
+   * `The audio outputs could not be listed` when the operating system
+   * cannot list output devices.
+   */
+  function audioOutputDevices(): string[];
+
+  /**
    * Binds a UDP socket.
    *
    * An omitted argument, `null`, or `undefined` binds `127.0.0.1` and an

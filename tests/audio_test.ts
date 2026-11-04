@@ -569,6 +569,41 @@ Yuzuko.test("automation methods reject an incomplete schedule", () => {
   );
 });
 
+Yuzuko.test("audioOutputDevices lists sink names", async () => {
+  assert(Yuzuko.audioOutputDevices.length === 0, "length");
+  const names = Yuzuko.audioOutputDevices();
+  assert(Array.isArray(names), "array");
+  const seen = new Set<string>();
+  for (const name of names) {
+    assert(typeof name === "string" && name.length > 0, `name ${name}`);
+    assert(!seen.has(name), `duplicate ${name}`);
+    seen.add(name);
+    const context = new AudioContext({ sinkId: name });
+    try {
+      assert(context.sinkId === name, `accepted ${name}`);
+    } finally {
+      await context.close();
+    }
+  }
+  assert(Yuzuko.audioOutputDevices() !== names, "fresh array");
+  const worker = new Worker(
+    new URL("./workers/audio_outputs.js", import.meta.url).href,
+  );
+  const probe = await new Promise<{ fn: boolean; names: string[] }>(
+    (resolve, reject) => {
+      worker.onmessage = (event: MessageEvent) => {
+        resolve(event.data as { fn: boolean; names: string[] });
+      };
+      worker.onerror = (event: ErrorEvent) => {
+        reject(new Error(event.message || "worker error"));
+      };
+    },
+  );
+  worker.terminate();
+  assert(probe.fn, "worker function");
+  assert(probe.names.join("\0") === names.join("\0"), "worker names");
+});
+
 Yuzuko.test("sinkId names an output device", async () => {
   const context = new AudioContext({ sinkId: "" });
   try {

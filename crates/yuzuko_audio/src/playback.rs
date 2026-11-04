@@ -346,6 +346,32 @@ pub(crate) fn sink_available(name: &str) -> bool {
   matches!(found, Ok(true))
 }
 
+/// Host output names that `sinkId` accepts. `""` means the default device
+/// and is not included. An empty host name is omitted. Later duplicates of
+/// the same name are omitted.
+pub(crate) fn output_device_names() -> Result<Vec<String>, ()> {
+  let listed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let host = cpal::default_host();
+    let devices = host.output_devices().map_err(|_| ())?;
+    let mut names = Vec::new();
+    for device in devices {
+      let Ok(description) = device.description() else {
+        continue;
+      };
+      let name = description.name();
+      if name.is_empty() || names.iter().any(|existing| existing == name) {
+        continue;
+      }
+      names.push(name.to_string());
+    }
+    Ok(names)
+  }));
+  match listed {
+    Ok(names) => names,
+    Err(_) => Err(()),
+  }
+}
+
 fn select_output(host: &cpal::Host, sink: &str) -> Option<cpal::Device> {
   if sink.is_empty() {
     return host.default_output_device();
@@ -744,5 +770,16 @@ mod tests {
       return;
     }
     assert!(super::sink_available(&name));
+  }
+
+  #[test]
+  fn output_device_names_are_usable_sinks() {
+    let names = super::output_device_names().expect("list outputs");
+    let mut seen = std::collections::BTreeSet::new();
+    for name in &names {
+      assert!(!name.is_empty(), "empty name");
+      assert!(seen.insert(name.clone()), "duplicate {name}");
+      assert!(super::sink_available(name), "unavailable {name}");
+    }
   }
 }
