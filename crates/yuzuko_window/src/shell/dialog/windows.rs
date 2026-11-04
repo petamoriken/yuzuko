@@ -465,3 +465,71 @@ fn chosen_paths(buffer: &[u16], multiple: bool) -> Vec<std::path::PathBuf> {
     .map(|name| std::path::PathBuf::from(&directory).join(name))
     .collect()
 }
+
+pub(super) fn pick_directory(
+  parent: windows_sys::Win32::Foundation::HWND,
+  title: &str,
+) -> Result<Option<Vec<String>>, String> {
+  use windows_sys::Win32::Foundation::{HWND, LPARAM};
+  use windows_sys::Win32::UI::Shell::{
+    BFFM_INITIALIZED, BIF_EDITBOX, BIF_NEWDIALOGSTYLE, BIF_RETURNONLYFSDIRS,
+    BROWSEINFOW, GPFIDL_DEFAULT, ILFree, SHBrowseForFolderW,
+    SHGetPathFromIDListEx,
+  };
+  use windows_sys::Win32::UI::WindowsAndMessaging::SetWindowTextW;
+
+  /// `lpszTitle` is the instruction above the tree. This sets the caption.
+  unsafe extern "system" fn browse_caption(
+    hwnd: HWND,
+    message: u32,
+    _param: LPARAM,
+    data: LPARAM,
+  ) -> i32 {
+    if message == BFFM_INITIALIZED && data != 0 {
+      unsafe {
+        SetWindowTextW(hwnd, data as *const u16);
+      }
+    }
+    0
+  }
+
+  let caption = wide(title);
+  let info = BROWSEINFOW {
+    hwndOwner: parent,
+    lpszTitle: caption.as_ptr(),
+    ulFlags: BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX,
+    lpfn: Some(browse_caption),
+    lParam: caption.as_ptr() as LPARAM,
+    ..BROWSEINFOW::default()
+  };
+  // `BIF_NEWDIALOGSTYLE` needs OLE on this thread. winit called
+  // `OleInitialize` when it created the window. Do not initialize again.
+  let pidl = unsafe { SHBrowseForFolderW(&info) };
+  if pidl.is_null() {
+    return Ok(None);
+  }
+  let mut buffer = vec![0u16; 32768];
+  let ok = unsafe {
+    SHGetPathFromIDListEx(
+      pidl,
+      buffer.as_mut_ptr(),
+      buffer.len() as u32,
+      GPFIDL_DEFAULT,
+    )
+  };
+  unsafe { ILFree(pidl) };
+  if ok == 0 {
+    return Err("The file dialog failed.".to_string());
+  }
+  let end = buffer
+    .iter()
+    .position(|unit| *unit == 0)
+    .unwrap_or(buffer.len());
+  if end == 0 {
+    return Ok(None);
+  }
+  let path = String::from_utf16_lossy(&buffer[..end]);
+  Ok(Some(vec![super::absolute_path(std::path::PathBuf::from(
+    path,
+  ))]))
+}

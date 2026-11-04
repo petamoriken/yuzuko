@@ -1283,6 +1283,13 @@ declare namespace Yuzuko {
   }
 
   /**
+   * Options for {@link Window.pickDirectory}.
+   *
+   * The object has no fields. Unknown properties are ignored.
+   */
+  interface DirectoryPickerOptions {}
+
+  /**
    * One native window.
    *
    * Startup does not open a window. Each `new Yuzuko.Window()` opens one.
@@ -1660,6 +1667,30 @@ declare namespace Yuzuko {
      * @throws {@link DOMException} `InvalidStateError` when the window is closed.
      */
     pickSaveFile(options?: FileSaveOptions): string | null;
+
+    /**
+     * Shows a native modal directory dialog.
+     *
+     * Returns one absolute path, or `null` when cancelled or the selection
+     * is empty. The path is not canonicalized. The dialog can create a
+     * directory. It does not take file filters and does not change
+     * {@link Window.pickFiles} or {@link Window.pickSaveFile}. There is no
+     * File System Access API.
+     *
+     * macOS uses `NSOpenPanel` and selects directories only. Linux uses an
+     * unparented GTK 3 folder chooser. Windows uses `SHBrowseForFolder`,
+     * parents the dialog to the window, and sets the caption to the window
+     * title.
+     *
+     * @param options - Omitted or `undefined` is accepted. The object has no
+     * fields.
+     * @returns The selected directory, or `null` when cancelled.
+     * @throws {@link TypeError} When `options` is not an object.
+     * @throws {@link DOMException} `NotSupportedError` when the process is
+     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     */
+    pickDirectory(options?: DirectoryPickerOptions): string | null;
 
     /**
      * Stores the menu an uncancelled `contextmenu` shows.

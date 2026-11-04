@@ -266,6 +266,61 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   });
   assert(errorName(error) === "NotSupportedError", errorMessage(error));
 
+  assert(win.pickDirectory.length === 0, "pickDirectory length");
+
+  error = thrown(() => {
+    win.pickDirectory(null);
+  });
+  assert(errorName(error) === "TypeError", errorName(error));
+  assert(
+    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickDirectory("docs");
+  });
+  assert(
+    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickDirectory(1);
+  });
+  assert(
+    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickDirectory({
+      get filters() {
+        throw new TypeError("directory filters");
+      },
+    });
+  });
+  assert(errorName(error) === "NotSupportedError", errorName(error));
+  assert(
+    errorMessage(error) === "This process has no dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickDirectory();
+  });
+  assert(errorName(error) === "NotSupportedError", errorMessage(error));
+
+  error = thrown(() => {
+    win.pickDirectory(undefined);
+  });
+  assert(errorName(error) === "NotSupportedError", errorMessage(error));
+
+  error = thrown(() => {
+    win.pickDirectory({});
+  });
+  assert(errorName(error) === "NotSupportedError", errorMessage(error));
+
   win.close();
   error = thrown(() => {
     win.pickFiles();
@@ -296,6 +351,24 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   });
   assert(
     errorMessage(error) === "suggestedName must be a file name.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickDirectory();
+  });
+  assert(
+    errorName(error) === "InvalidStateError",
+    `closed dir: ${errorName(error)}`,
+  );
+  assert(errorMessage(error) === "The surface is closed.", errorMessage(error));
+
+  error = thrown(() => {
+    win.pickDirectory(null);
+  });
+  assert(errorName(error) === "TypeError", `closed dir null: ${errorName(error)}`);
+  assert(
+    errorMessage(error) === "The file picker options must be an object.",
     errorMessage(error),
   );
 });

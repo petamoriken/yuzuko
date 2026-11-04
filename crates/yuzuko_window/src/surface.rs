@@ -1435,6 +1435,19 @@ impl Window {
     path_one(scope, picked)
   }
 
+  fn pick_directory(
+    &self,
+    scope: &mut v8::PinScope,
+    options: Option<v8::Local<v8::Value>>,
+  ) -> Result<Js, OpError> {
+    crate::shell::dialog::parse_directory(scope, options)?;
+    self.require_dialog()?;
+    let title = self.title.borrow().clone();
+    let picked = crate::shell::dialog::pick_directory(self.id, &title)
+      .map_err(dialog_unsupported)?;
+    path_one(scope, picked)
+  }
+
   fn set_context_menu(
     &self,
     scope: &mut v8::PinScope,

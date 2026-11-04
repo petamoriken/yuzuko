@@ -69,7 +69,7 @@ pub(super) fn pick_files(
   multiple: bool,
   filters: &[super::FileFilter],
 ) -> Result<Option<Vec<String>>, String> {
-  choose(title, false, multiple, None, filters)
+  choose(title, false, multiple, None, filters, false)
 }
 
 pub(super) fn pick_save(
@@ -77,7 +77,13 @@ pub(super) fn pick_save(
   suggested: Option<&str>,
   filters: &[super::FileFilter],
 ) -> Result<Option<Vec<String>>, String> {
-  choose(title, true, false, suggested, filters)
+  choose(title, true, false, suggested, filters, false)
+}
+
+pub(super) fn pick_directory(
+  title: &str,
+) -> Result<Option<Vec<String>>, String> {
+  choose(title, false, false, None, &[], true)
 }
 
 /// GTK 3 file chooser. It is not parented to the winit window, same as alert.
@@ -87,13 +93,23 @@ fn choose(
   multiple: bool,
   suggested: Option<&str>,
   filters: &[super::FileFilter],
+  directory: bool,
 ) -> Result<Option<Vec<String>>, String> {
   use gtk::prelude::*;
   crate::shell::gtk_loop::ready()?;
-  let action = if save {
+  let action = if directory {
+    gtk::FileChooserAction::SelectFolder
+  } else if save {
     gtk::FileChooserAction::Save
   } else {
     gtk::FileChooserAction::Open
+  };
+  let accept = if directory {
+    "Select"
+  } else if save {
+    "Save"
+  } else {
+    "Open"
   };
   let dialog = gtk::FileChooserDialog::builder()
     .title(title)
@@ -101,10 +117,7 @@ fn choose(
     .modal(true)
     .build();
   dialog.add_button("Cancel", gtk::ResponseType::Cancel);
-  dialog.add_button(
-    if save { "Save" } else { "Open" },
-    gtk::ResponseType::Accept,
-  );
+  dialog.add_button(accept, gtk::ResponseType::Accept);
   dialog.set_default_response(gtk::ResponseType::Accept);
   if multiple {
     dialog.set_select_multiple(true);

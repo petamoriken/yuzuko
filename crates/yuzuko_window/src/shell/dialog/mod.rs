@@ -1,4 +1,4 @@
-//! Native `alert`, `confirm`, `prompt`, and file dialogs for one window.
+//! Native `alert`, `confirm`, `prompt`, file, and directory dialogs.
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -211,6 +211,44 @@ pub(crate) fn pick_save_file(
   )))]
   {
     let _ = (id, title, suggested, filters);
+    Err("This system has no dialog.".to_string())
+  }
+}
+
+pub(crate) fn parse_directory(
+  scope: &mut v8::PinScope,
+  options: Option<v8::Local<v8::Value>>,
+) -> Result<(), OpError> {
+  options_object(scope, options)?;
+  Ok(())
+}
+
+pub(crate) fn pick_directory(
+  id: u64,
+  title: &str,
+) -> Result<Option<Vec<String>>, String> {
+  #[cfg(target_os = "macos")]
+  {
+    let parent = macos::parent(id)?;
+    macos::pick_directory(parent.as_deref(), title)
+  }
+  #[cfg(target_os = "windows")]
+  {
+    let parent = windows::parent(id)?;
+    windows::pick_directory(parent, title)
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let _ = id;
+    linux::pick_directory(title)
+  }
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux"
+  )))]
+  {
+    let _ = (id, title);
     Err("This system has no dialog.".to_string())
   }
 }

@@ -86,6 +86,24 @@ pub(super) fn pick_files(
   multiple: bool,
   filters: &[super::FileFilter],
 ) -> Result<Option<Vec<String>>, String> {
+  open_panel(parent, title, true, false, multiple, filters)
+}
+
+pub(super) fn pick_directory(
+  parent: Option<&objc2_app_kit::NSWindow>,
+  title: &str,
+) -> Result<Option<Vec<String>>, String> {
+  open_panel(parent, title, false, true, false, &[])
+}
+
+fn open_panel(
+  parent: Option<&objc2_app_kit::NSWindow>,
+  title: &str,
+  files: bool,
+  directories: bool,
+  multiple: bool,
+  filters: &[super::FileFilter],
+) -> Result<Option<Vec<String>>, String> {
   use objc2::ClassType;
   use objc2::MainThreadMarker;
   use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
@@ -96,10 +114,13 @@ pub(super) fn pick_files(
   // `NSAlert`. AppKit does not take it as a parent of `runModal`.
   let _ = parent;
   let panel = NSOpenPanel::openPanel(mtm);
-  panel.setCanChooseFiles(true);
-  panel.setCanChooseDirectories(false);
+  panel.setCanChooseFiles(files);
+  panel.setCanChooseDirectories(directories);
   panel.setAllowsMultipleSelection(multiple);
   let save = panel.as_super();
+  if directories {
+    save.setCanCreateDirectories(true);
+  }
   configure_panel(save, title, None, filters);
   let response = save.runModal();
   if response < 0 {
