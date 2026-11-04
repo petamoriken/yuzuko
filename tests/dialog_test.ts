@@ -72,7 +72,8 @@ function errorMessage(error: unknown): string {
 Yuzuko.test("file picker options are checked before the dialog", () => {
   const win = new Yuzuko.Window({ title: "picker", width: 80, height: 60 });
   assert(win.pickFiles.length === 0, "pickFiles length");
-  assert(win.pickSaveFile.length === 0, "pickSaveFile length");
+  assert(win.pickSaveFile === undefined, "no pickSaveFile");
+  assert(win.pickDirectory === undefined, "no pickDirectory");
 
   let error = thrown(() => {
     win.pickFiles(null);
@@ -165,7 +166,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickSaveFile({ suggestedName: "" });
+    win.pickFiles({ mode: "save", suggestedName: "" });
   });
   assert(
     errorMessage(error) === "suggestedName must be a file name.",
@@ -173,7 +174,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickSaveFile({ suggestedName: "a/b.txt" });
+    win.pickFiles({ mode: "save", suggestedName: "a/b.txt" });
   });
   assert(
     errorMessage(error) === "suggestedName must be a file name.",
@@ -181,7 +182,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickSaveFile({
+    win.pickFiles({ mode: "save",
       suggestedName: {
         toString() {
           throw new TypeError("name hook");
@@ -193,7 +194,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   assert(errorMessage(error) === "name hook", errorMessage(error));
 
   error = thrown(() => {
-    win.pickSaveFile({
+    win.pickFiles({ mode: "save",
       filters: [{ name: "Text\0", extensions: ["txt"] }],
     });
   });
@@ -257,46 +258,106 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   assert(errorName(error) === "NotSupportedError", errorName(error));
 
   error = thrown(() => {
-    win.pickSaveFile({ suggestedName: "note.txt" });
+    win.pickFiles({ mode: "save", suggestedName: "note.txt" });
   });
   assert(errorName(error) === "NotSupportedError", errorMessage(error));
 
   error = thrown(() => {
-    win.pickSaveFile({ suggestedName: "." });
+    win.pickFiles({ mode: "save", suggestedName: "." });
   });
   assert(errorName(error) === "NotSupportedError", errorMessage(error));
 
-  assert(win.pickDirectory.length === 0, "pickDirectory length");
+  error = thrown(() => {
+    win.pickFiles({
+      get mode() {
+        throw new TypeError("mode getter");
+      },
+    });
+  });
+  assert(error instanceof TypeError, errorName(error));
+  assert(errorMessage(error) === "mode getter", errorMessage(error));
 
   error = thrown(() => {
-    win.pickDirectory(null);
+    win.pickFiles({ mode: "nope", multiple: 1 });
   });
-  assert(errorName(error) === "TypeError", errorName(error));
   assert(
-    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error) ===
+      'mode must be "open", "save", or "directory".',
     errorMessage(error),
   );
 
   error = thrown(() => {
-    win.pickDirectory("docs");
+    win.pickFiles({ mode: 1 });
   });
   assert(
-    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error) ===
+      'mode must be "open", "save", or "directory".',
     errorMessage(error),
   );
 
   error = thrown(() => {
-    win.pickDirectory(1);
+    win.pickFiles({ mode: "open", suggestedName: "note.txt" });
   });
   assert(
-    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error) === "suggestedName applies only to a save dialog.",
     errorMessage(error),
   );
 
   error = thrown(() => {
-    win.pickDirectory({
+    win.pickFiles({ mode: "save", multiple: false });
+  });
+  assert(
+    errorMessage(error) === "multiple applies only to an open dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickFiles({
+      mode: "directory",
+      multiple: true,
+      filters: [{ extensions: ["txt"] }],
+    });
+  });
+  assert(
+    errorMessage(error) === "multiple applies only to an open dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickFiles({
+      mode: "directory",
+      filters: [{ extensions: ["txt"] }],
+    });
+  });
+  assert(
+    errorMessage(error) === "filters apply only to a file dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickFiles({
+      mode: "directory",
       get filters() {
         throw new TypeError("directory filters");
+      },
+    });
+  });
+  assert(error instanceof TypeError, errorName(error));
+  assert(errorMessage(error) === "directory filters", errorMessage(error));
+
+  error = thrown(() => {
+    win.pickFiles({ mode: "directory", suggestedName: "docs" });
+  });
+  assert(
+    errorMessage(error) === "suggestedName applies only to a save dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickFiles({
+      mode: "directory",
+      get title() {
+        throw new TypeError("title");
       },
     });
   });
@@ -307,17 +368,12 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickDirectory();
+    win.pickFiles({ mode: "directory" });
   });
   assert(errorName(error) === "NotSupportedError", errorMessage(error));
 
   error = thrown(() => {
-    win.pickDirectory(undefined);
-  });
-  assert(errorName(error) === "NotSupportedError", errorMessage(error));
-
-  error = thrown(() => {
-    win.pickDirectory({});
+    win.pickFiles({ mode: "open" });
   });
   assert(errorName(error) === "NotSupportedError", errorMessage(error));
 
@@ -347,7 +403,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickSaveFile({ suggestedName: "a\\b" });
+    win.pickFiles({ mode: "save", suggestedName: "a\\b" });
   });
   assert(
     errorMessage(error) === "suggestedName must be a file name.",
@@ -355,7 +411,7 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   );
 
   error = thrown(() => {
-    win.pickDirectory();
+    win.pickFiles({ mode: "directory" });
   });
   assert(
     errorName(error) === "InvalidStateError",
@@ -364,11 +420,18 @@ Yuzuko.test("file picker options are checked before the dialog", () => {
   assert(errorMessage(error) === "The surface is closed.", errorMessage(error));
 
   error = thrown(() => {
-    win.pickDirectory(null);
+    win.pickFiles({ mode: "directory", multiple: false });
   });
-  assert(errorName(error) === "TypeError", `closed dir null: ${errorName(error)}`);
   assert(
-    errorMessage(error) === "The file picker options must be an object.",
+    errorMessage(error) === "multiple applies only to an open dialog.",
+    errorMessage(error),
+  );
+
+  error = thrown(() => {
+    win.pickFiles({ mode: "nope" });
+  });
+  assert(
+    errorMessage(error) === 'mode must be "open", "save", or "directory".',
     errorMessage(error),
   );
 });

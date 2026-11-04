@@ -8,7 +8,8 @@ const opened = win.pickFiles({
   filters: [{ name: "Text", extensions: ["txt", "md"] }],
 });
 console.log(opened === null ? "open-cancel" : "open-picked");
-const saved = win.pickSaveFile({
+const saved = win.pickFiles({
+  mode: "save",
   suggestedName: "note.txt",
   filters: [{ name: "Text", extensions: ["txt"] }],
 });

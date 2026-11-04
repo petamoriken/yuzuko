@@ -111,44 +111,128 @@ pub(crate) struct FileFilter {
   pub all: bool,
 }
 
-pub(crate) fn parse_open(
-  scope: &mut v8::PinScope,
-  options: Option<v8::Local<v8::Value>>,
-) -> Result<(bool, Vec<FileFilter>), OpError> {
-  let object = options_object(scope, options)?;
-  let Some(object) = object else {
-    return Ok((false, Vec::new()));
-  };
-  let multiple = match get_field(scope, object, "multiple")? {
-    Some(value) if value.is_boolean() => value.is_true(),
-    Some(_) => {
-      return Err(OpError::type_("multiple must be a boolean."));
-    }
-    None => false,
-  };
-  Ok((multiple, parse_filters(scope, object)?))
+pub(crate) enum Picker {
+  Open {
+    multiple: bool,
+    filters: Vec<FileFilter>,
+  },
+  Save {
+    suggested: Option<String>,
+    filters: Vec<FileFilter>,
+  },
+  Directory,
 }
 
-pub(crate) fn parse_save(
+pub(crate) fn parse_picker(
   scope: &mut v8::PinScope,
   options: Option<v8::Local<v8::Value>>,
-) -> Result<(Option<String>, Vec<FileFilter>), OpError> {
+) -> Result<Picker, OpError> {
   let object = options_object(scope, options)?;
   let Some(object) = object else {
-    return Ok((None, Vec::new()));
+    return Ok(Picker::Open {
+      multiple: false,
+      filters: Vec::new(),
+    });
   };
-  let filters = parse_filters(scope, object)?;
-  let suggested = match get_field(scope, object, "suggestedName")? {
+  let mode = match get_field(scope, object, "mode")? {
+    Some(value) if value.is_string() => js_string(scope, value)?,
+    Some(_) => {
+      return Err(OpError::type_(
+        "mode must be \"open\", \"save\", or \"directory\".",
+      ));
+    }
+    None => "open".to_string(),
+  };
+  match mode.as_str() {
+    "open" => {
+      reject_present(
+        scope,
+        object,
+        "suggestedName",
+        "suggestedName applies only to a save dialog.",
+      )?;
+      Ok(Picker::Open {
+        multiple: parse_multiple(scope, object)?,
+        filters: parse_filters(scope, object)?,
+      })
+    }
+    "save" => {
+      reject_present(
+        scope,
+        object,
+        "multiple",
+        "multiple applies only to an open dialog.",
+      )?;
+      Ok(Picker::Save {
+        filters: parse_filters(scope, object)?,
+        suggested: parse_suggested(scope, object)?,
+      })
+    }
+    "directory" => {
+      reject_present(
+        scope,
+        object,
+        "multiple",
+        "multiple applies only to an open dialog.",
+      )?;
+      reject_present(
+        scope,
+        object,
+        "filters",
+        "filters apply only to a file dialog.",
+      )?;
+      reject_present(
+        scope,
+        object,
+        "suggestedName",
+        "suggestedName applies only to a save dialog.",
+      )?;
+      Ok(Picker::Directory)
+    }
+    _ => Err(OpError::type_(
+      "mode must be \"open\", \"save\", or \"directory\".",
+    )),
+  }
+}
+
+fn reject_present(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  message: &str,
+) -> Result<(), OpError> {
+  if get_field(scope, object, name)?.is_some() {
+    Err(OpError::type_(message))
+  } else {
+    Ok(())
+  }
+}
+
+fn parse_multiple(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<bool, OpError> {
+  match get_field(scope, object, "multiple")? {
+    Some(value) if value.is_boolean() => Ok(value.is_true()),
+    Some(_) => Err(OpError::type_("multiple must be a boolean.")),
+    None => Ok(false),
+  }
+}
+
+fn parse_suggested(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<String>, OpError> {
+  match get_field(scope, object, "suggestedName")? {
     Some(value) => {
       let name = js_string(scope, value)?;
       if name.is_empty() || name.contains(['/', '\\', '\0']) {
         return Err(OpError::type_("suggestedName must be a file name."));
       }
-      Some(name)
+      Ok(Some(name))
     }
-    None => None,
-  };
-  Ok((suggested, filters))
+    None => Ok(None),
+  }
 }
 
 pub(crate) fn pick_files(
@@ -213,14 +297,6 @@ pub(crate) fn pick_save_file(
     let _ = (id, title, suggested, filters);
     Err("This system has no dialog.".to_string())
   }
-}
-
-pub(crate) fn parse_directory(
-  scope: &mut v8::PinScope,
-  options: Option<v8::Local<v8::Value>>,
-) -> Result<(), OpError> {
-  options_object(scope, options)?;
-  Ok(())
 }
 
 pub(crate) fn pick_directory(

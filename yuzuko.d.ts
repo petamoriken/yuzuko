@@ -1229,8 +1229,7 @@ declare namespace Yuzuko {
   }
 
   /**
-   * One file filter for {@link Window.pickFiles} and
-   * {@link Window.pickSaveFile}.
+   * One file filter for {@link Window.pickFiles}.
    */
   interface FileFilter {
     /**
@@ -1255,39 +1254,41 @@ declare namespace Yuzuko {
 
   /**
    * Options for {@link Window.pickFiles}.
+   *
+   * `mode` selects an open dialog, a save dialog, or a directory dialog.
+   * Every accepted dialog returns `string[] | null`.
    */
   interface FilePickerOptions {
     /**
-     * Select more than one file.
+     * Which dialog to show.
+     *
+     * `"open"` selects existing files. `"save"` asks for one file name.
+     * `"directory"` selects one directory and can create one. Any other
+     * value throws `TypeError`.
+     *
+     * @defaultValue "open"
+     */
+    mode?: "open" | "save" | "directory";
+
+    /**
+     * Select more than one file. Only `"open"` accepts this.
      *
      * @defaultValue false
      */
     multiple?: boolean;
 
-    /** Filters. Omitted accepts every file. */
-    filters?: FileFilter[];
-  }
-
-  /**
-   * Options for {@link Window.pickSaveFile}.
-   */
-  interface FileSaveOptions {
     /**
-     * Initial file name. A path separator or NUL is rejected. `.` is a
-     * file name.
+     * Filters for `"open"` and `"save"`. Omitted accepts every file.
+     * `"directory"` rejects this field.
+     */
+    filters?: FileFilter[];
+
+    /**
+     * Initial file name for `"save"`. A path separator or NUL is rejected.
+     * `.` is a file name. Other modes reject this field.
      */
     suggestedName?: string;
-
-    /** Filters. Omitted accepts every file. */
-    filters?: FileFilter[];
   }
-
-  /**
-   * Options for {@link Window.pickDirectory}.
-   *
-   * The object has no fields. Unknown properties are ignored.
-   */
-  interface DirectoryPickerOptions {}
 
   /**
    * One native window.
@@ -1631,66 +1632,31 @@ declare namespace Yuzuko {
     prompt(message?: any, defaultValue?: string): string | null;
 
     /**
-     * Shows a native modal file dialog.
+     * Shows a native modal open, save, or directory dialog.
      *
-     * Returns absolute paths. `multiple: false` still returns a one-element
-     * array. Cancelling, or accepting an empty selection, returns `null`.
-     * `options.filters` selects extensions. An extension has no leading dot.
-     * `*` means every file and may be its own filter beside other filters.
-     * macOS unites every extension into one allowed-type list. If any
-     * filter is `*` or `filters` is omitted, macOS allows every file.
-     * Linux uses GTK 3 and does not parent the dialog to the winit window.
+     * `mode` defaults to `"open"`. `"save"` asks for one file name.
+     * `"directory"` selects one directory and can create one. Each of those,
+     * and `"open"` with `multiple: false`, returns a one-element array.
+     * Cancelling, or accepting an empty selection, returns `null`.
+     * `filters` selects extensions for `"open"` and `"save"`. An extension
+     * has no leading dot. `*` means every file and may be its own filter
+     * beside other filters. macOS unites every extension into one
+     * allowed-type list. If any filter is `*` or `filters` is omitted,
+     * macOS allows every file. Linux uses GTK 3 and does not parent the
+     * dialog to the winit window. Windows parents a directory dialog with
+     * `SHBrowseForFolder` and sets its caption to the window title.
+     * There is no `pickSaveFile`, `pickDirectory`, or File System Access API.
      *
      * @param options - Omitted or `undefined` selects a single file of any type.
      * @returns The selected paths, or `null` when cancelled.
-     * @throws {@link TypeError} When `options` is not an object, `multiple` is
-     * not a boolean, or `filters` / `extensions` is not a usable extension list.
+     * @throws {@link TypeError} When `options` is not an object, `mode` is not
+     * `"open"`, `"save"`, or `"directory"`, a field does not apply to that
+     * mode, or `filters` / `extensions` is not a usable extension list.
      * @throws {@link DOMException} `NotSupportedError` when the process is
      * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
      * @throws {@link DOMException} `InvalidStateError` when the window is closed.
      */
     pickFiles(options?: FilePickerOptions): string[] | null;
-
-    /**
-     * Shows a native modal save dialog.
-     *
-     * Returns one absolute path, or `null` when cancelled. `suggestedName` is
-     * a file name. Linux uses GTK 3 and does not parent the dialog to the
-     * winit window.
-     *
-     * @param options - Omitted or `undefined` asks for any file name.
-     * @returns The chosen path, or `null` when cancelled.
-     * @throws {@link TypeError} When `options` is not an object, `suggestedName`
-     * is empty or contains a path separator or NUL, or `filters` is not usable.
-     * @throws {@link DOMException} `NotSupportedError` when the process is
-     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
-     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
-     */
-    pickSaveFile(options?: FileSaveOptions): string | null;
-
-    /**
-     * Shows a native modal directory dialog.
-     *
-     * Returns one absolute path, or `null` when cancelled or the selection
-     * is empty. The path is not canonicalized. The dialog can create a
-     * directory. It does not take file filters and does not change
-     * {@link Window.pickFiles} or {@link Window.pickSaveFile}. There is no
-     * File System Access API.
-     *
-     * macOS uses `NSOpenPanel` and selects directories only. Linux uses an
-     * unparented GTK 3 folder chooser. Windows uses `SHBrowseForFolder`,
-     * parents the dialog to the window, and sets the caption to the window
-     * title.
-     *
-     * @param options - Omitted or `undefined` is accepted. The object has no
-     * fields.
-     * @returns The selected directory, or `null` when cancelled.
-     * @throws {@link TypeError} When `options` is not an object.
-     * @throws {@link DOMException} `NotSupportedError` when the process is
-     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
-     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
-     */
-    pickDirectory(options?: DirectoryPickerOptions): string | null;
 
     /**
      * Stores the menu an uncancelled `contextmenu` shows.

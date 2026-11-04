@@ -1407,45 +1407,27 @@ impl Window {
     scope: &mut v8::PinScope,
     options: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
-    let (multiple, filters) = crate::shell::dialog::parse_open(scope, options)?;
+    let picker = crate::shell::dialog::parse_picker(scope, options)?;
     self.require_dialog()?;
     let title = self.title.borrow().clone();
-    let picked =
-      crate::shell::dialog::pick_files(self.id, &title, multiple, &filters)
-        .map_err(dialog_unsupported)?;
-    path_list(scope, picked)
-  }
-
-  fn pick_save_file(
-    &self,
-    scope: &mut v8::PinScope,
-    options: Option<v8::Local<v8::Value>>,
-  ) -> Result<Js, OpError> {
-    let (suggested, filters) =
-      crate::shell::dialog::parse_save(scope, options)?;
-    self.require_dialog()?;
-    let title = self.title.borrow().clone();
-    let picked = crate::shell::dialog::pick_save_file(
-      self.id,
-      &title,
-      suggested.as_deref(),
-      &filters,
-    )
+    let picked = match picker {
+      crate::shell::dialog::Picker::Open { multiple, filters } => {
+        crate::shell::dialog::pick_files(self.id, &title, multiple, &filters)
+      }
+      crate::shell::dialog::Picker::Save { suggested, filters } => {
+        crate::shell::dialog::pick_save_file(
+          self.id,
+          &title,
+          suggested.as_deref(),
+          &filters,
+        )
+      }
+      crate::shell::dialog::Picker::Directory => {
+        crate::shell::dialog::pick_directory(self.id, &title)
+      }
+    }
     .map_err(dialog_unsupported)?;
-    path_one(scope, picked)
-  }
-
-  fn pick_directory(
-    &self,
-    scope: &mut v8::PinScope,
-    options: Option<v8::Local<v8::Value>>,
-  ) -> Result<Js, OpError> {
-    crate::shell::dialog::parse_directory(scope, options)?;
-    self.require_dialog()?;
-    let title = self.title.borrow().clone();
-    let picked = crate::shell::dialog::pick_directory(self.id, &title)
-      .map_err(dialog_unsupported)?;
-    path_one(scope, picked)
+    path_list(scope, picked)
   }
 
   fn set_context_menu(
@@ -1672,23 +1654,6 @@ fn path_list(
     array.set_index(scope, index as u32, text.into());
   }
   let value: v8::Local<v8::Value> = array.into();
-  Ok(Js(v8::Global::new(scope, value)))
-}
-
-fn path_one(
-  scope: &mut v8::PinScope,
-  picked: Option<Vec<String>>,
-) -> Result<Js, OpError> {
-  let Some(path) = picked.and_then(|paths| paths.into_iter().next()) else {
-    return Ok(Js::null(scope));
-  };
-  if path.is_empty() {
-    return Ok(Js::null(scope));
-  }
-  let Some(text) = v8::String::new(scope, &path) else {
-    return Err(OpError::type_("The file dialog failed."));
-  };
-  let value: v8::Local<v8::Value> = text.into();
   Ok(Js(v8::Global::new(scope, value)))
 }
 
