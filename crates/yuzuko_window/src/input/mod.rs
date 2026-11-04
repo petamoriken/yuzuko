@@ -152,7 +152,11 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
       };
       match step {
         Step::Pointer(event) => {
-          crate::surface::dispatch_pointer_on_window(scope, object, &event);
+          let proceed =
+            crate::surface::dispatch_pointer_on_window(scope, object, &event);
+          if proceed {
+            open_context_menu(scope, id, &event);
+          }
         }
         Step::Key(event, text) => {
           let allowed = dispatch_key(scope, object, &event);
@@ -207,6 +211,34 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
       }
     }
     scope.perform_microtask_checkpoint();
+  }
+}
+
+/// Right-click's default action shows the menu from `setContextMenu`.
+/// A prevented `contextmenu`, a headless process, and a window system
+/// with no popup host stay quiet.
+fn open_context_menu(scope: &mut v8::PinScope, id: u64, event: &FiredPointer) {
+  if event.type_name != "contextmenu" {
+    return;
+  }
+  if !event.client_x.is_finite() || !event.client_y.is_finite() {
+    return;
+  }
+  if crate::session::headless() || !crate::shell::menu::has_context(id) {
+    return;
+  }
+  #[cfg(any(target_os = "macos", target_os = "windows"))]
+  {
+    let _ = crate::shell::menu::show_context(
+      scope,
+      id,
+      event.client_x,
+      event.client_y,
+    );
+  }
+  #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+  {
+    let _ = scope;
   }
 }
 

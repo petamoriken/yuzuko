@@ -119,6 +119,10 @@ name = "clipboard"
 required-features = ["window"]
 
 [[test]]
+name = "context_menu"
+required-features = ["window"]
+
+[[test]]
 name = "dialog"
 required-features = ["window"]
 

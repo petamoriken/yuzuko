@@ -570,14 +570,15 @@ declare namespace Yuzuko {
    * Events dispatched on a {@link Window}.
    *
    * Pointer events target {@link Window.surface} and propagate through the
-   * window. Key, IME, wheel, focus, blur, resize, and close target the window
-   * only. `focus` and `blur` do not bubble.
+   * window. Key, IME, wheel, focus, blur, resize, close, and `menuclick`
+   * target the window only. `focus` and `blur` do not bubble.
    */
   interface WindowEventMap {
     close: Event;
     resize: Event;
     focus: FocusEvent;
     blur: FocusEvent;
+    menuclick: MenuClickEvent;
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
     wheel: WheelEvent;
@@ -1641,6 +1642,42 @@ declare namespace Yuzuko {
     pickSaveFile(options?: FileSaveOptions): string | null;
 
     /**
+     * Stores the menu an uncancelled `contextmenu` shows.
+     *
+     * The menu may contain top-level actions. `null` clears it. The call does
+     * not show the menu. It works in a headless process and on Linux.
+     * {@link Window.showContextMenu} shows a menu without replacing this one.
+     *
+     * @param menu - The menu to store, or `null` to clear it.
+     * @throws {@link TypeError} When `menu` is not a {@link Menu} or `null`.
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     */
+    setContextMenu(menu: Menu | null): void;
+
+    /**
+     * Shows `menu` at CSS pixels in the client area.
+     *
+     * The argument is the menu displayed. It does not replace the menu stored
+     * by {@link Window.setContextMenu}. Non-finite coordinates throw
+     * `TypeError` before the window is checked. A closed window throws
+     * `InvalidStateError` before `menu` is checked. The popup is synchronous.
+     * A selection dispatches `menuclick` on this window before the method
+     * returns. On Linux, winit exposes no GTK window, so the call throws
+     * `NotSupportedError`.
+     *
+     * @param menu - The menu to show.
+     * @param x - Horizontal CSS pixels from the client origin.
+     * @param y - Vertical CSS pixels from the client origin. Positive is down.
+     * @throws {@link TypeError} When `x` or `y` is not finite, or `menu` is
+     * not a {@link Menu}.
+     * @throws {@link DOMException} `NotSupportedError` when the process is
+     * headless, including `YUZUKO_HEADLESS=1` and `yuzuko test`.
+     * @throws {@link DOMException} `NotSupportedError` on Linux.
+     * @throws {@link DOMException} `InvalidStateError` when the window is closed.
+     */
+    showContextMenu(menu: Menu, x: number, y: number): void;
+
+    /**
      * Enables or disables IME for this window.
      *
      * IME is off by default. Turning it off while a composition is open
@@ -1993,7 +2030,8 @@ declare namespace Yuzuko {
    * One menu item.
    *
    * An item has `action` or `submenu`, not both. The application menu's top
-   * level must be submenus. A tray or dock menu may contain top-level actions.
+   * level must be submenus. A tray, dock, or context menu may contain
+   * top-level actions.
    */
   interface MenuItem {
     /** Text shown for the item. */
@@ -2009,8 +2047,9 @@ declare namespace Yuzuko {
   /**
    * A menu description.
    *
-   * The instance has no methods. {@link setMenu}, {@link Tray.setMenu}, and
-   * {@link Dock.setMenu} install it.
+   * The instance has no methods. {@link setMenu}, {@link Tray.setMenu},
+   * {@link Dock.setMenu}, and {@link Window.showContextMenu} use it.
+   * {@link Window.setContextMenu} stores it for a context click.
    */
   class Menu {
     /**
@@ -2027,7 +2066,8 @@ declare namespace Yuzuko {
    *
    * macOS uses the application menu. Windows attaches the same menu to the
    * focused window. A selection dispatches `menuclick` on `Yuzuko`. The event
-   * is an {@link Event} with an `action` string. There is no context menu.
+   * is an {@link Event} with an `action` string. A window context menu is
+   * {@link Window.setContextMenu}.
    *
    * @param menu - The menu to install. Its top level must be submenus.
    * @throws {@link TypeError} When `menu` is not a {@link Menu}, or its top
@@ -2038,7 +2078,8 @@ declare namespace Yuzuko {
   function setMenu(menu: Menu): void;
 
   /**
-   * `menuclick` dispatched on `Yuzuko`, a {@link Tray}, or {@link Dock}.
+   * `menuclick` dispatched on `Yuzuko`, a {@link Tray}, {@link Dock}, or a
+   * {@link Window}.
    *
    * There is no `MenuClickEvent` constructor. The event is an {@link Event}
    * with an own `action` property.

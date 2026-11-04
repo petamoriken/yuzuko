@@ -443,6 +443,7 @@ impl Window {
     inbox::clear_frame(id);
     inbox::forget(id);
     crate::activation::closed(id);
+    crate::shell::menu::clear_context(id);
     os::close(id);
     #[cfg(feature = "accessibility")]
     crate::a11y::release_window(id);
@@ -1434,6 +1435,52 @@ impl Window {
     path_one(scope, picked)
   }
 
+  fn set_context_menu(
+    &self,
+    scope: &mut v8::PinScope,
+    menu: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    if menu.is_null() {
+      self.require_open()?;
+      crate::shell::menu::clear_context(self.id);
+      return Ok(());
+    }
+    let (native, actions) = crate::shell::menu::context_from_object(
+      scope,
+      menu,
+      "setContextMenu requires a Menu or null.",
+    )?;
+    self.require_open()?;
+    crate::shell::menu::install_context(self.id, native, actions);
+    Ok(())
+  }
+
+  fn show_context_menu(
+    &self,
+    scope: &mut v8::PinScope,
+    menu: v8::Local<v8::Value>,
+    x: f64,
+    y: f64,
+  ) -> Result<(), OpError> {
+    if !x.is_finite() || !y.is_finite() {
+      return Err(OpError::type_("showContextMenu requires a finite x and y."));
+    }
+    self.require_open()?;
+    let (native, actions) = crate::shell::menu::context_from_object(
+      scope,
+      menu,
+      "showContextMenu requires a Menu.",
+    )?;
+    if crate::session::headless() {
+      return Err(OpError::dom(
+        "NotSupportedError",
+        "This process has no context menu.",
+      ));
+    }
+    crate::shell::menu::show_menu(scope, self.id, &native, actions, x, y)
+      .map_err(|message| OpError::dom("NotSupportedError", message))
+  }
+
   fn close(&self, scope: &mut v8::PinScope) {
     let Some(object) = inbox::object(scope, self.id) else {
       return;
@@ -1589,11 +1636,11 @@ pub(crate) fn dispatch_pointer_on_window(
   scope: &mut v8::PinScope,
   window: v8::Local<v8::Object>,
   fired: &yuzuko_dom::FiredPointer,
-) {
+) -> bool {
   if let Some(surface) = surface_object(scope, window) {
-    yuzuko_dom::dispatch_pointer_through(scope, surface, &[window], fired);
+    yuzuko_dom::dispatch_pointer_through(scope, surface, &[window], fired)
   } else {
-    yuzuko_dom::dispatch_pointer(scope, window, fired);
+    yuzuko_dom::dispatch_pointer(scope, window, fired)
   }
 }
 

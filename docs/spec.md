@@ -90,7 +90,6 @@ Do not add these as a side effect. Update this section before adding one.
 - WebRTC, WebXR, and Keyboard Lock
 - `HTMLVideoElement`, container demux, and a media presentation clock
 - Frames after the first frame of an animated image, and CSS `@font-face`
-- Context menus
 
 ## Namespaces
 
@@ -165,6 +164,8 @@ The `fillRect` above is presented on the next turn of the event loop. `requestAn
 | `prompt(message, defaultValue)` | Shows a modal dialog with a text field, OK, and Cancel. Returns the entered string, or `null` when cancelled. An omitted `defaultValue` is `""` |
 | `pickFiles(options)` | Shows a modal file dialog. Returns absolute paths, or `null` when cancelled |
 | `pickSaveFile(options)` | Shows a modal save dialog. Returns one absolute path, or `null` when cancelled |
+| `setContextMenu(menu)` | Stores the menu an uncancelled context click shows. `null` clears it. Does not pop a menu |
+| `showContextMenu(menu, x, y)` | Shows `menu` at CSS pixels in the client area. Does not replace `setContextMenu` |
 | `setImeAllowed(allowed)` | IME for this window. The default is `false` |
 | `setCompositionCaret(x, y, width, height)` | IME candidate rectangle, in CSS pixels relative to this window's client origin |
 | `requestPointerLock()` / `exitPointerLock()` | Pointer lock for this window |
@@ -710,7 +711,15 @@ There is no permission prompt and no document. Hiding a window does not release 
 
 ## Menu bar
 
-`Yuzuko` is an `EventTarget`. `Yuzuko.Menu` and `Yuzuko.setMenu(menu)` install one application menu with `muda`. A selection delivered through the same input path as pointer and key events dispatches `menuclick` on `Yuzuko` and carries the item's `action` string. macOS has one menu for the app. On Windows the same menu is attached to the focused window. On Linux, winit does not expose a GTK window, so `setMenu` throws `NotSupportedError`. Context menus stay out of scope.
+`Yuzuko` is an `EventTarget`. `Yuzuko.Menu` and `Yuzuko.setMenu(menu)` install one application menu with `muda`. A selection delivered through the same input path as pointer and key events dispatches `menuclick` on `Yuzuko` and carries the item's `action` string. macOS has one menu for the app. On Windows the same menu is attached to the focused window. On Linux, winit does not expose a GTK window, so `setMenu` throws `NotSupportedError`.
+
+## Context menu
+
+`setContextMenu(menu)` stores a `Yuzuko.Menu` on that window. The menu may contain top-level actions. `null` clears it and does not show a menu. A value that is not a `Menu` or `null` throws `TypeError` before the window is checked. A closed window throws `InvalidStateError`. The call works in a headless process. It does not pop a menu.
+
+`showContextMenu(menu, x, y)` shows that menu at `x` and `y` CSS pixels from the client origin. It does not replace the menu stored by `setContextMenu`. Non-finite coordinates throw `TypeError` before the window is checked. A closed window throws `InvalidStateError`. A value that is not a `Menu` throws `TypeError` after the window is checked. A headless process throws `NotSupportedError`. On Linux the call throws `NotSupportedError` because winit exposes no GTK window. The popup is synchronous. A selection dispatches `menuclick` on that window before the method returns. The event is trusted and carries the item's `action` string.
+
+A `contextmenu` event whose default action is allowed shows the menu stored by `setContextMenu` at `clientX` and `clientY` when that menu is stored and the platform can show it. `preventDefault()` leaves that menu hidden. The listener can then call `showContextMenu` with a different menu. A headless process, a window with no stored menu, and Linux do not throw from that default action.
 
 ## Tray and dock
 
