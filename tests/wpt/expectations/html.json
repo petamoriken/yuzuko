@@ -231,246 +231,58 @@
   },
   "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.html": true,
   "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.canvas.clear.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.clear.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.copy.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.copy.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-over.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.lighter.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.lighter.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.canvas.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.destination-over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.lighter.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.lighter.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.canvas.xor.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.canvas.xor.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.clear.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.clear.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.copy.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.copy.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-atop.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-atop.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-in.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-in.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-out.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-out.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-over.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.destination-over.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.lighter.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.lighter.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-atop.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-atop.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-in.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-in.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-out.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.source-out.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.canvas.xor.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.xor.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.destination-over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.lighter.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.lighter.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.source-out.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.clip.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.clip.source-over.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.clip.xor.html": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.clip.xor.worker.js": {
-    "expectedFailures": [
-      "fill() does not affect pixels outside the clip region."
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.clip.xor.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.clip.xor.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvas.html": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvas.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvascopy.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvascopy.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvascopy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvascopy.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvaspattern.html": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvaspattern.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.default.html": true,
@@ -593,122 +405,30 @@
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.pattern.w.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/compositing/2d.composite.image.clear.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.clear.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.copy.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.copy.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.destination-over.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.lighter.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.lighter.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.image.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.destination-over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.lighter.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.lighter.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-over.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.image.xor.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.image.xor.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.image.xor.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.xor.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.html": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.clear.html": true,
@@ -727,434 +447,94 @@
   "html/canvas/offscreen/compositing/2d.composite.operation.over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.html": true,
   "html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.solid.clear.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.clear.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.copy.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.copy.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.destination-over.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.lighter.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.lighter.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.source-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.solid.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.destination-over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.lighter.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.lighter.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.source-out.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.solid.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.solid.source-over.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.solid.xor.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.solid.xor.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.clear.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.clear.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.copy.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.copy.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-over.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.lighter.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.lighter.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-atop.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-atop.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.solid.xor.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.solid.xor.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.clear.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.clear.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.destination-over.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.lighter.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.lighter.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.transparent.xor.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.transparent.xor.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.copy.html": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.copy.worker.js": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-atop.html": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-atop.worker.js": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-in.html": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-in.worker.js": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-in.html": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-in.worker.js": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-out.html": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-out.worker.js": {
-    "expectedFailures": [
-      "fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.copy.html": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.copy.worker.js": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-atop.html": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-atop.worker.js": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-in.html": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-in.worker.js": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-in.html": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-in.worker.js": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-out.html": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-out.worker.js": {
-    "expectedFailures": [
-      "drawImage() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.copy.html": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.copy.worker.js": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-atop.html": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-atop.worker.js": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-in.html": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-in.worker.js": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-in.html": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-in.worker.js": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-out.html": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-out.worker.js": {
-    "expectedFailures": [
-      "drawImage() of a canvas with no context draws pixels as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.copy.html": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.copy.worker.js": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-atop.html": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-atop.worker.js": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-in.html": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-in.worker.js": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-in.html": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-in.worker.js": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-out.html": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
-  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-out.worker.js": {
-    "expectedFailures": [
-      "Pattern fill() draws pixels not covered by the source object as (0,0,0,0), and does not leave the pixels unchanged."
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.transparent.xor.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.xor.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-out.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.copy.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.copy.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-atop.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-atop.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-in.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-in.worker.js": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-out.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-out.worker.js": true,
   "html/canvas/offscreen/conformance-requirements/2d.conformance.requirements.basics.html": true,
   "html/canvas/offscreen/conformance-requirements/2d.conformance.requirements.basics.worker.js": true,
   "html/canvas/offscreen/conformance-requirements/2d.conformance.requirements.missingargs.html": true,
@@ -4064,56 +3444,16 @@
   "html/canvas/offscreen/set-proprietary-font-names-001-crash.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.1.html": {
-    "expectedFailures": [
-      "Shadow color alpha components are used"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.1.worker.js": {
-    "expectedFailures": [
-      "Shadow color alpha components are used"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.2.html": {
-    "expectedFailures": [
-      "Shadow color alpha components are used"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.2.worker.js": {
-    "expectedFailures": [
-      "Shadow color alpha components are used"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.3.html": {
-    "expectedFailures": [
-      "Shadows are affected by globalAlpha"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.3.worker.js": {
-    "expectedFailures": [
-      "Shadows are affected by globalAlpha"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.4.html": {
-    "expectedFailures": [
-      "Shadows with alpha components are correctly affected by globalAlpha"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.4.worker.js": {
-    "expectedFailures": [
-      "Shadows with alpha components are correctly affected by globalAlpha"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.5.html": {
-    "expectedFailures": [
-      "Shadows of shapes with alpha components are drawn correctly"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.alpha.5.worker.js": {
-    "expectedFailures": [
-      "Shadows of shapes with alpha components are drawn correctly"
-    ]
-  },
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.3.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.3.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.4.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.4.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.5.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.alpha.5.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.initial.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.initial.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.html": true,
@@ -4132,446 +3472,94 @@
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.worker.js": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.worker.js": true,
-  "html/canvas/offscreen/shadows/2d.shadow.blur.high-manual.html": {
-    "expectedFailures": [
-      "Shadows look correct for large blurs"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.blur.high-manual.worker.js": {
-    "expectedFailures": [
-      "Shadows look correct for large blurs"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.blur.low-manual.html": {
-    "expectedFailures": [
-      "Shadows look correct for small blurs"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.blur.low-manual.worker.js": {
-    "expectedFailures": [
-      "Shadows look correct for small blurs"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.html": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.basic.html": {
-    "expectedFailures": [
-      "Shadows are drawn for canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.basic.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of canvases"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.1.html": {
-    "expectedFailures": [
-      "Shadows of clipped shapes are still drawn within the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.1.worker.js": {
-    "expectedFailures": [
-      "Shadows of clipped shapes are still drawn within the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn outside the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn outside the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.3.html": {
-    "expectedFailures": [
-      "Shadows of clipped shapes are still drawn within the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.clip.3.worker.js": {
-    "expectedFailures": [
-      "Shadows of clipped shapes are still drawn within the clipping region"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.1.html": {
-    "expectedFailures": [
-      "Shadows are drawn using globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn using globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.2.html": {
-    "expectedFailures": [
-      "Shadows are drawn using globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn using globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.3.html": {
-    "expectedFailures": [
-      "Areas outside shadows are drawn correctly with destination-out"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.composite.3.worker.js": {
-    "expectedFailures": [
-      "Areas outside shadows are drawn correctly with destination-out"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.blur.html": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowBlur is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.blur.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowBlur is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.off.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn when only shadowColor is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.off.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn when only shadowColor is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.off.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn when only shadowColor is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.off.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn when only shadowColor is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.x.html": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowOffsetX is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.x.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowOffsetX is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.y.html": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowOffsetY is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.enable.y.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn if shadowOffsetY is set"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.html": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.basic.html": {
-    "expectedFailures": [
-      "Shadows are drawn for gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.basic.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of gradient fills"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.alpha.html": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.alpha.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.basic.html": {
-    "expectedFailures": [
-      "Shadows are drawn for images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.basic.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.scale.html": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for scaled images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.scale.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for scaled images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.section.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside image source rectangles"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.section.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside image source rectangles"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of images"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeX.html": {
-    "expectedFailures": [
-      "Shadows can be offset with negative x"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeX.worker.js": {
-    "expectedFailures": [
-      "Shadows can be offset with negative x"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeY.html": {
-    "expectedFailures": [
-      "Shadows can be offset with negative y"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeY.worker.js": {
-    "expectedFailures": [
-      "Shadows can be offset with negative y"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveX.html": {
-    "expectedFailures": [
-      "Shadows can be offset with positive x"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveX.worker.js": {
-    "expectedFailures": [
-      "Shadows can be offset with positive x"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveY.html": {
-    "expectedFailures": [
-      "Shadows can be offset with positive y"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveY.worker.js": {
-    "expectedFailures": [
-      "Shadows can be offset with positive y"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.outside.html": {
-    "expectedFailures": [
-      "Shadows of shapes outside the visible area can be offset onto the visible area"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.outside.worker.js": {
-    "expectedFailures": [
-      "Shadows of shapes outside the visible area can be offset onto the visible area"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.alpha.html": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.alpha.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn correctly for partially-transparent fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.basic.html": {
-    "expectedFailures": [
-      "Shadows are drawn for fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.basic.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for transparent parts of fill patterns"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.basic.html": {
-    "expectedFailures": [
-      "Shadows are drawn for strokes"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.basic.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for strokes"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside stroke caps"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside stroke caps"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.html": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke caps"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke caps"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.1.html": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside stroke joins"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.1.worker.js": {
-    "expectedFailures": [
-      "Shadows are not drawn for areas outside stroke joins"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.html": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke joins"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke joins"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.3.html": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke joins respecting miter limit"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.3.worker.js": {
-    "expectedFailures": [
-      "Shadows are drawn for stroke joins respecting miter limit"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.transform.1.html": {
-    "expectedFailures": [
-      "Shadows take account of transformations"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.transform.1.worker.js": {
-    "expectedFailures": [
-      "Shadows take account of transformations"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.transform.2.html": {
-    "expectedFailures": [
-      "Shadow offsets are not affected by transformations"
-    ]
-  },
-  "html/canvas/offscreen/shadows/2d.shadow.transform.2.worker.js": {
-    "expectedFailures": [
-      "Shadow offsets are not affected by transformations"
-    ]
-  },
+  "html/canvas/offscreen/shadows/2d.shadow.blur.high-manual.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.blur.high-manual.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.blur.low-manual.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.blur.low-manual.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.basic.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.basic.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.3.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.clip.3.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.3.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.composite.3.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.blur.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.blur.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.off.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.off.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.off.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.off.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.x.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.x.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.y.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.enable.y.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.basic.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.basic.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.alpha.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.alpha.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.basic.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.basic.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.scale.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.scale.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.section.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.section.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.image.transparent.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeX.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeX.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeY.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.negativeY.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveX.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveX.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveY.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.offset.positiveY.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.outside.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.outside.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.alpha.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.alpha.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.basic.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.basic.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.basic.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.basic.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.3.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.stroke.join.3.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.transform.1.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.transform.1.worker.js": true,
+  "html/canvas/offscreen/shadows/2d.shadow.transform.2.html": true,
+  "html/canvas/offscreen/shadows/2d.shadow.transform.2.worker.js": true,
   "html/canvas/offscreen/text/2d.text.align.default.html": true,
   "html/canvas/offscreen/text/2d.text.align.default.worker.js": true,
   "html/canvas/offscreen/text/2d.text.align.invalid.html": true,

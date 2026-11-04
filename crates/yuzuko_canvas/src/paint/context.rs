@@ -118,6 +118,17 @@ fn covered(bytes: &[u8]) -> bool {
     .any(|pixel| pixel.get(3).copied().unwrap_or(0) > 0)
 }
 
+fn blank_layer(width: u32, height: u32) -> ImageBuf {
+  ImageBuf {
+    width,
+    height,
+    display_p3: false,
+    float16: false,
+    premultiplied: true,
+    bytes: vec![0; width as usize * height as usize * 4],
+  }
+}
+
 fn finite(values: &[f64]) -> bool {
   values.iter().all(|value| value.is_finite())
 }
@@ -186,7 +197,11 @@ fn paint_fill(
   fill: Fill,
   user_space: bool,
 ) {
-  if drawing.state.alpha <= 0.0 || drawing.width == 0 || drawing.height == 0 {
+  if drawing.width == 0 || drawing.height == 0 {
+    return;
+  }
+  let shade = drawing.state.shade();
+  if drawing.state.alpha <= 0.0 && !shade.paints_when_clear() {
     return;
   }
   let Some(brush) =
@@ -210,6 +225,7 @@ fn paint_fill(
     transform: geometry,
     brush_transform,
     alpha: drawing.state.alpha,
+    shade,
     clips: drawing.state.clips(),
   });
 }
@@ -219,11 +235,14 @@ fn paint_stroke(
   mut path: kurbo::BezPath,
   user_space: bool,
 ) {
-  if drawing.state.alpha <= 0.0
-    || drawing.state.line_width <= 0.0
+  if drawing.state.line_width <= 0.0
     || drawing.width == 0
     || drawing.height == 0
   {
+    return;
+  }
+  let shade = drawing.state.shade();
+  if drawing.state.alpha <= 0.0 && !shade.paints_when_clear() {
     return;
   }
   let Some(brush) =
@@ -247,6 +266,7 @@ fn paint_stroke(
     transform: matrix,
     brush_transform: Affine::IDENTITY,
     alpha: drawing.state.alpha,
+    shade,
     clips: drawing.state.clips(),
   });
 }
@@ -597,22 +617,33 @@ impl Context2D {
       };
       // The filter was validated. vello does not apply it.
       let _ = closed.layer_filter;
-      if closed.commands.is_empty() || closed.alpha <= 0.0 {
+      let shade = drawing.state.shade();
+      let clears = shade.paints_when_clear();
+      if drawing.width == 0 || drawing.height == 0 {
         return Ok(());
       }
-      let Some(image) =
-        replay::layer_image(&closed.commands, drawing.width, drawing.height)
-      else {
-        return Ok(());
+      let image = if closed.commands.is_empty() || closed.alpha <= 0.0 {
+        if !clears {
+          return Ok(());
+        }
+        blank_layer(drawing.width, drawing.height)
+      } else {
+        let Some(image) =
+          replay::layer_image(&closed.commands, drawing.width, drawing.height)
+        else {
+          return Ok(());
+        };
+        if !clears && !covered(&image.bytes) {
+          return Ok(());
+        }
+        image
       };
-      if !covered(&image.bytes) {
-        return Ok(());
-      }
       drawing.push_command(Command::Image {
         image: Arc::new(image),
         transform: Affine::IDENTITY,
         alpha: closed.alpha,
         nearest: true,
+        shade,
         clips: Arc::from(closed.clips.as_slice()),
       });
       Ok(())
@@ -1422,11 +1453,13 @@ impl Context2D {
       let image = crop_image(&source, sx, sy, sw, sh)?;
       let placement = Affine::translate((dx, dy))
         * Affine::scale_non_uniform(dw / sw, dh / sh);
+      let shade = drawing.state.shade();
       drawing.push_command(Command::Image {
         image: Arc::new(image),
         transform: drawing.state.transform * placement,
         alpha: drawing.state.alpha,
         nearest: drawing.state.nearest(),
+        shade,
         clips: drawing.state.clips(),
       });
       Ok(())
@@ -1895,6 +1928,7 @@ impl Context2D {
       return Ok(());
     }
     self.update(|drawing| {
+      let shade = drawing.state.shade();
       let shaped = text::shape(
         &text,
         drawing.state.font,
@@ -1939,6 +1973,7 @@ impl Context2D {
             transform,
             alpha: drawing.state.alpha,
             stroke: Some(drawing.state.stroke()),
+            shade,
             clips: drawing.state.clips(),
           });
         } else {
@@ -1955,6 +1990,7 @@ impl Context2D {
             transform,
             alpha: drawing.state.alpha,
             stroke: None,
+            shade,
             clips: drawing.state.clips(),
           });
         }
@@ -2006,7 +2042,10 @@ fn push_shaped_glyphs(
   stroke: bool,
   transform: Affine,
 ) {
-  if glyphs.is_empty() || drawing.state.alpha <= 0.0 {
+  let shade = drawing.state.shade();
+  if glyphs.is_empty()
+    || (drawing.state.alpha <= 0.0 && !shade.paints_when_clear())
+  {
     return;
   }
   let mut groups: Vec<(vello::peniko::FontData, f32, Vec<(u32, f32, f32)>)> =
@@ -2049,6 +2088,7 @@ fn push_shaped_glyphs(
         transform,
         alpha: drawing.state.alpha,
         stroke: Some(drawing.state.stroke()),
+        shade,
         clips: drawing.state.clips(),
       });
     } else {
@@ -2065,6 +2105,7 @@ fn push_shaped_glyphs(
         transform,
         alpha: drawing.state.alpha,
         stroke: None,
+        shade,
         clips: drawing.state.clips(),
       });
     }

@@ -28,10 +28,12 @@ use yuzuko_image::premultiply;
 use yuzuko_image::unpremultiply;
 
 use crate::paint::color::CssColor;
+use crate::paint::composite;
 use crate::paint::record::Brush as Paint;
 use crate::paint::record::Command;
 use crate::paint::record::Drawing;
 use crate::paint::record::ImageBuf;
+use crate::paint::shade::Shade;
 
 static BACKEND: OnceLock<Backend> = OnceLock::new();
 
@@ -175,6 +177,11 @@ fn rasterize_backing(drawing: &Drawing) -> Raster {
         batch.clear();
         clear_direct(&mut image, *rect, *transform, clips);
       }
+      other if composite::needs_isolated(other) => {
+        paint_batch(&mut image, &batch, drawing);
+        batch.clear();
+        paint_isolated(&mut image, other);
+      }
       other => batch.push(other.clone()),
     }
   }
@@ -302,6 +309,7 @@ fn clear_direct(
       transform,
       brush_transform: Affine::IDENTITY,
       alpha: 1.0,
+      shade: Shade::source_over(),
       clips: Arc::from(clips),
     }],
     dest.width,
@@ -369,14 +377,220 @@ pub fn render_premul(
   if width == 0 || height == 0 {
     return None;
   }
+  // source-in, copy, clear, and shadows touch pixels the shape misses.
+  // vello's blend does not, so those lists run on the CPU.
+  if commands.iter().any(composite::needs_isolated) {
+    return render_isolated(commands, width, height);
+  }
   match backend() {
     Backend::Gpu => render_gpu(commands, width, height)
-      .or_else(|| render_cpu(commands, width, height)),
-    Backend::Cpu => render_cpu(commands, width, height),
+      .or_else(|| render_plain(commands, width, height)),
+    Backend::Cpu => render_plain(commands, width, height),
   }
 }
 
-fn render_cpu(
+fn render_isolated(
+  commands: &[Command],
+  width: u32,
+  height: u32,
+) -> Option<Vec<u8>> {
+  let mut pixels = vec![0u8; width as usize * height as usize * 4];
+  let mut batch = Vec::new();
+  for command in commands {
+    match command {
+      Command::Put { image, dx, dy } => {
+        flush_plain(&mut pixels, &mut batch, width, height);
+        put_premul(&mut pixels, image, *dx, *dy, width, height);
+      }
+      Command::Clear {
+        rect,
+        transform,
+        clips,
+      } => {
+        flush_plain(&mut pixels, &mut batch, width, height);
+        clear_premul(&mut pixels, *rect, *transform, clips, width, height);
+      }
+      other if composite::needs_isolated(other) => {
+        flush_plain(&mut pixels, &mut batch, width, height);
+        composite::apply_one(&mut pixels, other, width, height, &|list| {
+          render_plain(list, width, height)
+        });
+      }
+      other => batch.push(other.clone()),
+    }
+  }
+  flush_plain(&mut pixels, &mut batch, width, height);
+  Some(pixels)
+}
+
+fn flush_plain(
+  pixels: &mut [u8],
+  batch: &mut Vec<Command>,
+  width: u32,
+  height: u32,
+) {
+  if batch.is_empty() {
+    return;
+  }
+  let rendered = render_plain(batch, width, height);
+  batch.clear();
+  if let Some(rendered) = rendered {
+    composite::source_over(pixels, &rendered);
+  }
+}
+
+fn put_premul(
+  dest: &mut [u8],
+  image: &ImageBuf,
+  dx: i32,
+  dy: i32,
+  width: u32,
+  height: u32,
+) {
+  let premul = premul_rgba8(image);
+  for y in 0..image.height as i32 {
+    let dest_y = dy + y;
+    if dest_y < 0 || dest_y >= height as i32 {
+      continue;
+    }
+    for x in 0..image.width as i32 {
+      let dest_x = dx + x;
+      if dest_x < 0 || dest_x >= width as i32 {
+        continue;
+      }
+      let src_i = (y as u32 * image.width + x as u32) as usize * 4;
+      let dest_i = (dest_y as u32 * width + dest_x as u32) as usize * 4;
+      dest[dest_i..dest_i + 4].copy_from_slice(&premul[src_i..src_i + 4]);
+    }
+  }
+}
+
+fn clear_premul(
+  dest: &mut [u8],
+  rect: Rect,
+  transform: Affine,
+  clips: &[crate::paint::record::Clip],
+  width: u32,
+  height: u32,
+) {
+  if transform.as_coeffs()[1] == 0.0
+    && transform.as_coeffs()[2] == 0.0
+    && clips.is_empty()
+  {
+    let mapped = transform.transform_rect_bbox(rect);
+    let x0 = mapped.x0.floor() as i32;
+    let y0 = mapped.y0.floor() as i32;
+    let x1 = mapped.x1.ceil() as i32;
+    let y1 = mapped.y1.ceil() as i32;
+    for y in y0..y1 {
+      if y < 0 || y >= height as i32 {
+        continue;
+      }
+      for x in x0..x1 {
+        if x < 0 || x >= width as i32 {
+          continue;
+        }
+        let index = (y as u32 * width + x as u32) as usize * 4;
+        dest[index..index + 4].fill(0);
+      }
+    }
+    return;
+  }
+  let mask = render_plain(
+    &[Command::Fill {
+      path: rect.to_path(0.1),
+      fill: Fill::NonZero,
+      brush: Paint::Solid(CssColor::BLACK),
+      transform,
+      brush_transform: Affine::IDENTITY,
+      alpha: 1.0,
+      shade: Shade::source_over(),
+      clips: Arc::from(clips),
+    }],
+    width,
+    height,
+  );
+  let Some(mask) = mask else {
+    return;
+  };
+  let pixels = width as usize * height as usize;
+  for pixel in 0..pixels {
+    if mask[pixel * 4 + 3] > 0 {
+      dest[pixel * 4..pixel * 4 + 4].fill(0);
+    }
+  }
+}
+
+fn paint_isolated(image: &mut Raster, command: &Command) {
+  let width = image.width;
+  let height = image.height;
+  let original = image.clone();
+  let mut premul = raster_to_premul_srgb8(image);
+  let before = premul.clone();
+  composite::apply_one(&mut premul, command, width, height, &|list| {
+    render_plain(list, width, height)
+  });
+  let mut updated = premul_srgb8_to_raster(
+    &premul,
+    width,
+    height,
+    original.color_space,
+    original.format,
+  );
+  restore_unchanged(&mut updated, &original, &premul, &before);
+  *image = updated;
+}
+
+fn raster_to_premul_srgb8(image: &Raster) -> Vec<u8> {
+  let mut raster = image.clone();
+  if raster.premultiplied {
+    unpremultiply(&mut raster);
+  }
+  convert(&mut raster, ColorSpace::Srgb);
+  if raster.format != SampleFormat::Unorm8 {
+    raster = convert_format(raster, SampleFormat::Unorm8);
+  }
+  premultiply(&mut raster);
+  raster.bytes
+}
+
+fn premul_srgb8_to_raster(
+  bytes: &[u8],
+  width: u32,
+  height: u32,
+  space: ColorSpace,
+  format: SampleFormat,
+) -> Raster {
+  let mut raster = Raster::from_rgba8(width, height, ColorSpace::Srgb, bytes)
+    .expect("canvas size was checked");
+  raster.premultiplied = true;
+  unpremultiply(&mut raster);
+  convert(&mut raster, space);
+  if raster.format != format {
+    raster = convert_format(raster, format);
+  }
+  raster.premultiplied = false;
+  raster
+}
+
+fn restore_unchanged(
+  dest: &mut Raster,
+  original: &Raster,
+  after: &[u8],
+  before: &[u8],
+) {
+  let pixels = dest.width as usize * dest.height as usize;
+  for pixel in 0..pixels {
+    let start = pixel * 4;
+    if after[start..start + 4] == before[start..start + 4] {
+      let x = (pixel % dest.width as usize) as i64;
+      let y = (pixel / dest.width as usize) as i64;
+      dest.write_sample(x, y, original.sample(x, y));
+    }
+  }
+}
+
+fn render_plain(
   commands: &[Command],
   width: u32,
   height: u32,
@@ -416,6 +630,7 @@ fn replay_cpu(
       transform,
       brush_transform,
       alpha,
+      shade: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -449,6 +664,7 @@ fn replay_cpu(
       transform,
       brush_transform,
       alpha,
+      shade: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -483,6 +699,7 @@ fn replay_cpu(
       transform,
       alpha,
       stroke,
+      shade: _,
       clips,
     } => {
       push_cpu_clips(context, clips);
@@ -542,6 +759,7 @@ fn replay_cpu(
       transform,
       alpha,
       nearest,
+      shade: _,
       clips,
     } => {
       push_cpu_clips(context, clips);
@@ -796,7 +1014,8 @@ pub fn render_texture(
   width: u32,
   height: u32,
 ) -> Option<wgpu::Texture> {
-  if width == 0 || height == 0 {
+  if width == 0 || height == 0 || commands.iter().any(composite::needs_isolated)
+  {
     return None;
   }
   match backend() {
@@ -886,6 +1105,7 @@ fn replay_gpu(
       transform,
       brush_transform,
       alpha,
+      shade: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -919,6 +1139,7 @@ fn replay_gpu(
       transform,
       brush_transform,
       alpha,
+      shade: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -953,6 +1174,7 @@ fn replay_gpu(
       transform,
       alpha,
       stroke,
+      shade: _,
       clips,
     } => {
       push_gpu_clips(scene, clips);
@@ -1030,6 +1252,7 @@ fn replay_gpu(
       transform,
       alpha,
       nearest,
+      shade: _,
       clips,
     } => {
       push_gpu_clips(scene, clips);
@@ -1203,4 +1426,253 @@ pub fn blit_texture(
     blitter.copy(device, &mut encoder, source, target);
   });
   queue.submit([encoder.finish()]);
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use kurbo::Affine;
+  use kurbo::Rect;
+  use kurbo::Shape;
+  use vello::peniko::Fill;
+
+  use super::render_plain;
+  use super::render_premul;
+  use crate::paint::color::ColorSyntax;
+  use crate::paint::color::CssColor;
+  use crate::paint::record::Brush;
+  use crate::paint::record::Clip;
+  use crate::paint::record::Command;
+  use crate::paint::shade::Shade;
+
+  fn color(r: f32, g: f32, b: f32) -> CssColor {
+    CssColor {
+      r,
+      g,
+      b,
+      a: 1.0,
+      syntax: ColorSyntax::Legacy,
+    }
+  }
+
+  fn rect_path(x: f64, y: f64, w: f64, h: f64) -> kurbo::BezPath {
+    Rect::new(x, y, x + w, y + h).to_path(0.1)
+  }
+
+  fn fill(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    paint: CssColor,
+    shade: Shade,
+  ) -> Command {
+    Command::Fill {
+      path: rect_path(x, y, w, h),
+      fill: Fill::NonZero,
+      brush: Brush::Solid(paint),
+      transform: Affine::IDENTITY,
+      brush_transform: Affine::IDENTITY,
+      alpha: 1.0,
+      shade,
+      clips: Arc::from([]),
+    }
+  }
+
+  fn op(name: &str) -> Shade {
+    Shade::from_canvas(name, 0.0, 0.0, 0.0, CssColor::TRANSPARENT)
+  }
+
+  fn pixel(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
+    let index = ((y * width + x) * 4) as usize;
+    [
+      bytes[index],
+      bytes[index + 1],
+      bytes[index + 2],
+      bytes[index + 3],
+    ]
+  }
+
+  #[test]
+  fn plain_source_over_replaces_an_opaque_rect() {
+    let commands = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(0.0, 1.0, 0.0),
+        Shade::source_over(),
+      ),
+    ];
+    let bytes = render_plain(&commands, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 1, 1), [0, 255, 0, 255]);
+  }
+
+  #[test]
+  fn source_in_and_copy_clear_uncovered_pixels() {
+    let source_in = vec![
+      fill(
+        0.0,
+        0.0,
+        8.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(0.0, 0.0, 4.0, 4.0, color(0.0, 0.0, 1.0), op("source-in")),
+    ];
+    let bytes = render_premul(&source_in, 8, 4).unwrap();
+    assert_eq!(pixel(&bytes, 8, 1, 1), [0, 0, 255, 255]);
+    assert_eq!(pixel(&bytes, 8, 6, 1), [0, 0, 0, 0]);
+
+    let copy = vec![
+      fill(
+        0.0,
+        0.0,
+        8.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(0.0, 0.0, 2.0, 4.0, color(0.0, 0.0, 1.0), op("copy")),
+    ];
+    let bytes = render_premul(&copy, 8, 4).unwrap();
+    assert_eq!(pixel(&bytes, 8, 0, 1), [0, 0, 255, 255]);
+    assert_eq!(pixel(&bytes, 8, 4, 1), [0, 0, 0, 0]);
+  }
+
+  #[test]
+  fn destination_over_lighter_and_multiply() {
+    let dest_over = vec![
+      fill(
+        2.0,
+        0.0,
+        2.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(
+        0.0,
+        0.0,
+        8.0,
+        4.0,
+        color(0.0, 0.0, 1.0),
+        op("destination-over"),
+      ),
+    ];
+    let bytes = render_premul(&dest_over, 8, 4).unwrap();
+    assert_eq!(pixel(&bytes, 8, 0, 1), [0, 0, 255, 255]);
+    assert_eq!(pixel(&bytes, 8, 3, 1), [255, 0, 0, 255]);
+
+    let lighter = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(0.0, 1.0, 1.0),
+        Shade::source_over(),
+      ),
+      fill(0.0, 0.0, 4.0, 4.0, color(1.0, 1.0, 0.0), op("lighter")),
+    ];
+    let bytes = render_premul(&lighter, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 1, 1), [255, 255, 255, 255]);
+
+    let multiply = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(1.0, 1.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(0.0, 0.0, 4.0, 4.0, color(0.0, 0.0, 1.0), op("multiply")),
+    ];
+    let bytes = render_premul(&multiply, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 1, 1), [0, 0, 0, 255]);
+  }
+
+  #[test]
+  fn shadow_offset_ignores_transform_and_respects_clip() {
+    let mut shadowed = fill(
+      0.0,
+      0.0,
+      2.0,
+      2.0,
+      color(1.0, 0.0, 0.0),
+      Shade::from_canvas("source-over", 0.0, 2.0, 0.0, CssColor::BLACK),
+    );
+    if let Command::Fill { transform, .. } = &mut shadowed {
+      *transform = Affine::scale_non_uniform(2.0, 2.0);
+    }
+    let bytes = render_premul(std::slice::from_ref(&shadowed), 10, 6).unwrap();
+    assert_eq!(pixel(&bytes, 10, 1, 2), [255, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 10, 5, 2), [0, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 10, 7, 2), [0, 0, 0, 0]);
+
+    let mut clipped = fill(
+      0.0,
+      0.0,
+      4.0,
+      4.0,
+      color(1.0, 0.0, 0.0),
+      Shade::from_canvas("source-over", 0.0, 4.0, 0.0, color(0.0, 0.0, 1.0)),
+    );
+    if let Command::Fill { clips, .. } = &mut clipped {
+      *clips = Arc::from([Clip {
+        path: rect_path(4.0, 0.0, 4.0, 4.0),
+        fill: Fill::NonZero,
+        transform: Affine::IDENTITY,
+      }]);
+    }
+    let commands = vec![
+      fill(
+        0.0,
+        0.0,
+        8.0,
+        4.0,
+        color(0.0, 1.0, 0.0),
+        Shade::source_over(),
+      ),
+      clipped,
+    ];
+    let bytes = render_premul(&commands, 8, 4).unwrap();
+    assert_eq!(pixel(&bytes, 8, 1, 2), [0, 255, 0, 255]);
+    assert_eq!(pixel(&bytes, 8, 6, 2), [0, 0, 255, 255]);
+
+    let outside = fill(
+      -4.0,
+      0.0,
+      4.0,
+      4.0,
+      color(1.0, 0.0, 0.0),
+      Shade::from_canvas("source-over", 0.0, 4.0, 0.0, color(0.0, 0.0, 1.0)),
+    );
+    let commands = vec![
+      fill(
+        0.0,
+        0.0,
+        8.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      outside,
+    ];
+    let bytes = render_premul(&commands, 8, 4).unwrap();
+    assert_eq!(pixel(&bytes, 8, 1, 1), [0, 0, 255, 255]);
+    assert_eq!(pixel(&bytes, 8, 6, 1), [255, 0, 0, 255]);
+  }
 }

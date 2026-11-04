@@ -16,6 +16,7 @@ use yuzuko_image::ColorSpace;
 use yuzuko_image::SampleFormat;
 
 use crate::paint::color::CssColor;
+use crate::paint::shade::Shade;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Attrs {
@@ -94,6 +95,7 @@ pub enum Command {
     /// puts the current matrix here.
     brush_transform: Affine,
     alpha: f32,
+    shade: Shade,
     clips: Arc<[Clip]>,
   },
   Stroke {
@@ -103,6 +105,7 @@ pub enum Command {
     transform: Affine,
     brush_transform: Affine,
     alpha: f32,
+    shade: Shade,
     clips: Arc<[Clip]>,
   },
   Glyphs {
@@ -113,6 +116,7 @@ pub enum Command {
     transform: Affine,
     alpha: f32,
     stroke: Option<Stroke>,
+    shade: Shade,
     clips: Arc<[Clip]>,
   },
   Clear {
@@ -130,6 +134,7 @@ pub enum Command {
     transform: Affine,
     alpha: f32,
     nearest: bool,
+    shade: Shade,
     clips: Arc<[Clip]>,
   },
 }
@@ -296,7 +301,7 @@ pub struct State {
   pub lang: String,
   /// CSS filter string. Parsed and stored. Not painted.
   pub filter: String,
-  /// Stored compositing operator. Painting uses `source-over`.
+  /// Compositing operator used when this state is painted.
   pub composite: String,
   pub shadow_blur: f64,
   pub shadow_offset_x: f64,
@@ -383,6 +388,16 @@ impl State {
 
   pub fn clips(&self) -> Arc<[Clip]> {
     Arc::from(self.clips.as_slice())
+  }
+
+  pub fn shade(&self) -> Shade {
+    Shade::from_canvas(
+      &self.composite,
+      self.shadow_blur,
+      self.shadow_offset_x,
+      self.shadow_offset_y,
+      self.shadow_color,
+    )
   }
 }
 

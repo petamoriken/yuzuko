@@ -8699,11 +8699,17 @@ declare var OffscreenCanvas: {
  * `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`.
  *
  * `shadowBlur`, `shadowColor`, `shadowOffsetX`, and `shadowOffsetY` are
- * stored with the canvas state. Invalid values are ignored. Shadows are not
- * painted. `globalCompositeOperation` stores a recognized operator, including
- * `"clear"` and the blend modes. Any other value is ignored. Painting uses
- * `"source-over"`. `createConicGradient` throws `NotSupportedError`. `filter`
- * is parsed and stored and is not painted.
+ * stored with the canvas state. Invalid values are ignored. A shadow is
+ * painted when the color alpha is nonzero and the blur or an offset is
+ * nonzero. It is an offset Gaussian of the shape alpha, including parts
+ * outside the canvas, drawn before the shape and inside the clip. Offsets
+ * are canvas pixels and are not transformed.
+ * `globalCompositeOperation` stores a recognized operator, including
+ * `"clear"` and the blend modes, and painting uses it. Any other value is
+ * ignored. `clearRect` and `putImageData` ignore the operator and the
+ * shadow. A list that is not `source-over`, or that paints a shadow, is
+ * rasterized on the CPU. `createConicGradient` throws `NotSupportedError`.
+ * `filter` is parsed and stored and is not painted.
  * There is no `CanvasFilter` class.
  *
  * A window surface's context exposes that surface as `canvas`.
@@ -8793,8 +8799,8 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * A compositing or blend operator.
    *
-   * A recognized value is stored, including `"clear"`. Any other value is
-   * ignored. Painting uses `"source-over"`.
+   * A recognized value is stored and used, including `"clear"`. Any other
+   * value is ignored. `clearRect` and `putImageData` ignore it.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation)
    */
@@ -9088,7 +9094,7 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * A non-negative finite value is stored. Any other value is ignored.
-   * Shadows are not painted.
+   * The blur is a Gaussian with σ capped at 128.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowBlur)
    */
@@ -9096,7 +9102,7 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * A CSS color is stored. An invalid color is ignored. The default is
-   * `"rgba(0, 0, 0, 0)"`. Shadows are not painted.
+   * `"rgba(0, 0, 0, 0)"`. A transparent color draws no shadow.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowColor)
    */
@@ -9104,7 +9110,7 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * A finite value is stored, including a negative offset. A non-finite
-   * value is ignored. Shadows are not painted.
+   * value is ignored. The offset is in canvas pixels and is not transformed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetX)
    */
@@ -9112,7 +9118,7 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * A finite value is stored, including a negative offset. A non-finite
-   * value is ignored. Shadows are not painted.
+   * value is ignored. The offset is in canvas pixels and is not transformed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetY)
    */
