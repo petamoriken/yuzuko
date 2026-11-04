@@ -171,6 +171,10 @@ name = "image_decoder"
 required-features = ["codec", "canvas"]
 
 [[test]]
+name = "mp4"
+required-features = ["codec"]
+
+[[test]]
 name = "webcodecs"
 required-features = ["codec"]
 

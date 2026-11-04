@@ -5,12 +5,14 @@ mod backend;
 mod classes;
 mod clone;
 mod color;
+mod demux;
 mod error;
 mod frame;
 #[cfg(any(test, target_os = "linux", target_os = "windows"))]
 mod h264;
 mod image;
 mod layout;
+mod mp4;
 mod pcm;
 mod platform;
 mod samples;
@@ -37,4 +39,5 @@ fn install(scope: &mut v8::PinScope) {
   image::ImageDecoder::install(scope);
   image::ImageTrackList::install(scope);
   image::ImageTrack::install(scope);
+  demux::install(scope);
 }

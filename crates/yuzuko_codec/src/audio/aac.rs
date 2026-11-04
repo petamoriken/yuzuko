@@ -1,5 +1,5 @@
 //! AAC-LC decode. The bytes are one raw frame plus an AudioSpecificConfig.
-//! This crate does not demux a container.
+//! This module does not demux a container.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

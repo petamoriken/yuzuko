@@ -3525,6 +3525,100 @@ declare namespace Yuzuko {
   ): Library;
 
   /**
+   * H.264 track from {@link demuxMp4}.
+   *
+   * `chunks` is in decode order. `description` is the `avcC` record.
+   * `timestamp` on each chunk is the presentation time in microseconds.
+   */
+  interface Mp4VideoTrack {
+    /** `avc1` or `avc3` plus the profile bytes, such as `avc1.42E01E`. */
+    codec: string;
+
+    /** `avcC` bytes for `VideoDecoderConfig.description`. */
+    description: Uint8Array<ArrayBuffer>;
+
+    /** Coded width from the sample entry, in pixels. */
+    codedWidth: number;
+
+    /** Coded height from the sample entry, in pixels. */
+    codedHeight: number;
+
+    /** Length-prefixed samples in decode order. */
+    chunks: EncodedVideoChunk[];
+  }
+
+  /**
+   * AAC track from {@link demuxMp4}.
+   *
+   * `description` is the `AudioSpecificConfig`. Every chunk has type `"key"`.
+   */
+  interface Mp4AudioTrack {
+    /**
+     * `mp4a`, the object type, and the audio object type, such as
+     * `mp4a.40.2`.
+     */
+    codec: string;
+
+    /** `AudioSpecificConfig` bytes for `AudioDecoderConfig.description`. */
+    description: Uint8Array<ArrayBuffer>;
+
+    /** Hertz from the `AudioSpecificConfig`, or from the sample entry. */
+    sampleRate: number;
+
+    /**
+     * Channel count from the `AudioSpecificConfig`, or from the sample entry.
+     * A program-config element leaves the sample-entry count, which may be 0.
+     */
+    numberOfChannels: number;
+
+    /** Raw AAC frames in decode order. */
+    chunks: EncodedAudioChunk[];
+  }
+
+  /**
+   * Tracks returned by {@link demuxMp4}.
+   *
+   * Unsupported tracks are omitted. A track with no samples has an empty
+   * `chunks` array.
+   */
+  interface Mp4Movie {
+    video: Mp4VideoTrack[];
+    audio: Mp4AudioTrack[];
+  }
+
+  /**
+   * Reads a progressive MP4 file into H.264 and AAC chunks.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `codec` feature. Absent from an `AudioWorklet`
+   * processor realm. A build without `codec` leaves this function absent.
+   * The call is synchronous and does not decode a frame or start a clock.
+   * `video` lists `avc1` and `avc3` tracks. `audio` lists `mp4a` tracks.
+   * Sample bytes stay as stored. Timestamps are microseconds on the media
+   * timeline. One edit-list entry with media rate 1 shifts them. Fragmented
+   * MP4 is rejected.
+   *
+   * @param data - The MP4 file. A view contributes its own bytes.
+   * @throws {@link TypeError} `The MP4 data is not a BufferSource` when
+   * `data` is missing or not a buffer source. `The MP4 data is detached`
+   * when the buffer is detached.
+   * @throws {@link DOMException} `EncodingError` `The MP4 data is empty`
+   * when `data` has no bytes. `The MP4 file has no movie` when `moov` is
+   * absent. `The MP4 file has no H.264 or AAC track` when no supported
+   * track is present. `Fragmented MP4 is not supported` when `moof` carries
+   * the samples. `The MP4 sample is outside the file` when a sample extends
+   * past the buffer. `The MP4 track changes sample entries` when one track
+   * uses more than one sample entry. `Encrypted MP4 is not supported` when a
+   * sample entry is encrypted. `The H.264 track has no avcC` when that box
+   * is missing. `The AAC track has no AudioSpecificConfig` when `esds` has
+   * none. `The MP4 track has too many samples` when one track declares more
+   * than 2,000,000 samples. `The MP4 samples could not be returned` when the
+   * chunks cannot be copied into JavaScript. `The MP4 file is not a valid
+   * container` for any other malformed file.
+   */
+  function demuxMp4(data: AllowSharedBufferSource): Mp4Movie;
+
+  /**
    * Result of {@link Updater.check}.
    */
   interface UpdateCheck {
