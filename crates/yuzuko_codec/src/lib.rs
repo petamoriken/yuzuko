@@ -8,7 +8,6 @@ mod color;
 mod demux;
 mod error;
 mod frame;
-#[cfg(any(test, target_os = "linux", target_os = "windows"))]
 mod h264;
 mod image;
 mod layout;

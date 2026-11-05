@@ -18,6 +18,10 @@ pub struct VideoConfig {
 
 pub struct VideoBackend {
   inner: VideoInner,
+  /// Empty `description`: samples are Annex B until rewritten.
+  annex_b: bool,
+  width: u32,
+  height: u32,
 }
 
 enum VideoInner {
@@ -27,6 +31,8 @@ enum VideoInner {
   Hardware(crate::platform::Session),
   #[cfg(target_os = "linux")]
   Hardware(crate::platform::Session),
+  /// Annex B, waiting for an access unit that contains SPS and PPS.
+  Deferred,
   #[cfg(not(any(
     target_os = "macos",
     target_os = "windows",
@@ -40,23 +46,48 @@ impl VideoBackend {
     if config.codec != Codec::Avc || !hardware_avc() {
       return Err(DecodeError::Unsupported);
     }
+    let width = config.width;
+    let height = config.height;
+    if config.description.is_empty() {
+      return Ok(Self {
+        inner: VideoInner::Deferred,
+        annex_b: true,
+        width,
+        height,
+      });
+    }
     Ok(Self {
-      inner: hardware_session(
-        &config.description,
-        config.width,
-        config.height,
-      )?,
+      inner: hardware_session(&config.description, width, height)?,
+      annex_b: false,
+      width,
+      height,
     })
   }
 
   pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
+    let converted = if self.annex_b {
+      Some(crate::h264::annex_b_access_unit(bytes)?)
+    } else {
+      None
+    };
+    if let Some(unit) = &converted {
+      if matches!(self.inner, VideoInner::Deferred) {
+        let avcc = unit.avcc.as_deref().ok_or(DecodeError::Rejected)?;
+        self.inner = hardware_session(avcc, self.width, self.height)?;
+      }
+    }
+    let sample = match &converted {
+      Some(unit) => unit.sample.as_slice(),
+      None => bytes,
+    };
     match &mut self.inner {
       #[cfg(any(
         target_os = "macos",
         target_os = "windows",
         target_os = "linux"
       ))]
-      VideoInner::Hardware(session) => session.decode(bytes),
+      VideoInner::Hardware(session) => session.decode(sample),
+      VideoInner::Deferred => Err(DecodeError::Rejected),
       #[cfg(not(any(
         target_os = "macos",
         target_os = "windows",
@@ -74,6 +105,7 @@ impl VideoBackend {
         target_os = "linux"
       ))]
       VideoInner::Hardware(session) => session.flush(),
+      VideoInner::Deferred => Ok(Vec::new()),
       #[cfg(not(any(
         target_os = "macos",
         target_os = "windows",

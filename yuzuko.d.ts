@@ -12639,13 +12639,19 @@ interface VideoDecoder {
   ondequeue: ((this: VideoDecoder) => void) | null;
 
   /**
+   * An omitted or empty `description` is Annex B. `configure` leaves the
+   * decoder configured, and the hardware session opens when `decode`
+   * processes an access unit that contains an SPS and a PPS. A present
+   * `description` is a length-prefixed `avcC` and is not scanned for start
+   * codes.
+   *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, or a present dimension is 0.
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not
    * `avc1` or `avc3`, or when the hardware decoder is missing or rejects a
-   * structurally valid `avcC`. On Windows the decoder is missing when no
-   * Direct3D 11 device offers the H.264 decoder profile. On Linux it is
-   * missing when VA-API has no H.264 profile. No frame is produced.
+   * present `avcC`. On Windows the decoder is missing when no Direct3D 11
+   * device offers the H.264 decoder profile. On Linux it is missing when
+   * VA-API has no H.264 profile. No frame is produced.
    * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/configure)

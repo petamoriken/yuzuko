@@ -1,9 +1,10 @@
-//! Elementary H.264 parameter sets and slice headers.
+//! Elementary H.264 parameter sets, Annex B access units, and slice headers.
 //!
-//! The bytes are an `avcC` record plus length-prefixed NALs. This module
-//! does not decode picture data and does not demux a container. Windows uses
-//! only the `avcC` validation. The slice headers feed VA-API on Linux.
-#![cfg_attr(target_os = "windows", allow(dead_code))]
+//! The bytes are an `avcC` record, length-prefixed NALs, or an Annex B
+//! access unit. This module does not decode picture data and does not demux
+//! a container. Windows uses the `avcC` validation and the Annex B rewrite.
+//! The slice headers feed VA-API on Linux.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use crate::error::DecodeError;
 
@@ -352,6 +353,123 @@ pub fn annex_b_sample(sample: &[u8]) -> Result<Vec<u8>, DecodeError> {
     return Err(DecodeError::Rejected);
   }
   Ok(out)
+}
+
+/// A length-prefixed access unit converted from Annex B.
+pub struct AnnexBUnit {
+  /// Four-byte length-prefixed NALs. SPS and PPS are omitted; they belong
+  /// in [`Self::avcc`].
+  pub sample: Vec<u8>,
+  /// `avcC` for the SPS and PPS in this access unit. Absent unless both are
+  /// present. High profiles include the chroma and bit-depth bytes.
+  pub avcc: Option<Vec<u8>>,
+}
+
+/// Convert one Annex B access unit. A 4-byte start code's leading zero is
+/// not left on the previous NAL. SPS and PPS are removed from the sample
+/// and, when both are present, written into an `avcC`.
+pub fn annex_b_access_unit(bytes: &[u8]) -> Result<AnnexBUnit, DecodeError> {
+  let nals = split_start_codes(bytes)?;
+  let mut sps = Vec::new();
+  let mut pps = Vec::new();
+  let mut sample = Vec::with_capacity(bytes.len());
+  for nal in nals {
+    let kind = nal_type(nal)?;
+    if kind == 7 {
+      sps.push(nal.to_vec());
+      continue;
+    }
+    if kind == 8 {
+      pps.push(nal.to_vec());
+      continue;
+    }
+    let length = u32::try_from(nal.len()).map_err(|_| DecodeError::Rejected)?;
+    sample.extend_from_slice(&length.to_be_bytes());
+    sample.extend_from_slice(nal);
+  }
+  let avcc = if sps.is_empty() || pps.is_empty() {
+    None
+  } else {
+    Some(avcc_record(&sps, &pps)?)
+  };
+  Ok(AnnexBUnit { sample, avcc })
+}
+
+fn split_start_codes(bytes: &[u8]) -> Result<Vec<&[u8]>, DecodeError> {
+  let mut nals = Vec::new();
+  let mut index = 0;
+  let mut start = None;
+  while index + 2 < bytes.len() {
+    if bytes[index] == 0 && bytes[index + 1] == 0 && bytes[index + 2] == 1 {
+      if let Some(from) = start {
+        let mut end = index;
+        if end > from && bytes[end - 1] == 0 {
+          end -= 1;
+        }
+        if end > from {
+          nals.push(&bytes[from..end]);
+        }
+      }
+      index += 3;
+      start = Some(index);
+      continue;
+    }
+    index += 1;
+  }
+  if let Some(from) = start {
+    if from < bytes.len() {
+      nals.push(&bytes[from..]);
+    }
+  }
+  if nals.is_empty() {
+    return Err(DecodeError::Rejected);
+  }
+  Ok(nals)
+}
+
+fn avcc_record(
+  sps_nals: &[Vec<u8>],
+  pps_nals: &[Vec<u8>],
+) -> Result<Vec<u8>, DecodeError> {
+  let sps0 = sps_nals.first().ok_or(DecodeError::Rejected)?;
+  if sps0.len() < 4 || sps_nals.len() > 31 || pps_nals.len() > 255 {
+    return Err(DecodeError::Rejected);
+  }
+  let mut out = Vec::new();
+  out.push(1);
+  out.extend_from_slice(&sps0[1..4]);
+  out.push(0xfc | 3);
+  let sps_count =
+    u8::try_from(sps_nals.len()).map_err(|_| DecodeError::Rejected)?;
+  out.push(0xe0 | sps_count);
+  for nal in sps_nals {
+    push_counted(nal, &mut out)?;
+  }
+  let pps_count =
+    u8::try_from(pps_nals.len()).map_err(|_| DecodeError::Rejected)?;
+  out.push(pps_count);
+  for nal in pps_nals {
+    push_counted(nal, &mut out)?;
+  }
+  if high_profile(sps0[1]) {
+    let chroma = u8::try_from(parse_sps(sps0)?.chroma_format_idc)
+      .map_err(|_| DecodeError::Rejected)?;
+    if chroma > 3 {
+      return Err(DecodeError::Rejected);
+    }
+    out.push(0xfc | chroma);
+    out.push(0xf8);
+    out.push(0xf8);
+    out.push(0);
+  }
+  Ok(out)
+}
+
+fn push_counted(nal: &[u8], out: &mut Vec<u8>) -> Result<(), DecodeError> {
+  let length = u16::try_from(nal.len()).map_err(|_| DecodeError::Rejected)?;
+  out.extend_from_slice(&length.to_be_bytes());
+  out.extend_from_slice(nal);
+  Ok(())
 }
 
 /// Whether a length-prefixed access unit holds an IDR slice (NAL type 5).
@@ -1070,7 +1188,8 @@ impl<'a> Bits<'a> {
 #[cfg(test)]
 mod tests {
   use super::{
-    Sets, annex_b_header, annex_b_sample, avcc_nals, has_idr, parse_access_unit,
+    Sets, annex_b_access_unit, annex_b_header, annex_b_sample, avcc_nals,
+    has_idr, parse_access_unit,
   };
 
   fn read(name: &str) -> Vec<u8> {
@@ -1133,5 +1252,27 @@ mod tests {
       annex_b_sample(&[0, 0, 0, 1, 7, 0, 0, 0, 2, 8, 9]).unwrap(),
       vec![0, 0, 0, 1, 7, 0, 0, 0, 1, 8, 9]
     );
+  }
+
+  #[test]
+  fn annex_b_rebuilds_progressive_avcc() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("../../tests/wpt/suite/webcodecs");
+    let annex = std::fs::read(root.join("h264.annexb")).expect("annexb");
+    let mp4 = std::fs::read(root.join("h264.mp4")).expect("mp4");
+    let unit = annex_b_access_unit(&annex[..4175]).expect("chunk 0");
+    assert_eq!(unit.avcc.as_deref(), Some(&mp4[9490..9535]));
+    assert_eq!(unit.sample, mp4[48..4188]);
+    let later = annex_b_access_unit(&annex[4175..4777]).expect("chunk 1");
+    assert!(later.avcc.is_none());
+    assert_eq!(later.sample, mp4[4188..4792]);
+
+    let sei_annex =
+      std::fs::read(root.join("h264_sei.annexb")).expect("sei annex");
+    let sei_mp4 = std::fs::read(root.join("h264_sei.mp4")).expect("sei mp4");
+    let sei = annex_b_access_unit(&sei_annex[6051..9780]).expect("sei");
+    assert_eq!(sei.avcc.as_deref(), Some(&sei_mp4[11989..12035]));
+    assert_eq!(sei.sample, sei_mp4[6072..9766]);
+    assert!(annex_b_access_unit(&[]).is_err());
   }
 }
