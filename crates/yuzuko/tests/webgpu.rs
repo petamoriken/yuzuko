@@ -34,7 +34,7 @@ fn webgpu_draws_when_an_adapter_is_available() {
     "adapter was null\n{stdout}\n{stderr}"
   );
   assert!(!stdout.contains("webgpu-skipped"), "{stdout}");
-  assert!(stdout.contains("19 passed"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("20 passed"), "{stdout}\n{stderr}");
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn skip_gpu_resolves_a_null_adapter() {
   assert!(output.status.success(), "{stdout}\n{stderr}");
   assert!(stdout.contains("webgpu-skipped"), "{stdout}\n{stderr}");
   assert!(!stdout.contains("webgpu-ran"), "{stdout}");
-  assert!(stdout.contains("19 passed"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("20 passed"), "{stdout}\n{stderr}");
 }
 
 #[test]

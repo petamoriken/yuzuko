@@ -214,11 +214,11 @@ Yuzuko.test("a clip outside the canvas does not clear source-in", () => {
   same(pixel(ctx, 1, 1), [255, 0, 0, 255], "unchanged");
 });
 
-Yuzuko.test("a CSS filter does not change pixels", () => {
+Yuzuko.test("a CSS blur filter spreads ink past the rectangle", () => {
   const ctx = context(8, 8);
   ctx.filter = "blur(4px)";
   ctx.fillStyle = "#ff0000";
   ctx.fillRect(2, 2, 2, 2);
-  same(pixel(ctx, 0, 3), [0, 0, 0, 0], "outside");
-  same(pixel(ctx, 3, 3), [255, 0, 0, 255], "inside");
+  assert(pixel(ctx, 0, 3)[3] > 0, "outside");
+  assert(pixel(ctx, 3, 3)[3] < 255, "inside");
 });

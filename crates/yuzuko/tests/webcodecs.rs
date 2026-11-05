@@ -20,11 +20,11 @@ fn webcodecs_passes_under_yuzuko_test() {
   // Without a hardware H.264 decoder, the five picture tests are ignored.
   // macOS always has VideoToolbox.
   let summary = if cfg!(target_os = "macos") {
-    vec!["ok | 15 passed | 0 failed | 0 ignored"]
+    vec!["ok | 16 passed | 0 failed | 0 ignored"]
   } else {
     vec![
-      "ok | 15 passed | 0 failed | 0 ignored",
-      "ok | 10 passed | 0 failed | 5 ignored",
+      "ok | 16 passed | 0 failed | 0 ignored",
+      "ok | 11 passed | 0 failed | 5 ignored",
     ]
   };
   assert!(
