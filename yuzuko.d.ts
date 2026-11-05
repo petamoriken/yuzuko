@@ -12200,11 +12200,13 @@ interface VideoFrameInit {
   displayWidth?: number;
   displayHeight?: number;
   /**
-   * @throws {@link DOMException} `NotSupportedError` when the value is not 0.
+   * Clockwise degrees. Rounded to a multiple of 90 the way `Math.round`
+   * rounds, then reduced to 0, 90, 180, or 270. A non-finite value throws
+   * `TypeError`.
    */
   rotation?: number;
   /**
-   * @throws {@link DOMException} `NotSupportedError` when the value is true.
+   * Mirrors the frame horizontally after `rotation`.
    */
   flip?: boolean;
 }
@@ -12232,11 +12234,13 @@ interface VideoFrameBufferInit {
   displayHeight?: number;
   colorSpace?: VideoColorSpaceInit;
   /**
-   * @throws {@link DOMException} `NotSupportedError` when the value is not 0.
+   * Clockwise degrees. Rounded to a multiple of 90 the way `Math.round`
+   * rounds, then reduced to 0, 90, 180, or 270. A non-finite value throws
+   * `TypeError`.
    */
   rotation?: number;
   /**
-   * @throws {@link DOMException} `NotSupportedError` when the value is true.
+   * Mirrors the frame horizontally after `rotation`.
    */
   flip?: boolean;
 }
@@ -12264,19 +12268,27 @@ interface VideoFrameCopyToOptions {
  * `new VideoFrame(image, init)` copies an `ImageBitmap`, an `OffscreenCanvas`,
  * or another `VideoFrame`. `new VideoFrame(buffer, init)` copies an 8-bit
  * buffer. `timestamp` is required unless the source is a `VideoFrame`.
- * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` accept a
- * frame. `close()` releases it. A second `close()` does nothing. After
- * `close()`, `format` is null, the sizes are 0, `visibleRect` and `codedRect`
- * are null, and `colorSpace` members are null. `timestamp` and `duration`
- * stay. `clone`, `allocationSize`, `copyTo`, `drawImage`, and
+ * `rotation` is clockwise degrees, rounded to a multiple of 90 the way
+ * `Math.round` rounds, then reduced to 0, 90, 180, or 270. `flip` mirrors
+ * horizontally after that rotation. `visibleRect` stays in coded pixels.
+ * `copyTo` returns those coded samples. When display size is omitted, a
+ * rotation of 90 or 270 swaps `displayWidth` and `displayHeight`. Copying a
+ * `VideoFrame` composes the new rotation and flip with the source.
+ * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` sample
+ * the oriented visible pixels at that oriented size. An explicit display
+ * size does not scale the draw further. `close()` releases the frame. A
+ * second `close()` does nothing. After `close()`, `format` is null, the
+ * sizes are 0, `rotation` is 0, `flip` is false, `visibleRect` and
+ * `codedRect` are null, and `colorSpace` members are null. `timestamp` and
+ * `duration` stay. `clone`, `allocationSize`, `copyTo`, `drawImage`, and
  * `createImageBitmap` then throw `InvalidStateError`.
  * `structuredClone` and `postMessage` copy the frame and leave it open.
  * Listing it in a transfer list closes it, and the receiver gets the pixels.
- * `drawImage` uses those pixels at their pixel size.
  *
- * @throws {@link TypeError} when an argument is missing or invalid.
+ * @throws {@link TypeError} when an argument is missing or invalid, including
+ * a non-finite `rotation`.
  * @throws {@link DOMException} `NotSupportedError` for a 10-bit or 12-bit
- * pixel format, or for a non-zero `rotation` or `flip: true`.
+ * pixel format.
  * @throws {@link DOMException} `InvalidStateError` when the source image or
  * canvas is closed or has no pixels.
  * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned.
@@ -12304,6 +12316,12 @@ interface VideoFrame {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/displayHeight) */
   readonly displayHeight: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/rotation) */
+  readonly rotation: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/flip) */
+  readonly flip: boolean;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/visibleRect)

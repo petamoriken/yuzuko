@@ -183,11 +183,7 @@
       "VideoEncoder interface: operation isConfigSupported(VideoEncoderConfig)",
       "VideoEncoder interface: operation reset()",
       "VideoEncoder must be primary interface of new VideoEncoder(defaultCodecInit)",
-      "VideoFrame interface: attribute flip",
-      "VideoFrame interface: attribute rotation",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"flip\" with the proper type",
       "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"metadata()\" with the proper type",
-      "VideoFrame interface: new VideoFrame(makeImageBitmap(32, 16), {timestamp: 100, duration: 33}) must inherit property \"rotation\" with the proper type",
       "VideoFrame interface: operation copyTo(AllowSharedBufferSource, optional VideoFrameCopyToOptions)",
       "VideoFrame interface: operation metadata()"
     ]
@@ -532,13 +528,7 @@
   },
   "webcodecs/videoFrame-metadata-rtpTimestamp.https.html": true,
   "webcodecs/videoFrame-odd-size.any.js": true,
-  "webcodecs/videoFrame-orientation.any.js": {
-    "expectedFailures": [
-      "Test combinations of rotation and flip",
-      "Test orientation of wrapped VideoFrame",
-      "Test oriented VideoFrame from ArrayBuffer"
-    ]
-  },
+  "webcodecs/videoFrame-orientation.any.js": true,
   "webcodecs/videoFrame-rgbx-imageBitmap.any.js": true,
   "webcodecs/videoFrame-rgbx-webgl.window.js": {
     "expectedFailures": [

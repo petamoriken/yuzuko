@@ -177,6 +177,8 @@ fn write_frame_body(
   helper.write_double(data.visible_height);
   helper.write_uint32(data.display_width);
   helper.write_uint32(data.display_height);
+  helper.write_uint32(u32::from(data.rotation));
+  helper.write_uint32(u32::from(data.flip));
   if !write_optional_text(helper, &data.color.primaries)
     || !write_optional_text(helper, &data.color.transfer)
     || !write_optional_text(helper, &data.color.matrix)
@@ -222,6 +224,8 @@ fn read_frame_body(
   let mut visible_height = 0.0;
   let mut display_width = 0u32;
   let mut display_height = 0u32;
+  let mut rotation = 0u32;
+  let mut flip = 0u32;
   if !helper.read_uint32(&mut format_code)
     || !helper.read_uint32(&mut coded_width)
     || !helper.read_uint32(&mut coded_height)
@@ -231,7 +235,12 @@ fn read_frame_body(
     || !helper.read_double(&mut visible_height)
     || !helper.read_uint32(&mut display_width)
     || !helper.read_uint32(&mut display_height)
+    || !helper.read_uint32(&mut rotation)
+    || !helper.read_uint32(&mut flip)
   {
+    return None;
+  }
+  if !matches!(rotation, 0 | 90 | 180 | 270) || flip > 1 {
     return None;
   }
   let format = PixelFormat::from_code(format_code)?;
@@ -262,6 +271,8 @@ fn read_frame_body(
       visible_height,
       display_width,
       display_height,
+      rotation: rotation as u16,
+      flip: flip == 1,
       color: FrameColor {
         primaries,
         transfer,

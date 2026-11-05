@@ -1325,3 +1325,87 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   const bareView = new Uint8Array(bare);
   assert(bareView[2] === 7, "shared buffer");
 });
+
+Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
+  // y y r r
+  // b b g g
+  const bytes = new Uint8Array([
+    255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+    0, 0, 255, 255, 0, 0, 255, 255, 0, 255, 0, 255, 0, 255, 0, 255,
+  ]);
+  const frame = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: -315,
+    flip: true,
+  });
+  assert(frame.rotation === 90, "rotation");
+  assert(frame.flip === true, "flip");
+  assert(frame.visibleRect?.width === 4 && frame.visibleRect.height === 2, "visible");
+  assert(frame.codedWidth === 4 && frame.codedHeight === 2, "coded");
+  assert(frame.displayWidth === 2 && frame.displayHeight === 4, "display");
+  const coded = new Uint8Array(frame.allocationSize());
+  await frame.copyTo(coded);
+  assert(coded[4] === 255 && coded[5] === 255 && coded[6] === 0, "coded samples");
+  const cloned = structuredClone(frame);
+  assert(cloned.rotation === 90 && cloned.flip === true, "clone");
+  cloned.close();
+
+  const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
+  const ctx = canvas.getContext("2d");
+  assert(ctx !== null, "context");
+  ctx.drawImage(frame, 0, 0);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  function near(
+    x: number,
+    y: number,
+    expected: [number, number, number],
+    message: string,
+  ): void {
+    const index = 4 * (canvas.width * y + x);
+    for (let channel = 0; channel < 3; channel += 1) {
+      const actual = data[index + channel] ?? 0;
+      assert(Math.abs(actual - expected[channel]) <= 2, `${message} ${actual}`);
+    }
+  }
+  near(0, 0, [255, 255, 0], "yellow");
+  near(1, 0, [0, 0, 255], "blue");
+  near(0, 3, [255, 0, 0], "red");
+  near(1, 3, [0, 255, 0], "green");
+
+  const wrapped = new VideoFrame(frame, { rotation: 90, flip: true });
+  assert(wrapped.rotation === 0 && wrapped.flip === false, "composed");
+  assert(wrapped.displayWidth === 4 && wrapped.displayHeight === 2, "composed display");
+  wrapped.close();
+  frame.close();
+  assert(frame.rotation === 0 && frame.flip === false, "closed");
+
+  const shown = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: 90,
+    displayWidth: 4,
+    displayHeight: 2,
+  });
+  assert(shown.displayWidth === 4 && shown.displayHeight === 2, "explicit display");
+  const bitmap = await createImageBitmap(shown);
+  assert(bitmap.width === 2 && bitmap.height === 4, "oriented bitmap");
+  bitmap.close();
+  shown.close();
+
+  assertTypeError(
+    () =>
+      new VideoFrame(bytes, {
+        format: "RGBX",
+        codedWidth: 4,
+        codedHeight: 2,
+        timestamp: 0,
+        rotation: Infinity,
+      }),
+    "rotation",
+  );
+});

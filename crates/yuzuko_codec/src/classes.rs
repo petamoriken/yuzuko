@@ -89,7 +89,15 @@ impl VideoFrame {
   }
 
   fn pixels(&self) -> Option<Raster> {
-    self.body.borrow().as_ref().map(|data| data.raster.clone())
+    let borrowed = self.body.borrow();
+    let data = borrowed.as_ref()?;
+    if data.rotation == 0 && !data.flip {
+      return Some(data.raster.clone());
+    }
+    Some(
+      yuzuko_image::orient_display(&data.raster, data.rotation, data.flip)
+        .unwrap_or_else(|_| data.raster.clone()),
+    )
   }
 
   fn metric(&self, read: impl FnOnce(&FrameData) -> u32) -> u32 {
@@ -170,6 +178,16 @@ impl VideoFrame {
   #[getter]
   fn display_height(&self) -> u32 {
     self.metric(|data| data.display_height)
+  }
+
+  #[getter]
+  fn rotation(&self) -> u32 {
+    self.metric(|data| u32::from(data.rotation))
+  }
+
+  #[getter]
+  fn flip(&self) -> bool {
+    self.body.borrow().as_ref().is_some_and(|data| data.flip)
   }
 
   #[getter]

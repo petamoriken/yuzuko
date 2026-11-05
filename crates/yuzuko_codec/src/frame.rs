@@ -28,6 +28,8 @@ struct ImageInit {
   discard: bool,
   visible: Option<RectD>,
   display: Option<(u32, u32)>,
+  rotation: u16,
+  flip: bool,
 }
 
 struct CopyOptions {
@@ -143,7 +145,7 @@ fn construct_buffer(
   init: v8::Local<v8::Value>,
 ) -> Result<VideoFrame, OpError> {
   let object = dictionary(scope, init, "VideoFrameBufferInit")?;
-  reject_orientation(scope, object)?;
+  let (rotation, flip) = read_orientation(scope, object)?;
   let format = pixel_format(scope, object)?;
   let coded_width = required_size(scope, object, "codedWidth")?;
   let coded_height = required_size(scope, object, "codedHeight")?;
@@ -173,16 +175,20 @@ fn construct_buffer(
   )
   .map_err(|error| layout_error(error, true))?;
   let visible = full_rect(pixels.coded_width, pixels.coded_height);
-  let display = match display_pair(scope, object)? {
+  let explicit = display_pair(scope, object)?;
+  let display = match explicit {
     Some(pair) => pair,
     None => (pixels.coded_width, pixels.coded_height),
   };
+  let display = oriented_display(display, explicit.is_some(), 0, rotation);
   assemble(
     format,
     pixels.coded_width,
     pixels.coded_height,
     visible,
     display,
+    rotation,
+    flip,
     color,
     pixels.planes,
     timestamp,
@@ -262,6 +268,13 @@ fn construct_from_frame(
       height: data.visible_height,
     }
   };
+  let (rotation, flip) = compose_orientation(
+    data.rotation,
+    data.flip,
+    init.rotation,
+    init.flip,
+  );
+  let explicit = init.display.is_some();
   let display = if let Some(display) = init.display {
     display
   } else {
@@ -275,6 +288,7 @@ fn construct_from_frame(
     )
     .map_err(|error| layout_error(error, true))?
   };
+  let display = oriented_display(display, explicit, data.rotation, rotation);
   let timestamp = init.timestamp.unwrap_or_else(|| source.timestamp_us());
   let duration = if init.duration_set {
     init.duration
@@ -287,6 +301,8 @@ fn construct_from_frame(
     data.coded_height,
     visible,
     display,
+    rotation,
+    flip,
     data.color,
     data.planes,
     timestamp,
@@ -317,6 +333,7 @@ fn image_frame(
     format,
   )
   .map_err(|error| layout_error(error, true))?;
+  let explicit = init.display.is_some();
   let display = if let Some(display) = init.display {
     display
   } else {
@@ -330,6 +347,7 @@ fn image_frame(
     )
     .map_err(|error| layout_error(error, true))?
   };
+  let display = oriented_display(display, explicit, 0, init.rotation);
   let color = FrameColor::from_color_space(raster.color_space);
   assemble(
     format,
@@ -337,6 +355,8 @@ fn image_frame(
     raster.height,
     visible,
     display,
+    init.rotation,
+    init.flip,
     color,
     planes,
     timestamp,
@@ -350,6 +370,8 @@ fn assemble(
   coded_height: u32,
   visible: RectD,
   display: (u32, u32),
+  rotation: u16,
+  flip: bool,
   color: FrameColor,
   planes: Vec<Vec<u8>>,
   timestamp: f64,
@@ -376,6 +398,8 @@ fn assemble(
       visible_height: visible.height,
       display_width: display.0,
       display_height: display.1,
+      rotation,
+      flip,
       color,
       planes,
       raster,
@@ -428,9 +452,11 @@ fn image_init(
       discard: false,
       visible: None,
       display: None,
+      rotation: 0,
+      flip: false,
     });
   };
-  reject_orientation(scope, object)?;
+  let (rotation, flip) = read_orientation(scope, object)?;
   let (duration_set, duration) = duration_member(scope, object)?;
   Ok(ImageInit {
     timestamp: optional_timestamp(scope, object, timestamp_fallback)?,
@@ -439,6 +465,8 @@ fn image_init(
     discard: alpha_discard(scope, object)?,
     visible: optional_rect(scope, object, "visibleRect")?,
     display: display_pair(scope, object)?,
+    rotation,
+    flip,
   })
 }
 
@@ -678,11 +706,11 @@ fn color_of(
   })
 }
 
-fn reject_orientation(
+fn read_orientation(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<(), OpError> {
-  if let Some(value) = member(scope, object, "rotation")
+) -> Result<(u16, bool), OpError> {
+  let rotation = if let Some(value) = member(scope, object, "rotation")
     && !value.is_null()
   {
     let number = value
@@ -691,27 +719,52 @@ fn reject_orientation(
     if !number.is_finite() {
       return Err(OpError::type_("rotation is invalid"));
     }
-    let aligned = (number / 90.0).round() * 90.0;
-    let mut reduced = aligned % 360.0;
-    if reduced < 0.0 {
-      reduced += 360.0;
-    }
-    if reduced != 0.0 {
-      return Err(OpError::dom(
-        "NotSupportedError",
-        "VideoFrame rotation is not supported",
-      ));
-    }
+    normalize_rotation(number)
+  } else {
+    0
+  };
+  let flip = member(scope, object, "flip")
+    .is_some_and(|value| value.boolean_value(scope));
+  Ok((rotation, flip))
+}
+
+/// `Math.round` to a multiple of 90, then a non-negative residue modulo 360.
+pub(crate) fn normalize_rotation(number: f64) -> u16 {
+  let turns = (number / 90.0 + 0.5).floor();
+  let mut degrees = (turns * 90.0) % 360.0;
+  if degrees < 0.0 {
+    degrees += 360.0;
   }
-  if let Some(value) = member(scope, object, "flip")
-    && value.boolean_value(scope)
-  {
-    return Err(OpError::dom(
-      "NotSupportedError",
-      "VideoFrame flip is not supported",
-    ));
+  degrees as u16
+}
+
+pub(crate) fn compose_orientation(
+  base_rotation: u16,
+  base_flip: bool,
+  delta_rotation: u16,
+  delta_flip: bool,
+) -> (u16, bool) {
+  let applied = if base_flip {
+    (360 - u32::from(delta_rotation)) % 360
+  } else {
+    u32::from(delta_rotation)
+  };
+  let rotation = (u32::from(base_rotation) + applied) % 360;
+  (rotation as u16, base_flip ^ delta_flip)
+}
+
+fn oriented_display(
+  display: (u32, u32),
+  explicit: bool,
+  before: u16,
+  after: u16,
+) -> (u32, u32) {
+  let swapped = |rotation: u16| rotation == 90 || rotation == 270;
+  if explicit || swapped(before) == swapped(after) {
+    display
+  } else {
+    (display.1, display.0)
   }
-  Ok(())
 }
 
 fn required_size(
@@ -1091,5 +1144,29 @@ fn builtin_error<'s>(
     v8::Exception::range_error(scope, text).into()
   } else {
     v8::Exception::type_error(scope, text).into()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::compose_orientation;
+  use super::normalize_rotation;
+
+  #[test]
+  fn rotation_rounds_like_math_round() {
+    assert_eq!(normalize_rotation(-315.0), 90);
+    assert_eq!(normalize_rotation(0.0), 0);
+    assert_eq!(normalize_rotation(90.0), 90);
+    assert_eq!(normalize_rotation(45.0), 90);
+    assert_eq!(normalize_rotation(-45.0), 0);
+    assert_eq!(normalize_rotation(270.0), 270);
+    assert_eq!(normalize_rotation(360.0), 0);
+  }
+
+  #[test]
+  fn flip_reverses_an_added_rotation() {
+    assert_eq!(compose_orientation(90, true, 90, true), (0, false));
+    assert_eq!(compose_orientation(0, false, 180, false), (180, false));
+    assert_eq!(compose_orientation(90, false, 0, false), (90, false));
   }
 }

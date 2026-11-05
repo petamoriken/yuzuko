@@ -266,6 +266,43 @@ pub fn flip_y(raster: Raster) -> Result<Raster, PixelError> {
   orient(raster, 4)
 }
 
+/// Clockwise `rotation` of 0, 90, 180, or 270, then a horizontal mirror
+/// when `flip` is set. The sample count is unchanged.
+pub fn orient_display(
+  raster: &Raster,
+  rotation: u16,
+  flip: bool,
+) -> Result<Raster, PixelError> {
+  let rotation = rotation % 360;
+  if rotation == 0 && !flip {
+    return Ok(raster.clone());
+  }
+  if !matches!(rotation, 0 | 90 | 180 | 270) {
+    return Err(PixelError::Empty);
+  }
+  let (width, height) = if rotation == 90 || rotation == 270 {
+    (raster.height, raster.width)
+  } else {
+    (raster.width, raster.height)
+  };
+  let mut output =
+    Raster::new(width, height, raster.color_space, raster.format)?;
+  output.premultiplied = raster.premultiplied;
+  for y in 0..height {
+    for x in 0..width {
+      let rx = if flip { width - 1 - x } else { x };
+      let (sx, sy) = match rotation {
+        90 => (y, raster.height - 1 - rx),
+        180 => (raster.width - 1 - rx, raster.height - 1 - y),
+        270 => (raster.width - 1 - y, rx),
+        _ => (rx, y),
+      };
+      output.write_pixel(x, y, raster.sample(i64::from(sx), i64::from(sy)));
+    }
+  }
+  Ok(output)
+}
+
 pub fn crop_resize(
   raster: &Raster,
   crop: Option<Crop>,
@@ -526,6 +563,23 @@ mod tests {
     assert_eq!((cropped.width, cropped.height), (2, 2));
     assert_eq!(cropped.pixel_u8(0, 0), [0, 0, 0, 0]);
     assert_eq!(cropped.pixel_u8(1, 1), [10, 20, 30, 255]);
+  }
+
+  #[test]
+  fn clockwise_rotation_then_horizontal_flip_matches_the_display() {
+    // y y r r
+    // b b g g
+    let bytes = [
+      255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 0, 0,
+      255, 255, 0, 0, 255, 255, 0, 255, 0, 255, 0, 255, 0, 255,
+    ];
+    let raster = Raster::from_rgba8(4, 2, ColorSpace::Srgb, &bytes).unwrap();
+    let turned = orient_display(&raster, 90, true).unwrap();
+    assert_eq!((turned.width, turned.height), (2, 4));
+    assert_eq!(turned.pixel_u8(0, 0), [255, 255, 0, 255]);
+    assert_eq!(turned.pixel_u8(1, 0), [0, 0, 255, 255]);
+    assert_eq!(turned.pixel_u8(0, 3), [255, 0, 0, 255]);
+    assert_eq!(turned.pixel_u8(1, 3), [0, 255, 0, 255]);
   }
 
   #[test]

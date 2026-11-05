@@ -19,7 +19,7 @@ pub use raster::decode::{
   decode as decode_image, decode_frames,
 };
 pub use raster::{
-  ColorSpace, PixelError, Raster, SampleFormat, orient, premultiply,
+  ColorSpace, PixelError, Raster, SampleFormat, orient, orient_display,
   unpremultiply,
 };
 
