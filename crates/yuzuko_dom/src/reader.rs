@@ -302,8 +302,81 @@ impl FileReader {
   }
 }
 
+pub struct FileReaderSync;
+
+unsafe impl v8::cppgc::GarbageCollected for FileReaderSync {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"FileReaderSync"
+  }
+}
+
+/// Synchronous blob reads. Present on a dedicated worker only.
+#[op(name = "FileReaderSync")]
+impl FileReaderSync {
+  #[constructor]
+  fn new() -> FileReaderSync {
+    FileReaderSync
+  }
+
+  #[rename("readAsArrayBuffer")]
+  #[length(1)]
+  fn read_as_array_buffer(
+    &self,
+    scope: &mut v8::PinScope,
+    blob: v8::Local<v8::Value>,
+  ) -> Result<Js, OpError> {
+    let (bytes, _) = yuzuko_winter::snapshot_blob(scope, blob)?;
+    let buffer: v8::Local<v8::Value> =
+      yuzuko_winter::array_buffer(scope, bytes).into();
+    Ok(Js(v8::Global::new(scope, buffer)))
+  }
+
+  #[rename("readAsBinaryString")]
+  #[length(1)]
+  fn read_as_binary_string(
+    &self,
+    scope: &mut v8::PinScope,
+    blob: v8::Local<v8::Value>,
+  ) -> Result<String, OpError> {
+    let (bytes, _) = yuzuko_winter::snapshot_blob(scope, blob)?;
+    Ok(yuzuko_winter::binary_string(&bytes))
+  }
+
+  #[rename("readAsDataURL")]
+  #[length(1)]
+  fn read_as_data_url(
+    &self,
+    scope: &mut v8::PinScope,
+    blob: v8::Local<v8::Value>,
+  ) -> Result<String, OpError> {
+    let (bytes, mime) = yuzuko_winter::snapshot_blob(scope, blob)?;
+    Ok(yuzuko_winter::data_url(&bytes, &mime))
+  }
+
+  #[rename("readAsText")]
+  #[length(1)]
+  fn read_as_text(
+    &self,
+    scope: &mut v8::PinScope,
+    blob: v8::Local<v8::Value>,
+    encoding: Option<String>,
+  ) -> Result<String, OpError> {
+    let (bytes, mime) = yuzuko_winter::snapshot_blob(scope, blob)?;
+    Ok(yuzuko_winter::decode_blob_text(
+      &bytes,
+      &mime,
+      encoding.as_deref(),
+    ))
+  }
+}
+
 pub(crate) fn install(scope: &mut v8::PinScope) {
   FileReader::install(scope);
+  if yuzuko_core::is_dedicated_worker() {
+    FileReaderSync::install(scope);
+  }
   let constructor = FileReader::template(scope)
     .get_function(scope)
     .expect("FileReader");

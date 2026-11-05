@@ -6892,6 +6892,52 @@ declare var FileReader: {
   readonly DONE: 2;
 };
 
+/**
+ * Reads a blob synchronously.
+ *
+ * The constructor is on a dedicated worker. It is absent on the main global.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync)
+ */
+interface FileReaderSync {
+  /**
+   * @throws {@link TypeError} When `blob` is not a {@link Blob}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync/readAsArrayBuffer)
+   */
+  readAsArrayBuffer(blob: Blob): ArrayBuffer;
+
+  /**
+   * One code unit per byte.
+   *
+   * @throws {@link TypeError} When `blob` is not a {@link Blob}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync/readAsBinaryString)
+   */
+  readAsBinaryString(blob: Blob): string;
+
+  /**
+   * An empty blob with no type is `data:application/octet-stream;base64,`.
+   *
+   * @throws {@link TypeError} When `blob` is not a {@link Blob}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync/readAsDataURL)
+   */
+  readAsDataURL(blob: Blob): string;
+
+  /**
+   * @param encoding - A label passed to {@link TextDecoder}.
+   * @throws {@link TypeError} When `blob` is not a {@link Blob}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync/readAsText)
+   */
+  readAsText(blob: Blob, encoding?: string): string;
+}
+declare var FileReaderSync: {
+  prototype: FileReaderSync;
+  new(): FileReaderSync;
+};
+
 
 /**
  * A header list.
@@ -13625,8 +13671,9 @@ declare class WorkerGlobalScope extends EventTarget {
  * `cancelIdleCallback`, `Yuzuko.Window`, `Yuzuko.Menu`, `Yuzuko.setMenu`,
  * `Yuzuko.setDialogLabels`,
  * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.updater`, `navigator.clipboard`, and
- * `navigator.getGamepads`. `self.fonts` and `globalThis.fonts` are that
- * worker's {@link FontFaceSet}. `requestAnimationFrame` runs the callback at
+ * `navigator.getGamepads`. `FileReaderSync` is on this global. `self.fonts`
+ * and `globalThis.fonts` are that worker's {@link FontFaceSet}.
+ * `requestAnimationFrame` runs the callback at
  * the slowest refresh rate among the open windows whose canvas this worker
  * holds, or at 60 Hz when it holds none, and then copies each transferred
  * window canvas into the window that owns it. That window presents the copy

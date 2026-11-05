@@ -47,7 +47,7 @@
     "ignore": true
   },
   "FileAPI/FileReader/workers.html": false,
-  "FileAPI/FileReaderSync.worker.js": false,
+  "FileAPI/FileReaderSync.worker.js": true,
   "FileAPI/blob/Blob-array-buffer-data-isolation.html": true,
   "FileAPI/blob/Blob-array-buffer.any.js": true,
   "FileAPI/blob/Blob-bytes.any.js": true,

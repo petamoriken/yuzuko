@@ -852,7 +852,6 @@
     "expectedFailures": [
       "The BroadcastChannel interface object should be exposed.",
       "The FileList interface object should be exposed.",
-      "The FileReaderSync interface object should be exposed.",
       "The IDBCursor interface object should be exposed.",
       "The IDBCursorWithValue interface object should be exposed.",
       "The IDBDatabase interface object should be exposed.",
