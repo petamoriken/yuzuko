@@ -9479,8 +9479,8 @@ interface TextClusterOptions {
  * Measured text.
  *
  * The classic `actualBoundingBox*` getters are advance approximations.
- * `getActualBoundingBox` uses unhinted outline bounds. A shaper cluster that
- * covers more than one grapheme stays one cluster.
+ * `getActualBoundingBox` returns that same advance box for the whole run.
+ * A shaper cluster that covers more than one grapheme stays one cluster.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -9526,14 +9526,25 @@ interface TextMetrics {
 
   /**
    * Advance boxes from `start` to `end`, in UTF-16 code units.
+   *
+   * @throws {@link TypeError} when `start` or `end` is non-finite or outside
+   * 0 through 2^32 - 1.
+   * @throws {@link DOMException} `IndexSizeError` when `start` or `end` is
+   * greater than the UTF-16 length.
    */
   getSelectionRects(start: number, end: number): DOMRect[];
 
   /**
-   * Outline bounds from `start` to `end`.
+   * Advance box of the whole run.
    *
-   * The bounds are unhinted outlines at the font's default variation, not
-   * rasterized ink.
+   * `x` is 0, `y` is `-actualBoundingBoxAscent`, `width` is the advance, and
+   * `height` is the ascent plus the descent. The range does not tighten the
+   * rectangle, and `textAlign` and `textBaseline` do not move it.
+   *
+   * @throws {@link TypeError} when `start` or `end` is non-finite or outside
+   * 0 through 2^32 - 1.
+   * @throws {@link DOMException} `IndexSizeError` when `start` is greater
+   * than or equal to the UTF-16 length, or `end` is greater than that length.
    */
   getActualBoundingBox(start: number, end: number): DOMRect;
 
@@ -9541,6 +9552,13 @@ interface TextMetrics {
    * Clusters for the whole run, or for `start` through `end`.
    *
    * `options` changes the returned clusters and does not change this object.
+   * An omitted range is the whole run.
+   *
+   * @throws {@link TypeError} when an explicit `start` or `end` is non-finite
+   * or outside 0 through 2^32 - 1.
+   * @throws {@link DOMException} `IndexSizeError` when an explicit `start` is
+   * greater than or equal to the UTF-16 length, or `end` is greater than
+   * that length.
    */
   getTextClusters(
     start?: number,

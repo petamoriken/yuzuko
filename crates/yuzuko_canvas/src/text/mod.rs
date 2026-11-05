@@ -569,47 +569,6 @@ impl ShapedText {
     rects
   }
 
-  pub fn actual_box(
-    &self,
-    start: u32,
-    end: u32,
-    align: Align,
-    baseline: Baseline,
-    rtl: bool,
-  ) -> PlacedRect {
-    let shift = align.offset(rtl, f64::from(self.width));
-    let base = baseline.offset(f64::from(self.ascent), f64::from(self.descent));
-    let mut ink = None;
-    for cluster in &self.clusters {
-      if cluster.end <= start || cluster.start >= end {
-        continue;
-      }
-      if let Some(bounds) = cluster.ink {
-        union_ink(&mut ink, (bounds.x0, bounds.y0, bounds.x1, bounds.y1));
-      }
-    }
-    if let Some(ink) = ink {
-      return PlacedRect {
-        x: f64::from(ink.x0) + shift,
-        y: f64::from(ink.y0) + base,
-        width: f64::from(ink.x1 - ink.x0),
-        height: f64::from(ink.y1 - ink.y0),
-      };
-    }
-    let left = self
-      .clusters
-      .iter()
-      .find(|cluster| cluster.end > start && cluster.start < end)
-      .map(|cluster| cluster.left)
-      .unwrap_or(0.0);
-    PlacedRect {
-      x: f64::from(left) + shift,
-      y: base,
-      width: 0.0,
-      height: 0.0,
-    }
-  }
-
   pub fn index_at(&self, offset: f64, align: Align, rtl: bool) -> u32 {
     let shift = align.offset(rtl, f64::from(self.width));
     let x = (offset - shift) as f32;

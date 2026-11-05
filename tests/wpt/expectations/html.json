@@ -3920,45 +3920,14 @@
     "ignore": true
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": {
-    "expectedFailures": [
-      "Check that TextMetrics::getActualBoundingBox() throws when using invalid indexes."
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.worker.js": {
-    "expectedFailures": [
-      "Check that TextMetrics::getActualBoundingBox() throws when using invalid indexes."
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.html": {
-    "expectedFailures": [
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.worker.js": {
-    "expectedFailures": [
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
-      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": true,
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.html": true,
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.worker.js": {
-    "expectedFailures": [
-      "Test TextMetrics::getActualBoundingBox(), with text align center , and 0px letter spacing.",
-      "Test TextMetrics::getActualBoundingBox(), with text align center , and 10px letter spacing.",
-      "Test TextMetrics::getActualBoundingBox(), with text align left , and 0px letter spacing.",
-      "Test TextMetrics::getActualBoundingBox(), with text align left , and 10px letter spacing.",
-      "Test TextMetrics::getActualBoundingBox(), with text align right , and 0px letter spacing.",
-      "Test TextMetrics::getActualBoundingBox(), with text align right , and 10px letter spacing."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.html": {
     "ignore": true
   },
@@ -3977,16 +3946,8 @@
   "html/canvas/offscreen/text/2d.text.measure.lang.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": {
-    "expectedFailures": [
-      "Check that TextMetrics::getSelectionRects() throws when using invalid indexes."
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.worker.js": {
-    "expectedFailures": [
-      "Check that TextMetrics::getSelectionRects() throws when using invalid indexes."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": true,
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects.tentative.html": {
     "ignore": true
   },
@@ -4034,16 +3995,8 @@
     "ignore": true
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": {
-    "expectedFailures": [
-      "Check that TextMetrics::getTextClusters() throws when using invalid indexes."
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.worker.js": {
-    "expectedFailures": [
-      "Check that TextMetrics::getTextClusters() throws when using invalid indexes."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": true,
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.html": {
     "ignore": true
   },

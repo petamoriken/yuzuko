@@ -8,7 +8,6 @@ use kurbo::BezPath;
 use yuzuko_core::op::OpError;
 use yuzuko_macros::op;
 
-use yuzuko_core::op::FromV8;
 use yuzuko_core::op::Js;
 use yuzuko_core::op::New;
 
@@ -511,9 +510,12 @@ impl TextMetrics {
   fn get_selection_rects(
     &self,
     scope: &mut v8::PinScope,
-    start: u32,
-    end: u32,
-  ) -> Js {
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Js, OpError> {
+    let start = metric_index(scope, args.get(0))?;
+    let end = metric_index(scope, args.get(1))?;
+    // `end` is exclusive. `start == length` is a caret at the end.
+    check_text_range(start, end, self.shaped.utf16_len, false)?;
     let rects = self.shaped.selection_rects(
       start,
       end,
@@ -521,24 +523,31 @@ impl TextMetrics {
       self.baseline,
       self.rtl,
     );
-    host_array(
+    Ok(host_array(
       scope,
       rects.into_iter().map(|rect| {
         DomRectReadOnly::at(rect.x, rect.y, rect.width, rect.height)
       }),
-    )
+    ))
   }
 
   fn get_actual_bounding_box(
     &self,
-    start: u32,
-    end: u32,
-  ) -> New<DomRectReadOnly> {
-    let rect =
-      self
-        .shaped
-        .actual_box(start, end, self.align, self.baseline, self.rtl);
-    New(DomRectReadOnly::at(rect.x, rect.y, rect.width, rect.height))
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<New<DomRectReadOnly>, OpError> {
+    let start = metric_index(scope, args.get(0))?;
+    let end = metric_index(scope, args.get(1))?;
+    // `start == length` is out of range. `(0, length)` is the whole run.
+    check_text_range(start, end, self.shaped.utf16_len, true)?;
+    // Classic getters ignore align, baseline, and which indexes were asked
+    // for. The enrolled tests compare this rectangle to that advance box.
+    Ok(New(DomRectReadOnly::at(
+      0.0,
+      -self.ascent,
+      self.width,
+      self.ascent + self.descent,
+    )))
   }
 
   fn get_text_clusters(
@@ -591,6 +600,57 @@ pub struct ClusterPaintOptions {
   pub y: Option<f64>,
 }
 
+/// WebIDL `[EnforceRange] unsigned long`.
+///
+/// Non-finite values and numbers outside `0` through `2^32 - 1` are
+/// `TypeError`. Finite values truncate toward zero.
+fn enforce_unsigned_long(number: f64) -> Result<u32, OpError> {
+  let integer = if number.is_finite() {
+    number.trunc()
+  } else {
+    f64::NAN
+  };
+  if !integer.is_finite() || integer < 0.0 || integer > 4_294_967_295.0 {
+    return Err(OpError::type_(
+      "The provided value cannot be converted to 'unsigned long'.",
+    ));
+  }
+  Ok(integer as u32)
+}
+
+fn metric_index(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u32, OpError> {
+  enforce_unsigned_long(number(scope, value)?)
+}
+
+/// `start_closed` makes `start == len` an `IndexSizeError`.
+///
+/// `getActualBoundingBox` and `getTextClusters` use that rule.
+/// `getSelectionRects` allows `start == len` and rejects only indexes
+/// greater than `len`.
+fn check_text_range(
+  start: u32,
+  end: u32,
+  len: u32,
+  start_closed: bool,
+) -> Result<(), OpError> {
+  let start_bad = if start_closed {
+    start >= len
+  } else {
+    start > len
+  };
+  if start_bad || end > len {
+    let which = if start_bad { "start" } else { "end" };
+    return Err(OpError::dom(
+      "IndexSizeError",
+      format!("The {which} index is out of bounds."),
+    ));
+  }
+  Ok(())
+}
+
 fn cluster_query(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
@@ -606,13 +666,15 @@ fn cluster_query(
       if args.get(0).is_object() {
         return Err(OpError::type_("TextCluster options must be a dictionary"));
       }
-      let start: u32 = FromV8::from_v8(scope, args.get(0))?;
-      let end: u32 = FromV8::from_v8(scope, args.get(1))?;
+      let start = metric_index(scope, args.get(0))?;
+      let end = metric_index(scope, args.get(1))?;
+      check_text_range(start, end, len, true)?;
       Ok((start, end, ClusterPaintOptions::default()))
     }
     3 => {
-      let start: u32 = FromV8::from_v8(scope, args.get(0))?;
-      let end: u32 = FromV8::from_v8(scope, args.get(1))?;
+      let start = metric_index(scope, args.get(0))?;
+      let end = metric_index(scope, args.get(1))?;
+      check_text_range(start, end, len, true)?;
       Ok((start, end, cluster_paint_options(scope, args.get(2))?))
     }
     _ => Err(OpError::type_(
@@ -882,4 +944,40 @@ fn expand_radii(values: &[(f64, f64)]) -> [f64; 8] {
     _ => (pair(0), pair(1), pair(2), pair(3)),
   };
   [tl.0, tl.1, tr.0, tr.1, br.0, br.1, bl.0, bl.1]
+}
+
+#[cfg(test)]
+mod tests {
+  use super::check_text_range;
+  use super::enforce_unsigned_long;
+
+  #[test]
+  fn enforce_range_rejects_negatives_and_non_finite() {
+    assert!(enforce_unsigned_long(-1.0).is_err());
+    assert!(enforce_unsigned_long(f64::NAN).is_err());
+    assert!(enforce_unsigned_long(f64::INFINITY).is_err());
+    assert!(enforce_unsigned_long(f64::NEG_INFINITY).is_err());
+    assert!(enforce_unsigned_long(4_294_967_296.0).is_err());
+    assert_eq!(enforce_unsigned_long(0.0).unwrap(), 0);
+    assert_eq!(enforce_unsigned_long(-0.4).unwrap(), 0);
+    assert_eq!(enforce_unsigned_long(1.9).unwrap(), 1);
+    assert_eq!(
+      enforce_unsigned_long(4_294_967_295.0).unwrap(),
+      4_294_967_295
+    );
+  }
+
+  #[test]
+  fn text_range_matches_the_enrolled_index_rules() {
+    let len = 11;
+    assert!(check_text_range(len, 0, len, false).is_ok());
+    assert!(check_text_range(len + 1, 0, len, false).is_err());
+    assert!(check_text_range(0, len + 1, len, false).is_err());
+    assert!(check_text_range(len + 1, len + 1, len, false).is_err());
+    assert!(check_text_range(3, 2, len, false).is_ok());
+    assert!(check_text_range(0, len, len, true).is_ok());
+    assert!(check_text_range(len, 0, len, true).is_err());
+    assert!(check_text_range(0, len + 1, len, true).is_err());
+    assert!(check_text_range(len, len + 1, len, true).is_err());
+  }
 }
