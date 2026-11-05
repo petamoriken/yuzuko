@@ -1309,16 +1309,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.crosscanvas.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidcolor.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidcolor.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.type.html": true,

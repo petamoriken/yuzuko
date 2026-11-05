@@ -296,7 +296,10 @@ pub fn gradient_id(
 #[op]
 impl CanvasGradient {
   fn add_color_stop(&self, offset: f64, color: String) -> Result<(), OpError> {
-    if !offset.is_finite() || !(0.0..=1.0).contains(&offset) {
+    if !offset.is_finite() {
+      return Err(OpError::type_("The color stop offset is not finite"));
+    }
+    if !(0.0..=1.0).contains(&offset) {
       return Err(OpError::dom(
         "IndexSizeError",
         "The color stop offset is out of range",

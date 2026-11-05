@@ -9476,6 +9476,13 @@ declare class TextCluster {
 interface CanvasGradient {
 
   /**
+   * A non-finite `offset` throws `TypeError`. An `offset` outside 0 through 1
+   * throws `IndexSizeError`. A color that does not parse throws `SyntaxError`.
+   *
+   * @throws {@link DOMException} `IndexSizeError` when `offset` is finite and
+   * outside 0 through 1.
+   * @throws {@link DOMException} `SyntaxError` when `color` does not parse.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasGradient/addColorStop)
    */
   addColorStop(offset: number, color: string): void;
