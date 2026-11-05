@@ -111,6 +111,9 @@ enum PassCommand {
     width: u32,
     height: u32,
   },
+  PushDebug(String),
+  PopDebug,
+  Marker(String),
 }
 
 struct ComputeRecord {
@@ -134,6 +137,9 @@ enum ComputeCommand {
     buffer: wgpu::Buffer,
     offset: u64,
   },
+  PushDebug(String),
+  PopDebug,
+  Marker(String),
 }
 
 struct BundleSlot {
@@ -453,6 +459,27 @@ impl GpuCommandEncoder {
     })
   }
 
+  fn push_debug_group(&self, label: String) -> Result<(), OpError> {
+    with_idle_encoder(self.id, |encoder| {
+      encoder.push_debug_group(&label);
+      Ok(())
+    })
+  }
+
+  fn pop_debug_group(&self) -> Result<(), OpError> {
+    with_idle_encoder(self.id, |encoder| {
+      encoder.pop_debug_group();
+      Ok(())
+    })
+  }
+
+  fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
+    with_idle_encoder(self.id, |encoder| {
+      encoder.insert_debug_marker(&label);
+      Ok(())
+    })
+  }
+
   fn finish(
     &self,
     scope: &mut v8::PinScope,
@@ -749,6 +776,18 @@ impl GpuRenderPass {
     self.push(PassCommand::Bundles(recorded))
   }
 
+  fn push_debug_group(&self, label: String) -> Result<(), OpError> {
+    self.push(PassCommand::PushDebug(label))
+  }
+
+  fn pop_debug_group(&self) -> Result<(), OpError> {
+    self.push(PassCommand::PopDebug)
+  }
+
+  fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
+    self.push(PassCommand::Marker(label))
+  }
+
   fn end(&self) -> Result<(), OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
@@ -908,6 +947,18 @@ impl GpuComputePass {
       buffer,
       offset: u64::from(offset),
     })
+  }
+
+  fn push_debug_group(&self, label: String) -> Result<(), OpError> {
+    self.push(ComputeCommand::PushDebug(label))
+  }
+
+  fn pop_debug_group(&self) -> Result<(), OpError> {
+    self.push(ComputeCommand::PopDebug)
+  }
+
+  fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
+    self.push(ComputeCommand::Marker(label))
   }
 
   fn end(&self) -> Result<(), OpError> {
@@ -1387,6 +1438,9 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
         width,
         height,
       } => pass.set_scissor_rect(*x, *y, *width, *height),
+      PassCommand::PushDebug(label) => pass.push_debug_group(label),
+      PassCommand::PopDebug => pass.pop_debug_group(),
+      PassCommand::Marker(label) => pass.insert_debug_marker(label),
     }
   }
 }
@@ -1419,6 +1473,9 @@ fn replay_compute(encoder: &mut wgpu::CommandEncoder, record: &ComputeRecord) {
       ComputeCommand::DispatchIndirect { buffer, offset } => {
         pass.dispatch_workgroups_indirect(buffer, *offset);
       }
+      ComputeCommand::PushDebug(label) => pass.push_debug_group(label),
+      ComputeCommand::PopDebug => pass.pop_debug_group(),
+      ComputeCommand::Marker(label) => pass.insert_debug_marker(label),
     }
   }
 }

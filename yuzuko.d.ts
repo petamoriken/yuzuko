@@ -99,6 +99,20 @@ interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUObjectBase {
   dispatchWorkgroups(workgroupCountX: GPUSize32, workgroupCountY?: GPUSize32, workgroupCountZ?: GPUSize32): void;
   dispatchWorkgroupsIndirect(indirectBuffer: GPUBuffer, indirectOffset: GPUSize64): void;
   end(): void;
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/pushDebugGroup)
+   */
+  pushDebugGroup(groupLabel: string): void;
+  /**
+   * An empty stack is a validation error, reported when `finish()` encodes the command buffer.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/popDebugGroup)
+   */
+  popDebugGroup(): void;
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/insertDebugMarker)
+   */
+  insertDebugMarker(markerLabel: string): void;
   setPipeline(pipeline: GPUComputePipeline): void;
 }
 
@@ -176,6 +190,10 @@ interface GPUQuerySet extends GPUObjectBase {
 
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
+/**
+ * Debug markers, `setViewport`, and `setScissorRect` are absent.
+ * wgpu 29 `RenderBundleEncoder` does not expose them.
+ */
 interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
@@ -9754,8 +9772,12 @@ declare function createImageBitmap(
  * is 1 or 4, and a color attachment may set `resolveTarget`. Storage texture
  * `access` may be `"read-only"`, `"read-write"`, or `"atomic"`. An access
  * the format does not allow is a validation error. `setViewport` and
- * `setScissorRect` are on the render pass. Debug markers, bundle viewport
- * and scissor, and `writeTimestamp` stay absent. `GPUQuerySet.destroy`
+ * `setScissorRect` are on the render pass. `pushDebugGroup`,
+ * `popDebugGroup`, and `insertDebugMarker` are on the command encoder, the
+ * render pass, and the compute pass. An empty pop is reported when
+ * `finish()` encodes the command buffer. A render bundle encoder does not
+ * expose debug markers, viewport, or scissor. `writeTimestamp` stays absent.
+ * `GPUQuerySet.destroy`
  * makes a later `resolveQuerySet` a validation error.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
@@ -10589,6 +10611,23 @@ interface GPUCommandEncoder {
   ): void;
 
   /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/pushDebugGroup)
+   */
+  pushDebugGroup(groupLabel: string): void;
+
+  /**
+   * An empty stack is a validation error, reported when `finish()` encodes this encoder.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/popDebugGroup)
+   */
+  popDebugGroup(): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/insertDebugMarker)
+   */
+  insertDebugMarker(markerLabel: string): void;
+
+  /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/finish)
    */
   finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
@@ -10651,8 +10690,10 @@ interface GPUCommandBufferDescriptor {
 /**
  * A render pass.
  *
- * `setViewport` and `setScissorRect` restrict later draws. Debug markers
- * are absent.
+ * `setViewport` and `setScissorRect` restrict later draws.
+ * `pushDebugGroup`, `popDebugGroup`, and `insertDebugMarker` are recorded
+ * and replayed when the pass ends. An empty pop is a validation error
+ * reported when the command encoder's `finish()` encodes that pass.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder)
  */
@@ -10752,6 +10793,23 @@ interface GPURenderPassEncoder {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/end) */
   end(): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/pushDebugGroup)
+   */
+  pushDebugGroup(groupLabel: string): void;
+
+  /**
+   * An empty stack is a validation error, reported when `finish()` encodes the command buffer.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/popDebugGroup)
+   */
+  popDebugGroup(): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/insertDebugMarker)
+   */
+  insertDebugMarker(markerLabel: string): void;
 }
 declare var GPURenderPassEncoder: {
   prototype: GPURenderPassEncoder;

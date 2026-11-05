@@ -1235,3 +1235,77 @@ Yuzuko.test("an imported video frame samples as an external texture", async () =
   assert(typeError, "external source");
   device.destroy();
 });
+
+Yuzuko.test("debug markers on the command encoder and on passes", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const encoder = device.createCommandEncoder();
+  encoder.pushDebugGroup("group");
+  encoder.insertDebugMarker("mark");
+  encoder.insertDebugMarker("");
+  encoder.popDebugGroup();
+  device.pushErrorScope("validation");
+  encoder.popDebugGroup();
+  encoder.finish();
+  const empty = await device.popErrorScope();
+  assert(empty instanceof GPUValidationError, "empty command pop");
+
+  const color = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const drawing = device.createCommandEncoder();
+  const pass = drawing.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.pushDebugGroup("draw");
+  pass.insertDebugMarker("here");
+  pass.popDebugGroup();
+  pass.end();
+  const compute = drawing.beginComputePass();
+  compute.pushDebugGroup("dispatch");
+  compute.insertDebugMarker("");
+  compute.popDebugGroup();
+  compute.end();
+  device.queue.submit([drawing.finish()]);
+
+  const late = device.createCommandEncoder();
+  const latePass = late.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      loadOp: "load",
+      storeOp: "store",
+    }],
+  });
+  device.pushErrorScope("validation");
+  latePass.popDebugGroup();
+  latePass.end();
+  late.finish();
+  const passError = await device.popErrorScope();
+  assert(passError instanceof GPUValidationError, "empty pass pop");
+
+  const computeEncoder = device.createCommandEncoder();
+  const lateCompute = computeEncoder.beginComputePass();
+  device.pushErrorScope("validation");
+  lateCompute.popDebugGroup();
+  lateCompute.end();
+  computeEncoder.finish();
+  const computeError = await device.popErrorScope();
+  assert(computeError instanceof GPUValidationError, "empty compute pop");
+
+  const bundle = device.createRenderBundleEncoder({
+    colorFormats: ["rgba8unorm"],
+  });
+  assert(typeof bundle.pushDebugGroup !== "function", "bundle markers");
+  assert(typeof bundle.setViewport !== "function", "bundle viewport");
+  bundle.finish();
+  device.destroy();
+});
