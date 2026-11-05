@@ -1225,6 +1225,13 @@ impl AudioDecoder {
   }
 }
 
+struct VideoColorInit {
+  primaries: Option<String>,
+  transfer: Option<String>,
+  matrix: Option<String>,
+  full_range: Option<bool>,
+}
+
 struct VideoChecked {
   supported: bool,
   codec: String,
@@ -1234,6 +1241,7 @@ struct VideoChecked {
   display_width: Option<u32>,
   display_height: Option<u32>,
   acceleration: Option<String>,
+  color_space: Option<VideoColorInit>,
 }
 
 struct AudioChecked {
@@ -1291,6 +1299,7 @@ fn check_video(
     Some(hint) => Some(acceleration_hint(scope, hint)?),
     None => None,
   };
+  let color_space = optional_color_space(scope, object)?;
   Ok(VideoChecked {
     supported: video_codec(&codec).is_some(),
     codec,
@@ -1300,7 +1309,28 @@ fn check_video(
     display_width,
     display_height,
     acceleration,
+    color_space,
   })
+}
+
+/// `colorSpace` on a `VideoDecoderConfig`. Omitted members stay null.
+fn optional_color_space(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<VideoColorInit>, OpError> {
+  let Some(value) = member(scope, object, "colorSpace") else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let color = dictionary(scope, value, "colorSpace")?;
+  Ok(Some(VideoColorInit {
+    primaries: color_enum(scope, color, "primaries", COLOR_PRIMARIES)?,
+    transfer: color_enum(scope, color, "transfer", COLOR_TRANSFER)?,
+    matrix: color_enum(scope, color, "matrix", COLOR_MATRIX)?,
+    full_range: color_bool(scope, color, "fullRange")?,
+  }))
 }
 
 fn check_audio(
@@ -1637,7 +1667,31 @@ fn video_support_object<'s>(
   if let Some(hint) = &checked.acceleration {
     set_string(scope, object, "hardwareAcceleration", hint);
   }
+  if let Some(color) = &checked.color_space {
+    let space = v8::Object::new(scope);
+    put_color_string(scope, space, "primaries", &color.primaries);
+    put_color_string(scope, space, "transfer", &color.transfer);
+    put_color_string(scope, space, "matrix", &color.matrix);
+    put_color_bool(scope, space, "fullRange", color.full_range);
+    set_value(scope, object, "colorSpace", space.into());
+  }
   object
+}
+
+fn put_color_bool(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: Option<bool>,
+) {
+  let js = match value {
+    Some(flag) => v8::Boolean::new(scope, flag).into(),
+    None => v8::null(scope).into(),
+  };
+  let Some(key) = v8::String::new(scope, name) else {
+    return;
+  };
+  object.set(scope, key.into(), js);
 }
 
 fn audio_support_object<'s>(

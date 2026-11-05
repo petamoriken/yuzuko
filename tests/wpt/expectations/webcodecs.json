@@ -448,7 +448,6 @@
       "Test low-latency decoding",
       "Test new flush after reset in a flush callback",
       "Test reset during flush",
-      "Test that isConfigSupported() returns a parsed configuration",
       "Test unconfigured VideoDecoder operations",
       "Verify reset() suppresses outputs",
       "VideoDecoder decodeQueueSize test"

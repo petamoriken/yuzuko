@@ -12675,8 +12675,9 @@ declare var VideoDecoder: {
    * Resolves `{ supported, config }` without opening a decoder and without
    * producing a frame. `supported` is true only for an `avc1` or `avc3`
    * codec string that `configure` accepts, and false for any other codec
-   * string. An invalid config rejects `TypeError`. Too few arguments reject
-   * `TypeError`.
+   * string. The returned `config` copies `colorSpace`; an omitted member is
+   * null. An unrecognized member is omitted. An invalid config rejects
+   * `TypeError`. Too few arguments reject `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/isConfigSupported)
    */
@@ -12698,6 +12699,10 @@ interface VideoDecoderConfig {
   codedHeight?: number;
   hardwareAcceleration?: HardwareAcceleration;
   optimizeForLatency?: boolean;
+  /**
+   * Copied by `isConfigSupported`. An omitted member is null.
+   */
+  colorSpace?: VideoColorSpaceInit;
 }
 
 /**
