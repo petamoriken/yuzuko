@@ -1499,24 +1499,16 @@ impl Context2D {
 
   #[getter]
   fn image_smoothing_quality(&self) -> Result<String, OpError> {
-    self.update(|drawing| {
-      Ok(if drawing.state.quality_low {
-        "low".to_string()
-      } else {
-        "medium".to_string()
-      })
-    })
+    self.update(|drawing| Ok(drawing.state.quality.as_str().to_string()))
   }
 
   #[setter]
   fn image_smoothing_quality(&self, value: String) -> Result<(), OpError> {
-    let low = match value.as_str() {
-      "low" => true,
-      "medium" | "high" => false,
-      _ => return Ok(()),
+    let Some(quality) = record::SmoothingQuality::parse(&value) else {
+      return Ok(());
     };
     self.update(|drawing| {
-      drawing.state.quality_low = low;
+      drawing.state.quality = quality;
       Ok(())
     })
   }

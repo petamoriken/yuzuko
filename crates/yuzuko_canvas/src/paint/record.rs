@@ -290,6 +290,33 @@ pub enum Style {
   Pattern(u64),
 }
 
+/// Canvas `imageSmoothingQuality`. `"low"` is nearest; the other two are linear.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SmoothingQuality {
+  Low,
+  Medium,
+  High,
+}
+
+impl SmoothingQuality {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "low" => Some(Self::Low),
+      "medium" => Some(Self::Medium),
+      "high" => Some(Self::High),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Low => "low",
+      Self::Medium => "medium",
+      Self::High => "high",
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
   pub transform: Affine,
@@ -303,7 +330,7 @@ pub struct State {
   pub dash: Vec<f64>,
   pub dash_offset: f64,
   pub smoothing: bool,
-  pub quality_low: bool,
+  pub quality: SmoothingQuality,
   pub font: FontDesc,
   pub align: Align,
   pub baseline: Baseline,
@@ -360,7 +387,7 @@ impl Default for State {
       dash: Vec::new(),
       dash_offset: 0.0,
       smoothing: true,
-      quality_low: true,
+      quality: SmoothingQuality::Low,
       font: FontDesc::default(),
       align: Align::Start,
       baseline: Baseline::Alphabetic,
@@ -391,9 +418,9 @@ impl State {
       .with_dashes(self.dash_offset, dash)
   }
 
-  /// `false`, or quality `"low"`, selects nearest. Other qualities are linear.
+  /// `false`, or quality `"low"`, selects nearest. `"medium"` and `"high"` are linear.
   pub fn nearest(&self) -> bool {
-    !self.smoothing || self.quality_low
+    !self.smoothing || self.quality == SmoothingQuality::Low
   }
 
   pub fn clips(&self) -> Arc<[Clip]> {

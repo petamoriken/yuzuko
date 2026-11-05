@@ -3311,16 +3311,8 @@
   "html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_enabled.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_enabled.worker.js": true,
-  "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.html": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
-  "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.worker.js": {
-    "expectedFailures": [
-      "check that the state is reset"
-    ]
-  },
+  "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.html": true,
+  "html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.state.letter_spacing.html": {
     "expectedFailures": [
       "check that the state is reset"
