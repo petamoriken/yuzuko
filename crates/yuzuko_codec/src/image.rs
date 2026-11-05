@@ -19,6 +19,9 @@ use crate::classes::VideoFrame;
 pub struct ImageDecoder {
   mime: String,
   to_srgb: bool,
+  desired_width: Option<u32>,
+  desired_height: Option<u32>,
+  prefer_animation: Option<bool>,
   closed: Cell<bool>,
   selected: Cell<bool>,
   /// Every encoded byte has arrived. This is not "the decode finished".
@@ -114,9 +117,15 @@ impl ImageDecoder {
     };
     let data = yuzuko_core::op::root(scope, data);
     let to_srgb = color_space_conversion(scope, init)?;
-    let _ = optional_bool(scope, init, "preferAnimation")?;
-    let _ = optional_ulong(scope, init, "desiredWidth")?;
-    let _ = optional_ulong(scope, init, "desiredHeight")?;
+    let prefer_animation = optional_bool(scope, init, "preferAnimation")?;
+    let desired_width = optional_ulong(scope, init, "desiredWidth")?;
+    let desired_height = optional_ulong(scope, init, "desiredHeight")?;
+    if desired_width == Some(0) {
+      return Err(OpError::type_("desiredWidth is out of range"));
+    }
+    if desired_height == Some(0) {
+      return Err(OpError::type_("desiredHeight is out of range"));
+    }
     if detached_source(scope, data) {
       return Err(OpError::type_("data is detached"));
     }
@@ -137,6 +146,9 @@ impl ImageDecoder {
     Ok(Self {
       mime,
       to_srgb,
+      desired_width,
+      desired_height,
+      prefer_animation,
       closed: Cell::new(false),
       selected: Cell::new(true),
       data_complete: Cell::new(bytes.is_some()),
@@ -342,7 +354,18 @@ impl ImageDecoder {
       return;
     }
     match result {
-      Ok(Ok(sequence)) => {
+      Ok(Ok(mut sequence)) => {
+        if let Err(message) = scale_sequence(
+          &mut sequence,
+          self.desired_width,
+          self.desired_height,
+        ) {
+          self.fail("EncodingError", &message);
+          self.settle_metadata(scope);
+          return;
+        }
+        // A file has one track, so the hint cannot select another.
+        let _ = (self.prefer_animation, sequence.animated);
         *self.sequence.borrow_mut() = Some(sequence);
         self.ready.set(true);
         if let Some(track) =
@@ -694,6 +717,27 @@ fn pixel_message(error: PixelError) -> String {
     PixelError::Empty => "The source image could not be decoded",
   }
   .to_string()
+}
+
+fn scale_sequence(
+  sequence: &mut Sequence,
+  width: Option<u32>,
+  height: Option<u32>,
+) -> Result<(), String> {
+  if width.is_none() && height.is_none() {
+    return Ok(());
+  }
+  for frame in &mut sequence.frames {
+    frame.raster = yuzuko_image::crop_resize(
+      &frame.raster,
+      None,
+      width,
+      height,
+      yuzuko_image::ResizeQuality::Triangle,
+    )
+    .map_err(pixel_message)?;
+  }
+  Ok(())
 }
 
 fn supported_type(mime: &str) -> bool {

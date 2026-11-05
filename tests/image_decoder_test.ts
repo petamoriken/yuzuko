@@ -281,3 +281,77 @@ Yuzuko.test("a non-detachable transfer throws DataCloneError", () => {
   }
   assert(clone, "cannot detach wasm memory");
 });
+
+Yuzuko.test("ImageDecoder desired size scales every frame", async () => {
+  const encoded = await bytes("corners.png");
+  const wide = new ImageDecoder({
+    type: "image/png",
+    data: encoded,
+    desiredWidth: 4,
+  });
+  const wideFrame = await wide.decode();
+  assert(wideFrame.image.displayWidth === 4, "width");
+  assert(wideFrame.image.displayHeight === 4, "height");
+  const wideBitmap = await createImageBitmap(wideFrame.image);
+  assert(wideBitmap.width === 4 && wideBitmap.height === 4, "bitmap");
+  wideBitmap.close();
+  wideFrame.image.close();
+  wide.close();
+
+  const exact = new ImageDecoder({
+    type: "image/png",
+    data: encoded,
+    desiredWidth: 4,
+    desiredHeight: 2,
+  });
+  const exactFrame = await exact.decode();
+  assert(exactFrame.image.displayWidth === 4, "exact width");
+  assert(exactFrame.image.displayHeight === 2, "exact height");
+  const exactBitmap = await createImageBitmap(exactFrame.image);
+  assert(exactBitmap.width === 4 && exactBitmap.height === 2, "exact bitmap");
+  exactBitmap.close();
+  exactFrame.image.close();
+  exact.close();
+
+  // 2×1 PNG. desiredWidth 3 rounds the other edge up from 1.5 to 2.
+  const strip = new Uint8Array([
+    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2,
+    0, 0, 0, 1, 8, 2, 0, 0, 0, 123, 64, 232, 221, 0, 0, 0, 13, 73, 68, 65, 84,
+    120, 156, 99, 248, 207, 0, 4, 255, 1, 7, 0, 1, 255, 226, 35, 158, 89, 0, 0,
+    0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+  ]);
+  const aspect = new ImageDecoder({
+    type: "image/png",
+    data: strip,
+    desiredWidth: 3,
+  });
+  const aspectFrame = await aspect.decode();
+  assert(aspectFrame.image.displayWidth === 3, "aspect width");
+  assert(aspectFrame.image.displayHeight === 2, "aspect height");
+  const aspectBitmap = await createImageBitmap(aspectFrame.image);
+  assert(aspectBitmap.width === 3 && aspectBitmap.height === 2, "aspect bitmap");
+  aspectBitmap.close();
+  aspectFrame.image.close();
+  aspect.close();
+
+  let zero = false;
+  try {
+    new ImageDecoder({
+      type: "image/png",
+      data: encoded,
+      desiredWidth: 0,
+    });
+  } catch (error) {
+    zero = error instanceof TypeError;
+  }
+  assert(zero, "desiredWidth 0");
+
+  const still = new ImageDecoder({
+    type: "image/png",
+    data: encoded,
+    preferAnimation: true,
+  });
+  await still.tracks.ready;
+  assert(still.tracks[0].animated === false, "one track");
+  still.close();
+});

@@ -12785,9 +12785,11 @@ interface AudioDecoderConfig {
  * sum of earlier durations and `duration` is that frame's delay, both in
  * microseconds. A still frame has `timestamp` 0 and `duration` null.
  * `createImageBitmap` uses the first frame. This decoder does not advance
- * frames. `desiredWidth`, `desiredHeight`, and `preferAnimation` do not
- * change the result. GIF is not supported. A decoder panic rejects
- * `EncodingError`.
+ * frames. `desiredWidth` and `desiredHeight` scale every frame with a
+ * triangle filter. One of them preserves aspect ratio by rounding the other
+ * edge up. Both set the exact size. A value of 0 throws `TypeError`.
+ * `preferAnimation` does not select another track, because a file has one
+ * track. GIF is not supported. A decoder panic rejects `EncodingError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder)
  */
