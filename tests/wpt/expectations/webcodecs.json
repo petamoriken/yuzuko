@@ -19,6 +19,13 @@
       "Verify unconfigured AudioDecoder operations"
     ]
   },
+  "webcodecs/audio-encoder-aac-description.html": {
+    "expectedFailures": [
+      "The decoderConfig of an AAC encoder can be used to configure an AudioDecoder",
+      "The description of a 44100Hz stereo AAC encoder is an AudioSpecificConfig",
+      "The description of a 48000Hz mono AAC encoder is an AudioSpecificConfig"
+    ]
+  },
   "webcodecs/audio-encoder-codec-specific.https.any.js": {
     "expectedFailures": [
       "Test Opus valid frame durations.",
@@ -370,9 +377,29 @@
   },
   "webcodecs/video-encoder-orientation.https.any.js": {
     "expectedFailures": [
+      "A frame rejected for its orientation does not prevent matching frames from being encoded",
+      "A new decoderConfig is given when the orientation of the encoded frames changes after a configure() that changes more than the bitrate",
+      "A new decoderConfig is given when the orientation of the encoded frames changes after a configure() that changes only the bitrate",
       "Encode video frame with orientation",
       "Encode video frames with different orientation has non-fatal failures",
-      "Encode video frames with different orientations after reconfigure"
+      "Encode video frames with different orientations after reconfigure",
+      "Encoding a frame without orientation after a frame with an orientation throws a DataError",
+      "Encoding a rotated frame after a frame without orientation throws a DataError",
+      "The decoderConfig has the normalized rotation of the frames",
+      "The decoderConfig of an encoder fed with frames with a rotation of 0 and flip false has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 0 and flip true has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 180 and flip false has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 180 and flip true has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 270 and flip false has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 270 and flip true has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 90 and flip false has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames with a rotation of 90 and flip true has the rotation and flip",
+      "The decoderConfig of an encoder fed with frames without orientation has no rotation and no flip",
+      "The decoderConfig of an output describes the orientation of its frame, not the orientation set by a later configure() that changes more than the bitrate",
+      "The decoderConfig of an output describes the orientation of its frame, not the orientation set by a later configure() that changes only the bitrate",
+      "The decoderConfig of an output does not depend on the timestamp of its frame with a configure() that changes more than the bitrate",
+      "The decoderConfig of an output does not depend on the timestamp of its frame with a configure() that changes only the bitrate",
+      "configure() resets the orientation expected by the encoder"
     ]
   },
   "webcodecs/video-encoder-rescaling.https.any.js": false,
@@ -489,6 +516,7 @@
       "copyTo from canvas-backed VideoFrame returns correct pixels for all rows"
     ]
   },
+  "webcodecs/videoFrame-copyTo-chroma-subsampling.any.js": true,
   "webcodecs/videoFrame-copyTo-opaque-swizzle.https.any.js": {
     "expectedFailures": [
       "Decoded frame opaque-to-alpha copyTo writes all rows"
@@ -526,8 +554,50 @@
       "drawImage(VideoFrame) with canvas(48x36 display-p3 uint8)."
     ]
   },
+  "webcodecs/videoFrame-encode-preserves-input.crossOrigin.helper.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-encode-preserves-input.crossOrigin.https.html": {
+    "ignore": true
+  },
+  "webcodecs/videoFrame-encode-preserves-input.https.any.js": {
+    "expectedFailures": [
+      "Encoding a I420 VideoFrame with avc1.42001E preserves its input pixels",
+      "Encoding a I420 VideoFrame with vp8 preserves its input pixels",
+      "Encoding a NV12 VideoFrame with avc1.42001E preserves its input pixels",
+      "Encoding a NV12 VideoFrame with vp8 preserves its input pixels",
+      "Encoding a RGBA VideoFrame with avc1.42001E preserves its input pixels",
+      "Encoding a RGBA VideoFrame with vp8 preserves its input pixels"
+    ]
+  },
   "webcodecs/videoFrame-metadata-rtpTimestamp.https.html": true,
   "webcodecs/videoFrame-odd-size.any.js": true,
+  "webcodecs/videoFrame-orientation-drawImage.any.js": true,
+  "webcodecs/videoFrame-orientation-imageBitmap.any.js": true,
+  "webcodecs/videoFrame-orientation-webgl-i420.window.js": {
+    "expectedFailures": [
+      "texImage2D() of a 0 degrees rotated I420 VideoFrame",
+      "texImage2D() of a 0 degrees rotated and flipped I420 VideoFrame",
+      "texImage2D() of a 180 degrees rotated I420 VideoFrame",
+      "texImage2D() of a 180 degrees rotated and flipped I420 VideoFrame",
+      "texImage2D() of a 270 degrees rotated I420 VideoFrame",
+      "texImage2D() of a 270 degrees rotated and flipped I420 VideoFrame",
+      "texImage2D() of a 90 degrees rotated I420 VideoFrame",
+      "texImage2D() of a 90 degrees rotated and flipped I420 VideoFrame"
+    ]
+  },
+  "webcodecs/videoFrame-orientation-webgl.window.js": {
+    "expectedFailures": [
+      "texImage2D() of a 0 degrees rotated VideoFrame",
+      "texImage2D() of a 0 degrees rotated and flipped VideoFrame",
+      "texImage2D() of a 180 degrees rotated VideoFrame",
+      "texImage2D() of a 180 degrees rotated and flipped VideoFrame",
+      "texImage2D() of a 270 degrees rotated VideoFrame",
+      "texImage2D() of a 270 degrees rotated and flipped VideoFrame",
+      "texImage2D() of a 90 degrees rotated VideoFrame",
+      "texImage2D() of a 90 degrees rotated and flipped VideoFrame"
+    ]
+  },
   "webcodecs/videoFrame-orientation.any.js": true,
   "webcodecs/videoFrame-rgbx-imageBitmap.any.js": true,
   "webcodecs/videoFrame-rgbx-webgl.window.js": {
@@ -559,6 +629,19 @@
       "texImage2D() of a cloned RGBX VideoFrame is opaque"
     ]
   },
+  "webcodecs/videoFrame-rotation.any.js": {
+    "expectedFailures": [
+      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of -1.7976931348623157e+308",
+      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 1.7976931348623157e+308",
+      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 100000000000000000",
+      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 100000000000000000000",
+      "A VideoFrame created from a rotated VideoFrame can also change the visible rect",
+      "An init rotation of -1.7976931348623157e+308 gives a VideoFrame rotation of 270",
+      "An init rotation of 1.7976931348623157e+308 gives a VideoFrame rotation of 90",
+      "An init rotation of 100000000000000000 gives a VideoFrame rotation of 270",
+      "An init rotation of 100000000000000000000 gives a VideoFrame rotation of 270"
+    ]
+  },
   "webcodecs/videoFrame-serialization.crossAgentCluster.helper.html": {
     "ignore": true
   },
@@ -576,6 +659,20 @@
       "texSubImage2D with 480x360 srgb VideoFrame.",
       "texSubImage2D with 48x36 srgb VideoFrame.",
       "texSubImage2D with a closed VideoFrame."
+    ]
+  },
+  "webcodecs/vp9-codec-string-profile-constraints.https.any.js": {
+    "expectedFailures": [
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00 (missing level and bit depth)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10 (missing bit depth)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10.08.02 (profile 0 with 4:2:2)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10.08.03 (profile 0 with 4:4:4)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10.09 (invalid bit depth)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10.10 (profile 0 with 10-bit)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.00.10.12 (profile 0 with 12-bit)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.02.10.08 (profile 2 with 8-bit)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.02.10.10.02 (profile 2 with 4:2:2)",
+      "VideoEncoder.isConfigSupported() doesn't support vp09.02.10.10.03 (profile 2 with 4:4:4)"
     ]
   }
 }

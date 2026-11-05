@@ -21,6 +21,18 @@
       "anticipatedConcurrentIncomingUnidirectionalStreams setter rejects out-of-range values"
     ]
   },
+  "webtransport/anticipated-streams.https.any.js": {
+    "expectedFailures": [
+      "WebTransportOptions enforces limits on min/maximum anticipated streams",
+      "anticipatedConcurrentIncoming* attributes should accept 0",
+      "anticipatedConcurrentIncoming* attributes should be mutable",
+      "anticipatedConcurrentIncoming* attributes should persist after session close",
+      "anticipatedConcurrentIncoming* attributes should throw on invalid u16 values",
+      "server can create 1000 anticipated unidirectional streams",
+      "server can create 2000 anticipated bidirectional streams",
+      "server can create anticipated number of unidirectional and bidirectional streams"
+    ]
+  },
   "webtransport/back-forward-cache-with-closed-webtransport-connection-ccns.https.tentative.window.js": {
     "expectedFailures": [
       ""
@@ -87,6 +99,9 @@
       "WebTransport session is established with status code 204"
     ]
   },
+  "webtransport/constructor-certificate-hashes.https.sub.any.js": {
+    "ignore": true
+  },
   "webtransport/constructor-sharedarraybuffer.https.any.js": {
     "expectedFailures": [
       "WebTransport constructor should reject serverCertificateHashes value of type 'SharedArrayBuffer'",
@@ -120,10 +135,11 @@
       "WebTransportDatagramsWritable can write and receive datagrams",
       "WebTransportDatagramsWritable can write max-size datagrams",
       "WebTransportDatagramsWritable writer.ready works correctly",
+      "createWritable checks the sendGroup before the transport state",
       "createWritable respects sendOrder option",
       "createWritable returns WebTransportDatagramsWritable which extends WritableStream",
       "createWritable throws InvalidStateError on closed transport",
-      "createWritable throws InvalidStateError when sendGroup is from different transport",
+      "createWritable throws TypeError when sendGroup is from different transport",
       "multiple WebTransportDatagramsWritable streams can be created",
       "multiple writes through WebTransportDatagramsWritable work correctly",
       "sendGroup attribute can be get and set",
@@ -228,10 +244,29 @@
       "Bytes received before any read are given to later reads"
     ]
   },
+  "webtransport/receive-stream-stats.https.any.js": {
+    "expectedFailures": [
+      "getStats() preserves partial BYOB read counters after cancellation",
+      "getStats() reports finalized client-initiated bidirectional stream counters",
+      "getStats() reports finalized incoming bidirectional stream counters",
+      "getStats() reports finalized incoming unidirectional stream counters"
+    ]
+  },
   "webtransport/reliability.https.any.js": true,
   "webtransport/reliability.https.window.js": {
     "expectedFailures": [
       "WebTransport reliability transitions when the connection is ready"
+    ]
+  },
+  "webtransport/response-headers.https.any.js": {
+    "expectedFailures": [
+      "responseHeaders is immutable",
+      "wt-protocol is stripped from responseHeaders"
+    ]
+  },
+  "webtransport/send-stream-stats.https.any.js": {
+    "expectedFailures": [
+      "getStats() reports active and finalized send stream and group counters"
     ]
   },
   "webtransport/sendgroup.https.any.js": {
@@ -280,6 +315,21 @@
       "WebTransport client should throw an error when stats are requested for a failed connection"
     ]
   },
+  "webtransport/stream-stats.https.any.js": {
+    "expectedFailures": [
+      "WebTransportReceiveStream.getStats() is monotonically non-decreasing",
+      "WebTransportReceiveStream.getStats() returns a valid stats object",
+      "WebTransportReceiveStream.getStats() returns zero stats before any data arrives",
+      "WebTransportReceiveStream.getStats() tracks bytes read by the application",
+      "WebTransportSendGroup.getStats() aggregates bytesWritten from all grouped streams",
+      "WebTransportSendGroup.getStats() excludes streams not in the group",
+      "WebTransportSendGroup.getStats() matches the single stream it contains",
+      "WebTransportSendGroup.getStats() returns zero stats for an empty group",
+      "WebTransportSendStream.getStats() bytesWritten is monotonically non-decreasing",
+      "WebTransportSendStream.getStats() returns a valid stats object",
+      "WebTransportSendStream.getStats() tracks bytes written by the application"
+    ]
+  },
   "webtransport/streams-close.https.any.js": {
     "expectedFailures": [
       "Abort client-created bidirectional stream",
@@ -306,6 +356,16 @@
       "WebTransport client should be able to create, accept, and handle a unidirectional stream",
       "WebTransport client should be able to create, accept, and handle a unidirectional stream without waiting for ready",
       "WebTransport server should be able to accept and handle a bidirectional stream"
+    ]
+  },
+  "webtransport/streams-reset-bidi-keeps-writing.https.any.js": {
+    "expectedFailures": [
+      "RESET_STREAM from the server leaves the send half of a bidirectional stream writable"
+    ]
+  },
+  "webtransport/streams-stop-sending-bidi-keeps-reading.https.any.js": {
+    "expectedFailures": [
+      "STOP_SENDING from the server leaves the receive half of a bidirectional stream readable"
     ]
   }
 }

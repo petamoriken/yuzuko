@@ -361,7 +361,6 @@
       "ToASCII(\"xn--57e237h.xn--5sa649la993427a\") C2; V7",
       "ToASCII(\"xn--57e237h.xn--5sa98523p\") V7",
       "ToASCII(\"xn--5cb172r175fug38a.xn--0uga051h\") C1",
-      "ToASCII(\"xn--5cb172r175fug38a.xn--mlj\")",
       "ToASCII(\"xn--5cb347co96jug15a.xn--2nd\") V7",
       "ToASCII(\"xn--5cb347co96jug15a.xn--2nd059ea\") C1; V7",
       "ToASCII(\"xn--6,-7i3c..xn--0f9ao925c\") V7; U1 (ignored); A4_2 (ignored)",
@@ -664,7 +663,6 @@
       "ToASCII(\"xn--t546e.xn--hdh5166o\") V7",
       "ToASCII(\"xn--t8c.xn--iz4a43209d\") V6; V7",
       "ToASCII(\"xn--t8c059f.xn--iz4a43209d\") C2; V6; V7",
-      "ToASCII(\"xn--t92s.xn--znb.xn--5-y88f\")",
       "ToASCII(\"xn--t960e.-5ss\") V7; V3 (ignored)",
       "ToASCII(\"xn--t960e.xn---5-hia\") V7; V3 (ignored)",
       "ToASCII(\"xn--tbg.xn--11-5o7k.1.xn--k469f\") V7",
@@ -760,14 +758,7 @@
       "ToASCII(\"xn--zed54dz10wo343g.xn--nnd651i\") V7",
       "ToASCII(\"xn--zi9a.\") V6; A4_2 (ignored)",
       "ToASCII(\"xn--zi9a.xn--1ug\") C2; V6",
-      "ToASCII(\"xn--zxf.xn--fx7ho0250c\") V6; V7",
-      "ToASCII(\"Ⴍ𿣍ꡨ֮.Ⴞ\")",
-      "ToASCII(\"Ⴍ𿣍ꡨ֮.ⴞ\")",
-      "ToASCII(\"ⴍ𿣍ꡨ֮.ⴞ\")",
-      "ToASCII(\"𾢬.ܩ.쯙5\")",
-      "ToASCII(\"𾢬.ܩ.쯙5\")",
-      "ToASCII(\"𾢬。ܩ。쯙5\")",
-      "ToASCII(\"𾢬。ܩ。쯙5\")"
+      "ToASCII(\"xn--zxf.xn--fx7ho0250c\") V6; V7"
     ]
   },
   "url/a-element-origin-xhtml.xhtml": {

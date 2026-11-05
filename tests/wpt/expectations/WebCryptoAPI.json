@@ -27,6 +27,7 @@
   "WebCryptoAPI/derive_bits_keys/pbkdf2.https.any.js": true,
   "WebCryptoAPI/digest/digest.https.any.js": true,
   "WebCryptoAPI/encrypt_decrypt/aes_cbc.https.any.js": true,
+  "WebCryptoAPI/encrypt_decrypt/aes_cbc_invalid_length.https.any.js": true,
   "WebCryptoAPI/encrypt_decrypt/aes_ctr.https.any.js": true,
   "WebCryptoAPI/encrypt_decrypt/aes_gcm.https.any.js": true,
   "WebCryptoAPI/encrypt_decrypt/aes_gcm_256_iv.https.any.js": true,
@@ -531,5 +532,6 @@
   "WebCryptoAPI/sign_verify/hmac.https.any.js": true,
   "WebCryptoAPI/sign_verify/rsa_pkcs.https.any.js": true,
   "WebCryptoAPI/sign_verify/rsa_pss.https.any.js": true,
+  "WebCryptoAPI/wrapKey_unwrapKey/aes_kw_unwrapKey_failures.https.any.js": true,
   "WebCryptoAPI/wrapKey_unwrapKey/wrapKey_unwrapKey.https.any.js": true
 }

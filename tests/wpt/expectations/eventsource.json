@@ -27,6 +27,13 @@
   "eventsource/eventsource-request-cancellation.window.js": false,
   "eventsource/eventsource-url.any.js": true,
   "eventsource/format-bom-2.any.js": true,
+  "eventsource/format-bom-split.any.js": true,
+  "eventsource/format-bom-utf-16.any.js": {
+    "expectedFailures": [
+      "EventSource: UTF-16BE byte order mark is not used",
+      "EventSource: UTF-16LE byte order mark is not used"
+    ]
+  },
   "eventsource/format-bom.any.js": true,
   "eventsource/format-comments.any.js": true,
   "eventsource/format-data-before-final-empty-line.any.js": true,
@@ -36,8 +43,10 @@
   "eventsource/format-field-id-2.any.js": true,
   "eventsource/format-field-id-3.window.js": true,
   "eventsource/format-field-id-null.window.js": true,
+  "eventsource/format-field-id-redirect.any.js": true,
   "eventsource/format-field-id.any.js": true,
   "eventsource/format-field-parsing.any.js": true,
+  "eventsource/format-field-retry-bogus-2.any.js": true,
   "eventsource/format-field-retry-bogus.any.js": true,
   "eventsource/format-field-retry-empty.any.js": true,
   "eventsource/format-field-retry.any.js": true,

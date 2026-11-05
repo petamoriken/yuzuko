@@ -525,11 +525,7 @@
     ]
   },
   "websockets/opening-handshake/003.html": true,
-  "websockets/opening-handshake/005.html": {
-    "expectedFailures": [
-      "005"
-    ]
-  },
+  "websockets/opening-handshake/005.html": false,
   "websockets/opening-handshake/006.html": true,
   "websockets/opening-handshake/received-301-code.html": {
     "expectedFailures": [

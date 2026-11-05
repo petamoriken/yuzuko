@@ -247,6 +247,12 @@
   "pointerevents/pointerevent_boundary_events_before_pointerrawupdate.https.html": {
     "ignore": true
   },
+  "pointerevents/pointerevent_boundary_events_cross_document_same_origin.tentative.html": {
+    "ignore": true
+  },
+  "pointerevents/pointerevent_boundary_events_cross_origin.html": {
+    "ignore": true
+  },
   "pointerevents/pointerevent_boundary_events_in_capturing.html": {
     "ignore": true
   },

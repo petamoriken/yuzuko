@@ -9,6 +9,7 @@
   "encoding/bom-handling.html": {
     "ignore": true
   },
+  "encoding/encodeInto-tail-unmodified.any.js": true,
   "encoding/encodeInto.any.js": true,
   "encoding/eof-shift_jis-ref.html": {
     "ignore": true

@@ -26,7 +26,13 @@
   "streams/queuing-strategies.any.js": true,
   "streams/readable-byte-streams/bad-buffers-and-views.any.js": true,
   "streams/readable-byte-streams/construct-byob-request.any.js": true,
+  "streams/readable-byte-streams/crashtests/from-cross-realm-error.html": {
+    "ignore": true
+  },
   "streams/readable-byte-streams/crashtests/from-cross-realm.html": {
+    "ignore": true
+  },
+  "streams/readable-byte-streams/crashtests/tee-from-scroll-crash.html": {
     "ignore": true
   },
   "streams/readable-byte-streams/crashtests/tee-locked-stream.any.js": true,

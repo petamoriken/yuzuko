@@ -84,11 +84,7 @@
   "html/canvas/offscreen/2d.conformance.requirements.basics.worker.js": true,
   "html/canvas/offscreen/2d.conformance.requirements.missingargs.html": true,
   "html/canvas/offscreen/2d.conformance.requirements.missingargs.worker.js": true,
-  "html/canvas/offscreen/OffscreenCanvas-ctx-font-sibling-index-invalid.tentative.html": {
-    "expectedFailures": [
-      "OffscreenCanvas ctx.font should ignore element-dependent calc and preserve previous value"
-    ]
-  },
+  "html/canvas/offscreen/OffscreenCanvas-ctx-font-sibling-index-invalid.tentative.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.arguments.missing.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.arguments.missing.worker.js": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.casesensitive.html": true,
@@ -251,7 +247,11 @@
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.xor.worker.js": true,
@@ -425,7 +425,11 @@
   "html/canvas/offscreen/compositing/2d.composite.image.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
   "html/canvas/offscreen/compositing/2d.composite.image.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.image.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.xor.worker.js": true,
@@ -491,7 +495,11 @@
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": true,
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.xor.worker.js": true,
@@ -561,16 +569,8 @@
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.canvas.worker.js": true,
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.clip.html": true,
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.clip.worker.js": true,
-  "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.composite.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.composite.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.composite.html": true,
+  "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.composite.worker.js": true,
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.floatsource.html": true,
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.floatsource.worker.js": true,
   "html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.negativedest.html": true,
@@ -615,32 +615,16 @@
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.clip.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalalpha.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalalpha.worker.js": true,
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.html": {
-    "expectedFailures": [
-      "clearRect is not affected by globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.worker.js": {
-    "expectedFailures": [
-      "clearRect is not affected by globalCompositeOperation"
-    ]
-  },
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.html": true,
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.negative.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.negative.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.nonfinite.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.nonfinite.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.path.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.path.worker.js": true,
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.html": {
-    "expectedFailures": [
-      "clearRect does not draw shadows"
-    ]
-  },
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.worker.js": {
-    "expectedFailures": [
-      "clearRect does not draw shadows"
-    ]
-  },
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.html": true,
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.transform.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.transform.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.zero.html": true,
@@ -655,16 +639,8 @@
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.nonfinite.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.path.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.path.worker.js": true,
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html": {
-    "expectedFailures": [
-      "fillRect draws shadows"
-    ]
-  },
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.worker.js": {
-    "expectedFailures": [
-      "fillRect draws shadows"
-    ]
-  },
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html": true,
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.transform.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.transform.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.zero.html": true,
@@ -675,32 +651,16 @@
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.clip.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalalpha.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalalpha.worker.js": true,
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.html": {
-    "expectedFailures": [
-      "strokeRect is not affected by globalCompositeOperation"
-    ]
-  },
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.worker.js": {
-    "expectedFailures": [
-      "strokeRect is not affected by globalCompositeOperation"
-    ]
-  },
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.html": true,
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.negative.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.negative.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.nonfinite.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.nonfinite.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.path.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.path.worker.js": true,
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html": {
-    "expectedFailures": [
-      "strokeRect draws shadows"
-    ]
-  },
-  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.worker.js": {
-    "expectedFailures": [
-      "strokeRect draws shadows"
-    ]
-  },
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html": true,
+  "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.transform.html": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.transform.worker.js": true,
   "html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.1.html": true,
@@ -1247,8 +1207,16 @@
       "2d"
     ]
   },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.worker.js": {
+    "expectedFailures": [
+      "2d"
+    ]
+  },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html": {
     "expectedFailures": [
       ""
@@ -1269,8 +1237,16 @@
       "2d"
     ]
   },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html": {
+    "expectedFailures": [
+      ""
+    ]
+  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.worker.js": {
+    "expectedFailures": [
+      "2d"
+    ]
+  },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.nonfinite.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.nonfinite.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.transform.1.html": true,
@@ -1343,6 +1319,15 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.3.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.3.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat.w.html": {
+    "ignore": true
+  },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.relativecolor.html": {
     "expectedFailures": [
       "Relative color works as CanvasGradient color input"
@@ -2557,6 +2542,9 @@
       "Test that webglcontext.canvas should return the original OffscreenCanvas"
     ]
   },
+  "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.placeholder.size.html": {
+    "ignore": true
+  },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.resize.html": {
     "ignore": true
   },
@@ -2775,6 +2763,14 @@
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.edge.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.empty.html": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.empty.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.path2d.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.path2d.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.transform.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.transform.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.winding.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.winding.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nonfinite.html": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.nonfinite.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.outside.html": true,
@@ -2795,6 +2791,12 @@
   "html/canvas/offscreen/path-objects/2d.path.isPointInPath.winding.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.basic.html": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.basic.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.path2d.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.path2d.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.transform.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.transform.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.scaleddashes.html": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInStroke.scaleddashes.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.isPointInpath.invalid.html": true,
@@ -3123,16 +3125,8 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.outside.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.size.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.size.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.unaffected.html": {
-    "expectedFailures": [
-      "getImageData() is not affected by context state"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.unaffected.worker.js": {
-    "expectedFailures": [
-      "getImageData() is not affected by context state"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.unaffected.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.unaffected.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.zero.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.zero.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.object.clamp.html": true,
@@ -3205,16 +3199,8 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.null.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.path.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.path.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.html": {
-    "expectedFailures": [
-      "putImageData() is not affected by context state"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.worker.js": {
-    "expectedFailures": [
-      "putImageData() is not affected by context state"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unchanged.html": {
     "expectedFailures": [
       "putImageData(getImageData(...), ...) has no effect"
@@ -3565,75 +3551,39 @@
   "html/canvas/offscreen/text/2d.text.draw.align.center.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.center.worker.js": {
-    "expectedFailures": [
-      "textAlign center is the center of the em squares (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.center.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.end.ltr.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.end.ltr.worker.js": {
-    "expectedFailures": [
-      "textAlign end with ltr is the right edge"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.end.ltr.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.end.rtl.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.end.rtl.worker.js": {
-    "expectedFailures": [
-      "textAlign end with rtl is the left edge"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.end.rtl.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.left.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.left.worker.js": {
-    "expectedFailures": [
-      "textAlign left is the left of the first em square (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.left.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.right.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.right.worker.js": {
-    "expectedFailures": [
-      "textAlign right is the right of the last em square (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.right.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.start.ltr.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.start.ltr.worker.js": {
-    "expectedFailures": [
-      "textAlign start with ltr is the left edge"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.start.ltr.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.start.rtl.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.align.start.rtl.worker.js": {
-    "expectedFailures": [
-      "textAlign start with rtl is the right edge"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.align.start.rtl.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.alphabetic.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.baseline.alphabetic.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.baseline.alphabetic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.bottom.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.baseline.bottom.worker.js": {
-    "expectedFailures": [
-      "textBaseline bottom is the bottom of the em square (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.baseline.bottom.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.hanging.html": {
     "ignore": true
   },
@@ -3653,19 +3603,11 @@
   "html/canvas/offscreen/text/2d.text.draw.baseline.middle.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.baseline.middle.worker.js": {
-    "expectedFailures": [
-      "textBaseline middle is the middle of the em square (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.baseline.middle.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.top.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.baseline.top.worker.js": {
-    "expectedFailures": [
-      "textBaseline top is the top of the em square (not the bounding box)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.baseline.top.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.basic-manual.html": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.basic-manual.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.NaN.html": true,
@@ -3673,19 +3615,11 @@
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.worker.js": {
-    "expectedFailures": [
-      "fillText handles maxWidth based on line size, not bounding box size"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.worker.js": {
-    "expectedFailures": [
-      "fillText works on @font-face fonts"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.large-manual.html": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.large-manual.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.negative.html": true,
@@ -3704,74 +3638,38 @@
   "html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.worker.js": {
-    "expectedFailures": [
-      "@font-face fonts should work even if they are not used in the page"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fontface.repeat.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.fontface.repeat.worker.js": {
-    "expectedFailures": [
-      "Draw with the font immediately, then wait a bit until and draw again. (This crashes some version of WebKit.)"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.draw.fontface.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.fontface.repeat.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.draw.fontface.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.kern.consistent-manual.html": true,
   "html/canvas/offscreen/text/2d.text.draw.kern.consistent-manual.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.basic.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.basic.worker.js": {
-    "expectedFailures": [
-      "U+0020 is rendered the correct size (1em wide)"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.basic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.end.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.collapse.end.worker.js": {
-    "expectedFailures": [
-      "Space characters at the end of a line are NOT collapsed"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.collapse.end.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.nonspace.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.collapse.nonspace.worker.js": {
-    "expectedFailures": [
-      "Non-space characters are not converted to U+0020 and collapsed"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.collapse.nonspace.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.other.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.collapse.other.worker.js": {
-    "expectedFailures": [
-      "Space characters are converted to U+0020, and are NOT collapsed"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.collapse.other.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.space.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.collapse.space.worker.js": {
-    "expectedFailures": [
-      "Space characters are converted to U+0020, and are NOT collapsed"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.collapse.space.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.start.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.draw.space.collapse.start.worker.js": {
-    "expectedFailures": [
-      "Space characters at the start of a line are NOT collapsed"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.draw.space.collapse.start.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.stroke.basic-manual.html": true,
   "html/canvas/offscreen/text/2d.text.draw.stroke.basic-manual.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.stroke.unaffected.html": true,
@@ -4107,11 +4005,7 @@
   "html/canvas/offscreen/text/2d.text.measure.emHeights.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.emHeights.worker.js": {
-    "expectedFailures": [
-      "Testing emHeights"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.emHeights.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-align.tentative-expected.html": {
     "ignore": true
   },
@@ -4151,27 +4045,15 @@
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.worker.js": {
-    "expectedFailures": [
-      "Test that fillTextCluster() correctly applies the options passed as a dictionary."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.worker.js": {
-    "expectedFailures": [
-      "Test that getTextClusters() and fillTextCluster() correctly render different ranges of the input text."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.worker.js": {
-    "expectedFailures": [
-      "Testing fontBoundingBox for OffscreenCanvas with reduced ascent metric"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.html": {
     "ignore": true
   },
@@ -4183,19 +4065,11 @@
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.worker.js": {
-    "expectedFailures": [
-      "Testing fontBoundingBox for font ahem"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.worker.js": {
-    "expectedFailures": [
-      "Testing fontBoundingBox measurements"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": {
     "expectedFailures": [
       "Check that TextMetrics::getActualBoundingBox() throws when using invalid indexes."
@@ -4238,11 +4112,7 @@
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.worker.js": {
-    "expectedFailures": [
-      "Test the edge cases for getIndexFromOffset, where the point is at the edge of glyph and at the midpoint."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset.tentative.html": {
@@ -4254,11 +4124,7 @@
   "html/canvas/offscreen/text/2d.text.measure.lang.inherit.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.lang.worker.js": {
-    "expectedFailures": [
-      "Testing the lang attribute"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.lang.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": {
@@ -4313,19 +4179,11 @@
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.worker.js": {
-    "expectedFailures": [
-      "Test that strokeTextCluster() correctly applies the options passed as a dictionary."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": {
-    "expectedFailures": [
-      "Test that getTextClusters() and strokeTextCluster() correctly render different ranges of the input text."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": {
     "expectedFailures": [
       "Check that TextMetrics::getTextClusters() throws when using invalid indexes."
@@ -4339,29 +4197,17 @@
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.worker.js": {
-    "expectedFailures": [
-      "Test that TextMetrics::getTextClusters() returns clusters that are positioned according to the target align and baseline passed as options."
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.basic.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.width.basic.worker.js": {
-    "expectedFailures": [
-      "The width of character is same as font used"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.width.basic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.empty.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/text/2d.text.measure.width.empty.worker.js": {
-    "expectedFailures": [
-      "The empty string has zero width"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.width.empty.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.nullCharacter.html": {
     "ignore": true
   },
@@ -4380,6 +4226,231 @@
   },
   "html/canvas/offscreen/text/2d.text.setFont.mathFont.html": true,
   "html/canvas/offscreen/text/2d.text.setFont.mathFont.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that ShapedText::actualBoundingBox() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that ShapedText::actualBoundingBox() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-full-text.tentative.html": {
+    "expectedFailures": [
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-full-text.tentative.worker.js": {
+    "expectedFailures": [
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
+      "Test ShapedText::actualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox.tentative.worker.js": false,
+  "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edge-cases.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edge-cases.tentative.worker.js": {
+    "expectedFailures": [
+      "Test the edge cases for advanceToPosition, where the point is at the edge of glyph and at the midpoint."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edges.tentative.html": {
+    "expectedFailures": [
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align center.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align end.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align left.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align right.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align start.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align center.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align end.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align left.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align right.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align start."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edges.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align center.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align end.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align left.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align right.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction ltr and text align start.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align center.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align end.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align left.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align right.",
+      "Check that ShapedText::advanceToPosition() gives correct edges when the requested point is outside the range, with direction rtl and text align start."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.advance-to-position.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-range.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-range.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that glyphClusters(start, end) and fillGlyphRuns() correctly render different ranges of the input text."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that ShapedText::glyphClusters() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that ShapedText::glyphClusters() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-position.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-position.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that ShapedText::glyphClusters() and ShapedText::glyphRuns() return GlyphRun objects positioned according to the context textAlign and textBaseline at shapeText() time, and expose per-run TextMetrics."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-split.tentative.html": {
+    "expectedFailures": [
+      "Test that glyphClusters() splits the input correctly into the minimal clusters, keeping emojis together."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-split.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that glyphClusters() splits the input correctly into the minimal clusters, keeping emojis together."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.position-to-advance.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.position-to-advance.tentative.worker.js": {
+    "expectedFailures": [
+      "Test ShapedText::positionToAdvance() and its symmetry with advanceToPosition() and glyphClusters()."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.selection-rects-baselines.tentative.html": {
+    "expectedFailures": [
+      "Check that ShapedText::selectionRects() works correctly with textBaseline."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.selection-rects-baselines.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that ShapedText::selectionRects() works correctly with textBaseline."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.selection-rects-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that ShapedText::selectionRects() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.selection-rects-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that ShapedText::selectionRects() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.shape.selection-rects.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative-expected.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative.w.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-range.tentative.html": {
+    "ignore": true
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-range.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that glyphClusters(start, end) and strokeGlyphRuns() correctly render different ranges of the input text."
+    ]
+  },
   "html/canvas/offscreen/text/canvas.2d.fontStretch-ref.html": {
     "ignore": true
   },
@@ -4578,5 +4649,6 @@
   "html/webappapis/timers/settimeout-setinterval-handles.html": true,
   "html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html": true,
   "html/webappapis/timers/type-long-setinterval.any.js": true,
-  "html/webappapis/timers/type-long-settimeout.any.js": true
+  "html/webappapis/timers/type-long-settimeout.any.js": true,
+  "html/webappapis/timers/zero-settimeout.any.js": true
 }

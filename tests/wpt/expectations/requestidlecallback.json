@@ -1,5 +1,8 @@
 {
   "requestidlecallback/basic.html": true,
+  "requestidlecallback/callback-after-removed-frame-with-pending-timeout.html": {
+    "ignore": true
+  },
   "requestidlecallback/callback-exception.html": {
     "ignore": true
   },

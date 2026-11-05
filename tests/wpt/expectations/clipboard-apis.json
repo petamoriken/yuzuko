@@ -39,6 +39,9 @@
   "clipboard-apis/clipboard-copy-selection-line-break.https.html": {
     "ignore": true
   },
+  "clipboard-apis/clipboard-copy-selection-style-opacity.tentative.https.html": {
+    "ignore": true
+  },
   "clipboard-apis/clipboard-events-synthetic.html": {
     "ignore": true
   },

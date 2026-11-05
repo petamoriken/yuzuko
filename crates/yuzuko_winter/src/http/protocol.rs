@@ -317,11 +317,17 @@ async fn serve_h3(identity: Identity, port_tx: mpsc::Sender<u16>) {
 
 #[test]
 fn trust_store_drops_the_compromised_emsign_root() {
-  // webpki-roots 1.0.10 removed this root. rustls-webpki 0.103.16 rejects
-  // the compromised eMudhra intermediate SPKIs and added `CertDistrusted`.
+  // webpki-roots 1.0.10 removed emSign ECC Root CA - G3. 1.0.11 also
+  // removed emSign Root CA - C1 and emSign ECC Root CA - C3.
+  // rustls-webpki 0.103.16 rejects the compromised eMudhra intermediate
+  // SPKIs and added `CertDistrusted`.
   let _ = webpki::Error::CertDistrusted;
-  const NAME: &[u8] = b"emSign ECC Root CA - G3";
-  // Subject public key info from the removed trust anchor.
+  const ABSENT: &[&[u8]] = &[
+    b"emSign ECC Root CA - G3",
+    b"emSign Root CA - C1",
+    b"emSign ECC Root CA - C3",
+  ];
+  // Subject public key info from the G3 trust anchor removed in 1.0.10.
   const SPKI: &[u8] = &[
     0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
     0x05, 0x2b, 0x81, 0x04, 0x00, 0x22, 0x03, 0x62, 0x00, 0x04, 0x23, 0xa5,
@@ -336,12 +342,19 @@ fn trust_store_drops_the_compromised_emsign_root() {
   ];
   assert!(!webpki_roots::TLS_SERVER_ROOTS.is_empty());
   assert!(webpki_roots::TLS_SERVER_ROOTS.iter().all(|anchor| {
-    !anchor
+    let subject = anchor.subject.as_ref();
+    ABSENT
+      .iter()
+      .all(|name| !subject.windows(name.len()).any(|part| part == *name))
+      && anchor.subject_public_key_info.as_ref() != SPKI
+  }));
+  const KEPT: &[u8] = b"emSign Root CA - G1";
+  assert!(webpki_roots::TLS_SERVER_ROOTS.iter().any(|anchor| {
+    anchor
       .subject
       .as_ref()
-      .windows(NAME.len())
-      .any(|part| part == NAME)
-      && anchor.subject_public_key_info.as_ref() != SPKI
+      .windows(KEPT.len())
+      .any(|part| part == KEPT)
   }));
 }
 

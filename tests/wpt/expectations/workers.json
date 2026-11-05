@@ -81,11 +81,7 @@
   "workers/Worker-timeout-decreasing-order.html": true,
   "workers/Worker-timeout-increasing-order.html": true,
   "workers/WorkerGlobalScope-close.html": false,
-  "workers/WorkerGlobalScope_requestAnimationFrame.worker.js": {
-    "expectedFailures": [
-      "WorkerGlobalScope_requestAnimationFrame"
-    ]
-  },
+  "workers/WorkerGlobalScope_requestAnimationFrame.worker.js": true,
   "workers/WorkerLocation-origin.sub.window.js": {
     "ignore": true
   },
@@ -551,6 +547,10 @@
     ]
   },
   "workers/interfaces/WorkerUtils/navigator/language.html": true,
+  "workers/modules/dedicated-worker-blob-url-sandboxed-iframe.html": {
+    "ignore": true
+  },
+  "workers/modules/dedicated-worker-blob-url.window.js": false,
   "workers/modules/dedicated-worker-import-blob-url.any.js": {
     "expectedFailures": [
       "Dynamic import and then static import.",
@@ -856,8 +856,6 @@
   "workers/semantics/interface-objects/001.worker.js": {
     "expectedFailures": [
       "The BroadcastChannel interface object should be exposed.",
-      "The CloseEvent interface object should be exposed.",
-      "The EventSource interface object should be exposed.",
       "The FileList interface object should be exposed.",
       "The FileReaderSync interface object should be exposed.",
       "The IDBCursor interface object should be exposed.",
@@ -871,8 +869,6 @@
       "The IDBRequest interface object should be exposed.",
       "The IDBTransaction interface object should be exposed.",
       "The IDBVersionChangeEvent interface object should be exposed.",
-      "The ProgressEvent interface object should be exposed.",
-      "The WebSocket interface object should be exposed.",
       "The XMLHttpRequestEventTarget interface object should be exposed.",
       "The XMLHttpRequestUpload interface object should be exposed."
     ]
@@ -1065,7 +1061,7 @@
       "performance.setResourceTimingBufferSize in workers"
     ]
   },
-  "workers/worker-request-animation-frame.html": false,
+  "workers/worker-request-animation-frame.html": true,
   "workers/worker-url-encoding.html": {
     "expectedFailures": [
       "Worker URL is parsed using document encoding"

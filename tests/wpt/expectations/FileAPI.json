@@ -107,7 +107,13 @@
     "ignore": true
   },
   "FileAPI/blob/Blob-stream.any.js": true,
-  "FileAPI/blob/Blob-text.any.js": true,
+  "FileAPI/blob/Blob-text.any.js": {
+    "expectedFailures": [
+      "Blob.text() strips a UTF-8 byte order mark",
+      "Blob.text() strips a UTF-8 byte order mark split across blob parts",
+      "Blob.text() strips only one UTF-8 byte order mark"
+    ]
+  },
   "FileAPI/blob/Blob-textStream.any.js": true,
   "FileAPI/file/File-constructor-endings.any.js": true,
   "FileAPI/file/File-constructor-endings.html": true,

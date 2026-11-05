@@ -62,6 +62,9 @@
     "ignore": true
   },
   "css/css-font-loading/fontface-width.html": true,
+  "css/css-font-loading/fontfaceset-check-error-status.html": {
+    "ignore": true
+  },
   "css/css-font-loading/fontfaceset-clear-css-connected-2-ref.html": {
     "ignore": true
   },
@@ -96,6 +99,9 @@
     "ignore": true
   },
   "css/css-font-loading/fontfaceset-no-root-element.html": {
+    "ignore": true
+  },
+  "css/css-font-loading/fontfaceset-ready-unused-face-failed-local-source.html": {
     "ignore": true
   },
   "css/css-font-loading/fontfaceset-update-after-stylesheet-change.html": {
