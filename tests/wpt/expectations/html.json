@@ -231,11 +231,7 @@
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.xor.worker.js": true,
@@ -409,11 +405,7 @@
   "html/canvas/offscreen/compositing/2d.composite.image.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.image.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.image.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.xor.worker.js": true,
@@ -479,11 +471,7 @@
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-in.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-out.worker.js": true,
-  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.source-over.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.xor.html": true,
   "html/canvas/offscreen/compositing/2d.composite.transparent.xor.worker.js": true,
