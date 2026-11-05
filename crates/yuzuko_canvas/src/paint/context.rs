@@ -1655,7 +1655,7 @@ impl Context2D {
 
   #[getter]
   fn font(&self) -> Result<String, OpError> {
-    self.update(|drawing| Ok(text::font_css(drawing.state.font)))
+    self.update(|drawing| Ok(text::font_css(&drawing.state.font)))
   }
 
   #[setter]
@@ -1784,7 +1784,7 @@ impl Context2D {
     self.update(|drawing| {
       let shaped = text::shape(
         &text,
-        drawing.state.font,
+        &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );
@@ -1942,7 +1942,7 @@ impl Context2D {
       let shade = drawing.state.shade();
       let shaped = text::shape(
         &text,
-        drawing.state.font,
+        &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );

@@ -3,7 +3,11 @@
 //! A family in `Yuzuko.fonts` that has finished `load()` is registered here
 //! and can be named from the Canvas 2D `font` property.
 
+mod font;
 pub(crate) mod fonts;
+
+pub use font::font_css;
+pub use font::parse_font;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -211,122 +215,6 @@ pub struct ShapedText {
   pub utf16_len: u32,
 }
 
-/// `None` leaves the previous font. A parsed size is kept, including a
-/// family that is not loaded. A token that cannot be a family name rejects
-/// the whole value.
-pub fn parse_font(input: &str) -> Option<FontDesc> {
-  let text = input.trim();
-  if text.is_empty() {
-    return None;
-  }
-  let mut size = None;
-  let mut weight = 400u16;
-  let mut italic = false;
-  let mut family = None;
-  let mut pending = None;
-  for token in text.split_whitespace() {
-    let token = token.trim_matches(',');
-    if token.is_empty() {
-      continue;
-    }
-    let lower = token.to_ascii_lowercase();
-    if let Some(parsed) = parse_size(&lower) {
-      size = Some(parsed);
-      continue;
-    }
-    match lower.as_str() {
-      "normal" => {}
-      "italic" | "oblique" => italic = true,
-      "bold" => weight = 700,
-      "bolder" | "lighter" => {}
-      "small-caps" | "ultra-condensed" | "extra-condensed" | "condensed"
-      | "semi-condensed" | "semi-expanded" | "expanded" | "extra-expanded"
-      | "ultra-expanded" => {}
-      "sans-serif" if family.is_none() => family = Some(Family::Sans),
-      "serif" if family.is_none() => family = Some(Family::Serif),
-      "monospace" if family.is_none() => family = Some(Family::Mono),
-      other
-        if other.parse::<u16>().ok().is_some_and(|value| {
-          (100..=900).contains(&value) && value.is_multiple_of(100)
-        }) =>
-      {
-        weight = other.parse().unwrap_or(400);
-      }
-      _ if lower.ends_with("px") || lower.ends_with("pt") => return None,
-      _ => {
-        let bare = token.trim_matches(['"', '\'']);
-        if bare.is_empty() {
-          continue;
-        }
-        // CSS-wide keywords and `default` are not family names. A bad token
-        // makes the shorthand invalid, so the previous font stays.
-        if is_reserved_family(bare) || !is_family_ident(bare) {
-          return None;
-        }
-        if family.is_some() {
-          continue;
-        }
-        if let Some(id) = ready_family(bare) {
-          family = Some(Family::Named(id));
-        } else if pending.is_none() {
-          pending = Some(bare.to_string());
-        }
-      }
-    }
-  }
-  let Some(size) = size else {
-    return None;
-  };
-  if !(size.is_finite() && size > 0.0) {
-    return None;
-  }
-  // A list uses the first loaded family or generic. A size that names only
-  // an unregistered family is still assigned; shaping falls back.
-  let family = if let Some(family) = family {
-    family
-  } else if let Some(name) = pending {
-    Family::Unloaded(intern_family(&name))
-  } else {
-    return None;
-  };
-  Some(FontDesc {
-    size,
-    weight,
-    italic,
-    family,
-  })
-}
-
-fn is_reserved_family(name: &str) -> bool {
-  matches!(
-    name.to_ascii_lowercase().as_str(),
-    "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "default"
-  )
-}
-
-fn is_family_ident(name: &str) -> bool {
-  let mut chars = name.chars();
-  let Some(first) = chars.next() else {
-    return false;
-  };
-  let rest =
-    |c: char| c.is_alphanumeric() || c == '_' || c == '-' || !c.is_ascii();
-  if first.is_alphabetic() || first == '_' || !first.is_ascii() {
-    return chars.all(rest);
-  }
-  if first != '-' {
-    return false;
-  }
-  let Some(second) = chars.next() else {
-    return false;
-  };
-  (second.is_alphabetic()
-    || second == '_'
-    || second == '-'
-    || !second.is_ascii())
-    && chars.all(rest)
-}
-
 fn shaping_language(lang: &str) -> Option<Language> {
   if lang.is_empty() || lang == "inherit" {
     return None;
@@ -334,21 +222,7 @@ fn shaping_language(lang: &str) -> Option<Language> {
   Language::parse(lang).ok()
 }
 
-fn parse_size(token: &str) -> Option<f32> {
-  if let Some(number) = token.strip_suffix("px") {
-    return number.parse::<f32>().ok().filter(|size| size.is_finite());
-  }
-  if let Some(number) = token.strip_suffix("pt") {
-    return number
-      .parse::<f32>()
-      .ok()
-      .filter(|size| size.is_finite())
-      .map(|size| size * 4.0 / 3.0);
-  }
-  None
-}
-
-pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
+pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
   let wrapped = if rtl {
     format!("\u{2067}{text}\u{2069}")
   } else {
@@ -810,36 +684,13 @@ fn span_rect(
   }
 }
 
-pub fn font_css(font: FontDesc) -> String {
-  let style = if font.italic { "italic " } else { "" };
-  let weight = if font.weight == 400 {
-    String::new()
-  } else {
-    format!("{} ", font.weight)
-  };
-  let family = match font.family {
-    Family::Sans => "sans-serif".to_string(),
-    Family::Serif => "serif".to_string(),
-    Family::Mono => "monospace".to_string(),
-    Family::Named(id) | Family::Unloaded(id) => TEXT.with(|slot| {
-      slot
-        .borrow()
-        .names
-        .get(id as usize)
-        .cloned()
-        .unwrap_or_else(|| "sans-serif".to_string())
-    }),
-  };
-  format!("{style}{weight}{}px {family}", font.size)
-}
-
 #[cfg(test)]
 mod tests {
   use super::shape;
   use crate::paint::record::FontDesc;
 
   fn glyph_ids(lang: &str) -> Vec<u32> {
-    shape("骨", FontDesc::default(), false, lang)
+    shape("骨", &FontDesc::default(), false, lang)
       .runs
       .into_iter()
       .flat_map(|run| run.glyphs.into_iter().map(|glyph| glyph.0))
@@ -857,7 +708,7 @@ mod tests {
 
   #[test]
   fn clusters_follow_graphemes_and_advances() {
-    let shaped = shape("Ab", FontDesc::default(), false, "inherit");
+    let shaped = shape("Ab", &FontDesc::default(), false, "inherit");
     assert_eq!(shaped.clusters.len(), 2);
     assert!(shaped.clusters[1].left > shaped.clusters[0].left);
     assert!(shaped.clusters[0].glyphs.iter().any(|glyph| {
@@ -866,7 +717,7 @@ mod tests {
         .iter()
         .any(|run| run.glyphs.iter().any(|positioned| positioned.0 == glyph.id))
     }));
-    let accent = shape("e\u{0301}", FontDesc::default(), false, "inherit");
+    let accent = shape("e\u{0301}", &FontDesc::default(), false, "inherit");
     assert_eq!(accent.clusters.len(), 1);
     assert_eq!(accent.clusters[0].end, 2);
     let runs_x: Vec<f32> = shaped

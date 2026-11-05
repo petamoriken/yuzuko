@@ -202,12 +202,14 @@ impl Direction {
   }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct FontDesc {
   pub size: f32,
   pub weight: u16,
   pub italic: bool,
   pub family: Family,
+  /// Canonical shorthand, including `small-caps` and every family.
+  pub css: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -229,6 +231,7 @@ impl Default for FontDesc {
       weight: 400,
       italic: false,
       family: Family::Sans,
+      css: "10px sans-serif".to_string(),
     }
   }
 }

@@ -9336,10 +9336,17 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * A CSS font shorthand.
    *
+   * The shorthand accepts `italic` or `oblique`, `small-caps`, a weight, a
+   * `px` or `pt` size, an optional line height, and a family list. The getter
+   * omits a weight of 400, a normal style, and the line height. `small-caps`
+   * round-trips and does not change glyphs. `cursive` and `fantasy` stay in
+   * the list.
+   *
    * A list uses the first loaded family from this realm's `FontFaceSet`, or
    * else the first of `sans-serif`, `serif`, and `monospace`. A size that
-   * names only an unregistered family is stored. Shaping uses `sans-serif`
-   * for that family. A value that does not parse is ignored.
+   * names only an unregistered family, or only `cursive` or `fantasy`, is
+   * stored. Shaping uses `sans-serif` for that family. A value that does
+   * not parse is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/font)
    */

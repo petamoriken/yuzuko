@@ -3741,36 +3741,12 @@
   "html/canvas/offscreen/text/2d.text.font.default.worker.js": true,
   "html/canvas/offscreen/text/2d.text.font.parse.basic.html": true,
   "html/canvas/offscreen/text/2d.text.font.parse.basic.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.font.parse.complex.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.complex.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.complex2.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.complex2.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.family.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.font.parse.family.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.font.parse.complex.html": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.complex.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.complex2.html": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.complex2.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.family.html": true,
+  "html/canvas/offscreen/text/2d.text.font.parse.family.worker.js": true,
   "html/canvas/offscreen/text/2d.text.font.parse.invalid.html": true,
   "html/canvas/offscreen/text/2d.text.font.parse.invalid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.font.parse.system.html": true,
