@@ -68,6 +68,13 @@ pub enum Brush {
     end: (f32, f32, f32),
     stops: Arc<[(f32, CssColor)]>,
   },
+  /// One full turn, clockwise in canvas space, starting at `start` radians
+  /// from the positive x-axis.
+  Conic {
+    start: f32,
+    center: (f32, f32),
+    stops: Arc<[(f32, CssColor)]>,
+  },
   Pattern {
     image: Arc<ImageBuf>,
     repeat_x: bool,
@@ -553,9 +560,16 @@ std::thread_local! {
 pub type LinearEnds = ((f32, f32), (f32, f32));
 pub type RadialEnds = ((f32, f32, f32), (f32, f32, f32));
 
+#[derive(Clone, Copy)]
+pub struct ConicGradient {
+  pub start: f32,
+  pub center: (f32, f32),
+}
+
 pub struct LiveGradient {
   pub linear: Option<LinearEnds>,
   pub radial: Option<RadialEnds>,
+  pub conic: Option<ConicGradient>,
   pub stops: Vec<(f32, CssColor)>,
 }
 
@@ -778,6 +792,12 @@ pub fn resolve_style(style: &Style, nearest: bool) -> Option<Brush> {
         Brush::Linear { start, end, stops }
       } else if let Some((start, end)) = gradient.radial {
         Brush::Radial { start, end, stops }
+      } else if let Some(conic) = gradient.conic {
+        Brush::Conic {
+          start: conic.start,
+          center: conic.center,
+          stops,
+        }
       } else {
         Brush::Solid(CssColor::BLACK)
       }

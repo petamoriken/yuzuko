@@ -1188,36 +1188,12 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.colorInterpolationMethod.w.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html": {
-    "expectedFailures": [
-      "Conic gradient function with invalid inputs"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.worker.js": {
-    "expectedFailures": [
-      "Conic gradient function with invalid inputs"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html": {
-    "expectedFailures": [
-      "Conic gradient with negative rotation"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.worker.js": {
-    "expectedFailures": [
-      "Conic gradient with negative rotation"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html": {
-    "expectedFailures": [
-      "Conic gradient with positive rotation"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.worker.js": {
-    "expectedFailures": [
-      "Conic gradient with positive rotation"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.empty.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.empty.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.hueInterpolationMethod-expected.html": {

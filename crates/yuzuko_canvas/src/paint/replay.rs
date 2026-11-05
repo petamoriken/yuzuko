@@ -938,6 +938,29 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
         InterpolationAlphaSpace::Unpremultiplied;
       Some(Brush::Gradient(gradient))
     }
+    Paint::Conic {
+      start,
+      center,
+      stops,
+    } => {
+      if stops.is_empty() {
+        return None;
+      }
+      let stops = peniko_stops(stops);
+      // Offset 0 sits at `start` and offset 1 is the same ray one turn later.
+      // Repeat maps the arc before the start angle onto the end of that ramp.
+      // Pad would clamp it to the first stop.
+      let mut gradient = Gradient::new_sweep(
+        *center,
+        *start,
+        *start + std::f32::consts::TAU,
+      )
+      .with_stops(&stops[..])
+      .with_extend(Extend::Repeat);
+      gradient.interpolation_alpha_space =
+        InterpolationAlphaSpace::Unpremultiplied;
+      Some(Brush::Gradient(gradient))
+    }
     Paint::Pattern {
       image,
       repeat_x,

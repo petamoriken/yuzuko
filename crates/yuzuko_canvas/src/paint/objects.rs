@@ -17,6 +17,7 @@ use crate::geom::path;
 use crate::paint::color::parse_color;
 use crate::paint::record::Align;
 use crate::paint::record::Baseline;
+use crate::paint::record::ConicGradient;
 use crate::paint::record::LiveGradient;
 use crate::paint::record::LivePattern;
 use crate::paint::record::{self};
@@ -248,6 +249,7 @@ impl CanvasGradient {
     let id = record::alloc_gradient(LiveGradient {
       linear: Some(((x0 as f32, y0 as f32), (x1 as f32, y1 as f32))),
       radial: None,
+      conic: None,
       stops: Vec::new(),
     });
     Self { id }
@@ -273,9 +275,23 @@ impl CanvasGradient {
         (x0 as f32, y0 as f32, r0 as f32),
         (x1 as f32, y1 as f32, r1 as f32),
       )),
+      conic: None,
       stops: Vec::new(),
     });
     Ok(Self { id })
+  }
+
+  pub fn conic(start_angle: f64, x: f64, y: f64) -> Self {
+    let id = record::alloc_gradient(LiveGradient {
+      linear: None,
+      radial: None,
+      conic: Some(ConicGradient {
+        start: start_angle as f32,
+        center: (x as f32, y as f32),
+      }),
+      stops: Vec::new(),
+    });
+    Self { id }
   }
 
   pub fn id(&self) -> u64 {
@@ -866,11 +882,4 @@ fn expand_radii(values: &[(f64, f64)]) -> [f64; 8] {
     _ => (pair(0), pair(1), pair(2), pair(3)),
   };
   [tl.0, tl.1, tr.0, tr.1, br.0, br.1, bl.0, bl.1]
-}
-
-pub fn unsupported() -> OpError {
-  OpError::dom(
-    "NotSupportedError",
-    "This Canvas 2D feature is not in level A",
-  )
 }

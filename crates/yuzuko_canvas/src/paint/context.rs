@@ -1910,9 +1910,17 @@ impl Context2D {
     })
   }
 
-  fn create_conic_gradient(&self) -> Result<(), OpError> {
+  fn create_conic_gradient(
+    &self,
+    start_angle: f64,
+    x: f64,
+    y: f64,
+  ) -> Result<New<CanvasGradient>, OpError> {
+    if !finite(&[start_angle, x, y]) {
+      return Err(OpError::type_("The gradient points are not finite"));
+    }
     let _ = self;
-    Err(objects::unsupported())
+    Ok(New(CanvasGradient::conic(start_angle, x, y)))
   }
 }
 

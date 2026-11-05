@@ -8919,7 +8919,7 @@ declare var OffscreenCanvas: {
  * `"clear"` and the blend modes, and painting uses it. Any other value is
  * ignored. `clearRect` and `putImageData` ignore the operator and the
  * shadow. A list that is not `source-over`, or that paints a shadow, is
- * rasterized on the CPU. `createConicGradient` throws `NotSupportedError`.
+ * rasterized on the CPU. `createConicGradient` paints one clockwise turn.
  * `filter` and a layer `filter` run on the shape's premultiplied sRGB
  * unorm8 ink before the composite operator. A `url()` reference clears
  * that ink. Lengths are canvas pixels and are not scaled by the current
@@ -9041,7 +9041,8 @@ interface OffscreenCanvasRenderingContext2D {
   ): CanvasGradient;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` Conic gradients are outside level A.
+   * Paints one clockwise turn. Offset 0 is `startAngle` radians from the positive x-axis.
+   * A non-finite argument throws `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createConicGradient)
    */
