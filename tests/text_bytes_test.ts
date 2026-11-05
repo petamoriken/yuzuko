@@ -19,8 +19,8 @@ import emptyBytes from "./text_bytes/empty" with { type: "bytes" };
 import badText from "./text_bytes/bad.bin" with { type: "text" };
 import badBytes from "./text_bytes/bad.bin" with { type: "bytes" };
 import bomText from "./text_bytes/bom.txt" with { type: "text" };
-import nulText from "./text_bytes/nul.txt" with { type: "text" };
-import nulBytes from "./text_bytes/nul.txt" with { type: "bytes" };
+import nulText from "./text_bytes/null-byte.txt" with { type: "text" };
+import nulBytes from "./text_bytes/null-byte.txt" with { type: "bytes" };
 import rawJson from "./text_bytes/data.json" with { type: "text" };
 import parsedJson from "./text_bytes/data.json" with { type: "json" };
 import jsonBytes from "./text_bytes/data.json" with { type: "bytes" };
@@ -180,7 +180,7 @@ Yuzuko.test("the module map keeps each type", async () => {
   assert(jsonFail instanceof TypeError, String(jsonFail));
   assert(String(jsonFail).includes('type: "json"'), String(jsonFail));
 
-  const deferredNul = await import.defer("./text_bytes/nul.txt", {
+  const deferredNul = await import.defer("./text_bytes/null-byte.txt", {
     with: { type: "text" },
   });
   assert(deferredNul[Symbol.toStringTag] === "Deferred Module", "nul tag");
