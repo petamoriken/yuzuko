@@ -8,12 +8,12 @@ publish.workspace = true
 [dependencies]
 cssparser = "0.36"
 flate2.workspace = true
-fontique = "0.11"
+fontique = "0.12"
 half.workspace = true
 image-webp.workspace = true
 jpeg-encoder = "0.6"
 kurbo = "0.13"
-parley = "0.11"
+parley = "0.12"
 png.workspace = true
 skrifa = "0.44"
 unicode-segmentation = "1.13"

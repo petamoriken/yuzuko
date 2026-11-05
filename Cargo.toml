@@ -184,6 +184,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.parley]
 opt-level = 3
+[profile.release.package.parley_engine]
+opt-level = 3
 
 [profile.bench.package.yuzuko]
 opt-level = 3
@@ -256,4 +258,6 @@ opt-level = 3
 [profile.bench.package.fontique]
 opt-level = 3
 [profile.bench.package.parley]
+opt-level = 3
+[profile.bench.package.parley_engine]
 opt-level = 3

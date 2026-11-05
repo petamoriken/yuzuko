@@ -9279,8 +9279,8 @@ interface OffscreenCanvasRenderingContext2D {
    * A BCP 47 tag, `""`, or `"inherit"`.
    *
    * The default is `"inherit"`. There is no document, so `"inherit"` and `""`
-   * shape with an unknown language. The text stack applies the primary
-   * language subtag. A tag it cannot parse is stored and shaped as unknown.
+   * shape with an unknown language. A tag it cannot parse is stored and
+   * shaped as unknown. A parsed tag keeps its language, script, and region.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/lang)
    */

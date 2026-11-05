@@ -385,6 +385,7 @@ pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
     }
     // `"inherit"` has no document or `<canvas>` to read. An empty string is
     // the unknown language. A tag this stack cannot parse is unknown too.
+    // A parsed tag keeps its language, script, and region.
     builder.push_default(StyleProperty::Locale(shaping_language(lang)));
     let mut built = builder.build(&wrapped);
     built.break_all_lines(None);
@@ -398,14 +399,24 @@ pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
       utf16_len: text.encode_utf16().count() as u32,
     };
     if let Some(line) = built.get(0) {
-      let metrics = line.metrics();
-      shaped.ascent = metrics.ascent;
-      shaped.descent = metrics.descent;
       let mut clusters = Vec::new();
+      let mut typographic_ascent = None;
+      let mut typographic_descent = None;
       for item in line.items() {
         let parley::PositionedLayoutItem::GlyphRun(run) = item else {
           continue;
         };
+        let metrics = run.run().font_metrics();
+        typographic_ascent = Some(
+          typographic_ascent
+            .unwrap_or(metrics.ascent)
+            .max(metrics.ascent),
+        );
+        typographic_descent = Some(
+          typographic_descent
+            .unwrap_or(metrics.descent)
+            .max(metrics.descent),
+        );
         let face = run.run().font().clone();
         let size = run.run().font_size();
         let mut cursor = run.offset();
@@ -443,6 +454,13 @@ pub fn shape(text: &str, font: FontDesc, rtl: bool, lang: &str) -> ShapedText {
           }
           cursor += advance;
         }
+      }
+      if let (Some(ascent), Some(descent)) =
+        (typographic_ascent, typographic_descent)
+      {
+        // Quantize rounds the line's typographic ascent and descent.
+        shaped.ascent = ascent.round();
+        shaped.descent = descent.round();
       }
       shaped.clusters = merge_graphemes(text, clusters);
       for cluster in &shaped.clusters {
