@@ -94,7 +94,8 @@ std::thread_local! {
 
 /// Rasterize a layer's commands to a premultiplied sRGB bitmap.
 ///
-/// The filter string is not applied. vello has no CSS filter.
+/// A per-command filter is applied while the commands replay. The
+/// `beginLayer` filter is applied by the caller to this bitmap.
 pub fn layer_image(
   commands: &[Command],
   width: u32,
@@ -310,6 +311,7 @@ fn clear_direct(
       brush_transform: Affine::IDENTITY,
       alpha: 1.0,
       shade: Shade::source_over(),
+      filter: crate::paint::record::empty_filter(),
       clips: Arc::from(clips),
     }],
     dest.width,
@@ -505,6 +507,7 @@ fn clear_premul(
       brush_transform: Affine::IDENTITY,
       alpha: 1.0,
       shade: Shade::source_over(),
+      filter: crate::paint::record::empty_filter(),
       clips: Arc::from(clips),
     }],
     width,
@@ -631,6 +634,7 @@ fn replay_cpu(
       brush_transform,
       alpha,
       shade: _,
+      filter: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -665,6 +669,7 @@ fn replay_cpu(
       brush_transform,
       alpha,
       shade: _,
+      filter: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -700,6 +705,7 @@ fn replay_cpu(
       alpha,
       stroke,
       shade: _,
+      filter: _,
       clips,
     } => {
       push_cpu_clips(context, clips);
@@ -760,6 +766,7 @@ fn replay_cpu(
       alpha,
       nearest,
       shade: _,
+      filter: _,
       clips,
     } => {
       push_cpu_clips(context, clips);
@@ -1106,6 +1113,7 @@ fn replay_gpu(
       brush_transform,
       alpha,
       shade: _,
+      filter: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -1140,6 +1148,7 @@ fn replay_gpu(
       brush_transform,
       alpha,
       shade: _,
+      filter: _,
       clips,
     } => {
       if !starts_with_move(path) {
@@ -1175,6 +1184,7 @@ fn replay_gpu(
       alpha,
       stroke,
       shade: _,
+      filter: _,
       clips,
     } => {
       push_gpu_clips(scene, clips);
@@ -1253,6 +1263,7 @@ fn replay_gpu(
       alpha,
       nearest,
       shade: _,
+      filter: _,
       clips,
     } => {
       push_gpu_clips(scene, clips);
@@ -1476,6 +1487,7 @@ mod tests {
       brush_transform: Affine::IDENTITY,
       alpha: 1.0,
       shade,
+      filter: crate::paint::record::empty_filter(),
       clips: Arc::from([]),
     }
   }

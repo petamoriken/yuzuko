@@ -25,7 +25,8 @@ use crate::paint::shade::Shade;
 use crate::paint::shade::Shadow;
 
 pub fn needs_isolated(command: &Command) -> bool {
-  command_shade(command).is_some_and(|shade| !shade.is_plain())
+  command_filter(command).is_some_and(|filter| !filter.is_empty())
+    || command_shade(command).is_some_and(|shade| !shade.is_plain())
 }
 
 pub fn apply_one(
@@ -54,12 +55,27 @@ pub fn apply_one(
     ClipMask::Masked(mask) => Some(mask),
     ClipMask::Failed => return,
   };
+  let filter = command_filter(command).filter(|filter| !filter.is_empty());
+  if filter.is_none() {
+    if let Some(shadow) = shade.shadow {
+      let bytes =
+        shadow_layer(&ink_command, &ink, width, height, shadow, render_plain);
+      composite_buffer(dest, &bytes, shade.blend, coverage.as_deref());
+    }
+    composite_buffer(dest, &ink, shade.blend, coverage.as_deref());
+    return;
+  }
+  let mut source = vec![0u8; expected];
   if let Some(shadow) = shade.shadow {
     let bytes =
       shadow_layer(&ink_command, &ink, width, height, shadow, render_plain);
-    composite_buffer(dest, &bytes, shade.blend, coverage.as_deref());
+    source_over(&mut source, &bytes);
   }
-  composite_buffer(dest, &ink, shade.blend, coverage.as_deref());
+  source_over(&mut source, &ink);
+  if let Some(filter) = filter {
+    crate::paint::filter::apply(&mut source, width, height, filter);
+  }
+  composite_buffer(dest, &source, shade.blend, coverage.as_deref());
 }
 
 /// Premultiplied source-over. Opaque and empty sources copy bytes.
@@ -87,6 +103,16 @@ pub fn source_over(dest: &mut [u8], src: &[u8]) {
 
 fn byte_len(width: u32, height: u32) -> usize {
   width as usize * height as usize * 4
+}
+
+fn command_filter(command: &Command) -> Option<&[crate::paint::filter::Resolved]> {
+  match command {
+    Command::Fill { filter, .. }
+    | Command::Stroke { filter, .. }
+    | Command::Glyphs { filter, .. }
+    | Command::Image { filter, .. } => Some(filter.as_ref()),
+    Command::Clear { .. } | Command::Put { .. } => None,
+  }
 }
 
 fn command_shade(command: &Command) -> Option<Shade> {
@@ -161,6 +187,7 @@ fn clip_coverage(
     brush_transform: Affine::IDENTITY,
     alpha: 1.0,
     shade: Shade::source_over(),
+    filter: crate::paint::record::empty_filter(),
     clips,
   };
   let Some(mask) = render_plain(std::slice::from_ref(&fill)) else {
@@ -255,7 +282,7 @@ fn shadow_layer(
   }
   let mut alpha = alpha_plane(&rendered);
   if sigma > 0.0 {
-    blur_alpha(&mut alpha, buf_w as usize, buf_h as usize, sigma);
+    blur_plane(&mut alpha, buf_w as usize, buf_h as usize, sigma);
   }
   colorize_crop(&alpha, buf_w, width, height, radius, shadow)
 }
@@ -355,7 +382,7 @@ fn shadowed_alpha(
   }
   let sigma = (shadow.blur * 0.5).clamp(0.0, 128.0);
   if sigma > 0.0 {
-    blur_alpha(&mut alpha, width as usize, height as usize, sigma);
+    blur_plane(&mut alpha, width as usize, height as usize, sigma);
   }
   alpha
 }
@@ -382,7 +409,12 @@ fn alpha_at(ink: &[u8], width: i32, height: i32, x: i32, y: i32) -> f32 {
   f32::from(ink[index]) / 255.0
 }
 
-fn blur_alpha(alpha: &mut [f32], width: usize, height: usize, sigma: f32) {
+pub(crate) fn blur_plane(
+  alpha: &mut [f32],
+  width: usize,
+  height: usize,
+  sigma: f32,
+) {
   let kernel = kernel(sigma);
   let radius = (kernel.len() - 1) / 2;
   let mut horizontal = vec![0.0f32; alpha.len()];

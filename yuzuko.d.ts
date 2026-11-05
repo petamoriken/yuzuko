@@ -8920,7 +8920,10 @@ declare var OffscreenCanvas: {
  * ignored. `clearRect` and `putImageData` ignore the operator and the
  * shadow. A list that is not `source-over`, or that paints a shadow, is
  * rasterized on the CPU. `createConicGradient` throws `NotSupportedError`.
- * `filter` is parsed and stored and is not painted.
+ * `filter` and a layer `filter` run on the shape's premultiplied sRGB
+ * unorm8 ink before the composite operator. A `url()` reference clears
+ * that ink. Lengths are canvas pixels and are not scaled by the current
+ * transform. A filtered drawing is rasterized on the CPU.
  * There is no `CanvasFilter` class.
  *
  * A window surface's context exposes that surface as `canvas`.
@@ -8962,7 +8965,8 @@ interface OffscreenCanvasRenderingContext2D {
    *
    * `null`, `undefined`, and `""` omit the filter. Any other unparsable
    * value, including a filter dictionary, throws `TypeError` and does not
-   * open a layer. The filter is not painted. Entering a layer sets
+   * open a layer. The filter is applied to the layer bitmap when the layer
+   * ends. Entering a layer sets
    * `globalAlpha` to `1`, `globalCompositeOperation` to `"source-over"`,
    * the shadow attributes to their defaults, `filter` to `"none"`, and the
    * clip list to empty.
@@ -9297,7 +9301,12 @@ interface OffscreenCanvasRenderingContext2D {
    * `inherit`, `initial`, `unset`, `revert`, `revert-layer`, `null`, and
    * `undefined` do not parse, so the current filter stays. `calc()`, `hwb()`,
    * `lab()`, `lch()`, `oklab()`, `oklch()`, and `color-mix()` do not parse.
-   * The stored filter is not painted.
+   * A stored filter is applied when the drawing is composited. The functions
+   * are `blur`, `brightness`, `contrast`, `drop-shadow`, `grayscale`,
+   * `hue-rotate`, `invert`, `opacity`, `saturate`, `sepia`, and `url()`.
+   * They run left to right. A `url()` reference clears the ink. Lengths are
+   * canvas pixels and are not scaled by the current transform. When a filter
+   * is set, the shadow is included in that bitmap.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/filter)
    */

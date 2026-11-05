@@ -226,6 +226,7 @@ fn paint_fill(
     brush_transform,
     alpha: drawing.state.alpha,
     shade,
+    filter: drawing.state.paint_filter(drawing.width, drawing.height),
     clips: drawing.state.clips(),
   });
 }
@@ -267,6 +268,7 @@ fn paint_stroke(
     brush_transform: Affine::IDENTITY,
     alpha: drawing.state.alpha,
     shade,
+    filter: drawing.state.paint_filter(drawing.width, drawing.height),
     clips: drawing.state.clips(),
   });
 }
@@ -615,14 +617,12 @@ impl Context2D {
           ));
         }
       };
-      // The filter was validated. vello does not apply it.
-      let _ = closed.layer_filter;
       let shade = drawing.state.shade();
       let clears = shade.paints_when_clear();
       if drawing.width == 0 || drawing.height == 0 {
         return Ok(());
       }
-      let image = if closed.commands.is_empty() || closed.alpha <= 0.0 {
+      let mut image = if closed.commands.is_empty() || closed.alpha <= 0.0 {
         if !clears {
           return Ok(());
         }
@@ -638,12 +638,29 @@ impl Context2D {
         }
         image
       };
+      if let Some(text) = closed.layer_filter.as_deref() {
+        if let Some(ops) = crate::paint::filter::parse(text) {
+          let resolved = crate::paint::filter::resolve(
+            &ops,
+            drawing.state.font.size,
+            drawing.width as f32,
+            drawing.height as f32,
+          );
+          crate::paint::filter::apply(
+            &mut image.bytes,
+            image.width,
+            image.height,
+            &resolved,
+          );
+        }
+      }
       drawing.push_command(Command::Image {
         image: Arc::new(image),
         transform: Affine::IDENTITY,
         alpha: closed.alpha,
         nearest: true,
         shade,
+        filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: Arc::from(closed.clips.as_slice()),
       });
       Ok(())
@@ -1460,6 +1477,7 @@ impl Context2D {
         alpha: drawing.state.alpha,
         nearest: drawing.state.nearest(),
         shade,
+        filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: drawing.state.clips(),
       });
       Ok(())
@@ -1974,6 +1992,9 @@ impl Context2D {
             alpha: drawing.state.alpha,
             stroke: Some(drawing.state.stroke()),
             shade,
+            filter: drawing
+              .state
+              .paint_filter(drawing.width, drawing.height),
             clips: drawing.state.clips(),
           });
         } else {
@@ -1991,6 +2012,9 @@ impl Context2D {
             alpha: drawing.state.alpha,
             stroke: None,
             shade,
+            filter: drawing
+              .state
+              .paint_filter(drawing.width, drawing.height),
             clips: drawing.state.clips(),
           });
         }
@@ -2089,6 +2113,7 @@ fn push_shaped_glyphs(
         alpha: drawing.state.alpha,
         stroke: Some(drawing.state.stroke()),
         shade,
+        filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: drawing.state.clips(),
       });
     } else {
@@ -2106,6 +2131,7 @@ fn push_shaped_glyphs(
         alpha: drawing.state.alpha,
         stroke: None,
         shade,
+        filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: drawing.state.clips(),
       });
     }

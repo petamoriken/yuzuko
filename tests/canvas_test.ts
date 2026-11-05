@@ -233,3 +233,61 @@ Yuzuko.test("canvasRenderer is cpu or gpu", () => {
     Yuzuko.canvasRenderer,
   );
 });
+
+Yuzuko.test("CSS filters change composited pixels", () => {
+  const ctx = new OffscreenCanvas(4, 2).getContext("2d");
+  ctx.fillStyle = "#ff0000";
+  ctx.filter = "brightness(0)";
+  ctx.fillRect(0, 0, 4, 2);
+  assert(pixel(ctx, 1, 0).join() === "0,0,0,255", "brightness");
+
+  ctx.filter = "invert(1)";
+  ctx.fillRect(0, 0, 4, 2);
+  assert(pixel(ctx, 1, 0).join() === "0,255,255,255", `invert ${pixel(ctx, 1, 0).join()}`);
+
+  ctx.filter = "none";
+  ctx.fillStyle = "#ff0000";
+  ctx.fillRect(0, 0, 4, 2);
+  ctx.filter = "opacity(0)";
+  ctx.fillStyle = "#00ff00";
+  ctx.fillRect(0, 0, 1, 1);
+  assert(pixel(ctx, 0, 0).join() === "255,0,0,255", "opacity leaves destination");
+
+  ctx.filter = "grayscale(1)";
+  ctx.fillStyle = "#ff0000";
+  ctx.fillRect(0, 0, 4, 2);
+  const gray = pixel(ctx, 1, 1);
+  assert(gray[0] === gray[1] && gray[1] === gray[2], "gray channels");
+  assert(Math.abs(gray[0] - 54) <= 1, `gray luma ${gray.join()}`);
+  assert(gray[3] === 255, "gray alpha");
+
+  ctx.filter = "brightness(0) invert(1)";
+  ctx.fillRect(0, 0, 4, 2);
+  assert(pixel(ctx, 0, 0).join() === "255,255,255,255", "filter chain");
+
+  ctx.filter = "url(#missing)";
+  ctx.fillStyle = "#ff0000";
+  ctx.fillRect(0, 0, 1, 1);
+  assert(pixel(ctx, 0, 0).join() === "255,255,255,255", "url draws nothing");
+
+  const blur = new OffscreenCanvas(3, 1).getContext("2d");
+  blur.filter = "blur(1px)";
+  blur.fillStyle = "#ff0000";
+  blur.fillRect(1, 0, 1, 1);
+  assert(pixel(blur, 1, 0)[3] > 0, "blur keeps coverage");
+  assert(pixel(blur, 0, 0)[3] > 0, "blur spreads");
+
+  const shadow = new OffscreenCanvas(6, 3).getContext("2d");
+  shadow.filter = "drop-shadow(2px 0 0 #00ff00)";
+  shadow.fillStyle = "#ff0000";
+  shadow.fillRect(0, 0, 2, 3);
+  assert(pixel(shadow, 0, 1).join() === "255,0,0,255", "shadow source");
+  assert(pixel(shadow, 3, 1).join() === "0,255,0,255", "shadow offset");
+
+  const layer = new OffscreenCanvas(2, 2).getContext("2d");
+  layer.beginLayer({ filter: "invert(1)" });
+  layer.fillStyle = "#ff0000";
+  layer.fillRect(0, 0, 2, 2);
+  layer.endLayer();
+  assert(pixel(layer, 0, 0).join() === "0,255,255,255", "layer filter");
+});

@@ -96,6 +96,7 @@ pub enum Command {
     brush_transform: Affine,
     alpha: f32,
     shade: Shade,
+    filter: Arc<[crate::paint::filter::Resolved]>,
     clips: Arc<[Clip]>,
   },
   Stroke {
@@ -106,6 +107,7 @@ pub enum Command {
     brush_transform: Affine,
     alpha: f32,
     shade: Shade,
+    filter: Arc<[crate::paint::filter::Resolved]>,
     clips: Arc<[Clip]>,
   },
   Glyphs {
@@ -117,6 +119,7 @@ pub enum Command {
     alpha: f32,
     stroke: Option<Stroke>,
     shade: Shade,
+    filter: Arc<[crate::paint::filter::Resolved]>,
     clips: Arc<[Clip]>,
   },
   Clear {
@@ -135,6 +138,7 @@ pub enum Command {
     alpha: f32,
     nearest: bool,
     shade: Shade,
+    filter: Arc<[crate::paint::filter::Resolved]>,
     clips: Arc<[Clip]>,
   },
 }
@@ -299,7 +303,7 @@ pub struct State {
   pub rtl: bool,
   /// BCP 47 tag, `""`, or `"inherit"`. Part of the canvas state.
   pub lang: String,
-  /// CSS filter string. Parsed and stored. Not painted.
+  /// CSS filter string. Painted when the drawing is composited.
   pub filter: String,
   /// Compositing operator used when this state is painted.
   pub composite: String,
@@ -324,8 +328,7 @@ pub struct ClosedLayer {
   pub commands: Vec<Command>,
   pub alpha: f32,
   pub clips: Vec<Clip>,
-  /// Validated layer filter. vello does not paint it.
-  #[allow(dead_code)]
+  /// Filter from `beginLayer({ filter })`, applied to the layer bitmap.
   pub layer_filter: Option<String>,
 }
 
@@ -399,6 +402,30 @@ impl State {
       self.shadow_color,
     )
   }
+
+  /// Resolves `filter` against this state's font size and the canvas bitmap.
+  pub fn paint_filter(
+    &self,
+    width: u32,
+    height: u32,
+  ) -> Arc<[crate::paint::filter::Resolved]> {
+    let Some(ops) = crate::paint::filter::parse(&self.filter) else {
+      return Arc::from([]);
+    };
+    Arc::from(
+      crate::paint::filter::resolve(
+        &ops,
+        self.font.size,
+        width as f32,
+        height as f32,
+      )
+      .as_slice(),
+    )
+  }
+}
+
+pub fn empty_filter() -> Arc<[crate::paint::filter::Resolved]> {
+  Arc::from([])
 }
 
 pub struct Drawing {
