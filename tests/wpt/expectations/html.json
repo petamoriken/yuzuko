@@ -2989,11 +2989,7 @@
   "html/canvas/offscreen/path-objects/2d.path.stroke.prune.rect.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.stroke.scale1.html": true,
   "html/canvas/offscreen/path-objects/2d.path.stroke.scale1.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.stroke.scale2.html": {
-    "expectedFailures": [
-      "Stroke line widths are scaled by the current transformation matrix"
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.stroke.scale2.html": true,
   "html/canvas/offscreen/path-objects/2d.path.stroke.scale2.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.stroke.skew.html": true,
   "html/canvas/offscreen/path-objects/2d.path.stroke.skew.worker.js": true,
