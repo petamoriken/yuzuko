@@ -5022,6 +5022,9 @@ declare function clearInterval(id?: number): void;
 /**
  * Queues `callback` as a microtask.
  *
+ * A throw is reported with {@link reportError} on this realm. During
+ * `yuzuko test` it fails the test.
+ *
  * @throws {@link TypeError} When `callback` is not a function.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queueMicrotask)

@@ -74,11 +74,61 @@ fn queue_microtask(
   args: v8::FunctionCallbackArguments,
   mut _ret: v8::ReturnValue,
 ) {
-  let Ok(function) = v8::Local::<v8::Function>::try_from(args.get(0)) else {
+  let Ok(callback) = v8::Local::<v8::Function>::try_from(args.get(0)) else {
     js::throw_type(scope, "queueMicrotask requires a function");
     return;
   };
+  let data: v8::Local<v8::Value> = callback.into();
+  let Some(function) = v8::Function::builder(run_queued_microtask)
+    .data(data)
+    .build(scope)
+  else {
+    scope.enqueue_microtask(callback);
+    return;
+  };
   scope.enqueue_microtask(function);
+}
+
+/// Runs a `queueMicrotask` callback. A throw is reported on this realm.
+fn run_queued_microtask(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  let Ok(callback) = v8::Local::<v8::Function>::try_from(args.data()) else {
+    return;
+  };
+  v8::tc_scope!(let tc, scope);
+  let receiver: v8::Local<v8::Value> = v8::undefined(tc).into();
+  if callback.call(tc, receiver, &[]).is_some() {
+    return;
+  }
+  let Some(thrown) = tc.exception() else {
+    return;
+  };
+  let thrown = v8::Global::new(tc, thrown);
+  tc.reset();
+  let thrown = v8::Local::new(tc, thrown);
+  let message = crate::loader::modules::exception_stack(tc, thrown)
+    .unwrap_or_else(|| "queueMicrotask callback threw".to_string());
+  if host::note_test_error(message) {
+    return;
+  }
+  report_uncaught(tc, thrown);
+}
+
+fn report_uncaught(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
+  let global = js::global(scope);
+  let Some(key) = v8::String::new(scope, "reportError") else {
+    return;
+  };
+  let Some(report) = global
+    .get(scope, key.into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let _ = report.call(scope, global.into(), &[error]);
 }
 
 fn report_error(

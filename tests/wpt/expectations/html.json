@@ -4585,7 +4585,7 @@
   "html/webappapis/microtask-queuing/queue-microtask-cross-realm-callback-report-exception.html": {
     "ignore": true
   },
-  "html/webappapis/microtask-queuing/queue-microtask-exceptions.any.js": false,
+  "html/webappapis/microtask-queuing/queue-microtask-exceptions.any.js": true,
   "html/webappapis/microtask-queuing/queue-microtask.any.js": true,
   "html/webappapis/microtask-queuing/queue-microtask.window.js": {
     "expectedFailures": [

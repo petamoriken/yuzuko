@@ -186,7 +186,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 
 `Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are installed with that object in every build, including a build with no Cargo features. A dedicated worker has them. An AudioWorklet processor context does not receive the `Yuzuko` object.
 
-`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `onerror` and `onunhandledrejection` are delivered here. Pointer and key events are not.
+`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `onerror` and `onunhandledrejection` are delivered here. A throw inside `queueMicrotask` is reported with `reportError` on that realm: the `error` event's `error` is the thrown value. During `yuzuko test` that throw fails the test. Pointer and key events are not.
 
 `navigator.hardwareConcurrency` is present on the main global and in a dedicated worker in every build. It is the number of logical processors available to the process, and it is at least 1. When the operating system does not report a count, the value is 1.
 
