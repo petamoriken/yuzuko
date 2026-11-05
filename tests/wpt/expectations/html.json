@@ -2939,33 +2939,17 @@
   "html/canvas/offscreen/path-objects/2d.path.roundrect.radius.none.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.radius.toomany.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.radius.toomany.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.roundrect.selfintersect.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.roundrect.selfintersect.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.selfintersect.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.roundrect.winding.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/path-objects/2d.path.roundrect.winding.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.roundrect.winding.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.roundrect.winding.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.1.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.1.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.2.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.2.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.3.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.3.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.4.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.4.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.4.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.5.html": true,
   "html/canvas/offscreen/path-objects/2d.path.roundrect.zero.5.worker.js": true,

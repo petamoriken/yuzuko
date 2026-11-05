@@ -95,6 +95,8 @@ pub fn add_round_rect(
   }
   // A negative edge flips that axis. The radius stays on the corner that was
   // named before the flip, which is the opposite corner afterwards.
+  // One negative edge reverses the winding. Two negatives restore it.
+  let reverse = (w < 0.0) ^ (h < 0.0);
   let mut radii = clamp_radii(w.abs(), h.abs(), radii);
   if w < 0.0 {
     radii.swap(0, 2);
@@ -110,16 +112,22 @@ pub fn add_round_rect(
   }
   let (x, y, w, h) = normalize_rect(x, y, w, h);
   let [tlx, tly, trx, try_, brx, bry, blx, bly] = radii;
-  path.move_to(Point::new(x + tlx, y));
-  path.line_to(Point::new(x + w - trx, y));
-  corner(path, x + w - trx, y + try_, trx, try_, -TAU / 4.0);
-  path.line_to(Point::new(x + w, y + h - bry));
-  corner(path, x + w - brx, y + h - bry, brx, bry, 0.0);
-  path.line_to(Point::new(x + blx, y + h));
-  corner(path, x + blx, y + h - bly, blx, bly, TAU / 4.0);
-  path.line_to(Point::new(x, y + tly));
-  corner(path, x + tlx, y + tly, tlx, tly, TAU / 2.0);
-  path.close_path();
+  let mut rounded = BezPath::new();
+  rounded.move_to(Point::new(x + tlx, y));
+  rounded.line_to(Point::new(x + w - trx, y));
+  corner(&mut rounded, x + w - trx, y + try_, trx, try_, -TAU / 4.0);
+  rounded.line_to(Point::new(x + w, y + h - bry));
+  corner(&mut rounded, x + w - brx, y + h - bry, brx, bry, 0.0);
+  rounded.line_to(Point::new(x + blx, y + h));
+  corner(&mut rounded, x + blx, y + h - bly, blx, bly, TAU / 4.0);
+  rounded.line_to(Point::new(x, y + tly));
+  corner(&mut rounded, x + tlx, y + tly, tlx, tly, TAU / 2.0);
+  rounded.close_path();
+  if reverse {
+    path.extend(rounded.reverse_subpaths());
+  } else {
+    path.extend(rounded);
+  }
 }
 
 fn corner(path: &mut BezPath, cx: f64, cy: f64, rx: f64, ry: f64, start: f64) {

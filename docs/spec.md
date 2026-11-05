@@ -514,7 +514,7 @@ Level A is:
 - `globalAlpha`. `globalCompositeOperation` stores `source-over`, `source-in`, `source-out`, `source-atop`, `destination-over`, `destination-in`, `destination-out`, `destination-atop`, `lighter`, `copy`, `xor`, `clear`, and the CSS blend modes. Any other value is ignored. Painting uses the stored operator inside the current clip
 - Styles: CSS color strings, `color(srgb ...)` and `color(display-p3 ...)`, linear gradients, radial gradients, conic gradients, and `createPattern` from `ImageBitmap` or `OffscreenCanvas` with all four repeat modes
 - Lines: `lineWidth`, `lineCap`, `lineJoin`, `miterLimit`, `setLineDash`, `getLineDash`, `lineDashOffset`
-- Rectangles and paths: `fillRect`, `strokeRect`, `clearRect`, `rect`, `beginPath`, `closePath`, `moveTo`, `lineTo`, `quadraticCurveTo`, `bezierCurveTo`, `arc`, `arcTo`, `ellipse`, `roundRect`, `fill`, `stroke`, `clip`. Fill rules are nonzero and evenodd
+- Rectangles and paths: `fillRect`, `strokeRect`, `clearRect`, `rect`, `beginPath`, `closePath`, `moveTo`, `lineTo`, `quadraticCurveTo`, `bezierCurveTo`, `arc`, `arcTo`, `ellipse`, `roundRect`, `fill`, `stroke`, `clip`. Fill rules are nonzero and evenodd. A negative `roundRect` edge flips that axis and keeps each radius on the corner named before the flip. One negative edge reverses the subpath. Two negative edges restore the positive direction
 - `Path2D`, `isPointInPath`, `isPointInStroke`
 - All three `drawImage` overloads. Sources are `ImageBitmap` and `OffscreenCanvas`
 - `imageSmoothingEnabled` defaults to true. `imageSmoothingQuality` is `"low"`, `"medium"`, or `"high"` and defaults to `"low"`. An unrecognized quality is ignored. `false` or `"low"` selects nearest. `"medium"` and `"high"` select linear
