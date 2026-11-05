@@ -15,7 +15,7 @@ use yuzuko_image::ImageBitmap;
 use yuzuko_image::ImageData;
 use yuzuko_image::Raster;
 use yuzuko_image::SampleFormat;
-use yuzuko_image::{ColorSpace, convert};
+use yuzuko_image::{ColorSpace, convert, convert_format};
 use yuzuko_image::{FramePixels, frame_pixels};
 use yuzuko_macros::op;
 
@@ -1586,7 +1586,9 @@ impl Context2D {
       let source = replay::rasterize(drawing).ok_or_else(|| {
         OpError::dom("InvalidStateError", "The canvas has no pixels")
       })?;
-      let (space, format) = image_settings(scope, settings, source.format)?;
+      // HTML: an omitted pixelFormat is rgba-unorm8, not the canvas color type.
+      let (space, format) =
+        image_settings(scope, settings, SampleFormat::Unorm8)?;
       let image = crop_straight(&source, sx, sy, sw, sh, space, format)?;
       Ok(New(ImageData::from_raster(scope, image)?))
     })
@@ -2323,17 +2325,5 @@ fn crop_straight(
 }
 
 fn reformat(raster: Raster, format: SampleFormat) -> Raster {
-  let mut output =
-    Raster::new(raster.width, raster.height, raster.color_space, format)
-      .expect("reformat");
-  for y in 0..raster.height {
-    for x in 0..raster.width {
-      output.write_sample(
-        i64::from(x),
-        i64::from(y),
-        raster.sample(i64::from(x), i64::from(y)),
-      );
-    }
-  }
-  output
+  convert_format(raster, format).expect("canvas size was checked")
 }

@@ -19,8 +19,8 @@ pub use raster::decode::{
   decode as decode_image, decode_frames,
 };
 pub use raster::{
-  ColorSpace, PixelError, Raster, ResizeQuality, SampleFormat, crop_resize,
-  orient, orient_display, premultiply, unpremultiply,
+  ColorSpace, PixelError, Raster, ResizeQuality, SampleFormat, convert_format,
+  crop_resize, orient, orient_display, premultiply, unpremultiply,
 };
 
 pub fn register() {

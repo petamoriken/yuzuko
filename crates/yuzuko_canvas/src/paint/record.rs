@@ -516,6 +516,18 @@ pub struct Drawing {
 }
 
 impl Drawing {
+  #[cfg(test)]
+  pub(crate) fn from_commands(
+    width: u32,
+    height: u32,
+    attrs: Attrs,
+    commands: Vec<Command>,
+  ) -> Self {
+    let mut drawing = Self::fresh(0, width, height, attrs);
+    drawing.commands = commands;
+    drawing
+  }
+
   fn fresh(id: u64, width: u32, height: u32, attrs: Attrs) -> Self {
     Self {
       id,

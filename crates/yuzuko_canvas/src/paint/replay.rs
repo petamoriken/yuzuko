@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
 
 use kurbo::Affine;
+use kurbo::PathEl;
 use kurbo::Rect;
 use kurbo::Shape;
 use vello::peniko::BlendMode;
@@ -24,9 +25,11 @@ use yuzuko_image::ColorSpace;
 use yuzuko_image::Raster;
 use yuzuko_image::SampleFormat;
 use yuzuko_image::convert;
+use yuzuko_image::convert_encoded;
 use yuzuko_image::premultiply;
 use yuzuko_image::unpremultiply;
 
+use crate::paint::color::ColorSyntax;
 use crate::paint::color::CssColor;
 use crate::paint::composite;
 use crate::paint::record::Brush as Paint;
@@ -178,6 +181,14 @@ fn rasterize_backing(drawing: &Drawing) -> Raster {
         batch.clear();
         clear_direct(&mut image, *rect, *transform, clips);
       }
+      other
+        if image.format == SampleFormat::Float16
+          && is_opaque_solid_rect(other) =>
+      {
+        paint_batch(&mut image, &batch, drawing);
+        batch.clear();
+        paint_opaque_solid_rect(&mut image, other);
+      }
       other if composite::needs_isolated(other) => {
         paint_batch(&mut image, &batch, drawing);
         batch.clear();
@@ -209,10 +220,14 @@ fn paint_batch(image: &mut Raster, batch: &[Command], drawing: &Drawing) {
   .expect("layer");
   layer.premultiplied = true;
   unpremultiply(&mut layer);
-  convert(&mut layer, image.color_space);
   if image.format == SampleFormat::Float16 {
+    // Scale 0..255 into encoded 0..1 before the blend. Color conversion then
+    // runs in float16 so an in-gamut result is not quantized twice.
+    let mut layer = convert_format(layer, SampleFormat::Float16);
+    convert(&mut layer, image.color_space);
     composite_straight(image, &layer);
   } else {
+    convert(&mut layer, image.color_space);
     premultiply(&mut layer);
     let mut dest_premul = image.clone();
     premultiply(&mut dest_premul);
@@ -268,6 +283,11 @@ fn composite_premul(dest: &mut Raster, src: &Raster) {
 
 fn put_direct(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
   let mut raster = image_to_raster(source);
+  // A negative channel, such as Display P3 red stored in sRGB, survives only
+  // when the color conversion runs after the samples are float16.
+  if raster.format != dest.format && dest.format == SampleFormat::Float16 {
+    raster = convert_format(raster, SampleFormat::Float16);
+  }
   convert(&mut raster, dest.color_space);
   if raster.format != dest.format {
     raster = convert_format(raster, dest.format);
@@ -351,24 +371,126 @@ fn image_to_raster(image: &ImageBuf) -> Raster {
   raster
 }
 
-fn convert_format(mut raster: Raster, format: SampleFormat) -> Raster {
-  if raster.format == format {
-    return raster;
-  }
-  let mut output =
-    Raster::new(raster.width, raster.height, raster.color_space, format)
-      .expect("format");
-  for y in 0..raster.height {
-    for x in 0..raster.width {
-      output.write_sample(
-        i64::from(x),
-        i64::from(y),
-        raster.sample(i64::from(x), i64::from(y)),
-      );
+fn convert_format(raster: Raster, format: SampleFormat) -> Raster {
+  yuzuko_image::convert_format(raster, format).expect("canvas size was checked")
+}
+
+/// An opaque axis-aligned solid `fillRect` can be stored without vello's
+/// sRGB unorm8 clip. Other fills stay on the vello path.
+fn is_opaque_solid_rect(command: &Command) -> bool {
+  solid_rect(command).is_some()
+}
+
+fn paint_opaque_solid_rect(dest: &mut Raster, command: &Command) {
+  let Some((rect, color)) = solid_rect(command) else {
+    return;
+  };
+  let encoded = solid_encoded(color, dest.color_space);
+  let pixel = match dest.format {
+    SampleFormat::Float16 => encoded,
+    SampleFormat::Unorm8 => encoded.map(|channel| channel * 255.0),
+  };
+  for y in 0..dest.height as i32 {
+    for x in 0..dest.width as i32 {
+      let center_x = f64::from(x) + 0.5;
+      let center_y = f64::from(y) + 0.5;
+      if center_x >= rect.x0
+        && center_x < rect.x1
+        && center_y >= rect.y0
+        && center_y < rect.y1
+      {
+        dest.write_sample(i64::from(x), i64::from(y), pixel);
+      }
     }
   }
-  let _ = &mut raster;
-  output
+}
+
+fn solid_rect(command: &Command) -> Option<(Rect, CssColor)> {
+  let Command::Fill {
+    path,
+    fill,
+    brush,
+    transform,
+    alpha,
+    shade,
+    filter,
+    clips,
+    ..
+  } = command
+  else {
+    return None;
+  };
+  if *fill != Fill::NonZero
+    || !shade.is_plain()
+    || !filter.is_empty()
+    || !clips.is_empty()
+    || (*alpha - 1.0).abs() > 1.0e-4
+  {
+    return None;
+  }
+  let Paint::Solid(color) = brush else {
+    return None;
+  };
+  if (color.a - 1.0).abs() > 1.0e-4 {
+    return None;
+  }
+  let rect = axis_aligned_rect(path, *transform)?;
+  Some((rect, *color))
+}
+
+fn solid_encoded(color: CssColor, space: ColorSpace) -> [f64; 4] {
+  let source = if color.syntax == ColorSyntax::DisplayP3 {
+    ColorSpace::DisplayP3
+  } else {
+    ColorSpace::Srgb
+  };
+  let rgb = convert_encoded(
+    source,
+    space,
+    [f64::from(color.r), f64::from(color.g), f64::from(color.b)],
+  );
+  [rgb[0], rgb[1], rgb[2], f64::from(color.a)]
+}
+
+fn axis_aligned_rect(path: &kurbo::BezPath, transform: Affine) -> Option<Rect> {
+  let elements: Vec<PathEl> = path.elements().iter().copied().collect();
+  let points = match elements.as_slice() {
+    [
+      PathEl::MoveTo(p0),
+      PathEl::LineTo(p1),
+      PathEl::LineTo(p2),
+      PathEl::LineTo(p3),
+      PathEl::ClosePath,
+    ] => [*p0, *p1, *p2, *p3],
+    _ => return None,
+  };
+  let points = points.map(|point| transform * point);
+  let min_x = points
+    .iter()
+    .map(|point| point.x)
+    .fold(f64::INFINITY, f64::min);
+  let max_x = points
+    .iter()
+    .map(|point| point.x)
+    .fold(f64::NEG_INFINITY, f64::max);
+  let min_y = points
+    .iter()
+    .map(|point| point.y)
+    .fold(f64::INFINITY, f64::min);
+  let max_y = points
+    .iter()
+    .map(|point| point.y)
+    .fold(f64::NEG_INFINITY, f64::max);
+  for point in points {
+    let on_x =
+      (point.x - min_x).abs() <= 1.0e-6 || (point.x - max_x).abs() <= 1.0e-6;
+    let on_y =
+      (point.y - min_y).abs() <= 1.0e-6 || (point.y - max_y).abs() <= 1.0e-6;
+    if !on_x || !on_y {
+      return None;
+    }
+  }
+  Some(Rect::new(min_x, min_y, max_x, max_y))
 }
 
 pub fn render_premul(
@@ -950,13 +1072,10 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
       // Offset 0 sits at `start` and offset 1 is the same ray one turn later.
       // Repeat maps the arc before the start angle onto the end of that ramp.
       // Pad would clamp it to the first stop.
-      let mut gradient = Gradient::new_sweep(
-        *center,
-        *start,
-        *start + std::f32::consts::TAU,
-      )
-      .with_stops(&stops[..])
-      .with_extend(Extend::Repeat);
+      let mut gradient =
+        Gradient::new_sweep(*center, *start, *start + std::f32::consts::TAU)
+          .with_stops(&stops[..])
+          .with_extend(Extend::Repeat);
       gradient.interpolation_alpha_space =
         InterpolationAlphaSpace::Unpremultiplied;
       Some(Brush::Gradient(gradient))
@@ -1709,5 +1828,117 @@ mod tests {
     let bytes = render_premul(&commands, 8, 4).unwrap();
     assert_eq!(pixel(&bytes, 8, 1, 1), [0, 0, 255, 255]);
     assert_eq!(pixel(&bytes, 8, 6, 1), [255, 0, 0, 255]);
+  }
+
+  fn float16_canvas(
+    space: yuzuko_image::ColorSpace,
+    commands: Vec<Command>,
+  ) -> yuzuko_image::Raster {
+    use crate::paint::record::Attrs;
+    use crate::paint::record::Drawing;
+    use yuzuko_image::SampleFormat;
+    let drawing = Drawing::from_commands(
+      1,
+      1,
+      Attrs {
+        color_space: space,
+        format: SampleFormat::Float16,
+        ..Attrs::default()
+      },
+      commands,
+    );
+    super::rasterize(&drawing).unwrap()
+  }
+
+  #[test]
+  fn float16_put_keeps_wide_gamut_unorm8_within_two_codes() {
+    use yuzuko_image::ColorSpace;
+    let p3_on_srgb = float16_canvas(
+      ColorSpace::Srgb,
+      vec![Command::Put {
+        image: Arc::new(crate::paint::record::ImageBuf {
+          width: 1,
+          height: 1,
+          display_p3: true,
+          float16: false,
+          premultiplied: false,
+          bytes: vec![5, 250, 128, 255],
+        }),
+        dx: 0,
+        dy: 0,
+      }],
+    );
+    let stored = p3_on_srgb.sample(0, 0);
+    assert!(stored[0] < 0.0, "{stored:?}");
+    let back = yuzuko_image::convert_encoded(
+      ColorSpace::Srgb,
+      ColorSpace::DisplayP3,
+      [stored[0], stored[1], stored[2]],
+    );
+    let unorm = back.map(|channel| (channel * 255.0).round());
+    assert!((unorm[0] - 5.0).abs() <= 2.0, "{unorm:?} from {stored:?}");
+    assert!((unorm[1] - 250.0).abs() <= 2.0, "{unorm:?}");
+    assert!((unorm[2] - 128.0).abs() <= 2.0, "{unorm:?}");
+
+    let srgb_on_p3 = float16_canvas(
+      ColorSpace::DisplayP3,
+      vec![Command::Put {
+        image: Arc::new(crate::paint::record::ImageBuf {
+          width: 1,
+          height: 1,
+          display_p3: false,
+          float16: false,
+          premultiplied: false,
+          bytes: vec![5, 250, 128, 255],
+        }),
+        dx: 0,
+        dy: 0,
+      }],
+    );
+    let stored = srgb_on_p3.sample(0, 0);
+    let back = yuzuko_image::convert_encoded(
+      ColorSpace::DisplayP3,
+      ColorSpace::Srgb,
+      [stored[0], stored[1], stored[2]],
+    );
+    let unorm = back.map(|channel| (channel * 255.0).round());
+    assert!((unorm[0] - 5.0).abs() <= 2.0, "{unorm:?} from {stored:?}");
+    assert!((unorm[1] - 250.0).abs() <= 2.0, "{unorm:?}");
+    assert!((unorm[2] - 128.0).abs() <= 2.0, "{unorm:?}");
+  }
+
+  #[test]
+  fn float16_solid_fill_round_trips_display_p3_red() {
+    use yuzuko_image::ColorSpace;
+    let filled = float16_canvas(
+      ColorSpace::Srgb,
+      vec![Command::Fill {
+        path: crate::geom::path::rect_path(0.0, 0.0, 1.0, 1.0),
+        fill: Fill::NonZero,
+        brush: Brush::Solid(CssColor {
+          r: 1.0,
+          g: 0.0,
+          b: 0.0,
+          a: 1.0,
+          syntax: ColorSyntax::DisplayP3,
+        }),
+        transform: Affine::IDENTITY,
+        brush_transform: Affine::IDENTITY,
+        alpha: 1.0,
+        shade: Shade::source_over(),
+        filter: crate::paint::record::empty_filter(),
+        clips: Arc::from([]),
+      }],
+    );
+    let stored = filled.sample(0, 0);
+    let back = yuzuko_image::convert_encoded(
+      ColorSpace::Srgb,
+      ColorSpace::DisplayP3,
+      [stored[0], stored[1], stored[2]],
+    );
+    assert!((back[0] - 1.0).abs() < 0.01, "{back:?} from {stored:?}");
+    assert!(back[1].abs() < 0.01, "{back:?}");
+    assert!(back[2].abs() < 0.01, "{back:?}");
+    assert!((stored[3] - 1.0).abs() < 1.0e-3);
   }
 }

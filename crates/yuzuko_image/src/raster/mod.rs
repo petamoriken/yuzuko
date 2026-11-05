@@ -220,6 +220,38 @@ impl Raster {
   }
 }
 
+/// Copies `raster` into `format`. Unorm8 channels are encoded values times
+/// 255. Float16 channels are the encoded values themselves, including
+/// components outside 0..1.
+pub fn convert_format(
+  raster: Raster,
+  format: SampleFormat,
+) -> Result<Raster, PixelError> {
+  if raster.format == format {
+    return Ok(raster);
+  }
+  let mut output =
+    Raster::new(raster.width, raster.height, raster.color_space, format)?;
+  output.premultiplied = raster.premultiplied;
+  let scale = match (raster.format, format) {
+    (SampleFormat::Unorm8, SampleFormat::Float16) => 1.0 / 255.0,
+    (SampleFormat::Float16, SampleFormat::Unorm8) => 255.0,
+    (SampleFormat::Unorm8, SampleFormat::Unorm8)
+    | (SampleFormat::Float16, SampleFormat::Float16) => 1.0,
+  };
+  for y in 0..raster.height {
+    for x in 0..raster.width {
+      let sample = raster.sample(i64::from(x), i64::from(y));
+      output.write_sample(
+        i64::from(x),
+        i64::from(y),
+        sample.map(|channel| channel * scale),
+      );
+    }
+  }
+  Ok(output)
+}
+
 pub fn orient(raster: Raster, orientation: u8) -> Result<Raster, PixelError> {
   let (width, height) = match orientation {
     5..=8 => (raster.height, raster.width),
@@ -580,6 +612,20 @@ mod tests {
     assert_eq!(turned.pixel_u8(1, 0), [0, 0, 255, 255]);
     assert_eq!(turned.pixel_u8(0, 3), [255, 0, 0, 255]);
     assert_eq!(turned.pixel_u8(1, 3), [0, 255, 0, 255]);
+  }
+
+  #[test]
+  fn convert_format_scales_unorm8_into_encoded_float16() {
+    let raster =
+      Raster::from_rgba8(1, 1, ColorSpace::Srgb, &[5, 250, 128, 255]).unwrap();
+    let converted = convert_format(raster, SampleFormat::Float16).unwrap();
+    let sample = converted.sample(0, 0);
+    assert!((sample[0] - 5.0 / 255.0).abs() < 1.0e-4);
+    assert!((sample[1] - 250.0 / 255.0).abs() < 1.0e-4);
+    assert!((sample[2] - 128.0 / 255.0).abs() < 1.0e-4);
+    assert!((sample[3] - 1.0).abs() < 1.0e-4);
+    let back = convert_format(converted, SampleFormat::Unorm8).unwrap();
+    assert_eq!(back.pixel_u8(0, 0), [5, 250, 128, 255]);
   }
 
   #[test]

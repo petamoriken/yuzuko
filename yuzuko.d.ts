@@ -9297,11 +9297,18 @@ interface OffscreenCanvasRenderingContext2D {
    */
   imageSmoothingQuality: ImageSmoothingQuality;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createImageData) */
+  /**
+   * `createImageData(sw, sh)` defaults to `"srgb"` and `"rgba-unorm8"`.
+   * `createImageData(imageData)` copies that object's color space and
+   * pixel format.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createImageData)
+   */
   createImageData(sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   createImageData(imageData: ImageData): ImageData;
 
   /**
+   * Omitted `colorSpace` is `"srgb"`. Omitted `pixelFormat` is `"rgba-unorm8"`.
    * May stall on a GPU readback.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/getImageData)

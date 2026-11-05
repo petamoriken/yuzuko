@@ -187,28 +187,12 @@
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.delete.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.name.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.name.worker.js": true,
-  "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.html": {
-    "expectedFailures": [
-      "test srgb float16 canvas storing 8-bit display-p3 data accurately"
-    ]
-  },
-  "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.worker.js": {
-    "expectedFailures": [
-      "test srgb float16 canvas storing 8-bit display-p3 data accurately"
-    ]
-  },
+  "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.html": true,
+  "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.worker.js": true,
   "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.u8srgb.to.u8p3.html": true,
   "html/canvas/offscreen/color-type/2d.color.type.u8p3.to.u8srgb.to.u8p3.worker.js": true,
-  "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.html": {
-    "expectedFailures": [
-      "test display-p3 float16 canvas storing 8-bit srgb data accurately"
-    ]
-  },
-  "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.worker.js": {
-    "expectedFailures": [
-      "test display-p3 float16 canvas storing 8-bit srgb data accurately"
-    ]
-  },
+  "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.html": true,
+  "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.worker.js": true,
   "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.html": true,
   "html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.canvas.clear.html": true,
@@ -3086,16 +3070,8 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.alpha.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.alpha.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.html": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.rgba.float16.html": {
-    "expectedFailures": [
-      "putImageData() puts 16-bit floating point image data from getImageData() onto the canvas"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.rgba.float16.worker.js": {
-    "expectedFailures": [
-      "putImageData() puts 16-bit floating point image data from getImageData() onto the canvas"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.rgba.float16.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.rgba.float16.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.clip.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.clip.worker.js": true,
