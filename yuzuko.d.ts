@@ -8916,7 +8916,13 @@ interface ImageEncodeOptions {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/getContext)
  */
 interface CanvasRenderingContext2DSettings {
-  /** `"srgb"` or `"display-p3"`. @defaultValue `"srgb"` */
+  /**
+   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"`
+   * throw `TypeError`.
+   *
+   * @defaultValue `"srgb"`
+   * @throws {@link TypeError} When `colorSpace` is not `"srgb"` or `"display-p3"`.
+   */
   colorSpace?: PredefinedColorSpace;
   /** `"unorm8"` or `"float16"`. @defaultValue `"unorm8"` */
   colorType?: "unorm8" | "float16";
@@ -9729,6 +9735,12 @@ interface ImageBitmapRenderingContextSettings {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageData/ImageData)
  */
 interface ImageDataSettings {
+  /**
+   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"`
+   * throw `TypeError`.
+   *
+   * @throws {@link TypeError} When the value is not `"srgb"` or `"display-p3"`.
+   */
   colorSpace?: PredefinedColorSpace;
   pixelFormat?: "rgba-unorm8" | "rgba-float16";
 }
