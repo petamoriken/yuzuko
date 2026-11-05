@@ -1,38 +1,58 @@
 # Agents
 
-Implementation contract for Yuzuko. The product spec is `docs/spec.md`. Intentional specification divergences are `docs/deviations.md`. Read all three before implementing. Update `docs/spec.md` before changing the specification.
+Implementation contract for Yuzuko. The product spec is `docs/spec.md`. Intentional specification divergences are `docs/deviations.md`. Read all three before implementing. Update `docs/spec.md` before changing the specification. `docs/overview.md` introduces the supported APIs by feature and is not a specification.
 
 ## Invariants
 
 - Build the runtime on rusty_v8 (the `v8` crate). Do not depend on `deno` or `deno_core`.
 - Do not add a WebView, CEF, an HTML parser, or a DOM tree.
 - `getContext` returns a context only for `"2d"`, `"webgpu"`, and `"bitmaprenderer"`.
-- Web-standard and WinterTC APIs go on `globalThis`. Everything else goes on `Yuzuko`. The `Yuzuko` object is present on the main realm and in a dedicated worker in every build. Do not add a global `Window` constructor. The main global has no `requestAnimationFrame`. Every build has `requestIdleCallback`, `cancelIdleCallback`, and `AbortController`. `EventSource` is present with the `fetch` feature. `WebSocket` and `WebSocketStream` are present with the `socket` feature. `VideoDecoder`, `EncodedVideoChunk`, `VideoFrame`, `AudioDecoder`, `EncodedAudioChunk`, and `AudioData` are present with the `codec` feature. `WebSocket` accepts `targetAddressSpace` of `loopback`, `local`, or `public`. A dedicated worker has `requestAnimationFrame` and `cancelAnimationFrame`, and does not have `requestIdleCallback`. Workers have `EventSource` with `fetch`, and `WebSocket` and `WebSocketStream` with `socket`.
-- A window is `new Yuzuko.Window()`. It is an `EventTarget`. Drawing happens on `window.surface`, a `Yuzuko.WindowSurface`. That surface is not an `OffscreenCanvas` and cannot be transferred. `transferControlToOffscreen()` returns the `OffscreenCanvas` a worker draws. Presenting happens in that window's rendering update. `window.surface.visibilityState` is `"visible"` or `"hidden"`, and `visibilitychange` fires on the surface. OS focus dispatches `focus` and `blur` as `FocusEvent`s on the window. Pointer events target `window.surface` and propagate through the window. `window.matchMedia` tracks that window's CSS size, `devicePixelRatio`, and a Media Queries Level 4 subset.
-- A dedicated worker runs on its own thread and enters only its own V8 isolate. winit stays on the main thread. wgpu stays on the thread that created the device. Post other background completions to a task queue and wake that realm's event loop.
 - An unimplemented web API must not succeed as a no-op. An unimplemented method throws `NotSupportedError`. An unimplemented global is absent.
 - Do not panic on user input or file bytes. Catch a decoder panic with `catch_unwind` and throw `InvalidStateError`.
-- Record behavior that differs from a specification in `docs/deviations.md` in the same change.
+- Record behavior that differs from a specification in `docs/deviations.md` in the same change. Add the row to the table for that area.
+
+## Where APIs live
+
+Web-standard and WinterTC APIs go on `globalThis`. Everything else goes on `Yuzuko`. The `Yuzuko` object is present on the main realm and in a dedicated worker in every build. Do not add a global `Window` constructor.
+
+The main global has no `requestAnimationFrame`. Every build has `requestIdleCallback`, `cancelIdleCallback`, and `AbortController`. A dedicated worker has `requestAnimationFrame` and `cancelAnimationFrame`, and does not have `requestIdleCallback`.
+
+These names follow the Cargo feature:
+
+- `EventSource` is present with `fetch`, including in a dedicated worker.
+- `WebSocket` and `WebSocketStream` are present with `socket`, including in a dedicated worker. `WebSocket` accepts `targetAddressSpace` of `loopback`, `local`, or `public`.
+- `VideoDecoder`, `EncodedVideoChunk`, `VideoFrame`, `AudioDecoder`, `EncodedAudioChunk`, and `AudioData` are present with `codec`.
+
+The full matrix is Build features in `docs/spec.md`. A name from a feature that was not enabled is absent on the main realm and in a dedicated worker.
+
+## Windows and threads
+
+A window is `new Yuzuko.Window()`. It is an `EventTarget`. Drawing happens on `window.surface`, a `Yuzuko.WindowSurface`. That surface is not an `OffscreenCanvas` and cannot be transferred. `transferControlToOffscreen()` returns the `OffscreenCanvas` a worker draws. Presenting happens in that window's rendering update.
+
+`window.surface.visibilityState` is `"visible"` or `"hidden"`, and `visibilitychange` fires on the surface. OS focus dispatches `focus` and `blur` as `FocusEvent`s on the window. Pointer events target `window.surface` and propagate through the window. `window.matchMedia` tracks that window's CSS size, `devicePixelRatio`, and a Media Queries Level 4 subset.
+
+A dedicated worker runs on its own thread and enters only its own V8 isolate. winit stays on the main thread. wgpu stays on the thread that created the device. Post other background completions to a task queue and wake that realm's event loop.
 
 ## How to proceed
 
 Supported targets are the five triples in `docs/spec.md`. Write window, GPU, and input code through winit and wgpu. Do not hide a shared feature behind `target_os = "macos"`.
 
-Do not add an API outside the requested scope. On the main global, `Yuzuko.fonts` is the `FontFaceSet` when the runtime is built with `canvas`, and `globalThis.fonts` is absent. A dedicated worker exposes the same kind of set as `self.fonts` and `globalThis.fonts`.
+Do not add an API outside the requested scope. Public API names are fixed by the execution model in `docs/spec.md`. Do not add a second window type beside `Yuzuko.Window`.
 
-Public API names are fixed by the execution model in `docs/spec.md`. Do not add a second window type beside `Yuzuko.Window`.
-
-A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file is the TSDoc reference for the runtime. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`.
+On the main global, `Yuzuko.fonts` is the `FontFaceSet` when the runtime is built with `canvas`, and `globalThis.fonts` is absent. A dedicated worker exposes the same kind of set as `self.fonts` and `globalThis.fonts`.
 
 The codecs are hardware-only H.264 (`avc1` and `avc3`) and AAC (`mp4a`). Other codecs are not decoded. There is no `HTMLVideoElement`. `Yuzuko.demuxMp4` reads a progressive MP4 file into those chunks and does not advance frames.
+
+A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file is the TSDoc reference for the runtime. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`.
 
 ## Repository
 
 ```text
-AGENTS.md
-yuzuko.d.ts
-docs/spec.md
-docs/deviations.md
+AGENTS.md                 implementation contract
+docs/overview.md          feature introduction; not a specification
+docs/spec.md              product spec
+docs/deviations.md        divergences from the web platform
+yuzuko.d.ts               TypeScript surface
 crates/yuzuko/            CLI
 crates/yuzuko_core/       isolate, event loop, modules, extensions
 crates/yuzuko_dom/
@@ -43,13 +63,14 @@ crates/yuzuko_canvas/
 crates/yuzuko_webgpu/
 crates/yuzuko_audio/
 crates/yuzuko_codec/
+crates/yuzuko_macros/     #[op] host bindings
 examples/
-tests/wpt/suite/         web-platform-tests submodule
+tests/wpt/suite/          web-platform-tests submodule
 tests/wpt/expectations/
 tests/fixtures/images/
 ```
 
-Feature crates depend on `yuzuko_core`. `yuzuko_core` does not depend on winit or wgpu. The binary calls each crate's `install`. The runtime crates are `yuzuko`, `yuzuko_core`, `yuzuko_dom`, `yuzuko_winter`, `yuzuko_window`, `yuzuko_image`, `yuzuko_canvas`, `yuzuko_webgpu`, `yuzuko_audio`, and `yuzuko_codec`.
+Feature crates depend on `yuzuko_core`. `yuzuko_core` does not depend on winit or wgpu. The binary calls each crate's `install`. The runtime crates are `yuzuko`, `yuzuko_core`, `yuzuko_dom`, `yuzuko_winter`, `yuzuko_window`, `yuzuko_image`, `yuzuko_canvas`, `yuzuko_webgpu`, `yuzuko_audio`, and `yuzuko_codec`. `yuzuko_macros` is the binding macro and is not a runtime crate.
 
 Identifiers, comments, commit messages, JavaScript exception messages, and docs are English.
 
