@@ -2403,18 +2403,8 @@
   "html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html": {
     "ignore": true
   },
-  "html/canvas/offscreen/manual/image-smoothing/image.smoothing.html": {
-    "expectedFailures": [
-      "Test that image smoothing is actually on by default.",
-      "Test that image smoothing works when imageSmoothingEnabled is set to true"
-    ]
-  },
-  "html/canvas/offscreen/manual/image-smoothing/image.smoothing.worker.js": {
-    "expectedFailures": [
-      "Test that image smoothing is actually on by default.",
-      "Test that image smoothing works when imageSmoothingEnabled is set to true"
-    ]
-  },
+  "html/canvas/offscreen/manual/image-smoothing/image.smoothing.html": true,
+  "html/canvas/offscreen/manual/image-smoothing/image.smoothing.worker.js": true,
   "html/canvas/offscreen/manual/layers/unclosed-layers-expected.html": {
     "ignore": true
   },

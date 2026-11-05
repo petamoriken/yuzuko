@@ -9284,14 +9284,14 @@ interface OffscreenCanvasRenderingContext2D {
   ): void;
 
   /**
-   * `false` samples nearest. `true` uses {@link OffscreenCanvasRenderingContext2D.imageSmoothingQuality}.
+   * `false` samples nearest. `true` samples linearly.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingEnabled)
    */
   imageSmoothingEnabled: boolean;
 
   /**
-   * `"low"` samples nearest. `"medium"` and `"high"` sample linearly.
+   * `"low"`, `"medium"`, and `"high"` all sample linearly. The value round-trips.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingQuality)
    */

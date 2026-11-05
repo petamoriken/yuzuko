@@ -290,7 +290,7 @@ pub enum Style {
   Pattern(u64),
 }
 
-/// Canvas `imageSmoothingQuality`. `"low"` is nearest; the other two are linear.
+/// Canvas `imageSmoothingQuality`. All three sample linearly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SmoothingQuality {
   Low,
@@ -418,9 +418,9 @@ impl State {
       .with_dashes(self.dash_offset, dash)
   }
 
-  /// `false`, or quality `"low"`, selects nearest. `"medium"` and `"high"` are linear.
+  /// `imageSmoothingEnabled: false` selects nearest. Every quality is linear.
   pub fn nearest(&self) -> bool {
-    !self.smoothing || self.quality == SmoothingQuality::Low
+    !self.smoothing
   }
 
   pub fn clips(&self) -> Arc<[Clip]> {
