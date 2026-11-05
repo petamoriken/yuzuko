@@ -1,6 +1,7 @@
 //! WebCodecs classes on `globalThis`.
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use yuzuko_core::op::{
@@ -517,6 +518,22 @@ impl EncodedVideoChunk {
   }
 }
 
+struct QueuedChunk {
+  bytes: Vec<u8>,
+  timestamp: f64,
+  duration: Option<f64>,
+}
+
+enum Control {
+  Decode(QueuedChunk),
+  Flush(u64),
+}
+
+struct FlushWait {
+  id: u64,
+  resolver: v8::TracedReference<v8::PromiseResolver>,
+}
+
 pub struct VideoDecoder {
   state: Cell<State>,
   output: RefCell<Option<v8::TracedReference<v8::Function>>>,
@@ -526,17 +543,37 @@ pub struct VideoDecoder {
   /// out yet. A hardware decoder may hold a frame until `flush`, and it
   /// outputs frames in presentation order, so each frame takes the earliest.
   pending: RefCell<Vec<(f64, Option<f64>)>>,
+  queue: RefCell<VecDeque<Control>>,
+  queue_size: Cell<u32>,
+  /// True until a key chunk has been queued for this configuration.
+  key_required: Cell<bool>,
+  flushes: RefCell<VecDeque<FlushWait>>,
+  flush_ids: Cell<u64>,
+  /// Bumps when `reset`, `close`, `configure`, or a decode error drops work
+  /// that a running pump must not finish.
+  generation: Cell<u64>,
+  scheduled: Cell<bool>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for VideoDecoder {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     trace_fn(&self.output, visitor);
     trace_fn(&self.error, visitor);
+    if let Ok(flushes) = self.flushes.try_borrow() {
+      for flush in flushes.iter() {
+        visitor.trace(&flush.resolver);
+      }
+    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"VideoDecoder"
   }
+}
+
+thread_local! {
+  static VIDEO_PUMPS: RefCell<VecDeque<v8::Global<v8::Object>>> =
+    RefCell::new(VecDeque::new());
 }
 
 #[op]
@@ -554,6 +591,13 @@ impl VideoDecoder {
       error: RefCell::new(Some(traced(scope, error))),
       backend: RefCell::new(None),
       pending: RefCell::new(Vec::new()),
+      queue: RefCell::new(VecDeque::new()),
+      queue_size: Cell::new(0),
+      key_required: Cell::new(true),
+      flushes: RefCell::new(VecDeque::new()),
+      flush_ids: Cell::new(0),
+      generation: Cell::new(0),
+      scheduled: Cell::new(false),
     })
   }
 
@@ -564,7 +608,7 @@ impl VideoDecoder {
 
   #[getter]
   fn decode_queue_size(&self) -> u32 {
-    0
+    self.queue_size.get()
   }
 
   #[static_method]
@@ -586,10 +630,18 @@ impl VideoDecoder {
   fn configure(
     &self,
     scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
     config: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
     self.ensure_open()?;
     let config = video_config(scope, config)?;
+    self.generation.set(self.generation.get().wrapping_add(1));
+    self.abort_work(scope, this);
+    if self.state.get() == State::Closed {
+      return Err(decoder_closed());
+    }
+    self.key_required.set(true);
+    *self.backend.borrow_mut() = None;
     let opened = catch_unwind(AssertUnwindSafe(|| VideoBackend::open(config)));
     let backend = match opened {
       Ok(Ok(backend)) => backend,
@@ -614,32 +666,24 @@ impl VideoDecoder {
     chunk: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
     self.ensure_configured()?;
-    let (bytes, timestamp, duration) = video_chunk(scope, chunk)?;
-    let decoded = {
-      let mut guard = self.backend.borrow_mut();
-      let Some(backend) = guard.as_mut() else {
-        return Err(not_configured());
-      };
-      catch_unwind(AssertUnwindSafe(|| backend.decode(&bytes)))
-    };
-    match decoded {
-      Ok(Ok(frames)) => {
-        self.pending.borrow_mut().push((timestamp, duration));
-        for raster in frames {
-          let (timestamp, duration) = self.next_timing();
-          self.emit_frame(scope, this, raster, timestamp, duration)?;
-        }
-        Ok(())
-      }
-      Ok(Err(DecodeError::Panic)) | Err(_) => {
-        self.shutdown();
-        Err(panicked())
-      }
-      Ok(Err(_)) => {
-        self.fail(scope, "The frame could not be decoded");
-        Ok(())
-      }
+    let (key, bytes, timestamp, duration) = video_chunk(scope, chunk)?;
+    if self.key_required.get() && !key {
+      return Err(OpError::dom("DataError", "A key frame is required"));
     }
+    if key {
+      self.key_required.set(false);
+    }
+    self
+      .queue
+      .borrow_mut()
+      .push_back(Control::Decode(QueuedChunk {
+        bytes,
+        timestamp,
+        duration,
+      }));
+    self.queue_size.set(self.queue_size.get().saturating_add(1));
+    self.schedule(scope, this);
+    Ok(())
   }
 
   fn flush(
@@ -647,31 +691,55 @@ impl VideoDecoder {
     scope: &mut v8::PinScope,
     #[this] this: v8::Local<v8::Object>,
   ) -> Result<Js, OpError> {
-    self.ensure_configured()?;
-    let frames = {
-      let mut guard = self.backend.borrow_mut();
-      let Some(backend) = guard.as_mut() else {
-        return Err(not_configured());
+    if self.state.get() != State::Configured {
+      let message = if self.state.get() == State::Closed {
+        "The decoder is closed"
+      } else {
+        "The decoder is not configured"
       };
-      backend.flush().map_err(config_error)?
-    };
-    for raster in frames {
-      let (timestamp, duration) = self.next_timing();
-      self.emit_frame(scope, this, raster, timestamp, duration)?;
+      let error = dom_value(scope, "InvalidStateError", message)?;
+      return rejected_promise(scope, error);
     }
-    // A flushed decoder starts the next chunk with no frame held back.
-    self.pending.borrow_mut().clear();
-    resolved(scope)
+    let Some(resolver) = v8::PromiseResolver::new(scope) else {
+      return Err(OpError::type_("Promise is unavailable"));
+    };
+    let promise = resolver.get_promise(scope);
+    let id = self.flush_ids.get().wrapping_add(1);
+    self.flush_ids.set(id);
+    self.flushes.borrow_mut().push_back(FlushWait {
+      id,
+      resolver: traced(scope, resolver),
+    });
+    self.queue.borrow_mut().push_back(Control::Flush(id));
+    self.schedule(scope, this);
+    let promise: v8::Local<v8::Value> = promise.into();
+    Ok(Js(v8::Global::new(scope, promise)))
   }
 
-  fn reset(&self) -> Result<(), OpError> {
+  fn reset(
+    &self,
+    scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
+  ) -> Result<(), OpError> {
     self.ensure_open()?;
+    self.generation.set(self.generation.get().wrapping_add(1));
+    self.abort_work(scope, this);
+    if self.state.get() == State::Closed {
+      return Err(decoder_closed());
+    }
     self.reset_backend();
+    self.key_required.set(true);
     Ok(())
   }
 
-  fn close(&self) -> Result<(), OpError> {
+  fn close(
+    &self,
+    scope: &mut v8::PinScope,
+    #[this] this: v8::Local<v8::Object>,
+  ) -> Result<(), OpError> {
     self.ensure_open()?;
+    self.generation.set(self.generation.get().wrapping_add(1));
+    self.abort_work(scope, this);
     self.shutdown();
     Ok(())
   }
@@ -687,10 +755,10 @@ impl VideoDecoder {
   }
 
   fn ensure_configured(&self) -> Result<(), OpError> {
-    if self.state.get() != State::Configured {
-      Err(not_configured())
-    } else {
-      Ok(())
+    match self.state.get() {
+      State::Configured => Ok(()),
+      State::Closed => Err(decoder_closed()),
+      State::Unconfigured => Err(not_configured()),
     }
   }
 
@@ -719,16 +787,228 @@ impl VideoDecoder {
     self.state.set(State::Closed);
   }
 
-  fn emit_frame(
+  fn schedule(&self, scope: &mut v8::PinScope, this: v8::Local<v8::Object>) {
+    if self.scheduled.get() {
+      return;
+    }
+    let Some(function) = v8::Function::new(scope, pump_video) else {
+      return;
+    };
+    self.scheduled.set(true);
+    VIDEO_PUMPS.with(|pumps| {
+      pumps.borrow_mut().push_back(v8::Global::new(scope, this));
+    });
+    scope.enqueue_microtask(function);
+  }
+
+  /// Drop queued chunks and reject every in-flight `flush` with `AbortError`.
+  fn abort_work(&self, scope: &mut v8::PinScope, this: v8::Local<v8::Object>) {
+    let waits = std::mem::take(&mut *self.flushes.borrow_mut());
+    self.queue.borrow_mut().clear();
+    let queued = self.queue_size.get();
+    self.queue_size.set(0);
+    self.pending.borrow_mut().clear();
+    if let Ok(error) = dom_value(scope, "AbortError", "The flush was aborted") {
+      for wait in waits {
+        reject_resolver(scope, wait.resolver, error);
+      }
+    }
+    if queued > 0 {
+      self.fire_ondequeue(scope, this);
+    }
+  }
+
+  fn shrink_queue(
+    &self,
+    scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
+  ) {
+    let queued = self.queue_size.get();
+    if queued == 0 {
+      return;
+    }
+    self.queue_size.set(queued - 1);
+    self.fire_ondequeue(scope, this);
+  }
+
+  fn fire_ondequeue(
+    &self,
+    scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
+  ) {
+    let Some(key) = v8::String::new(scope, "ondequeue") else {
+      return;
+    };
+    let Some(value) = this.get(scope, key.into()) else {
+      return;
+    };
+    let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
+      return;
+    };
+    let thrown = {
+      v8::tc_scope!(let tc, scope);
+      let function = v8::Local::new(tc, function);
+      let receiver = v8::Local::new(tc, this);
+      if function.call(tc, receiver.into(), &[]).is_some() {
+        None
+      } else {
+        tc.exception().map(|value| v8::Global::new(tc, value))
+      }
+    };
+    if let Some(thrown) = thrown {
+      let thrown = v8::Local::new(scope, thrown);
+      yuzuko_dom::report_error(scope, thrown);
+    }
+  }
+
+  fn process(&self, scope: &mut v8::PinScope, this: v8::Local<v8::Object>) {
+    loop {
+      if self.state.get() == State::Closed {
+        return;
+      }
+      let message = self.queue.borrow_mut().pop_front();
+      let Some(message) = message else {
+        return;
+      };
+      let generation = self.generation.get();
+      match message {
+        Control::Decode(chunk) => {
+          self.shrink_queue(scope, this);
+          if self.generation.get() != generation
+            || self.state.get() != State::Configured
+          {
+            return;
+          }
+          if !self.decode_chunk(scope, this, chunk) {
+            return;
+          }
+        }
+        Control::Flush(id) => {
+          if !self.finish_flush(scope, this, id) {
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  /// `false` stops the pump. A decode error has already closed the decoder.
+  fn decode_chunk(
+    &self,
+    scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
+    chunk: QueuedChunk,
+  ) -> bool {
+    match self.pull_decode(&chunk.bytes) {
+      Ok(frames) => {
+        self
+          .pending
+          .borrow_mut()
+          .push((chunk.timestamp, chunk.duration));
+        for raster in frames {
+          let (timestamp, duration) = self.next_timing();
+          if !self.emit_now(scope, this, raster, timestamp, duration) {
+            return false;
+          }
+        }
+        true
+      }
+      Err(error) => {
+        self.fail_decode(scope, this, &error);
+        false
+      }
+    }
+  }
+
+  /// `false` stops the pump, including when `reset` ran inside `output`.
+  fn finish_flush(
+    &self,
+    scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
+    id: u64,
+  ) -> bool {
+    if !self.flush_live(id) {
+      return true;
+    }
+    let generation = self.generation.get();
+    let frames = match self.pull_flush() {
+      Ok(frames) => frames,
+      Err(error) => {
+        self.fail_decode(scope, this, &error);
+        return false;
+      }
+    };
+    for raster in frames {
+      let (timestamp, duration) = self.next_timing();
+      if !self.emit_now(scope, this, raster, timestamp, duration) {
+        return false;
+      }
+    }
+    if self.generation.get() != generation || !self.flush_live(id) {
+      return false;
+    }
+    self.pending.borrow_mut().clear();
+    self.resolve_flush(scope, id);
+    true
+  }
+
+  fn flush_live(&self, id: u64) -> bool {
+    self.flushes.borrow().iter().any(|wait| wait.id == id)
+  }
+
+  fn resolve_flush(&self, scope: &mut v8::PinScope, id: u64) {
+    let wait = {
+      let mut flushes = self.flushes.borrow_mut();
+      let Some(position) = flushes.iter().position(|wait| wait.id == id) else {
+        return;
+      };
+      let Some(wait) = flushes.remove(position) else {
+        return;
+      };
+      wait
+    };
+    let Some(resolver) = traced_local(scope, &wait.resolver) else {
+      return;
+    };
+    let value: v8::Local<v8::Value> = v8::undefined(scope).into();
+    resolver.resolve(scope, value);
+  }
+
+  fn pull_decode(&self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
+    let mut guard = self.backend.borrow_mut();
+    let Some(backend) = guard.as_mut() else {
+      return Err(DecodeError::Rejected);
+    };
+    match catch_unwind(AssertUnwindSafe(|| backend.decode(bytes))) {
+      Ok(result) => result,
+      Err(_) => Err(DecodeError::Panic),
+    }
+  }
+
+  fn pull_flush(&self) -> Result<Vec<Raster>, DecodeError> {
+    let mut guard = self.backend.borrow_mut();
+    let Some(backend) = guard.as_mut() else {
+      return Err(DecodeError::Rejected);
+    };
+    match catch_unwind(AssertUnwindSafe(|| backend.flush())) {
+      Ok(result) => result,
+      Err(_) => Err(DecodeError::Panic),
+    }
+  }
+
+  /// Calls `output` now, so `reset` inside it can drop the rest of the queue.
+  /// `false` means the decoder was reset, closed, or the callback threw.
+  fn emit_now(
     &self,
     scope: &mut v8::PinScope,
     this: v8::Local<v8::Object>,
     raster: Raster,
     timestamp: f64,
     duration: Option<f64>,
-  ) -> Result<(), OpError> {
+  ) -> bool {
+    let generation = self.generation.get();
     let Some(function) = callback(scope, &self.output) else {
-      return Ok(());
+      return self.still_configured(generation);
     };
     let _ = VideoFrame::template(scope);
     let frame = unsafe {
@@ -738,33 +1018,103 @@ impl VideoDecoder {
       )
     };
     let frame: v8::Local<v8::Value> = frame.into();
-    enqueue_delivery(
+    let thrown = call_decoder(
       scope,
-      Delivery::Output {
-        kind: DecoderKind::Video,
-        decoder: v8::Global::new(scope, this),
-        callback: v8::Global::new(scope, function),
-        argument: v8::Global::new(scope, frame),
-      },
+      v8::Global::new(scope, function),
+      v8::Global::new(scope, frame),
     );
-    Ok(())
+    if let Some(thrown) = thrown {
+      self.fail_closed(scope, thrown, Some(this));
+      return false;
+    }
+    self.still_configured(generation)
   }
 
-  fn fail(&self, scope: &mut v8::PinScope, message: &str) {
-    let Some(error) = new_dom_exception(scope, "EncodingError", message) else {
+  fn still_configured(&self, generation: u64) -> bool {
+    self.generation.get() == generation && self.state.get() == State::Configured
+  }
+
+  fn fail_decode(
+    &self,
+    scope: &mut v8::PinScope,
+    this: v8::Local<v8::Object>,
+    error: &DecodeError,
+  ) {
+    let (name, message) = match error {
+      DecodeError::Panic => {
+        ("InvalidStateError", "The decoder panicked".to_string())
+      }
+      DecodeError::Unsupported | DecodeError::Rejected => (
+        "EncodingError",
+        "The frame could not be decoded".to_string(),
+      ),
+    };
+    let Ok(value) = dom_value(scope, name, &message) else {
       self.shutdown();
       return;
     };
-    let error: v8::Local<v8::Value> = error.into();
-    self.fail_value(scope, v8::Global::new(scope, error));
+    self.fail_closed(scope, v8::Global::new(scope, value), Some(this));
   }
 
-  fn fail_value(&self, scope: &mut v8::PinScope, error: v8::Global<v8::Value>) {
+  fn fail_closed(
+    &self,
+    scope: &mut v8::PinScope,
+    error: v8::Global<v8::Value>,
+    this: Option<v8::Local<v8::Object>>,
+  ) {
+    self.generation.set(self.generation.get().wrapping_add(1));
+    let waits = std::mem::take(&mut *self.flushes.borrow_mut());
+    self.queue.borrow_mut().clear();
+    let queued = self.queue_size.get();
+    self.queue_size.set(0);
     self.shutdown();
-    let callback = callback(scope, &self.error)
-      .map(|function| v8::Global::new(scope, function));
-    enqueue_delivery(scope, Delivery::Error { callback, error });
+    let error_local = v8::Local::new(scope, &error);
+    if let Some(function) = callback(scope, &self.error) {
+      if let Some(thrown) = call_decoder(
+        scope,
+        v8::Global::new(scope, function),
+        v8::Global::new(scope, error_local),
+      ) {
+        let thrown = v8::Local::new(scope, thrown);
+        yuzuko_dom::report_error(scope, thrown);
+      }
+    } else {
+      yuzuko_dom::report_error(scope, error_local);
+    }
+    let error_local = v8::Local::new(scope, &error);
+    for wait in waits {
+      reject_resolver(scope, wait.resolver, error_local);
+    }
+    if queued > 0
+      && let Some(this) = this
+    {
+      self.fire_ondequeue(scope, this);
+    }
   }
+}
+
+fn pump_video(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut _return: v8::ReturnValue,
+) {
+  let Some(global) = VIDEO_PUMPS.with(|pumps| {
+    let mut pumps = pumps.borrow_mut();
+    if pumps.is_empty() {
+      None
+    } else {
+      Some(pumps.pop_front().expect("pump"))
+    }
+  }) else {
+    return;
+  };
+  let object = v8::Local::new(scope, &global);
+  let Some(host) = (unsafe { host_ref::<VideoDecoder>(scope, object) }) else {
+    return;
+  };
+  let decoder = host.get();
+  decoder.scheduled.set(false);
+  decoder.process(scope, object);
 }
 
 pub struct AudioData {
@@ -1370,7 +1720,7 @@ fn audio_codec(codec: &str) -> Option<AudioCodec> {
 fn video_chunk(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(Vec<u8>, f64, Option<f64>), OpError> {
+) -> Result<(bool, Vec<u8>, f64, Option<f64>), OpError> {
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("The chunk is not an EncodedVideoChunk"))?;
   let Some(host) = (unsafe { host_ref::<EncodedVideoChunk>(scope, object) })
@@ -1378,7 +1728,12 @@ fn video_chunk(
     return Err(OpError::type_("The chunk is not an EncodedVideoChunk"));
   };
   let chunk = host.get();
-  Ok((chunk.data.clone(), chunk.timestamp as f64, chunk.duration))
+  Ok((
+    chunk.key,
+    chunk.data.clone(),
+    chunk.timestamp as f64,
+    chunk.duration,
+  ))
 }
 
 fn audio_chunk(
@@ -1814,7 +2169,6 @@ fn set_value(
 }
 
 enum DecoderKind {
-  Video,
   Audio,
 }
 
@@ -1914,13 +2268,6 @@ fn fail_thrown(
 ) {
   let object = v8::Local::new(scope, decoder);
   match kind {
-    DecoderKind::Video => {
-      let Some(host) = (unsafe { host_ref::<VideoDecoder>(scope, object) })
-      else {
-        return;
-      };
-      host.get().fail_value(scope, thrown);
-    }
     DecoderKind::Audio => {
       let Some(host) = (unsafe { host_ref::<AudioDecoder>(scope, object) })
       else {
@@ -1929,6 +2276,43 @@ fn fail_thrown(
       host.get().fail_value(scope, thrown);
     }
   }
+}
+
+fn dom_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  message: &str,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  new_dom_exception(scope, name, message)
+    .map(v8::Local::<v8::Value>::from)
+    .ok_or_else(|| OpError::type_("DOMException is unavailable"))
+}
+
+fn rejected_promise(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) -> Result<Js, OpError> {
+  let Some(resolver) = v8::PromiseResolver::new(scope) else {
+    return Err(OpError::type_("Promise is unavailable"));
+  };
+  let promise = resolver.get_promise(scope);
+  resolver.reject(scope, error);
+  let promise: v8::Local<v8::Value> = promise.into();
+  Ok(Js(v8::Global::new(scope, promise)))
+}
+
+fn reject_resolver(
+  scope: &mut v8::PinScope,
+  reference: v8::TracedReference<v8::PromiseResolver>,
+  value: v8::Local<v8::Value>,
+) {
+  let Some(resolver) = traced_local(scope, &reference) else {
+    return;
+  };
+  let resolver = yuzuko_core::op::root(scope, resolver);
+  let value = yuzuko_core::op::root(scope, value);
+  v8::tc_scope!(let scope, scope);
+  resolver.reject(scope, value);
 }
 
 fn resolved(scope: &mut v8::PinScope) -> Result<Js, OpError> {

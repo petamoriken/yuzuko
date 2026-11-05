@@ -12617,13 +12617,26 @@ interface EncodedVideoChunkInit {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
  */
-interface VideoDecoder extends EventTarget {
+interface VideoDecoder {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/state) */
   readonly state: CodecState;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decodeQueueSize) */
+  /**
+   * Number of chunks waiting to be decoded. `ondequeue` is called when this
+   * decreases. No `dequeue` event is dispatched.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decodeQueueSize)
+   */
   readonly decodeQueueSize: number;
+
+  /**
+   * Called with no arguments when `decodeQueueSize` decreases.
+   * No `dequeue` event is dispatched.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/ondequeue)
+   */
+  ondequeue: ((this: VideoDecoder) => void) | null;
 
   /**
    * @throws {@link TypeError} when `config` is missing a required member,
@@ -12640,23 +12653,28 @@ interface VideoDecoder extends EventTarget {
   configure(config: VideoDecoderConfig): void;
 
   /**
-   * Returns before `output` or `error` runs. Those callbacks are microtasks.
-   * A sample the decoder rejects closes the decoder and reports
-   * `EncodingError` to `error`. This method does not throw `DataError`.
+   * Enqueues `chunk` and returns before the hardware decoder runs. `output`
+   * runs from the microtask that decodes the chunk. A sample the decoder
+   * rejects closes the decoder, calls `error` with `EncodingError`, and
+   * rejects an in-flight `flush` with that error. After construction,
+   * `configure`, or `reset`, a key chunk is required. The check uses
+   * `chunk.type` and does not inspect the bitstream.
    *
    * @throws {@link DOMException} `InvalidStateError` when the decoder is not
-   * configured.
+   * configured or is closed.
+   * @throws {@link DOMException} `DataError` when a key chunk is required and
+   * `chunk.type` is `"delta"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decode)
    */
   decode(chunk: EncodedVideoChunk): void;
 
   /**
-   * Resolves without waiting for another hardware picture. Frames `decode`
-   * already produced are delivered before this promise settles.
-   *
-   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
-   * configured.
+   * Settles after the queued chunks are processed. `output` for those chunks
+   * runs before the promise resolves. A rejected sample rejects `EncodingError`
+   * after `error` has run. `reset` or `close` rejects an in-flight promise
+   * with `AbortError`. When the decoder is not configured, the returned
+   * promise rejects `InvalidStateError` and this method does not throw.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/flush)
    */
