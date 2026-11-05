@@ -95,6 +95,32 @@ pub fn is_mime_type(input: &str) -> bool {
   parse(input).is_some()
 }
 
+/// MIME sniffing JavaScript MIME type. Parameters are ignored.
+pub fn is_javascript_mime(input: &str) -> bool {
+  let Some(mime) = parse(input) else {
+    return false;
+  };
+  matches!(
+    (mime.type_.as_str(), mime.subtype.as_str()),
+    ("application", "ecmascript")
+      | ("application", "javascript")
+      | ("application", "x-ecmascript")
+      | ("application", "x-javascript")
+      | ("text", "ecmascript")
+      | ("text", "javascript")
+      | ("text", "javascript1.0")
+      | ("text", "javascript1.1")
+      | ("text", "javascript1.2")
+      | ("text", "javascript1.3")
+      | ("text", "javascript1.4")
+      | ("text", "javascript1.5")
+      | ("text", "jscript")
+      | ("text", "livescript")
+      | ("text", "x-ecmascript")
+      | ("text", "x-javascript")
+  )
+}
+
 /// Serialization used as a `Blob` type and a `Content-Type` header.
 pub(crate) fn serialize(mime: &Mime) -> String {
   let mut out = String::new();
@@ -354,6 +380,21 @@ fn is_quoted_token(ch: char) -> bool {
 mod tests {
   use super::blob_type;
   use super::data_url;
+  use super::is_javascript_mime;
+
+  #[test]
+  fn javascript_mime_ignores_parameters_and_case() {
+    assert!(is_javascript_mime("text/javascript"));
+    assert!(is_javascript_mime("Text/JavaScript; charset=utf-8"));
+    assert!(is_javascript_mime("application/javascript"));
+    assert!(is_javascript_mime("text/ecmascript"));
+    assert!(is_javascript_mime("text/javascript;bla;bla"));
+    assert!(!is_javascript_mime("text/plain"));
+    assert!(!is_javascript_mime("text/html"));
+    assert!(!is_javascript_mime("TEXT/HTML"));
+    assert!(!is_javascript_mime("text/csv;charset=utf-8"));
+    assert!(!is_javascript_mime("aaa/aaa"));
+  }
 
   #[test]
   fn wpt_mime_type_resources() {

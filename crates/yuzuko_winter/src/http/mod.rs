@@ -34,7 +34,9 @@ pub(crate) mod xhr;
 mod protocol;
 
 #[cfg(feature = "fetch")]
-pub use client::{BodyNote, HttpBody, HttpFailure, HttpResponse, perform};
+pub use client::{
+  BodyNote, HttpBody, HttpFailure, HttpResponse, perform, read_get,
+};
 
 #[cfg(all(test, feature = "fetch"))]
 pub(crate) use client::perform_with_roots;

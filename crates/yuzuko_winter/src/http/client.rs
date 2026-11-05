@@ -138,6 +138,40 @@ pub fn perform(
   drive(method, url, headers, body, redirect, cancel, None)
 }
 
+/// Blocking GET. `importScripts` needs the status, headers, and body before
+/// it returns.
+pub fn read_get(
+  url: &str,
+) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
+  let cancel = Arc::new(AtomicBool::new(false));
+  let response = perform(
+    "GET".to_string(),
+    url.to_string(),
+    Vec::new(),
+    Vec::new(),
+    "follow".to_string(),
+    Arc::clone(&cancel),
+  )
+  .map_err(|error| failure_message(&error))?;
+  let body = collect_notes(&response.body);
+  response.body.stop();
+  Ok((response.status, response.headers, body?))
+}
+
+fn collect_notes(body: &HttpBody) -> Result<Vec<u8>, String> {
+  let mut output = Vec::new();
+  loop {
+    match body.wait_note(Duration::from_secs(15)) {
+      Some(BodyNote::Chunk(bytes)) => output.extend(bytes),
+      Some(BodyNote::End) => return Ok(output),
+      Some(BodyNote::Failed(message)) => return Err(message),
+      None => {
+        return Err("The response timed out".to_string());
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 pub(crate) fn perform_with_roots(
   method: String,

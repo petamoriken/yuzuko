@@ -309,8 +309,8 @@ fn import_scripts(
         OpError::dom("NetworkError", message).throw(scope);
         return;
       }
-      None => match load_worker_source(&url, sandbox.as_deref()) {
-        Ok(loaded) => loaded.text,
+      None => match load_import_script(&url, sandbox.as_deref()) {
+        Ok(text) => text,
         Err(message) => {
           OpError::dom("NetworkError", message).throw(scope);
           return;
@@ -322,6 +322,38 @@ fn import_scripts(
       return;
     }
   }
+}
+
+fn load_import_script(
+  url: &str,
+  sandbox: Option<&std::path::Path>,
+) -> Result<String, String> {
+  if url.starts_with("http:") || url.starts_with("https:") {
+    #[cfg(feature = "fetch")]
+    {
+      return fetch_import_script(url);
+    }
+  }
+  load_worker_source(url, sandbox).map(|loaded| loaded.text)
+}
+
+#[cfg(feature = "fetch")]
+fn fetch_import_script(url: &str) -> Result<String, String> {
+  let (status, headers, body) = yuzuko_winter::read_get(url)?;
+  if !(200..300).contains(&status) {
+    return Err(format!("The worker script could not be loaded: {url}"));
+  }
+  let mime = headers
+    .iter()
+    .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    .map(|(_, value)| value.as_str())
+    .unwrap_or("");
+  if !yuzuko_winter::is_javascript_mime(mime) {
+    return Err(format!(
+      "The worker script MIME type is not JavaScript: {mime}"
+    ));
+  }
+  String::from_utf8(body).map_err(|error| error.to_string())
 }
 
 fn global_post_message(

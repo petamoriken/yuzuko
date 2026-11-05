@@ -13656,7 +13656,8 @@ declare class WorkerGlobalScope extends EventTarget {
    * then, so revoking it inside an earlier script of the same call does
    * not fail a later URL. `data:` accepts a base64 payload.
    *
-   * @throws {@link DOMException} `NetworkError` when a script cannot be loaded.
+   * @throws {@link DOMException} `NetworkError` when a script cannot be loaded,
+   * or when an `http:` or `https:` response is not a JavaScript MIME type.
    * @throws {@link TypeError} In a module worker, or when a script throws.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerGlobalScope/importScripts)

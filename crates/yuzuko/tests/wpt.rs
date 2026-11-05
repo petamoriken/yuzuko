@@ -508,14 +508,15 @@ fn execute_query(
     harness.to_string(),
     COMPLETION.to_string(),
   ];
-  match case.kind {
+  // Holds the in-memory worker body until this query finishes.
+  let _worker_source = match case.kind {
     Kind::Ignore => {
       return Outcome::Error("ignored file was executed".to_string());
     }
     Kind::Worker => {
       let url = format!("{WPT_HTTP}/{}", case.key);
       entry = Some(url.clone());
-      let inline = if case.key.ends_with(".any.js") {
+      let registered = if case.key.ends_with(".any.js") {
         let mut parts = Vec::new();
         if let Err(error) = push_meta_scripts(
           suite,
@@ -533,11 +534,19 @@ fn execute_query(
           // appends it when it wraps a worker `.any.js`.
           parts.push("done();\n".to_string());
         }
-        Some(parts.join("\n"))
+        // The script URL stays on the WPT origin. A data: URL cannot resolve
+        // a path-absolute importScripts, so the harness body is served for
+        // this http URL instead of being inlined into a data: worker.
+        yuzuko_core::set_classic_worker_source(Some((
+          url.clone(),
+          parts.join("\n"),
+        )));
+        Some(ClassicWorkerSourceGuard)
       } else {
         None
       };
-      scripts = vec![worker_parent(&url, inline.as_deref())];
+      scripts = vec![worker_parent(&url)];
+      registered
     }
     Kind::Script => {
       if let Err(error) =
@@ -546,6 +555,7 @@ fn execute_query(
         return Outcome::Error(error);
       }
       scripts.push(source.to_string());
+      None
     }
     Kind::Html => {
       if let Err(error) =
@@ -559,8 +569,9 @@ fn execute_query(
         "if (typeof dispatchEvent === 'function') {\n  dispatchEvent(new Event('load'));\n}\n"
           .to_string(),
       );
+      None
     }
-  }
+  };
   let deadline = if timeout_long(source) {
     Duration::from_secs(30)
   } else if matches!(case.kind, Kind::Worker) {
@@ -591,17 +602,9 @@ fn execute_query(
 
 /// Parent page for a dedicated-worker test. The worker posts testharness
 /// `complete` and this page stores the same JSON shape as `COMPLETION`.
-fn worker_parent(url: &str, inline: Option<&str>) -> String {
-  let start = if let Some(source) = inline {
-    let source =
-      serde_json::to_string(source).unwrap_or_else(|_| "\"\"".to_string());
-    format!(
-      "var source = {source};\nvar worker = new Worker(\"data:text/javascript;charset=utf-8,\" + encodeURIComponent(source));"
-    )
-  } else {
-    let url = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".to_string());
-    format!("var worker = new Worker({url});")
-  };
+fn worker_parent(url: &str) -> String {
+  let url = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".to_string());
+  let start = format!("var worker = new Worker({url});");
   format!(
     r#"{start}
 worker.onmessage = function(event) {{
@@ -641,6 +644,14 @@ worker.onerror = function(event) {{
 }
 
 const WPT_HTTP: &str = "http://web-platform.test:8000";
+
+struct ClassicWorkerSourceGuard;
+
+impl Drop for ClassicWorkerSourceGuard {
+  fn drop(&mut self) {
+    yuzuko_core::set_classic_worker_source(None);
+  }
+}
 
 /// These suites request a network origin, so they use the WPT server
 /// instead of `file:`.

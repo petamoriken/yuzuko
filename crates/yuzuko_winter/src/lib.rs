@@ -33,14 +33,14 @@ pub use http::webtransport::{
 #[cfg(feature = "fetch")]
 pub use http::xhr::set_xhr_progress_hook;
 #[cfg(feature = "fetch")]
-pub use http::{BodyNote, HttpBody, perform};
+pub use http::{BodyNote, HttpBody, perform, read_get};
 pub use stream::{
   ByteWait, StreamKind, StreamStatus, TransferError, byte_controller_enqueue,
   byte_controller_respond, byte_controller_wait, export_readable,
   export_transform, export_writable, prepare_cross_readable,
   prepare_cross_writable, shell_transform, transfer_status,
 };
-pub use text::mime::is_mime_type;
+pub use text::mime::{is_javascript_mime, is_mime_type};
 
 pub fn register() {
   static ONCE: Once = Once::new();

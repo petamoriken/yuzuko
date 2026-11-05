@@ -465,6 +465,9 @@ pub fn load_worker_source(
   url: &str,
   sandbox: Option<&Path>,
 ) -> Result<LoadedSource, String> {
+  if let Some(text) = classic_worker_source(url) {
+    return Ok(LoadedSource { path: None, text });
+  }
   let parsed = Url::parse(url).map_err(|error| error.to_string())?;
   if parsed.scheme() == "data" {
     let text = decode_data_url(url)?;
@@ -500,6 +503,38 @@ pub fn load_worker_source(
 type BlobScriptLoader = fn(&str) -> Result<String, String>;
 
 static BLOB_SCRIPT: Mutex<Option<BlobScriptLoader>> = Mutex::new(None);
+
+static CLASSIC_WORKER_SOURCE: Mutex<Option<(String, String)>> =
+  Mutex::new(None);
+
+/// Serves one classic worker URL from memory.
+///
+/// The WPT runner uses this so a worker `.any.js` keeps the test's `http:`
+/// URL. A `data:` script URL cannot resolve a path-absolute `importScripts`.
+/// `None` clears the override.
+pub fn set_classic_worker_source(source: Option<(String, String)>) {
+  *CLASSIC_WORKER_SOURCE.lock().expect("classic worker source") = source;
+}
+
+fn classic_worker_source(url: &str) -> Option<String> {
+  let guard = CLASSIC_WORKER_SOURCE.lock().expect("classic worker source");
+  let (expected, text) = guard.as_ref()?;
+  if same_url(expected, url) {
+    Some(text.clone())
+  } else {
+    None
+  }
+}
+
+fn same_url(left: &str, right: &str) -> bool {
+  if left == right {
+    return true;
+  }
+  match (Url::parse(left), Url::parse(right)) {
+    (Ok(left), Ok(right)) => left == right,
+    _ => false,
+  }
+}
 
 /// Installed by the blob URL table so a worker thread can read a URL
 /// created on another thread.
@@ -628,7 +663,7 @@ pub(crate) fn mark_dead(id: u64) {
 
 #[cfg(test)]
 mod tests {
-  use super::decode_data_url;
+  use super::{decode_data_url, load_worker_source, set_classic_worker_source};
   use url::Url;
 
   #[test]
@@ -652,6 +687,28 @@ mod tests {
   #[test]
   fn invalid_base64_data_url_fails() {
     assert!(decode_data_url("data:;base64,****").is_err());
+  }
+
+  #[test]
+  fn classic_worker_source_replaces_one_script_body() {
+    struct Clear;
+    impl Drop for Clear {
+      fn drop(&mut self) {
+        set_classic_worker_source(None);
+      }
+    }
+    let _clear = Clear;
+    let url = "http://web-platform.test:8000/workers/importscripts_mime.any.js";
+    set_classic_worker_source(Some((url.to_string(), "done();".to_string())));
+    let loaded = load_worker_source(url, None).unwrap();
+    assert_eq!(loaded.text, "done();");
+    assert!(loaded.path.is_none());
+    assert!(
+      load_worker_source("http://web-platform.test:8000/other.js", None)
+        .is_err()
+    );
+    set_classic_worker_source(None);
+    assert!(load_worker_source(url, None).is_err());
   }
 
   #[test]
