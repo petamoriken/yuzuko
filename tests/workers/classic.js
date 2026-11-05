@@ -47,6 +47,8 @@ self.onmessage = (event) => {
     hasSharedWorker: typeof SharedWorker !== "undefined",
     fontsSame: self.fonts === globalThis.fonts,
     fontsSet: self.fonts instanceof FontFaceSet,
+    queryLocalFonts: typeof queryLocalFonts === "function",
+    fontData: typeof FontData === "function",
     matrix: String(new DOMMatrix()),
     readOnly: String(new DOMMatrixReadOnly()),
     css: throwsType(() => new DOMMatrix("matrix(1, 0, 0, 1, 0, 0)")),

@@ -8559,10 +8559,20 @@ interface FontFaceDescriptors {
 /**
  * A font face.
  *
- * Sources are an `ArrayBuffer` or a URL that `fetch` can load. Formats are
- * TTF, OTF, WOFF, and WOFF2. A WOFF2 `glyf` or `loca` preprocessing transform
- * is rejected. CSS `@font-face` is not implemented. `style` and `weight` are
- * read-only after construction. `stretch` and `width` can be assigned.
+ * A source is an `ArrayBuffer` or a string. A string that contains `url(` or
+ * `local(` is a CSS `src` list, tried in order. Each item is `url()` with an
+ * optional `format()` and an optional `tech()`, or `local()`. `format()`
+ * accepts `woff2`, `woff`, `truetype`, and `opentype`, without regard to
+ * case, including a `-variations` suffix. Any other keyword skips that source
+ * and does not fetch it. A comma list is usable when any keyword is accepted.
+ * `tech()` is parsed and ignored. A string with neither function, and with no
+ * space, tab, newline, or comma, is one URL. Formats are TTF, OTF, WOFF, and
+ * WOFF2. A WOFF2 `glyf` or `loca` preprocessing transform is rejected.
+ * `local()` matches an installed font by PostScript name, full name, family
+ * name, or typographic family name. An unparsable list rejects `SyntaxError`
+ * from {@link FontFace.load}. The constructor still accepts the string.
+ * CSS `@font-face` is not implemented. `style` and `weight` are read-only
+ * after construction. `stretch` and `width` can be assigned.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace)
  */
@@ -8602,6 +8612,12 @@ interface FontFace {
   readonly loaded: Promise<FontFace>;
 
   /**
+   * Starts loading this face.
+   *
+   * An unparsable `src` list rejects `SyntaxError`. A source that cannot be
+   * fetched rejects `NetworkError`. Bytes that are not a font reject
+   * `SyntaxError` when nothing remains to try.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load)
    */
   load(): Promise<FontFace>;
@@ -8617,9 +8633,11 @@ declare var FontFace: {
  *
  * On the main global this object is `Yuzuko.fonts`. In a worker it is
  * `self.fonts`. `add` returns the set. `forEach`, `keys`, `values`,
- * `entries`, and `@@iterator` walk the faces in insertion order. `load`,
- * `check`, `ready`, and the `loading`, `loadingdone`, and `loadingerror`
- * events are absent. A family that has finished `load()` and is in the set
+ * `entries`, and `@@iterator` walk the faces in insertion order.
+ * `check` throws `SyntaxError` when `font` is not a CSS font shorthand.
+ * `load` rejects that same error. `ready` fulfills while the set is idle.
+ * `loading`, `loadingdone`, and `loadingerror` fire in the turn the status
+ * changes. A family that has finished `load()` and is in the set
  * can be named from the Canvas 2D `font` property.
  *
  * @throws {@link TypeError} Illegal constructor.
@@ -8659,6 +8677,46 @@ interface FontFaceSet extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/status) */
   readonly status: FontFaceSetLoadStatus;
+
+  /**
+   * `true` when `font` can draw `text` without waiting on a face in this set.
+   *
+   * `text` defaults to `" "`. An unknown family, or a `unicode-range` that
+   * misses `text`, returns `true`. An unparsable shorthand throws `SyntaxError`.
+   *
+   * @throws {@link DOMException} `SyntaxError` when `font` does not parse.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/check)
+   */
+  check(font: string, text?: string): boolean;
+
+  /**
+   * Loads the faces in this set that `font` would use for `text`.
+   *
+   * Resolves to those faces in family order. `text` defaults to `" "`.
+   * An unparsable shorthand rejects `SyntaxError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/load)
+   */
+  load(font: string, text?: string): Promise<FontFace[]>;
+
+  /**
+   * Fulfills with this set when {@link FontFaceSet.status} is `"loaded"`.
+   *
+   * The same promise is returned until a load starts.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/ready)
+   */
+  readonly ready: Promise<FontFaceSet>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/loading_event) */
+  onloading: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/loadingdone_event) */
+  onloadingdone: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/loadingerror_event) */
+  onloadingerror: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
 }
 declare var FontFaceSet: {
   prototype: FontFaceSet;
@@ -8684,6 +8742,79 @@ declare var FontFaceSetLoadEvent: {
 interface FontFaceSetLoadEventInit extends EventInit {
   fontfaces?: FontFace[];
 }
+
+/**
+ * One installed font.
+ *
+ * `postscriptName`, `fullName`, `family`, and `style` prefer the `en-US`
+ * name, then `en`, then the first localization. `family` is name ID 1, or
+ * name ID 16 when that is missing. `style` is name ID 2, or name ID 17 when
+ * that is missing, then `"Regular"`. `blob()` resolves to the font file with
+ * an empty type. There is no permission prompt. This interface is on
+ * `globalThis` in the main realm and in a dedicated worker.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData)
+ */
+interface FontData {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/postscriptName) */
+  readonly postscriptName: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/fullName) */
+  readonly fullName: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/family) */
+  readonly family: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/style) */
+  readonly style: string;
+
+  /**
+   * The font file.
+   *
+   * Resolves to a {@link Blob} with an empty type. Rejects `NotReadableError`
+   * when the file cannot be read.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/blob)
+   */
+  blob(): Promise<Blob>;
+}
+declare var FontData: {
+  prototype: FontData;
+  new(): FontData;
+};
+
+/**
+ * Options for {@link queryLocalFonts}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts)
+ */
+interface QueryOptions {
+  /**
+   * Exact PostScript names to keep. An empty array matches nothing.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts)
+   */
+  postscriptNames?: string[];
+}
+
+/**
+ * The installed fonts this runtime can read, sorted by PostScript name.
+ *
+ * Present with the `canvas` feature, on the main global and in a dedicated
+ * worker. An omitted options object, `undefined`, `null`, or an omitted
+ * `postscriptNames` property returns every face that has a valid PostScript
+ * name. An empty `postscriptNames` list resolves to an empty array. There is
+ * no permission prompt.
+ *
+ * @throws {@link TypeError} When `options` is not an object, or when
+ * `postscriptNames` is present and is not an array.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts)
+ */
+declare function queryLocalFonts(options?: QueryOptions): Promise<FontData[]>;
 
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/convertToBlob)

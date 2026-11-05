@@ -2,6 +2,13 @@
 //!
 //! There is no `document`, so the set is not `document.fonts` and not
 //! `globalThis.fonts`. The worker phase installs `self.fonts`.
+//! `check`, `load`, `ready`, and the loading events live in [`loading`].
+//! A string source is a CSS `src` list. [`local`] reads installed fonts
+//! for `local()` and `queryLocalFonts`.
+
+mod loading;
+mod local;
+mod src_list;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -68,6 +75,8 @@ struct FontFace {
   family_raw: String,
   family_css: String,
   source: Source,
+  /// Sources still to try. A fetch keeps the rest here until it settles.
+  pending: RefCell<Vec<src_list::Item>>,
   status: Cell<Status>,
   sfnt: RefCell<Option<Vec<u8>>>,
   descriptors: RefCell<Descriptors>,
@@ -110,6 +119,7 @@ impl FontFace {
       family_css: serialize_family(&family),
       family_raw: family,
       source,
+      pending: RefCell::new(Vec::new()),
       status: Cell::new(Status::Unloaded),
       sfnt: RefCell::new(None),
       descriptors: RefCell::new(descriptors),
@@ -224,6 +234,9 @@ impl FontFace {
       return promise;
     }
     self.status.set(Status::Loading);
+    if let Some(object) = self.face_object(scope) {
+      loading::note_loading(scope, object);
+    }
     if let Err(error) = self.start(scope) {
       self.fail(scope, &error.0, &error.1);
     }
@@ -265,36 +278,118 @@ impl FontFace {
         Ok(())
       }
       Source::Css(css) => {
-        let Some(url) = source_url(css) else {
-          return Err((
+        let parsed = src_list::parse(css);
+        match parsed {
+          Ok(items) => {
+            *self.pending.borrow_mut() = items;
+            self.drive(scope);
+            Ok(())
+          }
+          Err(src_list::Error::NotUrl) => Err((
             "NetworkError".to_string(),
             "The font source is not a URL".to_string(),
-          ));
-        };
-        let Some(object) = self.face_object(scope) else {
-          return Err((
-            "NetworkError".to_string(),
-            "The font could not be loaded".to_string(),
-          ));
-        };
-        start_fetch(scope, object, &url);
-        Ok(())
+          )),
+          Err(src_list::Error::Syntax) => Err((
+            "SyntaxError".to_string(),
+            "The font source is invalid".to_string(),
+          )),
+        }
       }
     }
   }
 
   fn finish_bytes(&self, scope: &mut v8::PinScope, bytes: Vec<u8>) {
+    if !self.try_accept(scope, bytes) {
+      self.drive(scope);
+    }
+  }
+
+  /// `true` when this source settled the face. A decode miss with sources
+  /// left returns `false` so the caller can try the next one.
+  fn try_accept(&self, scope: &mut v8::PinScope, bytes: Vec<u8>) -> bool {
     let sfnt = match decode_sfnt(&bytes) {
-      Ok(sfnt) if text::font_is_usable(&self.family_raw, &sfnt) => sfnt,
-      _ => {
+      Ok(sfnt) if text::font_is_usable(&self.family_raw, &sfnt) => Some(sfnt),
+      _ => None,
+    };
+    let Some(sfnt) = sfnt else {
+      if self.pending.borrow().is_empty() {
         self.fail(scope, "SyntaxError", "The font data is invalid");
-        return;
+        return true;
       }
+      return false;
     };
     *self.sfnt.borrow_mut() = Some(sfnt);
+    self.pending.borrow_mut().clear();
     self.status.set(Status::Loaded);
+    if let Some(object) = self.face_object(scope) {
+      loading::note_settled(scope, object, true);
+    }
     self.resolve(scope);
     sync_set(scope);
+    true
+  }
+
+  fn drive(&self, scope: &mut v8::PinScope) {
+    loop {
+      let Some(item) = self.pop_pending() else {
+        self.fail(scope, "NetworkError", "The font could not be loaded");
+        return;
+      };
+      match item {
+        src_list::Item::Local(name) => {
+          let Some(bytes) = self.local_bytes(&name) else {
+            continue;
+          };
+          if self.try_accept(scope, bytes) {
+            return;
+          }
+        }
+        src_list::Item::Url { url, formats } => {
+          let usable = match &formats {
+            None => true,
+            Some(list) => {
+              list.iter().any(|name| src_list::format_supported(name))
+            }
+          };
+          if !usable {
+            continue;
+          }
+          let Some(object) = self.face_object(scope) else {
+            self.fail(scope, "NetworkError", "The font could not be loaded");
+            return;
+          };
+          start_fetch(scope, object, &url);
+          return;
+        }
+      }
+    }
+  }
+
+  fn pop_pending(&self) -> Option<src_list::Item> {
+    let mut pending = self.pending.borrow_mut();
+    if pending.is_empty() {
+      None
+    } else {
+      Some(pending.remove(0))
+    }
+  }
+
+  fn local_bytes(&self, name: &str) -> Option<Vec<u8>> {
+    let descriptors = self.descriptors.borrow();
+    let style = descriptors.style.clone();
+    let weight = descriptors.weight.clone();
+    let width = descriptors.width.clone();
+    drop(descriptors);
+    local::bytes_for_local(name, &style, &weight, &width)
+  }
+
+  fn fail_fetch(&self, scope: &mut v8::PinScope, name: &str, message: &str) {
+    let exhausted = self.pending.borrow().is_empty();
+    if exhausted {
+      self.fail(scope, name, message);
+    } else {
+      self.drive(scope);
+    }
   }
 
   fn resolve(&self, scope: &mut v8::PinScope) {
@@ -313,6 +408,9 @@ impl FontFace {
 
   fn fail(&self, scope: &mut v8::PinScope, name: &str, message: &str) {
     self.status.set(Status::Error);
+    if let Some(object) = self.face_object(scope) {
+      loading::note_settled(scope, object, false);
+    }
     let Some(resolver) = self.resolver.borrow_mut().take() else {
       return;
     };
@@ -343,11 +441,17 @@ impl FontFace {
 #[repr(C)]
 struct FontFaceSet {
   base: EventTarget,
+  onloading: RefCell<Option<v8::TracedReference<v8::Value>>>,
+  onloadingdone: RefCell<Option<v8::TracedReference<v8::Value>>>,
+  onloadingerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for FontFaceSet {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    trace_handler(&self.onloading, visitor);
+    trace_handler(&self.onloadingdone, visitor);
+    trace_handler(&self.onloadingerror, visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -384,6 +488,11 @@ impl FontFaceSet {
       }
     });
     sync_set(scope);
+    if let Some(face) = unsafe { host_ref::<FontFace>(scope, object) }
+      && face.get().status.get() == Status::Loading
+    {
+      loading::note_loading(scope, object);
+    }
     let value: v8::Local<v8::Value> = this.into();
     Ok(Js(v8::Global::new(scope, value)))
   }
@@ -411,6 +520,7 @@ impl FontFaceSet {
     });
     if removed {
       sync_set(scope);
+      loading::forget_face(scope, object);
     }
     removed
   }
@@ -432,7 +542,11 @@ impl FontFaceSet {
   fn clear(&self, scope: &mut v8::PinScope) {
     let _ = self;
     SET.with(|slot| slot.borrow_mut().clear());
+    let pending = loading::take_pending();
     sync_set(scope);
+    if pending {
+      loading::switch_to_loaded(scope);
+    }
   }
 
   #[rename("forEach")]
@@ -467,17 +581,13 @@ impl FontFaceSet {
       let face = v8::Local::new(scope, &face);
       let called = {
         v8::tc_scope!(let tc, scope);
-        let result = callback.call(
-          tc,
-          receiver,
-          &[face.into(), face.into(), set.into()],
-        );
+        let result =
+          callback.call(tc, receiver, &[face.into(), face.into(), set.into()]);
         if result.is_some() && !tc.has_caught() {
           Ok(())
         } else {
-          let exception = tc
-            .exception()
-            .unwrap_or_else(|| v8::undefined(tc).into());
+          let exception =
+            tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
           Err(v8::Global::new(tc, exception))
         }
       };
@@ -524,6 +634,81 @@ impl FontFaceSet {
     } else {
       "loaded".to_string()
     }
+  }
+
+  /// Throws `SyntaxError` when `font` is not a CSS `font` shorthand.
+  #[length(1)]
+  fn check(
+    &self,
+    scope: &mut v8::PinScope,
+    font: String,
+    text: Option<String>,
+  ) -> Result<bool, OpError> {
+    let _ = self;
+    loading::check(scope, &font, text.as_deref())
+  }
+
+  /// Resolves with the matching faces. An unparsable shorthand rejects.
+  #[promise]
+  #[length(1)]
+  fn load(
+    &self,
+    scope: &mut v8::PinScope,
+    font: String,
+    text: Option<String>,
+  ) -> Js {
+    let _ = self;
+    loading::load(scope, font, text)
+  }
+
+  #[getter]
+  fn ready(&self, scope: &mut v8::PinScope) -> Js {
+    let _ = self;
+    loading::ready(scope)
+  }
+
+  #[getter]
+  fn onloading(&self, scope: &mut v8::PinScope) -> Js {
+    handler_value(scope, &self.onloading)
+  }
+
+  #[setter]
+  fn onloading(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
+    set_handler(scope, &self.base, &self.onloading, "loading", value);
+  }
+
+  #[getter]
+  fn onloadingdone(&self, scope: &mut v8::PinScope) -> Js {
+    handler_value(scope, &self.onloadingdone)
+  }
+
+  #[setter]
+  fn onloadingdone(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_handler(scope, &self.base, &self.onloadingdone, "loadingdone", value);
+  }
+
+  #[getter]
+  fn onloadingerror(&self, scope: &mut v8::PinScope) -> Js {
+    handler_value(scope, &self.onloadingerror)
+  }
+
+  #[setter]
+  fn onloadingerror(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_handler(
+      scope,
+      &self.base,
+      &self.onloadingerror,
+      "loadingerror",
+      value,
+    );
   }
 }
 
@@ -576,6 +761,47 @@ impl FontFaceSetLoadEvent {
   }
 }
 
+fn trace_handler(
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+  visitor: &mut v8::cppgc::Visitor,
+) {
+  if let Ok(slot) = slot.try_borrow() {
+    visitor.trace(&*slot);
+  }
+}
+
+fn handler_value(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+) -> Js {
+  let value = slot
+    .borrow()
+    .as_ref()
+    .and_then(|reference| traced_local(scope, reference))
+    .unwrap_or_else(|| v8::null(scope).into());
+  Js(v8::Global::new(scope, value))
+}
+
+fn set_handler(
+  scope: &mut v8::PinScope,
+  target: &EventTarget,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+  type_name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  if let Some(previous) = slot.borrow().as_ref()
+    && let Some(previous) = traced_local(scope, previous)
+  {
+    target.remove_callback(scope, type_name, previous, false);
+  }
+  if value.is_function() {
+    target.add_callback(scope, type_name, value, false, false, false);
+    *slot.borrow_mut() = Some(traced(scope, value));
+  } else {
+    *slot.borrow_mut() = None;
+  }
+}
+
 struct Job {
   face: v8::Global<v8::Object>,
 }
@@ -594,15 +820,20 @@ pub fn install(scope: &mut v8::PinScope) {
   FontFace::install(scope);
   FontFaceSet::install(scope);
   FontFaceSetLoadEvent::install(scope);
+  local::install(scope);
   install_font_iterators(scope);
   let set = unsafe {
     yuzuko_core::op::wrap_instance(
       scope,
       FontFaceSet {
         base: EventTarget::new(),
+        onloading: RefCell::new(None),
+        onloadingdone: RefCell::new(None),
+        onloadingerror: RefCell::new(None),
       },
     )
   };
+  loading::bind_set(scope, set);
   let key = v8::String::new(scope, "fonts").unwrap();
   if yuzuko_core::is_dedicated_worker() {
     let global = scope.get_current_context().global(scope);
@@ -616,6 +847,7 @@ pub fn install(scope: &mut v8::PinScope) {
 pub fn clear() {
   SET.with(|slot| slot.borrow_mut().clear());
   JOBS.with(|slot| slot.borrow_mut().clear());
+  loading::clear();
   text::set_loaded_faces(&[]);
 }
 
@@ -759,10 +991,9 @@ fn install_font_iterators(scope: &mut v8::PinScope) {
   let Some(prototype) = constructor_prototype(scope, templ) else {
     return;
   };
-  let Some(values) = prototype.get(
-    scope,
-    v8::String::new(scope, "values").unwrap().into(),
-  ) else {
+  let Some(values) =
+    prototype.get(scope, v8::String::new(scope, "values").unwrap().into())
+  else {
     return;
   };
   let symbol = v8::Symbol::get_iterator(scope);
@@ -1002,29 +1233,6 @@ fn escape_css(value: &str) -> String {
   out
 }
 
-fn source_url(css: &str) -> Option<String> {
-  let lower = css.to_ascii_lowercase();
-  if let Some(index) = lower.find("url(") {
-    let rest = css[index + 4..].trim_start();
-    if let Some(rest) = rest.strip_prefix('"') {
-      let end = rest.find('"')?;
-      return Some(rest[..end].to_string());
-    }
-    if let Some(rest) = rest.strip_prefix('\'') {
-      let end = rest.find('\'')?;
-      return Some(rest[..end].to_string());
-    }
-    let end = rest.find(')')?;
-    return Some(rest[..end].trim().to_string());
-  }
-  let trimmed = css.trim();
-  if trimmed.is_empty() || trimmed.contains([' ', ',']) {
-    None
-  } else {
-    Some(trimmed.to_string())
-  }
-}
-
 fn read_face_list(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
@@ -1173,7 +1381,7 @@ fn fail_job(scope: &mut v8::PinScope, id: u64, name: &str, message: &str) {
   let Some(face) = (unsafe { host_ref::<FontFace>(scope, object) }) else {
     return;
   };
-  face.get().fail(scope, name, message);
+  face.get().fail_fetch(scope, name, message);
 }
 
 fn job_id(

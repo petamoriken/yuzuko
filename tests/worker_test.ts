@@ -35,6 +35,8 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
     hasSharedWorker: boolean;
     fontsSame: boolean;
     fontsSet: boolean;
+    queryLocalFonts: boolean;
+    fontData: boolean;
     matrix: string;
     readOnly: string;
     css: boolean;
@@ -51,6 +53,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
   assert(reply.hasDocument === false, "no document");
   assert(reply.hasSharedWorker === false, "no SharedWorker");
   assert(reply.fontsSame && reply.fontsSet, "self.fonts");
+  assert(reply.queryLocalFonts && reply.fontData, "queryLocalFonts");
   assert(reply.matrix === "[object DOMMatrix]", reply.matrix);
   assert(reply.readOnly === "[object DOMMatrixReadOnly]", reply.readOnly);
   assert(reply.css && reply.empty && reply.nullCss, "css constructor");
