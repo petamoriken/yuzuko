@@ -3149,29 +3149,13 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.created.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.cross.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.cross.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.negative.html": {
-    "expectedFailures": [
-      "putImageData() handles negative-sized dirty rectangles correctly"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.negative.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.negative.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.outside.html": {
-    "expectedFailures": [
-      "putImageData() handles dirty rectangles outside the canvas correctly"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.outside.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.outside.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect1.html": {
-    "expectedFailures": [
-      "putImageData() only modifies areas inside the dirty rectangle, using width and height"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect1.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect1.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect2.html": {
-    "expectedFailures": [
-      "putImageData() only modifies areas inside the dirty rectangle, using x and y"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect2.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect2.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.zero.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.zero.worker.js": true,
