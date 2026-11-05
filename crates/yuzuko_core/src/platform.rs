@@ -36,6 +36,9 @@ pub struct TaskQueue {
   waits: AtomicUsize,
   /// Wakes a host event loop that is blocked outside this condvar.
   waker: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+  /// Wakes a thread blocked in `poll` or `WaitForMultipleObjects`, which the
+  /// host waker above does not interrupt. The REPL editor installs this.
+  io_waker: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
   /// Results from background work, drained on the main thread.
   jobs: Mutex<VecDeque<(u64, Box<dyn Any + Send>)>>,
   /// Background jobs that have not finished yet.
@@ -53,6 +56,7 @@ impl TaskQueue {
       cvar: Condvar::new(),
       waits: AtomicUsize::new(0),
       waker: Mutex::new(None),
+      io_waker: Mutex::new(None),
       jobs: Mutex::new(VecDeque::new()),
       job_count: AtomicUsize::new(0),
     })
@@ -89,6 +93,13 @@ impl TaskQueue {
     *self.waker.lock().expect("task waker") = waker;
   }
 
+  pub(crate) fn set_io_waker(
+    &self,
+    waker: Option<Arc<dyn Fn() + Send + Sync>>,
+  ) {
+    *self.io_waker.lock().expect("io waker") = waker;
+  }
+
   fn notify(&self) {
     self.cvar.notify_one();
     self.wake_host();
@@ -96,12 +107,20 @@ impl TaskQueue {
 
   fn wake_host(&self) {
     let waker = self.waker.lock().expect("task waker").clone();
+    let io = self.io_waker.lock().expect("io waker").clone();
     if let Some(waker) = waker {
       waker();
     }
+    if let Some(io) = io {
+      io();
+    }
   }
 
-  fn job_is_ready(&self) -> bool {
+  /// A background job has finished and its callback has not run yet.
+  ///
+  /// An in-flight listen does not count: playback stays quiet until the
+  /// device asks for more audio.
+  pub(crate) fn job_ready(&self) -> bool {
     !self.jobs.lock().expect("job queue").is_empty()
   }
 
@@ -220,7 +239,7 @@ impl TaskQueue {
       let start = Instant::now();
       while start.elapsed() < timeout {
         let mut ready = self.ready.lock().expect("task queue");
-        if !ready.tasks.is_empty() || ready.poked || self.job_is_ready() {
+        if !ready.tasks.is_empty() || ready.poked || self.job_ready() {
           ready.poked = false;
           return;
         }
@@ -232,7 +251,7 @@ impl TaskQueue {
       return;
     }
     let mut ready = self.ready.lock().expect("task queue");
-    if !ready.tasks.is_empty() || ready.poked || self.job_is_ready() {
+    if !ready.tasks.is_empty() || ready.poked || self.job_ready() {
       ready.poked = false;
       return;
     }

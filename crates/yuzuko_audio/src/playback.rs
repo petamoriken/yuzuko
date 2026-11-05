@@ -3,9 +3,11 @@
 //! The graph renders on the isolate thread. The device callback only copies
 //! the ring and must not call V8, and it must not notify while holding the
 //! ring mutex. `YUZUKO_AUDIO_TIMER` skips the device so the timer fallback
-//! can run on a machine that has a speaker.
+//! can run on a machine that has a speaker. `YUZUKO_AUDIO_UNDERRUN` prints
+//! `audio-underrun` with the count of device frames that were silence
+//! because the ring was empty.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -335,6 +337,33 @@ fn timer_only() -> bool {
   std::env::var_os("YUZUKO_AUDIO_TIMER").is_some()
 }
 
+static UNDERRUN_FRAMES: AtomicU64 = AtomicU64::new(0);
+
+fn note_underrun(frames: usize) {
+  if frames == 0 {
+    return;
+  }
+  UNDERRUN_FRAMES.fetch_add(frames as u64, Ordering::Relaxed);
+}
+
+/// Prints silence frames when `YUZUKO_AUDIO_UNDERRUN` is set.
+///
+/// The device callback must not print. The isolate calls this from the pump.
+pub(crate) fn report_underruns() {
+  static ARMED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+  let armed =
+    *ARMED.get_or_init(|| std::env::var_os("YUZUKO_AUDIO_UNDERRUN").is_some());
+  if !armed {
+    return;
+  }
+  static REPORTED: AtomicU64 = AtomicU64::new(0);
+  let total = UNDERRUN_FRAMES.load(Ordering::Relaxed);
+  let previous = REPORTED.swap(total, Ordering::Relaxed);
+  if total > previous {
+    eprintln!("audio-underrun {total}");
+  }
+}
+
 pub(crate) fn sink_available(name: &str) -> bool {
   if name.is_empty() {
     return true;
@@ -572,6 +601,8 @@ where
         out[index + channel] = convert(frame[channel]);
       }
     } else {
+      let rest = out.len() - index;
+      note_underrun(rest / channels);
       for sample in &mut out[index..] {
         *sample = T::EQUILIBRIUM;
       }

@@ -727,6 +727,16 @@ pub fn set_task_waker(waker: Option<std::sync::Arc<dyn Fn() + Send + Sync>>) {
   host::queue().set_waker(waker);
 }
 
+/// Wakes the REPL editor when it is blocked on stdin.
+///
+/// [`set_task_waker`] stays the window event loop. A winit wake does not
+/// interrupt `poll` on the terminal, so playback installs this beside it.
+pub(crate) fn set_io_waker(
+  waker: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+) {
+  host::queue().set_io_waker(waker);
+}
+
 pub fn wait_for_tasks(timeout: Option<std::time::Duration>) {
   host::queue().wait(timeout);
 }
@@ -869,7 +879,9 @@ pub(crate) fn pump(
 ///
 /// Ready timers, host tasks, jobs, and window frames run. The returned delay
 /// is how long the editor may block in the terminal before calling again.
-/// `None` means nothing is scheduled, so the editor waits for a key.
+/// `None` means nothing is scheduled, so the editor waits for a key. A host
+/// job that has already finished returns zero, and the editor's wait is also
+/// interrupted when that job finishes mid-poll.
 pub(crate) fn poll_repl(
   scope: &mut v8::PinScope<'_, '_>,
 ) -> Option<std::time::Duration> {
@@ -919,6 +931,13 @@ pub(crate) fn poll_repl(
 }
 
 fn repl_wait() -> Option<std::time::Duration> {
+  let queue = host::queue();
+  // One playback quantum is one host job. The 16 ms cap is for a live loop
+  // that has nothing ready yet, such as a listen the device has not fired.
+  // Sleeping while a job is already queued lets the ring play out as silence.
+  if queue.job_ready() {
+    return Some(std::time::Duration::ZERO);
+  }
   let interest = if host::is_dedicated_worker() {
     LoopInterest {
       keep_alive: false,
@@ -927,7 +946,6 @@ fn repl_wait() -> Option<std::time::Duration> {
   } else {
     loop_interest()
   };
-  let queue = host::queue();
   let hint = earliest_wait(
     earliest_wait(queue.next_wait(), crate::timers::next_wait()),
     earliest_wait(interest.next_wait, crate::idle::idle_next_wait()),

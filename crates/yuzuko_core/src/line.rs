@@ -893,13 +893,22 @@ mod term {
   use super::StdinWait;
 
   pub fn poll_stdin(timeout_ms: i32) -> StdinWait {
+    let wake = wake_read();
     loop {
-      let mut poll = libc::pollfd {
-        fd: 0,
-        events: libc::POLLIN,
-        revents: 0,
-      };
-      let ready = unsafe { libc::poll(&mut poll, 1, timeout_ms) };
+      let mut polls = [
+        libc::pollfd {
+          fd: 0,
+          events: libc::POLLIN,
+          revents: 0,
+        },
+        libc::pollfd {
+          fd: wake,
+          events: libc::POLLIN,
+          revents: 0,
+        },
+      ];
+      let count = if wake >= 0 { 2 } else { 1 };
+      let ready = unsafe { libc::poll(polls.as_mut_ptr(), count, timeout_ms) };
       if ready < 0 {
         let err = std::io::Error::last_os_error();
         if err.kind() == std::io::ErrorKind::Interrupted {
@@ -907,16 +916,94 @@ mod term {
         }
         return StdinWait::Eof;
       }
-      if ready == 0 {
-        return StdinWait::Timeout;
-      }
+      let stdin_bits = polls[0].revents;
       // Linux reports a closed pipe as `POLLHUP` without `POLLIN`, while
       // lines may still sit in the `Stdin` buffer. The read then reports EOF
       // once those lines are gone.
-      if poll.revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+      if stdin_bits & (libc::POLLIN | libc::POLLHUP) != 0 {
+        if wake >= 0 {
+          drain_wake(wake);
+        }
         return StdinWait::Data;
       }
+      if stdin_bits & (libc::POLLERR | libc::POLLNVAL) != 0 {
+        return StdinWait::Eof;
+      }
+      // A finished host job writes this pipe. Drain it and let the caller
+      // pace. Treating it as keyboard input would swallow the wake.
+      if wake >= 0 && polls[1].revents != 0 {
+        drain_wake(wake);
+        return StdinWait::Timeout;
+      }
+      if ready == 0 {
+        return StdinWait::Timeout;
+      }
       return StdinWait::Eof;
+    }
+  }
+
+  /// Read end of a self-pipe. `-1` when it could not be opened.
+  ///
+  /// The audio callback notifies a host job when the playback ring runs low.
+  /// `poll` on stdin alone would keep sleeping, and the device would play
+  /// silence until the timeout.
+  fn wake_read() -> i32 {
+    static READ: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+    *READ.get_or_init(|| open_wake_pipe().unwrap_or(-1))
+  }
+
+  fn open_wake_pipe() -> Option<i32> {
+    let mut fds = [0i32; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+      return None;
+    }
+    let ready = set_nonblock(fds[0]) && set_nonblock(fds[1]);
+    if !ready {
+      unsafe {
+        libc::close(fds[0]);
+        libc::close(fds[1]);
+      }
+      return None;
+    }
+    set_cloexec(fds[0]);
+    set_cloexec(fds[1]);
+    let write_fd = fds[1];
+    crate::runtime::set_io_waker(Some(std::sync::Arc::new(move || {
+      let byte = [1u8];
+      loop {
+        let wrote = unsafe { libc::write(write_fd, byte.as_ptr().cast(), 1) };
+        if wrote >= 0 {
+          break;
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+          break;
+        }
+      }
+    })));
+    Some(fds[0])
+  }
+
+  fn set_nonblock(fd: i32) -> bool {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    flags >= 0
+      && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) }
+        == 0
+  }
+
+  fn set_cloexec(fd: i32) {
+    unsafe {
+      libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+    }
+  }
+
+  fn drain_wake(fd: i32) {
+    let mut buf = [0u8; 64];
+    loop {
+      let count = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+      if count <= 0 {
+        break;
+      }
     }
   }
 
@@ -1010,7 +1097,10 @@ mod term {
     GetConsoleMode, GetStdHandle, INPUT_RECORD, KEY_EVENT, PeekConsoleInputW,
     ReadConsoleInputW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleMode,
   };
-  use windows_sys::Win32::System::Threading::WaitForSingleObject;
+  use windows_sys::Win32::System::Threading::{
+    CreateEventW, ResetEvent, SetEvent, WaitForMultipleObjects,
+    WaitForSingleObject,
+  };
 
   use super::StdinWait;
 
@@ -1067,6 +1157,7 @@ mod term {
 
   pub fn poll_stdin(timeout_ms: i32) -> StdinWait {
     let handle = input();
+    let wake = wake_event();
     let deadline = u64::try_from(timeout_ms)
       .ok()
       .map(|ms| Instant::now() + Duration::from_millis(ms));
@@ -1084,20 +1175,68 @@ mod term {
           u32::try_from(left.as_millis()).unwrap_or(u32::MAX - 1)
         }
       };
-      match unsafe { WaitForSingleObject(handle, wait) } {
+      if wake.is_null() {
+        match unsafe { WaitForSingleObject(handle, wait) } {
+          WAIT_OBJECT_0 => {}
+          // Records that carry no text also signal the handle, so look once
+          // more before reporting the timeout.
+          WAIT_TIMEOUT => return after_wait(handle),
+          _ => return StdinWait::Eof,
+        }
+        continue;
+      }
+      let handles = [handle, wake];
+      match unsafe { WaitForMultipleObjects(2, handles.as_ptr(), 0, wait) } {
         WAIT_OBJECT_0 => {}
-        // Records that carry no text also signal the handle, so look once
-        // more before reporting the timeout.
-        WAIT_TIMEOUT => {
+        value if value == WAIT_OBJECT_0 + 1 => {
+          unsafe {
+            ResetEvent(wake);
+          }
+          // The job is already queued. Return so the editor paces. A key
+          // that arrived in the same wake still wins.
           return match skip_silent(handle) {
             Some(true) => StdinWait::Data,
             Some(false) => StdinWait::Timeout,
             None => StdinWait::Eof,
           };
         }
+        WAIT_TIMEOUT => return after_wait(handle),
         _ => return StdinWait::Eof,
       }
     }
+  }
+
+  fn after_wait(handle: HANDLE) -> StdinWait {
+    match skip_silent(handle) {
+      Some(true) => StdinWait::Data,
+      Some(false) => StdinWait::Timeout,
+      None => StdinWait::Eof,
+    }
+  }
+
+  /// Manual-reset event signaled when a host job finishes. Null when the
+  /// event could not be created. The console wait alone would not wake.
+  fn wake_event() -> HANDLE {
+    static EVENT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let raw = *EVENT.get_or_init(|| {
+      let handle = unsafe {
+        CreateEventW(
+          std::ptr::null::<windows_sys::Win32::Security::SECURITY_ATTRIBUTES>(),
+          1,
+          0,
+          std::ptr::null(),
+        )
+      };
+      if handle.is_null() {
+        return 0;
+      }
+      let raw = handle as usize;
+      crate::runtime::set_io_waker(Some(std::sync::Arc::new(move || unsafe {
+        SetEvent(raw as HANDLE);
+      })));
+      raw
+    });
+    raw as HANDLE
   }
 
   pub fn read_into(bytes: &mut VecDeque<u8>) -> bool {

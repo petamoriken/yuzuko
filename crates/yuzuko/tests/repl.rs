@@ -75,6 +75,29 @@ fn printed_line(text: &str, line: &str) -> bool {
   text.lines().any(|item| item == line)
 }
 
+/// `audio-pace <dt> <wall>` printed by the playback test. The editor echoes
+/// the source, which also contains that prefix, so a line that is not two
+/// numbers is skipped.
+#[cfg(unix)]
+fn audio_pace(text: &str) -> Option<(f64, f64)> {
+  for line in text.lines() {
+    let Some(index) = line.find("audio-pace ") else {
+      continue;
+    };
+    let mut parts = line[index + "audio-pace ".len()..].split_whitespace();
+    let Some(dt) = parts.next().and_then(|part| part.parse::<f64>().ok())
+    else {
+      continue;
+    };
+    let Some(wall) = parts.next().and_then(|part| part.parse::<f64>().ok())
+    else {
+      continue;
+    };
+    return Some((dt, wall));
+  }
+  None
+}
+
 fn printed_id(text: &str, prefix: &str) -> bool {
   text.lines().any(|line| {
     let line = line.trim().trim_matches('"');
@@ -628,6 +651,73 @@ fn event_loop_runs_while_the_prompt_waits() {
   let before = pty.text.len();
   pty.send(b"8\n");
   pty.wait_until(|text| text[before..].contains("\n8\n"), step);
+
+  pty.send(b"\x04");
+  let code = pty.wait_exit();
+  assert_eq!(code, 0, "{}", pty.text);
+}
+
+/// A started oscillator has to keep `currentTime` near wall time while the
+/// prompt waits. One quantum per editor poll plays a few milliseconds of
+/// tone and then silence, which is the noise.
+#[cfg(unix)]
+#[test]
+fn realtime_audio_keeps_time_while_the_prompt_waits() {
+  let dir = scratch("audio-pace");
+  let mut pty = Pty::open(&dir, true, |command| {
+    command.env("YUZUKO_AUDIO_UNDERRUN", "1");
+  });
+  let step = Duration::from_secs(15);
+  pty.wait_until(|text| text.contains("> "), step);
+
+  pty.send(
+    concat!(
+      "if (typeof AudioContext !== \"function\") {",
+      " console.log(\"audio-skip-undefined\")",
+      "} else {",
+      " const ctx = new AudioContext();",
+      " const osc = new OscillatorNode(ctx);",
+      " osc.connect(ctx.destination);",
+      " osc.start();",
+      " setTimeout(() => {",
+      " const t0 = ctx.currentTime;",
+      " const w0 = performance.now();",
+      " setTimeout(() => {",
+      " const dt = ctx.currentTime - t0;",
+      " const wall = (performance.now() - w0) / 1000;",
+      " console.log(\"audio-pace \" + dt.toFixed(3) + \" \" + wall.toFixed(3));",
+      " ctx.close();",
+      " }, 400);",
+      " }, 80);",
+      "}\n",
+    )
+    .as_bytes(),
+  );
+  pty.wait_until(
+    |text| {
+      audio_pace(text).is_some() || printed_line(text, "audio-skip-undefined")
+    },
+    step,
+  );
+  let settle = Instant::now();
+  while settle.elapsed() < Duration::from_millis(300) {
+    pty.pull(50);
+  }
+  assert!(
+    !pty.text.contains("audio-underrun"),
+    "playback underrun\n{}",
+    pty.text
+  );
+  assert!(!pty.text.contains("panicked"), "{}", pty.text);
+  if !printed_line(&pty.text, "audio-skip-undefined") {
+    let (dt, wall) = audio_pace(&pty.text).expect(&pty.text);
+    assert!(wall >= 0.3, "wall {wall} dt {dt}\n{}", pty.text);
+    assert!(
+      dt > wall * 0.5,
+      "audio clock stalled: dt {dt} wall {wall}\n{}",
+      pty.text
+    );
+  }
 
   pty.send(b"\x04");
   let code = pty.wait_exit();

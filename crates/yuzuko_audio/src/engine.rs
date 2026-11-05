@@ -1,5 +1,6 @@
 //! Audio graph. One quantum in, one block out.
-//! Realtime output copies rendered quanta into a playback ring.
+//! Realtime output copies rendered quanta into a playback ring. The pump
+//! repeats quanta until that ring is full.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -2611,6 +2612,26 @@ fn release_pump(id: u64, generation: u64) {
 }
 
 fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
+  playback::report_underruns();
+  // A single quantum is about 3 ms of audio. Filling the ring one job at a
+  // time, with the REPL asleep between jobs, plays that slice and then
+  // silence. Stay in this turn until the ring is full, and yield after a
+  // short budget so a heavy graph does not freeze the editor.
+  let started = std::time::Instant::now();
+  loop {
+    if !pump_quantum(scope, id, generation, started) {
+      return;
+    }
+  }
+}
+
+/// Renders one quantum. `true` when another quantum should follow immediately.
+fn pump_quantum(
+  scope: &mut v8::PinScope,
+  id: u64,
+  generation: u64,
+  started: std::time::Instant,
+) -> bool {
   let Some((quantum, frame, rate, sink)) = CONTEXTS.with(|contexts| {
     let contexts = contexts.borrow();
     let context = contexts.get(&id)?;
@@ -2625,12 +2646,12 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
     ))
   }) else {
     release_pump(id, generation);
-    return;
+    return false;
   };
   let block = render_destination(scope, id, frame, quantum as usize);
   if !playback_active(id, generation) {
     release_pump(id, generation);
-    return;
+    return false;
   }
   CONTEXTS.with(|contexts| {
     if let Some(context) = contexts.borrow_mut().get_mut(&id)
@@ -2643,22 +2664,27 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
   fire_ended(scope);
   if !playback_active(id, generation) {
     release_pump(id, generation);
-    return;
+    return false;
   }
   playback::ensure(id, rate, quantum, sink.as_deref());
   let pace = playback::submit(id, &block, quantum as usize, rate);
   if !playback_active(id, generation) {
     release_pump(id, generation);
-    return;
+    return false;
   }
   match pace {
     Pace::Immediate => {
+      if started.elapsed() < Duration::from_millis(8) {
+        return true;
+      }
       yuzuko_core::enqueue(move |scope| pump(scope, id, generation));
+      false
     }
     Pace::Wait => {
       let listen =
         yuzuko_core::listen(move |scope| pump(scope, id, generation));
       playback::arm_listen(id, listen);
+      false
     }
     Pace::Timer => {
       let seconds = f64::from(quantum) / rate;
@@ -2667,6 +2693,7 @@ fn pump(scope: &mut v8::PinScope, id: u64, generation: u64) {
         move |scope| pump(scope, id, generation),
       );
       playback::arm_timer(id, timer);
+      false
     }
   }
 }
