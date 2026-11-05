@@ -12666,8 +12666,10 @@ interface VideoDecoder {
    * runs from the microtask that decodes the chunk. A sample the decoder
    * rejects closes the decoder, calls `error` with `EncodingError`, and
    * rejects an in-flight `flush` with that error. After construction,
-   * `configure`, or `reset`, a key chunk is required. The check uses
-   * `chunk.type` and does not inspect the bitstream.
+   * `configure`, `reset`, or `flush`, a key chunk is required. `flush`
+   * sets that requirement synchronously, before its promise settles.
+   * Chunks already queued stay queued. The check uses `chunk.type` and
+   * does not inspect the bitstream.
    *
    * @throws {@link DOMException} `InvalidStateError` when the decoder is not
    * configured or is closed.
@@ -12679,11 +12681,14 @@ interface VideoDecoder {
   decode(chunk: EncodedVideoChunk): void;
 
   /**
-   * Settles after the queued chunks are processed. `output` for those chunks
-   * runs before the promise resolves. A rejected sample rejects `EncodingError`
-   * after `error` has run. `reset` or `close` rejects an in-flight promise
-   * with `AbortError`. When the decoder is not configured, the returned
-   * promise rejects `InvalidStateError` and this method does not throw.
+   * Sets the key-chunk requirement synchronously, before this promise
+   * settles. A later delta `decode` throws `DataError`. Chunks already
+   * queued stay queued. Settles after the queued chunks are processed.
+   * `output` for those chunks runs before the promise resolves. A rejected
+   * sample rejects `EncodingError` after `error` has run. `reset` or
+   * `close` rejects an in-flight promise with `AbortError`. When the
+   * decoder is not configured, the returned promise rejects
+   * `InvalidStateError` and this method does not throw.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/flush)
    */

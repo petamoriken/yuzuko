@@ -700,6 +700,9 @@ impl VideoDecoder {
       let error = dom_value(scope, "InvalidStateError", message)?;
       return rejected_promise(scope, error);
     }
+    // WebCodecs sets [[key chunk required]] before the promise is returned.
+    // Chunks already queued were accepted and stay queued.
+    self.key_required.set(true);
     let Some(resolver) = v8::PromiseResolver::new(scope) else {
       return Err(OpError::type_("Promise is unavailable"));
     };
