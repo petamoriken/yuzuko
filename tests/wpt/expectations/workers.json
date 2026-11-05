@@ -255,7 +255,7 @@
   "workers/constructors/Worker/AbstractWorker.onerror.html": {
     "ignore": true
   },
-  "workers/constructors/Worker/Blob-url.html": false,
+  "workers/constructors/Worker/Blob-url.html": true,
   "workers/constructors/Worker/DedicatedWorkerGlobalScope-members.worker.js": true,
   "workers/constructors/Worker/Worker-constructor.html": {
     "expectedFailures": [
@@ -504,12 +504,7 @@
   "workers/interfaces/WorkerUtils/importScripts/010.html": true,
   "workers/interfaces/WorkerUtils/importScripts/011.html": true,
   "workers/interfaces/WorkerUtils/importScripts/012.html": true,
-  "workers/interfaces/WorkerUtils/importScripts/blob-url.worker.js": {
-    "expectedFailures": [
-      "Blob URLs work on importScripts",
-      "Revoking a blob URL in an earlier script will not fail"
-    ]
-  },
+  "workers/interfaces/WorkerUtils/importScripts/blob-url.worker.js": true,
   "workers/interfaces/WorkerUtils/importScripts/catch.sub.any.js": {
     "ignore": true
   },

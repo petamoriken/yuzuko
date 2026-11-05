@@ -47,6 +47,7 @@ pub fn register() {
   ONCE.call_once(|| {
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(blob::clear_jobs);
+    yuzuko_core::set_blob_script_loader(blob::read_blob_worker_script);
     #[cfg(feature = "fetch")]
     yuzuko_core::on_realm_drop(http::cache::clear);
     yuzuko_core::on_realm_drop(stream::clear);

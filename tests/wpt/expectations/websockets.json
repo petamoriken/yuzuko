@@ -111,7 +111,7 @@
     ]
   },
   "websockets/Create-nonAscii-protocol-string.any.js": true,
-  "websockets/Create-on-worker-shutdown.any.js": false,
+  "websockets/Create-on-worker-shutdown.any.js": true,
   "websockets/Create-protocol-with-space.any.js": true,
   "websockets/Create-protocols-repeated-case-insensitive.any.js": true,
   "websockets/Create-protocols-repeated.any.js": true,

@@ -80,11 +80,12 @@ pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,
 };
 pub use worker::{
-  Inbound, LocationParts, ScriptKind, WorkerScript, agent_alive, drain_inbound,
-  eval_classic_in_worker, keeps_alive, load_worker_source, parent_agent,
-  poke_agent, post_inbound, resolve_specifier, run_worker_frame_hook,
-  set_inbound_handler, set_worker_frame_hook, spawn_worker, take_inbox,
-  terminate_worker, worker_is_module, worker_location, worker_name,
+  Inbound, LocationParts, ScriptKind, WorkerScript, agent_alive, close_worker,
+  drain_inbound, eval_classic_in_worker, keeps_alive, load_worker_source,
+  parent_agent, poke_agent, post_inbound, resolve_specifier,
+  run_worker_frame_hook, set_blob_script_loader, set_inbound_handler,
+  set_worker_frame_hook, spawn_worker, take_inbox, terminate_worker,
+  worker_is_module, worker_location, worker_name,
 };
 
 #[cfg(test)]

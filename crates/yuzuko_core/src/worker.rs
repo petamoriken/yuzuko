@@ -56,6 +56,10 @@ struct Agent {
   inbox: Mutex<VecDeque<Inbound>>,
   children: Mutex<Vec<u64>>,
   alive: AtomicBool,
+  /// `close()` was called. The running script finishes, then this agent
+  /// stops. It stays alive until that return so the owner still receives
+  /// a `postMessage` from the script.
+  closing: AtomicBool,
   module: AtomicBool,
   name: Mutex<String>,
   thread: Mutex<Option<JoinHandle<()>>>,
@@ -84,6 +88,7 @@ pub fn attach_main(queue: Arc<TaskQueue>) {
     inbox: Mutex::new(VecDeque::new()),
     children: Mutex::new(Vec::new()),
     alive: AtomicBool::new(true),
+    closing: AtomicBool::new(false),
     module: AtomicBool::new(false),
     name: Mutex::new(String::new()),
     thread: Mutex::new(None),
@@ -123,6 +128,7 @@ pub fn spawn_worker(parent: u64, script: WorkerScript) -> Result<u64, String> {
     inbox: Mutex::new(VecDeque::new()),
     children: Mutex::new(Vec::new()),
     alive: AtomicBool::new(true),
+    closing: AtomicBool::new(false),
     module: AtomicBool::new(script.kind == ScriptKind::Module),
     name: Mutex::new(script.name.clone()),
     thread: Mutex::new(None),
@@ -189,6 +195,40 @@ pub fn terminate_worker(id: u64) {
     isolate.terminate_execution();
   }
   agent.queue.poke();
+}
+
+/// `DedicatedWorkerGlobalScope.close`.
+///
+/// The running script finishes. Further tasks on this worker do not run.
+/// Unlike [`terminate_worker`], this does not abort the isolate, and the
+/// agent stays alive until that script returns.
+pub fn close_worker(id: u64) {
+  let agent = {
+    let agents = agents();
+    agents.as_ref().and_then(|map| map.get(&id).cloned())
+  };
+  let Some(agent) = agent else {
+    return;
+  };
+  if !agent.alive.load(Ordering::SeqCst) {
+    return;
+  }
+  if agent.closing.swap(true, Ordering::SeqCst) {
+    return;
+  }
+  let children = agent.children.lock().expect("worker children").clone();
+  for child in children {
+    terminate_worker(child);
+  }
+  agent.inbox.lock().expect("worker inbox").clear();
+}
+
+pub fn worker_closing(id: u64) -> bool {
+  let agents = agents();
+  agents
+    .as_ref()
+    .and_then(|map| map.get(&id))
+    .is_some_and(|agent| agent.closing.load(Ordering::SeqCst))
 }
 
 pub(crate) fn set_isolate_handle(id: u64, handle: v8::IsolateHandle) {
@@ -264,12 +304,17 @@ pub fn take_inbox(agent: u64) -> Vec<Inbound> {
   slot.inbox.lock().expect("worker inbox").drain(..).collect()
 }
 
-fn inbox_pending(agent: u64) -> bool {
+pub(crate) fn inbox_pending(agent: u64) -> bool {
   let agents = agents();
   let Some(slot) = agents.as_ref().and_then(|map| map.get(&agent)) else {
     return false;
   };
   !slot.inbox.lock().expect("worker inbox").is_empty()
+}
+
+/// This realm has a worker message waiting and a handler that can deliver it.
+pub(crate) fn inbound_ready() -> bool {
+  has_inbound_handler() && inbox_pending(host::agent_id())
 }
 
 pub fn agent_alive(id: u64) -> bool {
@@ -374,6 +419,10 @@ pub fn worker_is_module() -> bool {
     .is_some_and(|agent| agent.module.load(Ordering::SeqCst))
 }
 
+pub(crate) fn has_inbound_handler() -> bool {
+  HANDLER.lock().expect("worker handler").is_some()
+}
+
 pub fn drain_inbound(scope: &mut v8::PinScope) -> bool {
   let handler = *HANDLER.lock().expect("worker handler");
   let Some(handler) = handler else {
@@ -421,6 +470,10 @@ pub fn load_worker_source(
     let text = decode_data_url(url)?;
     return Ok(LoadedSource { path: None, text });
   }
+  if parsed.scheme() == "blob" {
+    let text = load_blob_script(url)?;
+    return Ok(LoadedSource { path: None, text });
+  }
   if parsed.scheme() == "file" {
     let path = parsed
       .to_file_path()
@@ -444,6 +497,24 @@ pub fn load_worker_source(
   Err(format!("The worker script could not be loaded: {url}"))
 }
 
+type BlobScriptLoader = fn(&str) -> Result<String, String>;
+
+static BLOB_SCRIPT: Mutex<Option<BlobScriptLoader>> = Mutex::new(None);
+
+/// Installed by the blob URL table so a worker thread can read a URL
+/// created on another thread.
+pub fn set_blob_script_loader(loader: BlobScriptLoader) {
+  *BLOB_SCRIPT.lock().expect("blob script loader") = Some(loader);
+}
+
+fn load_blob_script(url: &str) -> Result<String, String> {
+  let loader = *BLOB_SCRIPT.lock().expect("blob script loader");
+  let Some(loader) = loader else {
+    return Err(format!("The worker script could not be loaded: {url}"));
+  };
+  loader(url)
+}
+
 fn decode_data_url(url: &str) -> Result<String, String> {
   let rest = url
     .strip_prefix("data:")
@@ -451,10 +522,70 @@ fn decode_data_url(url: &str) -> Result<String, String> {
   let (meta, data) = rest
     .split_once(',')
     .ok_or_else(|| "The data URL has no payload".to_string())?;
-  if meta.contains(";base64") {
-    return Err("Base64 data URLs are not supported for workers".to_string());
+  let decoded = percent_decode(data)?;
+  if !meta_is_base64(meta) {
+    return Ok(decoded);
   }
-  percent_decode(data)
+  // HTML data URLs percent-decode, then forgiving-base64-decode.
+  let bytes = forgiving_base64(&decoded)?;
+  String::from_utf8(bytes).map_err(|error| error.to_string())
+}
+
+fn meta_is_base64(meta: &str) -> bool {
+  meta
+    .rsplit(';')
+    .next()
+    .is_some_and(|part| part.trim().eq_ignore_ascii_case("base64"))
+}
+
+/// Infra forgiving-base64 decode. ASCII whitespace is ignored.
+fn forgiving_base64(input: &str) -> Result<Vec<u8>, String> {
+  let mut filtered: String = input
+    .chars()
+    .filter(|ch| !matches!(ch, ' ' | '\t' | '\n' | '\u{000c}' | '\r'))
+    .collect();
+  if filtered.len().is_multiple_of(4) {
+    if filtered.ends_with("==") {
+      filtered.truncate(filtered.len() - 2);
+    } else if filtered.ends_with('=') {
+      filtered.truncate(filtered.len() - 1);
+    }
+  }
+  if filtered.is_empty() {
+    return Ok(Vec::new());
+  }
+  if filtered.len() % 4 == 1 {
+    return Err("The data URL is invalid".to_string());
+  }
+  let mut out = Vec::new();
+  let mut buffer: u32 = 0;
+  let mut bits = 0u32;
+  for byte in filtered.bytes() {
+    let value = u32::from(base64_digit(byte)?);
+    buffer = (buffer << 6) | value;
+    bits += 6;
+    if bits >= 8 {
+      bits -= 8;
+      out.push((buffer >> bits) as u8);
+      if bits == 0 {
+        buffer = 0;
+      } else {
+        buffer &= (1 << bits) - 1;
+      }
+    }
+  }
+  Ok(out)
+}
+
+fn base64_digit(byte: u8) -> Result<u8, String> {
+  match byte {
+    b'A'..=b'Z' => Ok(byte - b'A'),
+    b'a'..=b'z' => Ok(byte - b'a' + 26),
+    b'0'..=b'9' => Ok(byte - b'0' + 52),
+    b'+' => Ok(62),
+    b'/' => Ok(63),
+    _ => Err("The data URL is invalid".to_string()),
+  }
 }
 
 fn percent_decode(input: &str) -> Result<String, String> {
@@ -492,5 +623,46 @@ fn sandbox_file(url: &Url, sandbox: &Path) -> Option<PathBuf> {
 pub(crate) fn mark_dead(id: u64) {
   if let Some(agent) = agents().as_ref().and_then(|map| map.get(&id).cloned()) {
     agent.alive.store(false, Ordering::SeqCst);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::decode_data_url;
+  use url::Url;
+
+  #[test]
+  fn base64_data_url_decodes_a_script() {
+    let text = decode_data_url("data:text/javascript;base64,aGk=").unwrap();
+    assert_eq!(text, "hi");
+    let spaced = decode_data_url("data:text/javascript;base64,aG\nk=").unwrap();
+    assert_eq!(spaced, "hi");
+    let charset =
+      decode_data_url("data:text/javascript;charset=utf-8;base64,aGk=")
+        .unwrap();
+    assert_eq!(charset, "hi");
+  }
+
+  #[test]
+  fn plain_data_url_percent_decodes() {
+    let text = decode_data_url("data:text/javascript,hi%21").unwrap();
+    assert_eq!(text, "hi!");
+  }
+
+  #[test]
+  fn invalid_base64_data_url_fails() {
+    assert!(decode_data_url("data:;base64,****").is_err());
+  }
+
+  #[test]
+  fn blob_url_origin_keeps_the_creator_origin() {
+    let url = Url::parse(
+      "blob:http://web-platform.test:8000/11111111-1111-4111-8111-111111111111",
+    )
+    .unwrap();
+    assert_eq!(
+      url.origin().ascii_serialization(),
+      "http://web-platform.test:8000"
+    );
   }
 }

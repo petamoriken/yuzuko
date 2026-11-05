@@ -9,8 +9,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Read, Seek};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use yuzuko_core::op::{Js, New, OpError, host_ref};
@@ -44,21 +44,34 @@ thread_local! {
 
 pub fn clear_jobs() {
   JOBS.with(|jobs| jobs.borrow_mut().clear());
-  BLOB_URLS.with(|urls| urls.borrow_mut().clear());
+  let Some(agent) = yuzuko_core::try_agent_id() else {
+    return;
+  };
+  let mut urls = BLOB_URLS.lock().expect("blob urls");
+  urls.retain(|_, entry| {
+    if entry.agent != agent {
+      return true;
+    }
+    if entry.users == 0 {
+      return false;
+    }
+    entry.revoked = true;
+    true
+  });
 }
 
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 struct BlobUrlEntry {
   source: BlobSource,
   mime: String,
   revoked: bool,
   users: u32,
+  /// Realm that called `createObjectURL`. Dropping that realm revokes only
+  /// its entries, so another thread can finish a lease it already holds.
+  agent: u64,
 }
 
-thread_local! {
-  static BLOB_URLS: RefCell<HashMap<String, BlobUrlEntry>> =
-    RefCell::new(HashMap::new());
-}
+static BLOB_URLS: LazyLock<Mutex<HashMap<String, BlobUrlEntry>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
 
 static BLOB_URL_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -71,15 +84,25 @@ pub struct BlobUrlLease {
 }
 
 impl BlobUrlLease {
-  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   pub(crate) fn source(&self) -> Option<(BlobSource, String)> {
-    BLOB_URLS.with(|urls| {
-      urls
-        .borrow()
-        .get(&self.url)
-        .map(|entry| (entry.source.clone(), entry.mime.clone()))
-    })
+    let urls = BLOB_URLS.lock().expect("blob urls");
+    urls
+      .get(&self.url)
+      .map(|entry| (entry.source.clone(), entry.mime.clone()))
   }
+}
+
+/// UTF-8 bytes of a live blob URL. A worker thread can read a URL created
+/// on another thread. A revoked or unknown URL is an error.
+pub fn read_blob_worker_script(url: &str) -> Result<String, String> {
+  let Some(lease) = lease_blob_url(url) else {
+    return Err(format!("The worker script could not be loaded: {url}"));
+  };
+  let Some((source, _)) = lease.source() else {
+    return Err(format!("The worker script could not be loaded: {url}"));
+  };
+  let bytes = source.read_all().map_err(|error| error.to_string())?;
+  String::from_utf8(bytes).map_err(|error| error.to_string())
 }
 
 impl Drop for BlobUrlLease {
@@ -110,58 +133,53 @@ pub fn create_object_url(
 /// Resolve `url` for a new use. A revoked URL does not lease.
 pub fn lease_blob_url(url: &str) -> Option<BlobUrlLease> {
   let key = blob_url_key(url)?;
-  BLOB_URLS.with(|urls| {
-    let mut urls = urls.borrow_mut();
-    let entry = urls.get_mut(&key)?;
-    if entry.revoked {
-      return None;
-    }
-    entry.users += 1;
-    Some(BlobUrlLease { url: key })
-  })
+  let mut urls = BLOB_URLS.lock().expect("blob urls");
+  let entry = urls.get_mut(&key)?;
+  if entry.revoked {
+    return None;
+  }
+  entry.users += 1;
+  Some(BlobUrlLease { url: key })
 }
 
 pub fn revoke_object_url(url: &str) {
   let Some(key) = blob_url_key(url) else {
     return;
   };
-  BLOB_URLS.with(|urls| {
-    let mut urls = urls.borrow_mut();
-    let Some(entry) = urls.get_mut(&key) else {
-      return;
-    };
-    entry.revoked = true;
-    if entry.users == 0 {
-      urls.remove(&key);
-    }
-  });
+  let mut urls = BLOB_URLS.lock().expect("blob urls");
+  let Some(entry) = urls.get_mut(&key) else {
+    return;
+  };
+  entry.revoked = true;
+  if entry.users == 0 {
+    urls.remove(&key);
+  }
 }
 
 fn insert_blob_url(url: String, source: BlobSource, mime: String) {
-  BLOB_URLS.with(|urls| {
-    urls.borrow_mut().insert(
-      url,
-      BlobUrlEntry {
-        source,
-        mime,
-        revoked: false,
-        users: 0,
-      },
-    );
-  });
+  let agent = yuzuko_core::try_agent_id().unwrap_or(0);
+  let mut urls = BLOB_URLS.lock().expect("blob urls");
+  urls.insert(
+    url,
+    BlobUrlEntry {
+      source,
+      mime,
+      revoked: false,
+      users: 0,
+      agent,
+    },
+  );
 }
 
 fn release_blob_url(url: &str) {
-  BLOB_URLS.with(|urls| {
-    let mut urls = urls.borrow_mut();
-    let Some(entry) = urls.get_mut(url) else {
-      return;
-    };
-    entry.users = entry.users.saturating_sub(1);
-    if entry.revoked && entry.users == 0 {
-      urls.remove(url);
-    }
-  });
+  let mut urls = BLOB_URLS.lock().expect("blob urls");
+  let Some(entry) = urls.get_mut(url) else {
+    return;
+  };
+  entry.users = entry.users.saturating_sub(1);
+  if entry.revoked && entry.users == 0 {
+    urls.remove(url);
+  }
 }
 
 fn blob_url_key(url: &str) -> Option<String> {
@@ -240,14 +258,24 @@ mod blob_url_tests {
     revoke_object_url,
   };
 
-  fn reset() {
-    BLOB_URLS.with(|urls| urls.borrow_mut().clear());
+  fn forget(url: &str) {
+    let Some(key) = blob_url_key(url) else {
+      return;
+    };
+    BLOB_URLS.lock().expect("blob urls").remove(&key);
+  }
+
+  fn contains(url: &str) -> bool {
+    let Some(key) = blob_url_key(url) else {
+      return false;
+    };
+    BLOB_URLS.lock().expect("blob urls").contains_key(&key)
   }
 
   #[test]
   fn revoke_waits_until_the_last_user_finishes() {
-    reset();
     let url = "blob:null/11111111-1111-4111-8111-111111111111";
+    forget(url);
     insert_blob_url(
       url.to_string(),
       BlobSource::from_vec(b"hi".to_vec()),
@@ -259,17 +287,15 @@ mod blob_url_tests {
     assert!(lease_blob_url(url).is_none());
     assert_eq!(first.source().expect("source").0.read_all().unwrap(), b"hi");
     drop(first);
-    let key = blob_url_key(url).expect("key");
-    assert!(BLOB_URLS.with(|urls| urls.borrow().contains_key(&key)));
+    assert!(contains(url));
     drop(second);
-    assert!(!BLOB_URLS.with(|urls| urls.borrow().contains_key(&key)));
-    reset();
+    assert!(!contains(url));
   }
 
   #[test]
   fn revoke_without_users_removes_the_entry() {
-    reset();
     let url = "blob:null/22222222-2222-4222-8222-222222222222";
+    forget(url);
     insert_blob_url(
       url.to_string(),
       BlobSource::from_vec(Vec::new()),
@@ -277,8 +303,29 @@ mod blob_url_tests {
     );
     revoke_object_url(url);
     assert!(lease_blob_url(url).is_none());
+    assert!(!contains(url));
     revoke_object_url("https://example.test/");
-    reset();
+  }
+
+  #[test]
+  fn a_blob_url_is_visible_on_another_thread() {
+    let url = "blob:null/33333333-3333-4333-8333-333333333333";
+    forget(url);
+    insert_blob_url(
+      url.to_string(),
+      BlobSource::from_vec(b"worker".to_vec()),
+      "text/plain".to_string(),
+    );
+    let owned = url.to_string();
+    let found = std::thread::spawn(move || {
+      super::read_blob_worker_script(&owned).expect("script")
+    })
+    .join()
+    .expect("thread");
+    assert_eq!(found, "worker");
+    revoke_object_url(url);
+    assert!(super::read_blob_worker_script(url).is_err());
+    assert!(!contains(url));
   }
 }
 

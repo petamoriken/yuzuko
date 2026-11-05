@@ -279,6 +279,11 @@ fn import_scripts(
   if args.length() == 0 {
     return;
   }
+  // Parse every URL first. A blob URL's bytes are captured here, before
+  // any script runs, so revokeObjectURL inside an earlier script does not
+  // fail a later URL of this call.
+  let sandbox = yuzuko_core::entry_dir();
+  let mut imports = Vec::new();
   for index in 0..args.length() {
     let spec = rust_string(scope, args.get(index));
     let url = match resolve_specifier(&spec) {
@@ -288,15 +293,31 @@ fn import_scripts(
         return;
       }
     };
-    let sandbox = yuzuko_core::entry_dir();
-    let loaded = match load_worker_source(&url, sandbox.as_deref()) {
-      Ok(loaded) => loaded,
-      Err(message) => {
+    let captured = if url.starts_with("blob:") {
+      Some(
+        load_worker_source(&url, sandbox.as_deref()).map(|loaded| loaded.text),
+      )
+    } else {
+      None
+    };
+    imports.push((url, captured));
+  }
+  for (url, captured) in imports {
+    let text = match captured {
+      Some(Ok(text)) => text,
+      Some(Err(message)) => {
         OpError::dom("NetworkError", message).throw(scope);
         return;
       }
+      None => match load_worker_source(&url, sandbox.as_deref()) {
+        Ok(loaded) => loaded.text,
+        Err(message) => {
+          OpError::dom("NetworkError", message).throw(scope);
+          return;
+        }
+      },
     };
-    if let Err(message) = eval_classic_in_worker(scope, &url, &loaded.text) {
+    if let Err(message) = eval_classic_in_worker(scope, &url, &text) {
       yuzuko_core::throw_type(scope, &message);
       return;
     }
@@ -339,7 +360,7 @@ fn close_worker(
   _args: v8::FunctionCallbackArguments,
   mut _ret: v8::ReturnValue,
 ) {
-  terminate_worker(agent_id());
+  yuzuko_core::close_worker(agent_id());
 }
 
 fn rooted<'s>(

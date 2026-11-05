@@ -354,18 +354,25 @@ pub(crate) fn run_worker_isolate(
         report_worker_failure(id, &script.url, error.message);
       }
     } else {
-      while crate::worker::agent_alive(id) {
+      while crate::worker::agent_alive(id) && !crate::worker::worker_closing(id)
+      {
         if exiting() {
           break;
         }
         if !pump_once(scope) {
-          if exiting() || !crate::worker::agent_alive(id) {
+          if exiting()
+            || !crate::worker::agent_alive(id)
+            || crate::worker::worker_closing(id)
+          {
             break;
           }
           queue.wait(None);
         }
       }
     }
+    // `close()` leaves the agent alive through the script so the owner can
+    // receive its last `postMessage`. Mark it dead once that script returns.
+    crate::worker::mark_dead(id);
     #[cfg(feature = "fs")]
     crate::fs::clear();
     #[cfg(feature = "udp")]
@@ -812,6 +819,11 @@ fn pump_until(
       }
       continue;
     }
+    // A worker can `postMessage` and then become not alive in the gap after
+    // the drain above. Deliver that message before the loop goes idle.
+    if crate::worker::inbound_ready() {
+      continue;
+    }
     if expired {
       return bail_if_exit();
     }
@@ -832,6 +844,12 @@ fn pump_until(
       && !workers
       && !crate::idle::idle_has_pending()
     {
+      // The worker pushes this inbox before it stores `alive = false`.
+      // `keeps_alive` already observed that store, so the push is visible.
+      // Returning here would drop the owner's `message` event.
+      if crate::worker::inbound_ready() {
+        continue;
+      }
       if wasm_in_flight() == 0 || std::time::Instant::now() >= deadline {
         return bail_if_exit();
       }
@@ -1034,6 +1052,11 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
       earliest_wait(queue.next_wait(), crate::timers::next_wait()),
       earliest_wait(interest.next_wait, crate::idle::idle_next_wait()),
     ));
+    return true;
+  }
+  // Same ordering as `pump_until`: a `postMessage` that landed before the
+  // worker died is still in this inbox.
+  if crate::worker::inbound_ready() {
     return true;
   }
   false

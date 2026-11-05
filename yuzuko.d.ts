@@ -13553,6 +13553,9 @@ declare class WebTransportError extends DOMException {
  * and a cloned `ImageData`, `EncodedAudioChunk`, or `EncodedVideoChunk`.
  * A {@link Yuzuko.Window} cannot be transferred.
  * A WebGPU device stays on the thread that created it.
+ * The script may be `file:`, a sandboxed `http:` or `https:` path, `data:`
+ * including a base64 payload, or `blob:`. A blob URL created on another
+ * thread can be loaded.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid.
  * @throws {@link DOMException} `DataCloneError` when `postMessage` carries a
@@ -13603,7 +13606,12 @@ declare class WorkerGlobalScope extends EventTarget {
   /**
    * Imports classic scripts.
    *
-   * @throws {@link TypeError} In a module worker. `importScripts` is not available there.
+   * Parses every URL before running any script. A blob URL is captured
+   * then, so revoking it inside an earlier script of the same call does
+   * not fail a later URL. `data:` accepts a base64 payload.
+   *
+   * @throws {@link DOMException} `NetworkError` when a script cannot be loaded.
+   * @throws {@link TypeError} In a module worker, or when a script throws.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerGlobalScope/importScripts)
    */
@@ -13638,6 +13646,9 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   postMessage(message: any, options?: StructuredSerializeOptions): void;
 
   /**
+   * Finishes this script, then stops further tasks on this worker.
+   * `Worker.terminate()` aborts the running script as well.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope/close)
    */
   close(): void;
