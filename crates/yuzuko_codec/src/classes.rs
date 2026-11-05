@@ -522,6 +522,10 @@ pub struct VideoDecoder {
   output: RefCell<Option<v8::TracedReference<v8::Function>>>,
   error: RefCell<Option<v8::TracedReference<v8::Function>>>,
   backend: RefCell<Option<VideoBackend>>,
+  /// Timestamp and duration of each decoded chunk whose frame has not come
+  /// out yet. A hardware decoder may hold a frame until `flush`, and it
+  /// outputs frames in presentation order, so each frame takes the earliest.
+  pending: RefCell<Vec<(f64, Option<f64>)>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for VideoDecoder {
@@ -549,6 +553,7 @@ impl VideoDecoder {
       output: RefCell::new(Some(traced(scope, output))),
       error: RefCell::new(Some(traced(scope, error))),
       backend: RefCell::new(None),
+      pending: RefCell::new(Vec::new()),
     })
   }
 
@@ -619,7 +624,9 @@ impl VideoDecoder {
     };
     match decoded {
       Ok(Ok(frames)) => {
+        self.pending.borrow_mut().push((timestamp, duration));
         for raster in frames {
+          let (timestamp, duration) = self.next_timing();
           self.emit_frame(scope, this, raster, timestamp, duration)?;
         }
         Ok(())
@@ -649,8 +656,11 @@ impl VideoDecoder {
       backend.flush().map_err(config_error)?
     };
     for raster in frames {
-      self.emit_frame(scope, this, raster, 0.0, None)?;
+      let (timestamp, duration) = self.next_timing();
+      self.emit_frame(scope, this, raster, timestamp, duration)?;
     }
+    // A flushed decoder starts the next chunk with no frame held back.
+    self.pending.borrow_mut().clear();
     resolved(scope)
   }
 
@@ -684,7 +694,19 @@ impl VideoDecoder {
     }
   }
 
+  /// The earliest pending chunk timing, for the next frame out.
+  fn next_timing(&self) -> (f64, Option<f64>) {
+    let mut pending = self.pending.borrow_mut();
+    let earliest = pending
+      .iter()
+      .enumerate()
+      .min_by(|(_, left), (_, right)| left.0.total_cmp(&right.0))
+      .map(|(index, _)| index);
+    earliest.map_or((0.0, None), |index| pending.remove(index))
+  }
+
   fn reset_backend(&self) {
+    self.pending.borrow_mut().clear();
     *self.backend.borrow_mut() = None;
     if self.state.get() != State::Closed {
       self.state.set(State::Unconfigured);
@@ -692,6 +714,7 @@ impl VideoDecoder {
   }
 
   fn shutdown(&self) {
+    self.pending.borrow_mut().clear();
     *self.backend.borrow_mut() = None;
     self.state.set(State::Closed);
   }

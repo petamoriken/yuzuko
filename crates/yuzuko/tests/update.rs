@@ -564,12 +564,13 @@ fn unpackaged_run_and_repl_have_no_updater() {
   let output = child.wait_with_output().unwrap();
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
+  // The REPL inspects a string completion value with quotes.
   assert!(
-    stdout.lines().any(|line| line.trim() == "undefined"),
+    stdout.lines().any(|line| line.trim() == "\"undefined\""),
     "{stdout}"
   );
   assert!(
-    !stdout.lines().any(|line| line.trim() == "object"),
+    !stdout.lines().any(|line| line.trim() == "\"object\""),
     "{stdout}"
   );
 }

@@ -114,7 +114,8 @@ pub(crate) fn clear_context(id: u64) {
 }
 
 /// Pops the menu stored by `setContextMenu`. A click is dispatched before
-/// this returns.
+/// this returns. Linux has no GTK window to host the popup.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn show_context(
   scope: &mut v8::PinScope,
   id: u64,

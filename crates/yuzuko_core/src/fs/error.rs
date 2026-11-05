@@ -130,6 +130,18 @@ pub(super) enum FsError {
 }
 
 impl FsError {
+  /// Whether the operating system refused the access.
+  #[cfg_attr(not(windows), allow(dead_code))]
+  pub(super) fn permission_denied(&self) -> bool {
+    matches!(
+      self,
+      Self::Os {
+        class: Class::PermissionDenied,
+        ..
+      }
+    )
+  }
+
   pub(super) fn type_(message: impl Into<String>) -> Self {
     Self::Type(message.into())
   }

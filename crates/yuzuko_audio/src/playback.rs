@@ -364,6 +364,17 @@ pub(crate) fn output_device_names() -> Result<Vec<String>, ()> {
       }
       names.push(name.to_string());
     }
+    // The default output can be missing from the enumeration, as the ALSA
+    // `default` PCM is. `select_output` accepts its name, so list it too.
+    if let Some(name) = host
+      .default_output_device()
+      .and_then(|device| device.description().ok())
+      .map(|description| description.name().to_string())
+      && !name.is_empty()
+      && !names.contains(&name)
+    {
+      names.push(name);
+    }
     Ok(names)
   }));
   match listed {
@@ -376,13 +387,18 @@ fn select_output(host: &cpal::Host, sink: &str) -> Option<cpal::Device> {
   if sink.is_empty() {
     return host.default_output_device();
   }
-  let mut devices = host.output_devices().ok()?;
-  devices.find(|device| {
+  let named = |device: &cpal::Device| {
     device
       .description()
       .ok()
       .is_some_and(|description| description.name() == sink)
-  })
+  };
+  if let Some(device) = host.output_devices().ok()?.find(named) {
+    return Some(device);
+  }
+  // ALSA without a sound server does not enumerate its `default` PCM, yet
+  // that is the default output and has a name of its own.
+  host.default_output_device().filter(named)
 }
 
 fn open_device(rate: f64, quantum: u32, sink: &str) -> Option<Device> {

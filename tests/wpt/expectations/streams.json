@@ -68,15 +68,7 @@
     "ignore": true
   },
   "streams/readable-streams/owning-type-message-port.tentative.any.js": true,
-  "streams/readable-streams/owning-type-video-frame.tentative.any.js": {
-    "expectedFailures": [
-      "ReadableStream of type owning should clone JS Objects with serializables when teeing",
-      "ReadableStream of type owning should clone serializable objects when teeing",
-      "ReadableStream of type owning should close serialized chunks",
-      "ReadableStream of type owning should error when trying to enqueue not serializable values",
-      "ReadableStream of type owning should transfer JS chunks with transferred values"
-    ]
-  },
+  "streams/readable-streams/owning-type-video-frame.tentative.any.js": true,
   "streams/readable-streams/owning-type.tentative.any.js": true,
   "streams/readable-streams/patched-global.any.js": true,
   "streams/readable-streams/read-task-handling.window.js": true,

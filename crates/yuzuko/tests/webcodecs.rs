@@ -17,14 +17,14 @@ fn webcodecs_passes_under_yuzuko_test() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
   assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
-  // Without a hardware H.264 decoder, the four picture tests are ignored.
+  // Without a hardware H.264 decoder, the five picture tests are ignored.
   // macOS always has VideoToolbox.
   let summary = if cfg!(target_os = "macos") {
-    vec!["ok | 9 passed | 0 failed | 0 ignored"]
+    vec!["ok | 15 passed | 0 failed | 0 ignored"]
   } else {
     vec![
-      "ok | 9 passed | 0 failed | 0 ignored",
-      "ok | 5 passed | 0 failed | 4 ignored",
+      "ok | 15 passed | 0 failed | 0 ignored",
+      "ok | 10 passed | 0 failed | 5 ignored",
     ]
   };
   assert!(

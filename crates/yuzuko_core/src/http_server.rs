@@ -219,7 +219,11 @@ fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
     let Some(listener) = slot.as_ref() else {
       return Err(Fail::Closed);
     };
-    listener.try_clone().map_err(|_| Fail::Accept)?
+    // Windows does not carry non-blocking mode to a duplicated socket, and a
+    // blocking accept would not see `close`.
+    let clone = listener.try_clone().map_err(|_| Fail::Accept)?;
+    clone.set_nonblocking(true).map_err(|_| Fail::Accept)?;
+    clone
   };
   let mut stream = loop {
     if shared.is_closed() {

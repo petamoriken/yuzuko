@@ -181,10 +181,8 @@ fn write_directory(
     if gui_subsystem(&mut image) {
       fs::write(&executable, image)?;
     }
-    if pe {
-      if let Some(Icon::File(path)) = &config.icons.windows {
-        embed_windows_icon(&executable, path)?;
-      }
+    if pe && let Some(Icon::File(path)) = &config.icons.windows {
+      embed_windows_icon(&executable, path)?;
     }
   }
   let app_root = output.join("app");

@@ -1386,13 +1386,30 @@ impl ReadableStreamDefaultController {
     options: Option<v8::Local<v8::Value>>,
   ) -> Result<(), OpError> {
     let chunk = chunk.unwrap_or_else(|| v8::undefined(scope).into());
-    let transfer = enqueue_transfers(scope, options)?;
     let owning = OWNING.with(|slot| slot.borrow().contains(&self.stream));
+    // An owning stream serializes the chunk with its transfer list. When that
+    // fails, the stream errors with the same exception that enqueue throws,
+    // so a pending read rejects instead of waiting.
+    let serialize_failed = |scope: &mut v8::PinScope, error: OpError| {
+      let value = error_value(scope, &error);
+      let _ = error_stream(scope, self.stream, value);
+      OpError::thrown(scope, value)
+    };
+    let transfer = match enqueue_transfers(scope, options) {
+      Ok(transfer) => transfer,
+      Err(error @ OpError::Dom { .. }) if owning => {
+        return Err(serialize_failed(scope, error));
+      }
+      Err(error) => return Err(error),
+    };
     if !transfer.is_empty() && !owning {
       return Err(OpError::type_("The transfer list is not empty"));
     }
     let chunk = if owning {
-      clone_for_owning(scope, chunk, transfer)?
+      match clone_for_owning(scope, chunk, transfer) {
+        Ok(cloned) => cloned,
+        Err(error) => return Err(serialize_failed(scope, error)),
+      }
     } else {
       chunk
     };

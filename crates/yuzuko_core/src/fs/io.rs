@@ -1114,7 +1114,28 @@ fn set_times_file(
   mtime: FileTime,
 ) -> Result<(), FsError> {
   use std::os::windows::io::AsRawHandle;
-  set_handle_times(file.as_raw_handle(), atime, mtime)
+  use windows_sys::Win32::Storage::FileSystem::{
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FILE_WRITE_ATTRIBUTES, ReOpenFile,
+  };
+  match set_handle_times(file.as_raw_handle(), atime, mtime) {
+    Err(error) if error.permission_denied() => {
+      // `SetFileTime` needs `FILE_WRITE_ATTRIBUTES`, which a file opened for
+      // reading lacks. Open the same file again with that right, as
+      // `futimens` on a read-only descriptor does on Unix.
+      let handle = unsafe {
+        ReOpenFile(
+          file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+          FILE_WRITE_ATTRIBUTES,
+          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+          0,
+        )
+      };
+      let handle = owned_handle(handle).map_err(FsError::io)?;
+      set_handle_times(handle.as_raw_handle(), atime, mtime)
+    }
+    other => other,
+  }
 }
 
 #[cfg(windows)]
