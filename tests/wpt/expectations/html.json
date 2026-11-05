@@ -3440,28 +3440,12 @@
   "html/canvas/offscreen/text/2d.text.baseline.invalid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.baseline.valid.html": true,
   "html/canvas/offscreen/text/2d.text.baseline.valid.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.direction.default.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.direction.default.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.direction.default.html": true,
+  "html/canvas/offscreen/text/2d.text.direction.default.worker.js": true,
   "html/canvas/offscreen/text/2d.text.direction.invalid.html": true,
   "html/canvas/offscreen/text/2d.text.direction.invalid.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.direction.valid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.direction.valid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.direction.valid.html": true,
+  "html/canvas/offscreen/text/2d.text.direction.valid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.center.html": {
     "ignore": true
   },

@@ -169,6 +169,39 @@ pub enum Baseline {
   Bottom,
 }
 
+/// Canvas `direction`. `"inherit"` shapes left to right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Direction {
+  #[default]
+  Inherit,
+  Ltr,
+  Rtl,
+}
+
+impl Direction {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "inherit" => Some(Self::Inherit),
+      "ltr" => Some(Self::Ltr),
+      "rtl" => Some(Self::Rtl),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Inherit => "inherit",
+      Self::Ltr => "ltr",
+      Self::Rtl => "rtl",
+    }
+  }
+
+  /// There is no document, so `"inherit"` is left to right.
+  pub fn is_rtl(self) -> bool {
+    matches!(self, Self::Rtl)
+  }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct FontDesc {
   pub size: f32,
@@ -334,7 +367,7 @@ pub struct State {
   pub font: FontDesc,
   pub align: Align,
   pub baseline: Baseline,
-  pub rtl: bool,
+  pub direction: Direction,
   /// BCP 47 tag, `""`, or `"inherit"`. Part of the canvas state.
   pub lang: String,
   /// CSS filter string. Painted when the drawing is composited.
@@ -391,7 +424,7 @@ impl Default for State {
       font: FontDesc::default(),
       align: Align::Start,
       baseline: Baseline::Alphabetic,
-      rtl: false,
+      direction: Direction::Inherit,
       lang: "inherit".to_string(),
       filter: "none".to_string(),
       composite: "source-over".to_string(),

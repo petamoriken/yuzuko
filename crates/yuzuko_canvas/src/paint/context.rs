@@ -31,6 +31,7 @@ use crate::paint::objects::{self};
 use crate::paint::record::Align;
 use crate::paint::record::Baseline;
 use crate::paint::record::Command;
+use crate::paint::record::Direction;
 use crate::paint::record::Drawing;
 use crate::paint::record::ImageBuf;
 use crate::paint::record::Style;
@@ -1749,24 +1750,16 @@ impl Context2D {
 
   #[getter]
   fn direction(&self) -> Result<String, OpError> {
-    self.update(|drawing| {
-      Ok(if drawing.state.rtl {
-        "rtl".to_string()
-      } else {
-        "ltr".to_string()
-      })
-    })
+    self.update(|drawing| Ok(drawing.state.direction.as_str().to_string()))
   }
 
   #[setter]
   fn direction(&self, value: String) -> Result<(), OpError> {
-    let rtl = match value.as_str() {
-      "rtl" => true,
-      "ltr" | "inherit" => false,
-      _ => return Ok(()),
+    let Some(direction) = Direction::parse(&value) else {
+      return Ok(());
     };
     self.update(|drawing| {
-      drawing.state.rtl = rtl;
+      drawing.state.direction = direction;
       Ok(())
     })
   }
@@ -1792,14 +1785,14 @@ impl Context2D {
       let shaped = text::shape(
         &text,
         drawing.state.font,
-        drawing.state.rtl,
+        drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );
       Ok(New(TextMetrics::from_shape(
         shaped,
         drawing.state.align,
         drawing.state.baseline,
-        drawing.state.rtl,
+        drawing.state.direction.is_rtl(),
       )))
     })
   }
@@ -1950,7 +1943,7 @@ impl Context2D {
       let shaped = text::shape(
         &text,
         drawing.state.font,
-        drawing.state.rtl,
+        drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );
       if shaped.width <= 0.0 {
@@ -1966,7 +1959,7 @@ impl Context2D {
       let align = drawing
         .state
         .align
-        .offset(drawing.state.rtl, f64::from(shaped.width))
+        .offset(drawing.state.direction.is_rtl(), f64::from(shaped.width))
         * scale;
       let ascent = f64::from(shaped.ascent);
       let descent = f64::from(shaped.descent);
@@ -1992,9 +1985,7 @@ impl Context2D {
             alpha: drawing.state.alpha,
             stroke: Some(drawing.state.stroke()),
             shade,
-            filter: drawing
-              .state
-              .paint_filter(drawing.width, drawing.height),
+            filter: drawing.state.paint_filter(drawing.width, drawing.height),
             clips: drawing.state.clips(),
           });
         } else {
@@ -2012,9 +2003,7 @@ impl Context2D {
             alpha: drawing.state.alpha,
             stroke: None,
             shade,
-            filter: drawing
-              .state
-              .paint_filter(drawing.width, drawing.height),
+            filter: drawing.state.paint_filter(drawing.width, drawing.height),
             clips: drawing.state.clips(),
           });
         }

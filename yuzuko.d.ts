@@ -9365,7 +9365,8 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * `"ltr"`, `"rtl"`, or `"inherit"`.
    *
-   * `"inherit"` is stored as left-to-right. Any other value is ignored.
+   * The default is `"inherit"`. An unrecognized value is ignored. There is
+   * no document, so `"inherit"` is shaped left to right.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/direction)
    */
