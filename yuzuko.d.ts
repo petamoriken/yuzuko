@@ -1918,10 +1918,24 @@ declare namespace Yuzuko {
      */
     constructor();
 
-    /** Bitmap width in device pixels. */
+    /**
+     * Bitmap width in device pixels.
+     *
+     * `[EnforceRange] unsigned long long`. Truncated toward zero. Does not
+     * change the window's CSS size.
+     *
+     * @throws {@link TypeError} When the value is non-finite or outside 0 through `2^53 - 1`.
+     */
     width: number;
 
-    /** Bitmap height in device pixels. */
+    /**
+     * Bitmap height in device pixels.
+     *
+     * `[EnforceRange] unsigned long long`. Truncated toward zero. Does not
+     * change the window's CSS size.
+     *
+     * @throws {@link TypeError} When the value is non-finite or outside 0 through `2^53 - 1`.
+     */
     height: number;
 
     /**
@@ -8865,17 +8879,30 @@ interface CanvasRenderingContext2DSettings {
 /**
  * A canvas that is not on screen.
  *
- * `new OffscreenCanvas(w, h)` has no window. Assigning `width` or `height`
- * reallocates the buffer. A window bitmap is {@link Yuzuko.WindowSurface}.
+ * `new OffscreenCanvas(w, h)` has no window. `width` and `height` are
+ * `[EnforceRange] unsigned long long`: truncated toward zero. Assigning
+ * either reallocates the buffer. A window bitmap is {@link Yuzuko.WindowSurface}.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas)
  */
 interface OffscreenCanvas extends EventTarget {
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/width) */
+  /**
+   * `[EnforceRange] unsigned long long`. Truncated toward zero.
+   *
+   * @throws {@link TypeError} When the value is non-finite or outside 0 through `2^53 - 1`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/width)
+   */
   width: number;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/height) */
+  /**
+   * `[EnforceRange] unsigned long long`. Truncated toward zero.
+   *
+   * @throws {@link TypeError} When the value is non-finite or outside 0 through `2^53 - 1`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/height)
+   */
   height: number;
 
   /**

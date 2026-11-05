@@ -427,19 +427,26 @@ impl OffscreenCanvas {
   }
 }
 
+/// HTML `[EnforceRange] unsigned long long` for a canvas width or height.
+///
+/// Finite values are truncated toward zero. A non-finite value, or a result
+/// outside `0` through `2^53 - 1`, is a `TypeError`. A truncation in `(-1, 0)`
+/// is `+0`.
 pub fn enforce_size(number: f64) -> Result<f64, OpError> {
   if !number.is_finite() {
     return Err(OpError::type_(
       "The provided value cannot be converted to 'unsigned long long'.",
     ));
   }
-  let rounded = number.round_ties_even();
-  if rounded < 0.0 || rounded > 9_007_199_254_740_991.0 {
+  let truncated = number.trunc();
+  let truncated = if truncated == 0.0 { 0.0 } else { truncated };
+  // WebIDL caps a 64-bit `[EnforceRange]` integer at `2^53 - 1`.
+  if !(0.0..=9_007_199_254_740_991.0).contains(&truncated) {
     return Err(OpError::type_(
       "The provided value is outside the 'unsigned long long' range.",
     ));
   }
-  Ok(rounded)
+  Ok(truncated)
 }
 
 fn argument_number(

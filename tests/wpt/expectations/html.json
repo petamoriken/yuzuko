@@ -141,28 +141,12 @@
   "html/canvas/offscreen/canvas-host/2d.canvas.host.reference.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.default.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.default.worker.js": true,
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.html": {
-    "expectedFailures": [
-      "Getting/setting width/height IDL attributes"
-    ]
-  },
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.set.zero.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.set.zero.worker.js": true,
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.worker.js": {
-    "expectedFailures": [
-      "Getting/setting width/height IDL attributes"
-    ]
-  },
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.decimal.html": {
-    "expectedFailures": [
-      "Parsing of non-negative integers"
-    ]
-  },
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.decimal.worker.js": {
-    "expectedFailures": [
-      "Parsing of non-negative integers"
-    ]
-  },
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.worker.js": true,
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.decimal.html": true,
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.decimal.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.em.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.em.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.empty.html": true,
