@@ -2322,11 +2322,7 @@
   "html/canvas/offscreen/line-styles/2d.line.join.round.worker.js": true,
   "html/canvas/offscreen/line-styles/2d.line.join.valid.html": true,
   "html/canvas/offscreen/line-styles/2d.line.join.valid.worker.js": true,
-  "html/canvas/offscreen/line-styles/2d.line.miter.acute.html": {
-    "expectedFailures": [
-      "Miter joins are drawn correctly with acute angles"
-    ]
-  },
+  "html/canvas/offscreen/line-styles/2d.line.miter.acute.html": true,
   "html/canvas/offscreen/line-styles/2d.line.miter.acute.worker.js": true,
   "html/canvas/offscreen/line-styles/2d.line.miter.exceeded.html": true,
   "html/canvas/offscreen/line-styles/2d.line.miter.exceeded.worker.js": true,
