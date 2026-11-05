@@ -12649,9 +12649,12 @@ interface VideoDecoder {
    * `codec` is empty, `description` is detached, or a present dimension is 0.
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not
    * `avc1` or `avc3`, or when the hardware decoder is missing or rejects a
-   * present `avcC`. On Windows the decoder is missing when no Direct3D 11
-   * device offers the H.264 decoder profile. On Linux it is missing when
-   * VA-API has no H.264 profile. No frame is produced.
+   * present `avcC`. On Darwin, an MBAFF interlaced `avcC` is rejected while
+   * creating the decompression session, and the message includes
+   * VideoToolbox status -12911 (`kVTVideoDecoderMalfunctionErr`). On Windows
+   * the decoder is missing when no Direct3D 11 device offers the H.264
+   * decoder profile. On Linux it is missing when VA-API has no H.264
+   * profile. No frame is produced.
    * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/configure)

@@ -131,7 +131,7 @@ impl Session {
     };
     let sample_buffer = Owned(sample_buffer);
     if status != 0 || sample_buffer.0.is_null() {
-      return Err(DecodeError::Rejected);
+      return Err(hardware_status(status));
     }
     let status = unsafe {
       VTDecompressionSessionDecodeFrame(
@@ -143,7 +143,12 @@ impl Session {
       )
     };
     if status != 0 || self.slot.status != 0 || self.slot.image.is_null() {
-      return Err(DecodeError::Rejected);
+      let code = if status != 0 {
+        status
+      } else {
+        self.slot.status
+      };
+      return Err(hardware_status(code));
     }
     let image = self.slot.image;
     self.slot.image = null_mut();
@@ -204,7 +209,7 @@ pub fn open_avc(description: &[u8]) -> Result<Session, DecodeError> {
   };
   if status != 0 || format.is_null() {
     release(format);
-    return Err(DecodeError::Rejected);
+    return Err(hardware_status(status));
   }
   open_format(format, null_mut())
 }
@@ -249,7 +254,7 @@ fn open_format(
     release(destination);
     release(pixel_format);
     release(session);
-    return Err(DecodeError::Rejected);
+    return Err(hardware_status(status));
   }
   Ok(Session {
     format,
@@ -310,6 +315,14 @@ fn destination_buffer() -> Result<(*mut c_void, *mut c_void), DecodeError> {
     return Err(DecodeError::Rejected);
   }
   Ok((destination, number))
+}
+
+fn hardware_status(status: i32) -> DecodeError {
+  if status == 0 {
+    DecodeError::Rejected
+  } else {
+    DecodeError::Hardware(status)
+  }
 }
 
 fn parse_avcc(bytes: &[u8]) -> Result<Vec<Vec<u8>>, DecodeError> {
@@ -550,4 +563,21 @@ unsafe extern "C" {
   fn CVPixelBufferGetBytesPerRow(buffer: *mut c_void) -> usize;
   fn CVPixelBufferGetPixelFormatType(buffer: *mut c_void) -> u32;
   fn CVPixelBufferGetBaseAddress(buffer: *mut c_void) -> *mut c_void;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn interlaced_mbaff_session_is_rejected() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("../../tests/wpt/suite/webcodecs/h264_interlaced.mp4");
+    let file = std::fs::read(&path).expect("interlaced");
+    let Err(error) = open_avc(&file[7501..7548]) else {
+      panic!("session opened");
+    };
+    eprintln!("interlaced configure {error:?}");
+    assert!(matches!(error, DecodeError::Hardware(-12911)), "{error:?}");
+  }
 }

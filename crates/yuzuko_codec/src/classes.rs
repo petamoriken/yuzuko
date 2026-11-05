@@ -1048,6 +1048,12 @@ impl VideoDecoder {
         "EncodingError",
         "The frame could not be decoded".to_string(),
       ),
+      DecodeError::Hardware(status) => (
+        "EncodingError",
+        format!(
+          "The frame could not be decoded (VideoToolbox status {status})"
+        ),
+      ),
     };
     let Ok(value) = dom_value(scope, name, &message) else {
       self.shutdown();
@@ -2329,6 +2335,12 @@ fn resolved(scope: &mut v8::PinScope) -> Result<Js, OpError> {
 fn config_error(error: DecodeError) -> OpError {
   match error {
     DecodeError::Panic => panicked(),
+    DecodeError::Hardware(status) => OpError::dom(
+      "NotSupportedError",
+      format!(
+        "The codec configuration is not supported (VideoToolbox status {status})"
+      ),
+    ),
     DecodeError::Unsupported | DecodeError::Rejected => unsupported_codec(),
   }
 }
