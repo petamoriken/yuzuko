@@ -17,6 +17,8 @@ window.requestAnimationFrame(function frame() {
 
 TypeScript entries are erased with oxc before V8 parses them. `yuzuko run game.ts` and `yuzuko run game.js` are the same kind of program. Standard web and WinterTC APIs live on `globalThis`. Runtime-specific APIs live on `Yuzuko`.
 
+A default build includes native windows and input, Canvas 2D, WebGPU, images, fonts, Web Audio, hardware H.264 and AAC, fetch, sockets, files, datagrams, TCP, a small HTTP server, signals, child processes, foreign functions, and an accessibility tree. The JavaScript runtime, including workers and `Intl`, is in every build. [docs/overview.md](docs/overview.md) introduces each surface. Behavior is specified in [docs/spec.md](docs/spec.md). Intentional divergences from the web platform are in [docs/deviations.md](docs/deviations.md). [AGENTS.md](AGENTS.md) is the implementation contract.
+
 `yuzuko run` executes a TypeScript or JavaScript module. `yuzuko test` runs `Yuzuko.test`. The programs in `examples/` open a window and draw on its surface. Escape closes the window.
 
 ```sh
@@ -26,8 +28,6 @@ cargo run -p yuzuko -- run examples/paint.ts
 cargo run -p yuzuko -- run examples/clock.ts
 cargo run -p yuzuko -- test tests/pass_test.ts
 ```
-
-Behavior is specified in [docs/spec.md](docs/spec.md). Intentional divergences from the web platform are in [docs/deviations.md](docs/deviations.md). [AGENTS.md](AGENTS.md) is the implementation contract.
 
 ## Platforms
 
