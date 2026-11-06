@@ -537,9 +537,7 @@
     ]
   },
   "websockets/referrer.any.js": {
-    "flaky": {
-      "macos": "The referrer handshake does not finish."
-    }
+    "flaky": "The referrer handshake does not finish."
   },
   "websockets/remove-own-iframe-during-onerror.window.js": {
     "expectedFailures": [

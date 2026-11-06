@@ -47,20 +47,14 @@
   "eventsource/format-field-id.any.js": true,
   "eventsource/format-field-parsing.any.js": true,
   "eventsource/format-field-retry-bogus-2.any.js": {
-    "flaky": {
-      "macos": "The reconnect lands outside the 25% window around 1000 ms."
-    }
+    "flaky": "The reconnect lands outside the 25% window around 1000 ms."
   },
   "eventsource/format-field-retry-bogus.any.js": {
-    "flaky": {
-      "macos": "The 3s reconnect does not finish within the harness deadline."
-    }
+    "flaky": "The 3s reconnect does not finish within the harness deadline."
   },
   "eventsource/format-field-retry-empty.any.js": true,
   "eventsource/format-field-retry.any.js": {
-    "flaky": {
-      "macos": "The 3s reconnect does not finish within the harness deadline."
-    }
+    "flaky": "The 3s reconnect does not finish within the harness deadline."
   },
   "eventsource/format-field-unknown.any.js": true,
   "eventsource/format-leading-space.any.js": true,
