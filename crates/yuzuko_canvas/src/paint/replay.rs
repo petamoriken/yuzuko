@@ -1048,6 +1048,12 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
       if stops.is_empty() {
         return None;
       }
+      // The same center and radius have no circles to interpolate.
+      // HTML paints nothing in that case. vello_cpu otherwise covers
+      // the shape with a color stop.
+      if start.0 == end.0 && start.1 == end.1 && start.2 == end.2 {
+        return None;
+      }
       let stops = peniko_stops(stops);
       let mut gradient = Gradient::new_two_point_radial(
         (start.0, start.1),

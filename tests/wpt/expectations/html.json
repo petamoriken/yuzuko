@@ -1242,11 +1242,7 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.top.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.top.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.equal.html": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.equal.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.equal.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside1.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside2.html": true,
