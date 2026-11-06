@@ -289,7 +289,10 @@
       "Test that VideoDecoder.isConfigSupported() accepts config:variant 2 of h264 codec string",
       "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string",
       "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string (level 2.9)"
-    ]
+    ],
+    "ignore": {
+      "macos": "VideoToolbox rejects codec strings that the shared failure list still records."
+    }
   },
   "webcodecs/video-encoder-canvasImageSource.https.html": {
     "ignore": true

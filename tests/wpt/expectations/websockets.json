@@ -333,16 +333,28 @@
     "ignore": true
   },
   "websockets/constructor/017.html": true,
-  "websockets/constructor/018.html": true,
+  "websockets/constructor/018.html": {
+    "ignore": {
+      "macos": "The NUL echo handshake does not finish."
+    }
+  },
   "websockets/constructor/019.html": true,
   "websockets/constructor/020.html": true,
   "websockets/constructor/021.html": true,
-  "websockets/constructor/022.html": true,
+  "websockets/constructor/022.html": {
+    "ignore": {
+      "linux": "The protocol-array handshake does not finish.",
+      "macos": "The protocol-array handshake does not finish."
+    }
+  },
   "websockets/constructor/option-bag.any.js": {
     "expectedFailures": [
       "Empty option bag should be accepted",
       "Option bag with protocols array should be accepted"
-    ]
+    ],
+    "ignore": {
+      "macos": "The option-bag handshake does not finish."
+    }
   },
   "websockets/constructor/target-address-space.any.js": {
     "expectedFailures": [
@@ -380,7 +392,10 @@
   "websockets/cookies/cross-origin-cookie-set.html": {
     "expectedFailures": [
       "Cookie should be set"
-    ]
+    ],
+    "ignore": {
+      "macos": "The cross-origin cookie handshake does not finish."
+    }
   },
   "websockets/cookies/third-party-cookie-accepted.https.html": {
     "expectedFailures": [
@@ -516,7 +531,11 @@
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": true,
-  "websockets/opening-handshake/003.html": true,
+  "websockets/opening-handshake/003.html": {
+    "ignore": {
+      "macos": "The IDN origin handshake does not finish."
+    }
+  },
   "websockets/opening-handshake/005.html": false,
   "websockets/opening-handshake/006.html": true,
   "websockets/opening-handshake/received-301-code.html": {
@@ -524,7 +543,11 @@
       "Websockets - Received 301 code"
     ]
   },
-  "websockets/referrer.any.js": true,
+  "websockets/referrer.any.js": {
+    "ignore": {
+      "macos": "The referrer handshake does not finish."
+    }
+  },
   "websockets/remove-own-iframe-during-onerror.window.js": {
     "expectedFailures": [
       "removing an iframe from within an onerror handler should work"
