@@ -138,11 +138,10 @@ jobs:
           # windows-2025 access-violates while cpal walks every WASAPI
           # endpoint. unknown_sink_is_unavailable does that search for a
           # missing name. audioOutputDevices still runs in
-          # web_audio_passes_under_yuzuko_test. import defer dies in the
-          # yuzuko_core harness before that file finishes.
+          # web_audio_passes_under_yuzuko_test.
           skip=
           if [ "$RUNNER_OS" = "Windows" ]; then
-            skip="--skip output_device_names_are_usable_sinks --skip unknown_sink_is_unavailable --skip import_defer_waits_for_namespace_observation"
+            skip="--skip output_device_names_are_usable_sinks --skip unknown_sink_is_unavailable"
           fi
           script=$RUNNER_TEMP/yuzuko-ci-test.sh
           {
