@@ -315,16 +315,12 @@
   },
   "workers/dedicated-worker-from-blob-url.window.js": {
     "expectedFailures": [
-      "Blob URLs should not resolve relative to document base URL.",
-      "Creating a dedicated worker from a blob URL works immediately before revoking.",
-      "Creating a dedicated worker from a blob URL works."
+      "Creating a dedicated worker from a blob URL works immediately before revoking."
     ]
   },
   "workers/dedicated-worker-in-data-url-context.window.js": {
     "expectedFailures": [
-      "Create a data url dedicated worker in a data url dedicated worker",
       "Create a data url dedicated worker in a data url frame",
-      "Create a dedicated worker in a data url dedicated worker",
       "Create a dedicated worker in a data url frame"
     ]
   },

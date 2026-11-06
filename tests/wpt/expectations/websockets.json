@@ -233,11 +233,7 @@
       "Send data on a WebSocket - Connection should be closed"
     ]
   },
-  "websockets/Send-data.worker.js": {
-    "expectedFailures": [
-      "Send data on a WebSocket in a Worker"
-    ]
-  },
+  "websockets/Send-data.worker.js": true,
   "websockets/Send-null.any.js": {
     "expectedFailures": [
       "Send null data on a WebSocket - Connection should be closed"
@@ -519,11 +515,7 @@
   },
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
-  "websockets/opening-handshake/003-sets-origin.worker.js": {
-    "expectedFailures": [
-      "origin set in a Worker"
-    ]
-  },
+  "websockets/opening-handshake/003-sets-origin.worker.js": true,
   "websockets/opening-handshake/003.html": true,
   "websockets/opening-handshake/005.html": false,
   "websockets/opening-handshake/006.html": true,
@@ -595,14 +587,20 @@
       "unspecified close code with empty reason should send empty Close frame",
       "unspecified close code with non-empty reason should set code to 1000",
       "writer close() promise should not resolve until handshake completes"
-    ]
+    ],
+    "ignore": {
+      "windows": "The WebSocket stream harness does not finish."
+    }
   },
   "websockets/stream/tentative/constructor.any.js": {
     "expectedFailures": [
       "constructing with a valid URL should work",
       "setting a protocol in the constructor should work",
       "wss.opened should resolve to the right types"
-    ]
+    ],
+    "ignore": {
+      "windows": "The WebSocket stream harness does not finish."
+    }
   },
   "websockets/stream/tentative/read.any.js": {
     "expectedFailures": [
@@ -618,7 +616,10 @@
       "close with unwritten data should not be considered clean",
       "reason should be passed through",
       "remote code and reason should be used"
-    ]
+    ],
+    "ignore": {
+      "windows": "The WebSocket stream harness does not finish."
+    }
   },
   "websockets/stream/tentative/websocket-error.any.js": true,
   "websockets/stream/tentative/write.any.js": {
@@ -629,7 +630,10 @@
       "writing a resizable ArrayBuffer should be rejected",
       "writing a value that cannot be stringified should cause a rejection",
       "writing a view on a shared buffer should be rejected"
-    ]
+    ],
+    "ignore": {
+      "windows": "The WebSocket stream harness does not finish."
+    }
   },
   "websockets/unload-a-document/001-1.html": {
     "ignore": true

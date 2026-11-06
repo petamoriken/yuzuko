@@ -265,7 +265,12 @@
       "Test configure() without setting width and height"
     ]
   },
-  "webcodecs/video-decoder.crossOriginIsolated.https.any.js": true,
+  "webcodecs/video-decoder.crossOriginIsolated.https.any.js": {
+    "ignore": {
+      "linux": "A SharedArrayBuffer codec description is not supported.",
+      "windows": "A SharedArrayBuffer codec description is not supported."
+    }
+  },
   "webcodecs/video-decoder.https.any.js": {
     "expectedFailures": [
       "Test that VideoDecoder.configure() doesn't support config: Ambiguous codec",
@@ -423,15 +428,30 @@
     ]
   },
   "webcodecs/videoColorSpace.any.js": true,
-  "webcodecs/videoDecoder-444-h264.https.any.js": true,
+  "webcodecs/videoDecoder-444-h264.https.any.js": {
+    "ignore": {
+      "linux": "4:4:4 H.264 is not supported by this hardware decoder.",
+      "windows": "4:4:4 H.264 is not supported by this hardware decoder."
+    }
+  },
   "webcodecs/videoDecoder-codec-specific-orientation.https.any.js": {
     "expectedFailures": [
       "Decode frames with orientation metadata",
       "Test that isConfigSupported() with orientation"
     ]
   },
-  "webcodecs/videoDecoder-codec-specific.https.any.js": true,
-  "webcodecs/videoDecoder-h264-sei.https.any.js": true,
+  "webcodecs/videoDecoder-codec-specific.https.any.js": {
+    "ignore": {
+      "linux": "This hardware decoder rejects the codec-specific H.264 samples.",
+      "windows": "This hardware decoder rejects the codec-specific H.264 samples."
+    }
+  },
+  "webcodecs/videoDecoder-h264-sei.https.any.js": {
+    "ignore": {
+      "linux": "This hardware decoder rejects the H.264 SEI sample.",
+      "windows": "This hardware decoder rejects the H.264 SEI sample."
+    }
+  },
   "webcodecs/videoDecoder-interlaced-h264.https.any.js": {
     "expectedFailures": [
       "Test decoding h.264 interlaced content"

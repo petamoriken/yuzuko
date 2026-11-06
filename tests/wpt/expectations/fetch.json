@@ -2784,11 +2784,7 @@
   "fetch/nosniff/image.html": {
     "ignore": true
   },
-  "fetch/nosniff/importscripts.html": {
-    "expectedFailures": [
-      "Test importScripts()"
-    ]
-  },
+  "fetch/nosniff/importscripts.html": true,
   "fetch/nosniff/parsing-nosniff.window.js": {
     "expectedFailures": [
       "Content-Type-Options%3A%20nosniff",

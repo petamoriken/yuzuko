@@ -1125,11 +1125,7 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.alpha.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.color.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.color.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.coloralpha.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.coloralpha.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.coloralpha.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.multiple.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.multiple.worker.js": true,
@@ -2467,7 +2463,6 @@
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.worker.js": true,
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.getcontext.html": {
     "expectedFailures": [
-      "Test that OffscreenCanvasRenderingContext2D with alpha disabled makes the OffscreenCanvas opaque",
       "Test that getContext twice with different context type returns null the second time",
       "Test that getContext with supported string returns correct results",
       "Test that webglcontext.canvas should return the original OffscreenCanvas"
@@ -2789,11 +2784,7 @@
   "html/canvas/offscreen/path-objects/2d.path.rect.newsubpath.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.nonfinite.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.nonfinite.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.rect.selfintersect.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.rect.selfintersect.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.selfintersect.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.winding.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.winding.worker.js": true,
@@ -2803,11 +2794,7 @@
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.2.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.3.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.3.worker.js": true,
-  "html/canvas/offscreen/path-objects/2d.path.rect.zero.4.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/path-objects/2d.path.rect.zero.4.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.4.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.5.html": true,
   "html/canvas/offscreen/path-objects/2d.path.rect.zero.5.worker.js": true,
@@ -3095,11 +3082,7 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.path.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unchanged.html": {
-    "expectedFailures": [
-      "putImageData(getImageData(...), ...) has no effect"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unchanged.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unchanged.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.wrongtype.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.wrongtype.worker.js": true,

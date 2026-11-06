@@ -46,7 +46,7 @@
   "FileAPI/FileReader/test_securityerrors-manual.html": {
     "ignore": true
   },
-  "FileAPI/FileReader/workers.html": false,
+  "FileAPI/FileReader/workers.html": true,
   "FileAPI/FileReaderSync.worker.js": true,
   "FileAPI/blob/Blob-array-buffer-data-isolation.html": true,
   "FileAPI/blob/Blob-array-buffer.any.js": true,
@@ -123,7 +123,11 @@
       "Using type in File constructor: text/plain;charset=UTF-8"
     ]
   },
-  "FileAPI/file/File-lastModified.html": true,
+  "FileAPI/file/File-lastModified.html": {
+    "ignore": {
+      "windows": "File lastModified is 1 ms ahead of Date.now()."
+    }
+  },
   "FileAPI/file/Worker-read-file-constructor.worker.js": true,
   "FileAPI/file/send-file-form-controls.html": {
     "expectedFailures": [
