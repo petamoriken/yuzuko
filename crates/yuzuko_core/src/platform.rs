@@ -170,6 +170,14 @@ impl TaskQueue {
     self.notify();
   }
 
+  /// Drops posted V8 tasks. Nestable heap housekeeping stays on this queue
+  /// after an isolate is disposed, and running it on the next isolate is
+  /// undefined.
+  pub fn discard_v8_tasks(&self) {
+    self.ready.lock().expect("task queue").tasks.clear();
+    self.delayed.lock().expect("delayed task queue").clear();
+  }
+
   pub fn pop_ready(&self) -> Option<v8::Task> {
     if let Some(task) = self.ready.lock().expect("task queue").tasks.pop_front()
     {

@@ -1139,8 +1139,12 @@ pub(crate) fn with_runtime<T>(
   WASM_IN_FLIGHT.with(|count| count.set(0));
   init_v8();
   let queue = QUEUE.get().expect("task queue").clone();
+  // The platform queue is process-wide. A previous isolate's housekeeping
+  // tasks must not run on this one.
+  queue.discard_v8_tasks();
   crate::worker::attach_main(Arc::clone(&queue));
-  let mut state = host::HostState::empty(queue, RealmKind::Window, 0);
+  let mut state =
+    host::HostState::empty(Arc::clone(&queue), RealmKind::Window, 0);
   state.capture_log = capture_log;
   host::enter(state);
   let mut isolate = v8::Isolate::new(isolate_params());
@@ -1201,6 +1205,8 @@ pub(crate) fn with_runtime<T>(
     crate::extensions::cleanup();
     result
   };
+  // Drop leftover V8 tasks while this isolate is still alive.
+  queue.discard_v8_tasks();
   crate::worker::detach_main();
   host::exit();
   result
