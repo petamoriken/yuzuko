@@ -107,7 +107,69 @@ fn resolve_path(path: &Path, link: Link) -> Result<PathBuf, FsError> {
   {
     return Ok(canonical);
   }
-  walk(&absolute, link, 0)
+  let walked = walk(&absolute, link, 0)?;
+  Ok(pin_existing_prefix(walked, link))
+}
+
+/// Canonicalizes the longest prefix that exists.
+///
+/// `walk` keeps the caller's spelling. Windows can spell that prefix as an
+/// 8.3 short name, and a case-insensitive volume can spell it in another
+/// case. The bundle root is canonical, so either spelling would look outside
+/// the bundle. `Entry` leaves a final symlink as that directory entry.
+fn pin_existing_prefix(path: PathBuf, link: Link) -> PathBuf {
+  if link == Link::Entry
+    && std::fs::symlink_metadata(&path)
+      .is_ok_and(|meta| meta.file_type().is_symlink())
+  {
+    return pin_parent(&path);
+  }
+  canonicalize_existing_prefix(path)
+}
+
+fn pin_parent(path: &Path) -> PathBuf {
+  let Some(name) = path.file_name() else {
+    return path.to_path_buf();
+  };
+  let Some(parent) = path.parent() else {
+    return path.to_path_buf();
+  };
+  if parent.as_os_str().is_empty() {
+    return path.to_path_buf();
+  }
+  match crate::canonicalize(parent) {
+    Ok(canonical) => canonical.join(name),
+    Err(_) => path.to_path_buf(),
+  }
+}
+
+fn canonicalize_existing_prefix(path: PathBuf) -> PathBuf {
+  let mut suffix = Vec::new();
+  let mut current = path.clone();
+  loop {
+    match crate::canonicalize(&current) {
+      Ok(canonical) => {
+        let mut out = canonical;
+        for part in suffix.iter().rev() {
+          out.push(part);
+        }
+        return out;
+      }
+      Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        let Some(name) = current.file_name() else {
+          return path;
+        };
+        let name = name.to_os_string();
+        let mut parent = current.clone();
+        if !parent.pop() || parent == current {
+          return path;
+        }
+        suffix.push(name);
+        current = parent;
+      }
+      Err(_) => return path,
+    }
+  }
 }
 
 /// Follows symlinks and applies `..` to the resolved path. A missing tail
@@ -251,6 +313,39 @@ mod tests {
       .join(fixture.root.file_name().unwrap())
       .join("save.json");
     assert!(targets_bundle(&fixture.root, &sneaky, Link::Follow).unwrap());
+  }
+
+  /// A case-insensitive volume keeps the created spelling in `canonicalize`
+  /// and accepts another spelling in `symlink_metadata`. The bundle root uses
+  /// the created spelling, so the lookup has to land on that same path.
+  #[cfg(any(target_os = "macos", target_os = "windows"))]
+  #[test]
+  fn bundle_membership_folds_the_directory_spelling() {
+    let fixture = Fixture::new();
+    let created = fixture.path.join("BundleCase");
+    std::fs::create_dir(&created).unwrap();
+    let root = crate::canonicalize(&created).unwrap();
+    let created_name = root.file_name().unwrap().to_string_lossy();
+    let spelled = created_name.to_lowercase();
+    assert_ne!(
+      spelled,
+      created_name.as_ref(),
+      "this volume does not preserve the created spelling"
+    );
+    let save = fixture.path.join(&spelled).join("save.json");
+    assert!(targets_bundle(&root, &save, Link::Follow).unwrap());
+    assert!(targets_bundle(&root, &save, Link::Entry).unwrap());
+
+    let outside = fixture.path.join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    let sneaky = outside.join("..").join(&spelled).join("save.json");
+    assert!(targets_bundle(&root, &sneaky, Link::Follow).unwrap());
+
+    let cousin = fixture
+      .path
+      .join(format!("{spelled}-extra"))
+      .join("save.json");
+    assert!(!targets_bundle(&root, &cousin, Link::Follow).unwrap());
   }
 
   #[cfg(unix)]
