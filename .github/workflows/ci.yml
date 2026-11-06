@@ -33,6 +33,9 @@ jobs:
       RUST_BACKTRACE: "1"
       # Canvas pixel expectations were recorded on the CPU renderer.
       YUZUKO_CANVAS: cpu
+      # CoreAudio on the macOS runner barely wakes, so currentTime stalls
+      # after one quantum. The timer fallback keeps the realtime clock moving.
+      YUZUKO_AUDIO_TIMER: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -91,13 +94,14 @@ jobs:
         shell: bash
         run: |
           cargo test --workspace --no-run
-          # windows-2025 access-violates in these two library tests.
-          # cpal reads a null WASAPI property while listing every endpoint.
-          # audioOutputDevices still runs in web_audio_passes_under_yuzuko_test.
-          # import defer dies in the yuzuko_core harness before that file finishes.
+          # windows-2025 access-violates while cpal walks every WASAPI
+          # endpoint. unknown_sink_is_unavailable does that search for a
+          # missing name. audioOutputDevices still runs in
+          # web_audio_passes_under_yuzuko_test. import defer dies in the
+          # yuzuko_core harness before that file finishes.
           skip=
           if [ "$RUNNER_OS" = "Windows" ]; then
-            skip="--skip output_device_names_are_usable_sinks --skip import_defer_waits_for_namespace_observation"
+            skip="--skip output_device_names_are_usable_sinks --skip unknown_sink_is_unavailable --skip import_defer_waits_for_namespace_observation"
           fi
           if [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" -- \
