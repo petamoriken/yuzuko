@@ -93,7 +93,7 @@ jobs:
           cargo test --workspace --no-run
           if [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" -- \
-              cargo test --workspace -j1 -- --test-threads=1
+              cargo test --workspace -j1 --no-fail-fast -- --test-threads=1
           else
-            cargo test --workspace -j1 -- --test-threads=1
+            cargo test --workspace -j1 --no-fail-fast -- --test-threads=1
           fi
