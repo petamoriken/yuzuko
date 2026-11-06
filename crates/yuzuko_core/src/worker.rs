@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::JoinHandle;
 
 use url::Url;
@@ -68,6 +68,16 @@ struct Agent {
 
 static AGENTS: Mutex<Option<HashMap<u64, Arc<Agent>>>> = Mutex::new(None);
 static NEXT_AGENT: AtomicU64 = AtomicU64::new(1);
+static WORKER_OWNERS: LazyLock<Mutex<HashMap<u64, String>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Records the module URL that constructed this dedicated worker.
+pub fn set_worker_owner(id: u64, owner: String) {
+  WORKER_OWNERS
+    .lock()
+    .expect("worker owners")
+    .insert(id, owner);
+}
 
 type InboundHandler = fn(&mut v8::PinScope);
 static HANDLER: Mutex<Option<InboundHandler>> = Mutex::new(None);
@@ -117,6 +127,94 @@ pub fn detach_main() {
   if let Some(map) = agents.as_mut() {
     map.clear();
   }
+}
+
+/// Stops dedicated workers and keeps the main agent.
+///
+/// [`detach_main`] also drops the main agent. A hot reload still needs it.
+pub(crate) fn terminate_child_workers() {
+  let ids: Vec<u64> = {
+    let agents = agents();
+    let Some(map) = agents.as_ref() else {
+      return;
+    };
+    map.keys().copied().filter(|id| *id != MAIN_AGENT).collect()
+  };
+  for id in &ids {
+    terminate_worker(*id);
+  }
+  for id in &ids {
+    join_worker(*id);
+  }
+  let mut agents = agents();
+  if let Some(map) = agents.as_mut() {
+    map.retain(|id, _| *id == MAIN_AGENT);
+    if let Some(main) = map.get(&MAIN_AGENT) {
+      main.children.lock().expect("worker children").clear();
+    }
+  }
+  WORKER_OWNERS.lock().expect("worker owners").clear();
+}
+
+/// Stops dedicated workers created by a module this reload evaluates again.
+pub(crate) fn terminate_reloaded_workers() {
+  let owned = {
+    let owners = WORKER_OWNERS.lock().expect("worker owners");
+    owners
+      .iter()
+      .filter(|(_, owner)| host::module_reloaded(owner))
+      .map(|(id, _)| *id)
+      .collect::<Vec<_>>()
+  };
+  let mut drop_ids = Vec::new();
+  for id in owned {
+    for child in worker_tree(id) {
+      if !drop_ids.contains(&child) {
+        drop_ids.push(child);
+      }
+    }
+  }
+  for id in &drop_ids {
+    terminate_worker(*id);
+  }
+  for id in &drop_ids {
+    join_worker(*id);
+  }
+  {
+    let mut agents = agents();
+    if let Some(map) = agents.as_mut() {
+      for id in &drop_ids {
+        map.remove(id);
+      }
+      for agent in map.values() {
+        agent
+          .children
+          .lock()
+          .expect("worker children")
+          .retain(|child| !drop_ids.contains(child));
+      }
+    }
+  }
+  WORKER_OWNERS
+    .lock()
+    .expect("worker owners")
+    .retain(|id, _| !drop_ids.contains(id));
+}
+
+fn worker_tree(id: u64) -> Vec<u64> {
+  let children = {
+    let agents = agents();
+    agents
+      .as_ref()
+      .and_then(|map| map.get(&id))
+      .map(|agent| agent.children.lock().expect("worker children").clone())
+      .unwrap_or_default()
+  };
+  let mut ids = vec![id];
+  for child in children {
+    ids.extend(worker_tree(child));
+  }
+  ids
 }
 
 pub fn spawn_worker(parent: u64, script: WorkerScript) -> Result<u64, String> {

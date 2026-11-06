@@ -309,6 +309,22 @@ pub(crate) fn arm_listen(id: u64, listen: yuzuko_core::Listen) {
   }
 }
 
+/// Drops the host timer and the device listen. The stream stays open.
+pub(crate) fn disarm(id: u64) {
+  cancel_timer(id);
+  let wake = PLAY.with(|slot| {
+    slot.borrow().get(&id).and_then(|play| {
+      play
+        .device
+        .as_ref()
+        .map(|device| std::sync::Arc::clone(&device.wake))
+    })
+  });
+  if let Some(wake) = wake {
+    take_listen(&wake);
+  }
+}
+
 fn cancel_timer(id: u64) {
   let timer = PLAY.with(|slot| {
     slot

@@ -584,6 +584,9 @@ impl Worker {
       }
     };
     let id = spawn_worker(agent_id(), script).map_err(OpError::type_)?;
+    if let Some(owner) = yuzuko_core::caller_module_url(scope) {
+      yuzuko_core::set_worker_owner(id, owner);
+    }
     Ok(Worker {
       base: EventTarget::new(),
       id,

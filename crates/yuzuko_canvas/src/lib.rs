@@ -42,9 +42,18 @@ pub fn register() {
     });
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(fonts::clear);
+    yuzuko_core::on_reload(reload_fonts);
     geom::geometry::register_clone();
     geom::matrix::register_clone();
   });
+}
+
+fn reload_fonts() {
+  if yuzuko_core::reload_targets_modules() && yuzuko_core::reload_keeps_module()
+  {
+    return;
+  }
+  fonts::clear();
 }
 
 fn install(scope: &mut v8::PinScope) {

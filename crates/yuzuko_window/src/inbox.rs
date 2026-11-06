@@ -177,6 +177,10 @@ struct Slot {
   frame_at: Option<Instant>,
   frame_interval: Duration,
   ime: bool,
+  /// Module-map generation that constructed this window.
+  generation: u64,
+  /// `file:` URL of the script that constructed this window.
+  owner: Option<String>,
 }
 
 thread_local! {
@@ -219,6 +223,8 @@ pub fn bind(scope: &mut v8::PinScope, id: u64, object: v8::Local<v8::Object>) {
     return;
   };
   let object = v8::Global::new(scope, object);
+  let generation = yuzuko_core::module_generation();
+  let owner = yuzuko_core::caller_module_url(scope);
   SLOTS.with(|slots| {
     slots.borrow_mut().insert(
       id,
@@ -229,6 +235,8 @@ pub fn bind(scope: &mut v8::PinScope, id: u64, object: v8::Local<v8::Object>) {
         frame_at: None,
         frame_interval: FRAME,
         ime: false,
+        generation,
+        owner,
       },
     );
   });
@@ -249,6 +257,23 @@ pub fn clear() {
 
 pub fn contains(id: u64) -> bool {
   SLOTS.with(|slots| slots.borrow().contains_key(&id))
+}
+
+pub(crate) fn generation(id: u64) -> Option<u64> {
+  SLOTS.with(|slots| slots.borrow().get(&id).map(|slot| slot.generation))
+}
+
+pub(crate) fn owner(id: u64) -> Option<String> {
+  SLOTS
+    .with(|slots| slots.borrow().get(&id).and_then(|slot| slot.owner.clone()))
+}
+
+pub(crate) fn clear_queue(id: u64) {
+  SLOTS.with(|slots| {
+    if let Some(slot) = slots.borrow_mut().get_mut(&id) {
+      slot.queue.clear();
+    }
+  });
 }
 
 pub fn ids() -> Vec<u64> {

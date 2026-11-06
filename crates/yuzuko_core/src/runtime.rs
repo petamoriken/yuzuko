@@ -3,7 +3,9 @@
 use std::any::TypeId;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Once, OnceLock};
 
 use crate::host::{self, RealmKind, RegisteredTest};
@@ -14,6 +16,7 @@ static V8_INIT: Once = Once::new();
 static QUEUE: OnceLock<Arc<TaskQueue>> = OnceLock::new();
 static PLATFORM: OnceLock<v8::SharedRef<v8::Platform>> = OnceLock::new();
 static RUNTIME: Mutex<()> = Mutex::new(());
+static RETAIN_HOST_LOOP: AtomicBool = AtomicBool::new(false);
 
 struct ConsoleState {
   times: HashMap<String, f64>,
@@ -74,6 +77,8 @@ pub struct RuntimeError {
   pub message: String,
   /// Set when `Yuzuko.exit` requested this status. The message stays empty.
   pub exit_code: Option<u8>,
+  /// Set when a watch session should load this path again.
+  pub reload_path: Option<PathBuf>,
 }
 
 impl RuntimeError {
@@ -81,6 +86,7 @@ impl RuntimeError {
     Self {
       message: message.into(),
       exit_code: None,
+      reload_path: None,
     }
   }
 
@@ -88,8 +94,39 @@ impl RuntimeError {
     Self {
       message: String::new(),
       exit_code: Some(code),
+      reload_path: None,
     }
   }
+
+  pub(crate) fn reload(path: PathBuf) -> Self {
+    let message = path.display().to_string();
+    Self {
+      message,
+      exit_code: None,
+      reload_path: Some(path),
+    }
+  }
+}
+
+/// How `yuzuko run` watches the module graph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WatchMode {
+  /// A new isolate and realm for each run.
+  Restart,
+  /// The same isolate and realm. The next generation is a new module graph.
+  Hot,
+}
+
+/// Keeps the process window loop across `--watch` realm restarts.
+///
+/// winit often cannot build a second `EventLoop` in one process. A watch
+/// session closes windows and leaves the loop in place.
+pub fn set_retain_host_loop(retain: bool) {
+  RETAIN_HOST_LOOP.store(retain, Ordering::Relaxed);
+}
+
+pub fn retain_host_loop() -> bool {
+  RETAIN_HOST_LOOP.load(Ordering::Relaxed)
 }
 
 /// Maps a finished entry to a process status.
@@ -159,6 +196,313 @@ pub fn run_file_sandboxed(
       report_unhandled()
     },
   )
+}
+
+struct WatchSession {
+  retain_loop: bool,
+}
+
+impl WatchSession {
+  fn start(mode: WatchMode) -> Self {
+    let retain_loop = mode == WatchMode::Restart;
+    if retain_loop {
+      set_retain_host_loop(true);
+    }
+    crate::watch::arm();
+    Self { retain_loop }
+  }
+}
+
+impl Drop for WatchSession {
+  fn drop(&mut self) {
+    crate::watch::disarm();
+    if self.retain_loop {
+      set_retain_host_loop(false);
+    }
+  }
+}
+
+/// Runs `path` until `Yuzuko.exit`. A missing file returns status 2.
+pub fn run_file_watch(
+  path: &Path,
+  mode: WatchMode,
+  clear_screen: bool,
+) -> Result<u8, RuntimeError> {
+  let path = crate::loader::modules::canonicalize(path)
+    .unwrap_or_else(|_| path.to_path_buf());
+  if !path.is_file() {
+    eprintln!("cannot open entry {}", path.display());
+    return Ok(2);
+  }
+  let _session = WatchSession::start(mode);
+  match mode {
+    WatchMode::Restart => run_watch_restart(&path, clear_screen),
+    WatchMode::Hot => run_watch_hot(&path, clear_screen),
+  }
+}
+
+fn run_watch_restart(
+  path: &Path,
+  clear_screen: bool,
+) -> Result<u8, RuntimeError> {
+  clear_watch_screen(clear_screen);
+  eprintln!("Watcher Process started.");
+  loop {
+    let outcome = with_runtime(
+      false,
+      false,
+      |_| {},
+      |scope| {
+        host::set_file_root(path);
+        run_entry(scope, path)?;
+        pump(scope)?;
+        report_unhandled()
+      },
+    );
+    match outcome {
+      Ok(()) => {
+        eprintln!("Watcher Process finished. Restarting on file change...");
+        let changed = wait_for_file_change();
+        clear_watch_screen(clear_screen);
+        eprintln!(
+          "Watcher Restarting! File change detected: {}",
+          changed.display()
+        );
+      }
+      Err(error) => {
+        if let Some(code) = error.exit_code {
+          return Ok(code);
+        }
+        if let Some(changed) = error.reload_path {
+          clear_watch_screen(clear_screen);
+          eprintln!(
+            "Watcher Restarting! File change detected: {}",
+            changed.display()
+          );
+          continue;
+        }
+        eprintln!("{error}");
+        eprintln!("Watcher Process failed. Restarting on file change...");
+        let changed = wait_for_file_change();
+        clear_watch_screen(clear_screen);
+        eprintln!(
+          "Watcher Restarting! File change detected: {}",
+          changed.display()
+        );
+      }
+    }
+  }
+}
+
+fn run_watch_hot(path: &Path, clear_screen: bool) -> Result<u8, RuntimeError> {
+  clear_watch_screen(clear_screen);
+  eprintln!("HMR Process started.");
+  match with_runtime(
+    false,
+    false,
+    |_| {},
+    |scope| {
+      host::set_file_root(path);
+      drive_hot(scope, path, clear_screen)
+    },
+  ) {
+    Ok(()) => Ok(0),
+    Err(error) => match error.exit_code {
+      Some(code) => Ok(code),
+      None => Err(error),
+    },
+  }
+}
+
+fn drive_hot(
+  scope: &mut v8::PinScope,
+  path: &Path,
+  clear_screen: bool,
+) -> Result<(), RuntimeError> {
+  let mut pending: Option<PathBuf> = None;
+  loop {
+    let changed = pending.take();
+    let outcome = if let Some(changed_path) = changed.as_deref() {
+      reload_entry(scope, path, changed_path, clear_screen)
+    } else {
+      run_entry(scope, path)
+    };
+    match outcome {
+      Err(error) if error.exit_code.is_some() => return Err(error),
+      Err(error) if error.reload_path.is_some() => {
+        pending = error.reload_path;
+        continue;
+      }
+      Err(error) => {
+        eprintln!("{error}");
+        let label = changed.as_deref().unwrap_or(path);
+        eprintln!("HMR failed to reload {}.", label.display());
+        if changed.is_none() {
+          quiesce_for_reload(scope);
+          modules::purge_generation(host::module_generation());
+          // The failed generation's modules are gone, so a window or audio
+          // context stays only when `globalThis` still points at it.
+          crate::extensions::reload_settled(scope, false);
+        }
+      }
+      Ok(()) => {
+        if let Some(changed) = &changed {
+          eprintln!("HMR Reloaded {}.", changed.display());
+        }
+      }
+    }
+    match pump(scope) {
+      Err(error) if error.exit_code.is_some() => return Err(error),
+      Err(error) if error.reload_path.is_some() => {
+        pending = error.reload_path;
+      }
+      Err(error) => return Err(error),
+      Ok(()) => {
+        if let Err(error) = report_unhandled() {
+          eprintln!("{error}");
+        }
+        if !crate::watch::active() {
+          return Ok(());
+        }
+        pending = Some(wait_for_reload(scope)?);
+      }
+    }
+  }
+}
+
+fn run_entry(
+  scope: &mut v8::PinScope,
+  path: &Path,
+) -> Result<(), RuntimeError> {
+  let module = modules::compile_entry(scope, path)?;
+  let module = v8::Local::new(scope, module);
+  let value = instantiate_and_evaluate(scope, module)?;
+  settle(scope, value)
+}
+
+fn reload_entry(
+  scope: &mut v8::PinScope,
+  entry: &Path,
+  changed: &Path,
+  clear_screen: bool,
+) -> Result<(), RuntimeError> {
+  let plan = modules::plan_reload(scope, changed, entry);
+  let previous = host::module_generation();
+  let next = previous + 1;
+  host::set_module_generation(next);
+  host::set_reload_fresh(plan.fresh.clone());
+  if let Err(error) = modules::compile_fresh(scope, &plan) {
+    abandon_reload(next, previous);
+    return Err(error);
+  }
+  // `import.meta` is initialized while the graph links, so the fresh instance
+  // map has to be in place before `instantiate`. A failed link puts the
+  // previous map back and leaves that program running.
+  let saved_instances = host::with(|state| state.wasm_instances.clone());
+  host::replace_wasm_instances(scope);
+  if let Err(error) = modules::link_fresh(scope, &plan) {
+    host::with_mut(|state| state.wasm_instances = saved_instances);
+    abandon_reload(next, previous);
+    return Err(error);
+  }
+  modules::merge_stable_wasm(scope, saved_instances.as_ref(), &plan.fresh);
+  clear_watch_screen(clear_screen);
+  quiesce_for_reload(scope);
+  let evaluated = modules::evaluate_fresh(scope, &plan);
+  modules::purge_replaced(next, &plan.fresh);
+  modules::record_wasm_namespaces(scope);
+  // Retain reads which modules were re-evaluated. Clear that set before
+  // settling, so a dynamic import during the promise uses the live record.
+  crate::extensions::reload_settled(scope, true);
+  host::clear_reload_fresh();
+  let values = evaluated?;
+  for value in values {
+    let value = v8::Local::new(scope, &value);
+    settle(scope, value)?;
+  }
+  Ok(())
+}
+
+fn abandon_reload(next: u64, previous: u64) {
+  modules::purge_generation(next);
+  host::set_module_generation(previous);
+  host::clear_reload_fresh();
+}
+
+fn wait_for_reload(scope: &mut v8::PinScope) -> Result<PathBuf, RuntimeError> {
+  loop {
+    bail_if_exit()?;
+    if let Some(path) = crate::watch::poll() {
+      return Ok(path);
+    }
+    if pump_once(scope) {
+      continue;
+    }
+    bail_if_exit()?;
+    if let Some(path) = crate::watch::poll() {
+      return Ok(path);
+    }
+    realm_wait(Some(crate::watch::POLL));
+  }
+}
+
+fn wait_for_file_change() -> PathBuf {
+  loop {
+    if let Some(path) = crate::watch::poll() {
+      return path;
+    }
+    std::thread::sleep(crate::watch::POLL);
+  }
+}
+
+fn clear_watch_screen(enabled: bool) {
+  if !enabled || !std::io::stderr().is_terminal() {
+    return;
+  }
+  let mut err = std::io::stderr();
+  let _ = write!(err, "\x1B[H\x1B[2J\x1B[3J");
+  let _ = err.flush();
+}
+
+/// Drops host resources from the previous evaluation without leaving the realm.
+///
+/// A module reload drops listeners, timers, workers, and GPU devices owned by
+/// the modules being evaluated again. A module that stays keeps its window,
+/// its audio device, and the host timers that drive playback. The first
+/// evaluation's failure has no such set and clears the realm's host resources.
+fn quiesce_for_reload(scope: &mut v8::PinScope) {
+  if host::reload_targets_modules() {
+    crate::worker::terminate_reloaded_workers();
+    crate::timers::clear_reloaded();
+    crate::extensions::reload();
+    crate::extensions::reload_scope(scope);
+    return;
+  }
+  crate::worker::terminate_child_workers();
+  crate::timers::clear_all();
+  #[cfg(feature = "fs")]
+  crate::fs::clear();
+  #[cfg(feature = "udp")]
+  crate::udp::clear();
+  #[cfg(feature = "tcp")]
+  crate::tcp::clear();
+  #[cfg(feature = "http")]
+  crate::http_server::clear();
+  #[cfg(feature = "signal")]
+  crate::signal::release_listeners();
+  #[cfg(feature = "child")]
+  crate::child::clear();
+  #[cfg(feature = "ffi")]
+  crate::ffi::clear();
+  crate::jobs::clear();
+  host::with_mut(|state| {
+    state.unhandled.clear();
+    state.deferred_rejections.clear();
+    state.deferred_imports.clear();
+    state.rejection_notify_queued = false;
+  });
+  crate::extensions::reload();
+  crate::extensions::reload_scope(scope);
 }
 
 pub fn run_scripts(sources: &[&str]) -> Result<Vec<String>, RuntimeError> {
@@ -839,6 +1183,9 @@ fn settle(
   let promise = v8::Global::new(scope, promise);
   loop {
     bail_if_exit()?;
+    if let Some(path) = crate::watch::poll() {
+      return Err(RuntimeError::reload(path));
+    }
     let local = v8::Local::new(scope, &promise);
     match local.state() {
       v8::PromiseState::Pending => {
@@ -847,7 +1194,14 @@ fn settle(
         // before treating the promise as stuck.
         if !pump_once(scope) {
           bail_if_exit()?;
+          if let Some(path) = crate::watch::poll() {
+            return Err(RuntimeError::reload(path));
+          }
           if promise_is_pending(scope, &promise) {
+            if crate::watch::active() {
+              realm_wait(Some(crate::watch::POLL));
+              continue;
+            }
             return Err(RuntimeError::message(
               "the event loop stopped while a promise was still pending"
                 .to_string(),
@@ -1106,8 +1460,14 @@ pub(crate) fn pump(
   scope: &mut v8::PinScope<'_, '_>,
 ) -> Result<(), RuntimeError> {
   loop {
+    if let Some(path) = crate::watch::poll() {
+      return Err(RuntimeError::reload(path));
+    }
     if !pump_once(scope) {
       bail_if_exit()?;
+      if let Some(path) = crate::watch::poll() {
+        return Err(RuntimeError::reload(path));
+      }
       return Ok(());
     }
   }
@@ -1269,8 +1629,11 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     || crate::idle::idle_has_pending()
   {
     realm_wait(earliest_wait(
-      earliest_wait(queue.next_wait(), crate::timers::next_wait()),
-      earliest_wait(interest.next_wait, crate::idle::idle_next_wait()),
+      earliest_wait(
+        earliest_wait(queue.next_wait(), crate::timers::next_wait()),
+        earliest_wait(interest.next_wait, crate::idle::idle_next_wait()),
+      ),
+      crate::watch::poll_wait(),
     ));
     return true;
   }

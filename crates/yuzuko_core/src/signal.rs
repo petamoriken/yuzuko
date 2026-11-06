@@ -119,15 +119,35 @@ pub(crate) fn clear() {
   let Some(local) = local else {
     return;
   };
-  let int = local.slot.int_count.swap(0, Ordering::AcqRel);
-  let term = local.slot.term_count.swap(0, Ordering::AcqRel);
+  release_counts(&local);
+  unregister_slot(&local.slot);
+}
+
+/// Drops listeners and keeps the realm slot.
+///
+/// [`clear`] removes the slot. A hot reload still accepts `addSignalListener`.
+pub(crate) fn release_listeners() {
+  LOCAL.with(|slot| {
+    let mut local = slot.borrow_mut();
+    let Some(realm) = local.as_mut() else {
+      return;
+    };
+    release_counts(realm);
+    realm.int.clear();
+    realm.term.clear();
+    realm.slot.pending.lock().expect("signal queue").clear();
+  });
+}
+
+fn release_counts(realm: &LocalRealm) {
+  let int = realm.slot.int_count.swap(0, Ordering::AcqRel);
+  let term = realm.slot.term_count.swap(0, Ordering::AcqRel);
   if int > 0 {
     os::release(Sig::Int, int);
   }
   if term > 0 {
     os::release(Sig::Term, term);
   }
-  unregister_slot(&local.slot);
 }
 
 /// Runs listeners for signals recorded for this realm.

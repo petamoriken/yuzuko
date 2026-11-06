@@ -24,6 +24,7 @@ pub use message::entangled_ports;
 pub use report::report_error;
 pub use target::EventTarget;
 pub use target::dispatch;
+pub use target::drop_reloaded_listeners;
 pub use ui::{
   FiredComposition, FiredInput, FiredKey, FiredPointer, FiredWheel,
   dispatch_composition, dispatch_focus, dispatch_input, dispatch_key,
@@ -37,6 +38,8 @@ pub fn register() {
   ONCE.call_once(|| {
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(clear);
+    yuzuko_core::on_reload(clear);
+    yuzuko_core::on_reload_scope(&drop_reachable_listeners);
     exception::register_clone();
     message::register_clone();
     stream_transfer::register_clone();
@@ -49,6 +52,15 @@ pub fn register() {
     });
     #[cfg(feature = "fetch")]
     yuzuko_winter::set_xhr_progress_hook(event::deliver_xhr_progress);
+  });
+}
+
+fn drop_reachable_listeners(scope: &mut v8::PinScope) {
+  if !yuzuko_core::reload_targets_modules() {
+    return;
+  }
+  let _finished = yuzuko_core::walk_objects(scope, |scope, object| {
+    target::drop_reloaded_listeners(scope, object);
   });
 }
 

@@ -21,6 +21,7 @@ pub struct LiveDevice {
   pub lost_resolver: v8::Global<v8::PromiseResolver>,
   pub scopes: Vec<wgpu::ErrorScopeGuard>,
   pub queue_object: Option<v8::Global<v8::Object>>,
+  pub owner: Option<String>,
 }
 
 thread_local! {
@@ -131,6 +132,21 @@ pub fn queue_object(id: u64) -> Result<v8::Global<v8::Object>, OpError> {
 
 pub fn clear() {
   DEVICES.with(|devices| devices.borrow_mut().clear());
+}
+
+/// Drops devices created by a module this reload evaluates again.
+///
+/// The lost promise is not resolved. Later use reports the device as lost,
+/// the same way [`clear`] drops the map.
+pub fn drop_reloaded() {
+  DEVICES.with(|devices| {
+    devices.borrow_mut().retain(|_, live| {
+      live
+        .owner
+        .as_deref()
+        .is_none_or(|owner| !yuzuko_core::module_reloaded(owner))
+    });
+  });
 }
 
 fn lost_info<'s>(

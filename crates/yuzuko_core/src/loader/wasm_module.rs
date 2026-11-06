@@ -46,7 +46,8 @@ fn compile_cached<'a>(
   url: &str,
   bytes: &[u8],
 ) -> Result<v8::Local<'a, v8::Object>, RuntimeError> {
-  if let Some(module) = cached(scope, url) {
+  let key = host::source_cache_key(url);
+  if let Some(module) = cached(scope, &key) {
     return Ok(module);
   }
   let module = {
@@ -66,9 +67,9 @@ fn compile_cached<'a>(
     v8::Global::new(tc, module)
   };
   host::with_mut(|state| {
-    state.wasm_modules.insert(url.to_string(), module.clone());
+    state.wasm_modules.insert(key.clone(), module.clone());
   });
-  cached(scope, url).ok_or_else(|| {
+  cached(scope, &key).ok_or_else(|| {
     RuntimeError::message(format!("failed to compile WebAssembly module {url}"))
   })
 }
@@ -138,9 +139,9 @@ fn uint8_array<'a>(
 
 fn cached<'a>(
   scope: &mut v8::PinScope<'a, '_>,
-  url: &str,
+  key: &str,
 ) -> Option<v8::Local<'a, v8::Object>> {
-  let module = host::with(|state| state.wasm_modules.get(url).cloned())?;
+  let module = host::with(|state| state.wasm_modules.get(key).cloned())?;
   Some(v8::Local::new(scope, module))
 }
 

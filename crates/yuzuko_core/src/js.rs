@@ -57,6 +57,15 @@ pub fn throw_type(scope: &mut v8::PinScope, message: &str) {
   scope.throw_exception(error);
 }
 
+/// Canonical script URL at the top of the JavaScript stack.
+///
+/// A host callback with an empty stack returns `None`.
+pub fn caller_module_url(scope: &mut v8::PinScope) -> Option<String> {
+  let name = v8::StackTrace::current_script_name_or_source_url(scope)?;
+  let text = name.to_rust_string_lossy(scope);
+  if text.is_empty() { None } else { Some(text) }
+}
+
 #[inline]
 pub fn rust_string(
   scope: &mut v8::PinScope,

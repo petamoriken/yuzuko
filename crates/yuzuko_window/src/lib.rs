@@ -30,6 +30,9 @@ pub fn register() {
   ONCE.call_once(|| {
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(shutdown);
+    yuzuko_core::on_reload(reload_session);
+    yuzuko_core::on_reload_scope(&disarm_windows);
+    yuzuko_core::on_reload_settled(&retain_windows);
     yuzuko_core::set_loop_hooks(frame::drive, frame::interest, frame::wait);
     yuzuko_core::set_worker_frame_hook(surface::commit_worker_frames);
     yuzuko_dom::set_worker_frame_interval_hook(surface::worker_frame_interval);
@@ -107,4 +110,39 @@ fn shutdown() {
   inbox::clear();
   input::gamepad::clear();
   wake::clear();
+}
+
+/// Drops shell and input state for a hot reload. Open windows stay.
+///
+/// A window whose creating module is not re-evaluated keeps its accessible
+/// tree, tray, and input routing. The module that built them does not run
+/// again. When every open window comes from a re-evaluated module, the tree
+/// is cleared so `attachAccessibleRoot` can run again.
+fn reload_session() {
+  if yuzuko_core::reload_targets_modules()
+    && inbox::ids().into_iter().any(|id| {
+      inbox::owner(id)
+        .is_some_and(|owner| !yuzuko_core::module_reloaded(&owner))
+    })
+  {
+    return;
+  }
+  shell::tray::clear();
+  shell::dock::clear();
+  shell::menu::clear();
+  input::keyboard::clear();
+  // The tree is rebuilt by the next evaluation. `attachAccessibleRoot` rejects
+  // a second root, so the previous tree cannot stay with the window.
+  #[cfg(feature = "accessibility")]
+  a11y::clear();
+  input::gamepad::clear();
+  wake::clear();
+}
+
+fn disarm_windows(scope: &mut v8::PinScope) {
+  surface::Window::disarm_for_reload(scope);
+}
+
+fn retain_windows(scope: &mut v8::PinScope, keep_current: bool) {
+  surface::Window::retain_for_reload(scope, keep_current);
 }

@@ -1,6 +1,9 @@
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 fn workspace() -> PathBuf {
@@ -905,4 +908,400 @@ fn console_inspects_host_instances() {
   let deeper = section(&stdout, "deeper");
   assert!(deeper.contains("[Object]"), "{deeper}");
   assert!(!deeper.contains("AbortSignal"), "{deeper}");
+}
+
+const WATCH_MAIN: &str = r#"import { stamp } from "./stamp.ts";
+const lives = (globalThis.lives ?? 0) + 1;
+globalThis.lives = lives;
+const url = import.meta.url;
+const urlOk = url.includes("main.ts") && !url.includes("?");
+console.log(`live ${lives} stamp ${stamp} url ${urlOk}`);
+"#;
+
+fn stamp_source(value: u32) -> String {
+  // The marker changes the length so a coarse mtime still counts as a change.
+  let mark = "x".repeat(value as usize);
+  format!("export const stamp = {value}; // {mark}\n")
+}
+
+fn write_watch_app(dir: &Path, stamp: u32) {
+  fs::write(dir.join("stamp.ts"), stamp_source(stamp)).unwrap();
+  fs::write(dir.join("main.ts"), WATCH_MAIN).unwrap();
+}
+
+fn replace_file(path: &Path, body: &str) {
+  let tmp = path.with_extension("tmp");
+  fs::write(&tmp, body).unwrap();
+  fs::rename(&tmp, path).unwrap();
+}
+
+struct WatchedChild {
+  child: Child,
+  stdout: Arc<Mutex<String>>,
+  stderr: Arc<Mutex<String>>,
+}
+
+impl WatchedChild {
+  fn spawn(args: &[&str], dir: &Path) -> Self {
+    Self::spawn_env(args, dir, &[])
+  }
+
+  fn spawn_env(args: &[&str], dir: &Path, env: &[(&str, &str)]) -> Self {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
+    command
+      .current_dir(dir)
+      .args(args)
+      .env("YUZUKO_HEADLESS", "1")
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped());
+    for (key, value) in env {
+      command.env(key, value);
+    }
+    let mut child = command.spawn().expect("spawn yuzuko");
+    let stdout = Arc::new(Mutex::new(String::new()));
+    let stderr = Arc::new(Mutex::new(String::new()));
+    let out = child.stdout.take().expect("stdout");
+    let err = child.stderr.take().expect("stderr");
+    let out_buf = Arc::clone(&stdout);
+    let err_buf = Arc::clone(&stderr);
+    thread::spawn(move || drain(out, out_buf));
+    thread::spawn(move || drain(err, err_buf));
+    Self {
+      child,
+      stdout,
+      stderr,
+    }
+  }
+
+  fn wait_stdout(&self, needle: &str, limit: Duration) -> String {
+    wait_text(&self.stdout, &self.stderr, needle, limit)
+  }
+
+  fn wait_stderr(&self, needle: &str, limit: Duration) -> String {
+    wait_text(&self.stderr, &self.stdout, needle, limit)
+  }
+}
+
+impl Drop for WatchedChild {
+  fn drop(&mut self) {
+    let _ = self.child.kill();
+    let _ = self.child.wait();
+  }
+}
+
+fn drain(mut pipe: impl Read, into: Arc<Mutex<String>>) {
+  let mut buf = [0; 512];
+  loop {
+    match pipe.read(&mut buf) {
+      Ok(0) | Err(_) => break,
+      Ok(n) => {
+        let text = String::from_utf8_lossy(&buf[..n]);
+        into.lock().expect("watch output").push_str(&text);
+      }
+    }
+  }
+}
+
+fn wait_text(
+  primary: &Mutex<String>,
+  other: &Mutex<String>,
+  needle: &str,
+  limit: Duration,
+) -> String {
+  let start = Instant::now();
+  loop {
+    let text = primary.lock().expect("watch output").clone();
+    if text.contains(needle) {
+      return text;
+    }
+    if start.elapsed() > limit {
+      let other = other.lock().expect("watch output").clone();
+      panic!(
+        "timed out after {limit:?} waiting for {needle:?}\n--- primary ---\n{text}\n--- other ---\n{other}"
+      );
+    }
+    thread::sleep(Duration::from_millis(20));
+  }
+}
+
+#[test]
+fn watch_restarts_in_a_new_realm() {
+  let dir = scratch("watch-restart");
+  write_watch_app(&dir, 1);
+  let child = WatchedChild::spawn(&["run", "--watch", "main.ts"], &dir);
+  let limit = Duration::from_secs(40);
+  child.wait_stdout("live 1 stamp 1 url true", limit);
+  replace_file(&dir.join("stamp.ts"), &stamp_source(2));
+  let stdout = child.wait_stdout("live 1 stamp 2 url true", limit);
+  assert!(
+    !stdout.contains("live 2"),
+    "a restart must not keep globalThis\n{stdout}"
+  );
+  let stderr = child.stderr.lock().expect("stderr").clone();
+  assert!(stderr.contains("Watcher Process started."), "{stderr}");
+  assert!(
+    stderr.contains("Watcher Restarting! File change detected:"),
+    "{stderr}"
+  );
+  assert!(stderr.contains("stamp.ts"), "{stderr}");
+}
+
+#[test]
+fn watch_hmr_keeps_the_realm_and_the_module_url() {
+  let dir = scratch("watch-hmr");
+  write_watch_app(&dir, 1);
+  let child = WatchedChild::spawn(
+    &["run", "--watch-hmr", "--no-clear-screen", "main.ts"],
+    &dir,
+  );
+  let limit = Duration::from_secs(40);
+  child.wait_stdout("live 1 stamp 1 url true", limit);
+  replace_file(&dir.join("stamp.ts"), &stamp_source(2));
+  let stdout = child.wait_stdout("live 2 stamp 2 url true", limit);
+  assert!(
+    !stdout.contains("live 3"),
+    "one reload increments the realm once\n{stdout}"
+  );
+  let stderr = child.stderr.lock().expect("stderr").clone();
+  assert!(stderr.contains("HMR Process started."), "{stderr}");
+  assert!(stderr.contains("HMR Reloaded"), "{stderr}");
+  assert!(stderr.contains("stamp.ts"), "{stderr}");
+  assert!(
+    !stderr.contains("\u{1b}[2J"),
+    "a pipe must not be cleared\n{stderr}"
+  );
+}
+
+const WATCH_HOLD: &str = r#"import { stamp } from "./stamp.ts";
+const lives = (globalThis.lives ?? 0) + 1;
+globalThis.lives = lives;
+const hold = (globalThis.hold ??= {});
+const win = (hold.win ??= new Yuzuko.Window({ width: 320, height: 240 }));
+const ctx = (hold.ctx ??= new AudioContext());
+if (!hold.tone) {
+  const osc = ctx.createOscillator();
+  osc.connect(ctx.destination);
+  osc.start();
+  hold.tone = true;
+}
+const previousWin = globalThis.readWin ?? (() => false);
+const orphan = new Yuzuko.Window({ width: 180, height: 180 });
+globalThis.readWin = () => orphan.visible;
+const previousCtx = globalThis.readCtx ?? (() => "none");
+const fresh = new AudioContext();
+globalThis.readCtx = () => fresh.state;
+setTimeout(() => {
+  const t0 = ctx.currentTime;
+  setTimeout(() => {
+    const moved = ctx.currentTime > t0 ? 1 : 0;
+    console.log(
+      `hold ${lives} ${stamp} ${win.visible} ${win.clientWidth} ${ctx.state} ${previousWin()} ${orphan.visible} ${previousCtx()} ${fresh.state} ${moved}`,
+    );
+  }, 200);
+}, 0);
+"#;
+
+#[test]
+fn watch_hmr_keeps_a_window_and_a_playing_context() {
+  let dir = scratch("watch-hmr-hold");
+  fs::write(dir.join("stamp.ts"), stamp_source(1)).unwrap();
+  fs::write(dir.join("main.ts"), WATCH_HOLD).unwrap();
+  let child = WatchedChild::spawn_env(
+    &["run", "--watch-hmr", "--no-clear-screen", "main.ts"],
+    &dir,
+    &[("YUZUKO_AUDIO_TIMER", "1")],
+  );
+  let limit = Duration::from_secs(40);
+  let first = "hold 1 1 true 320 running false true none running 1";
+  child.wait_stdout(first, limit);
+  replace_file(&dir.join("stamp.ts"), &stamp_source(2));
+  let second = "hold 2 2 true 320 running false true closed running 1";
+  let stdout = child.wait_stdout(second, limit);
+  assert!(
+    stdout.contains(first),
+    "the first graph must keep the window and the context\n{stdout}"
+  );
+  let stderr = child.stderr.lock().expect("stderr").clone();
+  assert!(stderr.contains("HMR Reloaded"), "{stderr}");
+  assert!(stderr.contains("stamp.ts"), "{stderr}");
+}
+
+const WATCH_SHELL_MAIN: &str = r#"import { win, ctx, builtCount } from "./shell.ts";
+import { stamp } from "./stamp.ts";
+const lives = (globalThis.lives ?? 0) + 1;
+globalThis.lives = lives;
+setTimeout(() => {
+  const t0 = ctx.currentTime;
+  setTimeout(() => {
+    const moved = ctx.currentTime > t0 ? 1 : 0;
+    console.log(
+      `shell ${builtCount()} ${lives} ${stamp} ${win.visible} ${win.clientWidth} ${ctx.state} ${moved}`,
+    );
+  }, 200);
+}, 0);
+"#;
+
+fn shell_source(mark: usize) -> String {
+  let mark = "x".repeat(mark);
+  format!(
+    r#"let built = 0;
+export const win = new Yuzuko.Window({{ width: 320, height: 240 }});
+export const ctx = new AudioContext();
+const osc = ctx.createOscillator();
+osc.connect(ctx.destination);
+osc.start();
+export function builtCount() {{
+  built += 1;
+  return built;
+}}
+// {mark}
+"#
+  )
+}
+
+#[test]
+fn watch_hmr_keeps_a_shell_module() {
+  let dir = scratch("watch-hmr-shell");
+  fs::write(dir.join("stamp.ts"), stamp_source(1)).unwrap();
+  fs::write(dir.join("shell.ts"), shell_source(1)).unwrap();
+  fs::write(dir.join("main.ts"), WATCH_SHELL_MAIN).unwrap();
+  let child = WatchedChild::spawn_env(
+    &["run", "--watch-hmr", "--no-clear-screen", "main.ts"],
+    &dir,
+    &[("YUZUKO_AUDIO_TIMER", "1")],
+  );
+  let limit = Duration::from_secs(40);
+  let first = "shell 1 1 1 true 320 running 1";
+  child.wait_stdout(first, limit);
+  replace_file(&dir.join("stamp.ts"), &stamp_source(2));
+  let second = "shell 2 2 2 true 320 running 1";
+  let stdout = child.wait_stdout(second, limit);
+  assert_eq!(
+    stdout.matches(second).count(),
+    1,
+    "editing stamp.ts must re-evaluate main and leave shell running\n{stdout}"
+  );
+  replace_file(&dir.join("shell.ts"), &shell_source(8));
+  let third = "shell 1 3 2 true 320 running 1";
+  let stdout = child.wait_stdout(third, limit);
+  assert!(
+    stdout.contains(first) && stdout.contains(second),
+    "the shell must have stayed through the stamp edit\n{stdout}"
+  );
+  let stderr = child.stderr.lock().expect("stderr").clone();
+  assert!(stderr.contains("HMR Reloaded"), "{stderr}");
+  assert!(stderr.contains("stamp.ts"), "{stderr}");
+  assert!(stderr.contains("shell.ts"), "{stderr}");
+}
+
+#[test]
+fn watch_recovers_after_a_compile_error() {
+  recover_after_compile_error(
+    "--watch",
+    "Watcher Process failed",
+    "live 1 stamp 3 url true",
+    &["live 2", "stamp 2"],
+  );
+}
+
+#[test]
+fn watch_hmr_recovers_after_a_compile_error() {
+  recover_after_compile_error(
+    "--watch-hmr",
+    "HMR failed to reload",
+    "live 2 stamp 3 url true",
+    &["live 3", "stamp 2"],
+  );
+}
+
+fn recover_after_compile_error(
+  flag: &str,
+  failed: &str,
+  recovered: &str,
+  absent: &[&str],
+) {
+  let dir = scratch(&flag.replace("--", ""));
+  write_watch_app(&dir, 1);
+  let child = WatchedChild::spawn(&["run", flag, "main.ts"], &dir);
+  let limit = Duration::from_secs(40);
+  child.wait_stdout("live 1 stamp 1 url true", limit);
+  // The restart line names stamp.ts before compile. Wait for the status
+  // that is printed after the error, once the process is waiting again.
+  replace_file(&dir.join("stamp.ts"), "export const stamp = ;\n");
+  let stderr = child.wait_stderr(failed, limit);
+  assert!(
+    stderr.contains("stamp.ts"),
+    "the compile error should name the file\n{stderr}"
+  );
+  replace_file(&dir.join("stamp.ts"), &stamp_source(3));
+  let stdout = child.wait_stdout(recovered, limit);
+  for line in absent {
+    assert!(!stdout.contains(line), "{line} in\n{stdout}");
+  }
+}
+
+#[test]
+fn watch_flags_exit_2() {
+  let both = yuzuko(&["run", "--watch", "--watch-hmr", "tests/cli/hello.ts"]);
+  assert_eq!(both.status.code(), Some(2));
+  assert!(
+    text(&both.stderr).contains("--watch and --watch-hmr cannot be combined"),
+    "{}",
+    text(&both.stderr)
+  );
+
+  let clear = yuzuko(&["run", "--no-clear-screen", "tests/cli/hello.ts"]);
+  assert_eq!(clear.status.code(), Some(2));
+  assert!(
+    text(&clear.stderr)
+      .contains("--no-clear-screen requires --watch or --watch-hmr"),
+    "{}",
+    text(&clear.stderr)
+  );
+
+  let missing = yuzuko(&["run", "--watch", "tests/cli/missing-entry.ts"]);
+  assert_eq!(missing.status.code(), Some(2));
+  assert!(
+    text(&missing.stderr).contains("cannot open entry"),
+    "{}",
+    text(&missing.stderr)
+  );
+
+  let help = yuzuko(&["--help"]);
+  assert_eq!(help.status.code(), Some(0));
+  let stderr = text(&help.stderr);
+  assert!(stderr.contains("yuzuko run <entry.ts>"), "{stderr}");
+  assert!(
+    stderr.contains("yuzuko run --watch [--no-clear-screen]"),
+    "{stderr}"
+  );
+  assert!(stderr.contains("--watch-hmr"), "{stderr}");
+}
+
+#[test]
+fn watch_exit_ends_the_session() {
+  let dir = scratch("watch-exit");
+  fs::write(dir.join("main.ts"), "Yuzuko.exit(4);\n").unwrap();
+  let limit = Duration::from_secs(30);
+  for flag in ["--watch", "--watch-hmr"] {
+    let output = run_deadline(&["run", flag, "main.ts"], &dir, &[], limit);
+    assert_eq!(
+      output.status.code(),
+      Some(4),
+      "{flag}\n{}",
+      text(&output.stderr)
+    );
+  }
+}
+
+#[test]
+fn watch_after_the_entry_is_a_script_argument() {
+  let output = run_deadline(
+    &["run", "tests/cli/print_args.ts", "--watch"],
+    &workspace(),
+    &[],
+    Duration::from_secs(30),
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert_eq!(text(&output.stdout), "[\"--watch\"]\nTypeError\n");
 }

@@ -51,7 +51,8 @@ pub fn wrap<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
 ) -> Result<v8::Local<'a, v8::Object>, RuntimeError> {
-  if let Some(existing) = cached(scope, url) {
+  let key = host::source_cache_key(url);
+  if let Some(existing) = cached(scope, &key) {
     return Ok(existing);
   }
   let object = unsafe {
@@ -63,9 +64,7 @@ pub fn wrap<'a>(
     )
   };
   host::with_mut(|state| {
-    state
-      .js_sources
-      .insert(url.to_string(), v8::Global::new(scope, object));
+    state.js_sources.insert(key, v8::Global::new(scope, object));
   });
   Ok(object)
 }
@@ -81,9 +80,9 @@ pub fn url_of(
 
 fn cached<'a>(
   scope: &mut v8::PinScope<'a, '_>,
-  url: &str,
+  key: &str,
 ) -> Option<v8::Local<'a, v8::Object>> {
-  let stored = host::with(|state| state.js_sources.get(url).cloned())?;
+  let stored = host::with(|state| state.js_sources.get(key).cloned())?;
   Some(v8::Local::new(scope, stored))
 }
 

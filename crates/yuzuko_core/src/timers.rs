@@ -213,6 +213,7 @@ pub fn schedule_host(
       repeat_ms: None,
       callback: TimerCallback::Host(Box::new(finish)),
       args: Vec::new(),
+      owner: None,
     });
     id
   })
@@ -222,6 +223,55 @@ pub fn schedule_host(
 pub fn cancel_host(id: i32) {
   host::with_mut(|state| {
     state.timers.retain(|timer| timer.id != id);
+  });
+}
+
+/// Drops every timer, including host playback timers.
+///
+/// `clearTimeout` ignores a negative id. The first evaluation's failure still
+/// drops those callbacks. A module reload uses [`clear_reloaded`] so a
+/// surviving audio context keeps its pump.
+pub(crate) fn clear_all() {
+  host::with_mut(|state| {
+    for timer in &state.timers {
+      *state.timer_generation.entry(timer.id).or_insert(0) += 1;
+    }
+    state.timers.clear();
+    state.timer_nesting = 0;
+    state.rejection_notify_queued = false;
+  });
+}
+
+/// Drops timers scheduled by a module this reload evaluates again.
+///
+/// Host timers stay. Bumping the generation stops an in-flight interval from
+/// scheduling another turn after its callback was removed.
+pub(crate) fn clear_reloaded() {
+  host::with_mut(|state| {
+    let urls = state
+      .reload_fresh
+      .as_ref()
+      .map(|fresh| {
+        fresh
+          .iter()
+          .map(|(url, _kind)| url.clone())
+          .collect::<std::collections::HashSet<_>>()
+      })
+      .unwrap_or_default();
+    let mut removed = Vec::new();
+    state.timers.retain(|timer| {
+      let drop_timer = timer
+        .owner
+        .as_ref()
+        .is_some_and(|owner| urls.contains(owner));
+      if drop_timer {
+        removed.push(timer.id);
+      }
+      !drop_timer
+    });
+    for id in removed {
+      *state.timer_generation.entry(id).or_insert(0) += 1;
+    }
   });
 }
 
@@ -242,6 +292,7 @@ pub fn schedule_rejection_flush() {
       repeat_ms: None,
       callback: TimerCallback::FlushRejections,
       args: Vec::new(),
+      owner: None,
     });
   });
 }
@@ -291,6 +342,7 @@ fn enqueue_function(
     .copied()
     .map(|value| v8::Global::new(scope, value))
     .collect();
+  let owner = crate::js::caller_module_url(scope);
   host::with_mut(|state| {
     state.next_timer_id += 1;
     let id = state.next_timer_id;
@@ -302,6 +354,7 @@ fn enqueue_function(
       repeat_ms: None,
       callback: TimerCallback::Function(v8::Global::new(scope, function)),
       args,
+      owner,
     });
   });
 }
@@ -326,6 +379,7 @@ fn schedule(
   let extra = (2..args.length())
     .map(|index| v8::Global::new(scope, args.get(index)))
     .collect();
+  let owner = crate::js::caller_module_url(scope);
   let id = host::with_mut(|state| {
     state.next_timer_id += 1;
     let id = state.next_timer_id;
@@ -337,6 +391,7 @@ fn schedule(
       repeat_ms: repeat.then_some(requested),
       callback,
       args: extra,
+      owner,
     });
     id
   });

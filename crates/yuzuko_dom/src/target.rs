@@ -18,6 +18,8 @@ struct Listener {
   capture: bool,
   once: bool,
   passive: bool,
+  /// `file:` URL of the script that registered this listener.
+  owner: Option<String>,
 }
 
 pub struct EventTarget {
@@ -84,6 +86,7 @@ impl EventTarget {
     let callback = traced(scope, callback);
     let id = self.next_id.get();
     self.next_id.set(id + 1);
+    let owner = yuzuko_core::caller_module_url(scope);
     self.listeners.borrow_mut().push(Listener {
       id,
       type_name: type_name.to_string(),
@@ -91,6 +94,20 @@ impl EventTarget {
       capture,
       once,
       passive,
+      owner,
+    });
+  }
+
+  /// Drops listeners registered by a module this reload evaluates again.
+  pub fn drop_reloaded_listeners(&self) {
+    if !yuzuko_core::reload_targets_modules() {
+      return;
+    }
+    self.listeners.borrow_mut().retain(|listener| {
+      listener
+        .owner
+        .as_deref()
+        .is_none_or(|owner| !yuzuko_core::module_reloaded(owner))
     });
   }
 
@@ -402,6 +419,7 @@ fn attach(
       let callback = traced(scope, callback);
       let id = host.get().next_id.get();
       host.get().next_id.set(id + 1);
+      let owner = yuzuko_core::caller_module_url(scope);
       host.get().listeners.borrow_mut().push(Listener {
         id,
         type_name: type_name.to_string(),
@@ -409,6 +427,7 @@ fn attach(
         capture,
         once,
         passive,
+        owner,
       });
     }
     if type_name == "abort" {
@@ -686,6 +705,7 @@ struct RealmListener {
   capture: bool,
   once: bool,
   passive: bool,
+  owner: Option<String>,
 }
 
 thread_local! {
@@ -781,9 +801,33 @@ fn read_window_event(
 }
 
 pub(crate) fn clear() {
+  if yuzuko_core::reload_targets_modules() {
+    REALM.with(|listeners| {
+      listeners.borrow_mut().retain(|listener| {
+        listener
+          .owner
+          .as_deref()
+          .is_none_or(|owner| !yuzuko_core::module_reloaded(owner))
+      });
+    });
+    return;
+  }
   REALM.with(|listeners| listeners.borrow_mut().clear());
   NEXT_REALM_ID.with(|id| id.set(1));
   CURRENT_EVENT.with(|slot| *slot.borrow_mut() = None);
+}
+
+/// Drops listeners a re-evaluated module added to this object.
+pub fn drop_reloaded_listeners(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+) {
+  if !yuzuko_core::reload_targets_modules() {
+    return;
+  }
+  if let Some(host) = unsafe { host_ref::<EventTarget>(scope, target) } {
+    host.get().drop_reloaded_listeners();
+  }
 }
 
 fn realm_push(
@@ -799,6 +843,7 @@ fn realm_push(
     next.set(id + 1);
     id
   });
+  let owner = yuzuko_core::caller_module_url(scope);
   REALM.with(|listeners| {
     listeners.borrow_mut().push(RealmListener {
       id,
@@ -807,6 +852,7 @@ fn realm_push(
       capture,
       once,
       passive,
+      owner,
     });
   });
 }

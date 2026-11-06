@@ -322,6 +322,7 @@ fn poke_owner() {
 struct Frame {
   id: i32,
   callback: v8::TracedReference<v8::Function>,
+  owner: Option<String>,
 }
 
 #[repr(C)]
@@ -386,9 +387,130 @@ unsafe impl v8::cppgc::GarbageCollected for Window {
   }
 }
 
+fn disarm_window(owner: &Option<String>) -> bool {
+  if !yuzuko_core::reload_targets_modules() {
+    return true;
+  }
+  owner.as_deref().is_none_or(yuzuko_core::module_reloaded)
+}
+
+fn keep_stable_owner(owner: &Option<String>) -> bool {
+  yuzuko_core::reload_targets_modules()
+    && owner
+      .as_deref()
+      .is_some_and(|url| !yuzuko_core::module_reloaded(url))
+}
+
+fn drop_window_listeners(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) {
+  yuzuko_dom::drop_reloaded_listeners(scope, object);
+  let surface = {
+    let Some(host) = (unsafe { host_ref::<Window>(scope, object) }) else {
+      return;
+    };
+    let borrowed = host.get().surface.borrow();
+    let Some(surface) = borrowed.as_ref() else {
+      return;
+    };
+    let Some(local) = traced_local(scope, surface) else {
+      return;
+    };
+    v8::Global::new(scope, local)
+  };
+  let surface = v8::Local::new(scope, surface);
+  yuzuko_dom::drop_reloaded_listeners(scope, surface);
+}
+
 impl Window {
   pub(crate) fn id(&self) -> u64 {
     self.id
+  }
+
+  /// Drops callbacks a re-evaluated module left on an open window.
+  ///
+  /// A window whose creating module is not re-evaluated keeps its pointer
+  /// lock, queued input, and animation callbacks. A window that module did
+  /// create loses those, and the OS window stays until retain closes it.
+  pub(crate) fn disarm_for_reload(scope: &mut v8::PinScope) {
+    for id in inbox::ids() {
+      let owner = inbox::owner(id);
+      let disarm = disarm_window(&owner);
+      if let Some(object) = inbox::object(scope, id) {
+        drop_window_listeners(scope, object);
+        if let Some(host) = unsafe { host_ref::<Self>(scope, object) } {
+          let window = host.get();
+          if disarm {
+            window.frames.borrow_mut().clear();
+            window.locked.set(false);
+          } else {
+            window.frames.borrow_mut().retain(|frame| {
+              frame
+                .owner
+                .as_deref()
+                .is_none_or(|url| !yuzuko_core::module_reloaded(url))
+            });
+          }
+        }
+      }
+      if disarm {
+        os::unlock_pointer(id);
+        inbox::clear_queue(id);
+        inbox::clear_frame(id);
+        os::sync_frame_link(id);
+        continue;
+      }
+      let empty = inbox::object(scope, id).is_some_and(|object| {
+        unsafe { host_ref::<Self>(scope, object) }
+          .is_some_and(|host| host.get().frames.borrow().is_empty())
+      });
+      if empty {
+        inbox::clear_frame(id);
+        os::sync_frame_link(id);
+      }
+    }
+  }
+
+  /// Closes windows from a re-evaluated module that the new graph did not keep.
+  ///
+  /// A window whose creating module was not re-evaluated stays, including one
+  /// held only by that module's binding.
+  pub(crate) fn retain_for_reload(
+    scope: &mut v8::PinScope,
+    keep_current: bool,
+  ) {
+    let mut reachable = HashSet::new();
+    let finished = yuzuko_core::walk_objects(scope, |scope, object| {
+      if let Some(host) = unsafe { host_ref::<Self>(scope, object) } {
+        reachable.insert(host.get().id());
+      }
+      if let Some(host) = unsafe { host_ref::<WindowSurface>(scope, object) } {
+        reachable.insert(host.get().window_id());
+      }
+    });
+    // A truncated walk must not close a window it failed to see.
+    if !finished {
+      return;
+    }
+    let current = yuzuko_core::module_generation();
+    let partial = yuzuko_core::reload_targets_modules();
+    let ids = inbox::ids();
+    for id in ids {
+      if reachable.contains(&id) {
+        continue;
+      }
+      if partial && keep_stable_owner(&inbox::owner(id)) {
+        continue;
+      }
+      if keep_current && inbox::generation(id) == Some(current) {
+        continue;
+      }
+      let Some(object) = inbox::object(scope, id) else {
+        continue;
+      };
+      Self::close_object(scope, object);
+    }
   }
 
   pub(crate) fn pointer_state(&self) -> &PointerState {
@@ -1308,9 +1430,11 @@ impl Window {
     }
     let id = self.next_frame.get().saturating_add(1);
     self.next_frame.set(id);
+    let owner = yuzuko_core::caller_module_url(scope);
     self.frames.borrow_mut().push(Frame {
       id,
       callback: traced(scope, callback),
+      owner,
     });
     inbox::arm_frame(self.id);
     os::sync_frame_link(self.id);
@@ -1725,7 +1849,6 @@ impl WindowSurface {
     self.canvas.id()
   }
 
-  #[cfg(feature = "accessibility")]
   pub(crate) fn window_id(&self) -> u64 {
     self.window_id
   }

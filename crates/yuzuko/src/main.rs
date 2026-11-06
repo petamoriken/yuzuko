@@ -6,7 +6,8 @@ use yuzuko::{
   reject_package_extension,
 };
 use yuzuko_core::{
-  run_file, run_file_sandboxed, run_repl, run_tests, set_args, status_of,
+  WatchMode, run_file, run_file_sandboxed, run_file_watch, run_repl, run_tests,
+  set_args, status_of,
 };
 
 fn main() -> ExitCode {
@@ -90,6 +91,9 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
   let mut entry = None;
   let mut index = 0;
   let mut allow_flag_entry = false;
+  let mut watch = false;
+  let mut hot = false;
+  let mut no_clear = false;
   while index < args.len() && entry.is_none() {
     let token = args[index].as_str();
     if token == "--" {
@@ -98,11 +102,28 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
       continue;
     }
     if !allow_flag_entry && token.starts_with('-') {
-      eprintln!("unknown flag {token}");
-      return Ok(2);
+      match token {
+        "--watch" => watch = true,
+        "--watch-hmr" => hot = true,
+        "--no-clear-screen" => no_clear = true,
+        _ => {
+          eprintln!("unknown flag {token}");
+          return Ok(2);
+        }
+      }
+      index += 1;
+      continue;
     }
     entry = Some(PathBuf::from(token));
     index += 1;
+  }
+  if watch && hot {
+    eprintln!("--watch and --watch-hmr cannot be combined");
+    return Ok(2);
+  }
+  if no_clear && !watch && !hot {
+    eprintln!("--no-clear-screen requires --watch or --watch-hmr");
+    return Ok(2);
   }
   let Some(entry) = entry else {
     eprintln!("yuzuko run <entry.ts> [arg...]");
@@ -117,6 +138,14 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     return Ok(1);
   }
   configure_window(false, false);
+  if watch || hot {
+    let mode = if hot {
+      WatchMode::Hot
+    } else {
+      WatchMode::Restart
+    };
+    return run_file_watch(&entry, mode, !no_clear);
+  }
   status_of(run_file(&entry))
 }
 
@@ -324,6 +353,8 @@ fn usage() {
   eprintln!(
     "\
 yuzuko run <entry.ts> [arg...]
+yuzuko run --watch [--no-clear-screen] <entry.ts> [arg...]
+yuzuko run --watch-hmr [--no-clear-screen] <entry.ts> [arg...]
 yuzuko test [<path>...] [--filter <substring>]
 yuzuko package <entry.ts> [--config <file>] [--output <path>]
 yuzuko repl"

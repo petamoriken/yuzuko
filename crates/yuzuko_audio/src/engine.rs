@@ -367,6 +367,10 @@ struct ContextRec {
   generation: u64,
   pump_queued: bool,
   sink: AudioSink,
+  /// Module-map generation that constructed this context.
+  graph_generation: u64,
+  /// `file:` URL of the script that constructed this context.
+  owner: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1451,6 +1455,7 @@ pub fn register_context(
   destination: u64,
   destination_object: v8::Global<v8::Object>,
   sink: AudioSink,
+  owner: Option<String>,
 ) {
   let output = if realtime {
     Vec::new()
@@ -1486,6 +1491,8 @@ pub fn register_context(
         generation: 0,
         pump_queued: false,
         sink,
+        graph_generation: yuzuko_core::module_generation(),
+        owner,
       },
     );
   });
@@ -2565,6 +2572,64 @@ fn suspend_now(scope: &mut v8::PinScope, id: u64) {
     let resolver = v8::Local::new(scope, resolver);
     let value: v8::Local<v8::Value> = v8::undefined(scope).into();
     resolver.resolve(scope, value);
+  }
+}
+
+/// Realtime contexts that are still running.
+///
+/// Each entry is the id, the module-map generation that constructed it, and
+/// the script URL that constructed it.
+pub fn open_realtime() -> Vec<(u64, u64, Option<String>)> {
+  CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .iter()
+      .filter(|(_, context)| {
+        context.realtime && context.state != RunState::Closed
+      })
+      .map(|(id, context)| {
+        (*id, context.graph_generation, context.owner.clone())
+      })
+      .collect()
+  })
+}
+
+pub fn context_ids() -> Vec<u64> {
+  CONTEXTS.with(|contexts| contexts.borrow().keys().copied().collect())
+}
+
+/// Refills a playing context after a hot reload cleared host timers and jobs.
+///
+/// The output stream stays open. `pump_queued` is stale because those jobs
+/// were dropped, so this renders on the current stack and arms the next
+/// quantum before the new graph runs.
+pub fn resume_after_reload(scope: &mut v8::PinScope) {
+  let ids: Vec<u64> = CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .iter()
+      .filter(|(_, context)| {
+        context.realtime
+          && context.state == RunState::Running
+          && context.clock_started
+      })
+      .map(|(id, _)| *id)
+      .collect()
+  });
+  for id in ids {
+    playback::disarm(id);
+    let generation = CONTEXTS.with(|contexts| {
+      let mut contexts = contexts.borrow_mut();
+      let context = contexts.get_mut(&id)?;
+      if context.state != RunState::Running || !context.clock_started {
+        return None;
+      }
+      context.pump_queued = true;
+      Some(context.generation)
+    });
+    if let Some(generation) = generation {
+      pump(scope, id, generation);
+    }
   }
 }
 

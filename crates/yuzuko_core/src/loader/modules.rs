@@ -1,5 +1,6 @@
 //! Module graph: oxc resolution, TypeScript erasure, and V8 module records.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -249,6 +250,8 @@ fn compile_path<'a>(
   url: &str,
   attributes: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  // Note before the read so a file that fails to compile is still watched.
+  crate::watch::note(path);
   let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
   let kind = module_kind(attributes, extension);
   if let Some(existing) = existing_module(scope, url, kind) {
@@ -673,14 +676,48 @@ fn existing_module<'a>(
   url: &str,
   kind: ModuleRecordKind,
 ) -> Option<v8::Local<'a, v8::Module>> {
-  let global = host::with(|state| {
-    state
-      .modules
-      .values()
-      .find(|entry| entry.url == url && entry.kind == kind)
-      .map(|entry| entry.module.clone())
-  })?;
+  let global = host::with(|state| pick_module(state, url, kind))?;
   Some(v8::Local::new(scope, global))
+}
+
+/// The record a load should reuse.
+///
+/// During a hot reload, a specifier in the fresh set matches only the new
+/// generation, so it is compiled again. Any other specifier reuses the newest
+/// record from an earlier generation. Outside a reload, the newest record of
+/// any generation is the module, including one a partial reload left in place.
+fn pick_module(
+  state: &host::HostState,
+  url: &str,
+  kind: ModuleRecordKind,
+) -> Option<v8::Global<v8::Module>> {
+  let current = state.module_generation;
+  let mut older: Option<&ModuleEntry> = None;
+  let mut current_entry: Option<&ModuleEntry> = None;
+  let mut any: Option<&ModuleEntry> = None;
+  for entry in state.modules.values() {
+    if entry.url != url || entry.kind != kind {
+      continue;
+    }
+    if any.is_none_or(|best| entry.generation >= best.generation) {
+      any = Some(entry);
+    }
+    if entry.generation == current {
+      current_entry = Some(entry);
+    } else if older.is_none_or(|best| entry.generation >= best.generation) {
+      older = Some(entry);
+    }
+  }
+  let chosen = if let Some(fresh) = state.reload_fresh.as_ref() {
+    if fresh.contains(&(url.to_string(), kind)) {
+      current_entry
+    } else {
+      older.or(any)
+    }
+  } else {
+    any
+  };
+  chosen.map(|entry| entry.module.clone())
 }
 
 fn remember(
@@ -693,16 +730,441 @@ fn remember(
   let hash = module.get_identity_hash().get();
   let global = v8::Global::new(scope, module);
   host::with_mut(|state| {
+    let generation = state.module_generation;
     state.modules.insert(
       hash,
       ModuleEntry {
         url: url.to_string(),
         path: path.to_path_buf(),
         kind,
+        generation,
         module: global,
       },
     );
   });
+}
+
+/// Drops module records and source-phase objects from `generation`.
+pub(crate) fn purge_generation(generation: u64) {
+  host::with_mut(|state| {
+    purge_where(state, |entry_generation| entry_generation == generation);
+  });
+}
+
+/// Drops earlier records of specifiers this reload evaluated again.
+///
+/// A module that was not re-evaluated stays, including its source-phase
+/// object. A record compiled at `keep` stays even when its specifier was not
+/// in the fresh set, which is how a newly imported file survives.
+pub(crate) fn purge_replaced(
+  keep: u64,
+  fresh: &HashSet<(String, ModuleRecordKind)>,
+) {
+  host::with_mut(|state| {
+    let fresh_sources = fresh
+      .iter()
+      .filter(|(_, kind)| *kind == ModuleRecordKind::Source)
+      .map(|(url, _)| url.clone())
+      .collect::<HashSet<_>>();
+    let hashes = state
+      .modules
+      .iter()
+      .filter(|(_, entry)| {
+        fresh.contains(&(entry.url.clone(), entry.kind))
+          && entry.generation != keep
+      })
+      .map(|(hash, _)| *hash)
+      .collect::<Vec<_>>();
+    for hash in hashes {
+      state.modules.remove(&hash);
+      state.synthetic_sources.remove(&hash);
+    }
+    state
+      .js_sources
+      .retain(|key, _| !drop_replaced_cache(key, &fresh_sources, keep));
+    state
+      .wasm_modules
+      .retain(|key, _| !drop_replaced_cache(key, &fresh_sources, keep));
+  });
+}
+
+fn drop_replaced_cache(
+  key: &str,
+  fresh_sources: &HashSet<String>,
+  keep: u64,
+) -> bool {
+  let generation = host::cache_key_generation(key);
+  if generation == keep {
+    return false;
+  }
+  let url = key.split('\0').next().unwrap_or(key);
+  fresh_sources.contains(url)
+}
+
+struct LiveModule {
+  url: String,
+  path: PathBuf,
+  kind: ModuleRecordKind,
+  module: v8::Global<v8::Module>,
+}
+
+pub(crate) struct PlannedModule {
+  url: String,
+  path: PathBuf,
+  kind: ModuleRecordKind,
+}
+
+/// The modules `--watch-hmr` compiles again, and the ones it evaluates.
+pub(crate) struct ReloadPlan {
+  pub fresh: HashSet<(String, ModuleRecordKind)>,
+  compile: Vec<PlannedModule>,
+  roots: Vec<(String, ModuleRecordKind)>,
+}
+
+/// Chooses modules to evaluate from the graph that is already running.
+///
+/// A changed file and every module that statically imports a re-evaluated
+/// module are fresh. `import source` and `import defer` count. An already
+/// evaluated dependency stays the live record, so linking a fresh importer
+/// to it does not run that dependency again.
+pub(crate) fn plan_reload(
+  scope: &mut v8::PinScope,
+  changed: &Path,
+  entry: &Path,
+) -> ReloadPlan {
+  let live = host::with(|state| {
+    state
+      .modules
+      .values()
+      .map(|module| LiveModule {
+        url: module.url.clone(),
+        path: module.path.clone(),
+        kind: module.kind,
+        module: module.module.clone(),
+      })
+      .collect::<Vec<_>>()
+  });
+  let mut edges = Vec::new();
+  for module in &live {
+    let importer = (module.url.clone(), module.kind);
+    let record = v8::Local::new(scope, &module.module);
+    for dependency in static_dependencies(scope, record, &module.path) {
+      edges.push((importer.clone(), dependency));
+    }
+  }
+  let mut fresh = HashSet::new();
+  for module in &live {
+    if same_module_path(&module.path, changed) {
+      fresh.insert((module.url.clone(), module.kind));
+    }
+  }
+  if fresh.is_empty() {
+    for module in &live {
+      if same_module_path(&module.path, entry) {
+        fresh.insert((module.url.clone(), module.kind));
+      }
+    }
+  }
+  let mut grew = true;
+  while grew {
+    grew = false;
+    for (importer, dependency) in &edges {
+      if fresh.contains(dependency) && fresh.insert(importer.clone()) {
+        grew = true;
+      }
+    }
+  }
+  let mut covered = HashSet::new();
+  for (importer, dependency) in &edges {
+    if fresh.contains(importer) && fresh.contains(dependency) {
+      covered.insert(dependency.clone());
+    }
+  }
+  let mut roots = fresh
+    .iter()
+    .filter(|key| !covered.contains(*key))
+    .cloned()
+    .collect::<Vec<_>>();
+  // A cycle has no module that is not imported by another fresh module.
+  if roots.is_empty() {
+    roots = fresh.iter().cloned().collect();
+  }
+  let mut seen = HashSet::new();
+  let mut compile = Vec::new();
+  for module in &live {
+    let key = (module.url.clone(), module.kind);
+    if !fresh.contains(&key) || !seen.insert(key) {
+      continue;
+    }
+    compile.push(PlannedModule {
+      url: module.url.clone(),
+      path: module.path.clone(),
+      kind: module.kind,
+    });
+  }
+  ReloadPlan {
+    fresh,
+    compile,
+    roots,
+  }
+}
+
+fn same_module_path(stored: &Path, changed: &Path) -> bool {
+  if stored == changed {
+    return true;
+  }
+  match (canonicalize(stored), canonicalize(changed)) {
+    (Ok(stored), Ok(changed)) => stored == changed,
+    _ => false,
+  }
+}
+
+fn static_dependencies(
+  scope: &mut v8::PinScope,
+  module: v8::Local<v8::Module>,
+  referrer: &Path,
+) -> Vec<(String, ModuleRecordKind)> {
+  let requests = module.get_module_requests();
+  let mut found = Vec::new();
+  for index in 0..requests.length() {
+    let Some(data) = requests.get(scope, index) else {
+      continue;
+    };
+    if !data.is_module_request() {
+      continue;
+    }
+    let Ok(request) = v8::Local::<v8::ModuleRequest>::try_from(data) else {
+      continue;
+    };
+    let specifier = request.get_specifier().to_rust_string_lossy(scope);
+    let attribute = request_type(scope, request);
+    let Ok((path, url)) = locate(referrer, &specifier) else {
+      continue;
+    };
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    let kind = module_kind(attribute.as_deref(), extension);
+    found.push((url, kind));
+  }
+  found
+}
+
+/// Import attributes on a module request are `[key, value, offset]` triples.
+fn request_type(
+  scope: &mut v8::PinScope,
+  request: v8::Local<v8::ModuleRequest>,
+) -> Option<String> {
+  let attributes = request.get_import_attributes();
+  let len = attributes.length();
+  let mut index = 0;
+  while index + 2 < len {
+    let Some(key) = attributes.get(scope, index) else {
+      break;
+    };
+    let Some(value) = attributes.get(scope, index + 1) else {
+      break;
+    };
+    index += 3;
+    let Ok(key) = v8::Local::<v8::String>::try_from(key) else {
+      continue;
+    };
+    let Ok(value) = v8::Local::<v8::String>::try_from(value) else {
+      continue;
+    };
+    if key.to_rust_string_lossy(scope) == "type" {
+      return Some(value.to_rust_string_lossy(scope));
+    }
+  }
+  None
+}
+
+fn kind_attribute(kind: ModuleRecordKind) -> Option<&'static str> {
+  match kind {
+    ModuleRecordKind::Text => Some("text"),
+    ModuleRecordKind::Bytes => Some("bytes"),
+    ModuleRecordKind::Json => Some("json"),
+    ModuleRecordKind::Source => None,
+  }
+}
+
+pub(crate) fn compile_fresh(
+  scope: &mut v8::PinScope,
+  plan: &ReloadPlan,
+) -> Result<(), RuntimeError> {
+  for module in &plan.compile {
+    compile_path(
+      scope,
+      &module.path,
+      &module.url,
+      kind_attribute(module.kind),
+    )?;
+  }
+  Ok(())
+}
+
+pub(crate) fn link_fresh(
+  scope: &mut v8::PinScope,
+  plan: &ReloadPlan,
+) -> Result<(), RuntimeError> {
+  for (url, kind) in &plan.roots {
+    let Some(module) = existing_module(scope, url, *kind) else {
+      return Err(RuntimeError::message(format!("failed to link {url}")));
+    };
+    link_graph(scope, module)?;
+  }
+  Ok(())
+}
+
+pub(crate) fn evaluate_fresh(
+  scope: &mut v8::PinScope,
+  plan: &ReloadPlan,
+) -> Result<Vec<v8::Global<v8::Value>>, RuntimeError> {
+  let mut values = Vec::new();
+  for (url, kind) in &plan.roots {
+    let Some(module) = existing_module(scope, url, *kind) else {
+      return Err(RuntimeError::message(format!("failed to evaluate {url}")));
+    };
+    let value = evaluate_graph(scope, module)?;
+    values.push(v8::Global::new(scope, value));
+  }
+  Ok(values)
+}
+
+/// Copies Wasm instances whose modules this reload did not evaluate.
+///
+/// Fresh URLs are left for the new evaluation. Namespace keys are recorded
+/// afterwards from the URL entries.
+pub(crate) fn merge_stable_wasm(
+  scope: &mut v8::PinScope,
+  saved: Option<&v8::Global<v8::Map>>,
+  fresh: &HashSet<(String, ModuleRecordKind)>,
+) {
+  let Some(saved) = saved else {
+    return;
+  };
+  let current = host::wasm_instances(scope);
+  let saved = v8::Local::new(scope, saved);
+  let pairs = saved.as_array(scope);
+  let len = pairs.length();
+  let mut index = 0;
+  while index < len {
+    let key = pairs.get_index(scope, index);
+    let value = (index + 1 < len).then(|| pairs.get_index(scope, index + 1));
+    index = index.saturating_add(2);
+    let (Some(key), Some(Some(value))) = (key, value) else {
+      continue;
+    };
+    let Ok(text) = v8::Local::<v8::String>::try_from(key) else {
+      continue;
+    };
+    let url = text.to_rust_string_lossy(scope);
+    if fresh.contains(&(url, ModuleRecordKind::Source)) {
+      continue;
+    }
+    if let Some(existing) = current.get(scope, key)
+      && !existing.is_null_or_undefined()
+    {
+      continue;
+    }
+    if current.set(scope, key, value).is_none() {
+      return;
+    }
+  }
+}
+
+fn purge_where(
+  state: &mut host::HostState,
+  drop_generation: impl Fn(u64) -> bool,
+) {
+  let hashes = state
+    .modules
+    .iter()
+    .filter(|(_, entry)| drop_generation(entry.generation))
+    .map(|(hash, _)| *hash)
+    .collect::<Vec<_>>();
+  for hash in hashes {
+    state.modules.remove(&hash);
+    state.synthetic_sources.remove(&hash);
+  }
+  state
+    .js_sources
+    .retain(|key, _| !drop_generation(host::cache_key_generation(key)));
+  state
+    .wasm_modules
+    .retain(|key, _| !drop_generation(host::cache_key_generation(key)));
+}
+
+/// Links `module` and its imports. Does not evaluate.
+pub(crate) fn link_graph(
+  scope: &mut v8::PinScope,
+  module: v8::Local<v8::Module>,
+) -> Result<(), RuntimeError> {
+  v8::tc_scope!(let tc, scope);
+  if module
+    .instantiate_module2(tc, resolve_callback, source_callback)
+    .is_some()
+  {
+    return Ok(());
+  }
+  if let Some(code) = crate::process::exit_code() {
+    return Err(RuntimeError::exit(code));
+  }
+  if let Some(exception) = tc.exception() {
+    return Err(RuntimeError::message(thrown_text(
+      tc,
+      exception,
+      "failed to instantiate module",
+    )));
+  }
+  Err(RuntimeError::message(exception_text!(
+    tc,
+    "failed to instantiate module"
+  )))
+}
+
+/// Evaluates a module that [`link_graph`] already instantiated.
+///
+/// Wasm instance namespaces are not recorded here. A hot reload records them
+/// after older generations have been dropped.
+pub(crate) fn evaluate_graph<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  module: v8::Local<v8::Module>,
+) -> Result<v8::Local<'a, v8::Value>, RuntimeError> {
+  let value = {
+    v8::tc_scope!(let tc, scope);
+    match module.evaluate(tc) {
+      Some(value) => v8::Global::new(tc, value),
+      None => {
+        if let Some(code) = crate::process::exit_code() {
+          return Err(RuntimeError::exit(code));
+        }
+        if let Some(exception) = tc.exception() {
+          return Err(RuntimeError::message(thrown_text(
+            tc,
+            exception,
+            "failed to evaluate module",
+          )));
+        }
+        return Err(RuntimeError::message(exception_text!(
+          tc,
+          "failed to evaluate module"
+        )));
+      }
+    }
+  };
+  Ok(v8::Local::new(scope, value))
+}
+
+fn thrown_text(
+  scope: &mut v8::PinScope,
+  exception: v8::Local<v8::Value>,
+  fallback: &str,
+) -> String {
+  exception_stack(scope, exception).unwrap_or_else(|| {
+    exception
+      .to_string(scope)
+      .map(|text| text.to_rust_string_lossy(scope))
+      .unwrap_or_else(|| fallback.to_string())
+  })
 }
 
 fn cached_source(path: &Path, source: &str) -> Result<String, RuntimeError> {

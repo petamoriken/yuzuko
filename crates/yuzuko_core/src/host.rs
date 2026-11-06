@@ -4,7 +4,7 @@
 //! own thread and enters only its own isolate.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime};
@@ -17,7 +17,7 @@ use crate::platform::TaskQueue;
 ///
 /// JavaScript, TypeScript, and a Wasm evaluation import share `Source`.
 /// Text, bytes, and JSON of the same URL are separate records.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum ModuleRecordKind {
   Source,
   Json,
@@ -38,6 +38,8 @@ pub struct ModuleEntry {
   pub path: PathBuf,
   pub module: v8::Global<v8::Module>,
   pub kind: ModuleRecordKind,
+  /// Module-map generation that owns this record. Lookup uses the current one.
+  pub generation: u64,
 }
 
 pub struct RegisteredTest {
@@ -76,6 +78,10 @@ pub struct Timer {
   pub repeat_ms: Option<f64>,
   pub callback: TimerCallback,
   pub args: Vec<v8::Global<v8::Value>>,
+  /// `file:` URL of the script that scheduled this timer.
+  ///
+  /// Host timers stay `None`, so a hot reload does not drop them.
+  pub owner: Option<String>,
 }
 
 /// Which global this isolate is hosting.
@@ -94,10 +100,10 @@ pub struct HostState {
   pub modules: HashMap<i32, ModuleEntry>,
   pub strip_cache: HashMap<PathBuf, (SystemTime, u64, String)>,
   pub synthetic_sources: HashMap<i32, SyntheticSource>,
-  /// Compiled `WebAssembly.Module` objects, keyed by the module file URL.
+  /// Compiled `WebAssembly.Module` objects, keyed by [`source_cache_key`].
   /// Source-phase imports return these without instantiating them.
   pub wasm_modules: HashMap<String, v8::Global<v8::Object>>,
-  /// JavaScript `ModuleSource` objects, keyed by the module file URL.
+  /// JavaScript `ModuleSource` objects, keyed by [`source_cache_key`].
   pub js_sources: HashMap<String, v8::Global<v8::Object>>,
   /// `WebAssembly.Instance` objects. Keys are the module URL and, after
   /// evaluation, the module namespace. Importers read `.exports` so a
@@ -130,6 +136,11 @@ pub struct HostState {
   pub entry_dir: Option<PathBuf>,
   /// Absolute `file:` URL of the entry module. Relative fetch resolves here.
   pub entry_url: Option<String>,
+  /// Module-map generation. `0` for an ordinary run and for a worker.
+  /// `--watch-hmr` advances it so a re-evaluated specifier is a new record.
+  pub module_generation: u64,
+  /// Specifiers this hot reload compiles again. `None` outside that reload.
+  pub(crate) reload_fresh: Option<HashSet<(String, ModuleRecordKind)>>,
 }
 
 thread_local! {
@@ -175,6 +186,8 @@ impl HostState {
       dom_exception: None,
       entry_dir: None,
       entry_url: None,
+      module_generation: 0,
+      reload_fresh: None,
     }
   }
 }
@@ -209,6 +222,112 @@ pub fn module_path(hash: i32) -> Option<PathBuf> {
 
 pub fn module_url(hash: i32) -> Option<String> {
   with(|state| state.modules.get(&hash).map(|entry| entry.url.clone()))
+}
+
+pub fn module_generation() -> u64 {
+  with(|state| state.module_generation)
+}
+
+pub(crate) fn set_module_generation(generation: u64) {
+  with_mut(|state| state.module_generation = generation);
+}
+
+pub(crate) fn set_reload_fresh(fresh: HashSet<(String, ModuleRecordKind)>) {
+  with_mut(|state| state.reload_fresh = Some(fresh));
+}
+
+pub(crate) fn clear_reload_fresh() {
+  with_mut(|state| state.reload_fresh = None);
+}
+
+/// `true` while `--watch-hmr` is reloading a chosen set of modules.
+pub fn reload_targets_modules() -> bool {
+  with(|state| state.reload_fresh.is_some())
+}
+
+/// `true` when `url` is one of the modules this reload evaluates again.
+pub fn module_reloaded(url: &str) -> bool {
+  with(|state| {
+    state
+      .reload_fresh
+      .as_ref()
+      .is_some_and(|fresh| fresh.iter().any(|(entry, _kind)| entry == url))
+  })
+}
+
+/// `true` when a module record from an earlier generation stays in this reload.
+///
+/// A re-evaluated specifier's previous record is in the fresh set, so a
+/// reload of every live module does not count.
+pub fn reload_keeps_module() -> bool {
+  with(|state| {
+    let Some(fresh) = state.reload_fresh.as_ref() else {
+      return false;
+    };
+    let current = state.module_generation;
+    state.modules.values().any(|entry| {
+      entry.generation != current
+        && !fresh.contains(&(entry.url.clone(), entry.kind))
+    })
+  })
+}
+
+/// Cache key for a source-phase object.
+///
+/// The key follows the live record. A module that this reload does not
+/// evaluate keeps the object from the generation that compiled it. Generation
+/// 0 keeps the bare URL. Module URLs do not contain NUL.
+pub(crate) fn source_cache_key(url: &str) -> String {
+  let generation = with(|state| source_generation(state, url));
+  if generation == 0 {
+    url.to_string()
+  } else {
+    format!("{url}\0{generation}")
+  }
+}
+
+fn source_generation(state: &HostState, url: &str) -> u64 {
+  let current = state.module_generation;
+  let mut older = None;
+  let mut any = None;
+  for entry in state.modules.values() {
+    if entry.url != url || entry.kind != ModuleRecordKind::Source {
+      continue;
+    }
+    if any.is_none_or(|best: u64| entry.generation > best) {
+      any = Some(entry.generation);
+    }
+    if entry.generation != current
+      && older.is_none_or(|best: u64| entry.generation > best)
+    {
+      older = Some(entry.generation);
+    }
+  }
+  if let Some(fresh) = state.reload_fresh.as_ref() {
+    if fresh.contains(&(url.to_string(), ModuleRecordKind::Source)) {
+      return current;
+    }
+    if let Some(generation) = older {
+      return generation;
+    }
+    return current;
+  }
+  any.unwrap_or(current)
+}
+
+pub(crate) fn cache_key_generation(key: &str) -> u64 {
+  match key.rsplit_once('\0') {
+    Some((_, generation)) => generation.parse().unwrap_or(0),
+    None => 0,
+  }
+}
+
+/// Installs an empty instance map so the next evaluation does not see the
+/// previous graph's `WebAssembly.Instance` objects.
+pub(crate) fn replace_wasm_instances(scope: &mut v8::PinScope) {
+  let map = v8::Map::new(scope);
+  let stored = v8::Global::new(scope, map);
+  with_mut(|state| state.wasm_instances = Some(stored));
 }
 
 pub fn wasm_instances<'s>(

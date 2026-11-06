@@ -2111,6 +2111,7 @@ impl AudioContext {
     let id = engine::alloc();
     let (destination, destination_object) =
       make_destination(scope, id, 2, true);
+    let owner = yuzuko_core::caller_module_url(scope);
     engine::register_context(
       id,
       rate,
@@ -2121,6 +2122,7 @@ impl AudioContext {
       destination,
       destination_object,
       sink,
+      owner,
     );
     crate::nodes::install_listener(scope, id);
     Ok(AudioContext {
@@ -2281,6 +2283,7 @@ impl OfflineAudioContext {
     let id = engine::alloc();
     let (destination, destination_object) =
       make_destination(scope, id, channels, false);
+    let owner = yuzuko_core::caller_module_url(scope);
     engine::register_context(
       id,
       rate,
@@ -2291,6 +2294,7 @@ impl OfflineAudioContext {
       destination,
       destination_object,
       AudioSink::Device(String::new()),
+      owner,
     );
     crate::nodes::install_listener(scope, id);
     Ok(OfflineAudioContext {

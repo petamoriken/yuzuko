@@ -664,8 +664,8 @@ fn open_device(
   if let Some(object) = dictionary(scope, descriptor) {
     reject_features(scope, object, features)?;
     check_required_limits(scope, object, &limits)?;
-    device_label =
-      js::get(scope, object, "label").and_then(|value| js::string(scope, value));
+    device_label = js::get(scope, object, "label")
+      .and_then(|value| js::string(scope, value));
   }
   let id = state::alloc_id();
   let lost = Arc::new(AtomicBool::new(false));
@@ -690,6 +690,7 @@ fn open_device(
       lost_resolver: v8::Global::new(scope, resolver),
       scopes: Vec::new(),
       queue_object: Some(v8::Global::new(scope, queue_object)),
+      owner: yuzuko_core::caller_module_url(scope),
     },
   );
   Ok(GpuDevice {

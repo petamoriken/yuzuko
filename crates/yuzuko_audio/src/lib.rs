@@ -9,15 +9,18 @@ mod playback;
 mod process;
 mod util;
 
+use std::collections::HashSet;
 use std::sync::Once;
 
-use yuzuko_core::op::{OpError, OpException};
+use yuzuko_core::op::{OpError, OpException, host_ref};
 
 pub fn register() {
   static ONCE: Once = Once::new();
   ONCE.call_once(|| {
     yuzuko_core::add_extension(&install);
     yuzuko_core::on_realm_drop(shutdown);
+    yuzuko_core::on_reload_scope(&reload);
+    yuzuko_core::on_reload_settled(&retain);
   });
 }
 
@@ -88,4 +91,53 @@ fn output_devices_value<'s>(
 fn shutdown() {
   engine::clear();
   classes::clear();
+}
+
+/// Keeps playing contexts.
+///
+/// A module reload leaves host timers and worklet jobs in place, so a context
+/// whose creating module stays keeps its clock. The first evaluation's failure
+/// cleared those timers and has to render one quantum to arm the next.
+fn reload(scope: &mut v8::PinScope) {
+  if yuzuko_core::reload_targets_modules() {
+    for id in engine::context_ids() {
+      if let Some(object) = engine::context_object(id) {
+        let object = v8::Local::new(scope, object);
+        yuzuko_dom::drop_reloaded_listeners(scope, object);
+      }
+    }
+    return;
+  }
+  classes::clear();
+  engine::resume_after_reload(scope);
+}
+
+fn retain(scope: &mut v8::PinScope, keep_current: bool) {
+  let mut reachable = HashSet::new();
+  let finished = yuzuko_core::walk_objects(scope, |scope, object| {
+    if let Some(host) =
+      unsafe { host_ref::<classes::AudioContext>(scope, object) }
+    {
+      reachable.insert(host.get().base.id);
+    }
+  });
+  if !finished {
+    return;
+  }
+  let current = yuzuko_core::module_generation();
+  let partial = yuzuko_core::reload_targets_modules();
+  for (id, generation, owner) in engine::open_realtime() {
+    if reachable.contains(&id) {
+      continue;
+    }
+    if partial
+      && owner.is_some_and(|owner| !yuzuko_core::module_reloaded(&owner))
+    {
+      continue;
+    }
+    if keep_current && generation == current {
+      continue;
+    }
+    let _ = engine::close_context(scope, id);
+  }
 }

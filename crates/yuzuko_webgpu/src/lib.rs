@@ -28,10 +28,15 @@ pub fn register() {
     });
     yuzuko_core::add_extension(&device::install);
     yuzuko_core::on_realm_drop(shutdown);
+    yuzuko_core::on_reload(shutdown);
   });
 }
 
 fn shutdown() {
+  if yuzuko_core::reload_targets_modules() {
+    state::drop_reloaded();
+    return;
+  }
   state::clear();
   canvas::clear();
 }

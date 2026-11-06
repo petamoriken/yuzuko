@@ -802,9 +802,27 @@ pub fn present(id: u64) -> bool {
   })
 }
 
+pub fn close_all() {
+  let ids = OS.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .map(|os| os.app.by_surface.keys().copied().collect::<Vec<_>>())
+      .unwrap_or_default()
+  });
+  for id in ids {
+    close(id);
+  }
+}
+
 pub fn shutdown() {
-  yuzuko_core::set_task_waker(None);
+  close_all();
   LOCKED.with(|locked| locked.set(None));
+  // A `--watch` restart cannot build a second `EventLoop` in this process.
+  if yuzuko_core::retain_host_loop() {
+    return;
+  }
+  yuzuko_core::set_task_waker(None);
   OS.with(|slot| {
     *slot.borrow_mut() = None;
   });

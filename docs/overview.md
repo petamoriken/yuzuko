@@ -174,7 +174,7 @@ Feature: `accessibility`. It enables `window`. The names are installed on the ma
 
 ## Commands
 
-`yuzuko run` evaluates an ES module. `yuzuko test` runs `Yuzuko.test` and installs that function only for the test process. `yuzuko repl`, and `yuzuko` with no command, evaluate classic-script chunks from the terminal. `yuzuko package` builds the bundle above.
+`yuzuko run` evaluates an ES module. `yuzuko run --watch` restarts that module in a new realm when a loaded file changes. `yuzuko run --watch-hmr` re-evaluates a changed module and the modules that statically import it, in the same realm. A `Yuzuko.Window` or playing `AudioContext` created by a module that is not re-evaluated stays. A window or context created by a re-evaluated module is closed when the new evaluation does not keep it. `yuzuko test` runs `Yuzuko.test` and installs that function only for the test process. `yuzuko repl`, and `yuzuko` with no command, evaluate classic-script chunks from the terminal. `yuzuko package` builds the bundle above.
 
 The programs in [`examples/`](../examples/) open a window and draw on its surface.
 
