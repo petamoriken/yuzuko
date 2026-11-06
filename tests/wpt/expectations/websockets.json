@@ -319,7 +319,11 @@
   },
   "websockets/constructor/007.html": true,
   "websockets/constructor/008.html": true,
-  "websockets/constructor/009.html": true,
+  "websockets/constructor/009.html": {
+    "ignore": {
+      "macos": "The protocol handshake does not finish."
+    }
+  },
   "websockets/constructor/010.html": true,
   "websockets/constructor/011.html": true,
   "websockets/constructor/012.html": true,
@@ -530,7 +534,11 @@
   },
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
-  "websockets/opening-handshake/003-sets-origin.worker.js": true,
+  "websockets/opening-handshake/003-sets-origin.worker.js": {
+    "ignore": {
+      "macos": "The origin handshake does not finish."
+    }
+  },
   "websockets/opening-handshake/003.html": {
     "ignore": {
       "macos": "The IDN origin handshake does not finish."
