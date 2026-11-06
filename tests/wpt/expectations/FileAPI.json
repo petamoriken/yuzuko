@@ -1,11 +1,9 @@
 {
   "FileAPI/Blob-methods-from-detached-frame.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/BlobURL/cross-partition-navigation.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/BlobURL/cross-partition-self-fetch.https.html": {
     "expectedFailures": [
@@ -36,21 +34,17 @@
     ]
   },
   "FileAPI/BlobURL/test2-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/FileReader/progress_event_bubbles_cancelable.html": true,
   "FileAPI/FileReader/test_errors-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/FileReader/test_notreadableerrors-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/FileReader/test_securityerrors-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/FileReader/workers.html": true,
   "FileAPI/FileReaderSync.worker.js": true,
@@ -107,12 +101,10 @@
     ]
   },
   "FileAPI/blob/Blob-stream-byob-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "FileAPI/blob/Blob-stream-sync-xhr-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "FileAPI/blob/Blob-stream.any.js": true,
   "FileAPI/blob/Blob-text.any.js": {
@@ -293,16 +285,13 @@
   },
   "FileAPI/fileReader.any.js": true,
   "FileAPI/filelist-section/filelist.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/filelist-section/filelist_multiple_selected_files-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/filelist-section/filelist_selected_file-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/historical.https.html": {
     "expectedFailures": [
@@ -310,8 +299,7 @@
     ]
   },
   "FileAPI/idlharness-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/idlharness.any.js": {
     "expectedFailures": [
@@ -326,13 +314,11 @@
     ]
   },
   "FileAPI/idlharness.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/idlharness.worker.js": false,
   "FileAPI/progress-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/reading-data-section/Determining-Encoding.any.js": true,
   "FileAPI/reading-data-section/FileReader-event-handler-attributes.any.js": true,
@@ -341,12 +327,10 @@
   "FileAPI/reading-data-section/filereader_error.any.js": true,
   "FileAPI/reading-data-section/filereader_events.any.js": true,
   "FileAPI/reading-data-section/filereader_file-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/reading-data-section/filereader_file_img-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/reading-data-section/filereader_readAsArrayBuffer.any.js": true,
   "FileAPI/reading-data-section/filereader_readAsBinaryString.any.js": true,
@@ -358,20 +342,16 @@
   "FileAPI/reading-data-section/filereader_result.any.js": true,
   "FileAPI/unicode.any.js": true,
   "FileAPI/url/cross-global-revoke.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "FileAPI/url/multi-global-origin-serialization.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "FileAPI/url/sandboxed-iframe.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/url/unicode-origin.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "FileAPI/url/url-charset.window.js": {
     "expectedFailures": [
@@ -393,8 +373,7 @@
   },
   "FileAPI/url/url-in-tags.window.js": false,
   "FileAPI/url/url-lifetime.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/url/url-reload.window.js": {
     "expectedFailures": [
@@ -434,19 +413,15 @@
     ]
   },
   "FileAPI/url/url_createobjecturl_file-manual.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "FileAPI/url/url_createobjecturl_file_img-manual.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "FileAPI/url/url_xmlhttprequest_img-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "FileAPI/url/url_xmlhttprequest_img.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   }
 }

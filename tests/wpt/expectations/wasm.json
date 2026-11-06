@@ -67,16 +67,13 @@
     ]
   },
   "wasm/jsapi/functions/entry-different-function-realm.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/jsapi/functions/entry.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "wasm/jsapi/functions/incumbent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/jsapi/gc/casts.tentative.any.js": true,
   "wasm/jsapi/gc/exported-object.tentative.any.js": true,
@@ -153,8 +150,7 @@
   "wasm/jsapi/module/moduleSource.tentative.any.js": true,
   "wasm/jsapi/module/toString.any.js": true,
   "wasm/jsapi/proto-from-ctor-realm.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/jsapi/prototypes.any.js": true,
   "wasm/jsapi/table/constructor-types.tentative.any.js": {
@@ -200,26 +196,21 @@
   "wasm/webapi/esm-integration/reuse-wasm-loaded-as-classic-script.tentative.html": false,
   "wasm/webapi/esm-integration/script-src-allows-source-phase-wasm.tentative.html": false,
   "wasm/webapi/esm-integration/script-src-allows-wasm.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/webapi/esm-integration/script-src-blocks-wasm.tentative.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "wasm/webapi/esm-integration/scripting-disabled.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/webapi/esm-integration/source-phase-blocked-by-csp.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/webapi/esm-integration/source-phase-import-non-UTF8.tentative.html": false,
   "wasm/webapi/esm-integration/source-phase-js-string.tentative.html": false,
   "wasm/webapi/esm-integration/source-phase-preload.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "wasm/webapi/esm-integration/source-phase.tentative.html": false,
   "wasm/webapi/esm-integration/wasm-import-wasm-export.tentative.html": false,
@@ -242,8 +233,7 @@
   "wasm/webapi/invalid-code.any.js": true,
   "wasm/webapi/modified-contenttype.any.js": true,
   "wasm/webapi/origin.sub.any.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "wasm/webapi/rejected-arg.any.js": true,
   "wasm/webapi/status.any.js": true,

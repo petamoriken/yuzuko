@@ -91,12 +91,10 @@
   },
   "webcodecs/audio-encoder.https.any.js": false,
   "webcodecs/audio-serialization.crossAgentCluster.helper.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/audio-serialization.crossAgentCluster.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": false,
   "webcodecs/chunk-serialization.any.js": true,
@@ -105,12 +103,10 @@
   "webcodecs/encoded-video-chunk.any.js": true,
   "webcodecs/encoded-video-chunk.crossOriginIsolated.https.any.js": true,
   "webcodecs/encodedVideoChunk-serialization.crossAgentCluster.helper.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/encodedVideoChunk-serialization.crossAgentCluster.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/full-cycle-test.https.any.js": {
     "expectedFailures": [
@@ -201,26 +197,21 @@
   },
   "webcodecs/image-decoder-animated-zero-delay.https.any.js": true,
   "webcodecs/image-decoder-disconnect-readable-stream-crash.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/image-decoder-image-orientation-none.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/image-decoder-transfer-nondetachable-crash.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/image-decoder.crossOriginIsolated.https.any.js": true,
   "webcodecs/image-decoder.https.any.js": false,
   "webcodecs/imagedecoder-bmp-in-ico-crash.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/imagedecoder-zero-length-crash.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/opus-multichannel.https.any.js": {
     "expectedFailures": [
@@ -241,16 +232,13 @@
     ]
   },
   "webcodecs/serialization-to-shared-and-service-workers-helper.js": {
-    "ignore": true,
-    "reason": "The runner has no shared worker or service worker."
+    "ignore": "The runner has no shared worker or service worker."
   },
   "webcodecs/serialization-to-shared-and-service-workers.https.html": {
-    "ignore": true,
-    "reason": "The runner has no shared worker or service worker."
+    "ignore": "The runner has no shared worker or service worker."
   },
   "webcodecs/serialization.crossAgentCluster.serviceworker.js": {
-    "ignore": true,
-    "reason": "The runner has no shared worker or service worker."
+    "ignore": "The runner has no shared worker or service worker."
   },
   "webcodecs/temporal-svc-encoding.https.any.js": {
     "expectedFailures": [
@@ -307,8 +295,7 @@
     }
   },
   "webcodecs/video-encoder-canvasImageSource.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/video-encoder-config.https.any.js": {
     "expectedFailures": [
@@ -488,8 +475,7 @@
   },
   "webcodecs/videoFrame-alpha.any.js": true,
   "webcodecs/videoFrame-canvasImageSource.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/videoFrame-construction.any.js": {
     "expectedFailures": [
@@ -511,8 +497,7 @@
   },
   "webcodecs/videoFrame-construction.crossOriginIsolated.https.any.js": true,
   "webcodecs/videoFrame-construction.crossOriginSource.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webcodecs/videoFrame-construction.window.js": {
     "expectedFailures": [
@@ -566,12 +551,10 @@
     ]
   },
   "webcodecs/videoFrame-encode-preserves-input.crossOrigin.helper.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/videoFrame-encode-preserves-input.crossOrigin.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/videoFrame-encode-preserves-input.https.any.js": {
     "expectedFailures": [
@@ -656,16 +639,13 @@
     ]
   },
   "webcodecs/videoFrame-serialization.crossAgentCluster.helper.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webcodecs/videoFrame-serialization.crossAgentCluster.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/videoFrame-serialization.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webcodecs/videoFrame-texImage.any.js": {
     "expectedFailures": [

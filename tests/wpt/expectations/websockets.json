@@ -308,16 +308,14 @@
   "websockets/closing-handshake/003.html": true,
   "websockets/closing-handshake/004.html": true,
   "websockets/constants.sub.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "websockets/constructor.any.js": true,
   "websockets/constructor/001.html": true,
   "websockets/constructor/004.html": true,
   "websockets/constructor/005.html": true,
   "websockets/constructor/006.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/constructor/007.html": true,
   "websockets/constructor/008.html": true,
@@ -337,8 +335,7 @@
     ]
   },
   "websockets/constructor/016.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
@@ -381,32 +378,25 @@
     ]
   },
   "websockets/cookies/001.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/002.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/003.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/004.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/005.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/006.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/007.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/cookies/cross-origin-cookie-set.html": {
     "expectedFailures": [
@@ -454,22 +444,18 @@
   "websockets/interfaces/WebSocket/events/001.html": true,
   "websockets/interfaces/WebSocket/events/002.html": true,
   "websockets/interfaces/WebSocket/events/003.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/004.html": true,
   "websockets/interfaces/WebSocket/events/006.html": true,
   "websockets/interfaces/WebSocket/events/007.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/008.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/009.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/010.html": true,
   "websockets/interfaces/WebSocket/events/011.html": true,
@@ -492,8 +478,7 @@
   "websockets/interfaces/WebSocket/events/017.html": true,
   "websockets/interfaces/WebSocket/events/018.html": true,
   "websockets/interfaces/WebSocket/events/019.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/020.html": true,
   "websockets/interfaces/WebSocket/extensions/001.html": true,
@@ -524,8 +509,7 @@
   },
   "websockets/interfaces/WebSocket/send/009.html": true,
   "websockets/interfaces/WebSocket/send/010.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/send/011.html": true,
   "websockets/interfaces/WebSocket/send/012.html": true,
@@ -543,20 +527,16 @@
     ]
   },
   "websockets/multi-globals/message-received.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "websockets/multi-globals/url-parsing/current/current.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/multi-globals/url-parsing/incumbent/incumbent.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/multi-globals/url-parsing/url-parsing.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
@@ -596,8 +576,7 @@
     ]
   },
   "websockets/send-data-isolation.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "websockets/send-many-64K-messages-with-backpressure.any.js": {
     "expectedFailures": [
@@ -696,12 +675,10 @@
     }
   },
   "websockets/unload-a-document/001-1.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/unload-a-document/001-2.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/unload-a-document/001.html": {
     "expectedFailures": [
@@ -709,12 +686,10 @@
     ]
   },
   "websockets/unload-a-document/002-1.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/unload-a-document/002-2.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/unload-a-document/002.html": {
     "expectedFailures": [
@@ -722,16 +697,13 @@
     ]
   },
   "websockets/unload-a-document/003.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/unload-a-document/004.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "websockets/unload-a-document/005-1.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "websockets/unload-a-document/005.html": {
     "expectedFailures": [

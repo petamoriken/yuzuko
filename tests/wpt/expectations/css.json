@@ -1,160 +1,122 @@
 {
   "css/css-font-loading/empty-family-load.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/font-face-reject.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/font-face-width-descriptor-aliasing-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/font-face-width-descriptor-aliasing.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-css-connected-descriptors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-descriptor-updates-2.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-descriptor-updates-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-descriptor-updates.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-font-variation-settings-persisted-js-api.html": true,
   "css/css-font-loading/fontface-fonts-loading.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-from-arraybuffer-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-from-arraybuffer-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-from-arraybuffer.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-invalid-arraybuffer.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-invalid-family.tentative.html": true,
   "css/css-font-loading/fontface-load-in-modal-dialog.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-loadingevent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontface-override-descriptor-getter-setter.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "css/css-font-loading/fontface-override-descriptors-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-override-descriptors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-size-adjust-descriptor-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-size-adjust-descriptor.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontface-width.html": true,
   "css/css-font-loading/fontfaceset-check-error-status.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-clear-css-connected-2-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-clear-css-connected-2.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-clear-css-connected.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-delete-css-connected-2-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-delete-css-connected-2.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-delete-css-connected.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-has.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-load-css-connected.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-load-css-wide-keywords.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-load-var.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-loading-worker-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-no-root-element.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfaceset-ready-unused-face-failed-local-source.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-update-after-stylesheet-change.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/fontfaceset-worker-fontface-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "css/css-font-loading/fontfacesetloadevent-constructor.html": true,
   "css/css-font-loading/historical.html": true,
   "css/css-font-loading/idlharness.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/css-font-loading/nonexistent-file-url.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/geometry/DOMMatrix-001.html": true,
   "css/geometry/DOMMatrix-002.html": true,
@@ -198,8 +160,7 @@
     ]
   },
   "css/geometry/DOMMatrix2DInit-validate-fixup.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/geometry/DOMMatrixInit-validate-fixup.html": true,
   "css/geometry/DOMPoint-001.html": true,
@@ -212,8 +173,7 @@
   "css/geometry/DOMRect-002.html": true,
   "css/geometry/DOMRect-nan.html": true,
   "css/geometry/DOMRectList.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "css/geometry/WebKitCSSMatrix.html": {
     "expectedFailures": [
@@ -226,7 +186,6 @@
   "css/geometry/idlharness.any.js": true,
   "css/geometry/spec-examples.html": true,
   "css/geometry/structured-serialization.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   }
 }

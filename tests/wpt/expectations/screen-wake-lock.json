@@ -1,7 +1,6 @@
 {
   "screen-wake-lock/chrome-bug-1348019.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/idlharness.https.window.js": false,
   "screen-wake-lock/wakelock-active-document.https.window.js": {
@@ -12,22 +11,18 @@
     ]
   },
   "screen-wake-lock/wakelock-disabled-by-permissions-policy.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/wakelock-document-hidden.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/wakelock-enabled-by-permissions-policy-attribute-redirect-on-load.https.html": false,
   "screen-wake-lock/wakelock-enabled-by-permissions-policy-attribute.https.html": false,
   "screen-wake-lock/wakelock-enabled-by-permissions-policy.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/wakelock-enabled-on-self-origin-by-permissions-policy.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/wakelock-insecure-context.any.js": {
     "expectedFailures": [
@@ -43,8 +38,7 @@
     ]
   },
   "screen-wake-lock/wakelock-supported-by-permissions-policy.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "screen-wake-lock/wakelock-type.https.window.js": false,
   "screen-wake-lock/wakelockpermissiondescriptor.https.html": false

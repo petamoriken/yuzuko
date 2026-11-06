@@ -4,16 +4,13 @@
   "streams/piping/close-propagation-backward.any.js": true,
   "streams/piping/close-propagation-forward.any.js": true,
   "streams/piping/crashtests/cross-piping.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/piping/crashtests/cross-piping2.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/piping/crashtests/shutdown.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/piping/error-propagation-backward.any.js": true,
   "streams/piping/error-propagation-forward.any.js": true,
@@ -30,16 +27,13 @@
   "streams/readable-byte-streams/bad-buffers-and-views.any.js": true,
   "streams/readable-byte-streams/construct-byob-request.any.js": true,
   "streams/readable-byte-streams/crashtests/from-cross-realm-error.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-byte-streams/crashtests/from-cross-realm.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-byte-streams/crashtests/tee-from-scroll-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-byte-streams/crashtests/tee-locked-stream.any.js": true,
   "streams/readable-byte-streams/enqueue-with-detached-buffer.any.js": true,
@@ -57,17 +51,14 @@
   "streams/readable-streams/constructor.any.js": true,
   "streams/readable-streams/count-queuing-strategy-integration.any.js": true,
   "streams/readable-streams/crashtests/exception-during-size-while-pulling.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-streams/crashtests/from-cross-realm.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-streams/crashtests/garbage-collection.any.js": true,
   "streams/readable-streams/crashtests/strategy-worker-terminate.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-streams/cross-realm-crash.window.js": {
     "expectedFailures": [
@@ -80,8 +71,7 @@
   "streams/readable-streams/garbage-collection.any.js": true,
   "streams/readable-streams/general.any.js": true,
   "streams/readable-streams/global.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "streams/readable-streams/owning-type-message-port.tentative.any.js": true,
   "streams/readable-streams/owning-type-video-frame.tentative.any.js": true,
@@ -90,16 +80,14 @@
   "streams/readable-streams/read-task-handling.window.js": true,
   "streams/readable-streams/reentrant-strategies.any.js": true,
   "streams/readable-streams/tee-detached-context-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/readable-streams/tee.any.js": true,
   "streams/readable-streams/templated.any.js": true,
   "streams/transferable/audioworklet.https.html": true,
   "streams/transferable/deserialize-error.window.js": false,
   "streams/transferable/gc-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "streams/transferable/readable-stream.html": {
     "expectedFailures": [
@@ -152,8 +140,7 @@
     ]
   },
   "streams/transferable/service-worker.https.html": {
-    "ignore": true,
-    "reason": "The runner has no shared worker or service worker."
+    "ignore": "The runner has no shared worker or service worker."
   },
   "streams/transferable/shared-worker.html": {
     "expectedFailures": [
@@ -186,8 +173,7 @@
     ]
   },
   "streams/transferable/window.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "streams/transferable/worker.html": true,
   "streams/transferable/writable-stream.html": {

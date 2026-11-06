@@ -2497,16 +2497,13 @@
     ]
   },
   "url/a-element.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "url/data-uri-fragment.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "url/failure.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "url/historical.any.js": {
     "expectedFailures": [

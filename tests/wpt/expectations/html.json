@@ -1,109 +1,84 @@
 {
   "html/canvas/element/manual/imagebitmap/canvas-ImageBitmap-close.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/canvas-createImageBitmap-resize.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/canvas-createImageBitmap-video-resize.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/common.sub.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html": true,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-bounds.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage-closed.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation_none.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-flipY.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-in-worker-transfer.html": false,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-invalid-args.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-origin.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-premultiplyAlpha.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-resolves-in-task.any.js": false,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-serializable.html": false,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-sizeOverflow.html": true,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-svg-resize-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-svg-resize.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/createImageBitmap-transfer.html": false,
   "html/canvas/element/manual/imagebitmap/imageBitmap-from-imageData-no-image-rotation-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmap-from-imageData-no-image-rotation.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap-flipped-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap-flipped.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap-webgl-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap-webgl.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imageBitmapRendering-transferFromImageBitmap.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/element/manual/imagebitmap/imagebitmap-replication-exif-orientation.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/2d.conformance.requirements.basics.html": true,
   "html/canvas/offscreen/2d.conformance.requirements.basics.worker.js": true,
@@ -140,8 +115,7 @@
   "html/canvas/offscreen/canvas-context/2d.canvas.context.unique.worker.js": true,
   "html/canvas/offscreen/canvas-context/2d.getContext.options.any.js": true,
   "html/canvas/offscreen/canvas-context/chrome-567611695-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.color.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.initial.color.worker.js": true,
@@ -288,148 +262,112 @@
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.range.html": true,
   "html/canvas/offscreen/compositing/2d.composite.globalAlpha.range.worker.js": true,
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.drawImage-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.drawImage.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.drawImage.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.fillRect-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.fillRect.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.fillRect.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.pattern-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.pattern.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.no_shadow.pattern.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.drawImage-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.drawImage.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.drawImage.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.fillRect-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.fillRect.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.fillRect.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.pattern-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.pattern.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.filter.shadow.pattern.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.drawImage-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.drawImage.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.drawImage.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.fillRect-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.fillRect.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.fillRect.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.pattern-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.pattern.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.no_shadow.pattern.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.drawImage-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.drawImage.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.drawImage.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.fillRect-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.fillRect.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.fillRect.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.pattern-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.pattern.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.grid.no_filter.shadow.pattern.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/compositing/2d.composite.image.clear.html": true,
   "html/canvas/offscreen/compositing/2d.composite.image.clear.worker.js": true,
@@ -1158,16 +1096,13 @@
     ]
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.colorInterpolationMethod-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.colorInterpolationMethod.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.colorInterpolationMethod.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.worker.js": true,
@@ -1178,16 +1113,13 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.empty.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.empty.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.hueInterpolationMethod-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.hueInterpolationMethod.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.hueInterpolationMethod.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.alpha.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.alpha.worker.js": true,
@@ -1336,16 +1268,13 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.3.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.3.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.translated.repeat.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.relativecolor.html": {
     "expectedFailures": [
@@ -1491,64 +1420,49 @@
     ]
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.discrete.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.discrete.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.discrete.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.gamma.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.gamma.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.gamma.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.identity.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.identity.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.identity.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.linear.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.linear.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.linear.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.table.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.table.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.componentTransfer.table.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.convolveMatrix.exceptions.tentative.html": {
     "expectedFailures": [
@@ -1571,28 +1485,22 @@
     ]
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShadow.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShadow.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShadow.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.gaussianBlur.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.gaussianBlur.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.gaussianBlur.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.tentative.html": {
     "expectedFailures": [
@@ -1615,16 +1523,13 @@
     ]
   },
   "html/canvas/offscreen/filters/2d.filter.drop-shadow-globalAlpha-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.drop-shadow-globalAlpha.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.drop-shadow-globalAlpha.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.blur.exceptions.tentative.html": true,
   "html/canvas/offscreen/filters/2d.filter.layers.blur.exceptions.tentative.worker.js": true,
@@ -1639,64 +1544,49 @@
     ]
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.discrete.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.discrete.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.discrete.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.gamma.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.gamma.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.gamma.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.identity.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.identity.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.identity.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.linear.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.linear.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.linear.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.table.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.table.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.componentTransfer.table.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.convolveMatrix.exceptions.tentative.html": {
     "expectedFailures": [
@@ -1719,28 +1609,22 @@
     ]
   },
   "html/canvas/offscreen/filters/2d.filter.layers.dropShadow.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.dropShadow.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.dropShadow.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.gaussianBlur.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.gaussianBlur.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.gaussianBlur.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/filters/2d.filter.layers.turbulence.inputTypes.tentative.html": {
     "expectedFailures": [
@@ -1755,64 +1639,49 @@
   "html/canvas/offscreen/filters/2d.filter.value.html": true,
   "html/canvas/offscreen/filters/2d.filter.value.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.isotropic.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.isotropic.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.isotropic.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-x.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-x.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-x.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-y.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-y.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.mostly-y.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.x-only.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.x-only.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.x-only.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.y-only.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.y-only.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.anisotropic-blur.y-only.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.beginLayer-options.tentative.html": {
     "expectedFailures": [
@@ -1825,404 +1694,305 @@
     ]
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.no-clipping.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.blur-from-outside-canvas.with-clipping.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.full-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.full.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.full.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.partial-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.partial.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clearRect.partial.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside-and-outside.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-inside.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.clip-outside.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.cross-layer-paths-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.cross-layer-paths.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.cross-layer-paths.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur-and-shadow.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur-and-shadow.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur-and-shadow.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.blur.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.shadow.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.shadow.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.css-filters.shadow.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.getTransform.html": true,
   "html/canvas/offscreen/layers/2d.layer.ctm.getTransform.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.ctm.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.resetTransform-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.resetTransform.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.resetTransform.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.setTransform-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.setTransform.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.setTransform.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.shadow-in-transformed-layer-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.shadow-in-transformed-layer.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.ctm.shadow-in-transformed-layer.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.draw-in-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.draw-in-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.draw-in-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.drawImage.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.exceptions-are-no-op.tentative.html": true,
   "html/canvas/offscreen/layers/2d.layer.exceptions-are-no-op.tentative.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.no-transform-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.no-transform.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.no-transform.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.rotation-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.rotation.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.ctx-filter.rotation.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.no-transform.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.no-transform.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.no-transform.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.rotation.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.rotation.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.ctx-filter.rotation.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.no-transform.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.no-transform.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.no-transform.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.rotation.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.rotation.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.filter.no-cxt-filter.rotation.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.no-transform-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.no-transform.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.no-transform.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.rotation-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.rotation.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.global-states.no-cxt-filter.rotation.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.globalCompositeOperation-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.globalCompositeOperation.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.globalCompositeOperation.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.beginLayer-reset-endLayer.html": true,
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.beginLayer-reset-endLayer.worker.js": true,
@@ -2269,268 +2039,202 @@
     ]
   },
   "html/canvas/offscreen/layers/2d.layer.nested-ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-filters.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-filters.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested-filters.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.nested.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.shadow-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.shadow.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.shadow.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.filtered-layer.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.filtered-layer.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.filtered-layer.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.plain-layer-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.plain-layer.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.non-invertible-matrix.with-render-states.plain-layer.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.opaque-canvas.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.filtered_layer.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.filtered_layer.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.filtered_layer.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.plain_layer-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.plain_layer.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.reset.plain_layer.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.resize-canvas-in-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.resize-canvas-in-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.resize-canvas-in-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.restore-style-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.restore-style.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.restore-style.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.several-complex-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.several-complex.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.several-complex.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance-with-clipping.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.long-distance.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance-with-clipping.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.ctx-filter-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.ctx-filter.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.ctx-filter.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.layer-filter.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.layer-filter.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.shadow-from-outside-canvas.short-distance.layer-filter.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/layers/2d.layer.valid-calls.beginLayer-endLayer.html": true,
   "html/canvas/offscreen/layers/2d.layer.valid-calls.beginLayer-endLayer.worker.js": true,
@@ -2633,167 +2337,127 @@
     ]
   },
   "html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/draw-element-image/animated-gif-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/draw-element-image/canvas-transform-update-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/draw-element-image/ink-overflow-worker-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/draw-element-image/ink-overflow-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "html/canvas/offscreen/manual/draw-element-image/scale-worker-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/draw-element-image/scale-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/draw-element-image/video-worker.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/filter/offscreencanvas.filter.html": false,
   "html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/image-smoothing/image.smoothing.html": true,
   "html/canvas/offscreen/manual/image-smoothing/image.smoothing.worker.js": true,
   "html/canvas/offscreen/manual/layers/unclosed-layers-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/layers/unclosed-layers.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/layers/unclosed-layers.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/layers/unclosed-nested-layers-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/layers/unclosed-nested-layers.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/layers/unclosed-nested-layers.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.fillText-FontFace.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.fillText.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.direction-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.direction.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.lang-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.lang.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.lang.inherit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.transferred.direction.inherit.document.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.transferred.direction.inherit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.transferred.lang.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.transferred.lang.inherit.document.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.transferred.lang.inherit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.direction-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.direction.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.direction.inherit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.lang-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.lang.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/canvas.2d.offscreen.worker.lang.inherit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/text/empty-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas-worker-font-load-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.html": true,
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.worker.js": true,
@@ -2812,54 +2476,42 @@
     ]
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.placeholder.size.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.resize.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.lowlatency.nocrash.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.nocrash.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfercontrol.to.offscreen-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfercontrol.to.offscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfercontrol.to.offscreen.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.sw.https.window.js": false,
   "html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.w.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/manual/transformations/2d.transformation.getTransform.html": true,
   "html/canvas/offscreen/manual/wide-gamut-canvas/2d.color.space.p3.convertToBlobp3.canvas.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/path-objects/2d.path.arc.angle.1.html": true,
   "html/canvas/offscreen/path-objects/2d.path.arc.angle.1.worker.js": true,
@@ -2980,16 +2632,13 @@
   "html/canvas/offscreen/path-objects/2d.path.clip.intersect.html": true,
   "html/canvas/offscreen/path-objects/2d.path.clip.intersect.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.clip.scale-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/path-objects/2d.path.clip.scale.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/path-objects/2d.path.clip.scale.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/path-objects/2d.path.clip.unaffected.html": true,
   "html/canvas/offscreen/path-objects/2d.path.clip.unaffected.worker.js": true,
@@ -3438,102 +3087,78 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.wrongtype.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.put.wrongtype.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.after-rasterization-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.after-rasterization.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.after-rasterization.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.basic.html": true,
   "html/canvas/offscreen/reset/2d.reset.basic.worker.js": true,
   "html/canvas/offscreen/reset/2d.reset.render.drop_shadow-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.drop_shadow.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.drop_shadow.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.global_composite_operation-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.global_composite_operation.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.global_composite_operation.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.line-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.line.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.line.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.misc-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.misc.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.misc.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.miter_limit-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.miter_limit.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.miter_limit.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.text-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.text.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.render.text.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.state.clip-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.state.clip.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.state.clip.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/reset/2d.reset.state.direction.html": true,
   "html/canvas/offscreen/reset/2d.reset.state.direction.worker.js": true,
@@ -3640,8 +3265,7 @@
     ]
   },
   "html/canvas/offscreen/set-proprietary-font-names-001-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/shadows/2d.shadow.alpha.1.html": true,
   "html/canvas/offscreen/shadows/2d.shadow.alpha.1.worker.js": true,
@@ -3778,53 +3402,43 @@
   "html/canvas/offscreen/text/2d.text.direction.valid.html": true,
   "html/canvas/offscreen/text/2d.text.direction.valid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.center.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.center.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.end.ltr.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.end.ltr.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.end.rtl.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.end.rtl.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.left.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.left.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.right.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.right.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.start.ltr.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.start.ltr.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.align.start.rtl.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.align.start.rtl.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.alphabetic.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.alphabetic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.bottom.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.bottom.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.hanging.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.hanging.worker.js": {
     "expectedFailures": [
@@ -3832,8 +3446,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.ideographic.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.ideographic.worker.js": {
     "expectedFailures": [
@@ -3841,13 +3454,11 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.middle.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.middle.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.baseline.top.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.baseline.top.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.basic-manual.html": true,
@@ -3855,13 +3466,11 @@
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.NaN.html": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.NaN.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.large-manual.html": true,
@@ -3877,50 +3486,41 @@
   "html/canvas/offscreen/text/2d.text.draw.fill.unaffected.html": true,
   "html/canvas/offscreen/text/2d.text.draw.fill.unaffected.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fontface.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fontface.repeat.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.fontface.repeat.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.fontface.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.kern.consistent-manual.html": true,
   "html/canvas/offscreen/text/2d.text.draw.kern.consistent-manual.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.basic.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.basic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.end.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.end.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.nonspace.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.nonspace.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.other.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.other.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.space.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.space.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.start.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.draw.space.collapse.start.worker.js": true,
   "html/canvas/offscreen/text/2d.text.draw.stroke.basic-manual.html": true,
@@ -4054,16 +3654,13 @@
   "html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none.html": true,
   "html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none.worker.js": true,
   "html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none2-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none2.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none2.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.drawing.style.textRendering.settings.html": {
     "expectedFailures": [
@@ -4116,32 +3713,25 @@
   "html/canvas/offscreen/text/2d.text.font.weight.html": true,
   "html/canvas/offscreen/text/2d.text.font.weight.worker.js": true,
   "html/canvas/offscreen/text/2d.text.fontVariantCaps.after.reset.font-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps.after.reset.font.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps.after.reset.font.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps1-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps1.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps1.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps2-unexpected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps2.html": {
     "expectedFailures": [
@@ -4154,64 +3744,50 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps3-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps3.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps3.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps4-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps4.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps4.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps5-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps5.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps5.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps6-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps6.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.fontVariantCaps6.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.lang.default.html": true,
   "html/canvas/offscreen/text/2d.text.lang.default.worker.js": true,
   "html/canvas/offscreen/text/2d.text.lang.valid.html": true,
   "html/canvas/offscreen/text/2d.text.lang.valid.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.worker.js": {
     "expectedFailures": [
@@ -4219,8 +3795,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.whitespace.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.whitespace.worker.js": {
     "expectedFailures": [
@@ -4233,8 +3808,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.baselines.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.baselines.worker.js": {
     "expectedFailures": [
@@ -4242,8 +3816,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights-low-ascent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights-low-ascent.worker.js": {
     "expectedFailures": [
@@ -4251,8 +3824,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights-zero-descent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights-zero-descent.worker.js": {
     "expectedFailures": [
@@ -4260,76 +3832,59 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.emHeights.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-align.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-align.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-align.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-baseline.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-baseline.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-baseline.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-drawing-styles-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-drawing-styles-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-drawing-styles-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-font-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-font-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-font-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.worker.js": {
     "expectedFailures": [
@@ -4337,13 +3892,11 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": true,
@@ -4351,28 +3904,23 @@
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.lang.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.lang.inherit.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.lang.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.html": true,
@@ -4380,89 +3928,70 @@
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.selection-rects.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-align.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-align.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-align.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-baseline.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-baseline.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-baseline.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-drawing-styles-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-drawing-styles-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-drawing-styles-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-font-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-font-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-font-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.html": true,
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.basic.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.width.basic.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.empty.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.width.empty.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.width.nullCharacter.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.width.nullCharacter.worker.js": {
     "expectedFailures": [
@@ -4470,8 +3999,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.measure.width.space.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.width.space.worker.js": {
     "expectedFailures": [
@@ -4507,13 +4035,11 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.actualBoundingBox.tentative.worker.js": false,
   "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edge-cases.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.advance-to-position-edge-cases.tentative.worker.js": {
     "expectedFailures": [
@@ -4549,60 +4075,46 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.advance-to-position.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-align.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-range.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-range.tentative.worker.js": {
     "expectedFailures": [
@@ -4610,16 +4122,13 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-exceptions.tentative.html": {
     "expectedFailures": [
@@ -4632,8 +4141,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-position.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-position.tentative.worker.js": {
     "expectedFailures": [
@@ -4651,8 +4159,7 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.position-to-advance.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.position-to-advance.tentative.worker.js": {
     "expectedFailures": [
@@ -4680,60 +4187,46 @@
     ]
   },
   "html/canvas/offscreen/text/2d.text.shape.selection-rects.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-align.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative-expected.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-font-change.tentative.w.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-range.tentative.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-range.tentative.worker.js": {
     "expectedFailures": [
@@ -4741,44 +4234,34 @@
     ]
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.condensed.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.expanded.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.extra-condensed.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.extra-expanded.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.normal.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.semi-condensed.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.semi-expanded.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.ultra-condensed.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/canvas.2d.fontStretch.ultra-expanded.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.bitmap.html": true,
   "html/canvas/offscreen/the-canvas-state/2d.state.saverestore.bitmap.worker.js": true,
@@ -4881,12 +4364,10 @@
     ]
   },
   "html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.jpeg.linear.float.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/editing/dnd/datastore/datatransfer-constructor-001.html": {
     "expectedFailures": [
@@ -4908,8 +4389,7 @@
   },
   "html/webappapis/atob/base64.any.js": true,
   "html/webappapis/microtask-queuing/queue-microtask-cross-realm-callback-report-exception.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "html/webappapis/microtask-queuing/queue-microtask-exceptions.any.js": true,
   "html/webappapis/microtask-queuing/queue-microtask.any.js": true,
@@ -4920,12 +4400,10 @@
     ]
   },
   "html/webappapis/structured-clone/structured-clone-cross-realm-method.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/webappapis/structured-clone/structured-clone-detached-window-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "html/webappapis/structured-clone/structured-clone.any.js": {
     "expectedFailures": [
@@ -4941,17 +4419,14 @@
   "html/webappapis/timers/negative-setinterval.any.js": true,
   "html/webappapis/timers/negative-settimeout.any.js": true,
   "html/webappapis/timers/setinterval-cross-realm-callback-report-exception.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "html/webappapis/timers/setinterval-settimeout-clamping.any.js": true,
   "html/webappapis/timers/settimeout-cross-realm-callback-report-exception.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "html/webappapis/timers/settimeout-detached-iframe.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "html/webappapis/timers/settimeout-setinterval-handles.html": true,
   "html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html": true,

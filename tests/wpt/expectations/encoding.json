@@ -4,72 +4,56 @@
   "encoding/api-replacement-encodings.any.js": true,
   "encoding/api-surrogates-utf8.any.js": true,
   "encoding/big5-encoder.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/bom-handling.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/encodeInto-tail-unmodified.any.js": true,
   "encoding/encodeInto.any.js": true,
   "encoding/eof-shift_jis-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-shift_jis.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-one-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-one.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-three-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-three.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-two-ref.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/eof-utf-8-two.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/idlharness.any.js": true,
   "encoding/iso-2022-jp-decoder.any.js": true,
   "encoding/iso-2022-jp-encoder.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/json-document-utf8.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp-decode-cseucpkdfmtjapanese.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp-decode-errors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp-decode-x-euc-jp.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp-decode.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp-encode-form-cseucpkdfmtjapanese.html": false,
   "encoding/legacy-mb-japanese/euc-jp/eucjp-encode-form-errors-han.html": false,
@@ -43369,40 +43353,32 @@
     ]
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp_chars-cseucpkdfmtjapanese.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp_chars-x-euc-jp.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp_chars.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/euc-jp/eucjp_errors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-decode-csiso2022jp.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-decode-errors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-decode.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-csiso2022jp.html": false,
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-errors-han.html": false,
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-errors-hangul.html": false,
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-errors-misc.html": false,
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-errors-stateful.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form.html": false,
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-href-errors-han.html": {
@@ -86697,52 +86673,40 @@
     ]
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp_chars-csiso2022jp.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp_chars.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp_errors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-csshiftjis.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-errors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-ms932.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-ms_kanji.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-shift-jis.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-sjis.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-windows-31j.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode-x-sjis.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-decode.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis-encode-form-csshiftjis.html": false,
   "encoding/legacy-mb-japanese/shift_jis/sjis-encode-form-errors-han.html": false,
@@ -130047,84 +130011,64 @@
     ]
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-csshiftjis.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-ms932.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-ms_kanji.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-shift-jis.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-sjis.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-windows-31j.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars-x-sjis.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_chars.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-japanese/shift_jis/sjis_errors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-cseuckr.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-csksc56011987.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-errors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-iso-ir-149.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-korean.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-ks_c_5601-1987.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-ks_c_5601-1989.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-ksc5601.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-ksc_5601.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode-windows-949.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-decode.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr-encode-form-cseuckr.html": false,
   "encoding/legacy-mb-korean/euc-kr/euckr-encode-form-csksc56011987.html": false,
@@ -173415,90 +173359,69 @@
     ]
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-cseuckr.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-csksc56011987.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-iso-ir-149.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-korean.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-ks_c_5601-1987.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-ks_c_5601-1989.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-ksc5601.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-ksc_5601.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars-windows-949.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_chars.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-korean/euc-kr/euckr_errors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-schinese/gb18030/gb18030-decoder.any.js": true,
   "encoding/legacy-mb-schinese/gb18030/gb18030-encoder.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-schinese/gbk/gbk-decoder.any.js": true,
   "encoding/legacy-mb-schinese/gbk/gbk-encoder.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-big5-hkscs.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-cn-big5.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-csbig5.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-errors.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-extra.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode-x-x-big5.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-decode.html": {
-    "ignore": true,
-    "reason": "The file needs a layout element."
+    "ignore": "The file needs a layout element."
   },
   "encoding/legacy-mb-tchinese/big5/big5-enc-ascii.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/legacy-mb-tchinese/big5/big5-encode-form-big5-hkscs.html": false,
   "encoding/legacy-mb-tchinese/big5/big5-encode-form-cn-big5.html": false,
@@ -216918,36 +216841,28 @@
     ]
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars-big5-hkscs.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars-cn-big5.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars-csbig5.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars-x-x-big5.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_chars_extra.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/legacy-mb-tchinese/big5/big5_errors.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/remove-only-one-bom.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/replacement-encodings.any.js": true,
   "encoding/sharedarraybuffer.https.html": true,
@@ -217125,13 +217040,11 @@
   },
   "encoding/single-byte-decoder.any.js": true,
   "encoding/sniffing.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/streams/backpressure.any.js": true,
   "encoding/streams/crashtests/from-cross-realm.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/streams/decode-attributes.any.js": true,
   "encoding/streams/decode-bad-chunks.any.js": true,
@@ -217153,8 +217066,7 @@
   "encoding/streams/readable-writable-properties.any.js": true,
   "encoding/streams/realms.window.js": false,
   "encoding/streams/stringification-crash.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "encoding/textdecoder-arguments.any.js": true,
   "encoding/textdecoder-byte-order-marks.any.js": true,
@@ -217334,11 +217246,9 @@
     ]
   },
   "encoding/utf-32-from-win1252.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "encoding/utf-32.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   }
 }

@@ -54,8 +54,7 @@
     ]
   },
   "webtransport/bidirectional-cancel-crash.https.html": {
-    "ignore": true,
-    "reason": "The file is not a testharness document."
+    "ignore": "The file is not a testharness document."
   },
   "webtransport/close.https.any.js": {
     "expectedFailures": [
@@ -101,8 +100,7 @@
     ]
   },
   "webtransport/constructor-certificate-hashes.https.sub.any.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webtransport/constructor-sharedarraybuffer.https.any.js": {
     "expectedFailures": [
@@ -111,8 +109,7 @@
     ]
   },
   "webtransport/constructor.https.sub.any.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webtransport/csp-fail.https.window.js": {
     "expectedFailures": [
@@ -130,8 +127,7 @@
     ]
   },
   "webtransport/datagram-cancel-crash.https.sub.window.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webtransport/datagrams-writable.https.any.js": {
     "expectedFailures": [
@@ -227,16 +223,13 @@
     ]
   },
   "webtransport/historical.https.sub.any.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webtransport/idlharness.https.sub.any.js": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "webtransport/in-removed-iframe.https.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "webtransport/incoming-multiple-streams.https.any.js": {
     "expectedFailures": [

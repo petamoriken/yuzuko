@@ -1,12 +1,10 @@
 {
   "requestidlecallback/basic.html": true,
   "requestidlecallback/callback-after-removed-frame-with-pending-timeout.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-exception.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-idle-periods.html": {
     "expectedFailures": [
@@ -14,24 +12,19 @@
     ]
   },
   "requestidlecallback/callback-iframe-different-origin.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-iframe.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-invoked.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-multiple-calls.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-removed-frame.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-suspended.html": {
     "expectedFailures": [
@@ -39,18 +32,15 @@
     ]
   },
   "requestidlecallback/callback-timeRemaining-cross-realm-method.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-timeout-when-busy.html": true,
   "requestidlecallback/callback-timeout.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/callback-xhr-sync.html": false,
   "requestidlecallback/cancel-invoked.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "requestidlecallback/deadline-after-expired-timer.html": true,
   "requestidlecallback/deadline-max-rAF-dynamic.html": false,

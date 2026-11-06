@@ -511,8 +511,7 @@
   "WebCryptoAPI/secure-curves/serialization/x448.https.any.js": true,
   "WebCryptoAPI/secure-curves/sign_verify/eddsa_curve448.https.any.js": true,
   "WebCryptoAPI/secure_context/crypto-subtle-secure-context-available.https.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "WebCryptoAPI/serialization/aes-cbc.https.any.js": true,
   "WebCryptoAPI/serialization/aes-ctr.https.any.js": true,

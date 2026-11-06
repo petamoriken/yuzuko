@@ -1,11 +1,9 @@
 {
   "imagebitmap-renderingcontext/bitmaprenderer-as-imagesource.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/context-creation-offscreen-with-alpha.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/context-creation-offscreen.html": {
     "expectedFailures": [
@@ -13,47 +11,36 @@
     ]
   },
   "imagebitmap-renderingcontext/context-creation-with-alpha.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/context-creation.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/context-preserves-canvas.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/toBlob-origin-clean-offscreen.sub.html": {
-    "ignore": true,
-    "reason": "The runner does not apply .sub. substitutions."
+    "ignore": "The runner does not apply .sub. substitutions."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-ToBlob-offscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-ToBlob-transferControlToOffscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-TransferToImageBitmap-offscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-TransferToImageBitmap-transferControlToOffscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-detached.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-null-offscreen.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   },
   "imagebitmap-renderingcontext/transferFromImageBitmap-null.html": {
-    "ignore": true,
-    "reason": "The file needs a document."
+    "ignore": "The file needs a document."
   }
 }

@@ -5,9 +5,9 @@
 //! ignore for this host. `YUZUKO_WPT_FILTER` keeps paths that contain the
 //! substring.
 //!
-//! `ignore` and `flaky` require a reason. `ignore` may be an object whose
-//! keys are `linux`, `macos`, and `windows`, and each value is a reason.
-//! `flaky` has the same shape and retries that platform up to three times.
+//! `ignore` and `flaky` are a reason string, or an object of `linux`,
+//! `macos`, and `windows` whose values are reasons. `flaky` retries that
+//! platform up to three times.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -233,7 +233,7 @@ fn wpt_expectations_match() {
           saved.insert(case.key.clone(), next);
         } else if !saved.get(&case.key).is_some_and(ignored_everywhere) {
           mismatches.push(format!(
-            "{}: expected an all-platform ignore with a reason",
+            "{}: expected {{\"ignore\": \"reason\"}} for a file this runner skips",
             case.key
           ));
         }
@@ -1585,7 +1585,10 @@ fn parse_expect_object(
 ) -> Expect {
   for name in map.keys() {
     match name.as_str() {
-      "ignore" | "flaky" | "reason" | "expectedFailures" | "fail" => {}
+      "ignore" | "flaky" | "expectedFailures" | "fail" => {}
+      "reason" => {
+        panic!("{key}: write the reason as the value of ignore or flaky")
+      }
       other => panic!("{key}: unsupported expectation field {other}"),
     }
   }
@@ -1602,17 +1605,6 @@ fn parse_expect_object(
   {
     panic!("{key}: ignore and flaky name the same platform");
   }
-  let wants_reason =
-    matches!(ignore, Note::All { .. }) || matches!(flaky, Note::All { .. });
-  let sibling = map.get("reason").map(|value| reason_field(key, value));
-  if wants_reason && sibling.is_none() {
-    panic!("{key}: a reason is required");
-  }
-  if !wants_reason && sibling.is_some() {
-    panic!("{key}: write the reason on each platform");
-  }
-  let ignore = fill_reason(ignore, sibling.clone());
-  let flaky = fill_reason(flaky, sibling);
   let has_failures = map.contains_key("expectedFailures");
   let has_fail = map.contains_key("fail");
   if has_failures && has_fail {
@@ -1659,22 +1651,13 @@ fn parse_expect_object(
 fn parse_mark(key: &str, label: &str, value: Option<&Value>) -> Note {
   match value {
     None => Note::No,
-    Some(Value::Bool(true)) => Note::All {
-      reason: String::new(),
+    Some(Value::String(text)) => Note::All {
+      reason: nonempty_reason(key, label, text),
     },
     Some(Value::Object(platforms)) => parse_platforms(key, label, platforms),
-    Some(_) => panic!(
-      "{key}: {label} must be true or a platform object; write a reason in \"reason\""
-    ),
-  }
-}
-
-fn fill_reason(note: Note, reason: Option<String>) -> Note {
-  match note {
-    Note::All { .. } => Note::All {
-      reason: reason.expect("all-platform reason"),
-    },
-    other => other,
+    Some(_) => {
+      panic!("{key}: {label} must be a reason string or a platform object")
+    }
   }
 }
 
@@ -1698,13 +1681,6 @@ fn parse_platforms(
     platforms.insert(platform, reason);
   }
   Note::Platforms(platforms)
-}
-
-fn reason_field(key: &str, value: &Value) -> String {
-  let Some(text) = value.as_str() else {
-    panic!("{key}: reason must be a string");
-  };
-  nonempty_reason(key, "reason", text)
 }
 
 fn nonempty_reason(key: &str, label: &str, text: &str) -> String {
@@ -1759,7 +1735,7 @@ fn note_object(name: &str, note: &Note) -> Value {
   let Note::All { reason } = note else {
     unreachable!("all-platform note");
   };
-  json!({ name: true, "reason": reason })
+  json!({ name: reason })
 }
 
 fn insert_note(
@@ -1770,8 +1746,7 @@ fn insert_note(
   match note {
     Note::No => {}
     Note::All { reason } => {
-      map.insert(name.to_string(), Value::Bool(true));
-      map.insert("reason".to_string(), Value::String(reason.clone()));
+      map.insert(name.to_string(), Value::String(reason.clone()));
     }
     Note::Platforms(platforms) => {
       map.insert(name.to_string(), platforms_json(platforms));
@@ -1789,17 +1764,15 @@ fn platforms_json(platforms: &BTreeMap<Platform, String>) -> Value {
 
 #[test]
 fn expectation_ignore_reason_round_trips() {
-  let value = json!({"ignore": true, "reason": "Needs a document"});
+  let value = json!({"ignore": "Needs a document"});
   let expect = parse_expect("example.js", value.clone());
   assert!(ignored_everywhere(&expect));
   assert!(noted_on(&expect.ignore, Platform::Linux));
   assert!(noted_on(&expect.ignore, Platform::Macos));
   assert!(noted_on(&expect.ignore, Platform::Windows));
   assert_eq!(expect_json(&expect), value);
-  let spaced = parse_expect(
-    "example.js",
-    json!({"ignore": true, "reason": "  Needs a document  "}),
-  );
+  let spaced =
+    parse_expect("example.js", json!({"ignore": "  Needs a document  "}));
   assert_eq!(expect_json(&spaced), value);
 }
 
@@ -1840,9 +1813,9 @@ fn expectation_bool_and_failures_round_trip() {
   assert_eq!(
     expect_json(&parse_expect(
       "example.js",
-      json!({"ignore": true, "reason": "Needs a document"}),
+      json!({"ignore": "Needs a document"}),
     )),
-    json!({"ignore": true, "reason": "Needs a document"})
+    json!({"ignore": "Needs a document"})
   );
   let parsed =
     parse_expect("example.js", json!({"expectedFailures": ["b", "a", "a"]}));
@@ -1854,16 +1827,14 @@ fn expectation_bool_and_failures_round_trip() {
 
 #[test]
 fn expectation_update_keeps_reason_and_other_platforms() {
-  let documented = parse_expect(
-    "example.js",
-    json!({"ignore": true, "reason": "Needs a document"}),
-  );
+  let documented =
+    parse_expect("example.js", json!({"ignore": "Needs a document"}));
   assert_eq!(
     expect_json(&preserve_runner_ignore(
       Some(&documented),
       "The runner skips this file."
     )),
-    json!({"ignore": true, "reason": "Needs a document"})
+    json!({"ignore": "Needs a document"})
   );
   let linux =
     parse_expect("example.js", json!({"ignore": {"linux": "No VA-API"}}));
@@ -1872,7 +1843,7 @@ fn expectation_update_keeps_reason_and_other_platforms() {
       Some(&linux),
       "The runner skips this file."
     )),
-    json!({"ignore": true, "reason": "No VA-API"})
+    json!({"ignore": "No VA-API"})
   );
   let split = parse_expect(
     "example.js",
@@ -1885,7 +1856,7 @@ fn expectation_update_keeps_reason_and_other_platforms() {
       Some(&split),
       "The runner skips this file."
     )),
-    json!({"ignore": true, "reason": "The runner skips this file."})
+    json!({"ignore": "The runner skips this file."})
   );
 
   let previous = parse_expect(
@@ -1936,22 +1907,22 @@ fn expectation_rejects_darwin_as_a_platform() {
 }
 
 #[test]
-#[should_panic(expected = "reason must not be empty")]
+#[should_panic(expected = "ignore must not be empty")]
 fn expectation_rejects_an_empty_reason() {
-  parse_expect("example.js", json!({"ignore": true, "reason": "  "}));
+  parse_expect("example.js", json!({"ignore": "  "}));
 }
 
 #[test]
-#[should_panic(expected = "write the reason on each platform")]
-fn expectation_rejects_a_shared_reason_on_platforms() {
+#[should_panic(expected = "write the reason as the value of ignore or flaky")]
+fn expectation_rejects_a_sibling_reason() {
   parse_expect(
     "example.js",
-    json!({"ignore": {"linux": "No VA-API"}, "reason": "No VA-API"}),
+    json!({"ignore": "No VA-API", "reason": "No VA-API"}),
   );
 }
 
 #[test]
-#[should_panic(expected = "a reason is required")]
+#[should_panic(expected = "must be a reason string or a platform object")]
 fn expectation_rejects_an_ignore_without_a_reason() {
   parse_expect("example.js", json!({"ignore": true}));
 }
@@ -1972,8 +1943,7 @@ fn expectation_flaky_round_trips() {
   assert!(noted_on(&expect.flaky, Platform::Macos));
   assert!(!noted_on(&expect.flaky, Platform::Linux));
   assert_eq!(expect_json(&expect), value);
-  let everywhere =
-    json!({"flaky": true, "reason": "The handshake does not finish."});
+  let everywhere = json!({"flaky": "The handshake does not finish."});
   assert_eq!(
     expect_json(&parse_expect("example.js", everywhere.clone())),
     everywhere
@@ -2030,8 +2000,7 @@ fn expectation_rejects_failures_on_an_all_platform_ignore() {
   parse_expect(
     "example.js",
     json!({
-      "ignore": true,
-      "reason": "Needs a document",
+      "ignore": "Needs a document",
       "expectedFailures": ["name"]
     }),
   );
