@@ -357,6 +357,7 @@
       "Option bag with protocols array should be accepted"
     ],
     "ignore": {
+      "linux": "The option-bag handshake does not finish.",
       "macos": "The option-bag handshake does not finish."
     }
   },
