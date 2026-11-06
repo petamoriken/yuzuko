@@ -14,20 +14,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  ci:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 360
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Linux
             os: ubuntu-24.04
+            suite: test
+            timeout: 60
+          - name: Linux WPT
+            os: ubuntu-24.04
+            suite: wpt
+            timeout: 360
           - name: macOS
             os: macos-15
+            suite: test
+            timeout: 60
+          - name: macOS WPT
+            os: macos-15
+            suite: wpt
+            timeout: 360
           - name: Windows
             os: windows-2025
+            suite: test
+            timeout: 60
+          - name: Windows WPT
+            os: windows-2025
+            suite: wpt
+            timeout: 360
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: "1"
@@ -48,8 +66,12 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2.9.3
+        with:
+          shared-key: yuzuko
+          save-if: ${{ matrix.suite == 'test' }}
 
       - name: Install Python
+        if: matrix.suite == 'wpt'
         uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.12"
@@ -74,14 +96,14 @@ jobs:
             libvulkan1
 
       - name: Install WPT hosts
-        if: runner.os != 'Windows'
+        if: matrix.suite == 'wpt' && runner.os != 'Windows'
         working-directory: tests/wpt/suite
         run: |
           python wpt make-hosts-file | sudo tee -a /etc/hosts >/dev/null
           grep -q 'web-platform.test' /etc/hosts
 
       - name: Install WPT hosts
-        if: runner.os == 'Windows'
+        if: matrix.suite == 'wpt' && runner.os == 'Windows'
         shell: pwsh
         working-directory: tests/wpt/suite
         run: |
@@ -91,8 +113,27 @@ jobs:
           }
 
       - name: Test
+        if: matrix.suite == 'test'
         shell: bash
         run: |
+          set -euo pipefail
+          # Every crates/yuzuko [[test]] except wpt.
+          tests=()
+          while IFS= read -r name; do
+            [[ "$name" == wpt ]] && continue
+            tests+=(--test "$name")
+          done < <(awk '
+            $0 == "[[test]]" { grab=1; next }
+            grab && $1 == "name" {
+              gsub(/"/, "", $3)
+              print $3
+              grab=0
+            }
+          ' crates/yuzuko/Cargo.toml)
+          if [ "${#tests[@]}" -eq 0 ]; then
+            echo "failed to read yuzuko integration tests" >&2
+            exit 1
+          fi
           cargo test --workspace --no-run
           # windows-2025 access-violates while cpal walks every WASAPI
           # endpoint. unknown_sink_is_unavailable does that search for a
@@ -103,9 +144,30 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             skip="--skip output_device_names_are_usable_sinks --skip unknown_sink_is_unavailable --skip import_defer_waits_for_namespace_observation"
           fi
+          script=$RUNNER_TEMP/yuzuko-ci-test.sh
+          {
+            echo 'set -euo pipefail'
+            echo "cargo test --workspace --exclude yuzuko -j1 --no-fail-fast -- --test-threads=1 $skip"
+            printf 'cargo test -p yuzuko --lib --bins'
+            printf ' %q' "${tests[@]}"
+            echo " -j1 --no-fail-fast -- --test-threads=1 $skip"
+          } > "$script"
           if [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" -- \
-              cargo test --workspace -j1 --no-fail-fast -- --test-threads=1 $skip
+              bash "$script"
           else
-            cargo test --workspace -j1 --no-fail-fast -- --test-threads=1 $skip
+            bash "$script"
+          fi
+
+      - name: WPT
+        if: matrix.suite == 'wpt'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p yuzuko --test wpt --no-run
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" -- \
+              cargo test -p yuzuko --test wpt -j1 --no-fail-fast -- --test-threads=1
+          else
+            cargo test -p yuzuko --test wpt -j1 --no-fail-fast -- --test-threads=1
           fi
