@@ -520,10 +520,11 @@ Yuzuko.test({
       }),
     );
     assert(errors === 0, "error during decode");
-    assert(decoder.state === "closed", decoder.state);
+    assert(decoder.state === "configured", decoder.state);
     await Promise.resolve();
     assert(errors === 1, `errors ${errors}`);
     assert(name === "EncodingError", name);
+    assert(decoder.state === "closed", decoder.state);
   },
 });
 
