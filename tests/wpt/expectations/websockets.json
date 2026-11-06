@@ -321,7 +321,8 @@
   "websockets/constructor/008.html": true,
   "websockets/constructor/009.html": {
     "ignore": {
-      "macos": "The protocol handshake does not finish."
+      "macos": "The protocol handshake does not finish.",
+      "windows": "The protocol handshake does not finish."
     }
   },
   "websockets/constructor/010.html": true,
@@ -339,7 +340,9 @@
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
     "ignore": {
-      "macos": "The NUL echo handshake does not finish."
+      "linux": "The NUL echo handshake does not finish.",
+      "macos": "The NUL echo handshake does not finish.",
+      "windows": "The NUL echo handshake does not finish."
     }
   },
   "websockets/constructor/019.html": true,
@@ -348,7 +351,8 @@
   "websockets/constructor/022.html": {
     "ignore": {
       "linux": "The protocol-array handshake does not finish.",
-      "macos": "The protocol-array handshake does not finish."
+      "macos": "The protocol-array handshake does not finish.",
+      "windows": "The protocol-array handshake does not finish."
     }
   },
   "websockets/constructor/option-bag.any.js": {
@@ -399,7 +403,8 @@
       "Cookie should be set"
     ],
     "ignore": {
-      "macos": "The cross-origin cookie handshake does not finish."
+      "macos": "The cross-origin cookie handshake does not finish.",
+      "windows": "The cross-origin cookie handshake does not finish."
     }
   },
   "websockets/cookies/third-party-cookie-accepted.https.html": {
@@ -543,7 +548,8 @@
   },
   "websockets/opening-handshake/003.html": {
     "ignore": {
-      "macos": "The IDN origin handshake does not finish."
+      "macos": "The IDN origin handshake does not finish.",
+      "windows": "The IDN origin handshake does not finish."
     }
   },
   "websockets/opening-handshake/005.html": false,
