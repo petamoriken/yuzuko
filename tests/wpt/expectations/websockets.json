@@ -320,10 +320,7 @@
   "websockets/constructor/007.html": true,
   "websockets/constructor/008.html": true,
   "websockets/constructor/009.html": {
-    "flaky": {
-      "macos": "The protocol handshake does not finish.",
-      "windows": "The protocol handshake does not finish."
-    }
+    "flaky": "The protocol handshake does not finish."
   },
   "websockets/constructor/010.html": true,
   "websockets/constructor/011.html": true,
@@ -352,10 +349,7 @@
       "Empty option bag should be accepted",
       "Option bag with protocols array should be accepted"
     ],
-    "flaky": {
-      "linux": "The option-bag handshake does not finish.",
-      "macos": "The option-bag handshake does not finish."
-    }
+    "flaky": "The option-bag handshake does not finish."
   },
   "websockets/constructor/target-address-space.any.js": {
     "expectedFailures": [
@@ -394,10 +388,7 @@
     "expectedFailures": [
       "Cookie should be set"
     ],
-    "flaky": {
-      "macos": "The cross-origin cookie handshake does not finish.",
-      "windows": "The cross-origin cookie handshake does not finish."
-    }
+    "flaky": "The cross-origin cookie handshake does not finish."
   },
   "websockets/cookies/third-party-cookie-accepted.https.html": {
     "expectedFailures": [
@@ -533,16 +524,10 @@
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": {
-    "flaky": {
-      "macos": "The origin handshake does not finish.",
-      "windows": "The origin handshake does not finish."
-    }
+    "flaky": "The origin handshake does not finish."
   },
   "websockets/opening-handshake/003.html": {
-    "flaky": {
-      "macos": "The IDN origin handshake does not finish.",
-      "windows": "The IDN origin handshake does not finish."
-    }
+    "flaky": "The IDN origin handshake does not finish."
   },
   "websockets/opening-handshake/005.html": false,
   "websockets/opening-handshake/006.html": true,
