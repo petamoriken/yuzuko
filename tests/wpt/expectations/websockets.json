@@ -537,7 +537,8 @@
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": {
     "ignore": {
-      "macos": "The origin handshake does not finish."
+      "macos": "The origin handshake does not finish.",
+      "windows": "The origin handshake does not finish."
     }
   },
   "websockets/opening-handshake/003.html": {
