@@ -1,9 +1,10 @@
 //! Process entry points for `yuzuko run` and `yuzuko test`.
 
+use std::any::TypeId;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, Once, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, Once, OnceLock};
 
 use crate::host::{self, RealmKind, RegisteredTest};
 use crate::loader::modules::{self, dynamic_import, instantiate_and_evaluate};
@@ -197,55 +198,317 @@ pub fn run_classic_scripts_at(
   sandbox: Option<&Path>,
   entry_url: Option<&str>,
 ) -> Result<ClassicRun, RuntimeError> {
-  let deadline = std::time::Instant::now() + deadline;
-  let base_url = base.and_then(|path| modules::file_url(path).ok());
-  with_runtime(
-    false,
-    false,
-    |_| {},
-    |scope| {
-      if let Some(path) = base {
-        host::set_file_root(path);
+  let mut session = ClassicSession::new();
+  session.run(scripts, done_key, deadline, base, sandbox, entry_url)
+}
+
+/// One isolate that hosts a fresh realm for each classic-script run.
+///
+/// WPT keeps this for the suite so each testharness file is a new context
+/// without creating a new isolate. Function templates and interned scripts
+/// stay on the isolate across those realms.
+pub struct ClassicSession {
+  _lock: MutexGuard<'static, ()>,
+  isolate: v8::OwnedIsolate,
+  queue: Arc<TaskQueue>,
+  in_realm: bool,
+  runs: u32,
+  templates: HashMap<TypeId, v8::Global<v8::FunctionTemplate>>,
+  shared: Vec<SharedScript>,
+}
+
+/// Source compiled once on a [`ClassicSession`] and bound in later realms.
+#[derive(Clone, Copy, Debug)]
+pub struct InternedScript(u32);
+
+/// One classic script in a [`ClassicSession::run_parts`] list.
+pub enum ClassicPart<'a> {
+  Shared(InternedScript),
+  Source(&'a str),
+}
+
+struct SharedScript {
+  source: String,
+  unbound: Option<v8::Global<v8::UnboundScript>>,
+}
+
+const SHARED_ORIGIN: &str = "yuzuko:wpt";
+
+impl ClassicSession {
+  pub fn new() -> Self {
+    let lock = RUNTIME.lock().expect("runtime lock");
+    crate::process::clear_exit();
+    WASM_IN_FLIGHT.with(|count| count.set(0));
+    init_v8();
+    let queue = QUEUE.get().expect("task queue").clone();
+    queue.discard_v8_tasks();
+    crate::worker::attach_main(Arc::clone(&queue));
+    let mut isolate = v8::Isolate::new(isolate_params());
+    crate::worker::set_isolate_handle(
+      crate::worker::MAIN_AGENT,
+      isolate.thread_safe_handle(),
+    );
+    configure_isolate(&mut isolate);
+    Self {
+      _lock: lock,
+      isolate,
+      queue,
+      in_realm: false,
+      runs: 0,
+      templates: HashMap::new(),
+      shared: Vec::new(),
+    }
+  }
+
+  /// Compiles `source` on the first run and reuses that script in later realms.
+  pub fn intern(&mut self, source: impl Into<String>) -> InternedScript {
+    let id = u32::try_from(self.shared.len()).expect("interned scripts");
+    self.shared.push(SharedScript {
+      source: source.into(),
+      unbound: None,
+    });
+    InternedScript(id)
+  }
+
+  pub fn interned_source(&self, script: InternedScript) -> &str {
+    &self.shared[script.0 as usize].source
+  }
+
+  /// Evaluates classic scripts in a new realm on this isolate.
+  pub fn run(
+    &mut self,
+    scripts: &[String],
+    done_key: &str,
+    deadline: std::time::Duration,
+    base: Option<&Path>,
+    sandbox: Option<&Path>,
+    entry_url: Option<&str>,
+  ) -> Result<ClassicRun, RuntimeError> {
+    let parts: Vec<ClassicPart<'_>> = scripts
+      .iter()
+      .map(|script| ClassicPart::Source(script))
+      .collect();
+    self.run_parts(&parts, done_key, deadline, base, sandbox, entry_url)
+  }
+
+  /// Same as [`Self::run`], with interned scripts bound instead of recompiled.
+  pub fn run_parts(
+    &mut self,
+    parts: &[ClassicPart<'_>],
+    done_key: &str,
+    deadline: std::time::Duration,
+    base: Option<&Path>,
+    sandbox: Option<&Path>,
+    entry_url: Option<&str>,
+  ) -> Result<ClassicRun, RuntimeError> {
+    self.enter_realm();
+    struct Guard<'a> {
+      isolate: &'a mut v8::OwnedIsolate,
+      queue: &'a Arc<TaskQueue>,
+      in_realm: &'a mut bool,
+      runs: &'a mut u32,
+      templates: &'a mut HashMap<TypeId, v8::Global<v8::FunctionTemplate>>,
+      shared: &'a mut Vec<SharedScript>,
+    }
+    impl Drop for Guard<'_> {
+      fn drop(&mut self) {
+        leave_realm(
+          self.isolate,
+          self.queue,
+          self.in_realm,
+          self.runs,
+          self.templates,
+        );
       }
-      if let Some(root) = sandbox {
-        host::set_sandbox_dir(root);
-      }
-      if let Some(url) = entry_url {
-        host::set_entry_url(url.to_string());
-      }
-      for script in scripts {
-        v8::tc_scope!(let tc, scope);
-        let Some(code) = v8::String::new(tc, script) else {
-          return Ok(ClassicRun {
-            value: None,
-            error: Some("script is too large".to_string()),
-          });
-        };
-        let origin = script_origin(tc, base_url.as_deref());
-        let Some(compiled) = v8::Script::compile(tc, code, origin.as_ref())
-        else {
-          let text = modules::exception_text!(tc, "failed to compile script");
-          return Ok(ClassicRun {
-            value: None,
-            error: Some(text),
-          });
-        };
+    }
+    let guard = Guard {
+      isolate: &mut self.isolate,
+      queue: &self.queue,
+      in_realm: &mut self.in_realm,
+      runs: &mut self.runs,
+      templates: &mut self.templates,
+      shared: &mut self.shared,
+    };
+    let deadline = std::time::Instant::now() + deadline;
+    let base_url = base.and_then(|path| modules::file_url(path).ok());
+    run_classic_body(
+      guard.isolate,
+      guard.shared,
+      parts,
+      done_key,
+      deadline,
+      base,
+      sandbox,
+      entry_url,
+      base_url.as_deref(),
+    )
+  }
+
+  fn enter_realm(&mut self) {
+    crate::process::clear_exit();
+    WASM_IN_FLIGHT.with(|count| count.set(0));
+    let mut state =
+      host::HostState::empty(Arc::clone(&self.queue), RealmKind::Window, 0);
+    state.templates = std::mem::take(&mut self.templates);
+    host::enter(state);
+    self.in_realm = true;
+  }
+}
+
+impl Drop for ClassicSession {
+  fn drop(&mut self) {
+    if self.in_realm {
+      teardown_realm();
+      self.in_realm = false;
+    }
+    self.queue.discard_v8_tasks();
+    crate::worker::detach_main();
+    host::exit();
+  }
+}
+
+fn leave_realm(
+  isolate: &mut v8::OwnedIsolate,
+  queue: &Arc<TaskQueue>,
+  in_realm: &mut bool,
+  runs: &mut u32,
+  templates: &mut HashMap<TypeId, v8::Global<v8::FunctionTemplate>>,
+) {
+  if !*in_realm {
+    return;
+  }
+  teardown_realm();
+  queue.discard_v8_tasks();
+  crate::worker::detach_main();
+  *templates = host::with_mut(|state| std::mem::take(&mut state.templates));
+  host::exit();
+  isolate.clear_kept_objects();
+  *runs += 1;
+  if *runs % 32 == 0 {
+    isolate.low_memory_notification();
+  }
+  crate::worker::attach_main(Arc::clone(queue));
+  crate::worker::set_isolate_handle(
+    crate::worker::MAIN_AGENT,
+    isolate.thread_safe_handle(),
+  );
+  *in_realm = false;
+}
+
+fn run_classic_body(
+  isolate: &mut v8::OwnedIsolate,
+  shared: &mut [SharedScript],
+  parts: &[ClassicPart<'_>],
+  done_key: &str,
+  deadline: std::time::Instant,
+  base: Option<&Path>,
+  sandbox: Option<&Path>,
+  entry_url: Option<&str>,
+  base_url: Option<&str>,
+) -> Result<ClassicRun, RuntimeError> {
+  v8::scope!(let scope, isolate);
+  let context = v8::Context::new(scope, Default::default());
+  let scope = &mut v8::ContextScope::new(scope, context);
+  install_realm(scope, false);
+  if let Some(path) = base {
+    host::set_file_root(path);
+  }
+  if let Some(root) = sandbox {
+    host::set_sandbox_dir(root);
+  }
+  if let Some(url) = entry_url {
+    host::set_entry_url(url.to_string());
+  }
+  for part in parts {
+    if let Some(run) = run_classic_part(scope, shared, part, base_url)? {
+      return Ok(run);
+    }
+  }
+  pump_until(scope, deadline, done_key)?;
+  Ok(ClassicRun {
+    value: global_string(scope, done_key),
+    error: None,
+  })
+}
+
+fn run_classic_part(
+  scope: &mut v8::PinScope<'_, '_>,
+  shared: &mut [SharedScript],
+  part: &ClassicPart<'_>,
+  base_url: Option<&str>,
+) -> Result<Option<ClassicRun>, RuntimeError> {
+  match part {
+    ClassicPart::Shared(InternedScript(id)) => {
+      let slot = &mut shared[*id as usize];
+      v8::tc_scope!(let tc, scope);
+      if let Some(unbound) = slot.unbound.as_ref() {
+        let local = v8::Local::new(tc, unbound);
+        let compiled = local.bind_to_current_context(tc);
         if compiled.run(tc).is_none() {
           bail_if_exit()?;
           let text = modules::exception_text!(tc, "failed to run script");
-          return Ok(ClassicRun {
+          return Ok(Some(ClassicRun {
             value: None,
             error: Some(text),
-          });
+          }));
         }
+        return Ok(None);
       }
-      pump_until(scope, deadline, done_key)?;
-      Ok(ClassicRun {
-        value: global_string(scope, done_key),
-        error: None,
-      })
-    },
-  )
+      let Some(code) = v8::String::new(tc, &slot.source) else {
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some("script is too large".to_string()),
+        }));
+      };
+      let origin = script_origin(tc, Some(SHARED_ORIGIN));
+      let Some(compiled) = v8::Script::compile(tc, code, origin.as_ref())
+      else {
+        let text = modules::exception_text!(tc, "failed to compile script");
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some(text),
+        }));
+      };
+      let unbound = compiled.get_unbound_script(tc);
+      slot.unbound = Some(v8::Global::new(tc, unbound));
+      if compiled.run(tc).is_none() {
+        bail_if_exit()?;
+        let text = modules::exception_text!(tc, "failed to run script");
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some(text),
+        }));
+      }
+      Ok(None)
+    }
+    ClassicPart::Source(script) => {
+      v8::tc_scope!(let tc, scope);
+      let Some(code) = v8::String::new(tc, script) else {
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some("script is too large".to_string()),
+        }));
+      };
+      let origin = script_origin(tc, base_url);
+      let Some(compiled) = v8::Script::compile(tc, code, origin.as_ref())
+      else {
+        let text = modules::exception_text!(tc, "failed to compile script");
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some(text),
+        }));
+      };
+      if compiled.run(tc).is_none() {
+        bail_if_exit()?;
+        let text = modules::exception_text!(tc, "failed to run script");
+        return Ok(Some(ClassicRun {
+          value: None,
+          error: Some(text),
+        }));
+      }
+      Ok(None)
+    }
+  }
 }
 
 #[cfg(test)]
@@ -300,31 +563,7 @@ pub(crate) fn run_worker_isolate(
     v8::scope!(let scope, &mut isolate);
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
-    install_console(scope);
-    install_wasm_async(scope);
-    install_namespace_instance(scope);
-    crate::timers::install(scope);
-    crate::realm::install(scope);
-    install_yuzuko_namespace(scope);
-    crate::extensions::install(scope);
-    #[cfg(feature = "fs")]
-    crate::fs::install(scope);
-    #[cfg(feature = "udp")]
-    crate::udp::install(scope);
-    #[cfg(feature = "tcp")]
-    crate::tcp::install(scope);
-    #[cfg(feature = "http")]
-    crate::http_server::install(scope);
-    #[cfg(feature = "signal")]
-    crate::signal::install(scope);
-    #[cfg(feature = "child")]
-    crate::child::install(scope);
-    #[cfg(feature = "ffi")]
-    crate::ffi::install(scope);
-    // The window extension replaces `Yuzuko` with an EventTarget on the main
-    // realm. A worker keeps the original object. Install after either path.
-    install_process(scope);
-    bind_wasm_response(scope);
+    install_realm(scope, false);
     let result: Result<(), RuntimeError> = (|| {
       if exiting() || !crate::worker::agent_alive(id) {
         return Ok(());
@@ -373,22 +612,7 @@ pub(crate) fn run_worker_isolate(
     // `close()` leaves the agent alive through the script so the owner can
     // receive its last `postMessage`. Mark it dead once that script returns.
     crate::worker::mark_dead(id);
-    #[cfg(feature = "fs")]
-    crate::fs::clear();
-    #[cfg(feature = "udp")]
-    crate::udp::clear();
-    #[cfg(feature = "tcp")]
-    crate::tcp::clear();
-    #[cfg(feature = "http")]
-    crate::http_server::clear();
-    #[cfg(feature = "signal")]
-    crate::signal::clear();
-    #[cfg(feature = "child")]
-    crate::child::clear();
-    #[cfg(feature = "ffi")]
-    crate::ffi::clear();
-    crate::jobs::clear();
-    crate::extensions::cleanup();
+    teardown_realm();
   }
   crate::platform::unbind_isolate(token);
   host::exit();
@@ -1157,52 +1381,10 @@ pub(crate) fn with_runtime<T>(
     v8::scope!(let scope, &mut isolate);
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
-    install_console(scope);
-    install_wasm_async(scope);
-    install_namespace_instance(scope);
-    crate::timers::install(scope);
-    crate::realm::install(scope);
-    install_yuzuko_namespace(scope);
-    crate::extensions::install(scope);
-    #[cfg(feature = "fs")]
-    crate::fs::install(scope);
-    #[cfg(feature = "udp")]
-    crate::udp::install(scope);
-    #[cfg(feature = "tcp")]
-    crate::tcp::install(scope);
-    #[cfg(feature = "http")]
-    crate::http_server::install(scope);
-    #[cfg(feature = "signal")]
-    crate::signal::install(scope);
-    #[cfg(feature = "child")]
-    crate::child::install(scope);
-    #[cfg(feature = "ffi")]
-    crate::ffi::install(scope);
-    // The window extension replaces `Yuzuko` with an EventTarget. Process
-    // members are installed after that replacement.
-    install_process(scope);
-    bind_wasm_response(scope);
-    if test_mode {
-      install_test_api(scope);
-    }
+    install_realm(scope, test_mode);
     prepare(scope);
     let result = body(scope);
-    #[cfg(feature = "fs")]
-    crate::fs::clear();
-    #[cfg(feature = "udp")]
-    crate::udp::clear();
-    #[cfg(feature = "tcp")]
-    crate::tcp::clear();
-    #[cfg(feature = "http")]
-    crate::http_server::clear();
-    #[cfg(feature = "signal")]
-    crate::signal::clear();
-    #[cfg(feature = "child")]
-    crate::child::clear();
-    #[cfg(feature = "ffi")]
-    crate::ffi::clear();
-    crate::jobs::clear();
-    crate::extensions::cleanup();
+    teardown_realm();
     result
   };
   // Drop leftover V8 tasks while this isolate is still alive.
@@ -1258,6 +1440,57 @@ fn init_v8() {
     v8::V8::initialize();
     let _ = PLATFORM.set(platform);
   });
+}
+
+fn install_realm(scope: &mut v8::PinScope<'_, '_>, test_mode: bool) {
+  install_console(scope);
+  install_wasm_async(scope);
+  install_namespace_instance(scope);
+  crate::timers::install(scope);
+  crate::realm::install(scope);
+  install_yuzuko_namespace(scope);
+  crate::extensions::install(scope);
+  #[cfg(feature = "fs")]
+  crate::fs::install(scope);
+  #[cfg(feature = "udp")]
+  crate::udp::install(scope);
+  #[cfg(feature = "tcp")]
+  crate::tcp::install(scope);
+  #[cfg(feature = "http")]
+  crate::http_server::install(scope);
+  #[cfg(feature = "signal")]
+  crate::signal::install(scope);
+  #[cfg(feature = "child")]
+  crate::child::install(scope);
+  #[cfg(feature = "ffi")]
+  crate::ffi::install(scope);
+  // The window extension replaces `Yuzuko` with an EventTarget. Process
+  // members are installed after that replacement. A worker keeps the
+  // original object.
+  install_process(scope);
+  bind_wasm_response(scope);
+  if test_mode {
+    install_test_api(scope);
+  }
+}
+
+fn teardown_realm() {
+  #[cfg(feature = "fs")]
+  crate::fs::clear();
+  #[cfg(feature = "udp")]
+  crate::udp::clear();
+  #[cfg(feature = "tcp")]
+  crate::tcp::clear();
+  #[cfg(feature = "http")]
+  crate::http_server::clear();
+  #[cfg(feature = "signal")]
+  crate::signal::clear();
+  #[cfg(feature = "child")]
+  crate::child::clear();
+  #[cfg(feature = "ffi")]
+  crate::ffi::clear();
+  crate::jobs::clear();
+  crate::extensions::cleanup();
 }
 
 fn install_wasm_async(scope: &mut v8::PinScope<'_, '_>) {

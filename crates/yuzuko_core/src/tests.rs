@@ -1,8 +1,9 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::runtime::event_loop_waits;
 use crate::runtime::run_scripts_after;
-use crate::{run_file, run_scripts};
+use crate::{ClassicPart, ClassicSession, run_file, run_scripts};
 
 fn workspace() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -1151,4 +1152,92 @@ fn console_rejects_a_revoked_proxy() {
     logs,
     vec!["TypeError", "Cannot inspect a proxy that has been revoked.",]
   );
+}
+
+#[test]
+fn classic_session_uses_a_fresh_realm_per_run() {
+  let mut session = ClassicSession::new();
+  let first = session
+    .run(
+      &["globalThis.mark = 1; globalThis.__done = '1';".to_string()],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("first realm");
+  assert_eq!(first.value.as_deref(), Some("1"));
+  assert!(first.error.is_none());
+  let second = session
+    .run(
+      &[
+        "globalThis.__done = globalThis.mark === 1 ? 'leaked' : 'fresh';"
+          .to_string(),
+      ],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("second realm");
+  assert_eq!(second.value.as_deref(), Some("fresh"));
+}
+
+#[test]
+fn classic_session_drops_timers_between_realms() {
+  let mut session = ClassicSession::new();
+  session
+    .run(
+      &["setTimeout(() => { globalThis.fired = 1; }, 0); globalThis.__done = '1';".to_string()],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("arm timer");
+  let second = session
+    .run(
+      &[
+        "globalThis.__done = globalThis.fired === 1 ? 'leaked' : 'fresh';"
+          .to_string(),
+      ],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("second realm");
+  assert_eq!(second.value.as_deref(), Some("fresh"));
+}
+
+#[test]
+fn classic_session_binds_interned_scripts_in_later_realms() {
+  let mut session = ClassicSession::new();
+  let done = session.intern("globalThis.__done = 'ok';");
+  let first = session
+    .run_parts(
+      &[ClassicPart::Shared(done)],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("first realm");
+  assert_eq!(first.value.as_deref(), Some("ok"));
+  let second = session
+    .run_parts(
+      &[ClassicPart::Shared(done)],
+      "__done",
+      Duration::from_secs(1),
+      None,
+      None,
+      None,
+    )
+    .expect("second realm");
+  assert_eq!(second.value.as_deref(), Some("ok"));
 }

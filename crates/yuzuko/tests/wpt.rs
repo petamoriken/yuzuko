@@ -189,6 +189,15 @@ fn wpt_expectations_match() {
   let harness = fs::read_to_string(suite.join("resources/testharness.js"))
     .expect("testharness.js");
   let _server = WptServer::ensure(&suite);
+  let mut session = yuzuko_core::ClassicSession::new();
+  let shared = SharedScripts {
+    prelude: session.intern(GLOBAL_PRELUDE),
+    harness: session.intern(harness),
+    completion: session.intern(COMPLETION),
+    load_event: session.intern(
+      "if (typeof dispatchEvent === 'function') {\n  dispatchEvent(new Event('load'));\n}\n",
+    ),
+  };
   let mut mismatches = Vec::new();
   for (name, roots) in ENROLLED {
     let mut cases = Vec::new();
@@ -230,7 +239,7 @@ fn wpt_expectations_match() {
         continue;
       }
       eprintln!("{}", case.key);
-      let outcome = execute(&suite, &harness, case);
+      let outcome = execute(&suite, case, &mut session, &shared);
       if update {
         let next = merge_observation(
           saved.get(&case.key),
@@ -514,7 +523,19 @@ fn skipped_tag(haystack: &str, tag: &str) -> bool {
   false
 }
 
-fn execute(suite: &Path, harness: &str, case: &Case) -> Outcome {
+struct SharedScripts {
+  prelude: yuzuko_core::InternedScript,
+  harness: yuzuko_core::InternedScript,
+  completion: yuzuko_core::InternedScript,
+  load_event: yuzuko_core::InternedScript,
+}
+
+fn execute(
+  suite: &Path,
+  case: &Case,
+  session: &mut yuzuko_core::ClassicSession,
+  shared: &SharedScripts,
+) -> Outcome {
   let path = suite.join(&case.key);
   let source = match fs::read_to_string(&path) {
     Ok(source) => source,
@@ -523,7 +544,9 @@ fn execute(suite: &Path, harness: &str, case: &Case) -> Outcome {
   let queries = variant_queries(&source);
   let mut parts = Vec::with_capacity(queries.len());
   for query in &queries {
-    parts.push(execute_query(suite, harness, case, &path, &source, query));
+    parts.push(execute_query(
+      suite, case, &path, &source, query, session, shared,
+    ));
   }
   merge_outcomes(parts)
 }
@@ -545,21 +568,19 @@ fn variant_queries(source: &str) -> Vec<String> {
 
 fn execute_query(
   suite: &Path,
-  harness: &str,
   case: &Case,
   path: &Path,
   source: &str,
   search: &str,
+  session: &mut yuzuko_core::ClassicSession,
+  shared: &SharedScripts,
 ) -> Outcome {
   let base = network_base(&case.key);
   let mut entry = base.map(|base| page_url(base, &case.key, search));
-  let mut scripts = vec![
-    GLOBAL_PRELUDE.to_string(),
-    location_script(path, search, base, &case.key),
-    fetch_script(suite, base),
-    harness.to_string(),
-    COMPLETION.to_string(),
-  ];
+  let location = location_script(path, search, base, &case.key);
+  let fetch = fetch_script(suite, base);
+  let mut extra = Vec::new();
+  let mut worker_scripts = None;
   // Holds the in-memory worker body until this query finishes.
   let _worker_source = match case.kind {
     Kind::Ignore => {
@@ -579,7 +600,7 @@ fn execute_query(
         ) {
           return Outcome::Error(error);
         }
-        parts.insert(0, harness.to_string());
+        parts.insert(0, session.interned_source(shared.harness).to_string());
         parts.push(source.to_string());
         if !source.contains("done()") {
           // Dedicated workers wait for an explicit `done()`. The WPT server
@@ -597,30 +618,24 @@ fn execute_query(
       } else {
         None
       };
-      scripts = vec![worker_parent(&url)];
+      worker_scripts = Some(vec![worker_parent(&url)]);
       registered
     }
     Kind::Script => {
       if let Err(error) =
-        push_meta_scripts(suite, &case.key, source, &mut scripts, base)
+        push_meta_scripts(suite, &case.key, source, &mut extra, base)
       {
         return Outcome::Error(error);
       }
-      scripts.push(source.to_string());
+      extra.push(source.to_string());
       None
     }
     Kind::Html => {
       if let Err(error) =
-        push_html_scripts(suite, &case.key, source, &mut scripts, base)
+        push_html_scripts(suite, &case.key, source, &mut extra, base)
       {
         return Outcome::Error(error);
       }
-      // Window tests can wait for `load`. There is no document, so dispatch
-      // it after the page scripts have registered listeners.
-      scripts.push(
-        "if (typeof dispatchEvent === 'function') {\n  dispatchEvent(new Event('load'));\n}\n"
-          .to_string(),
-      );
       None
     }
   };
@@ -633,14 +648,41 @@ fn execute_query(
   } else {
     Duration::from_secs(8)
   };
-  match yuzuko_core::run_classic_scripts_at(
-    &scripts,
-    DONE_KEY,
-    deadline,
-    Some(path),
-    Some(suite),
-    entry.as_deref(),
-  ) {
+  let run = if let Some(scripts) = worker_scripts {
+    session.run(
+      &scripts,
+      DONE_KEY,
+      deadline,
+      Some(path),
+      Some(suite),
+      entry.as_deref(),
+    )
+  } else {
+    let mut parts = vec![
+      yuzuko_core::ClassicPart::Shared(shared.prelude),
+      yuzuko_core::ClassicPart::Source(&location),
+      yuzuko_core::ClassicPart::Source(&fetch),
+      yuzuko_core::ClassicPart::Shared(shared.harness),
+      yuzuko_core::ClassicPart::Shared(shared.completion),
+    ];
+    for script in &extra {
+      parts.push(yuzuko_core::ClassicPart::Source(script));
+    }
+    if case.kind == Kind::Html {
+      // Window tests can wait for `load`. There is no document, so dispatch
+      // it after the page scripts have registered listeners.
+      parts.push(yuzuko_core::ClassicPart::Shared(shared.load_event));
+    }
+    session.run_parts(
+      &parts,
+      DONE_KEY,
+      deadline,
+      Some(path),
+      Some(suite),
+      entry.as_deref(),
+    )
+  };
+  match run {
     Ok(run) => match run.error {
       Some(error) => Outcome::Error(error),
       None => match run.value {

@@ -72,9 +72,10 @@ pub use realm::{
 };
 pub use repl::run_repl;
 pub use runtime::{
-  ClassicRun, LoopInterest, RuntimeError, poll_task_poke, run_classic_scripts,
-  run_classic_scripts_at, run_file, run_file_sandboxed, run_scripts, run_tests,
-  set_loop_hooks, set_task_waker, status_of, wait_for_tasks,
+  ClassicPart, ClassicRun, ClassicSession, InternedScript, LoopInterest,
+  RuntimeError, poll_task_poke, run_classic_scripts, run_classic_scripts_at,
+  run_file, run_file_sandboxed, run_scripts, run_tests, set_loop_hooks,
+  set_task_waker, status_of, wait_for_tasks,
 };
 pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,
