@@ -1,15 +1,18 @@
 {
   "fetch/api/abort/cache.https.any.js": true,
   "fetch/api/abort/destroyed-context.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/abort/general.any.js": true,
   "fetch/api/abort/keepalive.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/abort/request.any.js": true,
   "fetch/api/abort/serviceworker-intercepted.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/api/basic/accept-header.any.js": {
     "expectedFailures": [
@@ -20,7 +23,8 @@
     ]
   },
   "fetch/api/basic/block-mime-as-script.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/basic/conditional-get.any.js": {
     "expectedFailures": [
@@ -29,7 +33,8 @@
   },
   "fetch/api/basic/error-after-response.any.js": true,
   "fetch/api/basic/fetch-in-popup-from-iframe.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/basic/gc.any.js": true,
   "fetch/api/basic/header-value-combining.any.js": true,
@@ -37,7 +42,8 @@
   "fetch/api/basic/historical.any.js": true,
   "fetch/api/basic/http-response-code.any.js": true,
   "fetch/api/basic/integrity.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/basic/keepalive.any.js": {
     "expectedFailures": [
@@ -55,7 +61,8 @@
     ]
   },
   "fetch/api/basic/mode-no-cors.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/basic/mode-same-origin.any.js": {
     "expectedFailures": [
@@ -221,11 +228,13 @@
   "fetch/api/basic/request-upload.h2.any.js": false,
   "fetch/api/basic/response-null-body.any.js": true,
   "fetch/api/basic/response-url.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/basic/scheme-about.any.js": true,
   "fetch/api/basic/scheme-blob.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/basic/scheme-data.any.js": {
     "expectedFailures": [
@@ -239,7 +248,8 @@
     ]
   },
   "fetch/api/basic/scheme-others.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/basic/split-byte-order-mark.any.js": true,
   "fetch/api/basic/status.h2.any.js": {
@@ -257,7 +267,8 @@
   "fetch/api/basic/stream-safe-creation.any.js": true,
   "fetch/api/basic/text-utf8.any.js": true,
   "fetch/api/basic/url-parsing.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/body/formdata.any.js": true,
   "fetch/api/body/mime-type.any.js": true,
@@ -291,10 +302,12 @@
     ]
   },
   "fetch/api/cors/cors-expose-star.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/cors/cors-filtering.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/cors/cors-keepalive.any.js": {
     "expectedFailures": [
@@ -354,7 +367,8 @@
     ]
   },
   "fetch/api/cors/cors-multiple-origins.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/cors/cors-no-preflight.any.js": {
     "expectedFailures": [
@@ -657,7 +671,8 @@
     ]
   },
   "fetch/api/cors/data-url-iframe.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/cors/data-url-shared-worker.html": {
     "expectedFailures": [
@@ -672,17 +687,21 @@
     ]
   },
   "fetch/api/cors/sandboxed-iframe.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "fetch/api/crashtests/aborted-fetch-response.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/crashtests/body-window-destroy.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/crashtests/huge-fetch.any.js": true,
   "fetch/api/crashtests/request.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/credentials/authentication-basic.any.js": {
     "expectedFailures": [
@@ -869,7 +888,8 @@
   },
   "fetch/api/policies/csp-blocked.html": false,
   "fetch/api/policies/referrer-no-referrer-service-worker.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/api/policies/referrer-no-referrer-worker.html": {
     "expectedFailures": [
@@ -878,10 +898,12 @@
   },
   "fetch/api/policies/referrer-no-referrer.html": false,
   "fetch/api/policies/referrer-origin-service-worker.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/api/policies/referrer-origin-when-cross-origin-service-worker.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/api/policies/referrer-origin-when-cross-origin-worker.html": {
     "expectedFailures": [
@@ -897,7 +919,8 @@
   },
   "fetch/api/policies/referrer-origin.html": false,
   "fetch/api/policies/referrer-unsafe-url-service-worker.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/api/policies/referrer-unsafe-url-worker.html": {
     "expectedFailures": [
@@ -1172,16 +1195,20 @@
     ]
   },
   "fetch/api/request/destination/fetch-destination-frame.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/destination/fetch-destination-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/destination/fetch-destination-no-load-event.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/destination/fetch-destination-prefetch.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/destination/fetch-destination-worker.https.html": {
     "expectedFailures": [
@@ -1191,7 +1218,8 @@
     ]
   },
   "fetch/api/request/destination/fetch-destination.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/forbidden-method.any.js": {
     "expectedFailures": [
@@ -1209,13 +1237,16 @@
     ]
   },
   "fetch/api/request/multi-globals/current/current.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/request/multi-globals/incumbent/incumbent.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/request/multi-globals/url-parsing.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/request-bad-port.any.js": {
     "expectedFailures": [
@@ -1269,7 +1300,8 @@
   },
   "fetch/api/request/request-clone-readable-stream-body.any.js": true,
   "fetch/api/request/request-clone.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/request/request-constructor-init-body-override.any.js": true,
   "fetch/api/request/request-consume-empty.any.js": true,
@@ -1335,11 +1367,13 @@
     ]
   },
   "fetch/api/request/request-init-001.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/request/request-init-002.any.js": true,
   "fetch/api/request/request-init-003.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/api/request/request-init-contenttype.any.js": true,
   "fetch/api/request/request-init-priority.any.js": true,
@@ -1357,7 +1391,8 @@
     ]
   },
   "fetch/api/request/request-reset-attributes.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/request/request-structure.any.js": {
     "expectedFailures": [
@@ -1375,19 +1410,24 @@
   "fetch/api/request/url-encoding.html": true,
   "fetch/api/response/json.any.js": true,
   "fetch/api/response/many-empty-chunks-crash.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/response/multi-globals/current/current.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/response/multi-globals/incumbent/incumbent.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/response/multi-globals/relevant/relevant.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/api/response/multi-globals/url-parsing.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/response/response-arraybuffer-realm.window.js": {
     "expectedFailures": [
@@ -1400,7 +1440,8 @@
     ]
   },
   "fetch/api/response/response-body-read-task-handling.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/api/response/response-body-stashed-chunk.html": true,
   "fetch/api/response/response-cancel-stream.any.js": true,
@@ -1456,10 +1497,12 @@
   "fetch/api/response/response-stream-disturbed-by-pipe.any.js": true,
   "fetch/api/response/response-stream-with-broken-then.any.js": true,
   "fetch/compression-dictionary/compressed-large-resources-001.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/compressed-large-resources-002.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/compressed-large-resources-dictionary-hashes.tentative.https.html": {
     "expectedFailures": [
@@ -1485,7 +1528,8 @@
     ]
   },
   "fetch/compression-dictionary/dictionary-compressed-fetch-with-link-match-dest.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-compressed.tentative.https.html": {
     "expectedFailures": [
@@ -1514,29 +1558,37 @@
     ]
   },
   "fetch/compression-dictionary/dictionary-fetch-no-cors.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-timing-001.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-timing-002.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-imagesrcset.tentative.https.html": false,
   "fetch/compression-dictionary/dictionary-fetch-with-link-connect-src-nonce.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-connect-src.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element-baseURL.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element-crossorigin.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element-events.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element-in-body.tentative.https.html": {
     "expectedFailures": [
@@ -1545,25 +1597,32 @@
     ]
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element-invalid-url.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-element.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-header-in-early-hints.tentative.https.h2.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-header-in-subresources.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-header.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-integrity.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-link-referrer-and-referrerpolicy.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/compression-dictionary/dictionary-fetch-with-type-attribute.tentative.https.html": false,
   "fetch/compression-dictionary/dictionary-insecure-context.tentative.http.html": true,
@@ -1581,10 +1640,12 @@
   },
   "fetch/compression-dictionary/dictionary-registration.tentative.https.html": false,
   "fetch/compression-dictionary/fetch-destination.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/connection-pool/network-partition-key.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/content-disposition/multiple-content-disposition.tentative.any.js": true,
   "fetch/content-disposition/multiple-content-disposition.tentative.h2.window.js": true,
@@ -1615,7 +1676,8 @@
   },
   "fetch/content-length/api-and-duplicate-headers.any.js": true,
   "fetch/content-length/content-length.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/content-length/parsing.window.js": {
     "expectedFailures": [
@@ -1791,88 +1853,116 @@
     ]
   },
   "fetch/corb/img-html-correctly-labeled.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/corb/img-html-correctly-labeled.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-mime-types-coverage.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-png-mislabeled-as-html-nosniff.tentative.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/corb/img-png-mislabeled-as-html-nosniff.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-png-mislabeled-as-html.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/corb/img-png-mislabeled-as-html.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg-doctype-html-mimetype-empty.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg-doctype-html-mimetype-svg.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg-invalid.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/corb/img-svg-labeled-as-dash.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg-labeled-as-svg-xml.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg-xml-decl.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/img-svg.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/corb/preload-image-png-mislabeled-as-html-nosniff.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/response_block.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/corb/script-html-correctly-labeled.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-html-js-polyglot.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-html-via-cross-origin-blob-url.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-js-mislabeled-as-html-nosniff.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-js-mislabeled-as-html.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-resource-with-json-parser-breaker.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/script-resource-with-nonsniffable-types.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/style-css-mislabeled-as-html-nosniff.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/style-css-mislabeled-as-html.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/style-css-with-json-parser-breaker.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/corb/style-html-correctly-labeled.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/cross-origin-resource-policy/fetch-in-iframe.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/cross-origin-resource-policy/fetch.any.js": {
     "expectedFailures": [
@@ -1892,10 +1982,12 @@
     ]
   },
   "fetch/cross-origin-resource-policy/iframe-loads.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/cross-origin-resource-policy/image-loads.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/cross-origin-resource-policy/scheme-restriction.any.js": true,
   "fetch/cross-origin-resource-policy/scheme-restriction.https.window.js": {
@@ -1904,7 +1996,8 @@
     ]
   },
   "fetch/cross-origin-resource-policy/script-loads.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/cross-origin-resource-policy/syntax.any.js": true,
   "fetch/data-urls/base64.any.js": true,
@@ -2231,7 +2324,8 @@
     ]
   },
   "fetch/h1-parsing/h1-parsing.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/h1-parsing/lone-cr.window.js": {
     "expectedFailures": [
@@ -2266,10 +2360,12 @@
     ]
   },
   "fetch/http-cache/basic-auth-cache-test-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/http-cache/basic-auth-cache-test.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/http-cache/cache-mode.any.js": {
     "expectedFailures": [
@@ -2390,7 +2486,8 @@
     ]
   },
   "fetch/images/canvas-remote-read-remote-image-redirect.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/local-network-access/dedicated-worker.tentative.https.html": false,
   "fetch/local-network-access/fetch.tentative.https.html": false,
@@ -2399,10 +2496,12 @@
   "fetch/local-network-access/navigate.tentative.https.window.js": false,
   "fetch/local-network-access/navigate.tentative.window.js": false,
   "fetch/local-network-access/service-worker-background-fetch.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/local-network-access/service-worker.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/local-network-access/shared-worker.tentative.https.html": false,
   "fetch/local-network-access/websocket.tentative.https.html": false,
@@ -2415,217 +2514,288 @@
     ]
   },
   "fetch/metadata/embed.https.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/fetch-preflight.https.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/fetch.https.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/audioworklet.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/css-font-face.https.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/css-font-face.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/css-images.https.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/css-images.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-a.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-a.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-area.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-area.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-audio.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-audio.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-embed.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-embed.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-frame.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-frame.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-iframe.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-iframe.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-img-environment-change.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-img-environment-change.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-img.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-img.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-input-image.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-input-image.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-link-icon.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-link-icon.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-link-prefetch.https.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-link-prefetch.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-meta-refresh.https.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-meta-refresh.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-picture.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-picture.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-script.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-script.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-video-poster.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-video-poster.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-video.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/element-video.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/fetch-via-serviceworker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/fetch.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/fetch.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/form-submission.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/form-submission.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/header-link.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/header-link.https.sub.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/header-link.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/header-refresh.https.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/header-refresh.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-json-module-import-static.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-json-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-module-import-dynamic.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-module-import-dynamic.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-module-import-static.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-text-module-import-static.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/script-text-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/serviceworker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/svg-image.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/svg-image.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/window-history.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/window-history.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/window-location.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/window-location.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/worker-dedicated-constructor.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/worker-dedicated-constructor.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/worker-dedicated-importscripts.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/generated/worker-dedicated-importscripts.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/navigation.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/object.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/paint-worklet.https.html": {
     "expectedFailures": [
@@ -2633,31 +2803,40 @@
     ]
   },
   "fetch/metadata/preload.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/redirect/multiple-redirect-https-downgrade-upgrade.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/redirect/redirect-http-upgrade.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/redirect/redirect-https-downgrade.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/report.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/report.https.sub.html.sub.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/serviceworker-accessors.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/sharedworker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/style.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/text.https.html": {
     "expectedFailures": [
@@ -2665,124 +2844,164 @@
     ]
   },
   "fetch/metadata/tools/templates/audioworklet.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/css-font-face.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/css-images.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-a.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-area.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-audio.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-embed.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-frame.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-iframe.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-img-environment-change.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-img.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-input-image.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-link-icon.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-link-prefetch.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-meta-refresh.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-picture.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-script.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-video-poster.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/element-video.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/fetch-via-serviceworker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/fetch.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/form-submission.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/header-link.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/header-refresh.optional.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/script-json-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/script-module-import-dynamic.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/script-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/script-text-module-import-static.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/serviceworker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/svg-image.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/window-history.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/window-location.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/worker-dedicated-constructor.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/tools/templates/worker-dedicated-importscripts.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/track.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/trailing-dot.https.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/unload.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/window-open.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/metadata/worker.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/nosniff/image.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/nosniff/importscripts.html": true,
   "fetch/nosniff/parsing-nosniff.window.js": {
@@ -2805,10 +3024,12 @@
     ]
   },
   "fetch/nosniff/script.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/nosniff/stylesheet.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/nosniff/worker.html": {
     "expectedFailures": [
@@ -2818,55 +3039,72 @@
     ]
   },
   "fetch/orb/tentative/compressed-image-sniffing.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/content-range.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/hls.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/orb/tentative/img-mime-types-coverage.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/img-png-mislabeled-as-html.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/orb/tentative/img-png-mislabeled-as-html.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/img-png-unlabeled.sub-ref.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "fetch/orb/tentative/img-png-unlabeled.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/known-mime-type.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/nosniff.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/ping.optional.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/orb/tentative/script-js-unlabeled-gzipped.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/script-unlabeled.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/script-utf16-without-bom-hint-charset.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/status.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/status.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/orb/tentative/unknown-mime-type.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/origin/assorted.window.js": {
     "expectedFailures": [
@@ -2939,17 +3177,20 @@
   },
   "fetch/range/general.window.js": false,
   "fetch/range/non-matching-range-response.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/range/sw-416.https.window.js": false,
   "fetch/range/sw-intercept-range.https.window.js": false,
   "fetch/range/sw-opaque.https.window.js": false,
   "fetch/range/sw.https.window.js": false,
   "fetch/redirect-navigate/302-found-post.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/redirect-navigate/preserve-fragment.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/redirects/data.window.js": {
     "expectedFailures": [
@@ -2958,47 +3199,61 @@
     ]
   },
   "fetch/redirects/subresource-fragments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/1xx-response.any.js": true,
   "fetch/security/canvas-tainted-serviceworker-passthrough-redirect.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/security/dangling-markup/dangling-markup-mitigation-allowed-apis.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/dangling-markup/dangling-markup-mitigation-data-url.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/security/dangling-markup/dangling-markup-mitigation.tentative.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/dangling-markup/dangling-markup-mitigation.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/dangling-markup/media.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/dangling-markup/option.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "fetch/security/dangling-markup/service-worker.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/security/dangling-markup/textarea.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "fetch/security/embedded-credentials.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "fetch/security/passthrough-serviceworker.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/security/redirect-to-url-with-credentials.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/security/stylesheet-cssrules-serviceworker-passthrough-redirect.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "fetch/stale-while-revalidate/fetch-sw.https.html": {
     "expectedFailures": [
@@ -3011,15 +3266,19 @@
     ]
   },
   "fetch/stale-while-revalidate/revalidate-not-blocked-by-csp.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/stale-while-revalidate/stale-css.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/stale-while-revalidate/stale-image.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "fetch/stale-while-revalidate/stale-script.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   }
 }

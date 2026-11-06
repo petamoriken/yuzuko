@@ -5,8 +5,9 @@
 //! ignore for this host. `YUZUKO_WPT_FILTER` keeps paths that contain the
 //! substring.
 //!
-//! An ignore may carry a `reason`. `ignore` may also be an object whose
-//! keys are `linux`, `macos`, and `windows`.
+//! `ignore` and `flaky` require a reason. `ignore` may be an object whose
+//! keys are `linux`, `macos`, and `windows`, and each value is a reason.
+//! `flaky` has the same shape and retries that platform up to three times.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -106,12 +107,17 @@ const ENROLLED: &[(&str, &[&str])] = &[
   ),
 ];
 
+/// How many times a flaky file may run before the last attempt is reported.
+const FLAKY_ATTEMPTS: u32 = 3;
+
 /// One expectation leaf. `result` is what a host compares after it runs
-/// the file. `ignore` skips the file before that comparison.
+/// the file. `ignore` skips the file before that comparison. `flaky`
+/// retries the file until the result matches, up to [`FLAKY_ATTEMPTS`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Expect {
   result: FileResult,
-  ignore: Ignore,
+  ignore: Note,
+  flaky: Note,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,14 +127,12 @@ enum FileResult {
   Failures(Vec<String>),
 }
 
+/// An all-platform or per-platform annotation. Every arm carries a reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Ignore {
+enum Note {
   No,
-  /// Skipped on every platform. `reason` is recorded and not compared.
-  All {
-    reason: Option<String>,
-  },
-  Platforms(BTreeMap<Platform, Option<String>>),
+  All { reason: String },
+  Platforms(BTreeMap<Platform, String>),
 }
 
 /// Names match `std::env::consts::OS` for the supported targets.
@@ -220,12 +224,16 @@ fn wpt_expectations_match() {
       seen.push(case.key.clone());
       let runner_skip = case.kind == Kind::Ignore;
       if runner_skip && !no_ignore {
+        let path = suite.join(&case.key);
         if update {
-          let next = preserve_runner_ignore(saved.get(&case.key));
+          let next = preserve_runner_ignore(
+            saved.get(&case.key),
+            &skip_reason(&path, &case.key),
+          );
           saved.insert(case.key.clone(), next);
         } else if !saved.get(&case.key).is_some_and(ignored_everywhere) {
           mismatches.push(format!(
-            "{}: expected {{\"ignore\": true}} for a file this runner skips",
+            "{}: expected an all-platform ignore with a reason",
             case.key
           ));
         }
@@ -234,12 +242,30 @@ fn wpt_expectations_match() {
       if !no_ignore
         && saved
           .get(&case.key)
-          .is_some_and(|expect| ignored_on(expect, host))
+          .is_some_and(|expect| noted_on(&expect.ignore, host))
       {
         continue;
       }
+      let flaky = !update
+        && saved
+          .get(&case.key)
+          .is_some_and(|expect| noted_on(&expect.flaky, host));
+      let attempts = if flaky { FLAKY_ATTEMPTS } else { 1 };
       eprintln!("{}", case.key);
-      let outcome = execute(&suite, case, &mut session, &shared);
+      let mut outcome = execute(&suite, case, &mut session, &shared);
+      let mut matched = saved
+        .get(&case.key)
+        .is_some_and(|expect| expectation_matches(expect, &outcome));
+      for attempt in 2..=attempts {
+        if matched {
+          break;
+        }
+        eprintln!("{} (attempt {attempt})", case.key);
+        outcome = execute(&suite, case, &mut session, &shared);
+        matched = saved
+          .get(&case.key)
+          .is_some_and(|expect| expectation_matches(expect, &outcome));
+      }
       if update {
         let next = merge_observation(
           saved.get(&case.key),
@@ -251,7 +277,7 @@ fn wpt_expectations_match() {
         continue;
       }
       match saved.get(&case.key) {
-        Some(expected) if ignored_on(expected, host) => {
+        Some(expected) if noted_on(&expected.ignore, host) => {
           mismatches.push(format!(
             "{}: ignored on {} but {}",
             case.key,
@@ -261,8 +287,13 @@ fn wpt_expectations_match() {
         }
         Some(expected) if expectation_matches(expected, &outcome) => {}
         Some(expected) => {
+          let attempts = if flaky {
+            format!(" after {FLAKY_ATTEMPTS} attempts")
+          } else {
+            String::new()
+          };
           mismatches.push(format!(
-            "{}: expected {} but {}",
+            "{}: expected {} but {}{attempts}",
             case.key,
             format_expect(expected),
             summarize(&outcome)
@@ -398,38 +429,56 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
 /// Processing nodes, `AudioParam` automation, and `AudioListener` are part
 /// of the runtime and are not skipped here.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
+  webaudio_skip_reason(path, key, name).is_some()
+}
+
+fn webaudio_skip_reason(
+  path: &Path,
+  key: &str,
+  name: &str,
+) -> Option<&'static str> {
   let test_file = name.ends_with(".html")
     || name.ends_with(".xhtml")
     || name.ends_with(".window.js")
     || name.ends_with(".any.js")
     || name.ends_with(".worker.js");
   if !test_file {
-    return false;
+    return None;
   }
-  const DIRS: &[&str] = &[
-    "/the-mediaelementaudiosourcenode-interface/",
-    "/the-mediastreamaudiodestinationnode-interface/",
-    "/the-mediastreamaudiosourcenode-interface/",
-    "/the-scriptprocessornode-interface/",
-    "/media-playback-while-not-visible-permission-policy/",
-  ];
-  if DIRS.iter().any(|dir| key.contains(dir)) {
-    return true;
+  if key.contains("/the-mediaelementaudiosourcenode-interface/") {
+    return Some("The runner has no media element audio source.");
+  }
+  if key.contains("/the-mediastreamaudiodestinationnode-interface/") {
+    return Some("The runner has no MediaStreamAudioDestinationNode.");
+  }
+  if key.contains("/the-mediastreamaudiosourcenode-interface/") {
+    return Some("The runner has no MediaStreamAudioSourceNode.");
+  }
+  if key.contains("/the-scriptprocessornode-interface/") {
+    return Some("The runner has no ScriptProcessorNode.");
+  }
+  if key.contains("/media-playback-while-not-visible-permission-policy/") {
+    return Some("The runner has no media playback permission policy.");
   }
   let lower = key.to_ascii_lowercase();
-  if lower.contains("sinkid")
-    || lower.contains("playbackstats")
-    || lower.contains("getoutputtimestamp")
-    || key.ends_with("/historical.html")
-  {
-    return true;
+  if lower.contains("sinkid") {
+    return Some("The runner has no setSinkId.");
+  }
+  if lower.contains("playbackstats") {
+    return Some("The runner has no playbackStats.");
+  }
+  if lower.contains("getoutputtimestamp") {
+    return Some("The runner has no getOutputTimestamp.");
+  }
+  if key.ends_with("/historical.html") {
+    return Some("The runner does not implement historical Web Audio names.");
   }
   let Ok(source) = fs::read_to_string(path) else {
-    return false;
+    return None;
   };
   // A dedicated worker has `requestAnimationFrame`. The main global does not.
   if !name.contains("worker") && source.contains("requestAnimationFrame") {
-    return true;
+    return Some("The main global has no requestAnimationFrame.");
   }
   const NEEDLES: &[&str] = &[
     "MediaElementAudioSourceNode",
@@ -444,7 +493,47 @@ fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
     "playbackStats",
     "setSinkId",
   ];
-  NEEDLES.iter().any(|needle| source.contains(needle))
+  if NEEDLES.iter().any(|needle| source.contains(needle)) {
+    return Some("The runner has no media element or MediaStream audio node.");
+  }
+  None
+}
+
+/// Why [`classify`] returns [`Kind::Ignore`].
+fn skip_reason(path: &Path, key: &str) -> String {
+  let name = path
+    .file_name()
+    .map(|name| name.to_string_lossy().into_owned())
+    .unwrap_or_default();
+  if key.contains(".sub.") || name.contains(".sub.") {
+    return "The runner does not apply .sub. substitutions.".to_string();
+  }
+  if key.starts_with("webaudio/")
+    && let Some(reason) = webaudio_skip_reason(path, key, &name)
+  {
+    return reason.to_string();
+  }
+  if shared_or_service(key, &name) {
+    return "The runner has no shared worker or service worker.".to_string();
+  }
+  if name.ends_with(".any.js") {
+    return "The runner does not run this .any.js global.".to_string();
+  }
+  let source = fs::read_to_string(path).unwrap_or_default();
+  if !source.contains("testharness.js") {
+    return "The file is not a testharness document.".to_string();
+  }
+  if source.contains("{{") {
+    return "The runner does not apply server-side substitutions.".to_string();
+  }
+  let lower = source.to_ascii_lowercase();
+  if lower.contains("document.") || lower.contains("document[") {
+    return "The file needs a document.".to_string();
+  }
+  if contains_skipped_tag(&lower) {
+    return "The file needs a layout element.".to_string();
+  }
+  "The runner skips this file.".to_string()
 }
 
 fn shared_or_service(key: &str, name: &str) -> bool {
@@ -1267,49 +1356,47 @@ impl Platform {
 }
 
 fn ignored_everywhere(expect: &Expect) -> bool {
-  matches!(expect.ignore, Ignore::All { .. })
+  matches!(expect.ignore, Note::All { .. })
 }
 
-fn ignored_on(expect: &Expect, host: Platform) -> bool {
-  match &expect.ignore {
-    Ignore::No => false,
-    Ignore::All { .. } => true,
-    Ignore::Platforms(map) => map.contains_key(&host),
+fn noted_on(note: &Note, host: Platform) -> bool {
+  match note {
+    Note::No => false,
+    Note::All { .. } => true,
+    Note::Platforms(map) => map.contains_key(&host),
   }
 }
 
 /// Update keeps an all-platform reason. A platform map becomes an
-/// all-platform ignore, and its reason is kept when every listed platform
-/// records that same text.
-fn preserve_runner_ignore(previous: Option<&Expect>) -> Expect {
+/// all-platform ignore. When the platform reasons differ, `fallback` is
+/// the reason.
+fn preserve_runner_ignore(previous: Option<&Expect>, fallback: &str) -> Expect {
   let reason = match previous.map(|expect| &expect.ignore) {
-    Some(Ignore::All { reason }) => reason.clone(),
-    Some(Ignore::Platforms(map)) => shared_reason(map),
-    _ => None,
+    Some(Note::All { reason }) => reason.clone(),
+    Some(Note::Platforms(map)) => shared_reason(map, fallback),
+    _ => fallback.to_string(),
   };
   Expect {
     result: FileResult::Pass,
-    ignore: Ignore::All { reason },
+    ignore: Note::All { reason },
+    flaky: Note::No,
   }
 }
 
-fn shared_reason(map: &BTreeMap<Platform, Option<String>>) -> Option<String> {
+fn shared_reason(map: &BTreeMap<Platform, String>, fallback: &str) -> String {
   let mut found = None;
   for reason in map.values() {
-    let Some(reason) = reason else {
-      return None;
-    };
     match &found {
       None => found = Some(reason.clone()),
       Some(previous) if previous == reason => {}
-      Some(_) => return None,
+      Some(_) => return fallback.to_string(),
     }
   }
-  found
+  found.unwrap_or_else(|| fallback.to_string())
 }
 
 /// Record `actual` for this host. Ignores for other hosts stay.
-/// `no_ignore` drops the ignore that covered this host.
+/// `no_ignore` drops the ignore that covered this host. `flaky` stays.
 fn merge_observation(
   previous: Option<&Expect>,
   actual: FileResult,
@@ -1317,29 +1404,33 @@ fn merge_observation(
   host: Platform,
 ) -> Expect {
   let ignore = match previous.map(|expect| &expect.ignore) {
-    Some(ignore) => retain_ignore(ignore, no_ignore, host),
-    None => Ignore::No,
+    Some(ignore) => retain_note(ignore, no_ignore, host),
+    None => Note::No,
   };
+  let flaky = previous
+    .map(|expect| expect.flaky.clone())
+    .unwrap_or(Note::No);
   Expect {
     result: actual,
     ignore,
+    flaky,
   }
 }
 
-fn retain_ignore(ignore: &Ignore, no_ignore: bool, host: Platform) -> Ignore {
-  match ignore {
-    Ignore::No => Ignore::No,
-    Ignore::All { .. } if no_ignore => Ignore::No,
-    Ignore::All { .. } => ignore.clone(),
-    Ignore::Platforms(map) => {
+fn retain_note(note: &Note, drop_host: bool, host: Platform) -> Note {
+  match note {
+    Note::No => Note::No,
+    Note::All { .. } if drop_host => Note::No,
+    Note::All { .. } => note.clone(),
+    Note::Platforms(map) => {
       let mut map = map.clone();
-      if no_ignore {
+      if drop_host {
         map.remove(&host);
       }
       if map.is_empty() {
-        Ignore::No
+        Note::No
       } else {
-        Ignore::Platforms(map)
+        Note::Platforms(map)
       }
     }
   }
@@ -1418,30 +1509,35 @@ fn truncate(text: &str) -> String {
 }
 
 fn format_expect(expect: &Expect) -> String {
-  let result = match &expect.result {
+  let mut result = match &expect.result {
     FileResult::Pass => "pass".to_string(),
     FileResult::Fail => "file failure".to_string(),
     FileResult::Failures(names) => format!("failures {names:?}"),
   };
-  match &expect.ignore {
-    Ignore::No => result,
-    Ignore::All { reason: None } => "ignore".to_string(),
-    Ignore::All {
-      reason: Some(reason),
-    } => format!("ignore ({reason})"),
-    Ignore::Platforms(map) => {
-      format!("{result}, ignored on {}", format_platforms(map))
+  result = format_note(&result, "flaky", &expect.flaky);
+  format_note(&result, "ignored", &expect.ignore)
+}
+
+fn format_note(result: &str, label: &str, note: &Note) -> String {
+  match note {
+    Note::No => result.to_string(),
+    Note::All { reason } => {
+      if result == "pass" {
+        format!("{label} ({reason})")
+      } else {
+        format!("{result}, {label} ({reason})")
+      }
+    }
+    Note::Platforms(map) => {
+      format!("{result}, {label} on {}", format_platforms(map))
     }
   }
 }
 
-fn format_platforms(map: &BTreeMap<Platform, Option<String>>) -> String {
+fn format_platforms(map: &BTreeMap<Platform, String>) -> String {
   let parts: Vec<String> = map
     .iter()
-    .map(|(platform, reason)| match reason {
-      Some(reason) => format!("{} ({reason})", platform.as_str()),
-      None => platform.as_str().to_string(),
-    })
+    .map(|(platform, reason)| format!("{} ({reason})", platform.as_str()))
     .collect();
   parts.join(", ")
 }
@@ -1470,11 +1566,13 @@ fn parse_expect(key: &str, value: Value) -> Expect {
   match value {
     Value::Bool(true) => Expect {
       result: FileResult::Pass,
-      ignore: Ignore::No,
+      ignore: Note::No,
+      flaky: Note::No,
     },
     Value::Bool(false) => Expect {
       result: FileResult::Fail,
-      ignore: Ignore::No,
+      ignore: Note::No,
+      flaky: Note::No,
     },
     Value::Object(map) => parse_expect_object(key, map),
     other => panic!("{key}: unsupported expectation {other}"),
@@ -1487,34 +1585,40 @@ fn parse_expect_object(
 ) -> Expect {
   for name in map.keys() {
     match name.as_str() {
-      "ignore" | "reason" | "expectedFailures" | "fail" => {}
+      "ignore" | "flaky" | "reason" | "expectedFailures" | "fail" => {}
       other => panic!("{key}: unsupported expectation field {other}"),
     }
   }
-  let ignore = match map.get("ignore") {
-    None => Ignore::No,
-    Some(Value::Bool(true)) => Ignore::All {
-      reason: map.get("reason").map(|value| reason_field(key, value)),
-    },
-    Some(Value::Object(platforms)) => {
-      if map.contains_key("reason") {
-        panic!("{key}: write the reason on each platform");
-      }
-      parse_platforms(key, platforms)
-    }
-    Some(_) => panic!(
-      "{key}: ignore must be true or a platform object; write a reason in \"reason\""
-    ),
-  };
-  if matches!(ignore, Ignore::No) && map.contains_key("reason") {
-    panic!("{key}: reason requires {{\"ignore\": true}}");
+  let ignore = parse_mark(key, "ignore", map.get("ignore"));
+  let flaky = parse_mark(key, "flaky", map.get("flaky"));
+  if matches!(ignore, Note::All { .. }) && !matches!(flaky, Note::No) {
+    panic!("{key}: an all-platform ignore cannot combine with flaky");
   }
+  if matches!(flaky, Note::All { .. }) && !matches!(ignore, Note::No) {
+    panic!("{key}: an all-platform flaky cannot combine with ignore");
+  }
+  if let (Note::Platforms(left), Note::Platforms(right)) = (&ignore, &flaky)
+    && left.keys().any(|platform| right.contains_key(platform))
+  {
+    panic!("{key}: ignore and flaky name the same platform");
+  }
+  let wants_reason =
+    matches!(ignore, Note::All { .. }) || matches!(flaky, Note::All { .. });
+  let sibling = map.get("reason").map(|value| reason_field(key, value));
+  if wants_reason && sibling.is_none() {
+    panic!("{key}: a reason is required");
+  }
+  if !wants_reason && sibling.is_some() {
+    panic!("{key}: write the reason on each platform");
+  }
+  let ignore = fill_reason(ignore, sibling.clone());
+  let flaky = fill_reason(flaky, sibling);
   let has_failures = map.contains_key("expectedFailures");
   let has_fail = map.contains_key("fail");
   if has_failures && has_fail {
     panic!("{key}: fail and expectedFailures cannot combine");
   }
-  if matches!(ignore, Ignore::All { .. }) && (has_failures || has_fail) {
+  if matches!(ignore, Note::All { .. }) && (has_failures || has_fail) {
     panic!("{key}: an all-platform ignore cannot set expectedFailures or fail");
   }
   let result = if has_fail {
@@ -1539,34 +1643,61 @@ fn parse_expect_object(
   } else {
     FileResult::Pass
   };
-  if matches!(result, FileResult::Fail) && matches!(ignore, Ignore::No) {
+  if matches!(result, FileResult::Fail)
+    && matches!(ignore, Note::No)
+    && matches!(flaky, Note::No)
+  {
     panic!("{key}: use false for a whole-file failure");
   }
-  Expect { result, ignore }
+  Expect {
+    result,
+    ignore,
+    flaky,
+  }
+}
+
+fn parse_mark(key: &str, label: &str, value: Option<&Value>) -> Note {
+  match value {
+    None => Note::No,
+    Some(Value::Bool(true)) => Note::All {
+      reason: String::new(),
+    },
+    Some(Value::Object(platforms)) => parse_platforms(key, label, platforms),
+    Some(_) => panic!(
+      "{key}: {label} must be true or a platform object; write a reason in \"reason\""
+    ),
+  }
+}
+
+fn fill_reason(note: Note, reason: Option<String>) -> Note {
+  match note {
+    Note::All { .. } => Note::All {
+      reason: reason.expect("all-platform reason"),
+    },
+    other => other,
+  }
 }
 
 fn parse_platforms(
   key: &str,
+  label: &str,
   value: &serde_json::Map<String, Value>,
-) -> Ignore {
+) -> Note {
   if value.is_empty() {
-    panic!("{key}: ignore lists no platform");
+    panic!("{key}: {label} lists no platform");
   }
   let mut platforms = BTreeMap::new();
   for (name, entry) in value {
     let Some(platform) = Platform::parse(name) else {
       panic!("{key}: platform must be \"linux\", \"macos\", or \"windows\"");
     };
-    let reason = match entry {
-      Value::Bool(true) => None,
-      Value::String(text) => {
-        Some(nonempty_reason(key, &format!("reason for {name}"), text))
-      }
-      _ => panic!("{key}: ignore for {name} must be true or a reason string"),
+    let Value::String(text) = entry else {
+      panic!("{key}: {label} for {name} must be a reason string");
     };
+    let reason = nonempty_reason(key, &format!("reason for {name}"), text);
     platforms.insert(platform, reason);
   }
-  Ignore::Platforms(platforms)
+  Note::Platforms(platforms)
 }
 
 fn reason_field(key: &str, value: &Value) -> String {
@@ -1594,24 +1725,21 @@ fn write_expectations(path: &Path, expectations: &BTreeMap<String, Expect>) {
 }
 
 fn expect_json(expect: &Expect) -> Value {
-  if matches!(expect.ignore, Ignore::No) {
+  if matches!(expect.ignore, Note::No) && matches!(expect.flaky, Note::No) {
     return match &expect.result {
       FileResult::Pass => Value::Bool(true),
       FileResult::Fail => Value::Bool(false),
       FileResult::Failures(names) => json!({"expectedFailures": names}),
     };
   }
-  if let Ignore::All { reason } = &expect.ignore {
-    let mut map = serde_json::Map::new();
-    map.insert("ignore".to_string(), Value::Bool(true));
-    if let Some(reason) = reason {
-      map.insert("reason".to_string(), Value::String(reason.clone()));
-    }
-    return Value::Object(map);
+  if matches!(expect.ignore, Note::All { .. }) {
+    return note_object("ignore", &expect.ignore);
   }
-  let Ignore::Platforms(platforms) = &expect.ignore else {
-    unreachable!("ignore is a platform map");
-  };
+  if matches!(expect.flaky, Note::All { .. })
+    && matches!(expect.result, FileResult::Pass)
+  {
+    return note_object("flaky", &expect.flaky);
+  }
   let mut map = serde_json::Map::new();
   match &expect.result {
     FileResult::Pass => {}
@@ -1622,18 +1750,39 @@ fn expect_json(expect: &Expect) -> Value {
       map.insert("expectedFailures".to_string(), json!(names));
     }
   }
-  map.insert("ignore".to_string(), platforms_json(platforms));
+  insert_note(&mut map, "flaky", &expect.flaky);
+  insert_note(&mut map, "ignore", &expect.ignore);
   Value::Object(map)
 }
 
-fn platforms_json(platforms: &BTreeMap<Platform, Option<String>>) -> Value {
+fn note_object(name: &str, note: &Note) -> Value {
+  let Note::All { reason } = note else {
+    unreachable!("all-platform note");
+  };
+  json!({ name: true, "reason": reason })
+}
+
+fn insert_note(
+  map: &mut serde_json::Map<String, Value>,
+  name: &str,
+  note: &Note,
+) {
+  match note {
+    Note::No => {}
+    Note::All { reason } => {
+      map.insert(name.to_string(), Value::Bool(true));
+      map.insert("reason".to_string(), Value::String(reason.clone()));
+    }
+    Note::Platforms(platforms) => {
+      map.insert(name.to_string(), platforms_json(platforms));
+    }
+  }
+}
+
+fn platforms_json(platforms: &BTreeMap<Platform, String>) -> Value {
   let mut map = serde_json::Map::new();
   for (platform, reason) in platforms {
-    let value = match reason {
-      Some(reason) => Value::String(reason.clone()),
-      None => Value::Bool(true),
-    };
-    map.insert(platform.as_str().to_string(), value);
+    map.insert(platform.as_str().to_string(), Value::String(reason.clone()));
   }
   Value::Object(map)
 }
@@ -1643,9 +1792,9 @@ fn expectation_ignore_reason_round_trips() {
   let value = json!({"ignore": true, "reason": "Needs a document"});
   let expect = parse_expect("example.js", value.clone());
   assert!(ignored_everywhere(&expect));
-  assert!(ignored_on(&expect, Platform::Linux));
-  assert!(ignored_on(&expect, Platform::Macos));
-  assert!(ignored_on(&expect, Platform::Windows));
+  assert!(noted_on(&expect.ignore, Platform::Linux));
+  assert!(noted_on(&expect.ignore, Platform::Macos));
+  assert!(noted_on(&expect.ignore, Platform::Windows));
   assert_eq!(expect_json(&expect), value);
   let spaced = parse_expect(
     "example.js",
@@ -1660,21 +1809,21 @@ fn expectation_platform_ignore_round_trips() {
     "expectedFailures": ["interlaced"],
     "ignore": {
       "linux": "No VA-API",
-      "windows": true
+      "windows": "No DXVA"
     }
   });
   let expect = parse_expect("example.js", value.clone());
-  assert!(ignored_on(&expect, Platform::Linux));
-  assert!(ignored_on(&expect, Platform::Windows));
-  assert!(!ignored_on(&expect, Platform::Macos));
+  assert!(noted_on(&expect.ignore, Platform::Linux));
+  assert!(noted_on(&expect.ignore, Platform::Windows));
+  assert!(!noted_on(&expect.ignore, Platform::Macos));
   assert!(!ignored_everywhere(&expect));
   assert_eq!(expect_json(&expect), value);
   assert_eq!(
     expect_json(&parse_expect(
       "example.js",
-      json!({"fail": true, "ignore": {"linux": true}}),
+      json!({"fail": true, "ignore": {"linux": "No VA-API"}}),
     )),
-    json!({"fail": true, "ignore": {"linux": true}}),
+    json!({"fail": true, "ignore": {"linux": "No VA-API"}}),
   );
 }
 
@@ -1689,8 +1838,11 @@ fn expectation_bool_and_failures_round_trip() {
     json!(false)
   );
   assert_eq!(
-    expect_json(&parse_expect("example.js", json!({"ignore": true}),)),
-    json!({"ignore": true})
+    expect_json(&parse_expect(
+      "example.js",
+      json!({"ignore": true, "reason": "Needs a document"}),
+    )),
+    json!({"ignore": true, "reason": "Needs a document"})
   );
   let parsed =
     parse_expect("example.js", json!({"expectedFailures": ["b", "a", "a"]}));
@@ -1707,13 +1859,19 @@ fn expectation_update_keeps_reason_and_other_platforms() {
     json!({"ignore": true, "reason": "Needs a document"}),
   );
   assert_eq!(
-    expect_json(&preserve_runner_ignore(Some(&documented))),
+    expect_json(&preserve_runner_ignore(
+      Some(&documented),
+      "The runner skips this file."
+    )),
     json!({"ignore": true, "reason": "Needs a document"})
   );
   let linux =
     parse_expect("example.js", json!({"ignore": {"linux": "No VA-API"}}));
   assert_eq!(
-    expect_json(&preserve_runner_ignore(Some(&linux))),
+    expect_json(&preserve_runner_ignore(
+      Some(&linux),
+      "The runner skips this file."
+    )),
     json!({"ignore": true, "reason": "No VA-API"})
   );
   let split = parse_expect(
@@ -1723,8 +1881,11 @@ fn expectation_update_keeps_reason_and_other_platforms() {
     }),
   );
   assert_eq!(
-    expect_json(&preserve_runner_ignore(Some(&split))),
-    json!({"ignore": true})
+    expect_json(&preserve_runner_ignore(
+      Some(&split),
+      "The runner skips this file."
+    )),
+    json!({"ignore": true, "reason": "The runner skips this file."})
   );
 
   let previous = parse_expect(
@@ -1785,7 +1946,73 @@ fn expectation_rejects_an_empty_reason() {
 fn expectation_rejects_a_shared_reason_on_platforms() {
   parse_expect(
     "example.js",
-    json!({"ignore": {"linux": true}, "reason": "No VA-API"}),
+    json!({"ignore": {"linux": "No VA-API"}, "reason": "No VA-API"}),
+  );
+}
+
+#[test]
+#[should_panic(expected = "a reason is required")]
+fn expectation_rejects_an_ignore_without_a_reason() {
+  parse_expect("example.js", json!({"ignore": true}));
+}
+
+#[test]
+#[should_panic(expected = "must be a reason string")]
+fn expectation_rejects_a_platform_ignore_without_a_reason() {
+  parse_expect("example.js", json!({"ignore": {"linux": true}}));
+}
+
+#[test]
+fn expectation_flaky_round_trips() {
+  let value = json!({
+    "expectedFailures": ["Cookie should be set"],
+    "flaky": {"macos": "The handshake does not finish."}
+  });
+  let expect = parse_expect("example.js", value.clone());
+  assert!(noted_on(&expect.flaky, Platform::Macos));
+  assert!(!noted_on(&expect.flaky, Platform::Linux));
+  assert_eq!(expect_json(&expect), value);
+  let everywhere =
+    json!({"flaky": true, "reason": "The handshake does not finish."});
+  assert_eq!(
+    expect_json(&parse_expect("example.js", everywhere.clone())),
+    everywhere
+  );
+}
+
+#[test]
+fn expectation_update_keeps_flaky() {
+  let previous = parse_expect(
+    "example.js",
+    json!({
+      "flaky": {"macos": "The handshake does not finish."},
+      "ignore": {"linux": "No VA-API"}
+    }),
+  );
+  let observed = merge_observation(
+    Some(&previous),
+    FileResult::Pass,
+    false,
+    Platform::Windows,
+  );
+  assert_eq!(
+    expect_json(&observed),
+    json!({
+      "flaky": {"macos": "The handshake does not finish."},
+      "ignore": {"linux": "No VA-API"}
+    })
+  );
+}
+
+#[test]
+#[should_panic(expected = "name the same platform")]
+fn expectation_rejects_ignore_and_flaky_on_one_platform() {
+  parse_expect(
+    "example.js",
+    json!({
+      "ignore": {"macos": "Skipped."},
+      "flaky": {"macos": "Sometimes hangs."}
+    }),
   );
 }
 
@@ -1802,8 +2029,36 @@ fn expectation_rejects_fail_without_a_platform() {
 fn expectation_rejects_failures_on_an_all_platform_ignore() {
   parse_expect(
     "example.js",
-    json!({"ignore": true, "expectedFailures": ["name"]}),
+    json!({
+      "ignore": true,
+      "reason": "Needs a document",
+      "expectedFailures": ["name"]
+    }),
   );
+}
+
+#[test]
+fn runner_skip_reasons_match_the_classifier() {
+  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let suite = root.join("tests/wpt/suite");
+  let expectations = root.join("tests/wpt/expectations");
+  for entry in fs::read_dir(&expectations).expect("expectations") {
+    let path = entry.expect("entry").path();
+    if !path.extension().is_some_and(|ext| ext == "json") {
+      continue;
+    }
+    for (key, expect) in read_expectations(&path, false) {
+      let file = suite.join(&key);
+      if classify(&file, &key) != Some(Kind::Ignore) {
+        continue;
+      }
+      let Note::All { reason } = &expect.ignore else {
+        panic!("{key}: a runner skip is an all-platform ignore");
+      };
+      assert_eq!(reason, &skip_reason(&file, &key), "{key}");
+      assert!(matches!(expect.flaky, Note::No), "{key}");
+    }
+  }
 }
 
 #[test]

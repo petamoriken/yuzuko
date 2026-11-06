@@ -8,7 +8,8 @@
   "console/console-namespace-object-class-string.any.js": true,
   "console/console-number-format-specifiers-symbol.html": false,
   "console/console-string-format-specifier-symbol-manual.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "console/console-tests-historical.any.js": true,
   "console/console-timing-logging.html": false,

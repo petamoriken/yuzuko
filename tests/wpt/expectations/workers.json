@@ -1,48 +1,63 @@
 {
   "workers/SharedWorker-MessageEvent-source.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-constructor.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-detach-frame-in-error-event.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-exception-propagation.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-exception.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-extendedLifetime-blob.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-extendedLifetime-data.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-extendedLifetime-named-module.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-extendedLifetime.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-replace-EventHandler.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-script-error.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker-simple.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorkerPerformanceNow.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker_blobUrl.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/SharedWorker_dataUrl.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/Worker-base64.any.js": true,
   "workers/Worker-call.worker.js": true,
@@ -51,7 +66,8 @@
   "workers/Worker-custom-event.any.js": false,
   "workers/Worker-formdata.any.js": true,
   "workers/Worker-location.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/Worker-messageport.html": false,
   "workers/Worker-multi-port.html": {
@@ -83,7 +99,8 @@
   "workers/WorkerGlobalScope-close.html": false,
   "workers/WorkerGlobalScope_requestAnimationFrame.worker.js": true,
   "workers/WorkerLocation-origin.sub.window.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/WorkerNavigator-hardware-concurrency.any.js": true,
   "workers/WorkerNavigator.any.js": {
@@ -106,7 +123,8 @@
     ]
   },
   "workers/baseurl/alpha/importScripts-in-sharedworker.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/baseurl/alpha/importScripts-in-worker.html": false,
   "workers/baseurl/alpha/worker-in-worker.html": {
@@ -120,140 +138,185 @@
     ]
   },
   "workers/baseurl/alpha/xhr-in-sharedworker.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/baseurl/alpha/xhr-in-worker.html": false,
   "workers/baseurl/beta/subsharedworker.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/1": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/1.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/Infinity": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/Infinity-arguments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/Infinity.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/NaN": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/NaN-arguments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/NaN.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/SharedWorker-constructor.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/URLMismatchError.htm": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/WEB_FEATURES.yml": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/connect-event.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/connect-event.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/dummy-name.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/dummy-shared-worker.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/dummy-shared-worker.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/empty-name.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/empty.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/global-members.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/global-members.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/interface-objects.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/interface-objects.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/name.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/name.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/no-arguments-ctor.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/null": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/null-arguments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/null.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/number-arguments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/port-onmessage.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/port-onmessage.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/port-properties.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/port-readonly.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/same-origin.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/setting-port-members.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/shared-worker.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/undefined": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/undefined-arguments.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/undefined.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/unexpected-global-properties.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/unexpected-global-properties.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/SharedWorker/unresolvable-url.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/constructors/Worker/AbstractWorker.onerror.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/constructors/Worker/Blob-url.html": true,
   "workers/constructors/Worker/DedicatedWorkerGlobalScope-members.worker.js": true,
@@ -293,7 +356,8 @@
     ]
   },
   "workers/data-url-shared-window.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/data-url-shared.html": {
     "expectedFailures": [
@@ -339,7 +403,8 @@
   "workers/examples/general.any.js": false,
   "workers/examples/general.worker.js": true,
   "workers/examples/onconnect.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not run this .any.js global."
   },
   "workers/importscripts_mime.any.js": true,
   "workers/importscripts_mime_local.any.js": false,
@@ -353,7 +418,8 @@
   },
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/event-ports-dedicated.html": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/imagedata-cloned-canvas-in-array.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/message-event.html": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/return-value.worker.js": true,
@@ -367,23 +433,29 @@
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/second-argument-undefined.html": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/setting-postMessage.html": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/structured-clone-imagedata.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/structured-clone-message.html": true,
   "workers/interfaces/SharedWorkerGlobalScope/WEB_FEATURES.yml": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/SharedWorkerGlobalScope/name/getting.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/SharedWorkerGlobalScope/name/getting.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/SharedWorkerGlobalScope/name/setting.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/SharedWorkerGlobalScope/name/setting.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/WorkerGlobalScope/close/incoming-message.html": true,
   "workers/interfaces/WorkerGlobalScope/close/sending-messages.html": true,
@@ -396,7 +468,8 @@
   },
   "workers/interfaces/WorkerGlobalScope/location/redirect-module.html": false,
   "workers/interfaces/WorkerGlobalScope/location/redirect-sharedworker.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no shared worker or service worker."
   },
   "workers/interfaces/WorkerGlobalScope/location/redirect.html": false,
   "workers/interfaces/WorkerGlobalScope/location/returns-same-object.any.js": true,
@@ -431,17 +504,20 @@
     ]
   },
   "workers/interfaces/WorkerGlobalScope/onerror/handled.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/interfaces/WorkerGlobalScope/onerror/message-classic-DOMException.html": false,
   "workers/interfaces/WorkerGlobalScope/onerror/message-classic-Error.html": false,
   "workers/interfaces/WorkerGlobalScope/onerror/message-module-DOMException.html": false,
   "workers/interfaces/WorkerGlobalScope/onerror/message-module-Error.html": false,
   "workers/interfaces/WorkerGlobalScope/onerror/not-handled.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/interfaces/WorkerGlobalScope/onerror/propagate-to-window-onerror.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/interfaces/WorkerGlobalScope/self.any.js": true,
   "workers/interfaces/WorkerUtils/WindowTimers/001.html": true,
@@ -475,25 +551,32 @@
   "workers/interfaces/WorkerUtils/importScripts/012.html": true,
   "workers/interfaces/WorkerUtils/importScripts/blob-url.worker.js": true,
   "workers/interfaces/WorkerUtils/importScripts/catch.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-cross-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-redirect-to-cross-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-same-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-setTimeout-cross-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-setTimeout-redirect-to-cross-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/importScripts/report-error-setTimeout-same-origin.sub.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/interfaces/WorkerUtils/navigator/002.html": true,
   "workers/interfaces/WorkerUtils/navigator/003.html": true,
@@ -512,7 +595,8 @@
   },
   "workers/interfaces/WorkerUtils/navigator/language.html": true,
   "workers/modules/dedicated-worker-blob-url-sandboxed-iframe.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/modules/dedicated-worker-blob-url.window.js": false,
   "workers/modules/dedicated-worker-import-blob-url.any.js": {
@@ -758,13 +842,16 @@
   },
   "workers/modules/shared-worker-parse-error-failure.html": false,
   "workers/multi-globals/current/current.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/multi-globals/incumbent/incumbent.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/multi-globals/url-parsing.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/name-property.html": false,
   "workers/nested_worker.worker.js": true,
@@ -774,35 +861,44 @@
   "workers/nested_worker_sync_xhr.worker.js": true,
   "workers/nested_worker_terminate_from_document.html": true,
   "workers/non-automated/infinite-nested.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/non-automated/infinite-sibling-and-nested.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/non-automated/infinite-sibling.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/non-automated/navigator-onLine.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/opaque-origin.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/postMessage_block.https.html": true,
   "workers/same-origin-check.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/same-site-cookies/first-party.all.tentative.https.window.js": false,
   "workers/same-site-cookies/first-party.default.tentative.https.window.js": false,
   "workers/same-site-cookies/first-party.none.tentative.https.window.js": false,
   "workers/same-site-cookies/third-party.all.tentative.sub.https.window.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/same-site-cookies/third-party.default.tentative.sub.https.window.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/same-site-cookies/third-party.none.tentative.sub.https.window.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "workers/semantics/encodings/001.html": true,
   "workers/semantics/encodings/002.html": {
@@ -848,10 +944,12 @@
     ]
   },
   "workers/semantics/interface-objects/003.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not run this .any.js global."
   },
   "workers/semantics/interface-objects/004.any.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not run this .any.js global."
   },
   "workers/semantics/multiple-workers/001.html": {
     "expectedFailures": [
@@ -861,16 +959,20 @@
   "workers/semantics/multiple-workers/002.html": true,
   "workers/semantics/multiple-workers/003.html": true,
   "workers/semantics/multiple-workers/004-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/semantics/multiple-workers/004.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/multiple-workers/008-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/semantics/multiple-workers/008.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/multiple-workers/exposure.any.js": {
     "expectedFailures": [
@@ -878,13 +980,16 @@
     ]
   },
   "workers/semantics/navigation/001-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/semantics/navigation/001.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/semantics/navigation/002.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/semantics/reporting-errors/001.html": {
     "expectedFailures": [
@@ -902,10 +1007,12 @@
     ]
   },
   "workers/semantics/reporting-errors/004-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "workers/semantics/reporting-errors/004.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/semantics/run-a-worker/001.html": true,
   "workers/semantics/run-a-worker/002.html": {
@@ -921,22 +1028,28 @@
   "workers/semantics/structured-clone/dedicated.html": false,
   "workers/semantics/structured-clone/shared.html": false,
   "workers/semantics/xhr/001.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/xhr/002.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/xhr/003.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/xhr/004.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/xhr/005.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/semantics/xhr/006.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "workers/shared-worker-from-blob-url.window.js": {
     "expectedFailures": [
@@ -996,7 +1109,8 @@
     ]
   },
   "workers/shared-worker-partitioned-cookies.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "workers/shared-worker-partitioned.tentative.html": {
     "expectedFailures": [

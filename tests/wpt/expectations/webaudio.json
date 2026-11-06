@@ -1,24 +1,31 @@
 {
   "webaudio/historical.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not implement historical Web Audio names."
   },
   "webaudio/idlharness.https.window.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/interrupt-when-created-hidden.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/interrupt-when-hidden.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/resume-while-hidden.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/suspended-hide-show.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/viewport.tentative.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "webaudio/the-audio-api/processing-model/cycle-without-delay.html": {
     "expectedFailures": [
@@ -43,7 +50,8 @@
   "webaudio/the-audio-api/the-analysernode-interface/realtimeanalyser-fft-sizing.html": true,
   "webaudio/the-audio-api/the-analysernode-interface/test-analyser-gain.html": true,
   "webaudio/the-audio-api/the-analysernode-interface/test-analyser-minimum.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/the-analysernode-interface/test-analyser-output.html": {
     "expectedFailures": [
@@ -51,10 +59,12 @@
     ]
   },
   "webaudio/the-audio-api/the-analysernode-interface/test-analyser-resume-after-suspended.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The main global has no requestAnimationFrame."
   },
   "webaudio/the-audio-api/the-analysernode-interface/test-analyser-scale.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The main global has no requestAnimationFrame."
   },
   "webaudio/the-audio-api/the-analysernode-interface/test-analysernode.html": true,
   "webaudio/the-audio-api/the-audiobuffer-interface/acquire-the-content.html": true,
@@ -63,10 +73,12 @@
   "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer-reuse.html": true,
   "webaudio/the-audio-api/the-audiobuffer-interface/audiobuffer.html": true,
   "webaudio/the-audio-api/the-audiobuffer-interface/crashtests/copyFromChannel-bufferOffset-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "webaudio/the-audio-api/the-audiobuffer-interface/crashtests/copyToChannel-bufferOffset-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "webaudio/the-audio-api/the-audiobuffer-interface/ctor-audiobuffer.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/active-processing.https.html": {
@@ -173,33 +185,42 @@
     ]
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-detached-execution-context.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp-cross-realm.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no getOutputTimestamp."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no getOutputTimestamp."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-not-fully-active.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-playbackstats.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no playbackStats."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-rendersizehint.html": true,
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-constructor.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no setSinkId."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-setsinkid.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no setSinkId."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-sinkid-state-change.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no setSinkId."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-state-change-after-close.http.window.js": false,
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-suspend-resume-close.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-suspend-resume.html": {
     "expectedFailures": [
@@ -210,22 +231,27 @@
   "webaudio/the-audio-api/the-audiocontext-interface/callback-detached-buffer.html": true,
   "webaudio/the-audio-api/the-audiocontext-interface/constructor-allowed-to-start.html": false,
   "webaudio/the-audio-api/the-audiocontext-interface/context-time-monotonic-on-setsinkid.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no setSinkId."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/crashtests/currentTime-after-discard.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/processing-after-resume.https.html": true,
   "webaudio/the-audio-api/the-audiocontext-interface/promise-methods-after-discard.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-audiocontext-interface/suspend-after-construct.html": true,
   "webaudio/the-audio-api/the-audiocontext-interface/suspend-with-navigation.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-audionode-interface/audionode-channel-rules.html": true,
   "webaudio/the-audio-api/the-audionode-interface/audionode-connect-method-chaining.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/the-audionode-interface/audionode-connect-order.html": true,
   "webaudio/the-audio-api/the-audionode-interface/audionode-connect-return-value.html": true,
@@ -321,7 +347,8 @@
     ]
   },
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-nominal-range.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-setTargetAtTime.html": false,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueAtTime.html": false,
@@ -465,7 +492,8 @@
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-addmodule-resolution.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-iterable.https.html": false,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-range.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-size.https.html": {
     "expectedFailures": [
@@ -632,7 +660,8 @@
     ]
   },
   "webaudio/the-audio-api/the-convolvernode-interface/realtime-conv.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element or MediaStream audio node."
   },
   "webaudio/the-audio-api/the-convolvernode-interface/transferred-buffer-output.html": false,
   "webaudio/the-audio-api/the-delaynode-interface/ctor-delay.html": true,
@@ -666,7 +695,8 @@
   "webaudio/the-audio-api/the-gainnode-interface/no-dezippering.html": true,
   "webaudio/the-audio-api/the-iirfilternode-interface/ctor-iirfilter.html": true,
   "webaudio/the-audio-api/the-iirfilternode-interface/iir-filter-silent-block-crash.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter-basic.html": true,
   "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter-getFrequencyResponse.html": {
@@ -705,40 +735,52 @@
   },
   "webaudio/the-audio-api/the-iirfilternode-interface/test-iirfilternode.html": true,
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/cors-check.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource-mediaStreamAudioDestination-stream-crash.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSourceToScriptProcessorTest.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource_closed_context-crash.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/mediaElementAudioSource_volumeChange.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/no-cors.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediaelementaudiosourcenode-interface/setSinkId-with-MediaElementAudioSourceNode.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no media element audio source."
   },
   "webaudio/the-audio-api/the-mediastreamaudiodestinationnode-interface/closed-audiocontext-construction.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no MediaStreamAudioDestinationNode."
   },
   "webaudio/the-audio-api/the-mediastreamaudiodestinationnode-interface/ctor-mediastreamaudiodestination.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no MediaStreamAudioDestinationNode."
   },
   "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-ctor.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no MediaStreamAudioSourceNode."
   },
   "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-from-context-with-different-rate.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no MediaStreamAudioSourceNode."
   },
   "webaudio/the-audio-api/the-mediastreamaudiosourcenode-interface/mediastreamaudiosourcenode-routing.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no MediaStreamAudioSourceNode."
   },
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/ctor-offlineaudiocontext.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/current-time-block-size.html": true,
@@ -749,17 +791,20 @@
   },
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-close.html": false,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-detached-execution-context.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-incremental-rendering-data-integrity.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-incremental-rendering.html": false,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-rendersizehint.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-suspend-rendersizehint.https.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/startrendering-after-discard.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "webaudio/the-audio-api/the-oscillatornode-interface/crashtests/stop-before-start.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "webaudio/the-audio-api/the-oscillatornode-interface/ctor-oscillator.html": true,
   "webaudio/the-audio-api/the-oscillatornode-interface/detune-limiting.html": {
@@ -829,10 +874,12 @@
   "webaudio/the-audio-api/the-periodicwave-interface/createPeriodicWaveInfiniteValuesThrows.html": true,
   "webaudio/the-audio-api/the-periodicwave-interface/periodicWave.html": true,
   "webaudio/the-audio-api/the-scriptprocessornode-interface/scriptprocessor-rendersizehint.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no ScriptProcessorNode."
   },
   "webaudio/the-audio-api/the-scriptprocessornode-interface/simple-input-output.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner has no ScriptProcessorNode."
   },
   "webaudio/the-audio-api/the-stereopanner-interface/ctor-stereopanner.html": true,
   "webaudio/the-audio-api/the-stereopanner-interface/no-dezippering.html": true,

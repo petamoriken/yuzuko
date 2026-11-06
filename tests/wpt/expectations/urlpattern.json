@@ -3,7 +3,8 @@
   "urlpattern/urlpattern-compare.tentative.https.any.js": true,
   "urlpattern/urlpattern-constructor.any.js": true,
   "urlpattern/urlpattern-detached-frame-regexp.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "urlpattern/urlpattern-empty-regexp-group.html": true,
   "urlpattern/urlpattern-generate.tentative.any.js": true,

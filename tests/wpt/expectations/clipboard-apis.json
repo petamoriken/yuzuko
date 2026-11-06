@@ -10,23 +10,29 @@
   "clipboard-apis/async-html-script-removal.https.html": false,
   "clipboard-apis/async-navigator-clipboard-basics.https.html": false,
   "clipboard-apis/async-navigator-clipboard-change-event.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/async-navigator-clipboard-read-resource-load.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/async-navigator-clipboard-read-sanitize.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/async-navigator-clipboard-write-domstring.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "clipboard-apis/async-navigator-clipboard-write-multiple.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/async-promise-write-blobs-read-blobs.https.html": false,
   "clipboard-apis/async-svg-read-write.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "clipboard-apis/async-unsanitized-html-formats-write-read.tentative.https.html": false,
   "clipboard-apis/async-unsanitized-plaintext-formats-write-read.tentative.https.html": false,
@@ -34,19 +40,24 @@
   "clipboard-apis/async-write-blobs-read-blobs.https.html": false,
   "clipboard-apis/async-write-html-read-html.https.html": false,
   "clipboard-apis/async-write-image-read-image.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/clipboard-copy-selection-line-break.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/clipboard-copy-selection-style-opacity.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/clipboard-events-synthetic.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/clipboard-file-manual.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/clipboard-item.https.html": {
     "expectedFailures": [
@@ -66,102 +77,134 @@
     ]
   },
   "clipboard-apis/data-transfer-file-list-change-reference-updates.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "clipboard-apis/dataTransfer-clearData.html": false,
   "clipboard-apis/detached-iframe/clipboard-on-detached-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/detached-iframe/paste-on-detaching-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/detached-iframe/read-on-detaching-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/detached-iframe/write-on-detaching-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/detached-iframe/write-read-on-detached-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/detached-iframe/writeText-readText-on-detached-iframe.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/downloadurl-list-custom-clipboard-data.tentative.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/drag-multiple-urls.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/events/copy-event.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/events/cut-event-manual.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/events/paste-event-manual.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "clipboard-apis/idlharness.https.window.js": true,
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-disabled-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-disabled-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-attribute-cross-origin-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-attribute-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-cross-origin-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy-cross-origin.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-read/clipboard-read-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-disabled-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-disabled-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-attribute-cross-origin-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-attribute-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-cross-origin-tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy-cross-origin.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions-policy/clipboard-write/clipboard-write-enabled-on-self-origin-by-permissions-policy.tentative.https.sub.html.headers": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "clipboard-apis/permissions/readText-denied.https.html": false,
   "clipboard-apis/permissions/readText-granted.https.html": false,

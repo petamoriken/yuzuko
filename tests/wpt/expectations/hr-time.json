@@ -22,7 +22,8 @@
   },
   "hr-time/monotonic-clock.any.js": true,
   "hr-time/navigation-start-post-before-unload.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "hr-time/performance-tojson.html": {
     "expectedFailures": [
@@ -30,10 +31,12 @@
     ]
   },
   "hr-time/raf-coarsened-time.https.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "hr-time/test_cross_frame_start.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "hr-time/timeOrigin.html": true,
   "hr-time/timing-attack.html": {
@@ -42,7 +45,8 @@
     ]
   },
   "hr-time/unload-manual.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "hr-time/window-worker-timeOrigin.window.js": true
 }

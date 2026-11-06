@@ -308,19 +308,21 @@
   "websockets/closing-handshake/003.html": true,
   "websockets/closing-handshake/004.html": true,
   "websockets/constants.sub.js": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "websockets/constructor.any.js": true,
   "websockets/constructor/001.html": true,
   "websockets/constructor/004.html": true,
   "websockets/constructor/005.html": true,
   "websockets/constructor/006.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/constructor/007.html": true,
   "websockets/constructor/008.html": true,
   "websockets/constructor/009.html": {
-    "ignore": {
+    "flaky": {
       "macos": "The protocol handshake does not finish.",
       "windows": "The protocol handshake does not finish."
     }
@@ -335,11 +337,12 @@
     ]
   },
   "websockets/constructor/016.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
-    "ignore": {
+    "flaky": {
       "linux": "The NUL echo handshake does not finish.",
       "macos": "The NUL echo handshake does not finish.",
       "windows": "The NUL echo handshake does not finish."
@@ -349,7 +352,7 @@
   "websockets/constructor/020.html": true,
   "websockets/constructor/021.html": true,
   "websockets/constructor/022.html": {
-    "ignore": {
+    "flaky": {
       "linux": "The protocol-array handshake does not finish.",
       "macos": "The protocol-array handshake does not finish.",
       "windows": "The protocol-array handshake does not finish."
@@ -360,7 +363,7 @@
       "Empty option bag should be accepted",
       "Option bag with protocols array should be accepted"
     ],
-    "ignore": {
+    "flaky": {
       "linux": "The option-bag handshake does not finish.",
       "macos": "The option-bag handshake does not finish."
     }
@@ -378,31 +381,38 @@
     ]
   },
   "websockets/cookies/001.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/002.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/003.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/004.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/005.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/006.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/007.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/cookies/cross-origin-cookie-set.html": {
     "expectedFailures": [
       "Cookie should be set"
     ],
-    "ignore": {
+    "flaky": {
       "macos": "The cross-origin cookie handshake does not finish.",
       "windows": "The cross-origin cookie handshake does not finish."
     }
@@ -444,18 +454,22 @@
   "websockets/interfaces/WebSocket/events/001.html": true,
   "websockets/interfaces/WebSocket/events/002.html": true,
   "websockets/interfaces/WebSocket/events/003.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/004.html": true,
   "websockets/interfaces/WebSocket/events/006.html": true,
   "websockets/interfaces/WebSocket/events/007.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/008.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/009.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/010.html": true,
   "websockets/interfaces/WebSocket/events/011.html": true,
@@ -478,7 +492,8 @@
   "websockets/interfaces/WebSocket/events/017.html": true,
   "websockets/interfaces/WebSocket/events/018.html": true,
   "websockets/interfaces/WebSocket/events/019.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/events/020.html": true,
   "websockets/interfaces/WebSocket/extensions/001.html": true,
@@ -509,7 +524,8 @@
   },
   "websockets/interfaces/WebSocket/send/009.html": true,
   "websockets/interfaces/WebSocket/send/010.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/interfaces/WebSocket/send/011.html": true,
   "websockets/interfaces/WebSocket/send/012.html": true,
@@ -527,27 +543,31 @@
     ]
   },
   "websockets/multi-globals/message-received.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "websockets/multi-globals/url-parsing/current/current.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/multi-globals/url-parsing/incumbent/incumbent.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/multi-globals/url-parsing/url-parsing.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a layout element."
   },
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": {
-    "ignore": {
+    "flaky": {
       "macos": "The origin handshake does not finish.",
       "windows": "The origin handshake does not finish."
     }
   },
   "websockets/opening-handshake/003.html": {
-    "ignore": {
+    "flaky": {
       "macos": "The IDN origin handshake does not finish.",
       "windows": "The IDN origin handshake does not finish."
     }
@@ -560,7 +580,7 @@
     ]
   },
   "websockets/referrer.any.js": {
-    "ignore": {
+    "flaky": {
       "macos": "The referrer handshake does not finish."
     }
   },
@@ -576,7 +596,8 @@
     ]
   },
   "websockets/send-data-isolation.sub.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The runner does not apply .sub. substitutions."
   },
   "websockets/send-many-64K-messages-with-backpressure.any.js": {
     "expectedFailures": [
@@ -675,10 +696,12 @@
     }
   },
   "websockets/unload-a-document/001-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/unload-a-document/001-2.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/unload-a-document/001.html": {
     "expectedFailures": [
@@ -686,10 +709,12 @@
     ]
   },
   "websockets/unload-a-document/002-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/unload-a-document/002-2.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/unload-a-document/002.html": {
     "expectedFailures": [
@@ -697,13 +722,16 @@
     ]
   },
   "websockets/unload-a-document/003.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/unload-a-document/004.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file needs a document."
   },
   "websockets/unload-a-document/005-1.html": {
-    "ignore": true
+    "ignore": true,
+    "reason": "The file is not a testharness document."
   },
   "websockets/unload-a-document/005.html": {
     "expectedFailures": [
