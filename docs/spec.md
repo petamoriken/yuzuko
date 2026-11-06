@@ -1070,7 +1070,7 @@ Web APIs are tested with [web-platform-tests](https://github.com/web-platform-te
 
 `tests/wpt/suite` is a git submodule pinned to one upstream commit. Upgrading the pin is its own change, separate from a feature change. `tests/wpt/expectations/` holds one JSON file per top-level suite.
 
-`cargo test -p yuzuko --test wpt` executes the enrolled testharness tests in a fresh realm per file. The runner loads upstream `testharness.js` and reports each subtest. It runs `.any.js` variants and testharness documents that do not need a layout engine. Dedicated `.worker.js` files run in a worker. Files that need a DOM node, CSS layout, or a WebView stay in the expectation file as `{"ignore": true}`. Suites that need the network (`fetch`, and any test that loads an HTTP resource) use the WPT server from that cargo test. `url`, `encoding`, and the other enrolled directories that do not load an HTTP resource run without that server.
+`cargo test -p yuzuko --test wpt` executes the enrolled testharness tests in a fresh realm per file. The runner loads upstream `testharness.js` and reports each subtest. It runs `.any.js` variants and testharness documents that do not need a layout engine. Dedicated `.worker.js` files run in a worker. Files that need a DOM node, CSS layout, or a WebView stay in the expectation file as `{"ignore": true}`. `reason` may say why. A file the runner can execute may still skip on `linux`, `macos`, or `windows`. Suites that need the network (`fetch`, and any test that loads an HTTP resource) use the WPT server from that cargo test. `url`, `encoding`, and the other enrolled directories that do not load an HTTP resource run without that server.
 
 Expectation leaves use these values:
 
@@ -1079,13 +1079,17 @@ Expectation leaves use these values:
 | `true` | Every subtest is expected to pass |
 | `false` | The whole file is expected to fail |
 | `{"expectedFailures": ["name"]}` | Those subtests fail. The rest pass |
-| `{"ignore": true}` | Skip the file. `YUZUKO_WPT_NO_IGNORE=1` runs it anyway |
+| `{"ignore": true}` | Skip the file on every platform. `YUZUKO_WPT_NO_IGNORE=1` runs it anyway |
+| `{"ignore": true, "reason": "text"}` | Skip the file on every platform. `text` is a non-empty reason |
+| `{"ignore": {"linux": "text", "macos": true}}` | Skip where a key is present. Keys are `linux`, `macos`, and `windows`. A string is that platform's reason. `true` skips that platform with no reason. Every other platform expects a pass |
+| `{"expectedFailures": ["name"], "ignore": {"windows": "text"}}` | Skip on `windows`. On the other platforms, those subtests fail and the rest pass |
+| `{"fail": true, "ignore": {"linux": true}}` | Skip on `linux`. On the other platforms, the whole file is expected to fail |
 
-The cargo test fails when a result differs from the expectation, including a subtest that starts passing. `YUZUKO_WPT_UPDATE=1 cargo test -p yuzuko --test wpt` rewrites the expectation files to the results just observed. The next run then passes. `YUZUKO_WPT_NO_IGNORE=1` runs files marked `{"ignore": true}`. Update expectations in the same change that changes the results.
+A file this runner always skips uses `{"ignore": true}`, with an optional `reason`. A platform `ignore` is only for a file the runner can execute, and the runner rejects it on a file that it always skips. The cargo test fails when a result differs from the expectation, including a subtest that starts passing. `YUZUKO_WPT_UPDATE=1 cargo test -p yuzuko --test wpt` rewrites the expectation files to the results just observed. It keeps an all-platform `reason` when the runner still skips the file. It keeps a platform `ignore` for a platform that did not run. `YUZUKO_WPT_NO_IGNORE=1` runs ignored files, including a platform ignore for the host. Together with update, that records this host's result and drops the ignore that covered this host. The next run then passes. Update expectations in the same change that changes the results.
 
 The first runner is single-process and sequential, because V8 and winit stay on the main thread. Splitting suites across processes, one top-level directory each, can come later.
 
-A change that adds or changes a web API enrolls the upstream directories for that API and runs them. Tests in those directories that need an absent host stay ignored in expectations, with the reason in the review of that change.
+A change that adds or changes a web API enrolls the upstream directories for that API and runs them. Tests in those directories that need an absent host stay ignored in expectations. The `reason` on that entry says why.
 
 The enrolled upstream directories are `url`, `encoding`, `hr-time`, `html/webappapis/atob`, `html/webappapis/timers`, `FileAPI`, `dom/events`, `wasm/jsapi`, `console`, constructor tests under `pointerevents` and `uievents` that do not need an element, `html/canvas` image and `createImageBitmap` tests that operate on blobs (plus the image fixtures those tests use), `html/canvas/offscreen` and the 2D context tests that do not need a displayed HTML canvas (run on the CPU renderer), `webgpu`, `fetch`, `streams`, `compression`, `urlpattern`, `WebCryptoAPI`, `mimesniff`, `wasm/webapi`, `css/geometry`, `gamepad`, `clipboard-apis`, the `DataTransfer` string-store tests under `html/editing/dnd/datastore`, `screen-wake-lock`, `css/css-font-loading`, dedicated-worker tests that do not need a document, and `webaudio`.
 
