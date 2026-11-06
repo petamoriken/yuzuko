@@ -7,8 +7,9 @@ use yuzuko_core::op::{Js, OpError, OpException};
 use yuzuko_core::{
   Inbound, ScriptKind, WorkerScript, agent_alive, agent_id,
   eval_classic_in_worker, is_dedicated_worker, load_worker_source,
-  parent_agent, post_inbound, resolve_specifier, rust_string, spawn_worker,
-  take_inbox, terminate_worker, worker_is_module, worker_location, worker_name,
+  module_source_url, parent_agent, post_inbound, resolve_specifier,
+  rust_string, spawn_worker, take_inbox, terminate_worker, worker_is_module,
+  worker_location, worker_name,
 };
 use yuzuko_macros::op;
 
@@ -545,28 +546,44 @@ impl Worker {
     if args.length() < 1 || args.get(0).is_undefined() {
       return Err(OpError::type_("Worker requires a URL"));
     }
-    let spec = rust_string(scope, args.get(0));
     let options = if args.length() > 1 {
       args.get(1)
     } else {
       v8::undefined(scope).into()
     };
-    let (module, name) = read_options(scope, options)?;
-    let url = resolve_specifier(&spec).map_err(OpError::type_)?;
-    let id = spawn_worker(
-      agent_id(),
+    let (kind, name) = read_options(scope, options)?;
+    let first = args.get(0);
+    let script = if let Some(url) = module_source_url(scope, first) {
+      if kind == WorkerKind::Classic {
+        return Err(OpError::type_(
+          "Worker type must be module when the script is a ModuleSource",
+        ));
+      }
       WorkerScript {
         url,
-        kind: if module {
+        kind: ScriptKind::Module,
+        name,
+        sandbox: yuzuko_core::entry_dir(),
+      }
+    } else if first.is_wasm_module_object() {
+      return Err(OpError::type_(
+        "A WebAssembly.Module is not a worker script",
+      ));
+    } else {
+      let spec = rust_string(scope, first);
+      let url = resolve_specifier(&spec).map_err(OpError::type_)?;
+      WorkerScript {
+        url,
+        kind: if kind == WorkerKind::Module {
           ScriptKind::Module
         } else {
           ScriptKind::Classic
         },
         name,
         sandbox: yuzuko_core::entry_dir(),
-      },
-    )
-    .map_err(OpError::type_)?;
+      }
+    };
+    let id = spawn_worker(agent_id(), script).map_err(OpError::type_)?;
     Ok(Worker {
       base: EventTarget::new(),
       id,
@@ -633,22 +650,29 @@ impl Worker {
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkerKind {
+  Unspecified,
+  Classic,
+  Module,
+}
+
 fn read_options(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(bool, String), OpError> {
+) -> Result<(WorkerKind, String), OpError> {
   if value.is_null_or_undefined() {
-    return Ok((false, String::new()));
+    return Ok((WorkerKind::Unspecified, String::new()));
   }
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("Worker options are not an object"))?;
-  let mut module = false;
-  if let Some(kind) = object_get(scope, object, "type")
-    && !kind.is_undefined()
+  let mut kind = WorkerKind::Unspecified;
+  if let Some(value) = object_get(scope, object, "type")
+    && !value.is_undefined()
   {
-    match rust_string(scope, kind).as_str() {
-      "classic" => module = false,
-      "module" => module = true,
+    match rust_string(scope, value).as_str() {
+      "classic" => kind = WorkerKind::Classic,
+      "module" => kind = WorkerKind::Module,
       _ => {
         return Err(OpError::type_("Worker type must be classic or module"));
       }
@@ -660,7 +684,7 @@ fn read_options(
   {
     name = rust_string(scope, value);
   }
-  Ok((module, name))
+  Ok((kind, name))
 }
 
 fn object_get<'s>(

@@ -22,6 +22,22 @@ fn dedicated_workers_pass_under_yuzuko_test() {
 }
 
 #[test]
+fn worker_from_module_source() {
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "tests/source_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .output()
+    .expect("spawn yuzuko");
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  println!("{stdout}");
+  assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
+  assert!(stdout.contains("ok | "), "{stdout}\n{stderr}");
+  assert!(stdout.contains("0 failed"), "{stdout}\n{stderr}");
+}
+
+#[test]
 fn module_worker_defers_evaluation() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())

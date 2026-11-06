@@ -564,7 +564,7 @@ fn resolve_callback<'s>(
 fn source_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
-  _import_attributes: v8::Local<'s, v8::FixedArray>,
+  import_attributes: v8::Local<'s, v8::FixedArray>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Object>> {
   v8::callback_scope!(unsafe scope, context);
@@ -575,7 +575,8 @@ fn source_callback<'s>(
     throw_type(scope, "cannot resolve an import without a referrer");
     return None;
   };
-  match load_wasm_source(scope, &referrer_path, &spec) {
+  let attribute = import_type(scope, import_attributes);
+  match load_source(scope, &referrer_path, &spec, attribute.as_deref()) {
     Ok(module) => {
       // The module object is allocated in this callback's scope, which
       // stays on the stack until V8 copies the returned local.
@@ -592,22 +593,33 @@ fn source_callback<'s>(
   }
 }
 
-fn load_wasm_source<'a>(
+const UNSUPPORTED_SOURCE_PHASE: &str = concat!(
+  "import source is only supported for JavaScript, TypeScript, ",
+  "and WebAssembly modules",
+);
+
+fn load_source<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   referrer: &Path,
   specifier: &str,
+  attribute: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Object>, RuntimeError> {
+  if matches!(attribute, Some("text" | "bytes" | "json")) {
+    return Err(RuntimeError::message(UNSUPPORTED_SOURCE_PHASE));
+  }
   let (path, url) = locate(referrer, specifier)?;
   let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-  if extension != "wasm" {
-    return Err(RuntimeError::message(
-      "import source is only supported for WebAssembly modules".to_string(),
-    ));
+  if extension == "wasm" {
+    let bytes = fs::read(&path).map_err(|err| {
+      RuntimeError::message(format!("{}: {err}", path.display()))
+    })?;
+    return crate::loader::wasm_module::source_object(scope, &url, &bytes);
   }
-  let bytes = fs::read(&path).map_err(|err| {
-    RuntimeError::message(format!("{}: {err}", path.display()))
-  })?;
-  crate::loader::wasm_module::source_object(scope, &url, &bytes)
+  if matches!(extension, "js" | "mjs" | "cjs" | "ts" | "mts") {
+    compile_path(scope, &path, &url, None)?;
+    return crate::loader::module_source::wrap(scope, &url);
+  }
+  Err(RuntimeError::message(UNSUPPORTED_SOURCE_PHASE))
 }
 
 fn resolve_and_compile<'a>(
@@ -806,15 +818,17 @@ pub fn dynamic_import_source<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   resource_name: v8::Local<'s, v8::Value>,
   specifier: v8::Local<'s, v8::String>,
+  import_attributes: v8::Local<'s, v8::FixedArray>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
   let resolver = v8::PromiseResolver::new(scope)?;
   let promise = resolver.get_promise(scope);
   let spec = specifier.to_rust_string_lossy(scope);
   let referrer = resource_name.to_rust_string_lossy(scope);
+  let attribute = import_type(scope, import_attributes);
   let referrer_path =
     url_to_path(&referrer).or_else(|_| absolute(Path::new(&referrer)));
-  let loaded =
-    referrer_path.and_then(|path| load_wasm_source(scope, &path, &spec));
+  let loaded = referrer_path
+    .and_then(|path| load_source(scope, &path, &spec, attribute.as_deref()));
   match loaded {
     Ok(module) => {
       resolver.resolve(scope, module.into());
@@ -1874,6 +1888,26 @@ void wasm;
         "url.ts",
       ]
     );
+  }
+
+  #[test]
+  fn module_graph_follows_javascript_source_imports() {
+    let dir = scratch();
+    write(
+      &dir.0,
+      "entry.ts",
+      "import source worker from \"./worker.ts\";\nvoid worker;\n",
+    );
+    write(&dir.0, "worker.ts", "import \"./dep.ts\";\nexport {};\n");
+    write(&dir.0, "dep.ts", "export const n = 1;\n");
+    write(&dir.0, "unused.ts", "export {};\n");
+    let files = module_graph(&dir.0.join("entry.ts")).unwrap();
+    let mut names: Vec<_> = files
+      .iter()
+      .map(|path| path.file_name().unwrap().to_str().unwrap().to_string())
+      .collect();
+    names.sort();
+    assert_eq!(names, ["dep.ts", "entry.ts", "worker.ts"]);
   }
 
   #[test]

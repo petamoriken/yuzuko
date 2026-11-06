@@ -8,7 +8,8 @@
 //! `AudioData`. Tag `17` is `VideoFrame`. Tags `18` and `19` are
 //! `EncodedAudioChunk` and `EncodedVideoChunk`. Tag `20` is
 //! `ReadableStream`, tag `21` is `WritableStream`, and tag `22` is
-//! `TransformStream`. All three are transfer-only. A transferable also
+//! `TransformStream`. All three are transfer-only. Tag `23` is
+//! `ModuleSource`. A transferable also
 //! registers a probe. `ImageBitmap`, `AudioData`, and `VideoFrame` register
 //! a detacher that runs after a successful serialize. Finishers run when a
 //! clone leaves V8. A nested read can still be inside `ReadHostObject`, so

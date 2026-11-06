@@ -97,6 +97,8 @@ pub struct HostState {
   /// Compiled `WebAssembly.Module` objects, keyed by the module file URL.
   /// Source-phase imports return these without instantiating them.
   pub wasm_modules: HashMap<String, v8::Global<v8::Object>>,
+  /// JavaScript `ModuleSource` objects, keyed by the module file URL.
+  pub js_sources: HashMap<String, v8::Global<v8::Object>>,
   /// `WebAssembly.Instance` objects. Keys are the module URL and, after
   /// evaluation, the module namespace. Importers read `.exports` so a
   /// mutable global stays a `WebAssembly.Global`.
@@ -150,6 +152,7 @@ impl HostState {
       strip_cache: HashMap::new(),
       synthetic_sources: HashMap::new(),
       wasm_modules: HashMap::new(),
+      js_sources: HashMap::new(),
       wasm_instances: None,
       templates: HashMap::new(),
       unhandled: HashMap::new(),

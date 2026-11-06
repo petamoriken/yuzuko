@@ -119,10 +119,32 @@ fn wasm_source_import_does_not_evaluate_dependencies() {
 }
 
 #[test]
-fn wasm_source_import_of_typescript_is_rejected() {
-  let error = run_file(&workspace().join("tests/wasm/source_js.ts"))
-    .expect_err("import source of TypeScript");
-  assert!(error.message.contains("WebAssembly"), "{}", error.message);
+fn js_source_import_returns_module_source() {
+  run_file(&workspace().join("tests/wasm/source_js.ts"))
+    .expect("import source of TypeScript");
+}
+
+#[test]
+fn js_source_import_does_not_evaluate() {
+  run_file(&workspace().join("tests/source/no_eval.ts"))
+    .expect("source phase skips evaluation");
+}
+
+#[test]
+fn js_source_import_does_not_load_imports() {
+  run_file(&workspace().join("tests/source/missing_dep.ts"))
+    .expect("source phase skips imports");
+}
+
+#[test]
+fn js_source_import_reports_a_syntax_error() {
+  let error = run_file(&workspace().join("tests/source/syntax.ts"))
+    .expect_err("import source of invalid TypeScript");
+  assert!(
+    error.message.contains("bad.ts") || error.message.contains("Unexpected"),
+    "{}",
+    error.message
+  );
 }
 
 #[test]
@@ -216,6 +238,13 @@ fn json_module_still_requires_the_attribute() {
 fn import_source_of_a_text_file_is_rejected() {
   let error = run_file(&workspace().join("tests/text_bytes/source_text.ts"))
     .expect_err("import source text");
+  assert!(error.message.contains("WebAssembly"), "{}", error.message);
+}
+
+#[test]
+fn import_source_of_a_json_file_is_rejected() {
+  let error = run_file(&workspace().join("tests/text_bytes/source_json.ts"))
+    .expect_err("import source json");
   assert!(error.message.contains("WebAssembly"), "{}", error.message);
 }
 

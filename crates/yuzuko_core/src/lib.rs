@@ -63,6 +63,7 @@ pub use jobs::{Listen, enqueue, listen, pending as jobs_pending, spawn};
 pub use js::{
   global, namespace, rust_string, set_function, set_value, throw_type,
 };
+pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
 pub use process::set_args;

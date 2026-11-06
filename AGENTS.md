@@ -43,7 +43,7 @@ On the main global, `Yuzuko.fonts` is the `FontFaceSet` when the runtime is buil
 
 The codecs are hardware-only H.264 (`avc1` and `avc3`) and AAC (`mp4a`). Other codecs are not decoded. There is no `HTMLVideoElement`. `Yuzuko.demuxMp4` reads a progressive MP4 file into those chunks and does not advance frames.
 
-A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file is the TSDoc reference for the runtime. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`.
+A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file is the TSDoc reference for the runtime. ECMAScript types stay in TypeScript's lib; do not declare them here. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`.
 
 ## Repository
 

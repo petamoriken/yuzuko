@@ -32,7 +32,7 @@ Bytes: `Blob`, `File`, `FormData`, streams, `CompressionStream`, and `Decompress
 
 `MessageChannel` and dedicated workers are in every build. The main realm has `requestIdleCallback` and `cancelIdleCallback`. The main global has no `requestAnimationFrame`. A frame belongs to a window, or to a dedicated worker that draws into a transferred canvas.
 
-`Intl` uses the full ICU locale data linked into this V8 build. `WebAssembly` includes streaming compilation, a direct `.wasm` import, `import source`, and `import defer`. Text and bytes imports use `with { type: "text" }` and `with { type: "bytes" }`.
+`Intl` uses the full ICU locale data linked into this V8 build. `WebAssembly` includes streaming compilation, a direct `.wasm` import, `import source`, and `import defer`. `import source` of JavaScript or TypeScript yields a `ModuleSource` for `new Worker`. Text and bytes imports use `with { type: "text" }` and `with { type: "bytes" }`.
 
 `navigator.userAgent` is `Yuzuko/<version>`. `navigator.hardwareConcurrency` is the number of logical processors available to the process, and it is at least 1.
 

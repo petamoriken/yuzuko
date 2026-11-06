@@ -1416,7 +1416,7 @@ fn platform_handle() -> v8::SharedRef<v8::Platform> {
 
 fn init_v8() {
   V8_INIT.call_once(|| {
-    // Source-phase `import source` compiles Wasm without instantiating.
+    // Source-phase `import source` for Wasm and JavaScript.
     // `import defer` is the deferred-evaluation syntax.
     // `transferToImmutable` makes the ArrayBuffer behind a bytes module.
     v8::V8::set_flags_from_string(
@@ -1441,6 +1441,7 @@ fn init_v8() {
 fn install_realm(scope: &mut v8::PinScope<'_, '_>, test_mode: bool) {
   install_console(scope);
   install_wasm_async(scope);
+  crate::loader::module_source::install(scope);
   install_namespace_instance(scope);
   crate::timers::install(scope);
   crate::realm::install(scope);
@@ -2458,7 +2459,12 @@ fn on_dynamic_import_phase<'s>(
   import_attributes: v8::Local<'s, v8::FixedArray>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
   if phase == v8::ModuleImportPhase::kSource {
-    modules::dynamic_import_source(scope, resource_name, specifier)
+    modules::dynamic_import_source(
+      scope,
+      resource_name,
+      specifier,
+      import_attributes,
+    )
   } else if phase == v8::ModuleImportPhase::kDefer {
     modules::dynamic_import_defer(
       scope,

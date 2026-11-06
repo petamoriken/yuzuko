@@ -13674,7 +13674,9 @@ declare class WebTransportError extends DOMException {
  * A dedicated worker.
  *
  * `new Worker(url)` runs a classic script. `{ type: "module" }` runs an ES
- * module. There is no `SharedWorker`. `postMessage` carries values
+ * module. The object from `import source` of JavaScript or TypeScript also
+ * starts a module worker. `{ type: "classic" }` with that object throws
+ * `TypeError`. There is no `SharedWorker`. `postMessage` carries values
  * `structuredClone` can carry, including a transferred `ArrayBuffer`,
  * `MessagePort`, `OffscreenCanvas`, `ImageBitmap`, `AudioData`,
  * `VideoFrame`, `ReadableStream`, `WritableStream`, or `TransformStream`,
@@ -13685,7 +13687,8 @@ declare class WebTransportError extends DOMException {
  * including a base64 payload, or `blob:`. A blob URL created on another
  * thread can be loaded.
  *
- * @throws {@link TypeError} When the URL or `type` is invalid.
+ * @throws {@link TypeError} When the URL or `type` is invalid, or when
+ * `type` is `"classic"` with a source-phase import.
  * @throws {@link DOMException} `DataCloneError` when `postMessage` carries a
  * value that cannot be cloned, including a {@link Yuzuko.Window}.
  *
