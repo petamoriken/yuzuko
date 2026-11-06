@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: macOS
+            os: macos-15
+          - name: Windows
+            os: windows-2025
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      # Canvas pixel expectations were recorded on the CPU renderer.
+      YUZUKO_CANVAS: cpu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2.9.3
+
+      - name: Install Python
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            python3 \
+            xvfb \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            mesa-vulkan-drivers \
+            libvulkan1
+
+      - name: Install WPT hosts
+        if: runner.os != 'Windows'
+        working-directory: tests/wpt/suite
+        run: |
+          python wpt make-hosts-file | sudo tee -a /etc/hosts >/dev/null
+          grep -q 'web-platform.test' /etc/hosts
+
+      - name: Install WPT hosts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: tests/wpt/suite
+        run: |
+          python wpt make-hosts-file | Out-File -FilePath C:\Windows\System32\drivers\etc\hosts -Encoding ascii -Append
+          if (-not (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'web-platform.test' -Quiet)) {
+            throw 'web-platform.test is missing from the hosts file'
+          }
+
+      - name: Test
+        shell: bash
+        run: |
+          cargo test --workspace --no-run
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" -- \
+              cargo test --workspace -j1 -- --test-threads=1
+          else
+            cargo test --workspace -j1 -- --test-threads=1
+          fi
