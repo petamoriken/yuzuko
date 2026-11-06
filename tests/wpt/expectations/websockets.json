@@ -339,21 +339,13 @@
   },
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
-    "flaky": {
-      "linux": "The NUL echo handshake does not finish.",
-      "macos": "The NUL echo handshake does not finish.",
-      "windows": "The NUL echo handshake does not finish."
-    }
+    "flaky": "The NUL echo handshake does not finish."
   },
   "websockets/constructor/019.html": true,
   "websockets/constructor/020.html": true,
   "websockets/constructor/021.html": true,
   "websockets/constructor/022.html": {
-    "flaky": {
-      "linux": "The protocol-array handshake does not finish.",
-      "macos": "The protocol-array handshake does not finish.",
-      "windows": "The protocol-array handshake does not finish."
-    }
+    "flaky": "The protocol-array handshake does not finish."
   },
   "websockets/constructor/option-bag.any.js": {
     "expectedFailures": [

@@ -1680,6 +1680,13 @@ fn parse_platforms(
     let reason = nonempty_reason(key, &format!("reason for {name}"), text);
     platforms.insert(platform, reason);
   }
+  if platforms.len() == 3 {
+    let mut values = platforms.values();
+    let first = values.next().expect("platform").clone();
+    if values.all(|reason| reason == &first) {
+      return Note::All { reason: first };
+    }
+  }
   Note::Platforms(platforms)
 }
 
@@ -1946,6 +1953,17 @@ fn expectation_flaky_round_trips() {
   let everywhere = json!({"flaky": "The handshake does not finish."});
   assert_eq!(
     expect_json(&parse_expect("example.js", everywhere.clone())),
+    everywhere
+  );
+  let repeated = json!({
+    "flaky": {
+      "linux": "The handshake does not finish.",
+      "macos": "The handshake does not finish.",
+      "windows": "The handshake does not finish."
+    }
+  });
+  assert_eq!(
+    expect_json(&parse_expect("example.js", repeated)),
     everywhere
   );
 }
