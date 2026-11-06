@@ -242,12 +242,7 @@ impl ClassicSession {
     init_v8();
     let queue = QUEUE.get().expect("task queue").clone();
     queue.discard_v8_tasks();
-    crate::worker::attach_main(Arc::clone(&queue));
     let mut isolate = v8::Isolate::new(isolate_params());
-    crate::worker::set_isolate_handle(
-      crate::worker::MAIN_AGENT,
-      isolate.thread_safe_handle(),
-    );
     configure_isolate(&mut isolate);
     Self {
       _lock: lock,
@@ -347,10 +342,16 @@ impl ClassicSession {
   fn enter_realm(&mut self) {
     crate::process::clear_exit();
     WASM_IN_FLIGHT.with(|count| count.set(0));
+    self.queue.discard_v8_tasks();
     let mut state =
       host::HostState::empty(Arc::clone(&self.queue), RealmKind::Window, 0);
     state.templates = std::mem::take(&mut self.templates);
     host::enter(state);
+    crate::worker::attach_main(Arc::clone(&self.queue));
+    crate::worker::set_isolate_handle(
+      crate::worker::MAIN_AGENT,
+      self.isolate.thread_safe_handle(),
+    );
     self.in_realm = true;
   }
 }
@@ -387,11 +388,6 @@ fn leave_realm(
   if *runs % 32 == 0 {
     isolate.low_memory_notification();
   }
-  crate::worker::attach_main(Arc::clone(queue));
-  crate::worker::set_isolate_handle(
-    crate::worker::MAIN_AGENT,
-    isolate.thread_safe_handle(),
-  );
   *in_realm = false;
 }
 

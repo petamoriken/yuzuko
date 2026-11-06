@@ -125,20 +125,19 @@ fn wasm_source_import_of_typescript_is_rejected() {
   assert!(error.message.contains("WebAssembly"), "{}", error.message);
 }
 
-// Sequential `run_tests` of both files SIGSEGV on macOS and access-violates
-// on Windows. Each file passes under `yuzuko test` in its own process.
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[test]
-fn import_defer_waits_for_namespace_observation() {
-  let root = workspace();
-  let code = crate::run_tests(
-    &[
-      root.join("tests/defer_static_test.ts"),
-      root.join("tests/defer_eager_test.ts"),
-    ],
-    None,
-  )
-  .expect("defer tests");
+fn import_defer_static_waits_for_namespace_observation() {
+  let code =
+    crate::run_tests(&[workspace().join("tests/defer_static_test.ts")], None)
+      .expect("defer static");
+  assert_eq!(code, 0);
+}
+
+#[test]
+fn import_defer_eager_waits_for_namespace_observation() {
+  let code =
+    crate::run_tests(&[workspace().join("tests/defer_eager_test.ts")], None)
+      .expect("defer eager");
   assert_eq!(code, 0);
 }
 
