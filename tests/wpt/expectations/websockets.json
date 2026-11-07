@@ -361,7 +361,13 @@
       "Empty option bag should be accepted",
       "Option bag with protocols array should be accepted"
     ],
-    "flaky": "The option-bag handshake does not finish."
+    "flaky": {
+      "linux": "The option-bag handshake does not finish.",
+      "windows": "The option-bag handshake does not finish."
+    },
+    "ignore": {
+      "macos": "The option-bag handshake does not finish."
+    }
   },
   "websockets/constructor/target-address-space.any.js": {
     "expectedFailures": [
@@ -542,7 +548,13 @@
   "websockets/opening-handshake/001.html": true,
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": {
-    "flaky": "The origin handshake does not finish."
+    "flaky": {
+      "linux": "The origin handshake does not finish.",
+      "windows": "The origin handshake does not finish."
+    },
+    "ignore": {
+      "macos": "The origin handshake does not finish."
+    }
   },
   "websockets/opening-handshake/003.html": {
     "flaky": "The IDN origin handshake does not finish."
