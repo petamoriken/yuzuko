@@ -1,0 +1,25 @@
+name: Dependabot Auto-merge
+
+# Marks a Dependabot pull request for GitHub auto-merge when it opens.
+# The main ruleset requires the CI jobs, so the pull request merges
+# after those checks pass. Squash is the action default.
+
+on:
+  pull_request:
+    types:
+      - opened
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto_merge:
+    name: Auto-merge
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - uses: fastify/github-action-merge-dependabot@v3
+        with:
+          use-github-auto-merge: true
