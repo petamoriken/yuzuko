@@ -126,6 +126,8 @@ pub struct Session {
   kind: Kind,
 }
 
+// `Av1Session` owns the OBU parser. It stays unboxed on the decode path.
+#[allow(clippy::large_enum_variant)]
 enum Kind {
   Avc(AvcSession),
   Av1(Av1Session),

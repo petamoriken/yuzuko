@@ -1051,6 +1051,7 @@ impl VideoDecoder {
         "EncodingError",
         "The frame could not be decoded".to_string(),
       ),
+      #[cfg(target_os = "macos")]
       DecodeError::Hardware(status) => (
         "EncodingError",
         format!(
@@ -2352,6 +2353,7 @@ fn resolved(scope: &mut v8::PinScope) -> Result<Js, OpError> {
 fn config_error(error: DecodeError) -> OpError {
   match error {
     DecodeError::Panic => panicked(),
+    #[cfg(target_os = "macos")]
     DecodeError::Hardware(status) => OpError::dom(
       "NotSupportedError",
       format!(

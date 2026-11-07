@@ -1304,7 +1304,7 @@ fn platform_sequence() -> Option<u64> {
   }
   #[cfg(target_os = "windows")]
   {
-    return Some(windows_sequence());
+    Some(windows_sequence())
   }
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]
   {
@@ -1319,7 +1319,7 @@ fn platform_mime_types() -> Vec<String> {
   }
   #[cfg(target_os = "windows")]
   {
-    return windows_mime_types();
+    windows_mime_types()
   }
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]
   {

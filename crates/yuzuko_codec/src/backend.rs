@@ -35,6 +35,9 @@ pub struct VideoBackend {
   height: u32,
 }
 
+// The Linux VA-API session owns the AV1 OBU parser. It stays unboxed on the
+// decode path.
+#[allow(clippy::large_enum_variant)]
 enum VideoInner {
   #[cfg(target_os = "macos")]
   Hardware(crate::platform::Session),

@@ -1521,7 +1521,7 @@ fn name_matches(filter: Option<&str>, relative: &str) -> bool {
 #[cfg(windows)]
 fn utf16_path(bytes: &[u8]) -> String {
   let mut units = Vec::with_capacity(bytes.len() / 2);
-  for pair in bytes.chunks_exact(2) {
+  for pair in bytes.as_chunks::<2>().0 {
     units.push(u16::from_ne_bytes([pair[0], pair[1]]));
   }
   String::from_utf16_lossy(&units).replace('\0', "\u{FFFD}")

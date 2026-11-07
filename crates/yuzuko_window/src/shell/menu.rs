@@ -431,7 +431,7 @@ fn present_context(
   }
   #[cfg(target_os = "windows")]
   {
-    return show_context_windows(menu, id, x, y);
+    show_context_windows(menu, id, x, y)
   }
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]
   {

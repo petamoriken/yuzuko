@@ -576,7 +576,7 @@ pub(super) fn chmod(path: &Path, mode: u32) -> Result<(), FsError> {
     let meta = fs::metadata(&path).map_err(FsError::io)?;
     let mut permissions = meta.permissions();
     permissions.set_readonly(mode & 0o200 == 0);
-    return fs::set_permissions(&path, permissions).map_err(FsError::io);
+    fs::set_permissions(&path, permissions).map_err(FsError::io)
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -595,9 +595,9 @@ pub(super) fn chown(
   #[cfg(windows)]
   {
     let _ = (path, uid, gid);
-    return Err(FsError::not_supported(
+    Err(FsError::not_supported(
       "Changing the owner is not supported on Windows.",
-    ));
+    ))
   }
   #[cfg(unix)]
   {
@@ -666,7 +666,7 @@ pub(super) fn symlink(
   }
   #[cfg(windows)]
   {
-    return match kind {
+    match kind {
       LinkKind::File => {
         std::os::windows::fs::symlink_file(old, &new).map_err(FsError::io)
       }
@@ -674,7 +674,7 @@ pub(super) fn symlink(
         std::os::windows::fs::symlink_dir(old, &new).map_err(FsError::io)
       }
       LinkKind::Junction => junction(&new, old),
-    };
+    }
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -792,7 +792,7 @@ pub(super) fn set_raw(
   }
   #[cfg(windows)]
   {
-    return set_raw_windows(file, state, raw, cbreak);
+    set_raw_windows(file, state, raw, cbreak)
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -817,7 +817,7 @@ pub(super) fn restore_terminal(
     if let Some(original) = state.original.take() {
       return set_console_mode(file, original);
     }
-    return Ok(());
+    Ok(())
   }
   #[cfg(not(any(unix, windows)))]
   {

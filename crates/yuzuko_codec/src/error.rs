@@ -8,6 +8,7 @@ pub enum DecodeError {
   Rejected,
   /// VideoToolbox rejected the configuration or a frame. The value is the
   /// OSStatus. Other platforms do not construct this variant.
+  #[cfg(target_os = "macos")]
   Hardware(i32),
   /// A decoder panicked on the bytes.
   Panic,
