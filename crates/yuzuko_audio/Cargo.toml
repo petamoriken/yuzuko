@@ -11,7 +11,7 @@ cpal = { version = "0.18.2", default-features = false }
 hound = "3.5"
 lewton = "0.10"
 ruopus = "0.1.2"
-symphonia = { workspace = true, features = ["mp3"] }
+symphonia = { workspace = true, features = ["mp3", "all-meta"] }
 v8.workspace = true
 yuzuko_core.workspace = true
 yuzuko_dom.workspace = true

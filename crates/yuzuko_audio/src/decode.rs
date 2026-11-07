@@ -138,44 +138,46 @@ fn decode_vorbis(bytes: &[u8]) -> Result<Pcm, ()> {
 }
 
 fn decode_mp3(bytes: &[u8]) -> Result<Pcm, ()> {
-  use symphonia::core::audio::SampleBuffer;
-  use symphonia::core::codecs::DecoderOptions;
+  use symphonia::core::codecs::audio::AudioDecoderOptions;
   use symphonia::core::errors::Error;
   use symphonia::core::formats::FormatOptions;
+  use symphonia::core::formats::TrackType;
+  use symphonia::core::formats::probe::Hint;
   use symphonia::core::io::MediaSourceStream;
   use symphonia::core::meta::MetadataOptions;
-  use symphonia::core::probe::Hint;
 
   let source = MediaSourceStream::new(
     Box::new(Cursor::new(bytes.to_vec())),
     Default::default(),
   );
-  let probed = symphonia::default::get_probe()
-    .format(
+  let mut format = symphonia::default::get_probe()
+    .probe(
       &Hint::new(),
       source,
-      &FormatOptions::default(),
-      &MetadataOptions::default(),
+      FormatOptions::default(),
+      MetadataOptions::default(),
     )
     .map_err(|_| ())?;
-  let mut format = probed.format;
-  let track = format.default_track().ok_or(())?;
+  let track = format.default_track(TrackType::Audio).ok_or(())?;
   let track_id = track.id;
-  let rate = track.codec_params.sample_rate.ok_or(())? as f64;
-  let params = track.codec_params.clone();
+  let audio = track
+    .codec_params
+    .as_ref()
+    .and_then(|params| params.audio())
+    .ok_or(())?;
+  let rate = audio.sample_rate.ok_or(())? as f64;
+  let params = audio.clone();
   let mut decoder = symphonia::default::get_codecs()
-    .make(&params, &DecoderOptions::default())
+    .make_audio_decoder(&params, &AudioDecoderOptions::default())
     .map_err(|_| ())?;
-  let mut sample_buf: Option<SampleBuffer<f32>> = None;
   let mut channels = 0usize;
   let mut interleaved = Vec::new();
   loop {
     let packet = match format.next_packet() {
-      Ok(packet) => packet,
-      Err(Error::IoError(_)) | Err(Error::ResetRequired) => break,
-      Err(_) => break,
+      Ok(Some(packet)) => packet,
+      Ok(None) | Err(_) => break,
     };
-    if packet.track_id() != track_id {
+    if packet.track_id != track_id {
       continue;
     }
     let decoded = match decoder.decode(&packet) {
@@ -183,16 +185,12 @@ fn decode_mp3(bytes: &[u8]) -> Result<Pcm, ()> {
       Err(Error::DecodeError(_)) => continue,
       Err(_) => break,
     };
-    if sample_buf.is_none() {
-      channels = decoded.spec().channels.count();
-      sample_buf = Some(SampleBuffer::<f32>::new(
-        decoded.capacity() as u64,
-        *decoded.spec(),
-      ));
+    if channels == 0 {
+      channels = decoded.spec().channels().count();
     }
-    let buffer = sample_buf.as_mut().ok_or(())?;
-    buffer.copy_interleaved_ref(decoded);
-    interleaved.extend_from_slice(buffer.samples());
+    let mut samples = Vec::<f32>::new();
+    decoded.copy_to_vec_interleaved(&mut samples);
+    interleaved.extend(samples);
   }
   if channels == 0 {
     return Err(());

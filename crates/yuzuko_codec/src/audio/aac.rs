@@ -3,16 +3,18 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{
-  CODEC_TYPE_AAC, CodecParameters, Decoder, DecoderOptions,
-};
-use symphonia::core::formats::Packet;
+use symphonia::core::codecs::audio::AudioCodecParameters;
+use symphonia::core::codecs::audio::AudioDecoder;
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::audio::well_known::CODEC_ID_AAC;
+use symphonia::core::packet::Packet;
+use symphonia::core::units::Duration;
+use symphonia::core::units::Timestamp;
 
 use crate::error::DecodeError;
 
 pub struct AacDecoder {
-  decoder: Box<dyn Decoder>,
+  decoder: Box<dyn AudioDecoder>,
 }
 
 pub struct Pcm {
@@ -52,51 +54,56 @@ fn open_inner(
   sample_rate: u32,
   channel_count: u32,
 ) -> Result<AacDecoder, DecodeError> {
-  let mut params = CodecParameters::new();
+  let mut params = AudioCodecParameters::new();
   params
-    .for_codec(CODEC_TYPE_AAC)
+    .for_codec(CODEC_ID_AAC)
     .with_sample_rate(sample_rate)
     .with_extra_data(description.to_vec().into_boxed_slice());
   if let Some(channels) = channel_mask(channel_count) {
     params.with_channels(channels);
   }
   let decoder = symphonia::default::get_codecs()
-    .make(&params, &DecoderOptions::default())
+    .make_audio_decoder(&params, &AudioDecoderOptions::default())
     .map_err(|_| DecodeError::Rejected)?;
   Ok(AacDecoder { decoder })
 }
 
 fn channel_mask(count: u32) -> Option<symphonia::core::audio::Channels> {
-  use symphonia::core::audio::Channels;
+  use symphonia::core::audio::layouts::CHANNEL_LAYOUT_MONO;
+  use symphonia::core::audio::layouts::CHANNEL_LAYOUT_STEREO;
   match count {
-    1 => Some(Channels::FRONT_LEFT),
-    2 => Some(Channels::FRONT_LEFT | Channels::FRONT_RIGHT),
+    1 => Some(CHANNEL_LAYOUT_MONO),
+    2 => Some(CHANNEL_LAYOUT_STEREO),
     _ => None,
   }
 }
 
 fn decode_frame(
-  decoder: &mut Box<dyn Decoder>,
+  decoder: &mut Box<dyn AudioDecoder>,
   bytes: &[u8],
 ) -> Result<Pcm, DecodeError> {
   if bytes.is_empty() {
     return Err(DecodeError::Rejected);
   }
-  let packet = Packet::new_from_slice(0, 0, 1024, bytes);
+  let packet = Packet::new(
+    0,
+    Timestamp::ZERO,
+    Duration::new(1024),
+    bytes.to_vec(),
+  );
   let decoded = decoder.decode(&packet).map_err(|_| DecodeError::Rejected)?;
-  let spec = *decoded.spec();
-  let mut buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-  buffer.copy_interleaved_ref(decoded);
-  let channels = spec.channels.count();
-  if channels == 0 || buffer.samples().is_empty() {
+  let channels = decoded.spec().channels().count();
+  let mut samples = Vec::<f32>::new();
+  decoded.copy_to_vec_interleaved(&mut samples);
+  if channels == 0 || samples.is_empty() {
     return Err(DecodeError::Rejected);
   }
   let mut planar = vec![Vec::new(); channels];
-  for (index, sample) in buffer.samples().iter().copied().enumerate() {
+  for (index, sample) in samples.into_iter().enumerate() {
     planar[index % channels].push(sample);
   }
   Ok(Pcm {
-    rate: f64::from(spec.rate),
+    rate: f64::from(decoded.spec().rate()),
     channels: planar,
   })
 }
