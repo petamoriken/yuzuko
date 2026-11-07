@@ -126,6 +126,16 @@ jobs:
             mesa-vulkan-drivers \
             libvulkan1
 
+      - name: Probe VA-API
+        if: runner.os == 'Linux' && matrix.suite == 'test'
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends vainfo libva2 libva-drm2
+          echo "--- /dev/dri ---"
+          ls -l /dev/dri
+          echo "--- vainfo ---"
+          vainfo --display drm --device /dev/dri/renderD128
+
       - name: Install WPT hosts
         if: matrix.suite == 'wpt' && runner.os != 'Windows'
         working-directory: tests/wpt/suite

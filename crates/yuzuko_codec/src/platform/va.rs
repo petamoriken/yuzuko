@@ -1,8 +1,9 @@
-//! Linux VA-API H.264 decode.
+//! Linux VA-API H.264 and AV1 decode.
 //!
-//! The entrypoints are loaded from libva at runtime. A missing library, a
-//! missing H.264 profile, or a rejected picture fails the decode. There is
-//! no software H.264 path.
+//! The entrypoints are loaded from libva at runtime. A missing library or a
+//! missing profile makes `supports_*` false. H.264 has no software path. AV1
+//! falls back to rav1d when this session cannot be opened. A picture the
+//! driver or the header parser rejects fails that decode.
 
 use std::ffi::c_void;
 use std::fs::OpenOptions;
@@ -16,14 +17,17 @@ use libloading::Library;
 use yuzuko_image::{ColorSpace, Raster};
 
 use super::va_types::{
-  VaImage, VaImageFormat, VaIqMatrixBufferH264, VaPictureH264,
-  VaPictureParameterBufferH264, VaSliceParameterBufferH264,
+  VaDecPictureParameterBufferAV1, VaImage, VaImageFormat, VaIqMatrixBufferH264,
+  VaPictureH264, VaPictureParameterBufferH264, VaSliceParameterBufferAV1,
+  VaSliceParameterBufferH264,
 };
 use crate::color::{self, I420};
 use crate::error::DecodeError;
 use crate::h264::{self, Picture, Pps, Slice, Sps};
 
 const H264_PROFILES: &[i32] = &[5, 6, 7, 13];
+const AV1_PROFILE0: i32 = 32;
+const AV1_SURFACES: u32 = 10;
 const ENTRY_VLD: i32 = 1;
 const YUV420: u32 = 1;
 const INVALID_ID: u32 = u32::MAX;
@@ -119,6 +123,31 @@ struct Reference {
 }
 
 pub struct Session {
+  kind: Kind,
+}
+
+enum Kind {
+  Avc(AvcSession),
+  Av1(Av1Session),
+}
+
+impl Session {
+  pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
+    match &mut self.kind {
+      Kind::Avc(session) => session.decode(bytes),
+      Kind::Av1(session) => session.decode(bytes),
+    }
+  }
+
+  pub fn flush(&mut self) -> Result<Vec<Raster>, DecodeError> {
+    match &mut self.kind {
+      Kind::Avc(session) => session.flush(),
+      Kind::Av1(session) => session.flush(),
+    }
+  }
+}
+
+struct AvcSession {
   display: *mut c_void,
   config: u32,
   context: u32,
@@ -137,10 +166,331 @@ pub struct Session {
   prev_poc_valid: bool,
 }
 
-unsafe impl Send for Session {}
+unsafe impl Send for AvcSession {}
 
 pub fn supports_avc() -> bool {
   supports(H264_PROFILES)
+}
+
+pub fn supports_av1() -> bool {
+  supports(&[AV1_PROFILE0])
+}
+
+pub fn open_av1(
+  description: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<Session, DecodeError> {
+  if width == 0 || height == 0 {
+    return Err(DecodeError::Unsupported);
+  }
+  let obus =
+    crate::av1::config_obus(description).ok_or(DecodeError::Unsupported)?;
+  if obus.is_empty() {
+    return Err(DecodeError::Unsupported);
+  }
+  let mut stream = crate::av1_obu::Stream::new();
+  if !stream.push(obus)?.is_empty() {
+    return Err(DecodeError::Unsupported);
+  }
+  let acceptable = stream.sequence().is_some_and(|sequence| {
+    sequence.hardware_profile()
+      && sequence.max_width == width
+      && sequence.max_height == height
+  });
+  if !acceptable {
+    return Err(DecodeError::Unsupported);
+  }
+  let Some(api) = api() else {
+    return Err(DecodeError::Unsupported);
+  };
+  let Some((fd, display)) = open_display(api) else {
+    return Err(DecodeError::Unsupported);
+  };
+  let mut setup = Setup {
+    api,
+    display,
+    fd,
+    config: INVALID_ID,
+    surfaces: Vec::new(),
+    context: INVALID_ID,
+    release: true,
+  };
+  let Some(profile) = select_profile(api, display, &[AV1_PROFILE0]) else {
+    return Err(DecodeError::Unsupported);
+  };
+  let mut config = INVALID_ID;
+  let status = unsafe {
+    (api.create_config)(
+      display,
+      profile,
+      ENTRY_VLD,
+      std::ptr::null(),
+      0,
+      &mut config,
+    )
+  };
+  if status != 0 {
+    return Err(DecodeError::Rejected);
+  }
+  setup.config = config;
+  let mut surfaces = vec![0u32; AV1_SURFACES as usize];
+  let status = unsafe {
+    (api.create_surfaces)(
+      display,
+      YUV420,
+      width,
+      height,
+      surfaces.as_mut_ptr(),
+      AV1_SURFACES,
+      null_mut(),
+      0,
+    )
+  };
+  if status != 0 {
+    return Err(DecodeError::Rejected);
+  }
+  setup.surfaces = surfaces;
+  let mut context = INVALID_ID;
+  let status = unsafe {
+    (api.create_context)(
+      display,
+      config,
+      i32::try_from(width).unwrap_or(0),
+      i32::try_from(height).unwrap_or(0),
+      0,
+      setup.surfaces.as_mut_ptr(),
+      i32::try_from(AV1_SURFACES).unwrap_or(0),
+      &mut context,
+    )
+  };
+  if status != 0 {
+    return Err(DecodeError::Rejected);
+  }
+  setup.context = context;
+  setup.release = false;
+  Ok(Session {
+    kind: Kind::Av1(Av1Session {
+      display,
+      config,
+      context,
+      surfaces: std::mem::take(&mut setup.surfaces),
+      fd,
+      stream,
+      coded_width: width,
+      coded_height: height,
+      refs: [None; 8],
+    }),
+  })
+}
+
+struct Av1Session {
+  display: *mut c_void,
+  config: u32,
+  context: u32,
+  surfaces: Vec<u32>,
+  fd: i32,
+  stream: crate::av1_obu::Stream,
+  coded_width: u32,
+  coded_height: u32,
+  refs: [Option<u32>; 8],
+}
+
+unsafe impl Send for Av1Session {}
+
+impl Av1Session {
+  pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
+    if bytes.is_empty() {
+      return Err(DecodeError::Rejected);
+    }
+    let Some(api) = api() else {
+      return Err(DecodeError::Unsupported);
+    };
+    let pictures = self.stream.push(bytes)?;
+    let mut rasters = Vec::new();
+    for picture in pictures {
+      match picture {
+        crate::av1_obu::Picture::ShowExisting { slot } => {
+          let surface = self
+            .refs
+            .get(slot)
+            .copied()
+            .flatten()
+            .ok_or(DecodeError::Rejected)?;
+          rasters.push(self.read(api, surface)?);
+        }
+        crate::av1_obu::Picture::Frame(frame) => {
+          let (recon, output) = self.submit(api, &frame)?;
+          self.note(&frame, recon);
+          if let Some(surface) = output {
+            rasters.push(self.read(api, surface)?);
+          }
+        }
+      }
+    }
+    Ok(rasters)
+  }
+
+  pub fn flush(&mut self) -> Result<Vec<Raster>, DecodeError> {
+    Ok(Vec::new())
+  }
+
+  fn submit(
+    &self,
+    api: &Api,
+    frame: &crate::av1_obu::Frame,
+  ) -> Result<(u32, Option<u32>), DecodeError> {
+    let (recon, display) = self.alloc(frame.apply_grain)?;
+    let sequence = self
+      .stream
+      .sequence()
+      .cloned()
+      .ok_or(DecodeError::Rejected)?;
+    let mut packed = super::av1_param::prepare(
+      &sequence,
+      frame,
+      self.coded_width,
+      self.coded_height,
+      recon,
+      display,
+      &self.refs,
+    )?;
+    self.render(api, recon, &mut packed.picture, &mut packed.slices, frame)?;
+    let output = if frame.show {
+      Some(if frame.apply_grain { display } else { recon })
+    } else {
+      None
+    };
+    Ok((recon, output))
+  }
+
+  fn alloc(&self, grain: bool) -> Result<(u32, u32), DecodeError> {
+    let recon = self.free_surface()?;
+    if !grain {
+      return Ok((recon, recon));
+    }
+    let display = self
+      .surfaces
+      .iter()
+      .copied()
+      .find(|surface| {
+        *surface != recon
+          && self.refs.iter().all(|slot| *slot != Some(*surface))
+      })
+      .ok_or(DecodeError::Rejected)?;
+    Ok((recon, display))
+  }
+
+  fn free_surface(&self) -> Result<u32, DecodeError> {
+    self
+      .surfaces
+      .iter()
+      .copied()
+      .find(|surface| self.refs.iter().all(|slot| *slot != Some(*surface)))
+      .ok_or(DecodeError::Rejected)
+  }
+
+  fn note(&mut self, frame: &crate::av1_obu::Frame, recon: u32) {
+    for index in 0..8 {
+      if frame.refresh_flags & (1 << index) != 0 {
+        self.refs[index] = Some(recon);
+      }
+    }
+  }
+
+  fn render(
+    &self,
+    api: &Api,
+    recon: u32,
+    picture: &mut VaDecPictureParameterBufferAV1,
+    slices: &mut [VaSliceParameterBufferAV1],
+    frame: &crate::av1_obu::Frame,
+  ) -> Result<(), DecodeError> {
+    if slices.len() != frame.tiles.len() {
+      return Err(DecodeError::Rejected);
+    }
+    let mut owned = BufferList::new(api, self.display);
+    owned.push(create_buffer(
+      api,
+      self.display,
+      self.context,
+      PICTURE_PARAM,
+      (&raw mut *picture).cast::<c_void>(),
+      size_of::<VaDecPictureParameterBufferAV1>(),
+    )?);
+    for (index, slice) in slices.iter_mut().enumerate() {
+      owned.push(create_buffer(
+        api,
+        self.display,
+        self.context,
+        SLICE_PARAM,
+        (&raw mut *slice).cast::<c_void>(),
+        size_of::<VaSliceParameterBufferAV1>(),
+      )?);
+      let bytes = &frame.tiles[index].bytes;
+      owned.push(create_buffer(
+        api,
+        self.display,
+        self.context,
+        SLICE_DATA,
+        bytes.as_ptr().cast_mut().cast::<c_void>(),
+        bytes.len(),
+      )?);
+    }
+    let status =
+      unsafe { (api.begin_picture)(self.display, self.context, recon) };
+    if status != 0 {
+      return Err(DecodeError::Rejected);
+    }
+    let rendered = unsafe {
+      (api.render_picture)(
+        self.display,
+        self.context,
+        owned.ids.as_mut_ptr(),
+        i32::try_from(owned.ids.len()).unwrap_or(i32::MAX),
+      )
+    };
+    let ended = unsafe { (api.end_picture)(self.display, self.context) };
+    if rendered != 0 || ended != 0 {
+      Err(DecodeError::Rejected)
+    } else {
+      Ok(())
+    }
+  }
+
+  fn read(&self, api: &Api, surface: u32) -> Result<Raster, DecodeError> {
+    let limited = !self
+      .stream
+      .sequence()
+      .is_some_and(|sequence| sequence.full_range);
+    copy_surface(
+      api,
+      self.display,
+      surface,
+      self.coded_width,
+      self.coded_height,
+      (0, 0, self.coded_width, self.coded_height),
+      limited,
+    )
+  }
+}
+
+impl Drop for Av1Session {
+  fn drop(&mut self) {
+    let Some(api) = api() else {
+      return;
+    };
+    release_display(
+      api,
+      self.display,
+      self.fd,
+      self.config,
+      &mut self.surfaces,
+      self.context,
+    );
+    self.display = null_mut();
+    self.fd = -1;
+  }
 }
 
 pub fn open_avc(
@@ -179,6 +529,9 @@ pub fn open_avc(
     pool,
     sets,
   })
+  .map(|session| Session {
+    kind: Kind::Avc(session),
+  })
 }
 
 struct Opened {
@@ -193,7 +546,7 @@ struct Opened {
   sets: h264::Sets,
 }
 
-impl Session {
+impl AvcSession {
   pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
     let Some(api) = api() else {
       return Err(DecodeError::Unsupported);
@@ -391,59 +744,15 @@ impl Session {
     api: &Api,
     surface: u32,
   ) -> Result<Raster, DecodeError> {
-    let status = unsafe { (api.sync_surface)(self.display, surface) };
-    if status != 0 {
-      return Err(DecodeError::Rejected);
-    }
-    let mut image = zero_image();
-    let derived =
-      unsafe { (api.derive_image)(self.display, surface, &mut image) };
-    if derived == 0 {
-      let raster = map_image(api, self.display, &image, self.visible_rect());
-      unsafe { (api.destroy_image)(self.display, image.image_id) };
-      return raster;
-    }
-    let mut format = VaImageFormat {
-      fourcc: NV12,
-      byte_order: 1,
-      bits_per_pixel: 12,
-      depth: 0,
-      red_mask: 0,
-      green_mask: 0,
-      blue_mask: 0,
-      alpha_mask: 0,
-      reserved: [0; 4],
-    };
-    let status = unsafe {
-      (api.create_image)(
-        self.display,
-        &mut format,
-        i32::try_from(self.coded_width).unwrap_or(0),
-        i32::try_from(self.coded_height).unwrap_or(0),
-        &mut image,
-      )
-    };
-    if status != 0 {
-      return Err(DecodeError::Rejected);
-    }
-    let copied = unsafe {
-      (api.get_image)(
-        self.display,
-        surface,
-        0,
-        0,
-        self.coded_width,
-        self.coded_height,
-        image.image_id,
-      )
-    };
-    let raster = if copied == 0 {
-      map_image(api, self.display, &image, self.visible_rect())
-    } else {
-      Err(DecodeError::Rejected)
-    };
-    unsafe { (api.destroy_image)(self.display, image.image_id) };
-    raster
+    copy_surface(
+      api,
+      self.display,
+      surface,
+      self.coded_width,
+      self.coded_height,
+      self.visible_rect(),
+      true,
+    )
   }
 
   fn visible_rect(&self) -> (u32, u32, u32, u32) {
@@ -456,7 +765,7 @@ impl Session {
   }
 }
 
-impl Drop for Session {
+impl Drop for AvcSession {
   fn drop(&mut self) {
     let Some(api) = api() else {
       return;
@@ -502,7 +811,7 @@ impl Drop for BufferList<'_> {
   }
 }
 
-fn open_session(opened: Opened) -> Result<Session, DecodeError> {
+fn open_session(opened: Opened) -> Result<AvcSession, DecodeError> {
   let Opened {
     profile: profile_idc,
     coded_width,
@@ -583,7 +892,7 @@ fn open_session(opened: Opened) -> Result<Session, DecodeError> {
   }
   setup.context = context;
   setup.release = false;
-  Ok(Session {
+  Ok(AvcSession {
     display,
     config,
     context,
@@ -912,11 +1221,75 @@ fn create_buffer(
   }
 }
 
+fn copy_surface(
+  api: &Api,
+  display: *mut c_void,
+  surface: u32,
+  coded_width: u32,
+  coded_height: u32,
+  visible: (u32, u32, u32, u32),
+  limited: bool,
+) -> Result<Raster, DecodeError> {
+  let status = unsafe { (api.sync_surface)(display, surface) };
+  if status != 0 {
+    return Err(DecodeError::Rejected);
+  }
+  let mut image = zero_image();
+  let derived = unsafe { (api.derive_image)(display, surface, &mut image) };
+  if derived == 0 {
+    let raster = map_image(api, display, &image, visible, limited);
+    unsafe { (api.destroy_image)(display, image.image_id) };
+    return raster;
+  }
+  let mut format = VaImageFormat {
+    fourcc: NV12,
+    byte_order: 1,
+    bits_per_pixel: 12,
+    depth: 0,
+    red_mask: 0,
+    green_mask: 0,
+    blue_mask: 0,
+    alpha_mask: 0,
+    reserved: [0; 4],
+  };
+  let status = unsafe {
+    (api.create_image)(
+      display,
+      &mut format,
+      i32::try_from(coded_width).unwrap_or(0),
+      i32::try_from(coded_height).unwrap_or(0),
+      &mut image,
+    )
+  };
+  if status != 0 {
+    return Err(DecodeError::Rejected);
+  }
+  let copied = unsafe {
+    (api.get_image)(
+      display,
+      surface,
+      0,
+      0,
+      coded_width,
+      coded_height,
+      image.image_id,
+    )
+  };
+  let raster = if copied == 0 {
+    map_image(api, display, &image, visible, limited)
+  } else {
+    Err(DecodeError::Rejected)
+  };
+  unsafe { (api.destroy_image)(display, image.image_id) };
+  raster
+}
+
 fn map_image(
   api: &Api,
   display: *mut c_void,
   image: &VaImage,
   visible: (u32, u32, u32, u32),
+  limited: bool,
 ) -> Result<Raster, DecodeError> {
   if image.data_size == 0 {
     return Err(DecodeError::Rejected);
@@ -929,7 +1302,7 @@ fn map_image(
   let bytes = unsafe {
     std::slice::from_raw_parts(pointer.cast::<u8>(), image.data_size as usize)
   };
-  let raster = image_rgba(image, bytes, visible);
+  let raster = image_rgba(image, bytes, visible, limited);
   unsafe { (api.unmap_buffer)(display, image.buf) };
   let rgba = raster.ok_or(DecodeError::Rejected)?;
   Raster::from_rgba8(visible.2, visible.3, ColorSpace::Srgb, &rgba)
@@ -940,6 +1313,7 @@ fn image_rgba(
   image: &VaImage,
   bytes: &[u8],
   visible: (u32, u32, u32, u32),
+  limited: bool,
 ) -> Option<Vec<u8>> {
   let width = usize::from(image.width);
   let height = usize::from(image.height);
@@ -947,10 +1321,10 @@ fn image_rgba(
     return None;
   }
   let full = match image.format.fourcc {
-    NV12 => nv_plane(bytes, image, width, height, false),
-    NV21 => nv_plane(bytes, image, width, height, true),
-    I420 => yuv_planes(bytes, image, width, height, false),
-    YV12 => yuv_planes(bytes, image, width, height, true),
+    NV12 => nv_plane(bytes, image, width, height, false, limited),
+    NV21 => nv_plane(bytes, image, width, height, true, limited),
+    I420 => yuv_planes(bytes, image, width, height, false, limited),
+    YV12 => yuv_planes(bytes, image, width, height, true, limited),
     _ => None,
   }?;
   crop_rect(
@@ -970,6 +1344,7 @@ fn nv_plane(
   width: usize,
   height: usize,
   swap: bool,
+  limited: bool,
 ) -> Option<Vec<u8>> {
   let y_stride = image.pitches[0] as usize;
   let y = bytes.get(image.offsets[0] as usize..)?;
@@ -984,9 +1359,11 @@ fn nv_plane(
   };
   if swap {
     let swapped = swap_chroma(uv);
-    color::nv12_to_rgba(y, &swapped, y_stride, uv_stride, width, height, true)
+    color::nv12_to_rgba(
+      y, &swapped, y_stride, uv_stride, width, height, limited,
+    )
   } else {
-    color::nv12_to_rgba(y, uv, y_stride, uv_stride, width, height, true)
+    color::nv12_to_rgba(y, uv, y_stride, uv_stride, width, height, limited)
   }
 }
 
@@ -1004,6 +1381,7 @@ fn yuv_planes(
   width: usize,
   height: usize,
   swap: bool,
+  limited: bool,
 ) -> Option<Vec<u8>> {
   let y = bytes.get(image.offsets[0] as usize..)?;
   let u = bytes.get(image.offsets[1] as usize..)?;
@@ -1020,7 +1398,7 @@ fn yuv_planes(
     },
     width,
     height,
-    true,
+    limited,
   )
 }
 

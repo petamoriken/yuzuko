@@ -390,7 +390,6 @@ Yuzuko.test("unsupported codecs do not decode", async () => {
     "vp8",
     "vp08.00.10.08",
     "vp09.00.10.08",
-    "av01.0.04M.08",
   ]) {
     const frames: VideoFrame[] = [];
     const decoder = new VideoDecoder({
@@ -1211,6 +1210,27 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   assert(vp8.supported === false, "vp8");
   assert(vp8.config?.codec === "vp8", "vp8 codec");
 
+  const av1 = await VideoDecoder.isConfigSupported({
+    codec: "av01.0.04M.08",
+    codedWidth: 16,
+    codedHeight: 16,
+  });
+  assert(av1.supported === true, "av01");
+  assert(av1.config?.codec === "av01.0.04M.08", "av01 codec");
+  const av1Ten = await VideoDecoder.isConfigSupported({
+    codec: "av01.0.05M.10",
+  });
+  assert(av1Ten.supported === false, "av01 10-bit");
+  const av1Profile = await VideoDecoder.isConfigSupported({
+    codec: "av01.1.05M.08",
+  });
+  assert(av1Profile.supported === false, "av01 profile 1");
+  const av1Bad = await VideoDecoder.isConfigSupported({
+    codec: "av01.0.00M.08",
+    description: new Uint8Array([1, 2, 3, 4]),
+  });
+  assert(av1Bad.supported === false, "bad av1C");
+
   await assertRejectsType(
     () => VideoDecoder.isConfigSupported({} as VideoDecoderConfig),
     "missing codec",
@@ -1325,6 +1345,135 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   video.copyTo(bare);
   const bareView = new Uint8Array(bare);
   assert(bareView[2] === 7, "shared buffer");
+});
+
+Yuzuko.test("AV1 decodes an 8-bit 4:2:0 MP4", async () => {
+  const response = await fetch(
+    new URL("./fixtures/media/red-av1.mp4", import.meta.url),
+  );
+  const file = new Uint8Array(await response.arrayBuffer());
+  const movie = Yuzuko.demuxMp4(file);
+  assert(movie.video.length === 1, "one video track");
+  const track = movie.video[0];
+  assert(track.codec.startsWith("av01.0."), track.codec);
+  assert(track.codec.endsWith("M.08"), track.codec);
+  assert(track.codedWidth === 16, "width");
+  assert(track.codedHeight === 16, "height");
+  assert(track.chunks.length >= 1, "chunks");
+
+  const supported = await VideoDecoder.isConfigSupported({
+    codec: track.codec,
+    description: track.description,
+    codedWidth: track.codedWidth,
+    codedHeight: track.codedHeight,
+    hardwareAcceleration: "prefer-hardware",
+  });
+  assert(supported.supported === true, "prefer-hardware");
+
+  const frames: VideoFrame[] = [];
+  let failed = "";
+  const decoder = new VideoDecoder({
+    output: (frame) => {
+      frames.push(frame);
+    },
+    error: (error) => {
+      failed = `${error.name}: ${error.message}`;
+    },
+  });
+  decoder.configure({
+    codec: track.codec,
+    description: track.description,
+    codedWidth: track.codedWidth,
+    codedHeight: track.codedHeight,
+    hardwareAcceleration: "prefer-hardware",
+  });
+  for (const chunk of track.chunks) {
+    decoder.decode(chunk);
+  }
+  await decoder.flush();
+  assert(failed === "", failed);
+  assert(frames.length >= 1, "frames");
+  const image = await drawFrame(frames[0]);
+  const index = (8 * image.width + 8) * 4;
+  const red = image.data[index];
+  const green = image.data[index + 1];
+  const blue = image.data[index + 2];
+  const alpha = image.data[index + 3];
+  assert(
+    red > 180 && green < 80 && blue < 80 && alpha === 255,
+    `pixel ${red},${green},${blue},${alpha}`,
+  );
+  for (const frame of frames) {
+    frame.close();
+  }
+  decoder.close();
+
+  const bad = new VideoDecoder({ output: () => {}, error: () => {} });
+  await assertThrows(
+    () =>
+      bad.configure({
+        codec: "av01.0.00M.08",
+        codedWidth: 16,
+        codedHeight: 16,
+        description: new Uint8Array([1, 2, 3, 4]),
+      }),
+    "NotSupportedError",
+  );
+  bad.close();
+
+  const empty = new VideoDecoder({ output: () => {}, error: () => {} });
+  empty.configure({ codec: "av01.0.04M.08", codedWidth: 16, codedHeight: 16 });
+  assert(empty.state === "configured", empty.state);
+  empty.close();
+});
+
+Yuzuko.test("AV1 prefers the hardware decoder when it accepts the frame", async () => {
+  const response = await fetch(
+    new URL("./fixtures/media/red-av1-256.mp4", import.meta.url),
+  );
+  const file = new Uint8Array(await response.arrayBuffer());
+  const movie = Yuzuko.demuxMp4(file);
+  const track = movie.video[0];
+  assert(track.codedWidth === 256 && track.codedHeight === 256, "size");
+  for (const hint of ["prefer-hardware", "prefer-software", "no-preference"]) {
+    const frames: VideoFrame[] = [];
+    let failed = "";
+    const decoder = new VideoDecoder({
+      output: (frame) => {
+        frames.push(frame);
+      },
+      error: (error) => {
+        failed = `${error.name}: ${error.message}`;
+      },
+    });
+    decoder.configure({
+      codec: track.codec,
+      description: track.description,
+      codedWidth: track.codedWidth,
+      codedHeight: track.codedHeight,
+      hardwareAcceleration: hint,
+    });
+    for (const chunk of track.chunks) {
+      decoder.decode(chunk);
+    }
+    await decoder.flush();
+    assert(failed === "", `${hint} ${failed}`);
+    assert(frames.length >= 1, hint);
+    const image = await drawFrame(frames[0]);
+    const index = (128 * image.width + 128) * 4;
+    const red = image.data[index];
+    const green = image.data[index + 1];
+    const blue = image.data[index + 2];
+    const alpha = image.data[index + 3];
+    assert(
+      red > 180 && green < 80 && blue < 80 && alpha === 255,
+      `${hint} pixel ${red},${green},${blue},${alpha}`,
+    );
+    for (const frame of frames) {
+      frame.close();
+    }
+    decoder.close();
+  }
 });
 
 Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {

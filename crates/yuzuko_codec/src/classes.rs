@@ -14,7 +14,7 @@ use yuzuko_macros::op;
 use yuzuko_winter::{array_buffer, buffer_source};
 
 use crate::audio::{AudioBackend, AudioCodec};
-use crate::backend::{Codec, VideoBackend, VideoConfig};
+use crate::backend::{Acceleration, Codec, VideoBackend, VideoConfig};
 use crate::error::DecodeError;
 use crate::layout::{FrameColor, FrameData, frame_from_raster};
 
@@ -1593,6 +1593,7 @@ struct VideoColorInit {
 
 struct VideoChecked {
   supported: bool,
+  kind: Option<Codec>,
   codec: String,
   description: Option<Vec<u8>>,
   width: Option<u32>,
@@ -1616,14 +1617,19 @@ fn video_config(
   value: v8::Local<v8::Value>,
 ) -> Result<VideoConfig, OpError> {
   let checked = check_video(scope, value)?;
-  if !checked.supported {
+  let Some(codec) = checked.kind.filter(|_| checked.supported) else {
     return Err(unsupported_codec());
-  }
+  };
   Ok(VideoConfig {
-    codec: Codec::Avc,
+    codec,
     description: checked.description.unwrap_or_default(),
     width: checked.width.unwrap_or(0),
     height: checked.height.unwrap_or(0),
+    acceleration: match checked.acceleration.as_deref() {
+      Some("prefer-hardware") => Acceleration::PreferHardware,
+      Some("prefer-software") => Acceleration::PreferSoftware,
+      _ => Acceleration::NoPreference,
+    },
   })
 }
 
@@ -1659,8 +1665,17 @@ fn check_video(
     None => None,
   };
   let color_space = optional_color_space(scope, object)?;
+  let kind = video_codec(&codec);
+  let supported = match kind {
+    Some(Codec::Avc) => true,
+    Some(Codec::Av1) => {
+      crate::av1::description_supported(description.as_deref())
+    }
+    None => false,
+  };
   Ok(VideoChecked {
-    supported: video_codec(&codec).is_some(),
+    supported,
+    kind,
     codec,
     description,
     width,
@@ -1713,6 +1728,8 @@ fn check_audio(
 fn video_codec(codec: &str) -> Option<Codec> {
   if codec.starts_with("avc1") || codec.starts_with("avc3") {
     Some(Codec::Avc)
+  } else if crate::av1::string_supported(codec) {
+    Some(Codec::Av1)
   } else {
     None
   }

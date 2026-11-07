@@ -53,6 +53,9 @@ rustls = { version = "0.23.46", default-features = false, features = [
 webpki-roots = "1.0.11"
 ed25519-dalek = "3.0.0"
 symphonia = { version = "0.6", default-features = false }
+# Software AV1. Assembly needs nasm on x86 and stays off. 8-bit only.
+rav1d = { version = "1.1.0", default-features = false }
+avif-parse = "2.1.0"
 brotli = "9.0.0"
 bytes = "1.12.1"
 rcgen = "0.14"
@@ -118,6 +121,10 @@ opt-level = 3
 [profile.dev.package.jxl-coding]
 opt-level = 3
 [profile.dev.package.jxl-grid]
+opt-level = 3
+
+# rav1d without assembly is too slow at opt-level 0 for a decoded frame.
+[profile.dev.package.rav1d]
 opt-level = 3
 
 # Speed for the runtime and the libraries on its hot path. Everything else
@@ -197,6 +204,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.parley_engine]
 opt-level = 3
+[profile.release.package.rav1d]
+opt-level = 3
 
 [profile.bench.package.yuzuko]
 opt-level = 3
@@ -271,4 +280,6 @@ opt-level = 3
 [profile.bench.package.parley]
 opt-level = 3
 [profile.bench.package.parley_engine]
+opt-level = 3
+[profile.bench.package.rav1d]
 opt-level = 3

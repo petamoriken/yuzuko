@@ -3674,16 +3674,20 @@ declare namespace Yuzuko {
   ): Library;
 
   /**
-   * H.264 track from {@link demuxMp4}.
+   * H.264 or AV1 track from {@link demuxMp4}.
    *
-   * `chunks` is in decode order. `description` is the `avcC` record.
-   * `timestamp` on each chunk is the presentation time in microseconds.
+   * `chunks` is in decode order. `description` is the `avcC` or `av1C`
+   * record. `timestamp` on each chunk is the presentation time in
+   * microseconds.
    */
   interface Mp4VideoTrack {
-    /** `avc1` or `avc3` plus the profile bytes, such as `avc1.42E01E`. */
+    /**
+     * `avc1` or `avc3` plus the profile bytes, such as `avc1.42E01E`, or the
+     * short AV1 form from `av1C`, such as `av01.0.00M.08`.
+     */
     codec: string;
 
-    /** `avcC` bytes for `VideoDecoderConfig.description`. */
+    /** `avcC` or `av1C` bytes for `VideoDecoderConfig.description`. */
     description: Uint8Array<ArrayBuffer>;
 
     /** Coded width from the sample entry, in pixels. */
@@ -3692,7 +3696,10 @@ declare namespace Yuzuko {
     /** Coded height from the sample entry, in pixels. */
     codedHeight: number;
 
-    /** Length-prefixed samples in decode order. */
+    /**
+     * Samples in decode order. H.264 samples stay length-prefixed. AV1
+     * samples stay OBU sequences.
+     */
     chunks: EncodedVideoChunk[];
   }
 
@@ -3736,13 +3743,14 @@ declare namespace Yuzuko {
   }
 
   /**
-   * Reads a progressive MP4 file into H.264 and AAC chunks.
+   * Reads a progressive MP4 file into H.264, AV1, and AAC chunks.
    *
    * Installed on the main realm and on a dedicated worker when the runtime
    * is built with the `codec` feature. Absent from an `AudioWorklet`
    * processor realm. A build without `codec` leaves this function absent.
    * The call is synchronous and does not decode a frame or start a clock.
-   * `video` lists `avc1` and `avc3` tracks. `audio` lists `mp4a` tracks.
+   * `video` lists `avc1`, `avc3`, and `av01` tracks. `audio` lists `mp4a`
+   * tracks. A 10-bit or 4:4:4 `av01` track is still returned.
    * Sample bytes stay as stored. Timestamps are microseconds on the media
    * timeline. One edit-list entry with media rate 1 shifts them. Fragmented
    * MP4 is rejected.
@@ -3753,13 +3761,14 @@ declare namespace Yuzuko {
    * when the buffer is detached.
    * @throws {@link DOMException} `EncodingError` `The MP4 data is empty`
    * when `data` has no bytes. `The MP4 file has no movie` when `moov` is
-   * absent. `The MP4 file has no H.264 or AAC track` when no supported
+   * absent. `The MP4 file has no H.264, AV1, or AAC track` when no supported
    * track is present. `Fragmented MP4 is not supported` when `moof` carries
    * the samples. `The MP4 sample is outside the file` when a sample extends
    * past the buffer. `The MP4 track changes sample entries` when one track
    * uses more than one sample entry. `Encrypted MP4 is not supported` when a
    * sample entry is encrypted. `The H.264 track has no avcC` when that box
-   * is missing. `The AAC track has no AudioSpecificConfig` when `esds` has
+   * is missing. `The AV1 track has no av1C` when that box is missing.
+   * `The AAC track has no AudioSpecificConfig` when `esds` has
    * none. `The MP4 track has too many samples` when one track declares more
    * than 2,000,000 samples. `The MP4 samples could not be returned` when the
    * chunks cannot be copied into JavaScript. `The MP4 file is not a valid
@@ -9851,7 +9860,7 @@ interface ImageBitmapOptions {
 /**
  * Decodes or copies `image`.
  *
- * A `Blob` is identified by its signature: JPEG, PNG, WebP, or JPEG XL.
+ * A `Blob` is identified by its signature: JPEG, PNG, WebP, JPEG XL, or AVIF.
  * `colorSpaceConversion: "none"` keeps an sRGB or Display P3 source.
  * `"default"` stores sRGB. Any other source profile is converted to sRGB.
  * `resizeQuality` `"pixelated"` and `"low"` are nearest-neighbor. `"medium"`
@@ -12607,13 +12616,23 @@ interface EncodedVideoChunkInit {
 }
 
 /**
- * Decodes H.264 elementary chunks.
+ * Decodes H.264 and AV1 elementary chunks.
  *
- * `avc1` and `avc3` are the only video codecs. The decoder is hardware-only:
- * VideoToolbox on Darwin, the Media Foundation transform decoding through
- * DXVA on Windows, and VA-API on Linux. There is no software decoder.
- * `hardwareAcceleration: "prefer-software"` does not select one. `vp8`,
- * `vp09`, `av01`, and every other codec string fail `configure`.
+ * `avc1` and `avc3` use the platform hardware decoder: VideoToolbox on
+ * Darwin, the Media Foundation transform decoding through DXVA on Windows,
+ * and VA-API on Linux. There is no software H.264 decoder.
+ * `hardwareAcceleration: "prefer-software"` does not select one. `av01` is
+ * profile 0, 8-bit, 4:2:0. Profile 1, profile 2, 10-bit, 12-bit, monochrome,
+ * and any other chroma subsampling fail `configure`. When
+ * `hardwareAcceleration` is `"no-preference"` or `"prefer-hardware"`,
+ * `configure` uses VideoToolbox on Darwin or the Media Foundation AV1
+ * transform on Windows if that hardware decoder accepts the `av1C`, the
+ * coded size, and the session. `"prefer-software"`, a missing decoder, a
+ * rejected session, an omitted description, or a missing coded size uses
+ * rav1d. On Linux, `configure` uses VA-API when `VAProfileAV1Profile0` is
+ * present. A missing library or profile uses rav1d. A rejected frame does
+ * not switch decoders.
+ * `vp8`, `vp09`, and every other codec string fail `configure`.
  * `VideoEncoder` is absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
@@ -12640,16 +12659,20 @@ interface VideoDecoder {
   ondequeue: ((this: VideoDecoder) => void) | null;
 
   /**
-   * An omitted or empty `description` is Annex B. `configure` leaves the
-   * decoder configured, and the hardware session opens when `decode`
-   * processes an access unit that contains an SPS and a PPS. A present
-   * `description` is a length-prefixed `avcC` and is not scanned for start
-   * codes.
+   * An omitted or empty `description` is Annex B for H.264 and a raw OBU
+   * sequence for AV1. For H.264, `configure` leaves the decoder configured,
+   * and the hardware session opens when `decode` processes an access unit
+   * that contains an SPS and a PPS. A present H.264 `description` is a
+   * length-prefixed `avcC` and is not scanned for start codes. A present
+   * AV1 `description` is an `av1C`. Its config OBUs are given to the
+   * decoder before the first chunk. A hardware session that does not open
+   * leaves this decoder configured on rav1d.
    *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, or a present dimension is 0.
    * @throws {@link DOMException} `NotSupportedError` when `codec` is not
-   * `avc1` or `avc3`, or when the hardware decoder is missing or rejects a
+   * `avc1`, `avc3`, or an 8-bit 4:2:0 `av01`, when a present `av1C` is not
+   * 8-bit 4:2:0, or when the H.264 hardware decoder is missing or rejects a
    * present `avcC`. On Darwin, an MBAFF interlaced `avcC` is rejected while
    * creating the decompression session, and the message includes
    * VideoToolbox status -12911 (`kVTVideoDecoderMalfunctionErr`). On Windows
@@ -12663,7 +12686,7 @@ interface VideoDecoder {
   configure(config: VideoDecoderConfig): void;
 
   /**
-   * Enqueues `chunk` and returns before the hardware decoder runs. `output`
+   * Enqueues `chunk` and returns before the decoder runs. `output`
    * runs from the microtask that decodes the chunk. A sample the decoder
    * rejects closes the decoder, calls `error` with `EncodingError`, and
    * rejects an in-flight `flush` with that error. After construction,
@@ -12706,10 +12729,12 @@ declare var VideoDecoder: {
   new(init: VideoDecoderInit): VideoDecoder;
   /**
    * Resolves `{ supported, config }` without opening a decoder and without
-   * producing a frame. `supported` is true only for an `avc1` or `avc3`
-   * codec string that `configure` accepts, and false for any other codec
-   * string. The returned `config` copies `colorSpace`; an omitted member is
-   * null. An unrecognized member is omitted. An invalid config rejects
+   * producing a frame. `supported` is true for an `avc1` or `avc3` codec
+   * string, and for an 8-bit 4:2:0 `av01` string whose `description`
+   * `configure` would accept. It is false for any other codec string,
+   * including a 10-bit or non-4:2:0 `av01` string or `av1C`. The returned
+   * `config` copies `colorSpace`. An omitted member is null. An unrecognized
+   * member is omitted. An invalid config rejects
    * `TypeError`. Too few arguments reject `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/isConfigSupported)
@@ -12990,11 +13015,12 @@ interface AudioDecoderConfig {
 }
 
 /**
- * Decodes a PNG, JPEG, WebP, or JPEG XL image.
+ * Decodes a PNG, JPEG, WebP, JPEG XL, or AVIF image.
  *
  * `isTypeSupported` resolves `true` for `image/png`, `image/jpeg`,
- * `image/webp`, and `image/jxl`. The constructor still returns a decoder for
- * any other type. `completed`, `tracks.ready`, and `decode()` then reject
+ * `image/webp`, `image/jxl`, and `image/avif`. The constructor still returns
+ * a decoder for any other type. `completed`, `tracks.ready`, and `decode()`
+ * then reject
  * `NotSupportedError`. A still image has one track, `frameCount` 1,
  * `animated` false, and `repetitionCount` 0. An animated PNG, WebP, or JPEG
  * XL reports every frame. `repetitionCount` is the number of extra plays
@@ -13003,7 +13029,12 @@ interface AudioDecoderConfig {
  * sum of earlier durations and `duration` is that frame's delay, both in
  * microseconds. A still frame has `timestamp` 0 and `duration` null.
  * `createImageBitmap` uses the first frame. This decoder does not advance
- * frames. `desiredWidth` and `desiredHeight` scale every frame with a
+ * frames. An AVIF file is one still frame from the primary item, including
+ * when the file is animated. The color item is 8-bit 4:2:0. An alpha item
+ * is composited, and a premultiplied alpha item stays premultiplied.
+ * 10-bit, 12-bit, monochrome color, and subsampling other than 4:2:0 are
+ * rejected. Rotation, clean aperture, ICC, and HDR are not applied.
+ * `desiredWidth` and `desiredHeight` scale every frame with a
  * triangle filter. One of them preserves aspect ratio by rounding the other
  * edge up. Both set the exact size. A value of 0 throws `TypeError`.
  * `preferAnimation` does not select another track, because a file has one
@@ -13110,13 +13141,15 @@ declare var ImageTrackList: {
  *
  * A still image reports `animated` false, `frameCount` 1, and
  * `repetitionCount` 0. An animated PNG, WebP, or JPEG XL reports the frame
- * count and the extra plays after the first. Forever is `Infinity`.
+ * count and the extra plays after the first. Forever is `Infinity`. An AVIF
+ * file stays a still image.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack)
  */
 interface ImageTrack {
   /**
-   * True when the track is an animated PNG, WebP, or JPEG XL.
+   * True when the track is an animated PNG, WebP, or JPEG XL. An AVIF file
+   * stays false.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack/animated)
    */

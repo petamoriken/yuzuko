@@ -70,7 +70,7 @@ On the main global, `navigator.getGamepads()` reports connected gamepads. `playE
 
 Feature: `image`. It enables `window`.
 
-`createImageBitmap`, `ImageBitmap`, and `ImageData` decode and store pixels. A `Blob` is recognized by its signature: JPEG, PNG, WebP, or JPEG XL. The stored color space is `"srgb"` or `"display-p3"`. Samples are unorm8 or float16. Decoding runs off the event loop. `createImageBitmap` uses the first frame of an animation.
+`createImageBitmap`, `ImageBitmap`, and `ImageData` decode and store pixels. A `Blob` is recognized by its signature: JPEG, PNG, WebP, JPEG XL, or AVIF. The stored color space is `"srgb"` or `"display-p3"`. Samples are unorm8 or float16. Decoding runs off the event loop. `createImageBitmap` uses the first frame of an animation.
 
 ## Canvas 2D and fonts
 
@@ -100,9 +100,9 @@ Feature: `audio`.
 
 Feature: `codec`. It enables `image` and `window`.
 
-`VideoDecoder`, `EncodedVideoChunk`, `VideoFrame`, `AudioDecoder`, `EncodedAudioChunk`, `AudioData`, and `ImageDecoder` are on `globalThis`. Video decoding is hardware H.264, `avc1` and `avc3`: VideoToolbox on Darwin, Direct3D 11 on Windows, and VA-API on Linux. Audio decoding for this API is AAC, `mp4a`. Any other codec string throws `NotSupportedError`. `ImageDecoder` returns every frame of an animated PNG, WebP, or JPEG XL and does not advance those frames.
+`VideoDecoder`, `EncodedVideoChunk`, `VideoFrame`, `AudioDecoder`, `EncodedAudioChunk`, `AudioData`, and `ImageDecoder` are on `globalThis`. Video decoding is hardware H.264, `avc1` and `avc3`, plus AV1, `av01`, at 8-bit 4:2:0. H.264 uses VideoToolbox on Darwin, Direct3D 11 on Windows, and VA-API on Linux. AV1 uses VideoToolbox on Darwin and the Media Foundation transform on Windows when that hardware decoder accepts the configuration, and rav1d otherwise. Linux AV1 uses VA-API when `VAProfileAV1Profile0` is present, and rav1d otherwise. `prefer-software` selects rav1d. Audio decoding for this API is AAC, `mp4a`. Any other codec string throws `NotSupportedError`. `ImageDecoder` returns every frame of an animated PNG, WebP, or JPEG XL, decodes AVIF as one still frame, and does not advance frames.
 
-`Yuzuko.demuxMp4` reads a progressive MP4 file into those H.264 and AAC chunks. It does not decode or present them. A `VideoFrame` can be drawn with `drawImage`, `createImageBitmap`, or `copyExternalImageToTexture`.
+`Yuzuko.demuxMp4` reads a progressive MP4 file into those H.264, AV1, and AAC chunks. It does not decode or present them. A `VideoFrame` can be drawn with `drawImage`, `createImageBitmap`, or `copyExternalImageToTexture`.
 
 ## HTTP client
 

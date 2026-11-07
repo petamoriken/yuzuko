@@ -1,5 +1,9 @@
-//! VideoToolbox hardware H.264 decode.
-//! There is no software fallback in this module.
+//! VideoToolbox hardware decode.
+//!
+//! H.264 has no software fallback in this module. AV1 is opened only when
+//! VideoToolbox reports a hardware `av01` decoder and accepts the `av1C`
+//! format description. A rejected session is returned to the caller, which
+//! uses rav1d for that configuration.
 
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
@@ -12,6 +16,9 @@ use crate::error::DecodeError;
 const BGRA: u32 = fourcc(b"BGRA");
 const RGBA: u32 = fourcc(b"RGBA");
 const AVC1: u32 = fourcc(b"avc1");
+const AV01: u32 = fourcc(b"av01");
+/// `kCFStringEncodingUTF8`.
+const UTF8: u32 = 0x0800_0100;
 
 const fn fourcc(text: &[u8; 4]) -> u32 {
   u32::from_be_bytes(*text)
@@ -19,6 +26,10 @@ const fn fourcc(text: &[u8; 4]) -> u32 {
 
 pub fn supports_avc() -> bool {
   supports(AVC1)
+}
+
+pub fn supports_av1() -> bool {
+  supports(AV01)
 }
 
 fn supports(codec: u32) -> bool {
@@ -60,7 +71,7 @@ struct Timing {
 }
 
 struct Slot {
-  image: *mut c_void,
+  images: Vec<*mut c_void>,
   status: i32,
 }
 
@@ -88,6 +99,9 @@ pub struct Session {
   pixel_format: *mut c_void,
   extensions: *mut c_void,
   slot: Box<Slot>,
+  /// AV1 may produce no picture for a temporal unit that only carries a
+  /// sequence header. H.264 still requires one picture.
+  allow_empty: bool,
 }
 
 impl Session {
@@ -95,11 +109,7 @@ impl Session {
     if sample.is_empty() || self.session.is_null() {
       return Err(DecodeError::Rejected);
     }
-    self.slot.status = 0;
-    if !self.slot.image.is_null() {
-      release(self.slot.image);
-      self.slot.image = null_mut();
-    }
+    self.clear_slot();
     let block = Owned(block_buffer(sample)?);
     let timing = Timing {
       duration: cm_time(1, 30),
@@ -142,31 +152,80 @@ impl Session {
         null_mut(),
       )
     };
-    if status != 0 || self.slot.status != 0 || self.slot.image.is_null() {
+    if status != 0 || self.slot.status != 0 {
       let code = if status != 0 {
         status
       } else {
         self.slot.status
       };
+      self.clear_slot();
       return Err(hardware_status(code));
     }
-    let image = self.slot.image;
-    self.slot.image = null_mut();
-    let raster = copy_image(image);
-    release(image);
-    raster.map(|frame| vec![frame])
+    self.take_frames()
   }
 
   pub fn flush(&mut self) -> Result<Vec<Raster>, DecodeError> {
-    Ok(Vec::new())
+    if !self.allow_empty || self.session.is_null() {
+      return Ok(Vec::new());
+    }
+    self.slot.status = 0;
+    let status =
+      unsafe { VTDecompressionSessionWaitForAsynchronousFrames(self.session) };
+    if status != 0 || self.slot.status != 0 {
+      let code = if status != 0 {
+        status
+      } else {
+        self.slot.status
+      };
+      self.clear_slot();
+      return Err(hardware_status(code));
+    }
+    self.take_frames()
+  }
+
+  fn clear_slot(&mut self) {
+    self.slot.status = 0;
+    for image in self.slot.images.drain(..) {
+      release(image);
+    }
+  }
+
+  fn take_frames(&mut self) -> Result<Vec<Raster>, DecodeError> {
+    let images: Vec<*mut c_void> = self.slot.images.drain(..).collect();
+    if images.is_empty() {
+      if self.allow_empty {
+        return Ok(Vec::new());
+      }
+      return Err(DecodeError::Rejected);
+    }
+    if !self.allow_empty && images.len() != 1 {
+      for image in images {
+        release(image);
+      }
+      return Err(DecodeError::Rejected);
+    }
+    let mut frames = Vec::with_capacity(images.len());
+    let mut failed = None;
+    for image in images {
+      if failed.is_none() {
+        match copy_image(image) {
+          Ok(frame) => frames.push(frame),
+          Err(error) => failed = Some(error),
+        }
+      }
+      release(image);
+    }
+    match failed {
+      Some(error) => Err(error),
+      None => Ok(frames),
+    }
   }
 }
 
 impl Drop for Session {
   fn drop(&mut self) {
-    if !self.slot.image.is_null() {
-      release(self.slot.image);
-      self.slot.image = null_mut();
+    for image in self.slot.images.drain(..) {
+      release(image);
     }
     if !self.session.is_null() {
       unsafe { VTDecompressionSessionInvalidate(self.session) };
@@ -211,12 +270,113 @@ pub fn open_avc(description: &[u8]) -> Result<Session, DecodeError> {
     release(format);
     return Err(hardware_status(status));
   }
-  open_format(format, null_mut())
+  open_format(format, null_mut(), false)
+}
+
+pub fn open_av1(
+  description: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<Session, DecodeError> {
+  if !supports_av1() {
+    return Err(DecodeError::Unsupported);
+  }
+  let format = av1_format(description, width, height)?;
+  open_format(format, null_mut(), true)
+}
+
+fn av1_format(
+  description: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<*mut c_void, DecodeError> {
+  let Ok(width) = i32::try_from(width) else {
+    return Err(DecodeError::Rejected);
+  };
+  let Ok(height) = i32::try_from(height) else {
+    return Err(DecodeError::Rejected);
+  };
+  if width == 0 || height == 0 || description.is_empty() {
+    return Err(DecodeError::Rejected);
+  }
+  let name = cf_string(c"av1C")?;
+  let Ok(length) = isize::try_from(description.len()) else {
+    release(name);
+    return Err(DecodeError::Rejected);
+  };
+  let data = unsafe { CFDataCreate(null(), description.as_ptr(), length) };
+  if data.is_null() {
+    release(name);
+    return Err(DecodeError::Rejected);
+  }
+  let atom_keys = [name.cast_const()];
+  let atom_values = [data.cast_const()];
+  let atoms = unsafe {
+    CFDictionaryCreate(
+      null(),
+      atom_keys.as_ptr(),
+      atom_values.as_ptr(),
+      1,
+      &kCFTypeDictionaryKeyCallBacks,
+      &kCFTypeDictionaryValueCallBacks,
+    )
+  };
+  release(name);
+  release(data);
+  if atoms.is_null() {
+    return Err(DecodeError::Rejected);
+  }
+  let extension_key =
+    unsafe { kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms };
+  let extension_keys = [extension_key];
+  let extension_values = [atoms.cast_const()];
+  let extensions = unsafe {
+    CFDictionaryCreate(
+      null(),
+      extension_keys.as_ptr(),
+      extension_values.as_ptr(),
+      1,
+      &kCFTypeDictionaryKeyCallBacks,
+      &kCFTypeDictionaryValueCallBacks,
+    )
+  };
+  release(atoms);
+  if extensions.is_null() {
+    return Err(DecodeError::Rejected);
+  }
+  let mut format = null_mut();
+  let status = unsafe {
+    CMVideoFormatDescriptionCreate(
+      null(),
+      AV01,
+      width,
+      height,
+      extensions,
+      &mut format,
+    )
+  };
+  release(extensions);
+  if status != 0 || format.is_null() {
+    release(format);
+    return Err(hardware_status(status));
+  }
+  Ok(format)
+}
+
+fn cf_string(text: &std::ffi::CStr) -> Result<*mut c_void, DecodeError> {
+  let string =
+    unsafe { CFStringCreateWithCString(null(), text.as_ptr(), UTF8) };
+  if string.is_null() {
+    Err(DecodeError::Rejected)
+  } else {
+    Ok(string)
+  }
 }
 
 fn open_format(
   format: *mut c_void,
   extensions: *mut c_void,
+  allow_empty: bool,
 ) -> Result<Session, DecodeError> {
   let spec = decoder_spec()?;
   let (destination, pixel_format) = match destination_buffer() {
@@ -229,7 +389,7 @@ fn open_format(
     }
   };
   let mut slot = Box::new(Slot {
-    image: null_mut(),
+    images: Vec::new(),
     status: 0,
   });
   let record = CallbackRecord {
@@ -264,6 +424,7 @@ fn open_format(
     pixel_format,
     extensions,
     slot,
+    allow_empty,
   })
 }
 
@@ -461,11 +622,8 @@ unsafe extern "C" fn output_cb(
     if image.is_null() {
       return;
     }
-    if !slot.image.is_null() {
-      CFRelease(slot.image);
-    }
     CFRetain(image);
-    slot.image = image;
+    slot.images.push(image);
   }
 }
 
@@ -481,6 +639,8 @@ unsafe extern "C" {
   static kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder:
     *const c_void;
   static kCVPixelBufferPixelFormatTypeKey: *const c_void;
+  static kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms:
+    *const c_void;
 
   fn CFRelease(value: *const c_void);
   fn CFRetain(value: *const c_void) -> *const c_void;
@@ -497,6 +657,25 @@ unsafe extern "C" {
     kind: i32,
     value: *const c_void,
   ) -> *mut c_void;
+  fn CFStringCreateWithCString(
+    allocator: *const c_void,
+    text: *const i8,
+    encoding: u32,
+  ) -> *mut c_void;
+  fn CFDataCreate(
+    allocator: *const c_void,
+    bytes: *const u8,
+    length: isize,
+  ) -> *mut c_void;
+
+  fn CMVideoFormatDescriptionCreate(
+    allocator: *const c_void,
+    codec: u32,
+    width: i32,
+    height: i32,
+    extensions: *const c_void,
+    format: *mut *mut c_void,
+  ) -> i32;
 
   fn CMVideoFormatDescriptionCreateFromH264ParameterSets(
     allocator: *const c_void,
@@ -553,6 +732,9 @@ unsafe extern "C" {
     flags: u32,
     source: *mut c_void,
     info: *mut u32,
+  ) -> i32;
+  fn VTDecompressionSessionWaitForAsynchronousFrames(
+    session: *mut c_void,
   ) -> i32;
   fn VTIsHardwareDecodeSupported(codec: u32) -> u8;
 

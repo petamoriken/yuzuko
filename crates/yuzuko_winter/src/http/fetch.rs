@@ -2093,6 +2093,7 @@ fn mime_from_path(path: &Path) -> String {
     "jpg" | "jpeg" => "image/jpeg",
     "webp" => "image/webp",
     "jxl" => "image/jxl",
+    "avif" => "image/avif",
     "gif" => "image/gif",
     "svg" => "image/svg+xml",
     "txt" => "text/plain",

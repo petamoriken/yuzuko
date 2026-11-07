@@ -14,6 +14,12 @@
 //!
 //! The transform reads an Annex B byte stream, so the `avcC` parameter sets
 //! and each length-prefixed `avc1` sample are rewritten with start codes.
+//!
+//! AV1 uses the same Direct3D 11 rule when the device offers
+//! `AV1_VLD_PROFILE0` and a synchronous D3D11-aware transform is registered.
+//! Samples stay OBU temporal units. The sequence header is the `av1C` config
+//! OBUs. A missing profile or transform fails this open so the caller can
+//! use rav1d. A sample that is not a DXGI surface fails the decode.
 
 use std::mem::ManuallyDrop;
 use std::ptr::{from_mut, from_ref, null_mut};
@@ -21,9 +27,9 @@ use std::ptr::{from_mut, from_ref, null_mut};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::{
-  D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_DECODER_PROFILE_H264_VLD_NOFGT,
-  D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device, ID3D11Multithread,
-  ID3D11VideoDevice,
+  D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_DECODER_PROFILE_AV1_VLD_PROFILE0,
+  D3D11_DECODER_PROFILE_H264_VLD_NOFGT, D3D11_SDK_VERSION, D3D11CreateDevice,
+  ID3D11Device, ID3D11Multithread, ID3D11VideoDevice,
 };
 use windows::Win32::Media::MediaFoundation::{
   IMF2DBuffer, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
@@ -37,8 +43,8 @@ use windows::Win32::Media::MediaFoundation::{
   MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM,
   MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER,
   MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO, MFTEnumEx,
-  MFVideoFormat_ARGB32, MFVideoFormat_H264, MFVideoFormat_NV12,
-  MFVideoFormat_RGB32,
+  MFVideoFormat_ARGB32, MFVideoFormat_AV1, MFVideoFormat_H264,
+  MFVideoFormat_NV12, MFVideoFormat_RGB32,
 };
 use windows::Win32::System::Com::{
   COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree,
@@ -61,16 +67,28 @@ pub struct Session {
   visible_height: u32,
   coded_width: u32,
   coded_height: u32,
-  /// The `avcC` SPS and PPS as Annex B.
-  header: Vec<u8>,
+  elementary: Elementary,
+}
+
+enum Elementary {
+  /// Annex B parameter sets, prepended to each IDR.
+  Avc(Vec<u8>),
+  /// One temporal unit of OBUs. Nothing is prepended.
+  Av1,
 }
 
 pub fn supports_avc() -> bool {
-  hardware_count(&MFVideoFormat_H264) && gpu_device().is_ok()
+  hardware_count(&MFVideoFormat_H264)
+    && gpu_device(D3D11_DECODER_PROFILE_H264_VLD_NOFGT).is_ok()
 }
 
-/// A Direct3D 11 device whose video decoder offers H.264.
-fn gpu_device() -> Result<ID3D11Device, DecodeError> {
+pub fn supports_av1() -> bool {
+  hardware_count(&MFVideoFormat_AV1)
+    && gpu_device(D3D11_DECODER_PROFILE_AV1_VLD_PROFILE0).is_ok()
+}
+
+/// A Direct3D 11 device whose video decoder offers `profile`.
+fn gpu_device(profile: GUID) -> Result<ID3D11Device, DecodeError> {
   let mut device = None;
   unsafe {
     D3D11CreateDevice(
@@ -91,11 +109,11 @@ fn gpu_device() -> Result<ID3D11Device, DecodeError> {
     .cast::<ID3D11VideoDevice>()
     .map_err(|_| DecodeError::Unsupported)?;
   let count = unsafe { video.GetVideoDecoderProfileCount() };
-  let h264 = (0..count).any(|index| {
+  let found = (0..count).any(|index| {
     unsafe { video.GetVideoDecoderProfile(index) }
-      .is_ok_and(|profile| profile == D3D11_DECODER_PROFILE_H264_VLD_NOFGT)
+      .is_ok_and(|candidate| candidate == profile)
   });
-  if !h264 {
+  if !found {
     return Err(DecodeError::Unsupported);
   }
   // The transform calls the device from its own threads.
@@ -147,7 +165,7 @@ pub fn open_avc(
     return Err(DecodeError::Rejected);
   }
   let header = h264::annex_b_header(description)?;
-  let device = gpu_device()?;
+  let device = gpu_device(D3D11_DECODER_PROFILE_H264_VLD_NOFGT)?;
   let manager = device_manager(&device)?;
   let transform = activate_hardware(&MFVideoFormat_H264)?;
   unsafe {
@@ -190,7 +208,75 @@ pub fn open_avc(
     visible_height,
     coded_width,
     coded_height,
-    header,
+    elementary: Elementary::Avc(header),
+  };
+  session.bind_output()?;
+  unsafe {
+    session
+      .transform
+      .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
+      .map_err(|_| DecodeError::Rejected)?;
+    let _ = session
+      .transform
+      .ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+  }
+  Ok(session)
+}
+
+pub fn open_av1(
+  description: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<Session, DecodeError> {
+  if width == 0 || height == 0 {
+    return Err(DecodeError::Rejected);
+  }
+  let Some(obus) = crate::av1::config_obus(description) else {
+    return Err(DecodeError::Rejected);
+  };
+  if obus.is_empty() || !hardware_count(&MFVideoFormat_AV1) {
+    return Err(DecodeError::Unsupported);
+  }
+  let device = gpu_device(D3D11_DECODER_PROFILE_AV1_VLD_PROFILE0)?;
+  let manager = device_manager(&device)?;
+  let transform = activate_aware(&MFVideoFormat_AV1)?;
+  unsafe {
+    let attributes = transform
+      .GetAttributes()
+      .map_err(|_| DecodeError::Unsupported)?;
+    let _ = attributes.SetUINT32(&MF_LOW_LATENCY, 1);
+    transform
+      .ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, manager.as_raw() as usize)
+      .map_err(|_| DecodeError::Unsupported)?;
+    let input: IMFMediaType =
+      MFCreateMediaType().map_err(|_| DecodeError::Rejected)?;
+    input
+      .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+      .map_err(|_| DecodeError::Rejected)?;
+    input
+      .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_AV1)
+      .map_err(|_| DecodeError::Rejected)?;
+    input
+      .SetUINT64(&MF_MT_FRAME_SIZE, pack_size(width, height))
+      .map_err(|_| DecodeError::Rejected)?;
+    input
+      .SetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, obus)
+      .map_err(|_| DecodeError::Rejected)?;
+    transform
+      .SetInputType(0, &input, 0)
+      .map_err(|_| DecodeError::Unsupported)?;
+  }
+  let mut session = Session {
+    transform,
+    _device: device,
+    _manager: manager,
+    origin_x: 0,
+    origin_y: 0,
+    visible_width: width,
+    visible_height: height,
+    coded_width: width,
+    coded_height: height,
+    elementary: Elementary::Av1,
   };
   session.bind_output()?;
   unsafe {
@@ -210,13 +296,19 @@ impl Session {
     if bytes.is_empty() {
       return Err(DecodeError::Rejected);
     }
-    let mut stream = Vec::new();
-    // The transform takes its parameter sets in band. Each IDR access unit
-    // carries them so a decoder that was reset can start there.
-    if h264::has_idr(bytes) {
-      stream.extend_from_slice(&self.header);
-    }
-    stream.extend(h264::annex_b_sample(bytes)?);
+    let stream = match &self.elementary {
+      Elementary::Avc(header) => {
+        let mut stream = Vec::new();
+        // The transform takes its parameter sets in band. Each IDR access
+        // unit carries them so a decoder that was reset can start there.
+        if h264::has_idr(bytes) {
+          stream.extend_from_slice(header);
+        }
+        stream.extend(h264::annex_b_sample(bytes)?);
+        stream
+      }
+      Elementary::Av1 => bytes.to_vec(),
+    };
     unsafe {
       let sample = sample_with_bytes(&stream)?;
       self
@@ -383,6 +475,33 @@ fn activate_hardware(subtype_id: &GUID) -> Result<IMFTransform, DecodeError> {
     unsafe { (*found.list).clone() }.ok_or(DecodeError::Unsupported)?;
   unsafe { activate.ActivateObject::<IMFTransform>() }
     .map_err(|_| DecodeError::Rejected)
+}
+
+/// The first synchronous transform that advertises a Direct3D 11 device
+/// manager. A software transform that is not D3D11-aware is skipped.
+fn activate_aware(subtype_id: &GUID) -> Result<IMFTransform, DecodeError> {
+  let found = enumerate(subtype_id)?;
+  let slots =
+    unsafe { std::slice::from_raw_parts(found.list, found.count as usize) };
+  for slot in slots {
+    let Some(activate) = slot.clone() else {
+      continue;
+    };
+    let Ok(transform) = (unsafe { activate.ActivateObject::<IMFTransform>() })
+    else {
+      continue;
+    };
+    let aware = unsafe { transform.GetAttributes() }
+      .ok()
+      .and_then(|attributes| {
+        unsafe { attributes.GetUINT32(&MF_SA_D3D11_AWARE) }.ok()
+      })
+      .unwrap_or(0);
+    if aware != 0 {
+      return Ok(transform);
+    }
+  }
+  Err(DecodeError::Unsupported)
 }
 
 fn enumerate(subtype_id: &GUID) -> Result<Activates, DecodeError> {

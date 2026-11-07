@@ -1,6 +1,9 @@
 //! WebCodecs decoders. H.264 stays on the platform hardware decoder.
+//! AV1 uses that hardware decoder when it accepts the configuration.
 
 mod audio;
+mod av1;
+mod av1_obu;
 mod backend;
 mod classes;
 mod clone;

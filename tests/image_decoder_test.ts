@@ -28,7 +28,7 @@ Yuzuko.test("isTypeSupported knows the still-image decoders", async () => {
     await ImageDecoder.isTypeSupported("image/png;charset=utf-8"),
     "parameters",
   );
-  assert(!(await ImageDecoder.isTypeSupported("image/avif")), "avif");
+  assert(await ImageDecoder.isTypeSupported("image/avif"), "avif");
   assert(!(await ImageDecoder.isTypeSupported("image/gif")), "gif");
 });
 
@@ -138,6 +138,38 @@ Yuzuko.test("WebP and JPEG XL decode", async () => {
     result.image.close();
     decoder.close();
   }
+});
+
+Yuzuko.test("AVIF decodes as one still frame", async () => {
+  const encoded = await bytes("red.avif");
+  const bitmap = await bitmapPixels(
+    new Blob([encoded], { type: "image/avif" }),
+  );
+  const decoder = new ImageDecoder({ type: "image/avif", data: encoded });
+  await decoder.completed;
+  await decoder.tracks.ready;
+  assert(decoder.tracks.length === 1, "one track");
+  assert(decoder.tracks[0].animated === false, "still");
+  assert(decoder.tracks[0].frameCount === 1, "one frame");
+  assert(decoder.tracks[0].repetitionCount === 0, "no loop");
+  const result = await decoder.decode();
+  assert(result.complete, "complete");
+  assert(result.image.displayWidth === 16, "width");
+  assert(result.image.displayHeight === 16, "height");
+  assert(result.image.timestamp === 0, "timestamp");
+  assert(result.image.duration === null, "duration");
+  const decoded = await bitmapPixels(result.image);
+  const index = (8 * 16 + 8) * 4;
+  assert(
+    decoded[index] > 180 &&
+      decoded[index + 1] < 80 &&
+      decoded[index + 2] < 80 &&
+      decoded[index + 3] === 255,
+    `pixel ${decoded[index]},${decoded[index + 1]},${decoded[index + 2]}`,
+  );
+  assert(decoded.join() === bitmap.join(), "matches createImageBitmap");
+  result.image.close();
+  decoder.close();
 });
 
 Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {

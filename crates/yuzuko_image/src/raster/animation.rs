@@ -32,6 +32,7 @@ pub(super) fn decode_all(
     Some(Kind::Jpeg) => still(super::decode_jpeg(bytes, to_srgb)),
     Some(Kind::Webp) => decode_webp_frames(bytes, to_srgb),
     Some(Kind::Jxl) => decode_jxl_frames(bytes, to_srgb),
+    Some(Kind::Avif) => still(super::decode_avif(bytes, to_srgb)),
     None => Err(DecodeError::Unsupported),
   }
 }

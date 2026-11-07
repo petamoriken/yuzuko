@@ -1,5 +1,6 @@
 //! Image decoders, `ImageData`, `ImageBitmap`, and `createImageBitmap`.
 
+pub mod av1;
 mod bitmap;
 mod clone;
 mod create;

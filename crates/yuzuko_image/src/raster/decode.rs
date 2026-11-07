@@ -1,4 +1,4 @@
-//! Signature sniffing and the four phase-3 decoders.
+//! Signature sniffing and the image decoders.
 
 use std::io::Cursor;
 use std::panic::AssertUnwindSafe;
@@ -43,6 +43,8 @@ pub fn decode(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
 
 /// Every frame of a PNG, WebP, or JPEG XL animation.
 ///
+/// AVIF is one still frame. An animated AVIF is not a frame sequence.
+///
 /// A still image is one frame with `animated` false, `repetition_count` 0,
 /// and `duration_us` none. `createImageBitmap` keeps using [`decode`].
 pub fn decode_frames(
@@ -64,6 +66,7 @@ fn decode_inner(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
     Some(Kind::Jpeg) => decode_jpeg(bytes, to_srgb),
     Some(Kind::Webp) => decode_webp(bytes, to_srgb),
     Some(Kind::Jxl) => decode_jxl(bytes, to_srgb),
+    Some(Kind::Avif) => decode_avif(bytes, to_srgb),
     None => Err(DecodeError::Unsupported),
   }
 }
@@ -73,6 +76,7 @@ enum Kind {
   Jpeg,
   Webp,
   Jxl,
+  Avif,
 }
 
 fn sniff(bytes: &[u8]) -> Option<Kind> {
@@ -87,8 +91,39 @@ fn sniff(bytes: &[u8]) -> Option<Kind> {
     Some(Kind::Webp)
   } else if is_jxl(bytes) {
     Some(Kind::Jxl)
+  } else if is_avif(bytes) {
+    Some(Kind::Avif)
   } else {
     None
+  }
+}
+
+fn is_avif(bytes: &[u8]) -> bool {
+  if bytes.len() < 16 || &bytes[4..8] != b"ftyp" {
+    return false;
+  }
+  let size =
+    u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+  let end = size.min(bytes.len());
+  if end < 16 {
+    return false;
+  }
+  bytes[8..end]
+    .chunks_exact(4)
+    .enumerate()
+    .any(|(index, brand)| index != 1 && (brand == b"avif" || brand == b"avis"))
+}
+
+fn decode_avif(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
+  let mut raster = crate::av1::decode_avif(bytes).map_err(av1_error)?;
+  finish(&mut raster, None, None, to_srgb, 1)
+}
+
+fn av1_error(error: crate::av1::Av1Error) -> DecodeError {
+  match error {
+    crate::av1::Av1Error::Unsupported => DecodeError::Unsupported,
+    crate::av1::Av1Error::TooLarge => DecodeError::TooLarge,
+    crate::av1::Av1Error::Corrupt => DecodeError::Corrupt,
   }
 }
 

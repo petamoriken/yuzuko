@@ -1,4 +1,6 @@
-//! H.264 stays on the platform hardware decoder. There is no software fallback.
+//! H.264 stays on the platform hardware decoder. There is no software
+//! fallback. AV1 uses that hardware decoder when the session opens, and
+//! rav1d when it does not. `prefer-software` keeps AV1 on rav1d.
 
 use yuzuko_image::Raster;
 
@@ -7,6 +9,14 @@ use crate::error::DecodeError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Codec {
   Avc,
+  Av1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Acceleration {
+  NoPreference,
+  PreferHardware,
+  PreferSoftware,
 }
 
 pub struct VideoConfig {
@@ -14,6 +24,7 @@ pub struct VideoConfig {
   pub description: Vec<u8>,
   pub width: u32,
   pub height: u32,
+  pub acceleration: Acceleration,
 }
 
 pub struct VideoBackend {
@@ -33,6 +44,7 @@ enum VideoInner {
   Hardware(crate::platform::Session),
   /// Annex B, waiting for an access unit that contains SPS and PPS.
   Deferred,
+  Av1(yuzuko_image::av1::Av1Session),
   #[cfg(not(any(
     target_os = "macos",
     target_os = "windows",
@@ -43,6 +55,9 @@ enum VideoInner {
 
 impl VideoBackend {
   pub fn open(config: VideoConfig) -> Result<Self, DecodeError> {
+    if config.codec == Codec::Av1 {
+      return open_av1(config);
+    }
     if config.codec != Codec::Avc || !hardware_avc() {
       return Err(DecodeError::Unsupported);
     }
@@ -87,6 +102,7 @@ impl VideoBackend {
         target_os = "linux"
       ))]
       VideoInner::Hardware(session) => session.decode(sample),
+      VideoInner::Av1(session) => session.send(sample).map_err(map_av1),
       VideoInner::Deferred => Err(DecodeError::Rejected),
       #[cfg(not(any(
         target_os = "macos",
@@ -105,6 +121,7 @@ impl VideoBackend {
         target_os = "linux"
       ))]
       VideoInner::Hardware(session) => session.flush(),
+      VideoInner::Av1(session) => session.flush().map_err(map_av1),
       VideoInner::Deferred => Ok(Vec::new()),
       #[cfg(not(any(
         target_os = "macos",
@@ -113,6 +130,70 @@ impl VideoBackend {
       )))]
       VideoInner::Missing => Err(DecodeError::Unsupported),
     }
+  }
+}
+
+fn open_av1(config: VideoConfig) -> Result<VideoBackend, DecodeError> {
+  if !crate::av1::description_supported(
+    (!config.description.is_empty()).then_some(config.description.as_slice()),
+  ) {
+    return Err(DecodeError::Unsupported);
+  }
+  if config.acceleration != Acceleration::PreferSoftware
+    && let Some(inner) = hardware_av1(&config)
+  {
+    return Ok(VideoBackend {
+      inner,
+      annex_b: false,
+      width: config.width,
+      height: config.height,
+    });
+  }
+  let mut session = yuzuko_image::av1::Av1Session::open().map_err(map_av1)?;
+  if let Some(obus) = crate::av1::config_obus(&config.description)
+    && !obus.is_empty()
+  {
+    session.send(obus).map_err(map_av1)?;
+  }
+  Ok(VideoBackend {
+    inner: VideoInner::Av1(session),
+    annex_b: false,
+    width: config.width,
+    height: config.height,
+  })
+}
+
+/// A hardware session, or nothing when this target cannot decode the
+/// configuration. A missing decoder selects rav1d.
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn hardware_av1(config: &VideoConfig) -> Option<VideoInner> {
+  if !crate::platform::supports_av1() || config.width == 0 || config.height == 0
+  {
+    return None;
+  }
+  let obus = crate::av1::config_obus(&config.description)?;
+  if obus.is_empty() {
+    return None;
+  }
+  crate::platform::open_av1(&config.description, config.width, config.height)
+    .ok()
+    .map(VideoInner::Hardware)
+}
+
+#[cfg(not(any(
+  target_os = "macos",
+  target_os = "windows",
+  target_os = "linux"
+)))]
+fn hardware_av1(_config: &VideoConfig) -> Option<VideoInner> {
+  None
+}
+
+fn map_av1(error: yuzuko_image::av1::Av1Error) -> DecodeError {
+  match error {
+    yuzuko_image::av1::Av1Error::Unsupported
+    | yuzuko_image::av1::Av1Error::TooLarge => DecodeError::Unsupported,
+    yuzuko_image::av1::Av1Error::Corrupt => DecodeError::Rejected,
   }
 }
 
@@ -189,4 +270,96 @@ fn hardware_session(
   _height: u32,
 ) -> Result<VideoInner, DecodeError> {
   Err(DecodeError::Unsupported)
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+mod tests {
+  use super::{Acceleration, Codec, VideoBackend, VideoConfig, VideoInner};
+  use crate::mp4::{Sample, parse};
+  use yuzuko_image::Raster;
+
+  fn open_track(
+    name: &str,
+    acceleration: Acceleration,
+  ) -> (VideoBackend, Vec<Sample>) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("../../tests/fixtures/media")
+      .join(name);
+    let bytes = std::fs::read(&path).unwrap_or_else(|error| {
+      panic!("{}: {error}", path.display());
+    });
+    let movie =
+      parse(&bytes).unwrap_or_else(|error| panic!("{name}: {error:?}"));
+    let track = movie.video.into_iter().next().expect("video");
+    let backend = VideoBackend::open(VideoConfig {
+      codec: Codec::Av1,
+      description: track.description,
+      width: track.coded_width,
+      height: track.coded_height,
+      acceleration,
+    })
+    .expect("configure");
+    (backend, track.samples)
+  }
+
+  fn assert_red(backend: &mut VideoBackend, samples: &[Sample]) {
+    let mut frames = Vec::new();
+    for sample in samples {
+      frames.extend(backend.decode(&sample.data).expect("decode"));
+    }
+    frames.extend(backend.flush().expect("flush"));
+    let frame = frames.first().expect("frame");
+    let pixel = center(frame);
+    assert!(
+      pixel[0] > 180 && pixel[1] < 80 && pixel[2] < 80 && pixel[3] == 255,
+      "{pixel:?} {}x{}",
+      frame.width,
+      frame.height
+    );
+  }
+
+  fn center(frame: &Raster) -> [u8; 4] {
+    let x = (frame.width / 2) as usize;
+    let y = (frame.height / 2) as usize;
+    let index = (y * frame.width as usize + x) * 4;
+    frame.bytes[index..index + 4].try_into().expect("pixel")
+  }
+
+  #[test]
+  fn av1_uses_hardware_when_the_session_opens() {
+    let (mut software, samples) =
+      open_track("red-av1-256.mp4", Acceleration::PreferSoftware);
+    assert!(matches!(software.inner, VideoInner::Av1(_)));
+    assert_red(&mut software, &samples);
+
+    let (mut hardware, samples) =
+      open_track("red-av1-256.mp4", Acceleration::PreferHardware);
+    let (omitted, _) =
+      open_track("red-av1-256.mp4", Acceleration::NoPreference);
+    if crate::platform::supports_av1() {
+      assert!(matches!(hardware.inner, VideoInner::Hardware(_)));
+      assert!(matches!(omitted.inner, VideoInner::Hardware(_)));
+    } else {
+      assert!(matches!(hardware.inner, VideoInner::Av1(_)));
+      assert!(matches!(omitted.inner, VideoInner::Av1(_)));
+    }
+    assert_red(&mut hardware, &samples);
+
+    // VideoToolbox rejects this 16x16 session on an M3. A machine without
+    // an AV1 hardware decoder fails the probe. Both stay on rav1d. A VA-API
+    // driver may accept 16x16, so Linux follows the profile probe.
+    let (mut small, samples) =
+      open_track("red-av1.mp4", Acceleration::PreferHardware);
+    #[cfg(target_os = "macos")]
+    assert!(matches!(small.inner, VideoInner::Av1(_)));
+    #[cfg(target_os = "linux")]
+    {
+      if crate::platform::supports_av1() {
+        assert!(matches!(small.inner, VideoInner::Hardware(_)));
+      } else {
+        assert!(matches!(small.inner, VideoInner::Av1(_)));
+      }
+    }
+    assert_red(&mut small, &samples);
+  }
 }

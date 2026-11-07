@@ -743,7 +743,7 @@ fn scale_sequence(
 fn supported_type(mime: &str) -> bool {
   matches!(
     essence(mime).as_str(),
-    "image/png" | "image/jpeg" | "image/webp" | "image/jxl"
+    "image/png" | "image/jpeg" | "image/webp" | "image/jxl" | "image/avif"
   )
 }
 

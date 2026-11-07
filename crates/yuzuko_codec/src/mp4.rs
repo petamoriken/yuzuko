@@ -1,8 +1,8 @@
 //! Progressive MP4 samples for `Yuzuko.demuxMp4`.
 //!
-//! `moov` sample tables locate `avc1`, `avc3`, and `mp4a` samples. The sample
-//! bytes are copied as stored. Fragmented movies are rejected. One edit-list
-//! entry with a media rate of 1 shifts timestamps.
+//! `moov` sample tables locate `avc1`, `avc3`, `av01`, and `mp4a` samples. The
+//! sample bytes are copied as stored. Fragmented movies are rejected. One
+//! edit-list entry with a media rate of 1 shifts timestamps.
 
 const MAX_SAMPLES: u32 = 2_000_000;
 
@@ -16,7 +16,7 @@ const NO_MOVIE: Error = Error {
   message: "The MP4 file has no movie",
 };
 const NO_TRACK: Error = Error {
-  message: "The MP4 file has no H.264 or AAC track",
+  message: "The MP4 file has no H.264, AV1, or AAC track",
 };
 const FRAGMENTED: Error = Error {
   message: "Fragmented MP4 is not supported",
@@ -32,6 +32,9 @@ const ENCRYPTED: Error = Error {
 };
 const NO_AVCC: Error = Error {
   message: "The H.264 track has no avcC",
+};
+const NO_AV1C: Error = Error {
+  message: "The AV1 track has no av1C",
 };
 const NO_ASC: Error = Error {
   message: "The AAC track has no AudioSpecificConfig",
@@ -433,6 +436,7 @@ fn parse_stsd(
       (b"vide", b"avc1" | b"avc3") => {
         Some(Entry::Video(parse_visual(payload, kind)?))
       }
+      (b"vide", b"av01") => Some(Entry::Video(parse_av1(payload)?)),
       (b"soun", b"mp4a") => Some(Entry::Audio(parse_audio(payload)?)),
       _ => None,
     };
@@ -468,6 +472,32 @@ fn parse_visual(payload: &[u8], kind: &[u8; 4]) -> Result<VideoEntry, Error> {
   let name = if kind == b"avc1" { "avc1" } else { "avc3" };
   let codec =
     format!("{name}.{:02X}{:02X}{:02X}", record[1], record[2], record[3]);
+  Ok(VideoEntry {
+    codec,
+    description: record.to_vec(),
+    width,
+    height,
+  })
+}
+
+fn parse_av1(payload: &[u8]) -> Result<VideoEntry, Error> {
+  if payload.len() < 78 {
+    return Err(INVALID);
+  }
+  let width = u32::from(u16::from_be_bytes([payload[24], payload[25]]));
+  let height = u32::from(u16::from_be_bytes([payload[26], payload[27]]));
+  let boxes = children(&payload[78..])?;
+  if boxes.iter().any(|(key, _)| key == b"sinf") {
+    return Err(ENCRYPTED);
+  }
+  let Some(record) = boxes
+    .iter()
+    .find(|(key, _)| key == b"av1C")
+    .map(|(_, record)| *record)
+  else {
+    return Err(NO_AV1C);
+  };
+  let codec = crate::av1::codec_string(record).ok_or(INVALID)?;
   Ok(VideoEntry {
     codec,
     description: record.to_vec(),
@@ -1151,7 +1181,7 @@ mod tests {
   ];
   const INVALID: &str = "The MP4 file is not a valid container";
   const NO_MOVIE: &str = "The MP4 file has no movie";
-  const NO_TRACK: &str = "The MP4 file has no H.264 or AAC track";
+  const NO_TRACK: &str = "The MP4 file has no H.264, AV1, or AAC track";
   const FRAGMENTED: &str = "Fragmented MP4 is not supported";
   const OUTSIDE: &str = "The MP4 sample is outside the file";
   const CHANGES: &str = "The MP4 track changes sample entries";
@@ -2267,5 +2297,105 @@ mod tests {
     payload.extend(body);
     assert_eq!(timescale_of(&payload).unwrap(), 48_000);
     assert!(timescale_of(&[2, 0, 0, 0]).is_err());
+  }
+
+  #[test]
+  fn av1_sample_entry_keeps_obus_and_codec_string() {
+    const AV1C: &[u8] = &[0x81, 0x00, 0x0C, 0x00];
+    const TEN: &[u8] = &[0x81, 0x00, 0x4C, 0x00];
+    const NO_AV1C: &str = "The AV1 track has no av1C";
+    let sample = [0x0A_u8, 0x0B, 0x0C];
+    let movie = ok(&movie_of(
+      b"vide",
+      1000,
+      &sample,
+      concat([
+        stsd(&[visual(b"av01", 16, 16, &box4(b"av1C", AV1C))]),
+        stts(&[(1, 1000)]),
+        stsc(&[(1, 1, 1)]),
+        stsz(&[3]),
+        stco(&[8]),
+      ]),
+      None,
+      &[],
+    ));
+    assert_eq!(movie.video[0].codec, "av01.0.00M.08");
+    assert_eq!(movie.video[0].description, AV1C);
+    assert_eq!(movie.video[0].coded_width, 16);
+    assert_eq!(movie.video[0].coded_height, 16);
+    assert_eq!(movie.video[0].samples[0].data, sample);
+    assert!(movie.video[0].samples[0].key);
+
+    let ten = ok(&movie_of(
+      b"vide",
+      1000,
+      &[],
+      concat([
+        stsd(&[visual(b"av01", 8, 8, &box4(b"av1C", TEN))]),
+        stsz(&[]),
+      ]),
+      None,
+      &[],
+    ));
+    assert_eq!(ten.video[0].codec, "av01.0.00M.10");
+
+    assert_eq!(
+      msg(&movie_of(
+        b"vide",
+        1000,
+        &[],
+        concat([stsd(&[visual(b"av01", 16, 16, &[])]), stsz(&[])]),
+        None,
+        &[],
+      )),
+      NO_AV1C
+    );
+    assert_eq!(
+      msg(&movie_of(
+        b"vide",
+        1000,
+        &[],
+        concat([
+          stsd(&[visual(b"av01", 16, 16, &box4(b"av1C", &[0x81, 0x00]))]),
+          stsz(&[]),
+        ]),
+        None,
+        &[],
+      )),
+      INVALID
+    );
+    assert_eq!(
+      msg(&movie_of(
+        b"vide",
+        1000,
+        &[],
+        concat([
+          stsd(&[visual(
+            b"av01",
+            16,
+            16,
+            &box4(b"av1C", &[0x01, 0x00, 0x0C, 0x00]),
+          )]),
+          stsz(&[]),
+        ]),
+        None,
+        &[],
+      )),
+      INVALID
+    );
+    assert_eq!(
+      msg(&movie_of(
+        b"vide",
+        1000,
+        &[],
+        concat([
+          stsd(&[visual(b"av01", 16, 16, &box4(b"sinf", &[]))]),
+          stsz(&[]),
+        ]),
+        None,
+        &[],
+      )),
+      ENCRYPTED
+    );
   }
 }

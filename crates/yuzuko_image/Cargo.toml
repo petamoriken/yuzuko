@@ -6,8 +6,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+avif-parse.workspace = true
 half.workspace = true
 image-webp.workspace = true
+libc.workspace = true
+rav1d = { workspace = true, default-features = false, features = ["bitdepth_8"] }
 jxl-oxide = { version = "0.12", default-features = false }
 kamadak-exif = "0.6"
 moxcms = "0.9"
