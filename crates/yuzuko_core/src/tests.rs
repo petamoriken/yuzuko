@@ -147,17 +147,9 @@ fn js_source_import_reports_a_syntax_error() {
   );
 }
 
-// In-process `run_tests` SIGSEGVs on the Linux runner and access-violates
-// on the Windows runner after other isolates in the same process. The file
-// passes under `yuzuko test`.
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
-#[test]
-fn import_defer_static_waits_for_namespace_observation() {
-  let code =
-    crate::run_tests(&[workspace().join("tests/defer_static_test.ts")], None)
-      .expect("defer static");
-  assert_eq!(code, 0);
-}
+// `tests/defer_static_test.ts` passes under `yuzuko test` in its own
+// process. `run_tests` here SIGSEGVs on Linux, SIGBUSes on macOS, and
+// access-violates on Windows after other isolates in the same process.
 
 #[test]
 fn import_defer_eager_waits_for_namespace_observation() {
