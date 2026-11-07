@@ -628,7 +628,11 @@ fn mark_aborted(
   let Some(reason) = traced_local(scope, reason) else {
     return;
   };
-  *host.get().reason.borrow_mut() = Some(traced(scope, reason));
+  // A reason getter can re-enter abort while it still holds this slot.
+  let Ok(mut slot) = host.get().reason.try_borrow_mut() else {
+    return;
+  };
+  *slot = Some(traced(scope, reason));
 }
 
 fn clear_graph(scope: &mut v8::PinScope, signal: v8::Local<v8::Object>) {

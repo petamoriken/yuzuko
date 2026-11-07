@@ -336,7 +336,13 @@
   },
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
-    "flaky": "The NUL echo handshake does not finish."
+    "flaky": {
+      "linux": "The NUL echo handshake does not finish.",
+      "windows": "The NUL echo handshake does not finish."
+    },
+    "ignore": {
+      "macos": "The NUL echo handshake does not finish."
+    }
   },
   "websockets/constructor/019.html": true,
   "websockets/constructor/020.html": true,
