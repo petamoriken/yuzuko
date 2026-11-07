@@ -89,7 +89,34 @@
       "Test that AudioEncoder.isConfigSupported() rejects invalid config: Zero sampleRate"
     ]
   },
-  "webcodecs/audio-encoder.https.any.js": false,
+  "webcodecs/audio-encoder.https.any.js": {
+    "expectedFailures": [
+      "Channel number variation: 1",
+      "Channel number variation: 2",
+      "Emit decoder config and extra data.",
+      "Encode audio with negative timestamp",
+      "Encoding and decoding",
+      "Sample rate variation: 13000",
+      "Sample rate variation: 23000",
+      "Sample rate variation: 3000",
+      "Sample rate variation: 33000",
+      "Sample rate variation: 43000",
+      "Sample rate variation: 53000",
+      "Sample rate variation: 63000",
+      "Sample rate variation: 73000",
+      "Sample rate variation: 83000",
+      "Sample rate variation: 93000",
+      "Simple audio encoding",
+      "Test encoding Opus with additional parameters: Empty Opus config",
+      "Test encoding Opus with additional parameters: Opus mixed parameters",
+      "Test encoding Opus with additional parameters: Opus with complexity",
+      "Test encoding Opus with additional parameters: Opus with frameDuration",
+      "Test encoding Opus with additional parameters: Opus with usedtx",
+      "Test encoding Opus with additional parameters: Opus with useinbandfec",
+      "Test reset during flush",
+      "encodeQueueSize test"
+    ]
+  },
   "webcodecs/audio-serialization.crossAgentCluster.helper.html": {
     "ignore": "The file is not a testharness document."
   },
