@@ -70,6 +70,37 @@ jobs:
           shared-key: yuzuko
           save-if: ${{ matrix.suite == 'test' }}
 
+      - name: Restore the V8 static library
+        shell: bash
+        run: |
+          set -euo pipefail
+          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
+          # puts librusty_v8.a in target/<profile>/gn_out, so a saved cache
+          # does not contain it. Relinking v8 from that cache fails with
+          # "could not find native static library `rusty_v8`" unless the
+          # build script runs again and downloads the archive.
+          shopt -s nullglob
+          for profile in target/*/; do
+            if [ ! -d "${profile}.fingerprint" ]; then
+              continue
+            fi
+            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
+              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
+              continue
+            fi
+            to_remove=(
+              "${profile}.fingerprint"/v8-*
+              "${profile}build"/v8-*
+              "${profile}deps"/libv8-*
+              "${profile}deps"/v8-*
+            )
+            if [ "${#to_remove[@]}" -eq 0 ]; then
+              continue
+            fi
+            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+            rm -rf "${to_remove[@]}"
+          done
+
       - name: Install Python
         if: matrix.suite == 'wpt'
         uses: actions/setup-python@v7
