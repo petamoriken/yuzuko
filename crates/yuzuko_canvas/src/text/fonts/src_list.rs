@@ -6,7 +6,6 @@
 use cssparser::BasicParseErrorKind;
 use cssparser::ParseError;
 use cssparser::Parser;
-use cssparser::ParserInput;
 use cssparser::Token;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,8 +42,7 @@ pub(super) fn parse(css: &str) -> Result<Vec<Item>, Error> {
   if !balanced(trimmed) {
     return Err(Error::Syntax);
   }
-  let mut source = ParserInput::new(trimmed);
-  let mut parser = Parser::new(&mut source);
+  let mut parser = Parser::new(trimmed);
   let items = parser
     .parse_comma_separated(parse_item)
     .map_err(|_| Error::Syntax)?;
@@ -122,18 +120,18 @@ fn balanced(css: &str) -> bool {
   depth == 0
 }
 
-fn parse_item<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<Item, ParseError<'i, ()>> {
+fn parse_item(
+  parser: &mut Parser<'_>,
+) -> Result<Item, ParseError<()>> {
   if let Ok(item) = parser.try_parse(parse_url_item) {
     return Ok(item);
   }
   parse_local_item(parser)
 }
 
-fn parse_url_item<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<Item, ParseError<'i, ()>> {
+fn parse_url_item(
+  parser: &mut Parser<'_>,
+) -> Result<Item, ParseError<()>> {
   let url = parser.expect_url().map_err(basic)?.to_string();
   let mut formats = None;
   let mut saw_tech = false;
@@ -164,26 +162,26 @@ fn parse_url_item<'i>(
   Ok(Item::Url { url, formats })
 }
 
-fn parse_local_item<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<Item, ParseError<'i, ()>> {
+fn parse_local_item(
+  parser: &mut Parser<'_>,
+) -> Result<Item, ParseError<()>> {
   parser.expect_function_matching("local").map_err(basic)?;
   let name = parser.parse_nested_block(parse_family_name)?;
   Ok(Item::Local(name))
 }
 
-fn parse_keywords<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<Vec<String>, ParseError<'i, ()>> {
+fn parse_keywords(
+  parser: &mut Parser<'_>,
+) -> Result<Vec<String>, ParseError<()>> {
   parser.parse_comma_separated(|parser| {
     let value = parser.expect_ident_or_string().map_err(basic)?;
     Ok(value.to_string())
   })
 }
 
-fn parse_family_name<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<String, ParseError<'i, ()>> {
+fn parse_family_name(
+  parser: &mut Parser<'_>,
+) -> Result<String, ParseError<()>> {
   if let Ok(name) = parser.try_parse(|parser| {
     parser
       .expect_string()
@@ -234,12 +232,12 @@ fn number_word(value: f32) -> String {
   }
 }
 
-fn basic<'i>(error: cssparser::BasicParseError<'i>) -> ParseError<'i, ()> {
+fn basic(error: cssparser::BasicParseError) -> ParseError<()> {
   error.into()
 }
 
-fn invalid<'i>(parser: &mut Parser<'i, '_>) -> ParseError<'i, ()> {
-  parser.new_error(BasicParseErrorKind::EndOfInput)
+fn invalid(_parser: &mut Parser<'_>) -> ParseError<()> {
+  ParseError::from_basic_kind(BasicParseErrorKind::EndOfInput)
 }
 
 #[cfg(test)]

@@ -16,7 +16,6 @@ use std::rc::Rc;
 use cssparser::BasicParseErrorKind;
 use cssparser::ParseErrorKind;
 use cssparser::Parser;
-use cssparser::ParserInput;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 
@@ -90,11 +89,11 @@ impl fmt::Display for CssError {
   }
 }
 
-type ParseError<'i> = cssparser::ParseError<'i, CssError>;
+type ParseError = cssparser::ParseError<CssError>;
 
-fn parse_failure(error: ParseError<'_>) -> String {
+fn parse_failure(error: ParseError) -> String {
   match error.kind {
-    ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)) => {
+    ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken) => {
       "unexpected token".to_string()
     }
     _ => error.to_string(),
@@ -105,13 +104,13 @@ macro_rules! try_extract {
   ($expr:expr, $method:ident($($arg:expr),*), $input:expr) => {
     match $expr.$method($($arg),*) {
       Ok(v) => v,
-      Err(e) => return Err($input.new_custom_error(e)),
+      Err(e) => return Err(ParseError::custom(e)),
     }
   };
   ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $input:expr) => {
     match $expr.$method($($arg),*) {
       Ok(v) => v.$map(),
-      Err(e) => return Err($input.new_custom_error(e)),
+      Err(e) => return Err(ParseError::custom(e)),
     }
   };
 }
@@ -1187,10 +1186,10 @@ impl From<MathValue> for NumericAccumulator {
 
 impl NumericAccumulator {
   /// Reads one operand, recursing into math functions.
-  fn parse<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i>> {
+  ) -> Result<NumericAccumulator, ParseError> {
     let token = input.next()?;
     match token {
       Token::Number { value, .. } => {
@@ -1227,7 +1226,7 @@ impl NumericAccumulator {
           }
           let Some(resolution) = state.length_resolution else {
             return Err(
-              input.new_custom_error(CssError::ContainsRelativeLengthValues),
+              ParseError::custom(CssError::ContainsRelativeLengthValues),
             );
           };
           return Ok(relative_length(length, &resolution, state));
@@ -1250,8 +1249,7 @@ impl NumericAccumulator {
         if unit.eq_ignore_ascii_case("fr") {
           return Ok(NumericValue::Flex(value).into());
         }
-        let token = token.clone();
-        Err(input.new_unexpected_token_error(token))
+        Err(ParseError::unexpected_token())
       }
       Token::Function(name) => {
         state.function_depth += 1;
@@ -1363,10 +1361,7 @@ impl NumericAccumulator {
                       "up" => RoundStrategy::Up,
                       "down" => RoundStrategy::Down,
                       "to-zero" => RoundStrategy::ToZero,
-                      _ => {
-                        let token = token.clone();
-                        return Err(arguments.new_unexpected_token_error(token))
-                      }
+                      _ => return Err(ParseError::unexpected_token()),
                     };
                     arguments.expect_comma()?;
                     strategy
@@ -1595,7 +1590,7 @@ impl NumericAccumulator {
           },
           _ => {
             let name = name.to_string();
-            return Err(input.new_custom_error(CssError::InvalidFunction(name)))
+            return Err(ParseError::custom(CssError::InvalidFunction(name)))
           },
         };
         state.function_depth -= 1;
@@ -1603,8 +1598,7 @@ impl NumericAccumulator {
       }
       Token::ParenthesisBlock => {
         if state.function_depth == 0 {
-          let token = token.clone();
-          return Err(input.new_unexpected_token_error(token));
+          return Err(ParseError::unexpected_token());
         }
         input.parse_nested_block(|arguments| {
           let acc = Self::parse_additive_expression(arguments, state)?;
@@ -1621,8 +1615,7 @@ impl NumericAccumulator {
           return Ok(NumericValue::Number(value).into());
         }
         if state.function_depth == 0 {
-          let token = token.clone();
-          return Err(input.new_unexpected_token_error(token));
+          return Err(ParseError::unexpected_token());
         }
         match_ignore_ascii_case! { &ident,
           // https://www.w3.org/TR/css-values-4/#calc-constants
@@ -1632,15 +1625,11 @@ impl NumericAccumulator {
           "infinity" => Ok(NumericValue::Number(f64::INFINITY).into()),
           "-infinity" => Ok(NumericValue::Number(f64::NEG_INFINITY).into()),
           "nan" => Ok(NumericValue::Number(f64::NAN).into()),
-          _ => {
-            let token = token.clone();
-            Err(input.new_unexpected_token_error(token))
-          }
+          _ => Err(ParseError::unexpected_token()),
         }
       }
       _ => {
-        let token = token.clone();
-        Err(input.new_unexpected_token_error(token))
+        Err(ParseError::unexpected_token())
       }
     }
   }
@@ -1712,10 +1701,10 @@ impl NumericAccumulator {
       }
     }
   }
-  fn parse_additive_expression<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_additive_expression<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i>> {
+  ) -> Result<NumericAccumulator, ParseError> {
     let mut lhs = Self::parse_multiplicative_expression(input, state)?;
 
     while !input.is_exhausted() {
@@ -1742,7 +1731,7 @@ impl NumericAccumulator {
         };
         match sum {
           Ok(sum) => lhs = sum.into(),
-          Err(error) => return Err(input.new_custom_error(error)),
+          Err(error) => return Err(ParseError::custom(error)),
         }
       } else {
         input.reset(&start);
@@ -1753,10 +1742,10 @@ impl NumericAccumulator {
     Ok(lhs)
   }
 
-  fn parse_multiplicative_expression<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_multiplicative_expression<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
-  ) -> Result<NumericAccumulator, ParseError<'i>> {
+  ) -> Result<NumericAccumulator, ParseError> {
     let mut lhs = Self::parse(input, state)?;
 
     while !input.is_exhausted() {
@@ -1784,10 +1773,10 @@ impl NumericAccumulator {
 
   /// A comma-separated list of operands of one numeric type, the shape `min()`,
   /// `max()` and `hypot()` share. Never empty.
-  fn parse_operand_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_operand_list<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
-  ) -> Result<(Vec<MathValue>, Dimension), ParseError<'i>> {
+  ) -> Result<(Vec<MathValue>, Dimension), ParseError> {
     let acc = Self::parse_additive_expression(input, state)?;
     let first = try_extract!(acc, expect_operand(), input);
     let dimension = first.dimension;
@@ -1802,10 +1791,10 @@ impl NumericAccumulator {
 
   /// Two operands of the same numeric type, the shape `mod()`, `rem()` and
   /// `atan2()` share.
-  fn parse_operand_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_operand_pair<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
-  ) -> Result<(MathValue, MathValue), ParseError<'i>> {
+  ) -> Result<(MathValue, MathValue), ParseError> {
     let acc = Self::parse_additive_expression(input, state)?;
     let left = try_extract!(acc, expect_operand(), input);
     input.expect_comma()?;
@@ -1816,11 +1805,11 @@ impl NumericAccumulator {
   }
 
   /// https://www.w3.org/TR/css-values-4/#trig-funcs
-  fn parse_trig<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_trig<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
     function: TrigFunction,
-  ) -> Result<NumericAccumulator, ParseError<'i>> {
+  ) -> Result<NumericAccumulator, ParseError> {
     input.parse_nested_block(|arguments| {
       let acc = Self::parse_additive_expression(arguments, state)?;
       let value = try_extract!(acc, expect_operand(), arguments);
@@ -1828,7 +1817,7 @@ impl NumericAccumulator {
       let degrees = value.is_angle();
       if !degrees && !value.is_number() {
         return Err(
-          arguments.new_custom_error(CssError::UnexpectedNumericType),
+          ParseError::custom(CssError::UnexpectedNumericType),
         );
       }
       let radians = if degrees {
@@ -1854,11 +1843,11 @@ impl NumericAccumulator {
   }
 
   /// https://www.w3.org/TR/css-values-4/#trig-funcs
-  fn parse_inverse_trig<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  fn parse_inverse_trig<'i>(
+    input: &mut Parser<'i>,
     state: &mut ParseState,
     function: InverseTrigFunction,
-  ) -> Result<NumericAccumulator, ParseError<'i>> {
+  ) -> Result<NumericAccumulator, ParseError> {
     input.parse_nested_block(|arguments| {
       let acc = Self::parse_additive_expression(arguments, state)?;
       let value = try_extract!(acc, expect_number_operand(), arguments);
@@ -1955,15 +1944,15 @@ impl From<Resolution> for NumericValue {
 impl NumericValue {
   /// Parses a numeric value, folding a math function against the metrics in
   /// `opts`. Nothing keeps the symbolic form, so no tree is built at all.
-  pub fn parse<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  pub fn parse<'i>(
+    input: &mut Parser<'i>,
     opts: ParseOptions,
-  ) -> Result<Self, ParseError<'i>> {
+  ) -> Result<Self, ParseError> {
     let result =
       NumericAccumulator::parse(input, &mut ParseState::new(opts, false))?;
     match result.expect_numeric() {
       Ok(numeric) => Ok(numeric),
-      Err(error) => Err(input.new_custom_error(error)),
+      Err(error) => Err(ParseError::custom(error)),
     }
   }
 
@@ -2640,15 +2629,15 @@ pub struct SpecifiedNumericValue {
 impl SpecifiedNumericValue {
   /// Parses a numeric value, keeping its symbolic form so relative units
   /// resolve when it is used. [`NumericValue::parse`]'s counterpart.
-  pub fn parse<'i, 't>(
-    input: &mut Parser<'i, 't>,
+  pub fn parse<'i>(
+    input: &mut Parser<'i>,
     opts: ParseOptions,
-  ) -> Result<Self, ParseError<'i>> {
+  ) -> Result<Self, ParseError> {
     let result =
       NumericAccumulator::parse(input, &mut ParseState::new(opts, true))?;
     match result.into_specified() {
       Ok(value) => Ok(value),
-      Err(error) => Err(input.new_custom_error(error)),
+      Err(error) => Err(ParseError::custom(error)),
     }
   }
 
@@ -2838,7 +2827,7 @@ pub(crate) enum Transform {
 }
 
 impl Transform {
-  fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+  fn parse<'i>(input: &mut Parser<'i>) -> Result<Self, ParseError> {
     let name = input.expect_function()?;
     match_ignore_ascii_case! { &name,
       "translate" => {
@@ -3073,20 +3062,20 @@ impl Transform {
       },
       _ => {
         let name = name.to_string();
-        Err(input.new_custom_error(CssError::InvalidFunction(name)))
+        Err(ParseError::custom(CssError::InvalidFunction(name)))
       },
     }
   }
 }
 
-struct TransformListParser<'i, 't> {
-  parser: Parser<'i, 't>,
+struct TransformListParser<'i> {
+  parser: Parser<'i>,
   has_function: bool,
   finished: bool,
 }
 
-impl<'i: 't, 't> TransformListParser<'i, 't> {
-  fn new(input: &'t mut ParserInput<'i>) -> Self {
+impl<'i> TransformListParser<'i> {
+  fn new(input: &'i str) -> Self {
     Self {
       parser: Parser::new(input),
       has_function: false,
@@ -3095,8 +3084,8 @@ impl<'i: 't, 't> TransformListParser<'i, 't> {
   }
 }
 
-impl<'i, 't> Iterator for TransformListParser<'i, 't> {
-  type Item = Result<Transform, ParseError<'i>>;
+impl<'i> Iterator for TransformListParser<'i> {
+  type Item = Result<Transform, ParseError>;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.finished {
@@ -3109,11 +3098,10 @@ impl<'i, 't> Iterator for TransformListParser<'i, 't> {
       if self.has_function {
         return None;
       } else {
-        let token = match input.next_including_whitespace_and_comments() {
-          Ok(token) => token.clone(),
-          Err(e) => return Some(Err(e.into())),
-        };
-        return Some(Err(input.new_unexpected_token_error(token)));
+        return Some(match input.next_including_whitespace_and_comments() {
+          Ok(_) => Err(ParseError::unexpected_token()),
+          Err(error) => Err(error.into()),
+        });
       }
     }
 
@@ -3143,9 +3131,8 @@ impl<'i, 't> Iterator for TransformListParser<'i, 't> {
 pub(crate) fn parse_transform_list(
   source: &str,
 ) -> Result<Vec<Transform>, String> {
-  let mut input = ParserInput::new(source);
   let mut transforms = Vec::new();
-  for item in TransformListParser::new(&mut input) {
+  for item in TransformListParser::new(source) {
     transforms.push(item.map_err(parse_failure)?);
   }
   Ok(transforms)

@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use cssparser::Parser;
-use cssparser::ParserInput;
 use cssparser::Token;
 use yuzuko_core::op::{Js, OpError, new_dom_exception, traced};
 
@@ -609,8 +608,7 @@ impl FontQuery {
 }
 
 fn parse_font_query(input: &str) -> Option<FontQuery> {
-  let mut source = ParserInput::new(input);
-  let mut parser = Parser::new(&mut source);
+  let mut parser = Parser::new(input);
   if parser.is_exhausted() {
     return None;
   }

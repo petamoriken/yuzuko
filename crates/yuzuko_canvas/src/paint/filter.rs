@@ -6,7 +6,6 @@
 use cssparser::BasicParseErrorKind;
 use cssparser::ParseError;
 use cssparser::Parser;
-use cssparser::ParserInput;
 use cssparser::Token;
 
 use crate::paint::color::CssColor;
@@ -20,8 +19,7 @@ pub fn is_filter(input: &str) -> bool {
 
 /// `Some` empty list is `none`. `None` does not parse.
 pub fn parse(input: &str) -> Option<Vec<FilterOp>> {
-  let mut source = ParserInput::new(input);
-  let mut parser = Parser::new(&mut source);
+  let mut parser = Parser::new(input);
   parse_filter(&mut parser).ok()
 }
 
@@ -401,9 +399,9 @@ fn sample_alpha(pixels: &[u8], width: i32, height: i32, x: f32, y: f32) -> f32 {
   top * (1.0 - fy) + bottom * fy
 }
 
-fn parse_filter<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<Vec<FilterOp>, ParseError<'i, ()>> {
+fn parse_filter(
+  parser: &mut Parser<'_>,
+) -> Result<Vec<FilterOp>, ParseError<()>> {
   if parser.is_exhausted() {
     return Err(fail(parser));
   }
@@ -430,9 +428,9 @@ fn parse_filter<'i>(
   }
 }
 
-fn parse_item<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<FilterOp, ParseError<'i, ()>> {
+fn parse_item(
+  parser: &mut Parser<'_>,
+) -> Result<FilterOp, ParseError<()>> {
   let state = parser.state();
   if parser.expect_url().is_ok() {
     return Ok(FilterOp::Url);
@@ -454,10 +452,10 @@ fn parse_item<'i>(
   })
 }
 
-fn optional_length<'i>(
-  parser: &mut Parser<'i, '_>,
+fn optional_length(
+  parser: &mut Parser<'_>,
   nonnegative: bool,
-) -> Result<Length, ParseError<'i, ()>> {
+) -> Result<Length, ParseError<()>> {
   if parser.is_exhausted() {
     return Ok(Length::zero());
   }
@@ -472,10 +470,10 @@ fn optional_length<'i>(
   }
 }
 
-fn optional_amount<'i>(
-  parser: &mut Parser<'i, '_>,
+fn optional_amount(
+  parser: &mut Parser<'_>,
   default: f32,
-) -> Result<f32, ParseError<'i, ()>> {
+) -> Result<f32, ParseError<()>> {
   if parser.is_exhausted() {
     return Ok(default);
   }
@@ -487,9 +485,9 @@ fn optional_amount<'i>(
   }
 }
 
-fn number_or_percent<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<f32, ParseError<'i, ()>> {
+fn number_or_percent(
+  parser: &mut Parser<'_>,
+) -> Result<f32, ParseError<()>> {
   let state = parser.state();
   if let Ok(value) = parser.try_parse(Parser::expect_number) {
     return Ok(value);
@@ -498,9 +496,9 @@ fn number_or_percent<'i>(
   Ok(parser.expect_percentage()?)
 }
 
-fn optional_angle<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<f32, ParseError<'i, ()>> {
+fn optional_angle(
+  parser: &mut Parser<'_>,
+) -> Result<f32, ParseError<()>> {
   if parser.is_exhausted() {
     return Ok(0.0);
   }
@@ -512,7 +510,7 @@ fn optional_angle<'i>(
   }
 }
 
-fn length<'i>(parser: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+fn length(parser: &mut Parser<'_>) -> Result<Length, ParseError<()>> {
   let state = parser.state();
   if let Ok(value) = parser.try_parse(Parser::expect_number) {
     if value == 0.0 {
@@ -536,7 +534,7 @@ fn length<'i>(parser: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>>
   parsed.ok_or_else(|| fail(parser))
 }
 
-fn angle<'i>(parser: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+fn angle(parser: &mut Parser<'_>) -> Result<f32, ParseError<()>> {
   let state = parser.state();
   if let Ok(value) = parser.try_parse(Parser::expect_number) {
     if value == 0.0 {
@@ -566,9 +564,9 @@ fn angle_radians(value: f32, unit: &str) -> Option<f32> {
   Some(radians)
 }
 
-fn drop_shadow_op<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<FilterOp, ParseError<'i, ()>> {
+fn drop_shadow_op(
+  parser: &mut Parser<'_>,
+) -> Result<FilterOp, ParseError<()>> {
   let mut lengths = Vec::new();
   let mut color = None;
   while !parser.is_exhausted() {
@@ -597,9 +595,9 @@ fn drop_shadow_op<'i>(
   })
 }
 
-fn color_value<'i>(
-  parser: &mut Parser<'i, '_>,
-) -> Result<CssColor, ParseError<'i, ()>> {
+fn color_value(
+  parser: &mut Parser<'_>,
+) -> Result<CssColor, ParseError<()>> {
   let start = parser.position();
   let kind = {
     let token = parser.next()?;
@@ -690,8 +688,8 @@ fn length_unit(unit: &str) -> Option<Unit> {
   })
 }
 
-fn fail<'i>(parser: &mut Parser<'i, '_>) -> ParseError<'i, ()> {
-  parser.new_error::<()>(BasicParseErrorKind::QualifiedRuleInvalid)
+fn fail(_parser: &mut Parser<'_>) -> ParseError<()> {
+  ParseError::from_basic_kind(BasicParseErrorKind::QualifiedRuleInvalid)
 }
 
 #[cfg(test)]
