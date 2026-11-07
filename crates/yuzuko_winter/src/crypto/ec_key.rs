@@ -3,8 +3,9 @@
 //! Private keys are PKCS#8. Public keys are SPKI. `raw` is the uncompressed
 //! SEC1 point, `04 || x || y`.
 
-use p256::elliptic_curve::rand_core::CryptoRng;
-use p256::elliptic_curve::rand_core::RngCore;
+use p256::elliptic_curve::Generate;
+use p256::elliptic_curve::rand_core::TryCryptoRng;
+use p256::elliptic_curve::rand_core::TryRng;
 use p256::pkcs8::DecodePrivateKey;
 use p256::pkcs8::DecodePublicKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -26,38 +27,27 @@ pub struct EcJwk {
 
 struct SysRng;
 
-impl RngCore for SysRng {
-  fn next_u32(&mut self) -> u32 {
+impl TryRng for SysRng {
+  type Error = getrandom::Error;
+
+  fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
     let mut bytes = [0u8; 4];
-    self.fill_bytes(&mut bytes);
-    u32::from_le_bytes(bytes)
+    self.try_fill_bytes(&mut bytes)?;
+    Ok(u32::from_le_bytes(bytes))
   }
 
-  fn next_u64(&mut self) -> u64 {
+  fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
     let mut bytes = [0u8; 8];
-    self.fill_bytes(&mut bytes);
-    u64::from_le_bytes(bytes)
+    self.try_fill_bytes(&mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
   }
 
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
-    if self.try_fill_bytes(dest).is_err() {
-      panic!("getrandom failed");
-    }
-  }
-
-  fn try_fill_bytes(
-    &mut self,
-    dest: &mut [u8],
-  ) -> Result<(), p256::elliptic_curve::rand_core::Error> {
-    getrandom::fill(dest).map_err(|_| {
-      p256::elliptic_curve::rand_core::Error::new(std::io::Error::other(
-        "getrandom failed",
-      ))
-    })
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+    getrandom::fill(dest)
   }
 }
 
-impl CryptoRng for SysRng {}
+impl TryCryptoRng for SysRng {}
 
 pub fn coordinate_len(curve: &str) -> Option<usize> {
   Some(match curve {
@@ -122,15 +112,15 @@ fn normalize_spki_curve<C>(spki: &[u8]) -> Result<Vec<u8>, EcError>
 where
   C: p256::elliptic_curve::CurveArithmetic + p256::pkcs8::AssociatedOid,
   p256::elliptic_curve::AffinePoint<C>:
-    p256::elliptic_curve::sec1::FromEncodedPoint<C>
-      + p256::elliptic_curve::sec1::ToEncodedPoint<C>,
+    p256::elliptic_curve::sec1::FromSec1Point<C>
+      + p256::elliptic_curve::sec1::ToSec1Point<C>,
   p256::elliptic_curve::FieldBytesSize<C>:
     p256::elliptic_curve::sec1::ModulusSize,
 {
-  use p256::elliptic_curve::sec1::ToEncodedPoint;
+  use p256::elliptic_curve::sec1::ToSec1Point;
   let key = p256::elliptic_curve::PublicKey::<C>::from_public_key_der(spki)
     .map_err(|_| EcError::Data)?;
-  let point = key.to_encoded_point(false);
+  let point = key.to_sec1_point(false);
   let point = point.as_bytes();
   if spki.windows(point.len()).any(|window| window == point) {
     return Ok(spki.to_vec());
@@ -274,7 +264,8 @@ fn split_point(raw: &[u8], len: usize) -> Result<(&[u8], &[u8]), EcError> {
 }
 
 fn generate_p256() -> Result<(Vec<u8>, Vec<u8>), EcError> {
-  let secret = p256::SecretKey::random(&mut SysRng);
+  let secret = p256::SecretKey::try_generate_from_rng(&mut SysRng)
+    .map_err(|_| EcError::Operation)?;
   let private = secret.to_pkcs8_der().map_err(|_| EcError::Operation)?;
   let public = secret
     .public_key()
@@ -284,7 +275,8 @@ fn generate_p256() -> Result<(Vec<u8>, Vec<u8>), EcError> {
 }
 
 fn generate_p384() -> Result<(Vec<u8>, Vec<u8>), EcError> {
-  let secret = p384::SecretKey::random(&mut SysRng);
+  let secret = p384::SecretKey::try_generate_from_rng(&mut SysRng)
+    .map_err(|_| EcError::Operation)?;
   let private = secret.to_pkcs8_der().map_err(|_| EcError::Operation)?;
   let public = secret
     .public_key()
@@ -294,7 +286,8 @@ fn generate_p384() -> Result<(Vec<u8>, Vec<u8>), EcError> {
 }
 
 fn generate_p521() -> Result<(Vec<u8>, Vec<u8>), EcError> {
-  let secret = p521::SecretKey::random(&mut SysRng);
+  let secret = p521::SecretKey::try_generate_from_rng(&mut SysRng)
+    .map_err(|_| EcError::Operation)?;
   let private = secret.to_pkcs8_der().map_err(|_| EcError::Operation)?;
   let public = secret
     .public_key()

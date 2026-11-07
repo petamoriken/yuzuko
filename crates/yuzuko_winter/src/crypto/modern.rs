@@ -12,8 +12,8 @@ use argon2::Argon2;
 use argon2::ParamsBuilder;
 use p256::elliptic_curve::ff::Field;
 use p256::elliptic_curve::ff::PrimeField;
-use p256::elliptic_curve::sec1::FromEncodedPoint;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::FromSec1Point;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use sha3::Digest;
 use sha3::Sha3_256;
 use sha3::Sha3_384;
@@ -986,12 +986,12 @@ fn random_scalar_p384(seed: &[u8]) -> Result<p384::Scalar, Fail> {
 
 fn exp_p256(scalar: &p256::Scalar) -> Vec<u8> {
   let point = (p256::ProjectivePoint::GENERATOR * scalar).to_affine();
-  point.to_encoded_point(false).as_bytes().to_vec()
+  point.to_sec1_point(false).as_bytes().to_vec()
 }
 
 fn exp_p384(scalar: &p384::Scalar) -> Vec<u8> {
   let point = (p384::ProjectivePoint::GENERATOR * scalar).to_affine();
-  point.to_encoded_point(false).as_bytes().to_vec()
+  point.to_sec1_point(false).as_bytes().to_vec()
 }
 
 fn x25519_public(scalar: &[u8; 32]) -> Vec<u8> {
@@ -1008,11 +1008,11 @@ fn parse_p256(bytes: &[u8], imported: bool) -> Result<p256::AffinePoint, Fail> {
   if bytes.len() != 65 || bytes.first() != Some(&0x04) {
     return Err(invalid);
   }
-  let encoded = p256::EncodedPoint::from_bytes(bytes).map_err(|_| invalid)?;
+  let encoded = p256::Sec1Point::from_bytes(bytes).map_err(|_| invalid)?;
   if encoded.is_identity() {
     return Err(invalid);
   }
-  p256::AffinePoint::from_encoded_point(&encoded)
+  p256::AffinePoint::from_sec1_point(&encoded)
     .into_option()
     .ok_or(invalid)
 }
@@ -1026,11 +1026,11 @@ fn parse_p384(bytes: &[u8], imported: bool) -> Result<p384::AffinePoint, Fail> {
   if bytes.len() != 97 || bytes.first() != Some(&0x04) {
     return Err(invalid);
   }
-  let encoded = p384::EncodedPoint::from_bytes(bytes).map_err(|_| invalid)?;
+  let encoded = p384::Sec1Point::from_bytes(bytes).map_err(|_| invalid)?;
   if encoded.is_identity() {
     return Err(invalid);
   }
-  p384::AffinePoint::from_encoded_point(&encoded)
+  p384::AffinePoint::from_sec1_point(&encoded)
     .into_option()
     .ok_or(invalid)
 }
@@ -1038,7 +1038,7 @@ fn parse_p384(bytes: &[u8], imported: bool) -> Result<p384::AffinePoint, Fail> {
 fn nist_x_p256(scalar: &p256::Scalar, point: &[u8]) -> Result<Vec<u8>, Fail> {
   let affine = parse_p256(point, false)?;
   let shared = (p256::ProjectivePoint::from(affine) * scalar).to_affine();
-  let encoded = shared.to_encoded_point(false);
+  let encoded = shared.to_sec1_point(false);
   if encoded.is_identity() {
     return Err(Fail::Operation("The P-256 shared point is the identity"));
   }
@@ -1051,7 +1051,7 @@ fn nist_x_p256(scalar: &p256::Scalar, point: &[u8]) -> Result<Vec<u8>, Fail> {
 fn nist_x_p384(scalar: &p384::Scalar, point: &[u8]) -> Result<Vec<u8>, Fail> {
   let affine = parse_p384(point, false)?;
   let shared = (p384::ProjectivePoint::from(affine) * scalar).to_affine();
-  let encoded = shared.to_encoded_point(false);
+  let encoded = shared.to_sec1_point(false);
   if encoded.is_identity() {
     return Err(Fail::Operation("The P-384 shared point is the identity"));
   }

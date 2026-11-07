@@ -14,10 +14,12 @@ use ed25519_dalek::pkcs8::EncodePublicKey;
 use p256::pkcs8::AlgorithmIdentifierRef;
 use p256::pkcs8::ObjectIdentifier;
 use p256::pkcs8::PrivateKeyInfo;
+use p256::pkcs8::PrivateKeyInfoRef;
 use p256::pkcs8::SubjectPublicKeyInfo;
 use p256::pkcs8::SubjectPublicKeyInfoRef;
 use p256::pkcs8::der::Encode;
 use p256::pkcs8::der::asn1::BitStringRef;
+use p256::pkcs8::der::asn1::OctetStringRef;
 
 #[derive(Debug)]
 pub enum OkpError {
@@ -291,7 +293,7 @@ fn seed_from_pkcs8(
   algorithm: &str,
   pkcs8: &[u8],
 ) -> Result<[u8; 32], OkpError> {
-  let info = PrivateKeyInfo::try_from(pkcs8).map_err(|_| OkpError::Data)?;
+  let info = PrivateKeyInfoRef::try_from(pkcs8).map_err(|_| OkpError::Data)?;
   let oid = match algorithm {
     "Ed25519" => ED25519,
     "X25519" => X25519,
@@ -300,14 +302,15 @@ fn seed_from_pkcs8(
   if info.algorithm.oid != oid {
     return Err(OkpError::Data);
   }
-  let seed = seed_from_private_key(info.private_key)?;
+  let seed = seed_from_private_key(info.private_key.as_bytes())?;
   if algorithm == "Ed25519" {
     // Reject a key the signature crate will not load, including a
     // public key that does not match the seed.
     SigningKey::from_pkcs8_der(pkcs8).map_err(|_| OkpError::Data)?;
   } else if let Some(public) = info.public_key {
+    let raw = public.as_bytes().ok_or(OkpError::Data)?;
     let expected = public_from_seed(algorithm, &seed)?;
-    if public != expected {
+    if raw != expected {
       return Err(OkpError::Data);
     }
   }
@@ -354,14 +357,15 @@ fn seed_448(algorithm: &str, pkcs8: &[u8]) -> Result<Vec<u8>, OkpError> {
     "X448" => (X448, 56),
     _ => return Err(OkpError::Data),
   };
-  let info = PrivateKeyInfo::try_from(pkcs8).map_err(|_| OkpError::Data)?;
+  let info = PrivateKeyInfoRef::try_from(pkcs8).map_err(|_| OkpError::Data)?;
   if info.algorithm.oid != oid {
     return Err(OkpError::Data);
   }
-  let seed = extract_seed(info.private_key, len)?;
+  let seed = extract_seed(info.private_key.as_bytes(), len)?;
   if let Some(public) = info.public_key {
+    let raw = public.as_bytes().ok_or(OkpError::Data)?;
     let expected = public_448(algorithm, &seed)?;
-    if public != expected {
+    if raw != expected.as_slice() {
       return Err(OkpError::Data);
     }
   }
@@ -417,14 +421,18 @@ fn okp_pkcs8(
   seed: &[u8],
   public: &[u8],
 ) -> Result<Vec<u8>, OkpError> {
-  let mut private_key = Vec::with_capacity(seed.len() + 2);
-  private_key.push(0x04);
-  private_key.push(seed.len() as u8);
-  private_key.extend_from_slice(seed);
+  let mut encoded = Vec::with_capacity(seed.len() + 2);
+  encoded.push(0x04);
+  encoded.push(seed.len() as u8);
+  encoded.extend_from_slice(seed);
+  let private_key =
+    OctetStringRef::new(&encoded).map_err(|_| OkpError::Operation)?;
+  let public_key =
+    BitStringRef::new(0, public).map_err(|_| OkpError::Operation)?;
   let info = PrivateKeyInfo {
     algorithm: algorithm(oid),
-    private_key: &private_key,
-    public_key: Some(public),
+    private_key,
+    public_key: Some(public_key),
   };
   info.to_der().map_err(|_| OkpError::Operation)
 }
@@ -449,13 +457,17 @@ fn x25519_pkcs8(
   seed: &[u8; 32],
   public: &[u8; 32],
 ) -> Result<Vec<u8>, OkpError> {
-  let mut private_key = Vec::with_capacity(34);
-  private_key.extend_from_slice(&[0x04, 0x20]);
-  private_key.extend_from_slice(seed);
+  let mut encoded = Vec::with_capacity(34);
+  encoded.extend_from_slice(&[0x04, 0x20]);
+  encoded.extend_from_slice(seed);
+  let private_key =
+    OctetStringRef::new(&encoded).map_err(|_| OkpError::Operation)?;
+  let public_key =
+    BitStringRef::new(0, public).map_err(|_| OkpError::Operation)?;
   let info = PrivateKeyInfo {
     algorithm: algorithm(X25519),
-    private_key: &private_key,
-    public_key: Some(public),
+    private_key,
+    public_key: Some(public_key),
   };
   info.to_der().map_err(|_| OkpError::Operation)
 }
