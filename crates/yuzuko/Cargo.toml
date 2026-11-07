@@ -67,15 +67,15 @@ yuzuko_winter.workspace = true
 
 [dev-dependencies]
 base64 = "0.23"
-bytes = "1.12.1"
+bytes.workspace = true
 ed25519-dalek.workspace = true
 libc.workspace = true
-rcgen = "0.13"
+rcgen.workspace = true
 rustls.workspace = true
 serde_json = "1"
-sha2 = "0.11.1"
-tokio = { version = "1.53.3", features = ["macros", "net", "rt", "sync", "time"] }
-web-transport-quinn = { version = "0.13.2", default-features = false, features = ["ring"] }
+sha2.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
+web-transport-quinn.workspace = true
 # Optional crates stay normal dependencies of their features. Listing one
 # here would turn its features on for `cargo test --no-default-features`.
 yuzuko_core.workspace = true
@@ -83,14 +83,14 @@ yuzuko_dom.workspace = true
 yuzuko_winter.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
+windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_LibraryLoader",
   "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(windows)'.dev-dependencies]
-windows-sys = { version = "0.61", features = [
+windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Storage_FileSystem",

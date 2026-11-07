@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+brotli.workspace = true
 cssparser = "0.36"
 flate2.workspace = true
 fontique = "0.12"
@@ -19,7 +20,6 @@ skrifa = "0.44"
 unicode-segmentation = "1.13"
 v8.workspace = true
 vello.workspace = true
-brotli = "7"
 vello_cpu.workspace = true
 wgpu.workspace = true
 yuzuko_core.workspace = true

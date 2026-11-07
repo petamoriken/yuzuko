@@ -713,17 +713,6 @@ dependencies = [
 
 [[package]]
 name = "brotli"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc97b8f16f944bba54f0433f07e30be199b6dc2bd25937444bbad560bcea29bd"
-dependencies = [
- "alloc-no-stdlib 2.0.4",
- "alloc-stdlib 0.2.4",
- "brotli-decompressor 4.0.3",
-]
-
-[[package]]
-name = "brotli"
 version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "627b7cfb0578f0eafce087a90fcd40add1231900b69e4d4de2d456260a4f5d81"
@@ -731,16 +720,6 @@ dependencies = [
  "alloc-no-stdlib 3.0.0",
  "alloc-stdlib 0.3.0",
  "brotli-decompressor 6.2.0",
-]
-
-[[package]]
-name = "brotli-decompressor"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a334ef7c9e23abf0ce748e8cd309037da93e606ad52eb372e4ce327a0dcfbdfd"
-dependencies = [
- "alloc-no-stdlib 2.0.4",
- "alloc-stdlib 0.2.4",
 ]
 
 [[package]]
@@ -8671,7 +8650,7 @@ dependencies = [
 name = "yuzuko_canvas"
 version = "0.1.0"
 dependencies = [
- "brotli 7.0.0",
+ "brotli",
  "cssparser",
  "flate2",
  "fontique",
@@ -8819,7 +8798,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "argon2",
- "brotli 9.1.1",
+ "brotli",
  "bytes",
  "chacha20poly1305",
  "ed25519-dalek",

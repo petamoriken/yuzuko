@@ -16,7 +16,7 @@ yuzuko_window.workspace = true
 yuzuko_winter.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "=0.61.3", features = [
+windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Direct3D",
   "Win32_Graphics_Direct3D11",
