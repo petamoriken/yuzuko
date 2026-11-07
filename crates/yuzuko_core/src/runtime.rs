@@ -1767,8 +1767,13 @@ fn configure_isolate(isolate: &mut v8::Isolate) {
 
 fn isolate_params() -> v8::CreateParams {
   let platform = platform_handle();
-  let heap =
-    v8::cppgc::Heap::create(platform, v8::cppgc::HeapCreateParams::default());
+  // Concurrent marking calls `trace` on a background thread. Host objects
+  // borrow `RefCell`s there, which races the mutator and panics with
+  // "RefCell already borrowed". Incremental marking stays on this thread.
+  // Sweeping finalizers already run here.
+  let mut heap_params = v8::cppgc::HeapCreateParams::default();
+  heap_params.marking_support = v8::cppgc::MarkingType::Incremental;
+  let heap = v8::cppgc::Heap::create(platform, heap_params);
   v8::CreateParams::default().cpp_heap(heap)
 }
 
