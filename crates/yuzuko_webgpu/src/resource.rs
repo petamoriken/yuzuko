@@ -92,7 +92,9 @@ impl GpuBuffer {
       poll_device(&handle.device);
       match recv.recv_timeout(std::time::Duration::from_secs(5)) {
         Ok(Ok(())) => {
-          let view = buffer.slice(..).get_mapped_range();
+          let view = buffer.slice(..).get_mapped_range().map_err(|_| {
+            OpError::dom("OperationError", "mapAsync failed")
+          })?;
           self.mapped.set(Some(view.to_vec()));
           Ok(())
         }
@@ -866,10 +868,12 @@ pub fn create_render_pipeline(
   let attribute_sets = vertex_attributes(scope, vertex)?;
   let layouts = attribute_sets
     .iter()
-    .map(|set| wgpu::VertexBufferLayout {
-      array_stride: set.stride,
-      step_mode: set.step,
-      attributes: &set.attributes,
+    .map(|set| {
+      set.as_ref().map(|set| wgpu::VertexBufferLayout {
+        array_stride: set.stride,
+        step_mode: set.step,
+        attributes: &set.attributes,
+      })
     })
     .collect::<Vec<_>>();
   let features = handle.device.features();
@@ -1195,7 +1199,7 @@ fn owned_binding(
 fn vertex_attributes(
   scope: &mut v8::PinScope,
   vertex: v8::Local<v8::Object>,
-) -> Result<Vec<VertexSet>, OpError> {
+) -> Result<Vec<Option<VertexSet>>, OpError> {
   let Some(buffers) = js::get(scope, vertex, "buffers") else {
     return Ok(Vec::new());
   };
@@ -1206,6 +1210,7 @@ fn vertex_attributes(
   for index in 0..array.length() {
     let value = array.get_index(scope, index).unwrap();
     if value.is_null_or_undefined() {
+      sets.push(None);
       continue;
     }
     let layout = js::object(scope, value).ok_or_else(|| {
@@ -1244,11 +1249,11 @@ fn vertex_attributes(
         });
       }
     }
-    sets.push(VertexSet {
+    sets.push(Some(VertexSet {
       stride,
       step,
       attributes,
-    });
+    }));
   }
   Ok(sets)
 }

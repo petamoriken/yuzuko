@@ -1213,6 +1213,7 @@ impl App {
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
       format: gpu.format,
+      color_space: wgpu::SurfaceColorSpace::Auto,
       width,
       height,
       present_mode: gpu.present_mode,
@@ -1315,7 +1316,7 @@ impl App {
         &device, &queue, &view, surface_id, width, height, format,
       )
     {
-      frame.present();
+      queue.present(frame);
       note_presented(window_surface);
       // The staged bitmap is on screen. A later redraw can present again,
       // but this change is done.
@@ -1327,7 +1328,7 @@ impl App {
         &device, &queue, &view, surface_id, width, height, format,
       )
     {
-      frame.present();
+      queue.present(frame);
       note_presented(window_surface);
       return true;
     }
@@ -1360,7 +1361,7 @@ impl App {
       });
     }
     queue.submit([encoder.finish()]);
-    frame.present();
+    queue.present(frame);
     note_presented(window_surface);
     // The canvas was not shown. Leave its dirty mark so a later turn retries
     // without presenting twice in this one.
@@ -1651,6 +1652,7 @@ fn build_gpu(
         power_preference: wgpu::PowerPreference::default(),
         force_fallback_adapter: false,
         compatible_surface: Some(surface),
+        apply_limit_buckets: false,
       },
     ))
     .map_err(|error| error.to_string())?;

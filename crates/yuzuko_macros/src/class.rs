@@ -607,8 +607,9 @@ fn classify(mut method: ImplItemFn) -> syn::Result<Member> {
     }
     _ => {}
   }
+  // syn 3 moved `&` / `&mut` into `ReceiverKind`. Only a shared reference is `&self`.
   if let Some(receiver) = receiver
-    && (receiver.reference.is_none() || receiver.mutability.is_some())
+    && !matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, None))
   {
     return Err(syn::Error::new(
       receiver.span(),

@@ -273,7 +273,7 @@ fn gray_alpha_u16(pixels: &[u16]) -> Vec<u16> {
 fn decode_jpeg(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
   let options =
     DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGB);
-  let mut decoder = JpegDecoder::new_with_options(bytes, options);
+  let mut decoder = JpegDecoder::new_with_options(Cursor::new(bytes), options);
   decoder.decode_headers().map_err(|_| DecodeError::Corrupt)?;
   let (width, height) = decoder.dimensions().ok_or(DecodeError::Corrupt)?;
   let width = u32::try_from(width).map_err(|_| DecodeError::TooLarge)?;

@@ -44,7 +44,7 @@ ed448-goldilocks = { version = "0.14.0-pre.15", default-features = false, featur
 ] }
 encoding_rs.workspace = true
 flate2 = { workspace = true, default-features = false, features = ["zlib-rs"] }
-getrandom = "0.4"
+getrandom = "0.3"
 h3 = { version = "0.0.8", optional = true }
 h3-quinn = { version = "0.0.10", optional = true }
 hkdf = "0.13.0"
@@ -73,19 +73,19 @@ keccak = "0.2"
 ml-dsa = { version = "0.1", default-features = false, features = ["alloc", "getrandom"] }
 ml-kem = { version = "0.3", default-features = false, features = ["alloc", "getrandom"] }
 ocb3 = "0.2"
-p256 = { version = "0.14", default-features = false, features = [
+p256 = { version = "0.13", default-features = false, features = [
   "ecdh",
   "ecdsa",
   "pkcs8",
   "std",
 ] }
-p384 = { version = "0.14", default-features = false, features = [
+p384 = { version = "0.13", default-features = false, features = [
   "ecdh",
   "ecdsa",
   "pkcs8",
   "std",
 ] }
-p521 = { version = "0.14", default-features = false, features = [
+p521 = { version = "0.13", default-features = false, features = [
   "ecdh",
   "ecdsa",
   "pkcs8",

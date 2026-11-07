@@ -729,12 +729,14 @@ fn render_plain(
   }
   context.flush();
   let mut buffer = vec![0; usize::from(width) * usize::from(height) * 4];
-  context.render_to_buffer(
+  let pixmap = vello_cpu::PixmapMut::new(width, height, &mut buffer)?;
+  context.render_with(
+    pixmap,
     &mut resources,
-    &mut buffer,
-    width,
-    height,
-    vello_cpu::RenderMode::OptimizeQuality,
+    vello_cpu::RasterizerSettings {
+      render_mode: vello_cpu::RenderMode::OptimizeQuality,
+      ..Default::default()
+    },
   );
   Some(buffer)
 }
@@ -847,9 +849,9 @@ fn replay_cpu(
           .copied()
           .map(|(id, x, y)| vello_cpu::Glyph { id, x, y });
       if stroke.is_some() {
-        run.stroke_glyphs(glyphs);
+        let _ = run.stroke_glyphs(glyphs);
       } else {
-        run.fill_glyphs(glyphs);
+        let _ = run.fill_glyphs(glyphs);
       }
       if *alpha < 1.0 {
         context.pop_layer();
@@ -925,7 +927,7 @@ fn push_cpu_clips(
 
 fn pop_cpu_clips(context: &mut vello_cpu::RenderContext, count: usize) {
   for _ in 0..count {
-    context.pop_clip_path();
+    context.pop_clip();
   }
 }
 
@@ -1507,7 +1509,7 @@ fn readback(
     timeout: None,
   });
   receiver.recv().ok()?.ok()?;
-  let view = slice.get_mapped_range();
+  let view = slice.get_mapped_range().ok()?;
   let mut pixels = vec![0; width as usize * height as usize * 4];
   for row in 0..height as usize {
     let src = row * bytes_per_row as usize;

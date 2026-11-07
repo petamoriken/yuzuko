@@ -7,7 +7,7 @@ publish.workspace = true
 
 [dependencies]
 brotli.workspace = true
-cssparser = "0.38"
+cssparser = "0.36"
 flate2.workspace = true
 fontique = "0.12"
 half.workspace = true
