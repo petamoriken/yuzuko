@@ -211,3 +211,102 @@ jobs:
           else
             cargo test -p yuzuko --test wpt -j1 --no-fail-fast -- --test-threads=1
           fi
+
+  lint:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Format
+            os: ubuntu-24.04
+            task: fmt
+            timeout: 15
+          - name: Linux Clippy
+            os: ubuntu-24.04
+            task: clippy
+            timeout: 60
+          - name: macOS Clippy
+            os: macos-15
+            task: clippy
+            timeout: 60
+          - name: Windows Clippy
+            os: windows-2025
+            task: clippy
+            timeout: 60
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Format
+        if: matrix.task == 'fmt'
+        run: cargo fmt --all -- --check
+
+      - name: Cache Cargo
+        if: matrix.task == 'clippy'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: yuzuko-clippy
+
+      - name: Restore the V8 static library
+        if: matrix.task == 'clippy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
+          # puts librusty_v8.a in target/<profile>/gn_out, so a saved cache
+          # does not contain it. Relinking v8 from that cache fails with
+          # "could not find native static library `rusty_v8`" unless the
+          # build script runs again and downloads the archive.
+          shopt -s nullglob
+          for profile in target/*/; do
+            if [ ! -d "${profile}.fingerprint" ]; then
+              continue
+            fi
+            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
+              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
+              continue
+            fi
+            to_remove=(
+              "${profile}.fingerprint"/v8-*
+              "${profile}build"/v8-*
+              "${profile}deps"/libv8-*
+              "${profile}deps"/v8-*
+            )
+            if [ "${#to_remove[@]}" -eq 0 ]; then
+              continue
+            fi
+            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+            rm -rf "${to_remove[@]}"
+          done
+
+      - name: Install Linux packages
+        if: matrix.task == 'clippy' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            python3 \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            mesa-vulkan-drivers \
+            libvulkan1
+
+      - name: Clippy
+        if: matrix.task == 'clippy'
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
