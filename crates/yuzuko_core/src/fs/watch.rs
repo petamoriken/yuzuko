@@ -258,12 +258,12 @@ fn arm(shared: &Arc<WatchShared>) {
     if state.waiter.is_some() && state.events.is_empty() && !state.closed {
       return;
     }
-    if !state.events.is_empty() || state.closed {
-      if let Some(waiter) = state.waiter.take() {
-        drop(state);
-        waiter.notify();
-        return;
-      }
+    if (!state.events.is_empty() || state.closed)
+      && let Some(waiter) = state.waiter.take()
+    {
+      drop(state);
+      waiter.notify();
+      return;
     }
   }
   let listen_shared = Arc::clone(shared);

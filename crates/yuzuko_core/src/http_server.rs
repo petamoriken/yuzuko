@@ -46,7 +46,7 @@ const TEXT_TYPE: &str = "text/plain;charset=UTF-8";
 const BYTE_TYPE: &str = "application/octet-stream";
 
 thread_local! {
-  static OPEN: RefCell<Vec<Live>> = RefCell::new(Vec::new());
+  static OPEN: RefCell<Vec<Live>> = const { RefCell::new(Vec::new()) };
 }
 
 enum Live {

@@ -39,7 +39,7 @@ const BUSY: &str = "A receive is already waiting.";
 const NO_PROMISE: &str = "The socket operation failed.";
 
 thread_local! {
-  static OPEN: RefCell<Vec<Weak<Shared>>> = RefCell::new(Vec::new());
+  static OPEN: RefCell<Vec<Weak<Shared>>> = const { RefCell::new(Vec::new()) };
 }
 
 struct Shared {

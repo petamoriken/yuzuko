@@ -234,9 +234,7 @@ pub fn clone_value<'s>(
     }
   };
   let success = cloned.is_ok();
-  if let Err(error) = session.exit(scope, success) {
-    return Err(error);
-  }
+  session.exit(scope, success)?;
   match cloned {
     Ok(value) => Ok(v8::Local::new(scope, value)),
     Err(error) => Err(error),

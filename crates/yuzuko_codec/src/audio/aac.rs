@@ -85,12 +85,8 @@ fn decode_frame(
   if bytes.is_empty() {
     return Err(DecodeError::Rejected);
   }
-  let packet = Packet::new(
-    0,
-    Timestamp::ZERO,
-    Duration::new(1024),
-    bytes.to_vec(),
-  );
+  let packet =
+    Packet::new(0, Timestamp::ZERO, Duration::new(1024), bytes.to_vec());
   let decoded = decoder.decode(&packet).map_err(|_| DecodeError::Rejected)?;
   let channels = decoded.spec().channels().count();
   let mut samples = Vec::<f32>::new();

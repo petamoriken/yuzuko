@@ -140,9 +140,9 @@ pub fn perform(
 
 /// Blocking GET. `importScripts` needs the status, headers, and body before
 /// it returns.
-pub fn read_get(
-  url: &str,
-) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
+type Fetched = (u16, Vec<(String, String)>, Vec<u8>);
+
+pub fn read_get(url: &str) -> Result<Fetched, String> {
   let cancel = Arc::new(AtomicBool::new(false));
   let response = perform(
     "GET".to_string(),
@@ -234,6 +234,7 @@ fn drive(
   })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn exchange(
   mut method: String,
   mut url: String,

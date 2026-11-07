@@ -713,6 +713,14 @@ mod os {
   }
 
   #[cfg(test)]
+  fn current_handler(sig: libc::c_int) -> libc::sighandler_t {
+    let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::sigaction(sig, std::ptr::null(), &mut action) };
+    assert_eq!(rc, 0, "read handler");
+    action.sa_sigaction
+  }
+
+  #[cfg(test)]
   mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
@@ -808,14 +816,6 @@ mod os {
       release(Sig::Term, 1);
       assert_eq!(current_handler(libc::SIGTERM), before_term);
     }
-  }
-
-  #[cfg(test)]
-  fn current_handler(sig: libc::c_int) -> libc::sighandler_t {
-    let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
-    let rc = unsafe { libc::sigaction(sig, std::ptr::null(), &mut action) };
-    assert_eq!(rc, 0, "read handler");
-    action.sa_sigaction
   }
 }
 

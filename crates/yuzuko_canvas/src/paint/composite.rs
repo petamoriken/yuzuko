@@ -83,7 +83,12 @@ pub fn source_over(dest: &mut [u8], src: &[u8]) {
   if dest.len() != src.len() {
     return;
   }
-  for (dest_px, src_px) in dest.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+  for (dest_px, src_px) in dest
+    .as_chunks_mut::<4>()
+    .0
+    .iter_mut()
+    .zip(src.as_chunks::<4>().0)
+  {
     if src_px[3] == 0 {
       continue;
     }
@@ -306,7 +311,9 @@ fn translate_command(command: &Command, tx: f64, ty: f64) -> Command {
 
 fn alpha_plane(ink: &[u8]) -> Vec<f32> {
   ink
-    .chunks_exact(4)
+    .as_chunks::<4>()
+    .0
+    .iter()
     .map(|pixel| f32::from(pixel[3]) / 255.0)
     .collect()
 }

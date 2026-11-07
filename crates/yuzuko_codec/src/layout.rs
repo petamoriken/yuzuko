@@ -707,7 +707,7 @@ fn write_same(
       {
         let source = raster_color(&frame.color);
         let target = dest_color.unwrap_or(source);
-        for pixel in slot.chunks_exact_mut(4) {
+        for pixel in slot.as_chunks_mut::<4>().0 {
           let rgba = recolor(unpack_rgb(frame.format, pixel), source, target);
           pixel.copy_from_slice(&pack_rgb(frame.format, rgba));
         }
@@ -909,7 +909,7 @@ fn clamp_u8(value: i32) -> u8 {
 
 fn fill_channel(planes: &mut [Vec<u8>], channel: usize) {
   if let Some(plane) = planes.first_mut() {
-    for pixel in plane.chunks_exact_mut(4) {
+    for pixel in plane.as_chunks_mut::<4>().0 {
       pixel[channel] = 255;
     }
   }

@@ -191,7 +191,7 @@ impl Session {
   }
 
   fn take_frames(&mut self) -> Result<Vec<Raster>, DecodeError> {
-    let images: Vec<*mut c_void> = self.slot.images.drain(..).collect();
+    let images: Vec<*mut c_void> = std::mem::take(&mut self.slot.images);
     if images.is_empty() {
       if self.allow_empty {
         return Ok(Vec::new());

@@ -109,7 +109,9 @@ fn is_avif(bytes: &[u8]) -> bool {
     return false;
   }
   bytes[8..end]
-    .chunks_exact(4)
+    .as_chunks::<4>()
+    .0
+    .iter()
     .enumerate()
     .any(|(index, brand)| index != 1 && (brand == b"avif" || brand == b"avis"))
 }

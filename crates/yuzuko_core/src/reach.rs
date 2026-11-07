@@ -77,10 +77,9 @@ fn own_data_objects(
       .index_filter(v8::IndexFilter::IncludeIndices)
       .key_conversion(v8::KeyConversionMode::ConvertToString)
       .build();
-    match object.get_own_property_names(tc, args) {
-      Some(names) => Some(v8::Global::new(tc, names)),
-      None => None,
-    }
+    object
+      .get_own_property_names(tc, args)
+      .map(|names| v8::Global::new(tc, names))
   };
   let names = v8::Local::new(scope, names?);
   if names.length() > PROPERTY_CAP {

@@ -135,6 +135,7 @@ pub(crate) fn format_callback_args(
   format_args(scope, &mut ctx, &values)
 }
 
+#[derive(Default)]
 struct Ctx {
   indent: i32,
   current_depth: i32,
@@ -147,21 +148,6 @@ struct Ctx {
   prototype_object: bool,
   /// REPL completions set this. `console` leaves it false.
   colors: bool,
-}
-
-impl Default for Ctx {
-  fn default() -> Self {
-    Self {
-      indent: 0,
-      current_depth: 0,
-      seen: Vec::new(),
-      circular: Vec::new(),
-      circular_set: false,
-      circular_error_message: None,
-      prototype_object: false,
-      colors: false,
-    }
-  }
 }
 
 enum Key {
@@ -329,15 +315,14 @@ fn escape_meta_chars(text: &str) -> String {
   let mut out = String::with_capacity(text.len());
   for ch in text.chars() {
     let code = ch as u32;
-    if code <= 0x1f
+    if (code <= 0x1f
       || code == 0x27
       || code == 0x5c
-      || (0x7f..=0x9f).contains(&code)
+      || (0x7f..=0x9f).contains(&code))
+      && let Some(escaped) = meta_escape(ch)
     {
-      if let Some(escaped) = meta_escape(ch) {
-        out.push_str(escaped);
-        continue;
-      }
+      out.push_str(escaped);
+      continue;
     }
     out.push(ch);
   }
@@ -484,14 +469,13 @@ fn try_to_string(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<String, Thrown> {
-  let result = {
+  {
     v8::tc_scope!(let tc, scope);
     match value.to_string(tc) {
       Some(text) => Ok(text.to_rust_string_lossy(tc)),
       None => Err(stash_exception!(tc)),
     }
-  };
-  result
+  }
 }
 
 fn rust_primitive(
@@ -569,7 +553,8 @@ fn global_function(
 ) -> Option<v8::Global<v8::Function>> {
   let global = crate::js::global(scope);
   let key = v8_str(scope, name);
-  let found = {
+
+  {
     v8::tc_scope!(let tc, scope);
     match global.get(tc, key.into()) {
       Some(value) => v8::Local::<v8::Function>::try_from(value)
@@ -577,8 +562,7 @@ fn global_function(
         .map(|function| v8::Global::new(tc, function)),
       None => None,
     }
-  };
-  found
+  }
 }
 
 fn instance_of_name(
@@ -602,14 +586,13 @@ fn number_from(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<f64, Thrown> {
-  let result = {
+  {
     v8::tc_scope!(let tc, scope);
     match value.number_value(tc) {
       Some(number) => Ok(number),
       None => Err(stash_exception!(tc)),
     }
-  };
-  result
+  }
 }
 
 fn number_display(
@@ -945,10 +928,12 @@ fn format_url(
   Ok(prefix_braces(&name, &body))
 }
 
+type InspectEntry = (v8::Global<v8::Value>, v8::Global<v8::Value>);
+
 fn iterate_entries(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<Vec<(v8::Global<v8::Value>, v8::Global<v8::Value>)>, Thrown> {
+) -> Result<Vec<InspectEntry>, Thrown> {
   let entries_key = v8_str(scope, "entries");
   let entries = try_get(scope, object, entries_key.into())?;
   let entries = as_function(scope, entries)?;
@@ -1882,7 +1867,7 @@ fn property_names(
   index_filter: v8::IndexFilter,
   conversion: v8::KeyConversionMode,
 ) -> Result<Vec<Key>, Thrown> {
-  let names = {
+  {
     v8::tc_scope!(let tc, scope);
     match object.get_property_names(
       tc,
@@ -1909,8 +1894,7 @@ fn property_names(
       }
       None => Err(stash_exception!(tc)),
     }
-  };
-  names
+  }
 }
 
 fn symbol_enumerable(
@@ -1920,7 +1904,8 @@ fn symbol_enumerable(
 ) -> Result<bool, Thrown> {
   let symbol = v8::Local::new(scope, symbol);
   let name: v8::Local<v8::Name> = symbol.into();
-  let flag = {
+
+  {
     v8::tc_scope!(let tc, scope);
     match object.get_own_property_descriptor(tc, name) {
       Some(descriptor) => {
@@ -1934,8 +1919,7 @@ fn symbol_enumerable(
       }
       None => Err(stash_exception!(tc)),
     }
-  };
-  flag
+  }
 }
 
 fn iterator_braces(kind: &str, tag: &str) -> (String, String) {
@@ -2419,13 +2403,13 @@ fn swallowed_get(
   name: &str,
 ) -> Option<v8::Global<v8::Value>> {
   let key = v8_str(scope, name);
-  let value = {
+
+  {
     v8::tc_scope!(let tc, scope);
     object
       .get(tc, key.into())
       .map(|value| v8::Global::new(tc, value))
-  };
-  value
+  }
 }
 
 fn remove_key(keys: &mut Vec<Key>, name: &str) {
@@ -2454,12 +2438,11 @@ fn function_base(
   }
   if stringified.starts_with("class") && stringified.ends_with('}') {
     let slice = &stringified[5..stringified.len() - 1];
-    if let Some(bracket) = slice.find('{') {
-      if !slice[..bracket].contains('(')
-        || matches_class_regexp(&strip_comments(slice))
-      {
-        return class_base(scope, value, constructor, tag);
-      }
+    if let Some(bracket) = slice.find('{')
+      && (!slice[..bracket].contains('(')
+        || matches_class_regexp(&strip_comments(slice)))
+    {
+      return class_base(scope, value, constructor, tag);
     }
   }
   let mut ty = "Function".to_string();
@@ -2481,10 +2464,10 @@ fn function_base(
     base.push_str(&format!(": {name}"));
   }
   base.push(']');
-  if let Some(ctor) = constructor {
-    if ctor != ty {
-      base.push_str(&format!(" {ctor}"));
-    }
+  if let Some(ctor) = constructor
+    && ctor != ty
+  {
+    base.push_str(&format!(" {ctor}"));
   }
   if !tag.is_empty() && constructor != Some(tag) {
     base.push_str(&format!(" [{tag}]"));
@@ -2530,29 +2513,29 @@ fn class_base(
     name
   };
   let mut base = format!("class {name}");
-  if let Some(ctor) = constructor {
-    if ctor != "Function" {
-      base.push_str(&format!(" [{ctor}]"));
-    }
+  if let Some(ctor) = constructor
+    && ctor != "Function"
+  {
+    base.push_str(&format!(" [{ctor}]"));
   }
   if !tag.is_empty() && constructor != Some(tag) {
     base.push_str(&format!(" [{tag}]"));
   }
   if constructor.is_some() {
-    if let Some(prototype) = object.get_prototype(scope) {
-      if let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) {
-        let super_name = {
-          v8::tc_scope!(let tc, scope);
-          let key = v8_str(tc, "name");
-          prototype
-            .get(tc, key.into())
-            .filter(|value| value.is_string())
-            .map(|value| value.to_rust_string_lossy(tc))
-            .unwrap_or_default()
-        };
-        if !super_name.is_empty() {
-          base.push_str(&format!(" extends {super_name}"));
-        }
+    if let Some(prototype) = object.get_prototype(scope)
+      && let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype)
+    {
+      let super_name = {
+        v8::tc_scope!(let tc, scope);
+        let key = v8_str(tc, "name");
+        prototype
+          .get(tc, key.into())
+          .filter(|value| value.is_string())
+          .map(|value| value.to_rust_string_lossy(tc))
+          .unwrap_or_default()
+      };
+      if !super_name.is_empty() {
+        base.push_str(&format!(" extends {super_name}"));
       }
     }
   } else {
@@ -2569,22 +2552,20 @@ fn strip_comments(text: &str) -> String {
     if bytes[index] == b'/'
       && index + 1 < bytes.len()
       && bytes[index + 1] == b'/'
+      && let Some(newline) = text[index..].find('\n')
     {
-      if let Some(newline) = text[index..].find('\n') {
-        out.push_str("undefined");
-        index += newline + 1;
-        continue;
-      }
+      out.push_str("undefined");
+      index += newline + 1;
+      continue;
     }
     if bytes[index] == b'/'
       && index + 1 < bytes.len()
       && bytes[index + 1] == b'*'
+      && let Some(end) = text[index + 2..].find("*/")
     {
-      if let Some(end) = text[index + 2..].find("*/") {
-        out.push_str("undefined");
-        index += 2 + end + 2;
-        continue;
-      }
+      out.push_str("undefined");
+      index += 2 + end + 2;
+      continue;
     }
     let ch = text[index..].chars().next().unwrap();
     out.push(ch);
@@ -2898,14 +2879,14 @@ fn field_global(
   name: &str,
 ) -> Result<Option<v8::Global<v8::Value>>, Thrown> {
   let key = v8_str(scope, name);
-  let result = {
+
+  {
     v8::tc_scope!(let tc, scope);
     match object.get(tc, key.into()) {
       Some(value) => Ok(Some(v8::Global::new(tc, value))),
       None => Err(stash_exception!(tc)),
     }
-  };
-  result
+  }
 }
 
 fn is_below_break_length(output: &[String], start: usize, base: &str) -> bool {
@@ -2922,6 +2903,7 @@ fn is_below_break_length(output: &[String], start: usize, base: &str) -> bool {
   base.is_empty() || !base.contains('\n')
 }
 
+#[allow(clippy::too_many_arguments)]
 fn reduce_to_single_string(
   scope: &mut v8::PinScope,
   ctx: &mut Ctx,

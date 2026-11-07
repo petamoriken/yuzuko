@@ -76,30 +76,15 @@ impl Default for WriteFlags {
   }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct MkdirFlags {
   pub recursive: bool,
   pub mode: Option<u32>,
 }
 
-impl Default for MkdirFlags {
-  fn default() -> Self {
-    Self {
-      recursive: false,
-      mode: None,
-    }
-  }
-}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct RemoveFlags {
   pub recursive: bool,
-}
-
-impl Default for RemoveFlags {
-  fn default() -> Self {
-    Self { recursive: false }
-  }
 }
 
 pub(super) struct TempSpec {
@@ -584,7 +569,7 @@ pub(super) fn chmod(path: &Path, mode: u32) -> Result<(), FsError> {
     let meta = fs::metadata(&path).map_err(FsError::io)?;
     let mut permissions = meta.permissions();
     permissions.set_mode(mode);
-    return fs::set_permissions(&path, permissions).map_err(FsError::io);
+    fs::set_permissions(&path, permissions).map_err(FsError::io)
   }
   #[cfg(windows)]
   {
@@ -623,11 +608,11 @@ pub(super) fn chown(
     let rc = unsafe {
       libc::chown(path.as_ptr(), uid as libc::uid_t, gid as libc::gid_t)
     };
-    return if rc == 0 {
+    if rc == 0 {
       Ok(())
     } else {
       Err(FsError::io(io::Error::last_os_error()))
-    };
+    }
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -677,7 +662,7 @@ pub(super) fn symlink(
   #[cfg(unix)]
   {
     let _ = kind;
-    return std::os::unix::fs::symlink(old, new).map_err(FsError::io);
+    std::os::unix::fs::symlink(old, new).map_err(FsError::io)
   }
   #[cfg(windows)]
   {
@@ -803,7 +788,7 @@ pub(super) fn set_raw(
 ) -> Result<(), FsError> {
   #[cfg(unix)]
   {
-    return set_raw_unix(file, state, raw, cbreak);
+    set_raw_unix(file, state, raw, cbreak)
   }
   #[cfg(windows)]
   {
@@ -825,7 +810,7 @@ pub(super) fn restore_terminal(
     if let Some(original) = state.original.take() {
       return tcsetattr(file, &original);
     }
-    return Ok(());
+    Ok(())
   }
   #[cfg(windows)]
   {
@@ -888,11 +873,11 @@ fn lock_with(
     if nonblocking {
       operation |= libc::LOCK_NB;
     }
-    return match flock_retry(file, operation) {
+    match flock_retry(file, operation) {
       Ok(()) => Ok(true),
       Err(error) if nonblocking && contended(&error) => Ok(false),
       Err(error) => Err(FsError::io(error)),
-    };
+    }
   }
   #[cfg(windows)]
   {

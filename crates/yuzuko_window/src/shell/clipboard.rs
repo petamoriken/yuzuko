@@ -1300,7 +1300,7 @@ fn set_handler(
 fn platform_sequence() -> Option<u64> {
   #[cfg(target_os = "macos")]
   {
-    return Some(macos_change_count());
+    Some(macos_change_count())
   }
   #[cfg(target_os = "windows")]
   {
@@ -1315,7 +1315,7 @@ fn platform_sequence() -> Option<u64> {
 fn platform_mime_types() -> Vec<String> {
   #[cfg(target_os = "macos")]
   {
-    return macos_mime_types();
+    macos_mime_types()
   }
   #[cfg(target_os = "windows")]
   {

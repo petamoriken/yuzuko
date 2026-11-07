@@ -31,14 +31,14 @@ struct State {
 }
 
 std::thread_local! {
-  static STATE: RefCell<State> = RefCell::new(State {
+  static STATE: RefCell<State> = const { RefCell::new(State {
     reservation: Reservation {
       enabled: false,
       codes: Vec::new(),
     },
     held_for: None,
     hold: None,
-  });
+  }) };
   static KEYBOARD: RefCell<Option<v8::Global<v8::Object>>> =
     const { RefCell::new(None) };
 }

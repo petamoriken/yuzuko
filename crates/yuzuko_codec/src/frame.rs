@@ -268,12 +268,8 @@ fn construct_from_frame(
       height: data.visible_height,
     }
   };
-  let (rotation, flip) = compose_orientation(
-    data.rotation,
-    data.flip,
-    init.rotation,
-    init.flip,
-  );
+  let (rotation, flip) =
+    compose_orientation(data.rotation, data.flip, init.rotation, init.flip);
   let explicit = init.display.is_some();
   let display = if let Some(display) = init.display {
     display
@@ -364,6 +360,7 @@ fn image_frame(
   )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assemble(
   format: PixelFormat,
   coded_width: u32,
@@ -1141,9 +1138,9 @@ fn builtin_error<'s>(
     return v8::undefined(scope).into();
   };
   if range {
-    v8::Exception::range_error(scope, text).into()
+    v8::Exception::range_error(scope, text)
   } else {
-    v8::Exception::type_error(scope, text).into()
+    v8::Exception::type_error(scope, text)
   }
 }
 

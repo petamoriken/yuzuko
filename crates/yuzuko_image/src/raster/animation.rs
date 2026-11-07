@@ -322,7 +322,7 @@ impl PngCanvas {
 
   fn raster(&self) -> Result<Raster, DecodeError> {
     match self {
-      Self::Empty { .. } => return Err(DecodeError::Corrupt),
+      Self::Empty { .. } => Err(DecodeError::Corrupt),
       Self::U8 {
         width,
         height,

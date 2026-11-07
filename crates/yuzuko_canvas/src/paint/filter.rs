@@ -308,7 +308,7 @@ fn map_color(
   pixels: &mut [u8],
   mut map: impl FnMut(f32, f32, f32, f32) -> [f32; 4],
 ) {
-  for pixel in pixels.chunks_exact_mut(4) {
+  for pixel in pixels.as_chunks_mut::<4>().0 {
     let a = f32::from(pixel[3]) / 255.0;
     let (r, g, b) = if a == 0.0 {
       (0.0, 0.0, 0.0)
@@ -353,7 +353,7 @@ fn blur_premul(pixels: &mut [u8], width: u32, height: u32, sigma: f32) {
     vec![0.0; count],
     vec![0.0; count],
   ];
-  for (index, pixel) in pixels.chunks_exact(4).enumerate() {
+  for (index, pixel) in pixels.as_chunks::<4>().0.iter().enumerate() {
     for channel in 0..4 {
       planes[channel][index] = f32::from(pixel[channel]) / 255.0;
     }
@@ -434,7 +434,7 @@ fn parse_filter(
   }
   let state = parser.state();
   if let Ok(ident) = parser.expect_ident() {
-    let wide = is_wide_keyword(&ident);
+    let wide = is_wide_keyword(ident);
     let none = ident.eq_ignore_ascii_case("none");
     if parser.is_exhausted() {
       if none && !wide {

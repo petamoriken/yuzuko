@@ -413,7 +413,8 @@ fn href_of(
   object: v8::Local<v8::Object>,
 ) -> Result<String, &'static str> {
   let key = v8::String::new(scope, "href").expect("href");
-  let read = {
+
+  {
     v8::tc_scope!(let tc, scope);
     match object.get(tc, key.into()) {
       Some(value) if tc.exception().is_none() => match value.to_string(tc) {
@@ -424,8 +425,7 @@ fn href_of(
       },
       _ => Err(PATH_URL),
     }
-  };
-  read
+  }
 }
 
 fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {

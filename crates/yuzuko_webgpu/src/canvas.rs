@@ -741,7 +741,9 @@ pub fn import_external_texture(
     "srgb" => ColorSpace::Srgb,
     "display-p3" => ColorSpace::DisplayP3,
     _ => {
-      return Err(OpError::type_("The external texture color space is invalid"));
+      return Err(OpError::type_(
+        "The external texture color space is invalid",
+      ));
     }
   };
   let mut raster = match frame_pixels(scope, source) {

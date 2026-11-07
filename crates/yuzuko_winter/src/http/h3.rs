@@ -73,6 +73,7 @@ pub(super) async fn attempt(
   }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Head {
   Ready(Opened),
   /// `421` before any body was delivered. The caller opens another connection.

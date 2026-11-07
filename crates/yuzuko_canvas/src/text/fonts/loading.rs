@@ -20,6 +20,7 @@ use super::Status;
 
 static NEXT_LOAD: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Default)]
 struct Book {
   loading: Vec<v8::Global<v8::Object>>,
   loaded: Vec<v8::Global<v8::Object>>,
@@ -28,20 +29,6 @@ struct Book {
   ready_resolver: Option<v8::Global<v8::PromiseResolver>>,
   ready_pending: bool,
   set: Option<v8::Global<v8::Object>>,
-}
-
-impl Default for Book {
-  fn default() -> Self {
-    Self {
-      loading: Vec::new(),
-      loaded: Vec::new(),
-      failed: Vec::new(),
-      ready: None,
-      ready_resolver: None,
-      ready_pending: false,
-      set: None,
-    }
-  }
 }
 
 struct LoadJob {
@@ -750,10 +737,10 @@ fn consume_size(parser: &mut Parser) -> bool {
 
 fn consume_line_height(parser: &mut Parser) -> bool {
   let state = parser.state();
-  if let Ok(ident) = parser.expect_ident() {
-    if ident.eq_ignore_ascii_case("normal") {
-      return true;
-    }
+  if let Ok(ident) = parser.expect_ident()
+    && ident.eq_ignore_ascii_case("normal")
+  {
+    return true;
   }
   // `expect_ident` consumes the token even when it fails.
   parser.reset(&state);

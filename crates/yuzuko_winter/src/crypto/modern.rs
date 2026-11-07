@@ -436,9 +436,7 @@ fn oid_name(content: &[u8]) -> Option<&'static str> {
 pub(crate) fn seed_len(name: &str) -> Option<usize> {
   if is_mlkem(name) {
     Some(64)
-  } else if is_mldsa(name) {
-    Some(32)
-  } else if is_hybrid(name) {
+  } else if is_mldsa(name) || is_hybrid(name) {
     Some(32)
   } else {
     None

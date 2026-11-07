@@ -593,6 +593,7 @@ impl TextMetrics {
   }
 }
 
+#[derive(Default)]
 pub struct ClusterPaintOptions {
   pub align: Option<Align>,
   pub baseline: Option<Baseline>,
@@ -680,17 +681,6 @@ fn cluster_query(
     _ => Err(OpError::type_(
       "getTextClusters received too many arguments",
     )),
-  }
-}
-
-impl Default for ClusterPaintOptions {
-  fn default() -> Self {
-    Self {
-      align: None,
-      baseline: None,
-      x: None,
-      y: None,
-    }
   }
 }
 

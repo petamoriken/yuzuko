@@ -85,11 +85,11 @@ impl VideoBackend {
     } else {
       None
     };
-    if let Some(unit) = &converted {
-      if matches!(self.inner, VideoInner::Deferred) {
-        let avcc = unit.avcc.as_deref().ok_or(DecodeError::Rejected)?;
-        self.inner = hardware_session(avcc, self.width, self.height)?;
-      }
+    if let Some(unit) = &converted
+      && matches!(self.inner, VideoInner::Deferred)
+    {
+      let avcc = unit.avcc.as_deref().ok_or(DecodeError::Rejected)?;
+      self.inner = hardware_session(avcc, self.width, self.height)?;
     }
     let sample = match &converted {
       Some(unit) => unit.sample.as_slice(),

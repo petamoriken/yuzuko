@@ -458,9 +458,7 @@ pub(super) fn map<T: Default>(id: u64, read: impl FnOnce(&Author) -> T) -> T {
 pub(super) fn update(id: u64, write: impl FnOnce(&mut Author)) -> Option<u64> {
   let mut forest = lock();
   {
-    let Some(author) = forest.nodes.get_mut(&id) else {
-      return None;
-    };
+    let author = forest.nodes.get_mut(&id)?;
     write(author);
   }
   window_of(&forest, id, false)

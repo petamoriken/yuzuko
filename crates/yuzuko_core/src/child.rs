@@ -74,7 +74,7 @@ static NEXT: AtomicU64 = AtomicU64::new(1);
 thread_local! {
   static PENDING: RefCell<HashMap<u64, Pending>> =
     RefCell::new(HashMap::new());
-  static OPEN: RefCell<Vec<Weak<Shared>>> = RefCell::new(Vec::new());
+  static OPEN: RefCell<Vec<Weak<Shared>>> = const { RefCell::new(Vec::new()) };
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1491,7 +1491,8 @@ fn href_of(
   object: v8::Local<v8::Object>,
 ) -> Result<String, &'static str> {
   let key = v8::String::new(scope, "href").expect("href");
-  let read = {
+
+  {
     v8::tc_scope!(let tc, scope);
     match object.get(tc, key.into()) {
       Some(value) if tc.exception().is_none() => match value.to_string(tc) {
@@ -1502,8 +1503,7 @@ fn href_of(
       },
       _ => Err(PATH_URL),
     }
-  };
-  read
+  }
 }
 
 fn own_names(

@@ -3,6 +3,8 @@
 
 mod audio;
 mod av1;
+// The OBU parser is only referenced by the Linux VA-API decoder and its tests.
+#[cfg(any(test, target_os = "linux"))]
 mod av1_obu;
 mod backend;
 mod classes;

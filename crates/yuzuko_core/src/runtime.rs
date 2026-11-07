@@ -700,6 +700,12 @@ impl ClassicSession {
   }
 }
 
+impl Default for ClassicSession {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Drop for ClassicSession {
   fn drop(&mut self) {
     if self.in_realm {
@@ -729,12 +735,13 @@ fn leave_realm(
   host::exit();
   isolate.clear_kept_objects();
   *runs += 1;
-  if *runs % 32 == 0 {
+  if (*runs).is_multiple_of(32) {
     isolate.low_memory_notification();
   }
   *in_realm = false;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_classic_body(
   isolate: &mut v8::OwnedIsolate,
   shared: &mut [SharedScript],
@@ -1771,8 +1778,10 @@ fn isolate_params() -> v8::CreateParams {
   // borrow `RefCell`s there, which races the mutator and panics with
   // "RefCell already borrowed". Incremental marking stays on this thread.
   // Sweeping finalizers already run here.
-  let mut heap_params = v8::cppgc::HeapCreateParams::default();
-  heap_params.marking_support = v8::cppgc::MarkingType::Incremental;
+  let heap_params = v8::cppgc::HeapCreateParams {
+    marking_support: v8::cppgc::MarkingType::Incremental,
+    ..v8::cppgc::HeapCreateParams::default()
+  };
   let heap = v8::cppgc::Heap::create(platform, heap_params);
   v8::CreateParams::default().cpp_heap(heap)
 }

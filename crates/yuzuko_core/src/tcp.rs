@@ -45,7 +45,7 @@ const NO_PROMISE: &str = "The socket operation failed.";
 const ARITY: &str = "Not enough arguments";
 
 thread_local! {
-  static OPEN: RefCell<Vec<Live>> = RefCell::new(Vec::new());
+  static OPEN: RefCell<Vec<Live>> = const { RefCell::new(Vec::new()) };
 }
 
 enum Live {

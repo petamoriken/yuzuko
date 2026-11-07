@@ -92,9 +92,10 @@ impl GpuBuffer {
       poll_device(&handle.device);
       match recv.recv_timeout(std::time::Duration::from_secs(5)) {
         Ok(Ok(())) => {
-          let view = buffer.slice(..).get_mapped_range().map_err(|_| {
-            OpError::dom("OperationError", "mapAsync failed")
-          })?;
+          let view = buffer
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|_| OpError::dom("OperationError", "mapAsync failed"))?;
           self.mapped.set(Some(view.to_vec()));
           Ok(())
         }
@@ -1283,8 +1284,8 @@ fn blend_component(
   name: &str,
   features: wgpu::Features,
 ) -> Result<wgpu::BlendComponent, OpError> {
-  let value = js::get(scope, blend, name)
-    .filter(|value| !value.is_null_or_undefined());
+  let value =
+    js::get(scope, blend, name).filter(|value| !value.is_null_or_undefined());
   let Some(value) = value else {
     return Err(OpError::type_(format!("GPUBlendState.{name} is required")));
   };
@@ -1449,8 +1450,7 @@ fn primitive_state(
     js::get(scope, object, "unclippedDepth")
       .is_some_and(|value| value.boolean_value(scope))
   });
-  if unclipped_depth && !features.contains(wgpu::Features::DEPTH_CLIP_CONTROL)
-  {
+  if unclipped_depth && !features.contains(wgpu::Features::DEPTH_CLIP_CONTROL) {
     return Err(js::unsupported("unclippedDepth"));
   }
   Ok(wgpu::PrimitiveState {
@@ -1544,8 +1544,9 @@ fn multisample_state(
     .ok_or_else(|| OpError::type_("multisample must be an object"))?;
   let count =
     allowed_sample_count(js::field_u32(scope, object, "count")?.unwrap_or(1))?;
-  let alpha_to_coverage_enabled = js::get(scope, object, "alphaToCoverageEnabled")
-    .is_some_and(|value| value.boolean_value(scope));
+  let alpha_to_coverage_enabled =
+    js::get(scope, object, "alphaToCoverageEnabled")
+      .is_some_and(|value| value.boolean_value(scope));
   let mask = js::field_u32(scope, object, "mask")?
     .map(u64::from)
     .unwrap_or(!0);

@@ -464,7 +464,7 @@ fn prepare_drawing(
     return Prepare::Failed;
   };
   if !drawing.attrs.alpha {
-    for pixel in pixels.chunks_exact_mut(4) {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
       pixel[3] = 255;
     }
   }

@@ -452,10 +452,7 @@ impl Css<'_> {
 
   fn ident(&mut self) -> Option<String> {
     let mut text = String::new();
-    loop {
-      let Some(ch) = self.peek() else {
-        break;
-      };
+    while let Some(ch) = self.peek() {
       if ch == '\\' {
         if let Some(escaped) = self.escape()? {
           text.push(escaped);

@@ -275,11 +275,7 @@ fn skip_until_comma(rest: &mut &str) {
 }
 
 pub(super) fn dial_host(host: &str, port: u16) -> String {
-  if host.starts_with('[') {
-    format!("{host}:{port}")
-  } else {
-    format!("{host}:{port}")
-  }
+  format!("{host}:{port}")
 }
 
 pub(super) fn server_name(url: &str) -> Option<String> {

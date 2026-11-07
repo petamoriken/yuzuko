@@ -730,16 +730,15 @@ pub(crate) fn trusted_message<'s>(
   object
 }
 
+type MovedParts = (
+  Vec<v8::Global<v8::Object>>,
+  Vec<v8::Global<v8::ArrayBuffer>>,
+);
+
 pub(crate) fn transfer_parts<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<'s, v8::Value>,
-) -> Result<
-  (
-    Vec<v8::Global<v8::Object>>,
-    Vec<v8::Global<v8::ArrayBuffer>>,
-  ),
-  OpError,
-> {
+) -> Result<MovedParts, OpError> {
   if value.is_null_or_undefined() {
     return Ok((Vec::new(), Vec::new()));
   }

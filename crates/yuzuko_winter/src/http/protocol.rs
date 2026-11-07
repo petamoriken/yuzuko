@@ -364,7 +364,7 @@ fn cleartext_http1_answers_content_length() {
   let response = fetch(&url, None);
   assert_eq!(response.status, 200);
   assert_eq!(read_body(&response), b"hello");
-  let _ = response.body.stop();
+  response.body.stop();
 }
 
 #[test]

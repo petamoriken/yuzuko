@@ -181,12 +181,9 @@ fn clone_failure(
   match error {
     TransferError::Thrown(thrown) => Some(thrown),
     TransferError::Failed => {
-      let thrown = {
-        v8::tc_scope!(let tc, scope);
-        yuzuko_core::reject_clone(tc);
-        tc.exception().map(|thrown| v8::Global::new(tc, thrown))
-      };
-      thrown
+      v8::tc_scope!(let tc, scope);
+      yuzuko_core::reject_clone(tc);
+      tc.exception().map(|thrown| v8::Global::new(tc, thrown))
     }
   }
 }
@@ -223,7 +220,6 @@ pub fn transfer_status(
     )),
     _ => None,
   };
-  drop(host);
   let Some((readable, writable)) = sides else {
     return StreamStatus::Locked;
   };

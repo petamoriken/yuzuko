@@ -172,11 +172,7 @@ fn decode_mp3(bytes: &[u8]) -> Result<Pcm, ()> {
     .map_err(|_| ())?;
   let mut channels = 0usize;
   let mut interleaved = Vec::new();
-  loop {
-    let packet = match format.next_packet() {
-      Ok(Some(packet)) => packet,
-      Ok(None) | Err(_) => break,
-    };
+  while let Ok(Some(packet)) = format.next_packet() {
     if packet.track_id != track_id {
       continue;
     }

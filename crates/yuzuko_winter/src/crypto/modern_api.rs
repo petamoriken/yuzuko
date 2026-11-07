@@ -1192,8 +1192,6 @@ fn public_usage_list(name: &str) -> &'static [&'static str] {
     &["verify"]
   } else if name == "RSA-OAEP" {
     &["encrypt", "wrapKey"]
-  } else if matches!(name, "ECDH" | "X25519" | "X448") {
-    &[]
   } else {
     &[]
   }

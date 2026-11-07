@@ -479,7 +479,7 @@ fn solid_encoded(color: CssColor, space: ColorSpace) -> [f64; 4] {
 }
 
 fn axis_aligned_rect(path: &kurbo::BezPath, transform: Affine) -> Option<Rect> {
-  let elements: Vec<PathEl> = path.elements().iter().copied().collect();
+  let elements: Vec<PathEl> = path.elements().to_vec();
   let points = match elements.as_slice() {
     [
       PathEl::MoveTo(p0),
@@ -1718,7 +1718,8 @@ fn upload_rgba8(
   let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
   draw.bindings.insert(id, view);
   draw.textures.push(texture);
-  let transparent = bytes.chunks_exact(4).any(|pixel| pixel[3] != 255);
+  let transparent =
+    bytes.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 255);
   ImageUpload::Texture(vello_gpu::ImageSource::external_texture(
     id,
     vello_gpu::RectU16::new(0, 0, width, height),
@@ -2006,7 +2007,7 @@ mod tests {
           display_p3: false,
           float16: false,
           premultiplied: true,
-          bytes: vec![0, 255, 0, 255].repeat(8),
+          bytes: [0, 255, 0, 255].repeat(8),
         }),
         dx: 0,
         dy: 0,
@@ -2022,7 +2023,7 @@ mod tests {
       display_p3: false,
       float16: false,
       premultiplied: true,
-      bytes: vec![128, 0, 0, 128].repeat(16),
+      bytes: [128, 0, 0, 128].repeat(16),
     });
     let drawn = Command::Image {
       image,

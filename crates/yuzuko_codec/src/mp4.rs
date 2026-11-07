@@ -174,7 +174,9 @@ fn read_box(data: &[u8], start: usize) -> Result<RawBox<'_>, Error> {
   })
 }
 
-fn children(data: &[u8]) -> Result<Vec<([u8; 4], &[u8])>, Error> {
+type Child<'a> = ([u8; 4], &'a [u8]);
+
+fn children(data: &[u8]) -> Result<Vec<Child<'_>>, Error> {
   let mut boxes = Vec::new();
   let mut offset = 0;
   while offset < data.len() {
@@ -994,15 +996,15 @@ fn materialize(
   } else if count != 0 {
     return Err(INVALID);
   }
-  if let Some(runs) = &tables.ctts {
-    if sum_counts(runs)? != u64::from(count) {
-      return Err(INVALID);
-    }
+  if let Some(runs) = &tables.ctts
+    && sum_counts(runs)? != u64::from(count)
+  {
+    return Err(INVALID);
   }
-  if let Some(sync) = &tables.stss {
-    if sync.iter().any(|number| *number == 0 || *number > count) {
-      return Err(INVALID);
-    }
+  if let Some(sync) = &tables.stss
+    && sync.iter().any(|number| *number == 0 || *number > count)
+  {
+    return Err(INVALID);
   }
   if count == 0 {
     return Ok(Some(track_with(entry, Vec::new())));

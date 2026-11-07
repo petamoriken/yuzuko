@@ -2839,6 +2839,7 @@ fn pull(
   pull_output(scope, id, 0, origin, quantum, cache, stack, ended)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn pull_output(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4382,6 +4383,7 @@ fn head(values: &[f64], fallback: f64) -> f64 {
   values.first().copied().unwrap_or(fallback)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_delay(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4413,6 +4415,7 @@ fn render_delay(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_biquad(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4452,6 +4455,7 @@ fn render_biquad(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_iir(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4473,6 +4477,7 @@ fn render_iir(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_waveshaper(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4498,6 +4503,7 @@ fn render_waveshaper(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_panner(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4614,6 +4620,7 @@ fn listener_curves(
   curves
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_stereo_panner(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4665,6 +4672,7 @@ fn render_convolver(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_dynamics(
   scope: &mut v8::PinScope,
   id: u64,
@@ -4715,6 +4723,7 @@ fn render_dynamics(
   block
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_analyser(
   scope: &mut v8::PinScope,
   id: u64,

@@ -573,7 +573,7 @@ unsafe impl v8::cppgc::GarbageCollected for VideoDecoder {
 
 thread_local! {
   static VIDEO_PUMPS: RefCell<VecDeque<v8::Global<v8::Object>>> =
-    RefCell::new(VecDeque::new());
+    const { RefCell::new(VecDeque::new()) };
 }
 
 #[op]
@@ -2144,9 +2144,9 @@ fn builtin_exception<'s>(
     return v8::undefined(scope).into();
   };
   if range {
-    v8::Exception::range_error(scope, text).into()
+    v8::Exception::range_error(scope, text)
   } else {
-    v8::Exception::type_error(scope, text).into()
+    v8::Exception::type_error(scope, text)
   }
 }
 
@@ -2276,10 +2276,7 @@ fn call_decoder(
   let function = v8::Local::new(scope, &function);
   let argument = v8::Local::new(scope, &argument);
   let receiver = v8::Local::new(scope, receiver);
-  if function
-    .call(scope, receiver.into(), &[argument.into()])
-    .is_some()
-  {
+  if function.call(scope, receiver.into(), &[argument]).is_some() {
     None
   } else {
     scope.exception().map(|value| v8::Global::new(scope, value))

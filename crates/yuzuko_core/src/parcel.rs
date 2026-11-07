@@ -221,9 +221,7 @@ pub fn deserialize_parcel<'s>(
     }
   };
   let success = value.is_ok();
-  if let Err(error) = session.exit(scope, success) {
-    return Err(error);
-  }
+  session.exit(scope, success)?;
   match value {
     Ok(value) => Ok(v8::Local::new(scope, value)),
     Err(error) => Err(error),

@@ -416,10 +416,10 @@ fn split_start_codes(bytes: &[u8]) -> Result<Vec<&[u8]>, DecodeError> {
     }
     index += 1;
   }
-  if let Some(from) = start {
-    if from < bytes.len() {
-      nals.push(&bytes[from..]);
-    }
+  if let Some(from) = start
+    && from < bytes.len()
+  {
+    nals.push(&bytes[from..]);
   }
   if nals.is_empty() {
     return Err(DecodeError::Rejected);

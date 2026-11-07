@@ -97,6 +97,7 @@ pub enum IirError {
   Feedback,
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn delay_block(
   input: &[Vec<f32>],
   delay: &[f64],
@@ -140,6 +141,7 @@ pub fn delay_block(
   output
 }
 
+#[allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 pub fn biquad_block(
   input: &[Vec<f32>],
   kind: BiquadKind,
@@ -213,6 +215,7 @@ pub fn normalize_iir(
   Ok((feedforward, feedback))
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn iir_block(
   input: &[Vec<f32>],
   feedforward: &[f32],
@@ -266,6 +269,7 @@ pub fn iir_response_at(
   complex_response(num_re, num_im, den_re, den_im)
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn shape_block(
   input: &[Vec<f32>],
   curve: Option<&[f32]>,
@@ -389,6 +393,7 @@ pub fn azimuth_elevation(
   (azimuth, elevation)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn panner_block(
   input: &[Vec<f32>],
   source_position: [&[f64]; 3],
@@ -469,6 +474,7 @@ fn delayed(history: &[f32], delay: usize) -> f32 {
   history[index]
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn hrtf_block(
   input: &[Vec<f32>],
   source_position: [&[f64]; 3],
@@ -773,6 +779,7 @@ pub fn makeup_max_db() -> f64 {
 
 /// One detector follows the loudest channel. Attack 0 reaches the curve on
 /// the same sample. There is no look-ahead delay.
+#[allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 pub fn compress_block(
   input: &[Vec<f32>],
   threshold: f64,
@@ -1454,6 +1461,7 @@ fn wrap_azimuth(azimuth: f64) -> f64 {
   azimuth
 }
 
+#[allow(clippy::needless_range_loop)]
 fn convolve_each(
   input: &[Vec<f32>],
   kernel: &[f32],
@@ -1690,7 +1698,7 @@ mod tests {
     near(right[1][0], 1.0);
     let left = panner_block(
       &input,
-      [&vec![-1.0], &zero, &zero],
+      [&[-1.0], &zero, &zero],
       [&one, &zero, &zero],
       [&zero, &zero, &zero],
       [&forward_x, &forward_y, &forward_z],

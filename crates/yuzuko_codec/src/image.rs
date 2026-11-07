@@ -291,15 +291,13 @@ impl ImageDecoder {
     if self.data_complete.get()
       && self.sequence.borrow().is_none()
       && self.error_name.borrow().is_none()
-    {
-      if let Some(object) = self
+      && let Some(object) = self
         .self_object
         .borrow()
         .as_ref()
         .and_then(|reference| yuzuko_core::op::traced_local(scope, reference))
-      {
-        self.spawn_decode(scope, object);
-      }
+    {
+      self.spawn_decode(scope, object);
     }
     Ok(())
   }
@@ -355,11 +353,9 @@ impl ImageDecoder {
     }
     match result {
       Ok(Ok(mut sequence)) => {
-        if let Err(message) = scale_sequence(
-          &mut sequence,
-          self.desired_width,
-          self.desired_height,
-        ) {
+        if let Err(message) =
+          scale_sequence(&mut sequence, self.desired_width, self.desired_height)
+        {
           self.fail("EncodingError", &message);
           self.settle_metadata(scope);
           return;
@@ -372,14 +368,12 @@ impl ImageDecoder {
           self.track.borrow().as_ref().and_then(|reference| {
             yuzuko_core::op::traced_local(scope, reference)
           })
-        {
-          if let Some(list) =
+          && let Some(list) =
             self.tracks.borrow().as_ref().and_then(|reference| {
               yuzuko_core::op::traced_local(scope, reference)
             })
-          {
-            let _ = list.set_index(scope, 0, track.into());
-          }
+        {
+          let _ = list.set_index(scope, 0, track.into());
         }
         self.settle_metadata(scope);
         self.flush_waiters(scope);

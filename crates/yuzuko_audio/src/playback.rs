@@ -450,10 +450,7 @@ fn open_device(rate: f64, quantum: u32, sink: &str) -> Option<Device> {
   let opened = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     try_open(rate, quantum, sink)
   }));
-  match opened {
-    Ok(device) => device,
-    Err(_) => None,
-  }
+  opened.unwrap_or_default()
 }
 
 fn try_open(rate: f64, quantum: u32, sink: &str) -> Option<Device> {
@@ -672,6 +669,7 @@ fn convert(
   )
 }
 
+#[allow(clippy::needless_range_loop)]
 fn mix(block: &[Vec<f32>], quantum: usize, out_channels: usize) -> Vec<f32> {
   let mut out = vec![0.0; quantum * out_channels];
   if quantum == 0 || out_channels == 0 {

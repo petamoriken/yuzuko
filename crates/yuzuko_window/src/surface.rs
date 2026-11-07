@@ -161,17 +161,13 @@ fn canvases_to_present(open: impl Fn(u64) -> bool) -> Vec<(u64, u64)> {
 /// presented this turn is skipped, which keeps a due animation frame to one
 /// drawable.
 pub(crate) fn present_pending() -> bool {
-  settle(
-    |window| inbox::contains(window),
-    session::headless(),
-    |window| {
-      if os::presented_this_turn(window) {
-        false
-      } else {
-        os::present(window)
-      }
-    },
-  )
+  settle(inbox::contains, session::headless(), |window| {
+    if os::presented_this_turn(window) {
+      false
+    } else {
+      os::present(window)
+    }
+  })
 }
 
 fn settle(

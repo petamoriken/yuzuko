@@ -427,7 +427,7 @@ fn present_context(
 ) -> Result<(), String> {
   #[cfg(target_os = "macos")]
   {
-    return show_context_mac(menu, id, x, y);
+    show_context_mac(menu, id, x, y)
   }
   #[cfg(target_os = "windows")]
   {

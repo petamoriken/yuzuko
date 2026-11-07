@@ -273,7 +273,9 @@ fn apply_alpha(
   if alpha.len() != pixels || raster.bytes.len() != pixels * 4 {
     return Err(Av1Error::Corrupt);
   }
-  for (pixel, &sample) in raster.bytes.chunks_exact_mut(4).zip(alpha) {
+  for (pixel, &sample) in
+    raster.bytes.as_chunks_mut::<4>().0.iter_mut().zip(alpha)
+  {
     pixel[3] = sample;
   }
   raster.premultiplied = premultiplied;

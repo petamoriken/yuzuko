@@ -639,21 +639,21 @@ impl Context2D {
         }
         image
       };
-      if let Some(text) = closed.layer_filter.as_deref() {
-        if let Some(ops) = crate::paint::filter::parse(text) {
-          let resolved = crate::paint::filter::resolve(
-            &ops,
-            drawing.state.font.size,
-            drawing.width as f32,
-            drawing.height as f32,
-          );
-          crate::paint::filter::apply(
-            &mut image.bytes,
-            image.width,
-            image.height,
-            &resolved,
-          );
-        }
+      if let Some(text) = closed.layer_filter.as_deref()
+        && let Some(ops) = crate::paint::filter::parse(text)
+      {
+        let resolved = crate::paint::filter::resolve(
+          &ops,
+          drawing.state.font.size,
+          drawing.width as f32,
+          drawing.height as f32,
+        );
+        crate::paint::filter::apply(
+          &mut image.bytes,
+          image.width,
+          image.height,
+          &resolved,
+        );
       }
       drawing.push_command(Command::Image {
         image: Arc::new(image),
@@ -2041,7 +2041,6 @@ impl Context2D {
     let anchor_x = x + options.x.unwrap_or(stored_x);
     let anchor_y = y + options.y.unwrap_or(stored_y);
     let glyphs = cluster.get().placed(align, baseline);
-    drop(cluster);
     self.update(|drawing| {
       let transform =
         drawing.state.transform * Affine::translate((anchor_x, anchor_y));
@@ -2063,11 +2062,8 @@ fn push_shaped_glyphs(
   {
     return;
   }
-  let mut groups: Vec<(
-    vello_cpu::peniko::FontData,
-    f32,
-    Vec<(u32, f32, f32)>,
-  )> = Vec::new();
+  type GlyphRun = (vello_cpu::peniko::FontData, f32, Vec<(u32, f32, f32)>);
+  let mut groups: Vec<GlyphRun> = Vec::new();
   for glyph in glyphs {
     let same = groups.last().is_some_and(|(font, size, _)| {
       *size == glyph.size

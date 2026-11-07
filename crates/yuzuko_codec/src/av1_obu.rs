@@ -255,6 +255,7 @@ pub(crate) struct Frame {
   refresh_slot: Slot,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Picture {
   Frame(Frame),
   /// Display a reference that was decoded earlier.
@@ -264,6 +265,7 @@ pub(crate) enum Picture {
   },
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Header {
   Show(usize),
   Frame(Frame),
@@ -339,7 +341,7 @@ impl Stream {
       spatial = bits.bits(2)?;
       let _reserved = bits.bits(3)?;
     }
-    if bits.pos % 8 != 0 {
+    if !bits.pos.is_multiple_of(8) {
       return Err(DecodeError::Rejected);
     }
     let header = bits.pos / 8;
@@ -631,9 +633,8 @@ fn parse_sequence(payload: &[u8]) -> Result<Sequence, DecodeError> {
     } else {
       Select::Off
     };
-    force_integer_mv = if screen_content_tools == Select::Off {
-      Select::Adaptive
-    } else if bits.bit()? {
+    // `Off` does not consume the following bits. The `||` keeps that order.
+    force_integer_mv = if screen_content_tools == Select::Off || bits.bit()? {
       Select::Adaptive
     } else if bits.bit()? {
       Select::On
@@ -865,7 +866,7 @@ impl<'a> Bits<'a> {
   }
 
   fn rest(&self) -> Result<&'a [u8], DecodeError> {
-    if self.pos % 8 != 0 {
+    if !self.pos.is_multiple_of(8) {
       return Err(DecodeError::Rejected);
     }
     Ok(&self.data[self.pos / 8..])
@@ -876,7 +877,7 @@ impl<'a> Bits<'a> {
   }
 
   fn take(&mut self, len: usize) -> Result<&'a [u8], DecodeError> {
-    if self.pos % 8 != 0 {
+    if !self.pos.is_multiple_of(8) {
       return Err(DecodeError::Rejected);
     }
     let start = self.pos / 8;
@@ -935,7 +936,7 @@ fn trailing_bits(bits: &mut Bits<'_>) -> Result<(), DecodeError> {
 }
 
 fn byte_align(bits: &mut Bits<'_>) -> Result<(), DecodeError> {
-  while bits.pos % 8 != 0 {
+  while !bits.pos.is_multiple_of(8) {
     if bits.bit()? {
       return Err(DecodeError::Rejected);
     }
@@ -1054,9 +1055,9 @@ fn parse_frame_size(
   bits: &mut Bits<'_>,
 ) -> Result<FrameSize, DecodeError> {
   if let Some(refs) = refs {
-    for index in 0..7 {
+    for &index in refs {
       if bits.bit()? {
-        let slot = slot_at(slots, usize::from(refs[index]))?;
+        let slot = slot_at(slots, usize::from(index))?;
         let (superres, denom, coded) =
           superres_size(sequence, slot.upscaled_width, bits)?;
         return Ok(FrameSize {
@@ -1375,9 +1376,9 @@ fn short_refs(
   refs[3] = bits.bits(3)? as i8;
   let mut hint = [0i32; 8];
   let current = 1i32 << (hint_bits - 1);
-  for index in 0..8 {
+  for (index, hint_at) in hint.iter_mut().enumerate() {
     let slot = slot_at(slots, index)?;
-    hint[index] = current
+    *hint_at = current
       + poc_diff(hint_bits, i32::from(slot.order_hint), i32::from(order_hint));
   }
   let mut used = [false; 8];
@@ -1385,9 +1386,9 @@ fn short_refs(
   used[refs[3] as usize] = true;
   let mut latest = -1i32;
   let mut alt = refs[6];
-  for index in 0..8 {
-    if hint[index] >= current {
-      consider(&used, index, hint[index], &mut latest, &mut alt, true);
+  for (index, &value) in hint.iter().enumerate() {
+    if value >= current {
+      consider(&used, index, value, &mut latest, &mut alt, true);
     }
   }
   refs[6] = alt;
@@ -1397,9 +1398,9 @@ fn short_refs(
   for which in [4, 5] {
     let mut earliest = i32::MAX;
     let mut pick = refs[which];
-    for index in 0..8 {
-      if hint[index] >= current {
-        consider(&used, index, hint[index], &mut earliest, &mut pick, false);
+    for (index, &value) in hint.iter().enumerate() {
+      if value >= current {
+        consider(&used, index, value, &mut earliest, &mut pick, false);
       }
     }
     refs[which] = pick;
@@ -1407,28 +1408,28 @@ fn short_refs(
       used[refs[which] as usize] = true;
     }
   }
-  for index in 1..7 {
-    if refs[index] >= 0 {
+  for slot_ref in refs.iter_mut().skip(1) {
+    if *slot_ref >= 0 {
       continue;
     }
     let mut latest = -1i32;
     let mut pick = -1i8;
-    for slot in 0..8 {
-      if hint[slot] < current {
-        consider(&used, slot, hint[slot], &mut latest, &mut pick, true);
+    for (slot, &value) in hint.iter().enumerate() {
+      if value < current {
+        consider(&used, slot, value, &mut latest, &mut pick, true);
       }
     }
     if latest != -1 {
-      refs[index] = pick;
+      *slot_ref = pick;
       used[pick as usize] = true;
     }
   }
   let mut earliest = i32::MAX;
   let mut fallback = 0i8;
-  for index in 0..8 {
-    if hint[index] < earliest {
+  for (index, &value) in hint.iter().enumerate() {
+    if value < earliest {
       fallback = index as i8;
-      earliest = hint[index];
+      earliest = value;
     }
   }
   for item in &mut refs {
@@ -1452,16 +1453,16 @@ fn read_refs(
   } else {
     [0; 7]
   };
-  for index in 0..7 {
+  for slot_ref in &mut refs {
     if !short {
-      refs[index] = bits.bits(3)? as u8;
+      *slot_ref = bits.bits(3)? as u8;
     }
     if sequence.frame_id_present {
       let delta = bits.bits(u32::from(sequence.delta_frame_id_bits))? + 1;
       let span = 1u32 << sequence.frame_id_bits;
       let expected =
         frame_id.wrapping_add(span).wrapping_sub(delta) & (span - 1);
-      if slot_at(slots, usize::from(refs[index]))?.frame_id != expected {
+      if slot_at(slots, usize::from(*slot_ref))?.frame_id != expected {
         return Err(DecodeError::Rejected);
       }
     }
@@ -1478,9 +1479,8 @@ fn skip_allowed(
   let poc = i32::from(order_hint);
   let mut before: Option<i32> = None;
   let mut after: Option<i32> = None;
-  for index in 0..7 {
-    let refpoc =
-      i32::from(slot_at(slots, usize::from(refs[index]))?.order_hint);
+  for &index in refs {
+    let refpoc = i32::from(slot_at(slots, usize::from(index))?.order_hint);
     let diff = poc_diff(hint_bits, refpoc, poc);
     if diff > 0 {
       let replace =
@@ -1502,9 +1502,8 @@ fn skip_allowed(
   let Some(before) = before else {
     return Ok(false);
   };
-  for index in 0..7 {
-    let refpoc =
-      i32::from(slot_at(slots, usize::from(refs[index]))?.order_hint);
+  for &index in refs {
+    let refpoc = i32::from(slot_at(slots, usize::from(index))?.order_hint);
     if poc_diff(hint_bits, refpoc, before) < 0 {
       return Ok(true);
     }
@@ -1652,8 +1651,8 @@ fn parse_grain_data(
   grain.ar_lag = bits.bits(2)? as u8;
   let y_pos = 2 * usize::from(grain.ar_lag) * (usize::from(grain.ar_lag) + 1);
   if grain.num_y != 0 {
-    for index in 0..y_pos {
-      grain.ar_y[index] = (bits.bits(8)? as u8).wrapping_sub(128) as i8;
+    for coeff in grain.ar_y.iter_mut().take(y_pos) {
+      *coeff = (bits.bits(8)? as u8).wrapping_sub(128) as i8;
     }
   }
   let extra = usize::from(grain.num_y != 0);
@@ -1662,8 +1661,8 @@ fn parse_grain_data(
     (grain.num_cr, &mut grain.ar_cr),
   ] {
     if count != 0 || grain.chroma_from_luma {
-      for index in 0..y_pos + extra {
-        coeffs[index] = (bits.bits(8)? as u8).wrapping_sub(128) as i8;
+      for coeff in coeffs.iter_mut().take(y_pos + extra) {
+        *coeff = (bits.bits(8)? as u8).wrapping_sub(128) as i8;
       }
     }
   }
@@ -1768,7 +1767,7 @@ fn parse_frame(
       if !point.decoder_model {
         continue;
       }
-      let temporal = (point.idc >> 0) & 1;
+      let temporal = point.idc & 1;
       let spatial = (point.idc >> 8) & 1;
       if point.idc == 0 || (temporal != 0 && spatial != 0) {
         let _ = bits.bits(u32::from(sequence.buffer_removal_bits))?;

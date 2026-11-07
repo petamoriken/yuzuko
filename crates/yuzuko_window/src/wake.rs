@@ -22,10 +22,10 @@ struct ScreenLock {
 }
 
 std::thread_local! {
-  static SCREEN: RefCell<ScreenLock> = RefCell::new(ScreenLock {
+  static SCREEN: RefCell<ScreenLock> = const { RefCell::new(ScreenLock {
     count: 0,
     hold: None,
-  });
+  }) };
   static WAKE_LOCK: RefCell<Option<v8::Global<v8::Object>>> =
     const { RefCell::new(None) };
 }

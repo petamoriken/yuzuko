@@ -324,7 +324,7 @@ pub fn schedule_animation_callback(
 ) {
   let delay_ms = delay.as_secs_f64() * 1000.0;
   let delay_ms = if delay_ms.is_finite() {
-    delay_ms.max(0.0).min(MAX_DELAY_MS)
+    delay_ms.clamp(0.0, MAX_DELAY_MS)
   } else {
     0.0
   };
