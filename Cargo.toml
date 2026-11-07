@@ -35,9 +35,9 @@ url = "2"
 v8 = "152"
 libc = "0.2"
 png = "0.18"
-# vello 0.11.0 requires wgpu 30.0.0. Bump these together.
+# vello_gpu 0.3.0 and vello_cpu 0.3.0 require wgpu 30. Bump these together.
 wgpu = "30"
-vello = { version = "0.11", default-features = false, features = ["wgpu"] }
+vello_gpu = { version = "0.3.0", default-features = false, features = ["wgpu", "text"] }
 vello_cpu = { version = "0.3.0", features = ["f32_pipeline"] }
 half = "2"
 image-webp = "0.2"
@@ -153,13 +153,13 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.naga]
 opt-level = 3
-[profile.release.package.vello]
+[profile.release.package.vello_gpu]
 opt-level = 3
 [profile.release.package.vello_cpu]
 opt-level = 3
-[profile.release.package.vello_encoding]
+[profile.release.package.vello_common]
 opt-level = 3
-[profile.release.package.vello_shaders]
+[profile.release.package.vello_gpu_shaders]
 opt-level = 3
 [profile.release.package.flate2]
 opt-level = 3
@@ -228,13 +228,13 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.naga]
 opt-level = 3
-[profile.bench.package.vello]
+[profile.bench.package.vello_gpu]
 opt-level = 3
 [profile.bench.package.vello_cpu]
 opt-level = 3
-[profile.bench.package.vello_encoding]
+[profile.bench.package.vello_common]
 opt-level = 3
-[profile.bench.package.vello_shaders]
+[profile.bench.package.vello_gpu_shaders]
 opt-level = 3
 [profile.bench.package.flate2]
 opt-level = 3

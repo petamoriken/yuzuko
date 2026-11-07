@@ -166,7 +166,7 @@ pub fn ready_family(token: &str) -> Option<u32> {
 
 #[derive(Clone)]
 pub struct ShapedRun {
-  pub font: vello::peniko::FontData,
+  pub font: vello_cpu::peniko::FontData,
   pub size: f32,
   pub glyphs: Vec<(u32, f32, f32)>,
 }
@@ -175,7 +175,7 @@ pub struct ShapedRun {
 /// baseline and increases downward.
 #[derive(Clone)]
 pub struct ShapedGlyph {
-  pub font: vello::peniko::FontData,
+  pub font: vello_cpu::peniko::FontData,
   pub size: f32,
   pub id: u32,
   pub x: f32,
@@ -460,7 +460,7 @@ fn merge_graphemes(
 }
 
 fn outline_ink(
-  font: &vello::peniko::FontData,
+  font: &vello_cpu::peniko::FontData,
   size: f32,
   id: u32,
   x: f32,

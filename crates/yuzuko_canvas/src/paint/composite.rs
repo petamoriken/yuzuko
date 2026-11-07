@@ -1,6 +1,6 @@
 //! Isolated Canvas 2D compositing.
 //!
-//! vello blends a draw only where that draw covers pixels. HTML `source-in`,
+//! The rasterizer blends a draw only where that draw covers pixels. HTML `source-in`,
 //! `copy`, `clear`, and the other Porter-Duff operators also change pixels
 //! inside the clip that the shape misses. Shadows are the shape's alpha,
 //! offset in canvas pixels and blurred, then composited before the shape.
@@ -12,10 +12,10 @@ use std::sync::Arc;
 use kurbo::Affine;
 use kurbo::Rect;
 use kurbo::Shape;
-use vello::peniko::BlendMode;
-use vello::peniko::Compose;
-use vello::peniko::Fill;
-use vello::peniko::Mix;
+use vello_cpu::peniko::BlendMode;
+use vello_cpu::peniko::Compose;
+use vello_cpu::peniko::Fill;
+use vello_cpu::peniko::Mix;
 
 use crate::paint::color::CssColor;
 use crate::paint::record::Brush;
@@ -105,7 +105,9 @@ fn byte_len(width: u32, height: u32) -> usize {
   width as usize * height as usize * 4
 }
 
-fn command_filter(command: &Command) -> Option<&[crate::paint::filter::Resolved]> {
+fn command_filter(
+  command: &Command,
+) -> Option<&[crate::paint::filter::Resolved]> {
   match command {
     Command::Fill { filter, .. }
     | Command::Stroke { filter, .. }
@@ -701,9 +703,9 @@ mod tests {
   use super::quantize;
   use super::shadow_bytes;
   use crate::paint::shade::Shadow;
-  use vello::peniko::BlendMode;
-  use vello::peniko::Compose;
-  use vello::peniko::Mix;
+  use vello_cpu::peniko::BlendMode;
+  use vello_cpu::peniko::Compose;
+  use vello_cpu::peniko::Mix;
 
   fn mode(mix: Mix, compose: Compose) -> BlendMode {
     BlendMode::new(mix, compose)

@@ -9,7 +9,7 @@ use kurbo::Affine;
 use kurbo::Cap;
 use kurbo::Join;
 use kurbo::Rect;
-use vello::peniko::Fill;
+use vello_cpu::peniko::Fill;
 use yuzuko_core::op::{Js, New, OpError};
 use yuzuko_image::ImageBitmap;
 use yuzuko_image::ImageData;
@@ -2063,8 +2063,11 @@ fn push_shaped_glyphs(
   {
     return;
   }
-  let mut groups: Vec<(vello::peniko::FontData, f32, Vec<(u32, f32, f32)>)> =
-    Vec::new();
+  let mut groups: Vec<(
+    vello_cpu::peniko::FontData,
+    f32,
+    Vec<(u32, f32, f32)>,
+  )> = Vec::new();
   for glyph in glyphs {
     let same = groups.last().is_some_and(|(font, size, _)| {
       *size == glyph.size

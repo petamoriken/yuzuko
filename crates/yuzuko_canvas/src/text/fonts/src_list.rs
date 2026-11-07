@@ -120,18 +120,14 @@ fn balanced(css: &str) -> bool {
   depth == 0
 }
 
-fn parse_item(
-  parser: &mut Parser<'_>,
-) -> Result<Item, ParseError<()>> {
+fn parse_item(parser: &mut Parser<'_>) -> Result<Item, ParseError<()>> {
   if let Ok(item) = parser.try_parse(parse_url_item) {
     return Ok(item);
   }
   parse_local_item(parser)
 }
 
-fn parse_url_item(
-  parser: &mut Parser<'_>,
-) -> Result<Item, ParseError<()>> {
+fn parse_url_item(parser: &mut Parser<'_>) -> Result<Item, ParseError<()>> {
   let url = parser.expect_url().map_err(basic)?.to_string();
   let mut formats = None;
   let mut saw_tech = false;
@@ -162,9 +158,7 @@ fn parse_url_item(
   Ok(Item::Url { url, formats })
 }
 
-fn parse_local_item(
-  parser: &mut Parser<'_>,
-) -> Result<Item, ParseError<()>> {
+fn parse_local_item(parser: &mut Parser<'_>) -> Result<Item, ParseError<()>> {
   parser.expect_function_matching("local").map_err(basic)?;
   let name = parser.parse_nested_block(parse_family_name)?;
   Ok(Item::Local(name))

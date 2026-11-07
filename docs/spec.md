@@ -103,7 +103,7 @@ The runtime provides:
 - Multiple `Yuzuko.Window` objects. Each is an input `EventTarget`. Its `surface` is the `Yuzuko.WindowSurface` presented on screen.
 - Pointer, wheel, keyboard, and IME composition events delivered to that surface. IME is off by default.
 - `createImageBitmap` for JPEG, PNG, WebP, and JPEG XL.
-- Canvas 2D through vello, on the GPU when the environment can use one and on the CPU otherwise. WebGPU uses the process wgpu device.
+- Canvas 2D on the GPU through vello_gpu when the environment can use it, and on the CPU through vello_cpu otherwise. WebGPU uses the process wgpu device.
 - Presenting that surface when its Canvas 2D or `bitmaprenderer` contents change, and at the end of a due `requestAnimationFrame` callback.
 - The WinterTC Minimum Common API (the ECMA-429 2025 snapshot; the draft is dated 31 July 2026), as specified below.
 - ECMA-402 `Intl` with the full ICU locale data linked into this V8 build.
@@ -190,7 +190,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 
 `navigator.hardwareConcurrency` is present on the main global and in a dedicated worker in every build. It is the number of logical processors available to the process, and it is at least 1. When the operating system does not report a count, the value is 1.
 
-`Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`. It is chosen once at process startup and does not change. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. A GPU request that fails to produce a device selects `"cpu"`.
+`Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`. It is chosen once at process startup and does not change. `"gpu"` is vello_gpu and `"cpu"` is vello_cpu. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. A GPU request that fails to produce a device, or whose renderer cannot be created, selects `"cpu"`.
 
 ## Process
 
@@ -493,13 +493,13 @@ const bitmap = await createImageBitmap(await (await fetch(url)).blob());
 
 ### Canvas 2D
 
-The rasterizer is vello. Text shaping uses parley and fontique. When `Yuzuko.canvasRenderer === "gpu"`, the scene runs on the process wgpu device and the result is written to that canvas texture. When there is no device, or vello's GPU renderer cannot be created on that device, the renderer is `"cpu"` and vello's CPU implementation produces the pixels. If a wgpu device exists, those pixels are uploaded to a texture and presented. If no device exists, they are presented through a CPU framebuffer. WebGPU does not use this fallback: `requestAdapter()` resolves to `null` when no adapter exists.
+The GPU rasterizer is vello_gpu and the CPU rasterizer is vello_cpu. Text shaping uses parley and fontique. When `Yuzuko.canvasRenderer === "gpu"`, the scene runs on the process wgpu device and the result is written to an `Rgba8Unorm` color attachment. When there is no device, or vello_gpu cannot be created on that device, the renderer is `"cpu"` and vello_cpu produces the pixels. The device uses the adapter's limits, so a downlevel adapter is not rejected before that renderer is created. If a wgpu device exists, CPU pixels are uploaded to a texture and presented. If no device exists, they are presented through a CPU framebuffer. WebGPU does not use this fallback: `requestAdapter()` resolves to `null` when no adapter exists.
 
-Vello paints an sRGB unorm8 target. `render_to_texture` takes `Rgba8Unorm`. Scene colors are converted to sRGB and packed to 8 bits before the draw. Image brushes are `Rgba8` or `Bgra8`. The CPU pixmap is premultiplied RGBA8. A Display P3 source color can be supplied, and vello converts it to sRGB while packing, which clips chroma outside sRGB.
+Both renderers paint an sRGB unorm8 target. The GPU target is `Rgba8Unorm`. Scene colors are converted to sRGB and packed to 8 bits before the draw. Image brushes are `Rgba8` or `Bgra8`. The pixmap is premultiplied RGBA8. A Display P3 source color can be supplied, and the rasterizer converts it to sRGB while packing, which clips chroma outside sRGB.
 
-`getContext("2d", { colorSpace, colorType })` still selects `"srgb"` or `"display-p3"`, and `"unorm8"` or `"float16"`. The defaults are `"srgb"` and `"unorm8"`. `getContextAttributes()` returns them. The default context is the vello target. `"srgb-linear"` and `"display-p3-linear"` throw `TypeError` from `getContext` and from `ImageDataSettings`.
+`getContext("2d", { colorSpace, colorType })` still selects `"srgb"` or `"display-p3"`, and `"unorm8"` or `"float16"`. The defaults are `"srgb"` and `"unorm8"`. `getContextAttributes()` returns them. The default context is that sRGB unorm8 target. `"srgb-linear"` and `"display-p3-linear"` throw `TypeError` from `getContext` and from `ImageDataSettings`.
 
-A `display-p3` or `float16` context has its own backing store, owned here rather than by vello. On the GPU that store is `Rgba8Unorm` interpreted as Display P3, or `Rgba16Float` in the canvas color space. Without a device it is a CPU buffer of the same layout. `putImageData` and a `drawImage` whose source already matches the destination write that store and keep the samples. An opaque axis-aligned solid `fillRect` on a float16 store is written in that store's color space at float16 precision, so a `color(display-p3 ...)` fill can produce encoded components outside 0..1. Other path fills, strokes, text, and gradients are painted by vello in sRGB unorm8 and then converted into the store, so those paints lose chroma outside sRGB and precision beyond 8 bits.
+A `display-p3` or `float16` context has its own backing store, owned here rather than by the rasterizer. On the GPU that store is `Rgba8Unorm` interpreted as Display P3, or `Rgba16Float` in the canvas color space. Without a device it is a CPU buffer of the same layout. `putImageData` and a `drawImage` whose source already matches the destination write that store and keep the samples. An opaque axis-aligned solid `fillRect` on a float16 store is written in that store's color space at float16 precision, so a `color(display-p3 ...)` fill can produce encoded components outside 0..1. Other path fills, strokes, text, and gradients are painted in sRGB unorm8 and then converted into the store, so those paints lose chroma outside sRGB and precision beyond 8 bits.
 
 `fillStyle` and `strokeStyle` accept the existing sRGB forms plus `color(srgb ...)` and `color(display-p3 ...)`, with or without alpha. Gradient stops accept the same forms. An unrecognized color does not change the current style. `getImageData`, `putImageData`, and `createImageData` take `ImageDataSettings`. `colorSpace` is `"srgb"` or `"display-p3"`. `pixelFormat` is `"rgba-unorm8"`, stored in a `Uint8ClampedArray`, or `"rgba-float16"`, stored in V8's `Float16Array`. A buffer of the other typed-array kind throws `InvalidStateError`. `getImageData` converts when the requested color space or pixel format differs from the backing store. An omitted `colorSpace` is `"srgb"`. An omitted `pixelFormat` is `"rgba-unorm8"`. `createImageData(sw, sh)` uses those defaults. `createImageData(imageData)` copies that object's color space and pixel format. `putImageData` converts into the canvas color space in floating point when either side is float16. An 8-bit channel is the encoded 0..1 value times 255. Float16 `ImageData` keeps values outside 0..1.
 
@@ -533,7 +533,7 @@ Level A is:
 
 Cluster positions are relative to the text origin after `textAlign` and `textBaseline`. `getTextClusters` options may set `align`, `baseline`, `x`, and `y` for the returned clusters and do not change the `TextMetrics` object. `getSelectionRects`, `getActualBoundingBox`, and an explicit `getTextClusters` range take `[EnforceRange] unsigned long` indexes. A non-finite value, or a value outside 0 through 2^32 - 1, throws `TypeError`. `getSelectionRects` throws `IndexSizeError` when `start` or `end` is greater than the UTF-16 length. `getActualBoundingBox` and an explicit `getTextClusters` range throw `IndexSizeError` when `start` is greater than or equal to that length, or `end` is greater than that length. An omitted `getTextClusters` range is the whole run. `getSelectionRects` uses advance boxes and the font ascent and descent. `getActualBoundingBox` returns the advance box of the classic `actualBoundingBox*` getters for the whole run: `x` is 0, `y` is the negation of `actualBoundingBoxAscent`, `width` is the advance, and `height` is the ascent plus the descent. A partial range does not tighten that rectangle, and `textAlign` and `textBaseline` do not move it. `getIndexFromOffset` increases from left to right in that origin space. Values outside the run return `0` or the UTF-16 length according to `direction`. `fillTextCluster` and `strokeTextCluster` use the measured font, direction, and `lang`, and an options dictionary may replace `align`, `baseline`, `x`, and `y` for that call without writing the cluster. The fill or stroke style, transform, alpha, and clips are the context's current values. The classic `actualBoundingBox*` getters stay advance approximations.
 
-`convertToBlob` produces `image/png`, `image/jpeg`, and `image/webp`. JPEG XL encoding is out of scope. `putImageData` of a float16 Display P3 `ImageData` round-trips through `getImageData` within one float16 ulp. An opaque solid `fillRect` on a float16 canvas uses that same conversion. Any other path painted with `color(display-p3 ...)` is compared after vello's sRGB unorm8 conversion, not as a wide-gamut round trip. A plain `source-over` list with no shadow and no filter draws on both the GPU and CPU renderers. Any other operator, a shadow, or a filter is rasterized on the CPU.
+`convertToBlob` produces `image/png`, `image/jpeg`, and `image/webp`. JPEG XL encoding is out of scope. `putImageData` of a float16 Display P3 `ImageData` round-trips through `getImageData` within one float16 ulp. An opaque solid `fillRect` on a float16 canvas uses that same conversion. Any other path painted with `color(display-p3 ...)` is compared after the sRGB unorm8 conversion, not as a wide-gamut round trip. A plain `source-over` list with no shadow and no filter draws on both the GPU and CPU renderers. Any other operator, a shadow, or a filter is rasterized on the CPU.
 
 ### WebGPU
 
@@ -1123,7 +1123,7 @@ The enrolled upstream directories are `url`, `encoding`, `hr-time`, `html/webapp
 
 `requestidlecallback` is enrolled with the main-global idle callbacks. `eventsource` and `websockets` are enrolled with those clients. `webcodecs` is enrolled with `VideoDecoder`, `AudioDecoder`, `VideoFrame`, `AudioData`, and `ImageDecoder`. The JPEG XL `ImageDecoder` documents are enrolled with that decoder. `dom/abort` is enrolled with `AbortSignal`. `html/webappapis/microtask-queuing` and `html/webappapis/structured-clone` are enrolled with `queueMicrotask` and `structuredClone`. `imagebitmap-renderingcontext` is enrolled with `ImageBitmapRenderingContext`. Files that need a document, a frame, or `requestAnimationFrame` on `globalThis` stay ignored or fail as recorded.
 
-Pixel comparisons for vello output use the CPU renderer. Unorm8 sRGB pixels that did not cross a color-space boundary match exactly. A conversion from that output into another color space may differ by one unorm8 code point. `putImageData` and `ImageBitmap` float16 samples may differ by one float16 ulp. Where WPT has no reference, a `Yuzuko.test` golden image covers the case. The GPU renderer has a smoke test that one frame reaches a surface. Test both `YUZUKO_CANVAS=cpu` and the `"cpu"` fallback when the GPU is unavailable. WebGPU tests may skip when `YUZUKO_SKIP_GPU=1` and no GPU is available. A skip is not a failure.
+Pixel comparisons for Canvas 2D use the CPU renderer. Unorm8 sRGB pixels that did not cross a color-space boundary match exactly. A conversion from that output into another color space may differ by one unorm8 code point. `putImageData` and `ImageBitmap` float16 samples may differ by one float16 ulp. Where WPT has no reference, a `Yuzuko.test` golden image covers the case. The GPU renderer has a smoke test that one frame reaches a surface. Test both `YUZUKO_CANVAS=cpu` and the `"cpu"` fallback when the GPU is unavailable. WebGPU tests may skip when `YUZUKO_SKIP_GPU=1` and no GPU is available. A skip is not a failure.
 
 Event order, the key map, and the IME state machine are `Yuzuko.test` tests. Decoders also have golden files, corrupt input, and limit checks beside the WPT cases.
 
@@ -1256,7 +1256,7 @@ main thread
          +--------------+--------------+
          |              |              |
    yuzuko_window   yuzuko_canvas   yuzuko_webgpu
-   Window           vello gpu/cpu   wgpu WebGPU
+   Window           vello_gpu/cpu   wgpu WebGPU
    pointer/key/IME       \          /
                           wgpu Device
 ```
@@ -1286,6 +1286,6 @@ Host objects are allocated with cppgc so V8 owns their lifetime. GPU resources t
 
 ## Risks
 
-- A level A path or text operation that vello cannot draw throws `NotSupportedError` on both the GPU and CPU renderers. Do not switch that operation to a second 2D library. Vello's render target stays sRGB unorm8. A `display-p3` or `float16` backing store is not a vello target.
+- A level A path or text operation that the rasterizer cannot draw throws `NotSupportedError` on both the GPU and CPU renderers. Do not switch that operation to a second 2D library. The render target stays sRGB unorm8. A `display-p3` or `float16` backing store is not a rasterizer target.
 - winit IME differs by OS by more than the specification describes. Split event-sequence tests by OS.
 - The WebGPU surface is the list in this file. Behavior outside that list is not implied.

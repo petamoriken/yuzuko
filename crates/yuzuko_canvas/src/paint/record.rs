@@ -11,7 +11,7 @@ use kurbo::Cap;
 use kurbo::Join;
 use kurbo::Rect;
 use kurbo::Stroke;
-use vello::peniko::Fill;
+use vello_cpu::peniko::Fill;
 use yuzuko_image::ColorSpace;
 use yuzuko_image::SampleFormat;
 
@@ -118,7 +118,7 @@ pub enum Command {
     clips: Arc<[Clip]>,
   },
   Glyphs {
-    font: vello::peniko::FontData,
+    font: vello_cpu::peniko::FontData,
     size: f32,
     glyphs: Arc<[(u32, f32, f32)]>,
     brush: Brush,

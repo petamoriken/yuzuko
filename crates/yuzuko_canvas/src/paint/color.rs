@@ -37,7 +37,7 @@ impl CssColor {
     syntax: ColorSyntax::Legacy,
   };
 
-  pub fn to_srgb_peniko(self) -> vello::peniko::Color {
+  pub fn to_srgb_peniko(self) -> vello_cpu::peniko::Color {
     let encoded = if self.syntax == ColorSyntax::DisplayP3 {
       convert_encoded(
         ColorSpace::DisplayP3,
@@ -47,7 +47,7 @@ impl CssColor {
     } else {
       [f64::from(self.r), f64::from(self.g), f64::from(self.b)]
     };
-    vello::peniko::Color::new([
+    vello_cpu::peniko::Color::new([
       encoded[0] as f32,
       encoded[1] as f32,
       encoded[2] as f32,

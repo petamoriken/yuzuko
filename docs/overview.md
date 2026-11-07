@@ -76,7 +76,7 @@ Feature: `image`. It enables `window`.
 
 Feature: `canvas`. It enables `image` and `window`.
 
-The rasterizer is vello. `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`, chosen once at process startup. When the GPU cannot produce a device, the CPU renderer produces the pixels and they are still presented. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. `YUZUKO_SKIP_GPU=1` selects `"cpu"`.
+The GPU rasterizer is vello_gpu and the CPU rasterizer is vello_cpu. `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`, chosen once at process startup. When the GPU cannot produce a device, or vello_gpu cannot be created on that device, the CPU renderer produces the pixels and they are still presented. `YUZUKO_CANVAS=cpu` or `YUZUKO_CANVAS=gpu` overrides the choice. `YUZUKO_SKIP_GPU=1` selects `"cpu"`.
 
 The context draws paths, text, gradients, patterns, images, layers, filters, and shadows, and it stores the compositing operators in the spec. `lang` selects localized glyphs. `TextMetrics` reports selection rectangles, cluster bounds, and positions, and `fillTextCluster` draws one cluster. `convertToBlob` encodes PNG, JPEG, and WebP. A `display-p3` or `float16` backing store keeps matching `putImageData` and `drawImage` samples. Path, text, and gradient paints are rasterized in sRGB unorm8.
 

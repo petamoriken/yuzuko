@@ -1,7 +1,8 @@
 //! CSS `<filter-value-list>` parsing and painting for Canvas 2D.
 //!
-//! vello does not run CSS filters. A drawing that has one is rasterized to
-//! premultiplied sRGB8 and the functions below run on that bitmap.
+//! The rasterizer does not run CSS filters. A drawing that has one is
+//! rasterized to premultiplied sRGB8 and the functions below run on that
+//! bitmap.
 
 use cssparser::BasicParseErrorKind;
 use cssparser::ParseError;
@@ -168,7 +169,12 @@ fn resolve_one(
   }
 }
 
-fn resolve_length(length: Length, font_px: f32, width: f32, height: f32) -> f32 {
+fn resolve_length(
+  length: Length,
+  font_px: f32,
+  width: f32,
+  height: f32,
+) -> f32 {
   let value = length.value;
   let smaller = width.min(height);
   let larger = width.max(height);
@@ -184,10 +190,26 @@ fn resolve_length(length: Length, font_px: f32, width: f32, height: f32) -> f32 
     Unit::Ex | Unit::Ch => value * font_px * 0.5,
     Unit::Cap => value * font_px * 0.7,
     Unit::Lh | Unit::Rlh => value * font_px * 1.2,
-    Unit::Vw | Unit::Dvw | Unit::Svw | Unit::Lvw | Unit::Cqw | Unit::Vi
-    | Unit::Dvi | Unit::Svi | Unit::Lvi | Unit::Cqi => value * width / 100.0,
-    Unit::Vh | Unit::Dvh | Unit::Svh | Unit::Lvh | Unit::Cqh | Unit::Vb
-    | Unit::Dvb | Unit::Svb | Unit::Lvb | Unit::Cqb => value * height / 100.0,
+    Unit::Vw
+    | Unit::Dvw
+    | Unit::Svw
+    | Unit::Lvw
+    | Unit::Cqw
+    | Unit::Vi
+    | Unit::Dvi
+    | Unit::Svi
+    | Unit::Lvi
+    | Unit::Cqi => value * width / 100.0,
+    Unit::Vh
+    | Unit::Dvh
+    | Unit::Svh
+    | Unit::Lvh
+    | Unit::Cqh
+    | Unit::Vb
+    | Unit::Dvb
+    | Unit::Svb
+    | Unit::Lvb
+    | Unit::Cqb => value * height / 100.0,
     Unit::Vmin | Unit::Dvmin | Unit::Svmin | Unit::Lvmin | Unit::Cqmin => {
       value * smaller / 100.0
     }
@@ -216,9 +238,9 @@ pub fn apply(pixels: &mut [u8], width: u32, height: u32, ops: &[Resolved]) {
 fn apply_one(pixels: &mut [u8], width: u32, height: u32, op: Resolved) {
   match op {
     Resolved::Blur(sigma) => blur_premul(pixels, width, height, sigma),
-    Resolved::Brightness(amount) => map_color(pixels, |r, g, b, a| {
-      [r * amount, g * amount, b * amount, a]
-    }),
+    Resolved::Brightness(amount) => {
+      map_color(pixels, |r, g, b, a| [r * amount, g * amount, b * amount, a])
+    }
     Resolved::Contrast(amount) => map_color(pixels, |r, g, b, a| {
       let contrast = |channel: f32| (channel - 0.5) * amount + 0.5;
       [contrast(r), contrast(g), contrast(b), a]
@@ -228,18 +250,17 @@ fn apply_one(pixels: &mut [u8], width: u32, height: u32, op: Resolved) {
       let mix = |channel: f32| channel * (1.0 - amount) + y * amount;
       [mix(r), mix(g), mix(b), a]
     }),
-    Resolved::HueRotate(radians) => map_color(pixels, |r, g, b, a| {
-      hue_rotate(r, g, b, radians, a)
-    }),
+    Resolved::HueRotate(radians) => {
+      map_color(pixels, |r, g, b, a| hue_rotate(r, g, b, radians, a))
+    }
     Resolved::Invert(amount) => map_color(pixels, |r, g, b, a| {
-      let invert = |channel: f32| {
-        channel * (1.0 - amount) + (1.0 - channel) * amount
-      };
+      let invert =
+        |channel: f32| channel * (1.0 - amount) + (1.0 - channel) * amount;
       [invert(r), invert(g), invert(b), a]
     }),
-    Resolved::Opacity(amount) => map_color(pixels, |r, g, b, a| {
-      [r, g, b, a * amount]
-    }),
+    Resolved::Opacity(amount) => {
+      map_color(pixels, |r, g, b, a| [r, g, b, a * amount])
+    }
     Resolved::Saturate(amount) => map_color(pixels, |r, g, b, a| {
       let y = 0.213 * r + 0.715 * g + 0.072 * b;
       let mix = |channel: f32| y * (1.0 - amount) + channel * amount;
@@ -249,9 +270,8 @@ fn apply_one(pixels: &mut [u8], width: u32, height: u32, op: Resolved) {
       let sr = 0.393 * r + 0.769 * g + 0.189 * b;
       let sg = 0.349 * r + 0.686 * g + 0.168 * b;
       let sb = 0.272 * r + 0.534 * g + 0.131 * b;
-      let mix = |channel: f32, toward: f32| {
-        channel * (1.0 - amount) + toward * amount
-      };
+      let mix =
+        |channel: f32, toward: f32| channel * (1.0 - amount) + toward * amount;
       [mix(r, sr), mix(g, sg), mix(b, sb), a]
     }),
     Resolved::DropShadow { x, y, blur, color } => {
@@ -284,7 +304,10 @@ fn hue_rotate(r: f32, g: f32, b: f32, radians: f32, a: f32) -> [f32; 4] {
   ]
 }
 
-fn map_color(pixels: &mut [u8], mut map: impl FnMut(f32, f32, f32, f32) -> [f32; 4]) {
+fn map_color(
+  pixels: &mut [u8],
+  mut map: impl FnMut(f32, f32, f32, f32) -> [f32; 4],
+) {
   for pixel in pixels.chunks_exact_mut(4) {
     let a = f32::from(pixel[3]) / 255.0;
     let (r, g, b) = if a == 0.0 {
@@ -297,7 +320,11 @@ fn map_color(pixels: &mut [u8], mut map: impl FnMut(f32, f32, f32, f32) -> [f32;
       )
     };
     let [r, g, b, a] = map(r, g, b, a);
-    let a = if a.is_finite() { a.clamp(0.0, 1.0) } else { 0.0 };
+    let a = if a.is_finite() {
+      a.clamp(0.0, 1.0)
+    } else {
+      0.0
+    };
     pixel[0] = quantize(r * a);
     pixel[1] = quantize(g * a);
     pixel[2] = quantize(b * a);
@@ -428,9 +455,7 @@ fn parse_filter(
   }
 }
 
-fn parse_item(
-  parser: &mut Parser<'_>,
-) -> Result<FilterOp, ParseError<()>> {
+fn parse_item(parser: &mut Parser<'_>) -> Result<FilterOp, ParseError<()>> {
   let state = parser.state();
   if parser.expect_url().is_ok() {
     return Ok(FilterOp::Url);
@@ -485,9 +510,7 @@ fn optional_amount(
   }
 }
 
-fn number_or_percent(
-  parser: &mut Parser<'_>,
-) -> Result<f32, ParseError<()>> {
+fn number_or_percent(parser: &mut Parser<'_>) -> Result<f32, ParseError<()>> {
   let state = parser.state();
   if let Ok(value) = parser.try_parse(Parser::expect_number) {
     return Ok(value);
@@ -496,9 +519,7 @@ fn number_or_percent(
   Ok(parser.expect_percentage()?)
 }
 
-fn optional_angle(
-  parser: &mut Parser<'_>,
-) -> Result<f32, ParseError<()>> {
+fn optional_angle(parser: &mut Parser<'_>) -> Result<f32, ParseError<()>> {
   if parser.is_exhausted() {
     return Ok(0.0);
   }
@@ -564,9 +585,7 @@ fn angle_radians(value: f32, unit: &str) -> Option<f32> {
   Some(radians)
 }
 
-fn drop_shadow_op(
-  parser: &mut Parser<'_>,
-) -> Result<FilterOp, ParseError<()>> {
+fn drop_shadow_op(parser: &mut Parser<'_>) -> Result<FilterOp, ParseError<()>> {
   let mut lengths = Vec::new();
   let mut color = None;
   while !parser.is_exhausted() {
@@ -595,9 +614,7 @@ fn drop_shadow_op(
   })
 }
 
-fn color_value(
-  parser: &mut Parser<'_>,
-) -> Result<CssColor, ParseError<()>> {
+fn color_value(parser: &mut Parser<'_>) -> Result<CssColor, ParseError<()>> {
   let start = parser.position();
   let kind = {
     let token = parser.next()?;
@@ -744,66 +761,70 @@ mod tests {
   fn resolves_lengths_and_paints_color_functions() {
     let blur = super::parse("blur(1em)").unwrap();
     let resolved = super::resolve(&blur, 10.0, 100.0, 50.0);
-    assert!(matches!(resolved[0], super::Resolved::Blur(sigma) if sigma == 10.0));
+    assert!(
+      matches!(resolved[0], super::Resolved::Blur(sigma) if sigma == 10.0)
+    );
     let viewport = super::parse("blur(10vw)").unwrap();
     let resolved = super::resolve(&viewport, 10.0, 200.0, 40.0);
-    assert!(matches!(resolved[0], super::Resolved::Blur(sigma) if sigma == 20.0));
+    assert!(
+      matches!(resolved[0], super::Resolved::Blur(sigma) if sigma == 20.0)
+    );
 
     let mut red = vec![255, 0, 0, 255];
-    super::apply(&mut red, 1, 1, &super::resolve(
-      &super::parse("brightness(0)").unwrap(),
-      10.0,
-      1.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      1,
+      1,
+      &super::resolve(&super::parse("brightness(0)").unwrap(), 10.0, 1.0, 1.0),
+    );
     assert_eq!(red, vec![0, 0, 0, 255]);
 
     let mut red = vec![255, 0, 0, 255];
-    super::apply(&mut red, 1, 1, &super::resolve(
-      &super::parse("invert(1)").unwrap(),
-      10.0,
-      1.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      1,
+      1,
+      &super::resolve(&super::parse("invert(1)").unwrap(), 10.0, 1.0, 1.0),
+    );
     assert_eq!(red, vec![0, 255, 255, 255]);
 
     let mut red = vec![255, 0, 0, 255];
-    super::apply(&mut red, 1, 1, &super::resolve(
-      &super::parse("opacity(0)").unwrap(),
-      10.0,
-      1.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      1,
+      1,
+      &super::resolve(&super::parse("opacity(0)").unwrap(), 10.0, 1.0, 1.0),
+    );
     assert_eq!(red, vec![0, 0, 0, 0]);
 
     let mut red = vec![255, 0, 0, 255];
-    super::apply(&mut red, 1, 1, &super::resolve(
-      &super::parse("url(#missing)").unwrap(),
-      10.0,
-      1.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      1,
+      1,
+      &super::resolve(&super::parse("url(#missing)").unwrap(), 10.0, 1.0, 1.0),
+    );
     assert_eq!(red, vec![0, 0, 0, 0]);
 
     let mut red = vec![255, 0, 0, 255];
-    super::apply(&mut red, 1, 1, &super::resolve(
-      &super::parse("grayscale(1)").unwrap(),
-      10.0,
-      1.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      1,
+      1,
+      &super::resolve(&super::parse("grayscale(1)").unwrap(), 10.0, 1.0, 1.0),
+    );
     assert_eq!(red[0], red[1]);
     assert_eq!(red[1], red[2]);
     assert_eq!(red[3], 255);
     assert!((i32::from(red[0]) - 54).abs() <= 1);
 
     let mut red = vec![255, 0, 0, 255, 0, 0, 0, 0];
-    super::apply(&mut red, 2, 1, &super::resolve(
-      &super::parse("blur(1px)").unwrap(),
-      10.0,
-      2.0,
-      1.0,
-    ));
+    super::apply(
+      &mut red,
+      2,
+      1,
+      &super::resolve(&super::parse("blur(1px)").unwrap(), 10.0, 2.0, 1.0),
+    );
     assert!(red[7] > 0, "blur reaches the neighbor");
     assert!(red[3] > 0, "source stays covered");
   }

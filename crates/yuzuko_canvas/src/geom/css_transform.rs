@@ -1225,9 +1225,9 @@ impl NumericAccumulator {
             return Ok(NumericValue::Length(length).into());
           }
           let Some(resolution) = state.length_resolution else {
-            return Err(
-              ParseError::custom(CssError::ContainsRelativeLengthValues),
-            );
+            return Err(ParseError::custom(
+              CssError::ContainsRelativeLengthValues,
+            ));
           };
           return Ok(relative_length(length, &resolution, state));
         }
@@ -1628,9 +1628,7 @@ impl NumericAccumulator {
           _ => Err(ParseError::unexpected_token()),
         }
       }
-      _ => {
-        Err(ParseError::unexpected_token())
-      }
+      _ => Err(ParseError::unexpected_token()),
     }
   }
 
@@ -1816,9 +1814,7 @@ impl NumericAccumulator {
       arguments.expect_exhausted()?;
       let degrees = value.is_angle();
       if !degrees && !value.is_number() {
-        return Err(
-          ParseError::custom(CssError::UnexpectedNumericType),
-        );
+        return Err(ParseError::custom(CssError::UnexpectedNumericType));
       }
       let radians = if degrees {
         value.value.to_radians()

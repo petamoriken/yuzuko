@@ -1,8 +1,8 @@
 //! Compositing operator and shadow stored with one canvas draw.
 
-use vello::peniko::BlendMode;
-use vello::peniko::Compose;
-use vello::peniko::Mix;
+use vello_cpu::peniko::BlendMode;
+use vello_cpu::peniko::Compose;
+use vello_cpu::peniko::Mix;
 
 use crate::paint::color::CssColor;
 
@@ -104,7 +104,7 @@ fn blend_mode(name: &str) -> BlendMode {
 mod tests {
   use super::Shade;
   use crate::paint::color::CssColor;
-  use vello::peniko::Compose;
+  use vello_cpu::peniko::Compose;
 
   fn shade(name: &str, blur: f64, x: f64, y: f64, color: CssColor) -> Shade {
     Shade::from_canvas(name, blur, x, y, color)

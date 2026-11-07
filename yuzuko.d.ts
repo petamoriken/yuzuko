@@ -2449,8 +2449,8 @@ declare namespace Yuzuko {
   /**
    * The Canvas 2D renderer chosen at process startup.
    *
-   * `"gpu"` uses the process wgpu device. `"cpu"` is selected when no device
-   * exists, when vello's GPU renderer cannot be created, or when
+   * `"gpu"` uses the process wgpu device and vello_gpu. `"cpu"` is vello_cpu,
+   * selected when no device exists, when that renderer cannot be created, or when
    * `YUZUKO_CANVAS=cpu` or `YUZUKO_SKIP_GPU=1` is set. `YUZUKO_CANVAS=gpu`
    * requests the GPU. A failed GPU request selects `"cpu"`. The value does
    * not change.
@@ -9005,8 +9005,9 @@ declare var OffscreenCanvas: {
 /**
  * Level A Canvas 2D context.
  *
- * The constructor name is `OffscreenCanvasRenderingContext2D`. The rasterizer
- * is vello. Path, text, and gradient paints are sRGB unorm8. `display-p3`
+ * The constructor name is `OffscreenCanvasRenderingContext2D`. The GPU
+ * rasterizer is vello_gpu and the CPU rasterizer is vello_cpu. Path, text,
+ * and gradient paints are sRGB unorm8. `display-p3`
  * and `float16` stores keep `putImageData` and a matching `drawImage`.
  * `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`.
  *

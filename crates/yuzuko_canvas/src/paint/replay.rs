@@ -1,5 +1,6 @@
-//! Replay one command list onto vello's CPU or GPU renderer.
+//! Replay one command list onto the CPU renderer or the GPU renderer.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
 
@@ -7,20 +8,20 @@ use kurbo::Affine;
 use kurbo::PathEl;
 use kurbo::Rect;
 use kurbo::Shape;
-use vello::peniko::BlendMode;
-use vello::peniko::Brush;
-use vello::peniko::Compose;
-use vello::peniko::Extend;
-use vello::peniko::Fill;
-use vello::peniko::Gradient;
-use vello::peniko::ImageAlphaType;
-use vello::peniko::ImageBrush;
-use vello::peniko::ImageData;
-use vello::peniko::ImageFormat;
-use vello::peniko::ImageQuality;
-use vello::peniko::ImageSampler;
-use vello::peniko::InterpolationAlphaSpace;
-use vello::peniko::Mix;
+use vello_cpu::peniko::BlendMode;
+use vello_cpu::peniko::Brush;
+use vello_cpu::peniko::Compose;
+use vello_cpu::peniko::Extend;
+use vello_cpu::peniko::Fill;
+use vello_cpu::peniko::Gradient;
+use vello_cpu::peniko::ImageAlphaType;
+use vello_cpu::peniko::ImageBrush;
+use vello_cpu::peniko::ImageData;
+use vello_cpu::peniko::ImageFormat;
+use vello_cpu::peniko::ImageQuality;
+use vello_cpu::peniko::ImageSampler;
+use vello_cpu::peniko::InterpolationAlphaSpace;
+use vello_cpu::peniko::Mix;
 use yuzuko_image::ColorSpace;
 use yuzuko_image::Raster;
 use yuzuko_image::SampleFormat;
@@ -73,23 +74,48 @@ fn backend() -> &'static Backend {
 
 fn gpu_renderer_works() -> bool {
   yuzuko_window::with_device(|device, _queue| {
-    // vello's compute pipelines need wgpu's default limits. On a downlevel
-    // device, such as a GL driver, building them fails as an uncaptured
-    // validation error that panics instead of returning `Err`.
-    if !wgpu::Limits::default().check_limits(&device.limits()) {
+    // `Renderer::new` builds pipelines and does not return `Result`. A
+    // panic means this device cannot run the fragment renderer.
+    let created =
+      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        vello_gpu::Renderer::new(
+          device,
+          &vello_gpu::RenderTargetConfig {
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            width: 1,
+            height: 1,
+          },
+        )
+      }));
+    let Ok((renderer, resources)) = created else {
       return false;
-    }
-    vello::Renderer::new(device, vello::RendererOptions::default()).is_ok()
+    };
+    GPU.with(|slot| {
+      *slot.borrow_mut() = Some(GpuState {
+        renderer,
+        resources,
+        depth: None,
+      });
+    });
+    true
   })
   .unwrap_or(false)
 }
 
-struct GpuRenderer {
-  renderer: std::mem::ManuallyDrop<vello::Renderer>,
+struct GpuState {
+  renderer: vello_gpu::Renderer,
+  resources: vello_gpu::Resources,
+  depth: Option<DepthCache>,
+}
+
+enum DepthCache {
+  View(u16, u16, wgpu::TextureView),
+  Unavailable,
 }
 
 std::thread_local! {
-  static GPU: RefCell<Option<GpuRenderer>> = const { RefCell::new(None) };
+  static GPU: RefCell<Option<GpuState>> = const { RefCell::new(None) };
+  static GPU_BROKEN: Cell<bool> = const { Cell::new(false) };
   static BLITTER: RefCell<
     Option<(wgpu::TextureFormat, wgpu::util::TextureBlitter)>,
   > = const { RefCell::new(None) };
@@ -502,7 +528,7 @@ pub fn render_premul(
     return None;
   }
   // source-in, copy, clear, and shadows touch pixels the shape misses.
-  // vello's blend does not, so those lists run on the CPU.
+  // Coverage-only blending does not, so those lists run on the CPU.
   if commands.iter().any(composite::needs_isolated) {
     return render_isolated(commands, width, height);
   }
@@ -866,7 +892,7 @@ fn replay_cpu(
       push_cpu_clips(context, clips);
       context.set_blend_mode(BlendMode::new(Mix::Normal, Compose::Clear));
       context.set_transform(*transform);
-      context.set_paint(vello::peniko::Color::new([0.0, 0.0, 0.0, 1.0]));
+      context.set_paint(vello_cpu::peniko::Color::new([0.0, 0.0, 0.0, 1.0]));
       context.fill_rect(rect);
       context.set_blend_mode(source_over());
       pop_cpu_clips(context, clips.len());
@@ -950,7 +976,9 @@ fn paint_cpu(
         sampler: image.sampler,
       }));
     }
-    None => context.set_paint(vello::peniko::Color::new([0.0, 0.0, 0.0, 0.0])),
+    None => {
+      context.set_paint(vello_cpu::peniko::Color::new([0.0, 0.0, 0.0, 0.0]))
+    }
   }
 }
 
@@ -976,14 +1004,6 @@ fn paint_image(
 
 fn starts_with_move(path: &kurbo::BezPath) -> bool {
   matches!(path.elements().first(), Some(kurbo::PathEl::MoveTo(_)))
-}
-
-fn brush_affine(transform: Affine) -> Option<Affine> {
-  if transform == Affine::IDENTITY {
-    None
-  } else {
-    Some(transform)
-  }
 }
 
 /// `no-repeat` is transparent outside the image. Peniko only pads or repeats,
@@ -1121,8 +1141,10 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
   }
 }
 
-fn peniko_stops(stops: &[(f32, CssColor)]) -> Vec<(f32, vello::peniko::Color)> {
-  let mut stops: Vec<(f32, vello::peniko::Color)> = stops
+fn peniko_stops(
+  stops: &[(f32, CssColor)],
+) -> Vec<(f32, vello_cpu::peniko::Color)> {
+  let mut stops: Vec<(f32, vello_cpu::peniko::Color)> = stops
     .iter()
     .map(|(offset, color)| (*offset, color.to_srgb_peniko()))
     .collect();
@@ -1145,7 +1167,7 @@ fn premul_rgba8(image: &ImageBuf) -> Vec<u8> {
 
 fn image_data(bytes: &[u8], width: u32, height: u32) -> ImageData {
   ImageData {
-    data: vello::peniko::Blob::from(bytes.to_vec()),
+    data: vello_cpu::peniko::Blob::from(bytes.to_vec()),
     format: ImageFormat::Rgba8,
     alpha_type: ImageAlphaType::AlphaPremultiplied,
     width,
@@ -1186,74 +1208,158 @@ fn render_gpu_texture(
   width: u32,
   height: u32,
 ) -> Option<wgpu::Texture> {
+  if GPU_BROKEN.with(Cell::get) {
+    return None;
+  }
+  let width = u16::try_from(width).ok()?;
+  let height = u16::try_from(height).ok()?;
   yuzuko_window::with_device(|device, queue| {
-    let scene = build_scene(commands, width, height);
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-      label: Some("yuzuko-canvas"),
-      size: wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-      },
-      mip_level_count: 1,
-      sample_count: 1,
-      dimension: wgpu::TextureDimension::D2,
-      format: wgpu::TextureFormat::Rgba8Unorm,
-      usage: wgpu::TextureUsages::STORAGE_BINDING
-        | wgpu::TextureUsages::COPY_SRC
-        | wgpu::TextureUsages::TEXTURE_BINDING,
-      view_formats: &[],
-    });
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let rendered = GPU.with(|slot| {
-      let mut slot = slot.borrow_mut();
-      if slot.is_none() {
-        let renderer =
-          vello::Renderer::new(device, vello::RendererOptions::default())
-            .ok()?;
-        *slot = Some(GpuRenderer {
-          renderer: std::mem::ManuallyDrop::new(renderer),
-        });
+    let rendered =
+      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        draw_gpu_texture(device, queue, commands, width, height)
+      }));
+    match rendered {
+      Ok(texture) => texture,
+      Err(_) => {
+        GPU_BROKEN.with(|flag| flag.set(true));
+        GPU.with(|slot| *slot.borrow_mut() = None);
+        None
       }
-      let gpu = slot.as_mut()?;
-      gpu
-        .renderer
-        .render_to_texture(
-          device,
-          queue,
-          &scene,
-          &view,
-          &vello::RenderParams {
-            base_color: vello::peniko::Color::new([0.0, 0.0, 0.0, 0.0]),
-            width,
-            height,
-            antialiasing_method: vello::AaConfig::Area,
-          },
-        )
-        .ok()?;
-      Some(())
-    });
-    rendered?;
-    Some(texture)
+    }
   })
   .flatten()
 }
 
-fn build_scene(commands: &[Command], width: u32, height: u32) -> vello::Scene {
-  let mut scene = vello::Scene::new();
-  for command in commands {
-    replay_gpu(&mut scene, command, width, height);
+fn draw_gpu_texture(
+  device: &wgpu::Device,
+  queue: &wgpu::Queue,
+  commands: &[Command],
+  width: u16,
+  height: u16,
+) -> Option<wgpu::Texture> {
+  let mut scene = vello_gpu::Scene::new(width, height);
+  let mut bindings = vello_gpu::TextureBindings::new();
+  let mut textures = Vec::new();
+  let mut next_id = 1u64;
+  let recorded = GPU.with(|slot| {
+    let mut slot = slot.borrow_mut();
+    let state = slot.as_mut()?;
+    let mut draw = GpuDraw {
+      scene: &mut scene,
+      resources: &mut state.resources,
+      device,
+      queue,
+      bindings: &mut bindings,
+      textures: &mut textures,
+      next_id: &mut next_id,
+    };
+    Some(
+      commands
+        .iter()
+        .all(|command| replay_gpu(&mut draw, command)),
+    )
+  })?;
+  if !recorded {
+    // Drop pending image uploads before a later submit observes them.
+    queue.submit(std::iter::empty::<wgpu::CommandBuffer>());
+    return None;
   }
-  scene
+  let texture = device.create_texture(&wgpu::TextureDescriptor {
+    label: Some("yuzuko-canvas"),
+    size: wgpu::Extent3d {
+      width: u32::from(width),
+      height: u32::from(height),
+      depth_or_array_layers: 1,
+    },
+    mip_level_count: 1,
+    sample_count: 1,
+    dimension: wgpu::TextureDimension::D2,
+    format: wgpu::TextureFormat::Rgba8Unorm,
+    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+      | wgpu::TextureUsages::COPY_SRC
+      | wgpu::TextureUsages::TEXTURE_BINDING,
+    view_formats: &[],
+  });
+  let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+  GPU.with(|slot| {
+    let mut slot = slot.borrow_mut();
+    let state = slot.as_mut()?;
+    let depth = depth_view(&mut state.depth, device, width, height);
+    let mut encoder =
+      device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("yuzuko-canvas"),
+      });
+    match state.renderer.render(
+      &scene,
+      &mut state.resources,
+      device,
+      queue,
+      &mut encoder,
+      &vello_gpu::RenderSize { width, height },
+      &view,
+      depth.as_ref(),
+      &bindings,
+      vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
+    ) {
+      Ok(()) => {
+        queue.submit([encoder.finish()]);
+        Some(())
+      }
+      Err(_) => {
+        drop(encoder);
+        queue.submit(std::iter::empty::<wgpu::CommandBuffer>());
+        None
+      }
+    }
+  })?;
+  Some(texture)
 }
 
-fn replay_gpu(
-  scene: &mut vello::Scene,
-  command: &Command,
-  width: u32,
-  height: u32,
-) {
-  let full = Rect::new(0.0, 0.0, f64::from(width), f64::from(height));
+fn depth_view(
+  depth: &mut Option<DepthCache>,
+  device: &wgpu::Device,
+  width: u16,
+  height: u16,
+) -> Option<wgpu::TextureView> {
+  if let Some(DepthCache::Unavailable) = depth {
+    return None;
+  }
+  if let Some(DepthCache::View(cached_width, cached_height, view)) = depth
+    && *cached_width == width
+    && *cached_height == height
+  {
+    return Some(view.clone());
+  }
+  let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    vello_gpu::Renderer::create_depth_texture_view(
+      device,
+      &vello_gpu::RenderSize { width, height },
+    )
+  }));
+  match created {
+    Ok(view) => {
+      let cloned = view.clone();
+      *depth = Some(DepthCache::View(width, height, view));
+      Some(cloned)
+    }
+    Err(_) => {
+      *depth = Some(DepthCache::Unavailable);
+      None
+    }
+  }
+}
+
+struct GpuDraw<'a> {
+  scene: &'a mut vello_gpu::Scene,
+  resources: &'a mut vello_gpu::Resources,
+  device: &'a wgpu::Device,
+  queue: &'a wgpu::Queue,
+  bindings: &'a mut vello_gpu::TextureBindings,
+  textures: &'a mut Vec<wgpu::Texture>,
+  next_id: &'a mut u64,
+}
+
+fn replay_gpu(draw: &mut GpuDraw<'_>, command: &Command) -> bool {
   match command {
     Command::Fill {
       path,
@@ -1267,28 +1373,27 @@ fn replay_gpu(
       clips,
     } => {
       if !starts_with_move(path) {
-        return;
+        return true;
       }
-      push_gpu_clips(scene, clips);
+      push_gpu_clips(draw.scene, clips);
       let pattern = pattern_clip(brush, *transform, *brush_transform);
       if let Some(clip) = pattern.as_ref() {
-        push_gpu_clips(scene, std::slice::from_ref(clip));
+        push_gpu_clips(draw.scene, std::slice::from_ref(clip));
       }
-      push_gpu_alpha(scene, *alpha, full);
-      if let Some(paint) = brush_of(brush, false) {
-        scene.fill(
-          *fill,
-          *transform,
-          &paint,
-          brush_affine(*brush_transform),
-          path,
-        );
+      push_gpu_opacity(draw.scene, *alpha);
+      if !paint_gpu(draw, brush, *brush_transform) {
+        return false;
       }
-      pop_gpu_alpha(scene, *alpha);
+      draw.scene.set_fill_rule(*fill);
+      draw.scene.set_transform(*transform);
+      draw.scene.set_blend_mode(source_over());
+      draw.scene.fill_path(path);
+      pop_gpu_opacity(draw.scene, *alpha);
       if pattern.is_some() {
-        pop_gpu_clips(scene, 1);
+        pop_gpu_clips(draw.scene, 1);
       }
-      pop_gpu_clips(scene, clips.len());
+      pop_gpu_clips(draw.scene, clips.len());
+      true
     }
     Command::Stroke {
       path,
@@ -1302,28 +1407,27 @@ fn replay_gpu(
       clips,
     } => {
       if !starts_with_move(path) {
-        return;
+        return true;
       }
-      push_gpu_clips(scene, clips);
+      push_gpu_clips(draw.scene, clips);
       let pattern = pattern_clip(brush, *transform, *brush_transform);
       if let Some(clip) = pattern.as_ref() {
-        push_gpu_clips(scene, std::slice::from_ref(clip));
+        push_gpu_clips(draw.scene, std::slice::from_ref(clip));
       }
-      push_gpu_alpha(scene, *alpha, full);
-      if let Some(paint) = brush_of(brush, false) {
-        scene.stroke(
-          stroke,
-          *transform,
-          &paint,
-          brush_affine(*brush_transform),
-          path,
-        );
+      push_gpu_opacity(draw.scene, *alpha);
+      if !paint_gpu(draw, brush, *brush_transform) {
+        return false;
       }
-      pop_gpu_alpha(scene, *alpha);
+      draw.scene.set_stroke(stroke.clone());
+      draw.scene.set_transform(*transform);
+      draw.scene.set_blend_mode(source_over());
+      draw.scene.stroke_path(path);
+      pop_gpu_opacity(draw.scene, *alpha);
       if pattern.is_some() {
-        pop_gpu_clips(scene, 1);
+        pop_gpu_clips(draw.scene, 1);
       }
-      pop_gpu_clips(scene, clips.len());
+      pop_gpu_clips(draw.scene, clips.len());
+      true
     }
     Command::Glyphs {
       font,
@@ -1337,75 +1441,66 @@ fn replay_gpu(
       filter: _,
       clips,
     } => {
-      push_gpu_clips(scene, clips);
-      push_gpu_alpha(scene, *alpha, full);
-      if let Some(brush) = brush_of(brush, false) {
-        let draw = scene
-          .draw_glyphs(font)
-          .font_size(*size)
-          .transform(*transform)
-          .brush(&brush);
-        let glyphs =
-          glyphs
-            .iter()
-            .copied()
-            .map(|(id, x, y)| vello::Glyph { id, x, y });
-        if let Some(stroke) = stroke {
-          draw.draw(stroke, glyphs);
-        } else {
-          draw.draw(Fill::NonZero, glyphs);
-        }
+      push_gpu_clips(draw.scene, clips);
+      push_gpu_opacity(draw.scene, *alpha);
+      if !paint_gpu(draw, brush, Affine::IDENTITY) {
+        return false;
       }
-      pop_gpu_alpha(scene, *alpha);
-      pop_gpu_clips(scene, clips.len());
+      draw.scene.set_transform(*transform);
+      draw.scene.set_blend_mode(source_over());
+      if let Some(stroke) = stroke {
+        draw.scene.set_stroke(stroke.clone());
+      }
+      let glyphs =
+        glyphs
+          .iter()
+          .copied()
+          .map(|(id, x, y)| vello_cpu::Glyph { id, x, y });
+      let run = draw.scene.glyph_run(draw.resources, font).font_size(*size);
+      if stroke.is_some() {
+        let _ = run.stroke_glyphs(glyphs);
+      } else {
+        let _ = run.fill_glyphs(glyphs);
+      }
+      pop_gpu_opacity(draw.scene, *alpha);
+      pop_gpu_clips(draw.scene, clips.len());
+      true
     }
     Command::Clear {
       rect,
       transform,
       clips,
     } => {
-      push_gpu_clips(scene, clips);
-      scene.push_layer(
-        Fill::NonZero,
-        BlendMode::new(Mix::Normal, Compose::Clear),
-        1.0,
-        *transform,
-        rect,
-      );
-      scene.fill(
-        Fill::NonZero,
-        *transform,
-        vello::peniko::Color::new([0.0, 0.0, 0.0, 1.0]),
-        None,
-        rect,
-      );
-      scene.pop_layer();
-      pop_gpu_clips(scene, clips.len());
+      push_gpu_clips(draw.scene, clips);
+      // `set_blend_mode` panics on Clear. A destructive blend covers the
+      // parent layer, so the blend layer itself is clipped to this rectangle.
+      push_gpu_destructive(draw.scene, rect, *transform, Compose::Clear);
+      draw
+        .scene
+        .set_paint(vello_cpu::peniko::Color::new([0.0, 0.0, 0.0, 1.0]));
+      draw.scene.fill_rect(rect);
+      draw.scene.pop_layer();
+      pop_gpu_clips(draw.scene, clips.len());
+      true
     }
     Command::Put { image, dx, dy } => {
       let premul = premul_rgba8(image);
-      let data = image_data(&premul, image.width, image.height);
-      let brush = ImageBrush {
-        sampler: ImageSampler::default().with_quality(ImageQuality::Low),
-        image: data,
-      };
-      scene.push_layer(
-        Fill::NonZero,
-        BlendMode::new(Mix::Normal, Compose::Copy),
-        1.0,
-        Affine::IDENTITY,
-        &Rect::new(
-          f64::from(*dx),
-          f64::from(*dy),
-          f64::from(*dx) + image.width as f64,
-          f64::from(*dy) + image.height as f64,
-        ),
-      );
-      scene.draw_image(
-        &brush,
+      let rect =
+        Rect::new(0.0, 0.0, f64::from(image.width), f64::from(image.height));
+      // Copy has the same parent-sized blend as Clear. Clip it to the image.
+      push_gpu_destructive(
+        draw.scene,
+        &rect,
         Affine::translate((f64::from(*dx), f64::from(*dy))),
+        Compose::Copy,
       );
-      scene.pop_layer();
+      if !paint_rgba8(draw, &premul, image.width, image.height, true) {
+        draw.scene.pop_layer();
+        return false;
+      }
+      draw.scene.fill_rect(&rect);
+      draw.scene.pop_layer();
+      true
     }
     Command::Image {
       image,
@@ -1416,55 +1511,219 @@ fn replay_gpu(
       filter: _,
       clips,
     } => {
-      push_gpu_clips(scene, clips);
-      push_gpu_alpha(scene, *alpha, full);
-      let data = image_data(&image.bytes, image.width, image.height);
-      let brush = ImageBrush {
-        image: data,
-        sampler: ImageSampler::default().with_quality(if *nearest {
-          ImageQuality::Low
-        } else {
-          ImageQuality::Medium
-        }),
-      };
-      scene.draw_image(&brush, *transform);
-      pop_gpu_alpha(scene, *alpha);
-      pop_gpu_clips(scene, clips.len());
+      push_gpu_clips(draw.scene, clips);
+      push_gpu_opacity(draw.scene, *alpha);
+      draw.scene.set_transform(*transform);
+      draw.scene.set_blend_mode(source_over());
+      if !paint_rgba8(draw, &image.bytes, image.width, image.height, *nearest) {
+        return false;
+      }
+      draw.scene.fill_rect(&Rect::new(
+        0.0,
+        0.0,
+        f64::from(image.width),
+        f64::from(image.height),
+      ));
+      pop_gpu_opacity(draw.scene, *alpha);
+      pop_gpu_clips(draw.scene, clips.len());
+      true
     }
   }
 }
 
 fn push_gpu_clips(
-  scene: &mut vello::Scene,
+  scene: &mut vello_gpu::Scene,
   clips: &[crate::paint::record::Clip],
 ) {
   for clip in clips {
-    scene.push_clip_layer(clip.fill, clip.transform, &clip.path);
+    scene.set_fill_rule(clip.fill);
+    scene.set_transform(clip.transform);
+    scene.push_clip_path(&clip.path);
   }
 }
 
-fn pop_gpu_clips(scene: &mut vello::Scene, count: usize) {
+fn pop_gpu_clips(scene: &mut vello_gpu::Scene, count: usize) {
   for _ in 0..count {
+    scene.pop_clip();
+  }
+}
+
+/// Push an isolated destructive blend limited to `rect`.
+///
+/// vello_gpu composites Clear and Copy across the parent layer. The clip
+/// stored on the blend layer is what reduces that region to the rectangle.
+fn push_gpu_destructive(
+  scene: &mut vello_gpu::Scene,
+  rect: &Rect,
+  transform: Affine,
+  compose: Compose,
+) {
+  scene.set_transform(transform);
+  scene.set_fill_rule(Fill::NonZero);
+  let path = rect.to_path(0.1);
+  scene.push_layer(
+    Some(&path),
+    Some(BlendMode::new(Mix::Normal, compose)),
+    None,
+    None,
+    None,
+  );
+  scene.set_blend_mode(source_over());
+}
+
+fn push_gpu_opacity(scene: &mut vello_gpu::Scene, alpha: f32) {
+  if alpha < 1.0 {
+    scene.push_opacity_layer(alpha);
+  }
+}
+
+fn pop_gpu_opacity(scene: &mut vello_gpu::Scene, alpha: f32) {
+  if alpha < 1.0 {
     scene.pop_layer();
   }
 }
 
-fn push_gpu_alpha(scene: &mut vello::Scene, alpha: f32, full: Rect) {
-  if alpha < 1.0 {
-    scene.push_layer(
-      Fill::NonZero,
-      source_over(),
-      alpha,
-      Affine::IDENTITY,
-      &full,
-    );
+fn paint_gpu(draw: &mut GpuDraw<'_>, brush: &Paint, transform: Affine) -> bool {
+  draw.scene.reset_paint_transform();
+  if transform != Affine::IDENTITY {
+    draw.scene.set_paint_transform(transform);
+  }
+  match brush_of(brush, true) {
+    Some(Brush::Solid(color)) => {
+      draw.scene.set_paint(color);
+      true
+    }
+    Some(Brush::Gradient(gradient)) => {
+      draw.scene.set_paint(gradient);
+      true
+    }
+    Some(Brush::Image(image)) => {
+      match upload_rgba8(
+        draw,
+        image.image.data.data(),
+        image.image.width,
+        image.image.height,
+      ) {
+        ImageUpload::Texture(source) => {
+          draw.scene.set_paint(vello_gpu::Image {
+            image: source,
+            sampler: image.sampler,
+          });
+          true
+        }
+        ImageUpload::Empty => {
+          draw.scene.set_paint(transparent_color());
+          true
+        }
+        ImageUpload::Unsupported => false,
+      }
+    }
+    None => {
+      draw.scene.set_paint(transparent_color());
+      true
+    }
   }
 }
 
-fn pop_gpu_alpha(scene: &mut vello::Scene, alpha: f32) {
-  if alpha < 1.0 {
-    scene.pop_layer();
+fn paint_rgba8(
+  draw: &mut GpuDraw<'_>,
+  bytes: &[u8],
+  width: u32,
+  height: u32,
+  nearest: bool,
+) -> bool {
+  draw.scene.reset_paint_transform();
+  match upload_rgba8(draw, bytes, width, height) {
+    ImageUpload::Texture(source) => {
+      draw.scene.set_paint(vello_gpu::Image {
+        image: source,
+        sampler: ImageSampler::default().with_quality(if nearest {
+          ImageQuality::Low
+        } else {
+          ImageQuality::Medium
+        }),
+      });
+      true
+    }
+    ImageUpload::Empty => {
+      draw.scene.set_paint(transparent_color());
+      true
+    }
+    ImageUpload::Unsupported => false,
   }
+}
+
+fn transparent_color() -> vello_cpu::peniko::Color {
+  vello_cpu::peniko::Color::new([0.0, 0.0, 0.0, 0.0])
+}
+
+enum ImageUpload {
+  Texture(vello_gpu::ImageSource),
+  Empty,
+  Unsupported,
+}
+
+/// `ImageSource::Pixmap` panics in this renderer, and its image atlas cannot
+/// be reset from outside the crate. Each image is a texture sampled for this
+/// frame. The texture stays alive until the frame is submitted.
+fn upload_rgba8(
+  draw: &mut GpuDraw<'_>,
+  bytes: &[u8],
+  width: u32,
+  height: u32,
+) -> ImageUpload {
+  let Ok(width) = u16::try_from(width) else {
+    return ImageUpload::Unsupported;
+  };
+  let Ok(height) = u16::try_from(height) else {
+    return ImageUpload::Unsupported;
+  };
+  if width == 0 || height == 0 {
+    return ImageUpload::Empty;
+  }
+  let row = usize::from(width) * 4;
+  let Some(needed) = row.checked_mul(usize::from(height)) else {
+    return ImageUpload::Unsupported;
+  };
+  if bytes.len() < needed {
+    return ImageUpload::Unsupported;
+  }
+  let bytes = &bytes[..needed];
+  let id = vello_gpu::TextureId(*draw.next_id);
+  *draw.next_id += 1;
+  let texture = draw.device.create_texture(&wgpu::TextureDescriptor {
+    label: Some("yuzuko-canvas-image"),
+    size: wgpu::Extent3d {
+      width: u32::from(width),
+      height: u32::from(height),
+      depth_or_array_layers: 1,
+    },
+    mip_level_count: 1,
+    sample_count: 1,
+    dimension: wgpu::TextureDimension::D2,
+    format: wgpu::TextureFormat::Rgba8Unorm,
+    usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+    view_formats: &[],
+  });
+  draw.queue.write_texture(
+    texture.as_image_copy(),
+    bytes,
+    wgpu::TexelCopyBufferLayout {
+      offset: 0,
+      bytes_per_row: Some(u32::from(width) * 4),
+      rows_per_image: Some(u32::from(height)),
+    },
+    texture.size(),
+  );
+  let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+  draw.bindings.insert(id, view);
+  draw.textures.push(texture);
+  let transparent = bytes.chunks_exact(4).any(|pixel| pixel[3] != 255);
+  ImageUpload::Texture(vello_gpu::ImageSource::external_texture(
+    id,
+    vello_gpu::RectU16::new(0, 0, width, height),
+    transparent,
+  ))
 }
 
 fn readback(
@@ -1596,7 +1855,7 @@ mod tests {
   use kurbo::Affine;
   use kurbo::Rect;
   use kurbo::Shape;
-  use vello::peniko::Fill;
+  use vello_cpu::peniko::Fill;
 
   use super::render_plain;
   use super::render_premul;
@@ -1678,6 +1937,107 @@ mod tests {
     ];
     let bytes = render_plain(&commands, 4, 4).unwrap();
     assert_eq!(pixel(&bytes, 4, 1, 1), [0, 255, 0, 255]);
+  }
+
+  fn gpu_on_this_thread() -> bool {
+    super::renderer_name() == "gpu"
+      && yuzuko_window::with_device(|_device, _queue| ()).is_some()
+  }
+
+  #[test]
+  fn gpu_plain_source_over_clear_and_image() {
+    if !gpu_on_this_thread() {
+      return;
+    }
+    let commands = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(0.0, 1.0, 0.0),
+        Shade::source_over(),
+      ),
+    ];
+    assert!(super::render_texture(&commands, 4, 4).is_some());
+    let bytes = render_premul(&commands, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 1, 1), [0, 255, 0, 255]);
+
+    let cleared = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      Command::Clear {
+        rect: Rect::new(0.0, 0.0, 2.0, 4.0),
+        transform: Affine::IDENTITY,
+        clips: Arc::from([]),
+      },
+    ];
+    let bytes = render_premul(&cleared, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 0, 1), [0, 0, 0, 0]);
+    assert_eq!(pixel(&bytes, 4, 3, 1), [255, 0, 0, 255]);
+
+    let copied = vec![
+      fill(
+        0.0,
+        0.0,
+        4.0,
+        4.0,
+        color(1.0, 0.0, 0.0),
+        Shade::source_over(),
+      ),
+      Command::Put {
+        image: Arc::new(crate::paint::record::ImageBuf {
+          width: 2,
+          height: 4,
+          display_p3: false,
+          float16: false,
+          premultiplied: true,
+          bytes: vec![0, 255, 0, 255].repeat(8),
+        }),
+        dx: 0,
+        dy: 0,
+      },
+    ];
+    let bytes = render_premul(&copied, 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 0, 1), [0, 255, 0, 255]);
+    assert_eq!(pixel(&bytes, 4, 3, 1), [255, 0, 0, 255]);
+
+    let image = Arc::new(crate::paint::record::ImageBuf {
+      width: 4,
+      height: 4,
+      display_p3: false,
+      float16: false,
+      premultiplied: true,
+      bytes: vec![128, 0, 0, 128].repeat(16),
+    });
+    let drawn = Command::Image {
+      image,
+      transform: Affine::IDENTITY,
+      alpha: 1.0,
+      nearest: true,
+      shade: Shade::source_over(),
+      filter: crate::paint::record::empty_filter(),
+      clips: Arc::from([]),
+    };
+    assert!(
+      super::render_texture(std::slice::from_ref(&drawn), 4, 4).is_some()
+    );
+    let bytes = render_premul(std::slice::from_ref(&drawn), 4, 4).unwrap();
+    assert_eq!(pixel(&bytes, 4, 1, 1), [128, 0, 0, 128]);
   }
 
   #[test]
