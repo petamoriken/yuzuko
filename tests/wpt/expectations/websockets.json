@@ -320,7 +320,13 @@
   "websockets/constructor/007.html": true,
   "websockets/constructor/008.html": true,
   "websockets/constructor/009.html": {
-    "flaky": "The protocol handshake does not finish."
+    "flaky": {
+      "linux": "The protocol handshake does not finish.",
+      "windows": "The protocol handshake does not finish."
+    },
+    "ignore": {
+      "macos": "The protocol handshake does not finish."
+    }
   },
   "websockets/constructor/010.html": true,
   "websockets/constructor/011.html": true,
