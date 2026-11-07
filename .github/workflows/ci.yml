@@ -243,6 +243,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
+          # Unit tests include_str! WPT JSON. Format does not compile.
+          submodules: ${{ matrix.task == 'clippy' && 'recursive' || 'false' }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

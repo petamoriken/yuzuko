@@ -663,9 +663,7 @@ mod platform {
     {
       return None;
     }
-    let Some(hwnd) = crate::os::focused_hwnd() else {
-      return None;
-    };
+    let hwnd = crate::os::focused_hwnd()?;
     {
       let mut target = lock_target();
       target.hwnd = hwnd;
