@@ -1062,9 +1062,9 @@ fn watch_hmr_keeps_the_realm_and_the_module_url() {
     !stdout.contains("live 3"),
     "one reload increments the realm once\n{stdout}"
   );
-  let stderr = child.stderr.lock().expect("stderr").clone();
+  // `HMR Reloaded` is printed after the reloaded module's stdout.
+  let stderr = child.wait_stderr("HMR Reloaded", limit);
   assert!(stderr.contains("HMR Process started."), "{stderr}");
-  assert!(stderr.contains("HMR Reloaded"), "{stderr}");
   assert!(stderr.contains("stamp.ts"), "{stderr}");
   assert!(
     !stderr.contains("\u{1b}[2J"),
@@ -1121,8 +1121,7 @@ fn watch_hmr_keeps_a_window_and_a_playing_context() {
     stdout.contains(first),
     "the first graph must keep the window and the context\n{stdout}"
   );
-  let stderr = child.stderr.lock().expect("stderr").clone();
-  assert!(stderr.contains("HMR Reloaded"), "{stderr}");
+  let stderr = child.wait_stderr("HMR Reloaded", limit);
   assert!(stderr.contains("stamp.ts"), "{stderr}");
 }
 
@@ -1188,10 +1187,11 @@ fn watch_hmr_keeps_a_shell_module() {
     stdout.contains(first) && stdout.contains(second),
     "the shell must have stayed through the stamp edit\n{stdout}"
   );
-  let stderr = child.stderr.lock().expect("stderr").clone();
+  // The shell reload is printed before this stdout line. Wait until the
+  // reader thread has copied it.
+  let stderr = child.wait_stderr("shell.ts", limit);
   assert!(stderr.contains("HMR Reloaded"), "{stderr}");
   assert!(stderr.contains("stamp.ts"), "{stderr}");
-  assert!(stderr.contains("shell.ts"), "{stderr}");
 }
 
 #[test]
