@@ -563,7 +563,13 @@
     }
   },
   "websockets/opening-handshake/003.html": {
-    "flaky": "The IDN origin handshake does not finish."
+    "flaky": {
+      "linux": "The IDN origin handshake does not finish.",
+      "windows": "The IDN origin handshake does not finish."
+    },
+    "ignore": {
+      "macos": "The IDN origin handshake does not finish."
+    }
   },
   "websockets/opening-handshake/005.html": false,
   "websockets/opening-handshake/006.html": true,
