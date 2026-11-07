@@ -195,6 +195,7 @@ fn create() -> Result<SharedGpu, String> {
       power_preference: wgpu::PowerPreference::default(),
       force_fallback_adapter: false,
       compatible_surface: None,
+      apply_limit_buckets: false,
     },
   ))
   .map_err(|error| error.to_string())?;

@@ -515,7 +515,7 @@ fn read_rgba(
     timeout: None,
   });
   receiver.recv().ok()?.ok()?;
-  let view = slice.get_mapped_range();
+  let view = slice.get_mapped_range().ok()?;
   let mut pixels = vec![0u8; tight * height as usize];
   for row in 0..height as usize {
     let from = row * stride;

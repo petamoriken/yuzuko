@@ -60,6 +60,7 @@ fn material() -> Material {
     .distinguished_name
     .push(rcgen::DnType::CommonName, "Yuzuko Test CA");
   let ca = ca_params.self_signed(&ca_key).expect("ca");
+  let issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
 
   let leaf_key = rcgen::KeyPair::generate().expect("leaf key");
   let mut leaf_params =
@@ -72,9 +73,7 @@ fn material() -> Material {
   leaf_params
     .distinguished_name
     .push(rcgen::DnType::CommonName, "127.0.0.1");
-  let leaf = leaf_params
-    .signed_by(&leaf_key, &ca, &ca_key)
-    .expect("leaf");
+  let leaf = leaf_params.signed_by(&leaf_key, &issuer).expect("leaf");
 
   let mut roots = rustls::RootCertStore::empty();
   roots.add(ca.der().clone()).expect("trust anchor");

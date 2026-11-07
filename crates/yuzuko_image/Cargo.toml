@@ -10,12 +10,12 @@ half.workspace = true
 image-webp.workspace = true
 jxl-oxide = { version = "0.12", default-features = false }
 kamadak-exif = "0.6"
-moxcms = "0.7"
+moxcms = "0.8"
 png.workspace = true
 v8.workspace = true
 yuzuko_core.workspace = true
 yuzuko_macros.workspace = true
 yuzuko_window.workspace = true
 yuzuko_winter.workspace = true
-zune-core = "0.4"
-zune-jpeg = "0.4"
+zune-core = "0.5"
+zune-jpeg = "0.5"
