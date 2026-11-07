@@ -281,7 +281,7 @@ mod tests {
   fn open_track(
     name: &str,
     acceleration: Acceleration,
-  ) -> (VideoBackend, Vec<Sample>) {
+  ) -> (VideoBackend, Vec<Sample>, bool) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
       .join("../../tests/fixtures/media")
       .join(name);
@@ -291,15 +291,23 @@ mod tests {
     let movie =
       parse(&bytes).unwrap_or_else(|error| panic!("{name}: {error:?}"));
     let track = movie.video.into_iter().next().expect("video");
+    let description = track.description.clone();
+    let width = track.coded_width;
+    let height = track.coded_height;
+    // Probe before the backend opens its own session. `supports_av1` can
+    // be true when this `av1C` is still rejected, and that rejection is
+    // the rav1d path.
+    let opened = acceleration != Acceleration::PreferSoftware
+      && crate::platform::open_av1(&description, width, height).is_ok();
     let backend = VideoBackend::open(VideoConfig {
       codec: Codec::Av1,
-      description: track.description,
-      width: track.coded_width,
-      height: track.coded_height,
+      description,
+      width,
+      height,
       acceleration,
     })
     .expect("configure");
-    (backend, track.samples)
+    (backend, track.samples, opened)
   }
 
   fn assert_red(backend: &mut VideoBackend, samples: &[Sample]) {
@@ -325,41 +333,37 @@ mod tests {
     frame.bytes[index..index + 4].try_into().expect("pixel")
   }
 
+  fn assert_selected(backend: &VideoBackend, hardware: bool) {
+    if hardware {
+      assert!(matches!(backend.inner, VideoInner::Hardware(_)));
+    } else {
+      assert!(matches!(backend.inner, VideoInner::Av1(_)));
+    }
+  }
+
   #[test]
   fn av1_uses_hardware_when_the_session_opens() {
-    let (mut software, samples) =
+    let (mut software, samples, _) =
       open_track("red-av1-256.mp4", Acceleration::PreferSoftware);
     assert!(matches!(software.inner, VideoInner::Av1(_)));
     assert_red(&mut software, &samples);
 
-    let (mut hardware, samples) =
+    let (mut hardware, samples, opened) =
       open_track("red-av1-256.mp4", Acceleration::PreferHardware);
-    let (omitted, _) =
+    let (omitted, _, omitted_opened) =
       open_track("red-av1-256.mp4", Acceleration::NoPreference);
-    if crate::platform::supports_av1() {
-      assert!(matches!(hardware.inner, VideoInner::Hardware(_)));
-      assert!(matches!(omitted.inner, VideoInner::Hardware(_)));
-    } else {
-      assert!(matches!(hardware.inner, VideoInner::Av1(_)));
-      assert!(matches!(omitted.inner, VideoInner::Av1(_)));
-    }
+    assert_eq!(opened, omitted_opened);
+    assert_selected(&hardware, opened);
+    assert_selected(&omitted, opened);
     assert_red(&mut hardware, &samples);
 
-    // VideoToolbox rejects this 16x16 session on an M3. A machine without
-    // an AV1 hardware decoder fails the probe. Both stay on rav1d. A VA-API
-    // driver may accept 16x16, so Linux follows the profile probe.
-    let (mut small, samples) =
+    // VideoToolbox rejects this 16×16 session on an M3. macOS 15 can
+    // report an `av01` hardware decoder and still reject the 256×256
+    // session. A VA-API driver may accept 16×16. The opened session is
+    // the hardware path; a rejected one stays on rav1d.
+    let (mut small, samples, opened) =
       open_track("red-av1.mp4", Acceleration::PreferHardware);
-    #[cfg(target_os = "macos")]
-    assert!(matches!(small.inner, VideoInner::Av1(_)));
-    #[cfg(target_os = "linux")]
-    {
-      if crate::platform::supports_av1() {
-        assert!(matches!(small.inner, VideoInner::Hardware(_)));
-      } else {
-        assert!(matches!(small.inner, VideoInner::Av1(_)));
-      }
-    }
+    assert_selected(&small, opened);
     assert_red(&mut small, &samples);
   }
 }
