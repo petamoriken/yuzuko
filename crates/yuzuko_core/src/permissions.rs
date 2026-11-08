@@ -1018,7 +1018,14 @@ fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
             }
             return walk_operating(&rest, depth + 1);
           }
-          Ok(_) => out.push(name),
+          Ok(meta) => {
+            out.push(name);
+            // A file cannot contain the next component. Windows reports
+            // that child as NotFound, so the check is made here.
+            if !meta.file_type().is_dir() && index + 1 < components.len() {
+              return Err(());
+            }
+          }
           Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             out.push(name);
             for later in components.iter().skip(index + 1) {
