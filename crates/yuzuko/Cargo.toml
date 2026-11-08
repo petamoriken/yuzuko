@@ -169,6 +169,10 @@ name = "package"
 required-features = ["window", "fetch"]
 
 [[test]]
+name = "permissions"
+required-features = ["fs"]
+
+[[test]]
 name = "repl"
 required-features = ["window"]
 

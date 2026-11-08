@@ -136,6 +136,7 @@ impl EventSource {
     }
     let input = yuzuko_core::rust_string(scope, args.get(0));
     let url = resolve_http(&input)?;
+    yuzuko_core::authorize_url(&url)?;
     let credentials = with_credentials(scope, args)?;
     Ok(Self {
       base: EventTarget::new(),

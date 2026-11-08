@@ -742,6 +742,7 @@ fn listen_op(
   options: v8::Local<v8::Value>,
 ) -> Result<New<Server>, OpError> {
   let addr = if options.is_null_or_undefined() {
+    crate::permissions::check_net("127.0.0.1", 0)?;
     SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
   } else {
     endpoint(scope, options)?
@@ -768,6 +769,7 @@ fn endpoint(
     Some(value) if !value.is_undefined() => to_port(scope, value)?,
     _ => 0,
   };
+  crate::permissions::check_net(&hostname, port)?;
   let ip = parse_host(&hostname)?;
   Ok(SocketAddr::new(ip, port))
 }

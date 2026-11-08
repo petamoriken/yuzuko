@@ -1310,6 +1310,9 @@ fn start_fetch<'s>(
     Ok(url) => url,
     Err(error) => return rejected(scope, error),
   };
+  if let Err(error) = yuzuko_core::authorize_url(&url) {
+    return rejected(scope, op_to_reject(error));
+  }
   match url.scheme() {
     "http" | "https" => spawn_http(scope, url, args),
     "file" => spawn_file(scope, url),
@@ -1815,6 +1818,9 @@ fn promise_http<'s>(
       Ok(Err(crate::http::HttpFailure::Type(message))) => {
         reject_value(scope, resolver, Reject::Type(message));
       }
+      Ok(Err(crate::http::HttpFailure::Denied { name, message })) => {
+        reject_value(scope, resolver, Reject::Dom(name, message));
+      }
       Ok(Err(crate::http::HttpFailure::Network(_message))) => {
         reject_value(
           scope,
@@ -2181,6 +2187,9 @@ fn dispatch_prepared<'s>(
     Ok(url) => url,
     Err(error) => return rejected(scope, error),
   };
+  if let Err(error) = yuzuko_core::authorize_url(&url) {
+    return rejected(scope, op_to_reject(error));
+  }
   match url.scheme() {
     "http" | "https" => spawn_prepared_http(scope, prepared, url),
     "file" => spawn_file(scope, url),

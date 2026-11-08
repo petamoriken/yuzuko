@@ -65,6 +65,9 @@ pub(super) async fn attempt(
       Ok(Err(HttpFailure::Type(message))) => {
         return Err(HttpFailure::Type(message));
       }
+      Ok(Err(HttpFailure::Denied { name, message })) => {
+        return Err(HttpFailure::Denied { name, message });
+      }
       Ok(Err(HttpFailure::Network(_))) | Err(_) => {
         alt_svc::invalidate(attempt.url);
         return Ok(Step::Skip);
@@ -275,6 +278,7 @@ async fn redirect(
         .map_err(|_| {
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
+      super::authorize_redirect(&next)?;
       if matches!(status, 303)
         || (matches!(status, 301 | 302)
           && attempt.method.eq_ignore_ascii_case("POST"))

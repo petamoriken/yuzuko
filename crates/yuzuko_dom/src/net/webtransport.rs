@@ -117,6 +117,7 @@ impl WebTransport {
     }
     let input = yuzuko_core::rust_string(scope, args.get(0));
     let url = parse_url(&input)?;
+    yuzuko_core::authorize_url(&url)?;
     let parsed = parsed_options(scope, args)?;
     let connection = connect_web_transport(url.clone(), parsed.options);
     Ok(Self {

@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn workspace() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -108,7 +108,12 @@ fn expected() -> String {
 fn runtime_features_select_the_surface() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["run", "tests/cli/runtime_build.ts"])
+    .args([
+      "run",
+      "--allow-read=tests/cli/runtime_worker.ts",
+      "tests/cli/runtime_build.ts",
+    ])
+    .stdin(Stdio::null())
     .output()
     .expect("spawn yuzuko");
   let stdout = String::from_utf8_lossy(&output.stdout);

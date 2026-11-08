@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
+use crate::op::OpException;
+
 static EXIT: AtomicI32 = AtomicI32::new(-1);
 static ARGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// Orders this process's own environment and current-directory changes.
@@ -151,6 +153,10 @@ fn env_get(
   let Some(name) = env_name(scope, args.get(0)) else {
     return;
   };
+  if let Err(error) = crate::permissions::check_env(&name) {
+    error.throw(scope);
+    return;
+  }
   let value = {
     let _guard = io_lock();
     std::env::var_os(&name).map(|value| value.to_string_lossy().into_owned())
@@ -172,6 +178,10 @@ fn env_set(
   let Some(value) = env_value(scope, args.get(1)) else {
     return;
   };
+  if let Err(error) = crate::permissions::check_env(&name) {
+    error.throw(scope);
+    return;
+  }
   let _guard = io_lock();
   // SAFETY: `name` is not empty and contains neither `=` nor NUL, and
   // `value` contains no NUL, so these calls do not panic on those inputs.
@@ -191,6 +201,10 @@ fn env_delete(
   let Some(name) = env_name(scope, args.get(0)) else {
     return;
   };
+  if let Err(error) = crate::permissions::check_env(&name) {
+    error.throw(scope);
+    return;
+  }
   let _guard = io_lock();
   // SAFETY: see [`env_set`]. A missing name is a successful removal.
   unsafe {
@@ -206,6 +220,10 @@ fn env_has(
   let Some(name) = env_name(scope, args.get(0)) else {
     return;
   };
+  if let Err(error) = crate::permissions::check_env(&name) {
+    error.throw(scope);
+    return;
+  }
   let present = {
     let _guard = io_lock();
     std::env::var_os(&name).is_some()
@@ -218,6 +236,10 @@ fn env_to_object(
   _args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
+  if let Err(error) = crate::permissions::check_env_all() {
+    error.throw(scope);
+    return;
+  }
   let pairs = {
     let _guard = io_lock();
     std::env::vars_os()
@@ -338,6 +360,10 @@ fn chdir(
   }
   if path.as_os_str().as_encoded_bytes().contains(&0) {
     crate::js::throw_type(scope, PATH_NUL);
+    return;
+  }
+  if let Err(error) = crate::permissions::check_read(&path) {
+    error.throw(scope);
     return;
   }
   let guard = io_lock();

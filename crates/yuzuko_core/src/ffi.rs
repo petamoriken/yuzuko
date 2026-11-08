@@ -216,6 +216,7 @@ fn dlopen_op<'s>(
   if path.contains('\0') {
     return Err(OpError::type_(PATH_NUL));
   }
+  crate::permissions::check_ffi(std::path::Path::new(&path))?;
   let prepared = read_symbols(scope, args.get(1))?;
   let handle =
     open_library(&path).ok_or_else(|| plain_error(scope, OPEN_FAIL))?;

@@ -1530,6 +1530,11 @@ impl Window {
     let picker = crate::shell::dialog::parse_picker(scope, options)?;
     self.require_dialog()?;
     let title = self.title.borrow().clone();
+    let grant_write = matches!(
+      picker,
+      crate::shell::dialog::Picker::Save { .. }
+        | crate::shell::dialog::Picker::Directory
+    );
     let picked = match picker {
       crate::shell::dialog::Picker::Open { multiple, filters } => {
         crate::shell::dialog::pick_files(self.id, &title, multiple, &filters)
@@ -1547,6 +1552,15 @@ impl Window {
       }
     }
     .map_err(dialog_unsupported)?;
+    if let Some(paths) = picked.as_ref() {
+      for path in paths {
+        let path = std::path::Path::new(path);
+        yuzuko_core::grant_read(path);
+        if grant_write {
+          yuzuko_core::grant_write(path);
+        }
+      }
+    }
     path_list(scope, picked)
   }
 

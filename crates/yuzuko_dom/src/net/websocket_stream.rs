@@ -94,6 +94,7 @@ impl WebSocketStream {
     }
     let input = yuzuko_core::rust_string(scope, args.get(0));
     let url = parse_url(&input)?;
+    yuzuko_core::authorize_url(&url)?;
     let options = stream_options(scope, args)?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let aborted = options.aborted;

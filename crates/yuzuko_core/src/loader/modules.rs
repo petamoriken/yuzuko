@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
 use oxc_resolver::{
@@ -111,7 +111,7 @@ pub fn compile_entry(
 ) -> Result<v8::Global<v8::Module>, RuntimeError> {
   let path = absolute(path)?;
   let url = file_url(&path)?;
-  let module = compile_path(scope, &path, &url, None)?;
+  let module = compile_path(scope, &path, &path, &url, None)?;
   Ok(v8::Global::new(scope, module))
 }
 
@@ -244,16 +244,37 @@ fn module_linked(module: v8::Local<v8::Module>) -> bool {
   )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EvalKind {
+  Script,
+  Wasm,
+  Json,
+}
+
 fn compile_path<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   path: &Path,
+  label: &Path,
   url: &str,
   attributes: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
   // Note before the read so a file that fails to compile is still watched.
   crate::watch::note(path);
+  // `label` is the path the importer named. The resolver may already have
+  // followed a symlink, and the rejection must not report that target.
+  let gate = if same_module_file(label, path) {
+    label
+  } else {
+    path
+  };
   let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
   let kind = module_kind(attributes, extension);
+  // `type` selects a raw module, including `{ type: "json" }` on a file
+  // that is then parsed as a script. JavaScript and WebAssembly evaluation
+  // imports stay ungated when every resolved form is that kind of file.
+  if matches!(attributes, Some("text" | "bytes" | "json")) {
+    permit_module_read(gate)?;
+  }
   if let Some(existing) = existing_module(scope, url, kind) {
     return Ok(existing);
   }
@@ -265,35 +286,52 @@ fn compile_path<'a>(
   if kind == ModuleRecordKind::Bytes {
     return synthetic_bytes(scope, url, path);
   }
-  if extension == "wasm" {
-    let bytes = fs::read(path).map_err(|err| {
-      RuntimeError::message(format!("{}: {err}", path.display()))
-    })?;
-    let source =
-      crate::loader::wasm_module::wrapper_source(scope, url, &bytes)?;
-    return compile_prepared(scope, url, path, &source);
-  }
-  if path.to_string_lossy().ends_with(".d.ts")
-    || path.to_string_lossy().ends_with(".d.mts")
-  {
-    return Err(RuntimeError::message(format!(
-      "cannot execute declaration file {}",
-      path.display()
-    )));
-  }
-  if extension == "json" {
-    if attributes != Some("json") {
-      return Err(RuntimeError::message(format!(
-        "JSON module {} must be imported with {{ type: \"json\" }}",
-        path.display()
-      )));
+  // `{ type: "json" }` on a non-json file is a script after the read check.
+  // A `.wasm` file stays WebAssembly. A declaration file is not executed.
+  if attributes == Some("json") && extension != "json" {
+    if file_forms(gate).iter().any(|form| is_declaration(form)) {
+      return Err(declaration_error(gate));
     }
-    let text = fs::read_to_string(path).map_err(|err| {
-      RuntimeError::message(format!("{}: {err}", path.display()))
-    })?;
-    return synthetic_json(scope, url, path, &text);
+    if extension == "wasm" {
+      return compile_wasm(scope, url, path);
+    }
+    return compile_script(scope, url, path);
   }
+  match evaluation_kind(gate)? {
+    EvalKind::Wasm => compile_wasm(scope, url, path),
+    EvalKind::Json => {
+      if attributes != Some("json") {
+        return Err(RuntimeError::message(format!(
+          "JSON module {} must be imported with {{ type: \"json\" }}",
+          gate.display()
+        )));
+      }
+      let text = fs::read_to_string(path).map_err(|err| {
+        RuntimeError::message(format!("{}: {err}", path.display()))
+      })?;
+      synthetic_json(scope, url, path, &text)
+    }
+    EvalKind::Script => compile_script(scope, url, path),
+  }
+}
 
+fn compile_wasm<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  url: &str,
+  path: &Path,
+) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  let bytes = fs::read(path).map_err(|err| {
+    RuntimeError::message(format!("{}: {err}", path.display()))
+  })?;
+  let source = crate::loader::wasm_module::wrapper_source(scope, url, &bytes)?;
+  compile_prepared(scope, url, path, &source)
+}
+
+fn compile_script<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  url: &str,
+  path: &Path,
+) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
   let bytes = fs::read(path).map_err(|err| {
     RuntimeError::message(format!("{}: {err}", path.display()))
   })?;
@@ -302,6 +340,130 @@ fn compile_path<'a>(
   })?;
   let code = cached_source(path, &source)?;
   compile_prepared(scope, url, path, &code)
+}
+
+/// An evaluation import may read only when the lexical path and the
+/// canonical target are the same kind of module. Anything else is rejected
+/// before the file bytes are read.
+fn evaluation_kind(path: &Path) -> Result<EvalKind, RuntimeError> {
+  let forms = file_forms(path);
+  if forms.iter().any(|form| is_declaration(form)) {
+    return Err(declaration_error(path));
+  }
+  let kinds = forms
+    .iter()
+    .map(|form| match form.extension().and_then(|ext| ext.to_str()) {
+      Some("js" | "mjs" | "cjs" | "ts" | "mts") => Some(EvalKind::Script),
+      Some("wasm") => Some(EvalKind::Wasm),
+      Some("json") => Some(EvalKind::Json),
+      _ => None,
+    })
+    .collect::<Vec<_>>();
+  if kinds.iter().all(|kind| *kind == Some(EvalKind::Script)) {
+    return Ok(EvalKind::Script);
+  }
+  if kinds.iter().all(|kind| *kind == Some(EvalKind::Wasm)) {
+    return Ok(EvalKind::Wasm);
+  }
+  if kinds.iter().all(|kind| *kind == Some(EvalKind::Json)) {
+    return Ok(EvalKind::Json);
+  }
+  Err(RuntimeError::message(format!(
+    "{} must be imported with {{ type: \"text\" }} or {{ type: \"bytes\" }}",
+    path.display()
+  )))
+}
+
+fn declaration_error(path: &Path) -> RuntimeError {
+  RuntimeError::message(format!(
+    "cannot execute declaration file {}",
+    path.display()
+  ))
+}
+
+fn is_declaration(path: &Path) -> bool {
+  let text = path.to_string_lossy();
+  text.ends_with(".d.ts") || text.ends_with(".d.mts")
+}
+
+/// The path as named, plus its canonical path when that names a different
+/// file. A missing final component keeps the parent's canonical directory.
+fn file_forms(path: &Path) -> Vec<PathBuf> {
+  let mut forms = vec![path.to_path_buf()];
+  let real = canonicalize(path).ok().or_else(|| {
+    let parent = path.parent()?;
+    let name = path.file_name()?;
+    if parent.as_os_str().is_empty() {
+      return None;
+    }
+    Some(canonicalize(parent).ok()?.join(name))
+  });
+  if let Some(real) = real
+    && real != path
+  {
+    forms.push(real);
+  }
+  forms
+}
+
+/// True when `label` and `path` are the same file. The resolver follows
+/// symlinks, and the rejection still has to name the path the importer wrote.
+fn same_module_file(label: &Path, path: &Path) -> bool {
+  if label == path {
+    return true;
+  }
+  let left = file_forms(label);
+  let right = file_forms(path);
+  left
+    .iter()
+    .any(|form| right.iter().any(|other| form == other))
+}
+
+/// The specifier as a path, without following a symlink. Package names have
+/// no lexical path. `..` is collapsed without reading the file system, which
+/// is the path the importer wrote, not the path the operating system opens.
+fn lexical_request(referrer: &Path, specifier: &str) -> Option<PathBuf> {
+  let joined = if specifier.starts_with("file:") {
+    url_to_path(specifier).ok()?
+  } else if specifier.starts_with('.') {
+    referrer.parent()?.join(specifier)
+  } else if Path::new(specifier).is_absolute() {
+    PathBuf::from(specifier)
+  } else {
+    return None;
+  };
+  Some(lexical_normalize(&joined))
+}
+
+fn lexical_normalize(path: &Path) -> PathBuf {
+  let mut out = PathBuf::new();
+  for component in path.components() {
+    match component {
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+          out.pop();
+        }
+      }
+      other => out.push(other.as_os_str()),
+    }
+  }
+  out
+}
+
+fn permit_module_read(path: &Path) -> Result<(), RuntimeError> {
+  match crate::permissions::check_read(path) {
+    Ok(()) => Ok(()),
+    Err(crate::op::OpError::Dom { name, message }) => {
+      Err(RuntimeError::dom(name, message))
+    }
+    Err(
+      crate::op::OpError::Type(message) | crate::op::OpError::Range(message),
+    ) => Err(RuntimeError::message(message)),
+    Err(crate::op::OpError::Thrown(_)) => Err(RuntimeError::message(
+      "The file could not be read.".to_string(),
+    )),
+  }
 }
 
 fn module_kind(attributes: Option<&str>, extension: &str) -> ModuleRecordKind {
@@ -558,7 +720,7 @@ fn resolve_callback<'s>(
       })
     }
     Err(error) => {
-      throw_type(scope, &error.message);
+      throw_load(scope, &error);
       None
     }
   }
@@ -590,7 +752,7 @@ fn source_callback<'s>(
       })
     }
     Err(error) => {
-      throw_type(scope, &error.message);
+      throw_load(scope, &error);
       None
     }
   }
@@ -612,15 +774,24 @@ fn load_source<'a>(
   }
   let (path, url) = locate(referrer, specifier)?;
   let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-  if extension == "wasm" {
-    let bytes = fs::read(&path).map_err(|err| {
-      RuntimeError::message(format!("{}: {err}", path.display()))
-    })?;
-    return crate::loader::wasm_module::source_object(scope, &url, &bytes);
-  }
-  if matches!(extension, "js" | "mjs" | "cjs" | "ts" | "mts") {
-    compile_path(scope, &path, &url, None)?;
-    return crate::loader::module_source::wrap(scope, &url);
+  if extension == "wasm"
+    || matches!(extension, "js" | "mjs" | "cjs" | "ts" | "mts")
+  {
+    // A `.ts` symlink to a secret file is not a source-phase module, and
+    // the target is not read.
+    return match evaluation_kind(&path)? {
+      EvalKind::Wasm => {
+        let bytes = fs::read(&path).map_err(|err| {
+          RuntimeError::message(format!("{}: {err}", path.display()))
+        })?;
+        crate::loader::wasm_module::source_object(scope, &url, &bytes)
+      }
+      EvalKind::Script => {
+        compile_path(scope, &path, &path, &url, None)?;
+        crate::loader::module_source::wrap(scope, &url)
+      }
+      EvalKind::Json => Err(RuntimeError::message(UNSUPPORTED_SOURCE_PHASE)),
+    };
   }
   Err(RuntimeError::message(UNSUPPORTED_SOURCE_PHASE))
 }
@@ -632,7 +803,9 @@ fn resolve_and_compile<'a>(
   attribute: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
   let (path, url) = locate(referrer, specifier)?;
-  compile_path(scope, &path, &url, attribute)
+  let label =
+    lexical_request(referrer, specifier).unwrap_or_else(|| path.clone());
+  compile_path(scope, &path, &label, &url, attribute)
 }
 
 fn locate(
@@ -994,6 +1167,7 @@ pub(crate) fn compile_fresh(
     compile_path(
       scope,
       &module.path,
+      &module.path,
       &module.url,
       kind_attribute(module.kind),
     )?;
@@ -1268,9 +1442,7 @@ pub fn dynamic_import<'s>(
       }
     },
     Err(error) => {
-      let message = v8::String::new(scope, &error.message).unwrap();
-      let exception = v8::Exception::type_error(scope, message);
-      resolver.reject(scope, exception);
+      reject_load(scope, resolver, &error);
     }
   }
   Some(promise)
@@ -1296,9 +1468,7 @@ pub fn dynamic_import_source<'s>(
       resolver.resolve(scope, module.into());
     }
     Err(error) => {
-      let message = v8::String::new(scope, &error.message).unwrap();
-      let exception = v8::Exception::type_error(scope, message);
-      resolver.reject(scope, exception);
+      reject_load(scope, resolver, &error);
     }
   }
   Some(promise)
@@ -1326,7 +1496,7 @@ pub fn dynamic_import_defer<'s>(
   let module = match loaded {
     Ok(module) => module,
     Err(error) => {
-      reject_message(scope, resolver, &error.message, true);
+      reject_load(scope, resolver, &error);
       return Some(promise);
     }
   };
@@ -2098,6 +2268,38 @@ fn throw_type(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   scope.throw_exception(error);
 }
 
+fn throw_load(scope: &mut v8::PinScope, error: &RuntimeError) {
+  let exception = load_exception(scope, error);
+  scope.throw_exception(exception);
+}
+
+fn reject_load(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  error: &RuntimeError,
+) {
+  let exception = load_exception(scope, error);
+  resolver.reject(scope, exception);
+}
+
+fn load_exception<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  error: &RuntimeError,
+) -> v8::Local<'s, v8::Value> {
+  if let Some(name) = error.dom_name.as_deref() {
+    if let Some(exception) =
+      crate::op::new_dom_exception(scope, name, &error.message)
+    {
+      return exception.into();
+    }
+    let text = format!("{name}: {}", error.message);
+    let message = v8::String::new(scope, &text).unwrap();
+    return v8::Exception::type_error(scope, message);
+  }
+  let message = v8::String::new(scope, &error.message).unwrap();
+  v8::Exception::type_error(scope, message)
+}
+
 #[cfg(all(test, windows))]
 mod verbatim_tests {
   use std::path::{Path, PathBuf};
@@ -2488,5 +2690,73 @@ import("./missing-dynamic.js", { with: { type: "text" } });
     );
     let error = module_graph(&dir.0.join("entry.ts")).unwrap_err();
     assert!(error.to_string().contains("missing.ts"), "{error}");
+  }
+}
+
+#[cfg(test)]
+mod evaluation_tests {
+  use std::fs;
+  use std::path::PathBuf;
+
+  use super::evaluation_kind;
+
+  fn scratch() -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+      "yuzuko-eval-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    fs::create_dir_all(&path).unwrap();
+    fs::canonicalize(&path).unwrap_or(path)
+  }
+
+  #[test]
+  fn a_non_script_file_is_rejected_without_its_text() {
+    let dir = scratch();
+    let env = dir.join("ident.env");
+    fs::write(&env, "API_KEY=sk_live_CanarySecretValue\n").unwrap();
+    let error = evaluation_kind(&env).unwrap_err();
+    assert!(
+      error.message.contains("type: \"text\""),
+      "{}",
+      error.message
+    );
+    assert!(!error.message.contains("sk_live"), "{}", error.message);
+
+    let upper = dir.join("credentials.JSON");
+    fs::write(&upper, "export default \"CANARY-JSON-CASE\";\n").unwrap();
+    let error = evaluation_kind(&upper).unwrap_err();
+    assert!(
+      error.message.contains("type: \"text\""),
+      "{}",
+      error.message
+    );
+    assert!(
+      !error.message.contains("CANARY-JSON-CASE"),
+      "{}",
+      error.message
+    );
+
+    fs::write(dir.join("lib.ts"), "export const marker = 1;\n").unwrap();
+    assert!(evaluation_kind(&dir.join("lib.ts")).is_ok());
+    fs::write(dir.join("data.json"), "{}\n").unwrap();
+    assert!(evaluation_kind(&dir.join("data.json")).is_ok());
+
+    #[cfg(unix)]
+    {
+      let link = dir.join("linked.ts");
+      std::os::unix::fs::symlink(&env, &link).unwrap();
+      let error = evaluation_kind(&link).unwrap_err();
+      assert!(
+        error.message.contains("type: \"text\""),
+        "{}",
+        error.message
+      );
+      assert!(!error.message.contains("sk_live"), "{}", error.message);
+    }
+    let _ = fs::remove_dir_all(dir);
   }
 }

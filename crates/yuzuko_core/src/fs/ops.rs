@@ -112,6 +112,7 @@ fn path_only(
   let path = ready(scope, path)?;
   let options = value::ignore_options(scope, args.get(1));
   ready(scope, options)?;
+  crate::permissions::check_read(&path)?;
   Ok(path)
 }
 
@@ -198,6 +199,26 @@ fn ready_temp(
   ready(scope, spec)
 }
 
+fn permit_open(
+  path: &std::path::Path,
+  flags: OpenFlags,
+) -> Result<(), OpError> {
+  if flags.read {
+    crate::permissions::check_read(path)?;
+  }
+  if flags.writes() {
+    crate::permissions::check_write(path)?;
+  }
+  Ok(())
+}
+
+fn permit_temp(spec: &io::TempSpec) -> Result<(), OpError> {
+  match &spec.dir {
+    Some(dir) => crate::permissions::check_write(dir),
+    None => crate::permissions::check_write(&std::env::temp_dir()),
+  }
+}
+
 callback!(open, open_op);
 fn open_op(
   scope: &mut v8::PinScope,
@@ -205,6 +226,7 @@ fn open_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_open_flags(scope, args.get(1))?;
+  permit_open(&path, flags)?;
   settle!(
     scope,
     move || io::open_file(&path, flags),
@@ -225,6 +247,7 @@ fn open_sync_op(
 ) -> Result<New<FsFile>, OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_open_flags(scope, args.get(1))?;
+  permit_open(&path, flags)?;
   let file = ready(scope, io::open_file(&path, flags))?;
   Ok(New(FsFile::from_std(file)))
 }
@@ -236,6 +259,7 @@ fn create_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let flags = OpenFlags::create_file();
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::open_file(&path, flags),
@@ -255,6 +279,7 @@ fn create_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<New<FsFile>, OpError> {
   let path = one_path(scope, args)?;
+  crate::permissions::check_write(&path)?;
   let file = ready(scope, io::open_file(&path, OpenFlags::create_file()))?;
   Ok(New(FsFile::from_std(file)))
 }
@@ -317,6 +342,7 @@ fn write_file_op(
   let path = one_path(scope, args)?;
   let bytes = ready_copy(scope, args.get(1))?;
   let flags = ready_write_flags(scope, args.get(2))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::write_bytes(&path, &bytes, flags),
@@ -334,6 +360,7 @@ fn write_file_sync_op(
   let path = one_path(scope, args)?;
   let bytes = ready_copy(scope, args.get(1))?;
   let flags = ready_write_flags(scope, args.get(2))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::write_bytes(&path, &bytes, flags))
 }
 
@@ -345,6 +372,7 @@ fn write_text_file_op(
   let path = one_path(scope, args)?;
   let text = ready_text(scope, args.get(1))?;
   let flags = ready_write_flags(scope, args.get(2))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::write_text(&path, &text, flags),
@@ -362,6 +390,7 @@ fn write_text_file_sync_op(
   let path = one_path(scope, args)?;
   let text = ready_text(scope, args.get(1))?;
   let flags = ready_write_flags(scope, args.get(2))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::write_text(&path, &text, flags))
 }
 
@@ -372,6 +401,7 @@ fn mkdir_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_mkdir_flags(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::mkdir_path(&path, flags),
@@ -388,6 +418,7 @@ fn mkdir_sync_op(
 ) -> Result<(), OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_mkdir_flags(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::mkdir_path(&path, flags))
 }
 
@@ -398,6 +429,7 @@ fn remove_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_remove_flags(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::remove_path(&path, flags),
@@ -414,6 +446,7 @@ fn remove_sync_op(
 ) -> Result<(), OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_remove_flags(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::remove_path(&path, flags))
 }
 
@@ -423,6 +456,10 @@ fn rename_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
   let (from, to) = two_paths(scope, args)?;
+  crate::permissions::check_read(&from)?;
+  crate::permissions::check_write(&from)?;
+  crate::permissions::check_read(&to)?;
+  crate::permissions::check_write(&to)?;
   settle!(
     scope,
     move || io::rename_path(&from, &to),
@@ -438,6 +475,10 @@ fn rename_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
   let (from, to) = two_paths(scope, args)?;
+  crate::permissions::check_read(&from)?;
+  crate::permissions::check_write(&from)?;
+  crate::permissions::check_read(&to)?;
+  crate::permissions::check_write(&to)?;
   ready(scope, io::rename_path(&from, &to))
 }
 
@@ -539,6 +580,8 @@ fn copy_file_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
   let (from, to) = two_paths(scope, args)?;
+  crate::permissions::check_read(&from)?;
+  crate::permissions::check_write(&to)?;
   settle!(
     scope,
     move || io::copy_path(&from, &to),
@@ -554,6 +597,8 @@ fn copy_file_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
   let (from, to) = two_paths(scope, args)?;
+  crate::permissions::check_read(&from)?;
+  crate::permissions::check_write(&to)?;
   ready(scope, io::copy_path(&from, &to))
 }
 
@@ -590,6 +635,7 @@ fn truncate_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let len = ready_length(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::truncate_path(&path, len),
@@ -606,6 +652,7 @@ fn truncate_sync_op(
 ) -> Result<(), OpError> {
   let path = one_path(scope, args)?;
   let len = ready_length(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::truncate_path(&path, len))
 }
 
@@ -631,6 +678,7 @@ fn temp_kind(
   directory: bool,
 ) -> Result<Js, OpError> {
   let spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&spec)?;
   settle!(
     scope,
     move || io::make_temp(directory, spec),
@@ -648,6 +696,7 @@ fn make_temp_dir_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
   let spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&spec)?;
   ready(scope, io::make_temp(true, spec))
 }
 
@@ -657,6 +706,7 @@ fn make_temp_file_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
   let spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&spec)?;
   ready(scope, io::make_temp(false, spec))
 }
 
@@ -685,6 +735,7 @@ fn chown_args(
     "The group id must be an integer or null.",
   );
   let gid = ready(scope, gid)?;
+  crate::permissions::check_write(&path)?;
   Ok((path, uid, gid))
 }
 
@@ -693,6 +744,8 @@ fn symlink_args(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(std::path::PathBuf, std::path::PathBuf, io::LinkKind), OpError> {
   let (old, new) = two_paths(scope, args)?;
+  crate::permissions::check_read(&old)?;
+  crate::permissions::check_write(&new)?;
   let kind = value::link_kind(scope, args.get(2));
   let kind = ready(scope, kind)?;
   Ok((old, new, kind))
@@ -709,6 +762,7 @@ fn utime_args(
   let mtime = ready(scope, mtime)?;
   ready(scope, io::check_time(atime))?;
   ready(scope, io::check_time(mtime))?;
+  crate::permissions::check_write(&path)?;
   Ok((path, atime, mtime))
 }
 
@@ -719,6 +773,7 @@ fn chmod_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let mode = ready_mode(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::chmod(&path, mode),
@@ -735,6 +790,7 @@ fn chmod_sync_op(
 ) -> Result<(), OpError> {
   let path = one_path(scope, args)?;
   let mode = ready_mode(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
   ready(scope, io::chmod(&path, mode))
 }
 
@@ -773,6 +829,7 @@ fn umask_op(
   } else {
     Some(ready_mode(scope, value)?)
   };
+  crate::permissions::check_write_all()?;
   ready(scope, io::umask(mask))
 }
 
@@ -782,6 +839,8 @@ fn link_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
   let (old, new) = two_paths(scope, args)?;
+  crate::permissions::check_read(&old)?;
+  crate::permissions::check_write(&new)?;
   settle!(
     scope,
     move || io::link(&old, &new),
@@ -797,6 +856,8 @@ fn link_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
   let (old, new) = two_paths(scope, args)?;
+  crate::permissions::check_read(&old)?;
+  crate::permissions::check_write(&new)?;
   ready(scope, io::link(&old, &new))
 }
 
@@ -830,6 +891,7 @@ fn read_link_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
+  crate::permissions::check_read(&path)?;
   settle!(
     scope,
     move || io::read_link(&path),
@@ -847,6 +909,7 @@ fn read_link_sync_op(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
   let path = one_path(scope, args)?;
+  crate::permissions::check_read(&path)?;
   ready(scope, io::read_link(&path))
 }
 
@@ -881,6 +944,9 @@ fn watch_fs_op(
 ) -> Result<New<FsWatcher>, OpError> {
   let paths = value::watch_paths(scope, args.get(0));
   let paths = ready(scope, paths)?;
+  for path in &paths {
+    crate::permissions::check_read(path)?;
+  }
   let recursive = value::watch_recursive(scope, args.get(1));
   let recursive = ready(scope, recursive)?;
   let watcher = ready(scope, super::watch::start(paths, recursive))?;

@@ -296,7 +296,9 @@ fn import_scripts(
     };
     let captured = if url.starts_with("blob:") {
       Some(
-        load_worker_source(&url, sandbox.as_deref()).map(|loaded| loaded.text),
+        load_worker_source(&url, sandbox.as_deref())
+          .map(|loaded| loaded.text)
+          .map_err(script_error),
       )
     } else {
       None
@@ -306,17 +308,29 @@ fn import_scripts(
   for (url, captured) in imports {
     let text = match captured {
       Some(Ok(text)) => text,
-      Some(Err(message)) => {
-        OpError::dom("NetworkError", message).throw(scope);
+      Some(Err(error)) => {
+        throw_script(scope, error);
         return;
       }
-      None => match load_import_script(&url, sandbox.as_deref()) {
-        Ok(text) => text,
-        Err(message) => {
-          OpError::dom("NetworkError", message).throw(scope);
-          return;
+      None => {
+        if url.starts_with("http:") || url.starts_with("https:") {
+          if let Ok(parsed) = url::Url::parse(&url) {
+            let host = parsed.host_str().unwrap_or("");
+            let port = parsed.port_or_known_default().unwrap_or(0);
+            if let Err(error) = yuzuko_core::check_net(host, port) {
+              error.throw(scope);
+              return;
+            }
+          }
         }
-      },
+        match load_import_script(&url, sandbox.as_deref()) {
+          Ok(text) => text,
+          Err(error) => {
+            throw_script(scope, error);
+            return;
+          }
+        }
+      }
     };
     if let Err(message) = eval_classic_in_worker(scope, &url, &text) {
       yuzuko_core::throw_type(scope, &message);
@@ -325,24 +339,69 @@ fn import_scripts(
   }
 }
 
+enum ScriptError {
+  Network(String),
+  Denied { name: String, message: String },
+}
+
+fn script_error(error: yuzuko_core::WorkerLoadError) -> ScriptError {
+  match error {
+    yuzuko_core::WorkerLoadError::Message(message) => {
+      ScriptError::Network(message)
+    }
+    yuzuko_core::WorkerLoadError::Denied { name, message } => {
+      ScriptError::Denied { name, message }
+    }
+  }
+}
+
+fn throw_script(scope: &mut v8::PinScope, error: ScriptError) {
+  match error {
+    ScriptError::Network(message) => {
+      OpError::dom("NetworkError", message).throw(scope);
+    }
+    ScriptError::Denied { name, message } => {
+      OpError::dom(name, message).throw(scope);
+    }
+  }
+}
+
 fn load_import_script(
   url: &str,
   sandbox: Option<&std::path::Path>,
-) -> Result<String, String> {
+) -> Result<String, ScriptError> {
   if url.starts_with("http:") || url.starts_with("https:") {
     #[cfg(feature = "fetch")]
     {
       return fetch_import_script(url);
     }
   }
-  load_worker_source(url, sandbox).map(|loaded| loaded.text)
+  load_worker_source(url, sandbox)
+    .map(|loaded| loaded.text)
+    .map_err(script_error)
 }
 
 #[cfg(feature = "fetch")]
-fn fetch_import_script(url: &str) -> Result<String, String> {
-  let (status, headers, body) = yuzuko_winter::read_get(url)?;
+fn fetch_import_script(url: &str) -> Result<String, ScriptError> {
+  let (status, headers, body) = match yuzuko_winter::read_get(url) {
+    Ok(fetched) => fetched,
+    Err(yuzuko_winter::HttpFailure::Denied { name, message }) => {
+      return Err(ScriptError::Denied { name, message });
+    }
+    Err(yuzuko_winter::HttpFailure::Abort) => {
+      return Err(ScriptError::Network(
+        "The operation was aborted".to_string(),
+      ));
+    }
+    Err(
+      yuzuko_winter::HttpFailure::Type(message)
+      | yuzuko_winter::HttpFailure::Network(message),
+    ) => return Err(ScriptError::Network(message)),
+  };
   if !(200..300).contains(&status) {
-    return Err(format!("The worker script could not be loaded: {url}"));
+    return Err(ScriptError::Network(format!(
+      "The worker script could not be loaded: {url}"
+    )));
   }
   let mime = headers
     .iter()
@@ -350,11 +409,12 @@ fn fetch_import_script(url: &str) -> Result<String, String> {
     .map(|(_, value)| value.as_str())
     .unwrap_or("");
   if !yuzuko_winter::is_javascript_mime(mime) {
-    return Err(format!(
+    return Err(ScriptError::Network(format!(
       "The worker script MIME type is not JavaScript: {mime}"
-    ));
+    )));
   }
-  String::from_utf8(body).map_err(|error| error.to_string())
+  String::from_utf8(body)
+    .map_err(|error| ScriptError::Network(error.to_string()))
 }
 
 fn global_post_message(

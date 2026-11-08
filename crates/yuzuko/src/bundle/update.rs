@@ -62,6 +62,10 @@ const TRUNCATED: Failure = Failure {
   name: "NetworkError",
   message: "The connection closed before the body ended.",
 };
+const NET_DENIED: Failure = Failure {
+  name: "NotAllowedError",
+  message: "Requires net access, run again with the --allow-net flag",
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Failure {
@@ -88,6 +92,7 @@ pub(crate) struct BundleMeta {
   pub version: String,
   pub entry: String,
   pub release_base_url: Option<String>,
+  pub permissions: Option<serde_json::Value>,
 }
 
 struct PayloadFile {
@@ -572,12 +577,18 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
     .and_then(|item| item.as_str())
     .filter(|url| !url.is_empty())
     .map(str::to_string);
+  let permissions = match value.get("permissions") {
+    None => None,
+    Some(item) if item.is_object() => Some(item.clone()),
+    Some(_) => return Err(()),
+  };
   Ok(BundleMeta {
     name,
     identifier,
     version,
     entry,
     release_base_url,
+    permissions,
   })
 }
 
@@ -779,6 +790,9 @@ fn http_get(url_text: &str, max: usize) -> Result<Vec<u8>, Failure> {
   let url = url::Url::parse(url_text).map_err(|_| DOWNLOAD_FAILED)?;
   let host = url.host_str().ok_or(DOWNLOAD_FAILED)?.to_string();
   let port = url.port_or_known_default().ok_or(DOWNLOAD_FAILED)?;
+  if yuzuko_core::check_net(&host, port).is_err() {
+    return Err(NET_DENIED);
+  }
   let stream = tcp_connect(&host, port)?;
   match url.scheme() {
     "http" => exchange(stream, &url, max),

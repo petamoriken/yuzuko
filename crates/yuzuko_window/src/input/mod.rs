@@ -229,6 +229,11 @@ fn dispatch_files(
     FilePhase::Hover => "filehover",
     FilePhase::Drop => "filedrop",
   };
+  if matches!(phase, FilePhase::Drop) {
+    for path in paths {
+      yuzuko_core::grant_read(std::path::Path::new(path));
+    }
+  }
   let event = Event::new(type_name, false, false, false, true);
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, object);

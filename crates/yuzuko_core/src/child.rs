@@ -373,6 +373,30 @@ fn spawn_op<'s>(
     args.get(1)
   };
   let request = read_options(scope, options)?;
+  // A relative program is resolved from `cwd`. Check that directory before
+  // asking the operating system whether it exists.
+  if let Some(dir) = &request.cwd {
+    crate::permissions::check_read(dir)?;
+  }
+  let rooted = request.cwd.is_some()
+    && !Path::new(&program).is_absolute()
+    && (program.contains('/') || program.contains('\\'));
+  if rooted {
+    crate::permissions::check_run_at(
+      &program,
+      request.cwd.as_deref().unwrap(),
+    )?;
+  } else {
+    crate::permissions::check_run(&program)?;
+  }
+  for change in &request.env {
+    crate::permissions::check_env(&change.name)?;
+  }
+  // The overlay removes or replaces names. Every other variable is inherited.
+  crate::permissions::check_env_all()?;
+  if let Some(dir) = &request.cwd {
+    ensure_directory(scope, dir)?;
+  }
   let mut command = Command::new(&program);
   command.args(&request.args);
   command.stdin(request.stdin.as_stdio());
@@ -1411,11 +1435,7 @@ fn read_cwd_field(
   let Some(field) = read_field(scope, object, "cwd")? else {
     return Ok(None);
   };
-  let Some(path) = parse_cwd(scope, field)? else {
-    return Ok(None);
-  };
-  ensure_directory(scope, &path)?;
-  Ok(Some(path))
+  parse_cwd(scope, field)
 }
 
 fn parse_cwd(

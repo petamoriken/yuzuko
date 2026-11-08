@@ -125,6 +125,11 @@ pub enum HttpFailure {
   Abort,
   Type(String),
   Network(String),
+  /// A permission check rejected this URL. `name` is a DOMException name.
+  Denied {
+    name: String,
+    message: String,
+  },
 }
 
 pub fn perform(
@@ -142,7 +147,7 @@ pub fn perform(
 /// it returns.
 type Fetched = (u16, Vec<(String, String)>, Vec<u8>);
 
-pub fn read_get(url: &str) -> Result<Fetched, String> {
+pub fn read_get(url: &str) -> Result<Fetched, HttpFailure> {
   let cancel = Arc::new(AtomicBool::new(false));
   let response = perform(
     "GET".to_string(),
@@ -151,11 +156,10 @@ pub fn read_get(url: &str) -> Result<Fetched, String> {
     Vec::new(),
     "follow".to_string(),
     Arc::clone(&cancel),
-  )
-  .map_err(|error| failure_message(&error))?;
-  let body = collect_notes(&response.body);
+  )?;
+  let body = collect_notes(&response.body).map_err(HttpFailure::Network)?;
   response.body.stop();
-  Ok((response.status, response.headers, body?))
+  Ok((response.status, response.headers, body))
 }
 
 fn collect_notes(body: &HttpBody) -> Result<Vec<u8>, String> {
@@ -373,6 +377,7 @@ async fn exchange(
             .map_err(|_| {
               HttpFailure::Type("The redirect URL is invalid".to_string())
             })?;
+          authorize_redirect(&next)?;
           if matches!(status, 303)
             || (matches!(status, 301 | 302)
               && method.eq_ignore_ascii_case("POST"))
@@ -538,6 +543,22 @@ fn is_redirect(status: u16) -> bool {
   matches!(status, 301 | 302 | 303 | 307 | 308)
 }
 
+fn authorize_redirect(next: &url::Url) -> Result<(), HttpFailure> {
+  match yuzuko_core::authorize_url(next) {
+    Ok(()) => Ok(()),
+    Err(yuzuko_core::op::OpError::Dom { name, message }) => {
+      Err(HttpFailure::Denied { name, message })
+    }
+    Err(
+      yuzuko_core::op::OpError::Type(message)
+      | yuzuko_core::op::OpError::Range(message),
+    ) => Err(HttpFailure::Type(message)),
+    Err(yuzuko_core::op::OpError::Thrown(_)) => {
+      Err(HttpFailure::Type("The redirect URL is invalid".to_string()))
+    }
+  }
+}
+
 fn https_connector(
   roots: Option<&rustls::RootCertStore>,
 ) -> hyper_rustls::HttpsConnector<
@@ -693,6 +714,7 @@ fn finish_exchange(
         .map_err(|_| {
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
+      authorize_redirect(&next)?;
       if matches!(raw.status, 303)
         || (matches!(raw.status, 301 | 302)
           && cursor.method.eq_ignore_ascii_case("POST"))
@@ -878,6 +900,7 @@ async fn exchange_http1(
         .map_err(|_| {
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
+    authorize_redirect(&next)?;
     if matches!(parsed_head.status, 303)
       || (matches!(parsed_head.status, 301 | 302)
         && method.eq_ignore_ascii_case("POST"))
@@ -1067,9 +1090,9 @@ async fn deliver_raw(
 fn failure_message(error: &HttpFailure) -> String {
   match error {
     HttpFailure::Abort => "The operation was aborted".to_string(),
-    HttpFailure::Type(message) | HttpFailure::Network(message) => {
-      message.clone()
-    }
+    HttpFailure::Type(message)
+    | HttpFailure::Network(message)
+    | HttpFailure::Denied { message, .. } => message.clone(),
   }
 }
 

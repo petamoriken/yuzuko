@@ -79,6 +79,8 @@ pub struct RuntimeError {
   pub exit_code: Option<u8>,
   /// Set when a watch session should load this path again.
   pub reload_path: Option<PathBuf>,
+  /// DOMException name when the failure is a web exception.
+  pub dom_name: Option<String>,
 }
 
 impl RuntimeError {
@@ -87,6 +89,16 @@ impl RuntimeError {
       message: message.into(),
       exit_code: None,
       reload_path: None,
+      dom_name: None,
+    }
+  }
+
+  pub fn dom(name: impl Into<String>, message: impl Into<String>) -> Self {
+    Self {
+      message: message.into(),
+      exit_code: None,
+      reload_path: None,
+      dom_name: Some(name.into()),
     }
   }
 
@@ -95,6 +107,7 @@ impl RuntimeError {
       message: String::new(),
       exit_code: Some(code),
       reload_path: None,
+      dom_name: None,
     }
   }
 
@@ -104,6 +117,7 @@ impl RuntimeError {
       message,
       exit_code: None,
       reload_path: Some(path),
+      dom_name: None,
     }
   }
 }
@@ -919,7 +933,14 @@ pub(crate) fn run_worker_isolate(
         &script.url,
         script.sandbox.as_deref(),
       )
-      .map_err(RuntimeError::message)?;
+      .map_err(|error| match error {
+        crate::worker::WorkerLoadError::Message(message) => {
+          RuntimeError::message(message)
+        }
+        crate::worker::WorkerLoadError::Denied { name, message } => {
+          RuntimeError::dom(name, message)
+        }
+      })?;
       if script.kind == crate::worker::ScriptKind::Module {
         let path = loaded.path.ok_or_else(|| {
           RuntimeError::message("A module worker needs a file path".to_string())
@@ -937,7 +958,7 @@ pub(crate) fn run_worker_isolate(
       // `Yuzuko.exit` from this worker is process shutdown, not an error
       // event on the parent.
       if !exiting() && crate::worker::agent_alive(id) {
-        report_worker_failure(id, &script.url, error.message);
+        report_worker_failure(id, &script.url, error);
       }
     } else {
       while crate::worker::agent_alive(id) && !crate::worker::worker_closing(id)
@@ -965,10 +986,14 @@ pub(crate) fn run_worker_isolate(
   host::exit();
 }
 
-fn report_worker_failure(id: u64, url: &str, message: String) {
+fn report_worker_failure(id: u64, url: &str, error: RuntimeError) {
   let Some(parent) = crate::worker::parent_agent(id) else {
     crate::worker::mark_dead(id);
     return;
+  };
+  let message = match error.dom_name {
+    Some(name) => format!("{name}: {}", error.message),
+    None => error.message,
   };
   crate::worker::post_inbound(
     parent,
@@ -2100,6 +2125,7 @@ fn install_yuzuko_namespace(scope: &mut v8::PinScope<'_, '_>) {
 fn install_process(scope: &mut v8::PinScope<'_, '_>) {
   let yuzuko = crate::js::namespace(scope, "Yuzuko");
   crate::process::install(scope, yuzuko);
+  crate::permissions::install(scope, yuzuko);
 }
 
 fn install_console(scope: &mut v8::PinScope<'_, '_>) {

@@ -93,6 +93,7 @@ impl WebSocket {
     }
     let input = yuzuko_core::rust_string(scope, args.get(0));
     let url = parse_url(&input)?;
+    yuzuko_core::authorize_url(&url)?;
     let init = if args.length() < 2 {
       SocketInit::default()
     } else {

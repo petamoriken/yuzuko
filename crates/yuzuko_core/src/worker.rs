@@ -550,6 +550,18 @@ pub struct LoadedSource {
   pub text: String,
 }
 
+#[derive(Debug)]
+pub enum WorkerLoadError {
+  Message(String),
+  Denied { name: String, message: String },
+}
+
+impl From<String> for WorkerLoadError {
+  fn from(message: String) -> Self {
+    Self::Message(message)
+  }
+}
+
 pub fn eval_classic_in_worker(
   scope: &mut v8::PinScope,
   url: &str,
@@ -562,7 +574,7 @@ pub fn eval_classic_in_worker(
 pub fn load_worker_source(
   url: &str,
   sandbox: Option<&Path>,
-) -> Result<LoadedSource, String> {
+) -> Result<LoadedSource, WorkerLoadError> {
   if let Some(text) = classic_worker_source(url) {
     return Ok(LoadedSource { path: None, text });
   }
@@ -579,23 +591,48 @@ pub fn load_worker_source(
     let path = parsed
       .to_file_path()
       .map_err(|()| format!("The worker URL is not a file path: {url}"))?;
+    if let Err(error) = crate::permissions::check_read(&path) {
+      return Err(worker_permission(error));
+    }
     let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
     return Ok(LoadedSource {
       path: Some(path),
       text,
     });
   }
+  // `127.0.0.1`, `localhost`, and `web-platform.test` map onto the entry
+  // directory for WPT. The read is the same check as a `file:` worker,
+  // including the canonical target, so a symlink cannot escape the grant.
   if let Some(sandbox) = sandbox
     && let Some(path) = sandbox_file(&parsed, sandbox)
-    && path.is_file()
   {
-    let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-    return Ok(LoadedSource {
-      path: Some(path),
-      text,
-    });
+    if let Err(error) = crate::permissions::check_read(&path) {
+      return Err(worker_permission(error));
+    }
+    if path.is_file() {
+      let text =
+        fs::read_to_string(&path).map_err(|error| error.to_string())?;
+      return Ok(LoadedSource {
+        path: Some(path),
+        text,
+      });
+    }
   }
-  Err(format!("The worker script could not be loaded: {url}"))
+  Err(format!("The worker script could not be loaded: {url}").into())
+}
+
+fn worker_permission(error: crate::op::OpError) -> WorkerLoadError {
+  match error {
+    crate::op::OpError::Dom { name, message } => {
+      WorkerLoadError::Denied { name, message }
+    }
+    crate::op::OpError::Type(message) | crate::op::OpError::Range(message) => {
+      WorkerLoadError::Message(message)
+    }
+    crate::op::OpError::Thrown(_) => WorkerLoadError::Message(
+      "The worker script could not be loaded.".to_string(),
+    ),
+  }
 }
 
 type BlobScriptLoader = fn(&str) -> Result<String, String>;

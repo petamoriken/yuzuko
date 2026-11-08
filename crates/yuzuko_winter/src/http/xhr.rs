@@ -166,6 +166,7 @@ impl XMLHttpRequest {
     }
     self.sent.set(true);
     let url = resolve_fetch_url(&self.url.borrow())?;
+    yuzuko_core::authorize_url(&url)?;
     let event = if url.scheme() == "data" {
       finish_data(self, &url)
     } else {
@@ -197,6 +198,9 @@ impl XMLHttpRequest {
         }
         Err(HttpFailure::Type(message)) => {
           return Err(OpError::type_(message));
+        }
+        Err(HttpFailure::Denied { name, message }) => {
+          return Err(OpError::dom(name, message));
         }
       }
     };

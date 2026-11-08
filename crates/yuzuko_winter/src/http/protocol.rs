@@ -131,7 +131,9 @@ fn fetch(url: &str, roots: Option<rustls::RootCertStore>) -> HttpResponse {
     Ok(response) => response,
     Err(super::HttpFailure::Abort) => panic!("the fetch was aborted"),
     Err(
-      super::HttpFailure::Type(message) | super::HttpFailure::Network(message),
+      super::HttpFailure::Type(message)
+      | super::HttpFailure::Network(message)
+      | super::HttpFailure::Denied { message, .. },
     ) => {
       panic!("{message}");
     }

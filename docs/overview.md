@@ -42,7 +42,9 @@ The application entry is an ES module. TypeScript is erased with oxc before V8 p
 
 `Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are in every build, on the main realm and in a dedicated worker.
 
-`args` is the argument vector recorded at launch. `env` reads and writes the process environment. `cwd` and `chdir` are the process current directory. `exit(code)` ends the process with a status from 0 through 255. There is no permission prompt. Which optional surfaces exist is chosen when the runtime is built.
+`args` is the argument vector recorded at launch. `env` reads and writes the process environment. `cwd` and `chdir` are the process current directory. `exit(code)` ends the process with a status from 0 through 255. Which optional surfaces exist is chosen when the runtime is built.
+
+`Yuzuko.permissions` is in every build. The names are `read`, `write`, `net`, `env`, `run`, and `ffi`. `yuzuko run` asks on a terminal when a grant is missing. `yuzuko repl` does not ask. `yuzuko test` allows every check unless a deny flag is set. `permissions` in `yuzuko.json` supplies the grants for `yuzuko run` and for a packaged application. A packaged application that includes the object does not ask, and an omitted name is denied. A packaged application that omits the key allows every check. A denied call throws `NotAllowedError`.
 
 ## Windows and input
 
@@ -122,7 +124,7 @@ Feature: `fs`.
 
 File-system methods live on `Yuzuko` in the main realm and in a dedicated worker: `open`, `create`, `readFile`, `readTextFile`, `writeFile`, `writeTextFile`, `mkdir`, `remove`, `rename`, `stat`, `lstat`, `readDir`, `copyFile`, `realPath`, `truncate`, `makeTempDir`, `makeTempFile`, `chmod`, `chown`, `link`, `symlink`, `readLink`, `utime`, and `watchFs`. Each of those except `watchFs` has a synchronous twin. `umask` is synchronous. `Yuzuko.FsFile` is the open descriptor, with reads, writes, seeks, locks, terminal mode, and `readable` and `writable` streams. `Yuzuko.FsWatcher` reports directory changes. Failures throw the classes on `Yuzuko.errors`.
 
-A relative path uses the process current directory. A build with `fs` may use any path the operating-system user can use. A packaged application can read its bundle and cannot modify it. `file:` fetch stays inside the entry directory and does not use this feature.
+A relative path uses the process current directory. Each call checks the read or write permission before the operating-system call. A packaged application can read its bundle and cannot modify it. `file:` fetch stays inside the entry directory and does not use this feature.
 
 ## Datagrams
 
@@ -158,7 +160,7 @@ Feature: `child`.
 
 Feature: `ffi`.
 
-`Yuzuko.dlopen` loads a shared library and returns a `Yuzuko.Library`. Each symbol is one `extern "C"` function. Parameters are `"i32"`, `"f64"`, `"pointer"`, `"buffer"`, or `"cstring"`, in the combinations the spec allows. The loader is `dlopen` on Unix and `LoadLibraryW` on Windows. A buffer or C-string pointer is valid only for that call.
+`Yuzuko.dlopen` loads a shared library and returns a `Yuzuko.Library`. Each symbol is one `extern "C"` function. Parameters are `"i32"`, `"f64"`, `"pointer"`, `"buffer"`, or `"cstring"`, in the combinations the spec allows. The loader is `dlopen` on Unix and `LoadLibraryW` on Windows. A name with no path separator is allowed only when `ffi` is granted as a whole. A buffer or C-string pointer is valid only for that call.
 
 ## Accessibility
 
@@ -174,7 +176,7 @@ Feature: `accessibility`. It enables `window`. The names are installed on the ma
 
 ## Commands
 
-`yuzuko run` evaluates an ES module. `yuzuko run --watch` restarts that module in a new realm when a loaded file changes. `yuzuko run --watch-hmr` re-evaluates a changed module and the modules that statically import it, in the same realm. A `Yuzuko.Window` or playing `AudioContext` created by a module that is not re-evaluated stays. A window or context created by a re-evaluated module is closed when the new evaluation does not keep it. `yuzuko test` runs `Yuzuko.test` and installs that function only for the test process. `yuzuko repl`, and `yuzuko` with no command, evaluate classic-script chunks from the terminal. `yuzuko package` builds the bundle above.
+`yuzuko run` evaluates an ES module. Permission flags before the entry grant or deny host access, and `--no-prompt` skips the question. `yuzuko run --watch` restarts that module in a new realm when a loaded file changes. `yuzuko run --watch-hmr` re-evaluates a changed module and the modules that statically import it, in the same realm. A `Yuzuko.Window` or playing `AudioContext` created by a module that is not re-evaluated stays. A window or context created by a re-evaluated module is closed when the new evaluation does not keep it. `yuzuko test` runs `Yuzuko.test` and installs that function only for the test process. `yuzuko repl`, and `yuzuko` with no command, evaluate classic-script chunks from the terminal. `yuzuko package` builds the bundle above.
 
 The programs in [`examples/`](../examples/) open a window and draw on its surface.
 

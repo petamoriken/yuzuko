@@ -145,7 +145,8 @@ Yuzuko.test("deferred text and bytes evaluate on observation", () => {
 
 Yuzuko.test("the module map keeps each type", async () => {
   const lateFail = await rejects(import("./text_bytes/late.txt"));
-  assert(lateFail instanceof Error, String(lateFail));
+  assert(lateFail instanceof TypeError, String(lateFail));
+  assert(String(lateFail).includes('type: "text"'), String(lateFail));
   const late = await import("./text_bytes/late.txt", { with: { type: "text" } });
   assert(late.default === "late\n", JSON.stringify(late.default));
   const lateFailAgain = await rejects(import("./text_bytes/late.txt"));
@@ -164,7 +165,8 @@ Yuzuko.test("the module map keeps each type", async () => {
   assert(bomBytes.default instanceof Uint8Array, "bom bytes");
   bytesEqual(bomBytes.default, [0xef, 0xbb, 0xbf, 0x68, 0x69], "bom");
   const bomPlain = await rejects(import("./text_bytes/bom.txt"));
-  assert(bomPlain instanceof Error, String(bomPlain));
+  assert(bomPlain instanceof TypeError, String(bomPlain));
+  assert(String(bomPlain).includes('type: "text"'), String(bomPlain));
   assert(deferredBom.default === bomText, "bom text module");
 
   const dynamicNote = await import("./text_bytes/note.txt", {

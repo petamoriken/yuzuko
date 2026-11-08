@@ -33,7 +33,7 @@ pub use http::webtransport::{
 #[cfg(feature = "fetch")]
 pub use http::xhr::set_xhr_progress_hook;
 #[cfg(feature = "fetch")]
-pub use http::{BodyNote, HttpBody, perform, read_get};
+pub use http::{BodyNote, HttpBody, HttpFailure, perform, read_get};
 pub use stream::{
   ByteWait, StreamKind, StreamStatus, TransferError, byte_controller_enqueue,
   byte_controller_respond, byte_controller_wait, export_readable,

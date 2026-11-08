@@ -37,6 +37,8 @@ pub struct Config {
   pub codesign_identity: Option<String>,
   pub release_base_url: Option<String>,
   pub release_public_key: Option<[u8; 32]>,
+  /// The `permissions` object, kept so a package stores the same paths.
+  pub permissions: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -70,6 +72,7 @@ struct RawConfig {
   output: Option<RawOutput>,
   macos: Option<RawMacos>,
   release: Option<RawRelease>,
+  permissions: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,7 +152,7 @@ pub fn discover(start: &Path) -> Result<Option<PathBuf>, ConfigError> {
   }
 }
 
-/// Config used by `yuzuko run` to fill an omitted window title.
+/// Config used by `yuzuko run` for the omitted window title and permissions.
 ///
 /// A missing file yields `None`.
 pub fn load_for_run(entry: &Path) -> Result<Option<Config>, ConfigError> {
@@ -279,6 +282,7 @@ fn read_config(path: &Path) -> Result<Config, ConfigError> {
     }
     None => (None, None),
   };
+  let permissions = read_permissions(&directory, raw.permissions)?;
   Ok(Config {
     directory,
     name,
@@ -291,7 +295,23 @@ fn read_config(path: &Path) -> Result<Config, ConfigError> {
     codesign_identity,
     release_base_url,
     release_public_key,
+    permissions,
   })
+}
+
+fn read_permissions(
+  directory: &Path,
+  value: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, ConfigError> {
+  let Some(value) = value else {
+    return Ok(None);
+  };
+  let mut spec = yuzuko_core::PermissionSpec::default();
+  crate::permissions::apply_permission_config(&mut spec, &value, false)
+    .map_err(ConfigError::new)?;
+  yuzuko_core::validate_permissions(&spec, directory)
+    .map_err(ConfigError::new)?;
+  Ok(Some(value))
 }
 
 fn read_icons(root: &Path, icons: RawIcons) -> Result<Icons, ConfigError> {

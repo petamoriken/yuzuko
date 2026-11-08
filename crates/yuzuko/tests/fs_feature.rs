@@ -72,7 +72,7 @@ fn fs_feature_round_trip() {
   fs::write(dir.join("worker.js"), WORKER).expect("worker.js");
 
   let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
-  command.current_dir(&dir).args(["run", "main.js"]);
+  command.current_dir(&dir).args(["run", "-A", "main.js"]);
   let (code, stdout, stderr) =
     output_with_timeout(command, Duration::from_secs(45));
   assert_eq!(

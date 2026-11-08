@@ -22,6 +22,7 @@ mod line;
 mod loader;
 pub mod op;
 mod parcel;
+mod permissions;
 mod platform;
 mod process;
 mod reach;
@@ -72,6 +73,11 @@ pub use js::{
 pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
+pub use permissions::{
+  PermissionRules, PermissionSpec, authorize_url, check_env, check_env_all,
+  check_ffi, check_net, check_read, check_run, check_write, check_write_all,
+  grant_read, grant_write, install_permissions, validate_permissions,
+};
 pub use process::set_args;
 pub use reach::walk_objects;
 pub use realm::{
@@ -90,12 +96,13 @@ pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,
 };
 pub use worker::{
-  Inbound, LocationParts, ScriptKind, WorkerScript, agent_alive, close_worker,
-  drain_inbound, eval_classic_in_worker, keeps_alive, load_worker_source,
-  parent_agent, poke_agent, post_inbound, resolve_specifier,
-  run_worker_frame_hook, set_blob_script_loader, set_classic_worker_source,
-  set_inbound_handler, set_worker_frame_hook, set_worker_owner, spawn_worker,
-  take_inbox, terminate_worker, worker_is_module, worker_location, worker_name,
+  Inbound, LocationParts, ScriptKind, WorkerLoadError, WorkerScript,
+  agent_alive, close_worker, drain_inbound, eval_classic_in_worker,
+  keeps_alive, load_worker_source, parent_agent, poke_agent, post_inbound,
+  resolve_specifier, run_worker_frame_hook, set_blob_script_loader,
+  set_classic_worker_source, set_inbound_handler, set_worker_frame_hook,
+  set_worker_owner, spawn_worker, take_inbox, terminate_worker,
+  worker_is_module, worker_location, worker_name,
 };
 
 #[cfg(test)]

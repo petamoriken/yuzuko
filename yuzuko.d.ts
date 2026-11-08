@@ -16,8 +16,8 @@
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
  * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
- * `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are part of that object in
- * every build. That build omits `fetch`,
+ * `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`, and `Yuzuko.permissions` are
+ * part of that object in every build. That build omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
  * listeners, a child process, foreign functions, virtual and computed
  * accessibility nodes,
@@ -2487,6 +2487,9 @@ declare namespace Yuzuko {
      * not a string. `The name must not be empty.` when `name` is empty.
      * ``The name must not contain `=` or NUL.`` when `name` contains `=` or
      * NUL.
+     * @throws {@link DOMException} `NotAllowedError` with
+     * ``Requires env access to "<name>", run again with the --allow-env flag``
+     * when {@link permissions} does not grant `name`.
      */
     get(name: string): string | undefined;
 
@@ -2496,6 +2499,8 @@ declare namespace Yuzuko {
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
      * `The value must be a string.` when `value` is not a string.
      * `The value must not contain NUL.` when `value` contains NUL.
+     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * does not grant `name`. The message matches {@link Env.get}.
      */
     set(name: string, value: string): void;
 
@@ -2503,6 +2508,8 @@ declare namespace Yuzuko {
      * Removes `name`. Removing a name that is absent succeeds.
      *
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
+     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * does not grant `name`. The message matches {@link Env.get}.
      */
     delete(name: string): void;
 
@@ -2510,6 +2517,8 @@ declare namespace Yuzuko {
      * Returns whether `name` is present.
      *
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
+     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * does not grant `name`. The message matches {@link Env.get}.
      */
     has(name: string): boolean;
 
@@ -2519,6 +2528,12 @@ declare namespace Yuzuko {
      * Later {@link Env.set} and {@link Env.delete} calls leave the object
      * unchanged. Property names use the spelling the operating system stores.
      * A key `__proto__` is an own property and does not change the prototype.
+     * A list of names does not grant this call. The kind must be allowed
+     * as a whole.
+     *
+     * @throws {@link DOMException} `NotAllowedError` with
+     * `Requires env access, run again with the --allow-env flag` when
+     * {@link permissions} does not grant env access for every variable.
      */
     toObject(): { [key: string]: string };
   }
@@ -2556,8 +2571,13 @@ declare namespace Yuzuko {
    * `The directory was not found.` when the path is missing.
    * `InvalidStateError` with `The path is not a directory.` when the path
    * exists and is not a directory. `NotAllowedError` with
-   * `The directory could not be changed.` when the operating system denies
-   * the change. `OperationError` with `The directory could not be changed.`
+   * ``Requires read access to "<path>", run again with the --allow-read flag``
+   * when {@link permissions} does not grant read access to the target.
+   * An empty string returns before that check.
+   * `NotAllowedError` with `The directory could not be changed.` when the
+   * operating system denies the change. `OperationError` with
+   * `The current directory could not be read.` when a relative path cannot
+   * be resolved. `OperationError` with `The directory could not be changed.`
    * for any other failure.
    */
   function chdir(directory: string | URL): void;
@@ -2578,6 +2598,166 @@ declare namespace Yuzuko {
    * when `code` is not that integer. The process stays alive.
    */
   function exit(code?: number): never;
+
+  /**
+   * A permission name checked by {@link permissions}.
+   *
+   * `read` and `write` cover file-system paths and `chdir`. `net` covers
+   * fetch, `XMLHttpRequest`, `EventSource`, `WebSocket`, `WebSocketStream`,
+   * `WebTransport`, datagrams, TCP, the HTTP server, an `http:` or `https:`
+   * `importScripts`, and the updater. `env` covers {@link Env}. `run` covers
+   * {@link spawn}. `ffi` covers {@link dlopen}.
+   */
+  type PermissionName = "read" | "write" | "net" | "env" | "run" | "ffi";
+
+  /** `"granted"`, `"denied"`, or `"prompt"`. */
+  type PermissionState = "granted" | "denied" | "prompt";
+
+  /**
+   * One permission to query, request, or revoke.
+   *
+   * `name` is a string primitive. The detail field depends on `name`:
+   * `path` for `read`, `write`, and `ffi`, `host` for `net`, `variable`
+   * for `env`, and `command` for `run`. An omitted detail asks about the
+   * whole kind. A present detail is a non-empty string primitive. Another
+   * type does not run `ToString`.
+   */
+  interface PermissionDescriptor {
+    /** One of {@link PermissionName}. */
+    name: PermissionName;
+
+    /**
+     * Path for `read`, `write`, or `ffi`.
+     *
+     * A check follows a symlink and then applies `..`, including when the
+     * final component is missing. A directory grant does not cover the file
+     * reached that way. The denial names this path.
+     *
+     * For `ffi`, this names a file. {@link dlopen} of a string with no `/`
+     * or `\` is allowed only when `ffi` is granted as a whole, because the
+     * loader searches for that name. A directory grant does not cover it.
+     */
+    path?: string;
+
+    /**
+     * Host for `net`.
+     *
+     * A host with no port matches every port. `host:port` matches that
+     * port. `*:port` matches every host on that port. An IPv6 host is
+     * `[::1]` or `[::1]:443`.
+     */
+    host?: string;
+
+    /** Variable name for `env`. A trailing `*` matches that prefix. */
+    variable?: string;
+
+    /**
+     * Program for `run`.
+     *
+     * A value that contains `/` or `\` matches that path. The match is the
+     * file the operating system would execute. `..` after a symlink does
+     * not match a rule for the collapsed path when that is a different
+     * file. A grant of a symlink does not match when its target is a
+     * different file. A relative command is resolved from `spawn`'s `cwd`
+     * when that option is set. A bare name matches a bare command. On
+     * Windows a bare `git` matches a bare `git.exe`. A bare name does not
+     * match a path.
+     */
+    command?: string;
+  }
+
+  /**
+   * The result of {@link Permissions.query} or {@link Permissions.request}.
+   *
+   * This is a plain object. `state` is `"granted"`, `"denied"`, or
+   * `"prompt"`.
+   */
+  interface PermissionStatus {
+    /** Whether the descriptor is granted, denied, or still promptable. */
+    state: PermissionState;
+  }
+
+  /**
+   * Process permissions for file, network, environment, subprocess, and
+   * native-library access.
+   *
+   * Installed on the main realm and in a dedicated worker in every build.
+   * An `AudioWorklet` processor realm does not have it. The policy is
+   * process-wide. `query` reports the stored state and does not ask.
+   * `request` asks when the policy allows a prompt and stdin is a terminal,
+   * and that call can block the calling thread. `--no-prompt`, and a stdin
+   * that is not a terminal, make `request` return `"denied"` and leave the
+   * stored state at `"prompt"`. A prompt answer of `y` or `yes` grants that
+   * resource for this process. `a` or `all` grants the kind. Any other line
+   * stores a session deny. Each function has length 1. Calling one with
+   * `new` throws. A returned promise is fulfilled in the same turn.
+   *
+   * `query` of a name with no detail is `"granted"` only when that kind is
+   * allowed as a whole. `revoke` of a kind hides the base allow and clears
+   * session grants. A sticky deny from `--deny-*` or from `false` in
+   * `yuzuko.json` stays `"denied"`. `revoke` of one resource stores a
+   * session deny for that resource. On a process that has not installed a
+   * policy, `query` and `request` report `"granted"`, and `revoke` installs
+   * an allow-all policy with prompts off before it applies.
+   *
+   * A denied operation throws {@link DOMException} `NotAllowedError`. A
+   * scoped message is
+   * ``Requires read access to "<path>", run again with the --allow-read flag``.
+   * An unscoped message is
+   * `Requires env access, run again with the --allow-env flag`.
+   * The flag name follows the permission.
+   */
+  interface Permissions {
+    /**
+     * Reports `descriptor` without asking.
+     *
+     * @throws {@link TypeError} `The permission descriptor must be an object.`
+     * when `descriptor` is not an object.
+     * `The permission name must be a string.` when `name` is missing or not
+     * a string. `The permission name is not supported.` when `name` is
+     * another string. `The permission path must be a string.`,
+     * `The permission host must be a string.`,
+     * `The permission variable must be a string.`, or
+     * `The permission command must be a string.` when the detail is empty
+     * or not a string. `The permission path must not contain NUL.` or
+     * `The permission name must not contain NUL.` when the detail contains
+     * NUL.
+     */
+    query(descriptor: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Synchronous {@link Permissions.query}. */
+    querySync(descriptor: PermissionDescriptor): PermissionStatus;
+
+    /**
+     * Reports `descriptor`, asking on a terminal when the state is
+     * `"prompt"` and the policy allows prompts.
+     *
+     * @throws {@link TypeError} for a `descriptor` that {@link Permissions.query}
+     * rejects.
+     */
+    request(descriptor: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Synchronous {@link Permissions.request}. It can block on the prompt. */
+    requestSync(descriptor: PermissionDescriptor): PermissionStatus;
+
+    /**
+     * Drops a session grant for `descriptor`.
+     *
+     * A descriptor with no detail hides the base allow for that kind.
+     * A descriptor with a detail stores a session deny for that resource.
+     * A sticky deny stays denied.
+     *
+     * @throws {@link TypeError} for a `descriptor` that {@link Permissions.query}
+     * rejects.
+     */
+    revoke(descriptor: PermissionDescriptor): Promise<void>;
+
+    /** Synchronous {@link Permissions.revoke}. */
+    revokeSync(descriptor: PermissionDescriptor): void;
+  }
+
+  /** The process permission policy. See {@link Permissions}. */
+  const permissions: Permissions;
 
   /**
    * Bound or remote UDP address.
@@ -2638,8 +2818,9 @@ declare namespace Yuzuko {
    * Installed on the main realm and on a dedicated worker when the runtime
    * is built with the `udp` feature, which is enabled by default. Absent from
    * an `AudioWorklet` processor realm. A build that does not enable `udp`
-   * leaves `Datagram` and {@link listenDatagram} absent. There is no
-   * permission prompt.
+   * leaves `Datagram` and {@link listenDatagram} absent. `listenDatagram`
+   * and `send` throw {@link DOMException} `NotAllowedError` when
+   * {@link permissions} does not grant the address.
    *
    * `send` and `receive` run the operating-system call on a background
    * thread. A bad argument throws {@link TypeError} before a promise is
@@ -2746,6 +2927,9 @@ declare namespace Yuzuko {
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the address. Omitted options check `127.0.0.1` and port
+   * `0`.
    */
   function listenDatagram(options?: ListenDatagramOptions | null): Datagram;
 
@@ -2792,8 +2976,9 @@ declare namespace Yuzuko {
    * Installed on the main realm and on a dedicated worker when the runtime
    * is built with the `tcp` feature, which is enabled by default. Absent from
    * an `AudioWorklet` processor realm. A build that does not enable `tcp`
-   * leaves this class and {@link listenTcp} absent. There is no permission
-   * prompt.
+   * leaves this class and {@link listenTcp} absent. `listenTcp` and
+   * {@link connectTcp} throw {@link DOMException} `NotAllowedError` when
+   * {@link permissions} does not grant the address.
    */
   class TcpListener {
     private constructor();
@@ -2932,6 +3117,9 @@ declare namespace Yuzuko {
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the address. Omitted options check `127.0.0.1` and port
+   * `0`.
    */
   function listenTcp(options?: ListenTcpOptions | null): TcpListener;
 
@@ -2951,6 +3139,9 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 1 through 65535.` when the
    * port is not. `The socket operation failed.` when the promise cannot be
    * created.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the destination. The check uses the hostname string
+   * before `localhost` is rewritten to `127.0.0.1`.
    */
   function connectTcp(addr: TcpAddr): Promise<TcpConn>;
 
@@ -2996,8 +3187,9 @@ declare namespace Yuzuko {
    * is built with the `http` feature, which is enabled by default. Absent
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `http` leaves this class and {@link listenHttp} absent. The feature does
-   * not enable `tcp` or `fetch`. There is no permission prompt. There is no
-   * TLS and no HTTP/2.
+   * not enable `tcp` or `fetch`. {@link listenHttp} throws
+   * {@link DOMException} `NotAllowedError` when {@link permissions} does not
+   * grant the address. There is no TLS and no HTTP/2.
    */
   class HttpServer {
     private constructor();
@@ -3123,6 +3315,9 @@ declare namespace Yuzuko {
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the address. Omitted options check `127.0.0.1` and port
+   * `0`.
    */
   function listenHttp(options?: ListenHttpOptions | null): HttpServer;
 
@@ -3236,9 +3431,11 @@ declare namespace Yuzuko {
     /**
      * Environment names to set or remove over the inherited environment.
      *
-     * A string sets that name. `null` removes it. The environment is not
-     * cleared. On Windows, names are case-insensitive and removals are
-     * applied before assignments.
+     * A string sets that name. `null` removes it. The child inherits every
+     * variable this object does not replace. `spawn` requires env access
+     * for the whole environment, including when `env` is omitted. The
+     * environment is not cleared. On Windows, names are case-insensitive
+     * and removals are applied before assignments.
      */
     env?: { [name: string]: string | null } | null;
 
@@ -3488,10 +3685,16 @@ declare namespace Yuzuko {
    * is built with the `child` feature, which is enabled by default. Absent
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `child` leaves this function and {@link Child} absent. The feature does
-   * not enable `window`. There is no permission prompt and no shell. The
-   * child inherits the environment and the current directory unless
-   * `options.env` or `options.cwd` says otherwise. Standard input defaults
-   * to closed. Standard output and standard error are collected unless a
+   * not enable `window`. There is no shell. The call throws
+   * {@link DOMException} `NotAllowedError` when {@link permissions} does not
+   * grant the program, the working directory, a name in `env`, or env
+   * access for the whole environment. The child inherits every variable
+   * `options.env` does not replace. A bare run grant matches a bare
+   * command name. A command that contains `/` or `\` needs a path grant
+   * for the file the operating system would execute. A relative command is
+   * resolved from `cwd` when that option is set. Read access to `cwd` is
+   * checked before the directory is queried. Standard input defaults to
+   * closed. Standard output and standard error are collected unless a
    * mode selects another disposition. The call blocks only while the
    * operating system creates the process.
    *
@@ -3520,10 +3723,16 @@ declare namespace Yuzuko {
    * URL.`, `The URL scheme must be file.`, `The URL is invalid.`,
    * `The file URL is invalid.`, and `The path must not contain NUL.` for
    * `cwd`.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the program, read access to `cwd`, a name in `env`, or
+   * env access for the whole environment. A bare run grant matches a bare
+   * command name. A command that contains `/` or `\` needs a path grant
+   * for the file that would run. A missing grant for `cwd` does not report
+   * whether that directory exists.
    * @throws {@link Error} `The child process could not be started.` when
    * the operating system refuses the program. `The directory was not
-   * found.` when `cwd` is missing. `The path is not a directory.` when
-   * `cwd` is not a directory.
+   * found.` when a granted `cwd` is missing. `The path is not a directory.`
+   * when a granted `cwd` is not a directory.
    */
   function spawn(
     command: string,
@@ -3641,12 +3850,17 @@ declare namespace Yuzuko {
    * is built with the `ffi` feature, which is enabled by default. Absent
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `ffi` leaves this function and {@link Library} absent. The feature does
-   * not enable `window`. There is no permission prompt. The call blocks
-   * while the operating system loads `path` and resolves every symbol.
-   * On Unix this is `dlopen` with `RTLD_NOW` and `RTLD_LOCAL`, then
-   * `dlsym`. The C name has no Mach-O underscore. On Windows this is
-   * `LoadLibraryW`, then `GetProcAddress`. Symbol definitions are checked
-   * before the library is opened.
+   * not enable `window`. The call throws {@link DOMException}
+   * `NotAllowedError` when {@link permissions} does not grant `path`. A
+   * path that contains `/` or `\` is that file. A path with no separator
+   * is allowed only when `ffi` is granted as a whole. A directory grant
+   * does not cover it. The call blocks while the operating system loads
+   * `path` and resolves every symbol. On Unix this is `dlopen` with
+   * `RTLD_NOW` and `RTLD_LOCAL`, then `dlsym`. The path string is passed
+   * through, so a name with no separator is searched and a name that
+   * contains a separator is that pathname only. The C name has no Mach-O
+   * underscore. On Windows this is `LoadLibraryW`, then `GetProcAddress`.
+   * Symbol definitions are checked before the library is opened.
    *
    * @param path - Library path. A non-empty string primitive.
    * @param symbols - Own enumerable string keys are C names. Each value
@@ -3664,6 +3878,11 @@ declare namespace Yuzuko {
    * `The symbol definition must be an object.` when a value is not an
    * object. `The function type is not supported.` when the parameters and
    * result are not one of the supported shapes.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant `path`. A path with no `/` or `\` needs `ffi` granted
+   * as a whole. The message is
+   * `Requires ffi access, run again with the --allow-ffi flag`. A path
+   * that contains a separator and is outside the grant names that path.
    * @throws {@link Error} `The library could not be opened.` when the
    * operating system refuses the library or a symbol is missing. No
    * library is returned.
@@ -4502,6 +4721,9 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `options` is not an object, or when the flags disagree.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the path. `read` checks read access. A flag that writes,
+   * appends, truncates, or creates checks write access.
    * @throws {@link errors.NotSupported} When a write would modify the
    * application bundle.
    */
@@ -13719,7 +13941,13 @@ declare class WebTransportError extends DOMException {
  * A WebGPU device stays on the thread that created it.
  * The script may be `file:`, a sandboxed `http:` or `https:` path, `data:`
  * including a base64 payload, or `blob:`. A blob URL created on another
- * thread can be loaded.
+ * thread can be loaded. A `file:` script requires read access. A URL whose
+ * host is `127.0.0.1`, `localhost`, or `web-platform.test` is the
+ * entry-directory file for that path, on any port, and requires the same
+ * read. A symlink is denied unless its canonical target is allowed too.
+ * A missing grant does not run the script. The constructor does not throw
+ * `NotAllowedError`. The worker's error event message is
+ * `NotAllowedError: Requires read access to "<path>", run again with the --allow-read flag`.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid, or when
  * `type` is `"classic"` with a source-phase import.
@@ -13773,8 +14001,13 @@ declare class WorkerGlobalScope extends EventTarget {
    *
    * Parses every URL before running any script. A blob URL is captured
    * then, so revoking it inside an earlier script of the same call does
-   * not fail a later URL. `data:` accepts a base64 payload.
+   * not fail a later URL. `data:` accepts a base64 payload. A `file:` URL
+   * requires read access and throws `NotAllowedError`. An `http:` or
+   * `https:` URL requires net access, including each followed redirect.
    *
+   * @throws {@link DOMException} `NotAllowedError` when a `file:` URL is
+   * not granted, or when an `http:` or `https:` URL or a followed redirect
+   * is not granted.
    * @throws {@link DOMException} `NetworkError` when a script cannot be loaded,
    * or when an `http:` or `https:` response is not a JavaScript MIME type.
    * @throws {@link TypeError} In a module worker, or when a script throws.

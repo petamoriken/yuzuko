@@ -1,13 +1,15 @@
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use yuzuko::{
-  ConfigError, Target, bundled_launch, load_for_run, load_package, package,
-  reject_package_extension,
+  PermissionFlag, Target, apply_permission_config, apply_permission_flags,
+  bundled_launch, load_for_run, load_package, package, parse_permission_flag,
+  permission_dir, reject_package_extension,
 };
 use yuzuko_core::{
-  WatchMode, run_file, run_file_sandboxed, run_file_watch, run_repl, run_tests,
-  set_args, status_of,
+  PermissionSpec, WatchMode, install_permissions, run_file, run_file_sandboxed,
+  run_file_watch, run_repl, run_tests, set_args, status_of,
 };
 
 fn main() -> ExitCode {
@@ -40,6 +42,16 @@ fn main() -> ExitCode {
     #[cfg(feature = "fs")]
     yuzuko_core::set_process_bundle_root(&application_bundle_root(&bundle));
     yuzuko::enable_updater(bundle.resources);
+    if let Some(value) = &bundle.permissions {
+      let mut spec = PermissionSpec::default();
+      spec.prompt = false;
+      if let Err(error) = apply_permission_config(&mut spec, value, true)
+        .and_then(|_| install_permissions(&spec, &bundle.sandbox))
+      {
+        eprintln!("{error}");
+        return ExitCode::from(1);
+      }
+    }
     set_args(
       args
         .into_iter()
@@ -94,6 +106,7 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
   let mut watch = false;
   let mut hot = false;
   let mut no_clear = false;
+  let mut flags = Vec::new();
   while index < args.len() && entry.is_none() {
     let token = args[index].as_str();
     if token == "--" {
@@ -106,10 +119,14 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
         "--watch" => watch = true,
         "--watch-hmr" => hot = true,
         "--no-clear-screen" => no_clear = true,
-        _ => {
-          eprintln!("unknown flag {token}");
-          return Ok(2);
-        }
+        token => match classify_flag(token) {
+          FlagStep::Flag(flag) => flags.push(flag),
+          FlagStep::Bad => return Ok(2),
+          FlagStep::Other => {
+            eprintln!("unknown flag {token}");
+            return Ok(2);
+          }
+        },
       }
       index += 1;
       continue;
@@ -133,7 +150,7 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     index += 1;
   }
   set_args(args[index..].to_vec());
-  if let Err(error) = apply_run_title(&entry) {
+  if let Err(error) = install_run(&entry, &flags) {
     eprintln!("{error}");
     return Ok(1);
   }
@@ -152,6 +169,7 @@ fn run_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
 fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
   let mut filter = None;
   let mut paths = Vec::new();
+  let mut flags = Vec::new();
   let mut index = 0;
   while index < args.len() {
     match args[index].as_str() {
@@ -168,10 +186,17 @@ fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
         paths.extend(args[index + 1..].iter().map(PathBuf::from));
         break;
       }
-      flag if flag.starts_with('-') => {
-        eprintln!("unknown flag {flag}");
-        return Ok(2);
-      }
+      flag if flag.starts_with('-') => match classify_flag(flag) {
+        FlagStep::Flag(parsed) => {
+          flags.push(parsed);
+          index += 1;
+        }
+        FlagStep::Bad => return Ok(2),
+        FlagStep::Other => {
+          eprintln!("unknown flag {flag}");
+          return Ok(2);
+        }
+      },
       _ => {
         paths.push(PathBuf::from(&args[index]));
         index += 1;
@@ -179,6 +204,10 @@ fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
     }
   }
   set_args(Vec::new());
+  if let Err(error) = install_test(&flags) {
+    eprintln!("{error}");
+    return Ok(1);
+  }
   configure_window(true, true);
   match run_tests(&paths, filter.as_deref()) {
     Ok(code) => Ok(u8::try_from(code).unwrap_or(1)),
@@ -190,9 +219,24 @@ fn test_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
 }
 
 fn repl_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
-  if !args.is_empty() {
-    eprintln!("yuzuko repl");
-    return Ok(2);
+  let mut flags = Vec::new();
+  for token in args {
+    if !token.starts_with('-') {
+      eprintln!("yuzuko repl");
+      return Ok(2);
+    }
+    match classify_flag(token) {
+      FlagStep::Flag(flag) => flags.push(flag),
+      FlagStep::Bad => return Ok(2),
+      FlagStep::Other => {
+        eprintln!("yuzuko repl");
+        return Ok(2);
+      }
+    }
+  }
+  if let Err(error) = install_repl(&flags) {
+    eprintln!("{error}");
+    return Ok(1);
   }
   set_args(Vec::new());
   configure_window(false, false);
@@ -231,14 +275,67 @@ fn application_bundle_root(bundle: &yuzuko::BundleLaunch) -> PathBuf {
   }
 }
 
-fn apply_run_title(entry: &Path) -> Result<(), ConfigError> {
-  if let Some(config) = load_for_run(entry)? {
+fn install_run(entry: &Path, flags: &[PermissionFlag]) -> Result<(), String> {
+  let config = load_for_run(entry).map_err(|error| error.to_string())?;
+  if let Some(config) = &config {
     #[cfg(feature = "window")]
     yuzuko_window::set_default_title(&config.name);
-    #[cfg(not(feature = "window"))]
-    let _ = config;
   }
-  Ok(())
+  let mut spec = PermissionSpec::default();
+  if let Some(value) = config.as_ref().and_then(|item| item.permissions.clone())
+  {
+    apply_permission_config(&mut spec, &value, false)?;
+  }
+  let cwd = permission_dir()?;
+  apply_permission_flags(&mut spec, flags, &cwd)?;
+  spec.prompt = std::io::stdin().is_terminal()
+    && !flags
+      .iter()
+      .any(|flag| matches!(flag, PermissionFlag::NoPrompt));
+  let root = config
+    .as_ref()
+    .map(|item| item.directory.clone())
+    .unwrap_or(cwd);
+  install_permissions(&spec, &root)
+}
+
+fn install_test(flags: &[PermissionFlag]) -> Result<(), String> {
+  let saw_rule = flags
+    .iter()
+    .any(|flag| !matches!(flag, PermissionFlag::NoPrompt));
+  if !saw_rule {
+    return Ok(());
+  }
+  let mut spec = PermissionSpec::allow_all();
+  spec.prompt = false;
+  let cwd = permission_dir()?;
+  apply_permission_flags(&mut spec, flags, &cwd)?;
+  install_permissions(&spec, &cwd)
+}
+
+fn install_repl(flags: &[PermissionFlag]) -> Result<(), String> {
+  let mut spec = PermissionSpec::default();
+  spec.prompt = false;
+  let cwd = permission_dir()?;
+  apply_permission_flags(&mut spec, flags, &cwd)?;
+  install_permissions(&spec, &cwd)
+}
+
+enum FlagStep {
+  Flag(PermissionFlag),
+  Bad,
+  Other,
+}
+
+fn classify_flag(token: &str) -> FlagStep {
+  match parse_permission_flag(token) {
+    Some(Ok(flag)) => FlagStep::Flag(flag),
+    Some(Err(message)) => {
+      eprintln!("{message}");
+      FlagStep::Bad
+    }
+    None => FlagStep::Other,
+  }
 }
 
 fn package_command(args: &[String]) -> Result<u8, yuzuko_core::RuntimeError> {
@@ -357,6 +454,12 @@ yuzuko run --watch [--no-clear-screen] <entry.ts> [arg...]
 yuzuko run --watch-hmr [--no-clear-screen] <entry.ts> [arg...]
 yuzuko test [<path>...] [--filter <substring>]
 yuzuko package <entry.ts> [--config <file>] [--output <path>]
-yuzuko repl"
+yuzuko repl
+
+Permission flags, before the entry: -A, --allow-all,
+--allow-read[=<path>...] (-R), --allow-write[=<path>...] (-W),
+--allow-net[=<host>...] (-N), --allow-env[=<name>...] (-E),
+--allow-run[=<command>...], --allow-ffi[=<path>...],
+and the matching --deny-* flags. --no-prompt skips the question."
   );
 }

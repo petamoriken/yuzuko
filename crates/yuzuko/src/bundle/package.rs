@@ -23,6 +23,8 @@ struct BundleFile {
   entry: String,
   #[serde(rename = "releaseBaseUrl", skip_serializing_if = "Option::is_none")]
   release_base_url: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  permissions: Option<serde_json::Value>,
 }
 
 pub struct BundleLaunch {
@@ -31,6 +33,7 @@ pub struct BundleLaunch {
   pub name: String,
   pub identifier: Option<String>,
   pub resources: PathBuf,
+  pub permissions: Option<serde_json::Value>,
 }
 
 /// When this executable is inside a package, return its entry.
@@ -50,6 +53,7 @@ pub fn bundled_launch() -> Option<BundleLaunch> {
     name: manifest.name,
     identifier: manifest.identifier,
     resources,
+    permissions: manifest.permissions,
   })
 }
 
@@ -536,6 +540,7 @@ fn write_manifest(
     identifier: config.identifier.clone(),
     entry: entry.to_string(),
     release_base_url: config.release_base_url.clone(),
+    permissions: config.permissions.clone(),
   };
   let text = serde_json::to_string_pretty(&file)
     .map_err(|error| ConfigError::new(format!("bundle manifest: {error}")))?;

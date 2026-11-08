@@ -556,7 +556,12 @@ fn exit_returns_the_requested_status() {
   );
 
   for mode in ["worker", "worker-module"] {
-    let output = run(&["run", script, mode]);
+    let output = run(&[
+      "run",
+      "--allow-read=tests/cli/process_exit_worker.js",
+      script,
+      mode,
+    ]);
     assert_eq!(
       output.status.code(),
       Some(9),
@@ -576,7 +581,7 @@ fn process_info_reads_env_and_changes_directory() {
   let script = workspace().join("tests/cli/process_info.ts");
   let script = script.to_str().unwrap();
   let info = run_deadline(
-    &["run", script, "info"],
+    &["run", "-A", script, "info"],
     &workspace(),
     &[("YUZUKO_PROCESS_PROBE", "from-parent")],
     Duration::from_secs(20),
@@ -632,7 +637,7 @@ fn process_info_reads_env_and_changes_directory() {
   fs::create_dir_all(dir.join("nested")).unwrap();
   fs::write(dir.join("nested/note.txt"), b"noted").unwrap();
   let changed = run_deadline(
-    &["run", script, "chdir"],
+    &["run", "-A", script, "chdir"],
     &dir,
     &[],
     Duration::from_secs(20),
