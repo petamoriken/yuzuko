@@ -156,7 +156,18 @@ pub(super) fn open_file(
 }
 
 pub(super) fn read_bytes(path: &Path) -> Result<Vec<u8>, FsError> {
-  let mut file = File::open(path).map_err(FsError::io)?;
+  let mut file = match File::open(path) {
+    Ok(file) => file,
+    Err(error) => {
+      // Windows refuses to open a directory. That is still `IsADirectory`.
+      if let Ok(meta) = fs::metadata(path)
+        && meta.is_dir()
+      {
+        return Err(FsError::directory());
+      }
+      return Err(FsError::io(error));
+    }
+  };
   permit_opened(path, &file, true, false)?;
   let meta = file.metadata().map_err(FsError::io)?;
   if meta.is_dir() {
