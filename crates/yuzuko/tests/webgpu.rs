@@ -25,7 +25,7 @@ fn yuzuko(args: &[&str], skip_gpu: bool) -> std::process::Output {
 
 #[test]
 fn webgpu_draws_when_an_adapter_is_available() {
-  let output = yuzuko(&["test", "tests/webgpu_test.ts"], false);
+  let output = yuzuko(&["test", "-A", "tests/webgpu_test.ts"], false);
   let stdout = text(&output.stdout);
   let stderr = text(&output.stderr);
   assert!(output.status.success(), "{stdout}\n{stderr}");
@@ -39,7 +39,7 @@ fn webgpu_draws_when_an_adapter_is_available() {
 
 #[test]
 fn skip_gpu_resolves_a_null_adapter() {
-  let output = yuzuko(&["test", "tests/webgpu_test.ts"], true);
+  let output = yuzuko(&["test", "-A", "tests/webgpu_test.ts"], true);
   let stdout = text(&output.stdout);
   let stderr = text(&output.stderr);
   assert!(output.status.success(), "{stdout}\n{stderr}");

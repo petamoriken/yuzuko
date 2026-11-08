@@ -302,14 +302,10 @@ fn install_run(entry: &Path, flags: &[PermissionFlag]) -> Result<(), String> {
 }
 
 fn install_test(flags: &[PermissionFlag]) -> Result<(), String> {
-  let saw_rule = flags
-    .iter()
-    .any(|flag| !matches!(flag, PermissionFlag::NoPrompt));
-  if !saw_rule {
-    return Ok(());
-  }
-  let mut spec = PermissionSpec::allow_all();
-  spec.prompt = false;
+  let mut spec = PermissionSpec {
+    prompt: false,
+    ..PermissionSpec::default()
+  };
   let cwd = permission_dir()?;
   apply_permission_flags(&mut spec, flags, &cwd)?;
   install_permissions(&spec, &cwd)

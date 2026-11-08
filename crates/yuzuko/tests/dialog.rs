@@ -13,7 +13,7 @@ fn workspace() -> PathBuf {
 fn headless_dialogs_throw_not_supported() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/dialog_test.ts"])
+    .args(["test", "-A", "tests/dialog_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");

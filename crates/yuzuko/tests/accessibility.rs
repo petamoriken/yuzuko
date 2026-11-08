@@ -11,6 +11,7 @@ fn virtual_nodes_pass_under_yuzuko_test() {
     .current_dir(workspace())
     .args([
       "test",
+      "-A",
       "tests/accessibility_test.ts",
       "tests/accessibility_input_test.ts",
       "tests/accessibility_computed_test.ts",

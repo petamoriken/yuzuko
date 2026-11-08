@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn font_faces_pass_under_yuzuko_test() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/font_test.ts"])
+    .args(["test", "-A", "tests/font_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");

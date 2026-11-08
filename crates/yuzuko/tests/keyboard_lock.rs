@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn keyboard_lock_passes_under_yuzuko_test() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/keyboard_lock_test.ts"])
+    .args(["test", "-A", "tests/keyboard_lock_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .env("YUZUKO_TEST_INPUT", "1")
     .output()

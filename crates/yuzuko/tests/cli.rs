@@ -69,7 +69,7 @@ fn run_does_not_install_yuzuko_test() {
 fn test_installs_inject_only_when_enabled() {
   let hidden = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/inject_absent_test.ts"])
+    .args(["test", "-A", "tests/inject_absent_test.ts"])
     .env_remove("YUZUKO_TEST_INPUT")
     .output()
     .expect("spawn yuzuko");
@@ -82,7 +82,7 @@ fn test_installs_inject_only_when_enabled() {
 
   let missing = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/inject_present_test.ts"])
+    .args(["test", "-A", "tests/inject_present_test.ts"])
     .env_remove("YUZUKO_TEST_INPUT")
     .output()
     .expect("spawn yuzuko");
@@ -90,7 +90,7 @@ fn test_installs_inject_only_when_enabled() {
 
   let shown = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/inject_present_test.ts"])
+    .args(["test", "-A", "tests/inject_present_test.ts"])
     .env("YUZUKO_TEST_INPUT", "1")
     .output()
     .expect("spawn yuzuko");
@@ -103,7 +103,7 @@ fn test_installs_inject_only_when_enabled() {
 
   let unexpected = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/inject_absent_test.ts"])
+    .args(["test", "-A", "tests/inject_absent_test.ts"])
     .env("YUZUKO_TEST_INPUT", "1")
     .output()
     .expect("spawn yuzuko");
@@ -197,7 +197,7 @@ fn lavapipe_banner_is_not_example_output() {
 
 #[test]
 fn passing_tests_exit_0() {
-  let output = yuzuko(&["test", "tests/pass_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/pass_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(stdout.contains("ok | addition\n"), "{stdout}");
@@ -210,7 +210,7 @@ fn passing_tests_exit_0() {
 
 #[test]
 fn failing_tests_exit_1_and_print_the_summary() {
-  let output = yuzuko(&["test", "tests/fail_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/fail_test.ts"]);
   assert_eq!(output.status.code(), Some(1));
   let stdout = text(&output.stdout);
   assert!(stdout.contains("failed | fails\n"), "{stdout}");
@@ -223,7 +223,7 @@ fn failing_tests_exit_1_and_print_the_summary() {
 
 #[test]
 fn ignored_tests_do_not_fail() {
-  let output = yuzuko(&["test", "tests/ignore_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/ignore_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(stdout.contains("ignored | later\n"), "{stdout}");
@@ -236,7 +236,7 @@ fn ignored_tests_do_not_fail() {
 
 #[test]
 fn only_exits_1_after_a_passing_run() {
-  let output = yuzuko(&["test", "tests/only_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/only_test.ts"]);
   assert_eq!(output.status.code(), Some(1));
   let stdout = text(&output.stdout);
   assert!(stdout.contains("ignored | skipped\n"), "{stdout}");
@@ -251,14 +251,15 @@ fn only_exits_1_after_a_passing_run() {
 
 #[test]
 fn nested_test_throws_type_error() {
-  let output = yuzuko(&["test", "tests/nested_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/nested_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert!(text(&output.stdout).contains("ok | nested\n"));
 }
 
 #[test]
 fn filter_keeps_matching_names() {
-  let output = yuzuko(&["test", "tests/pass_test.ts", "--filter", "addition"]);
+  let output =
+    yuzuko(&["test", "-A", "tests/pass_test.ts", "--filter", "addition"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(stdout.contains("ok | addition\n"), "{stdout}");
@@ -271,7 +272,7 @@ fn filter_keeps_matching_names() {
 
 #[test]
 fn pollution_tests_pass() {
-  let output = yuzuko(&["test", "tests/pollution_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/pollution_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
@@ -282,7 +283,7 @@ fn pollution_tests_pass() {
 
 #[test]
 fn text_encoder_is_a_cppgc_class() {
-  let output = yuzuko(&["test", "tests/encoding_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/encoding_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
@@ -293,7 +294,7 @@ fn text_encoder_is_a_cppgc_class() {
 
 #[test]
 fn abort_signal_any_keeps_source_and_dependent_weak() {
-  let output = yuzuko(&["test", "tests/abort_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/abort_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
@@ -304,7 +305,7 @@ fn abort_signal_any_keeps_source_and_dependent_weak() {
 
 #[test]
 fn structured_clone_copies_blob_file_and_dom_exception() {
-  let output = yuzuko(&["test", "tests/clone_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/clone_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
@@ -316,7 +317,7 @@ fn structured_clone_copies_blob_file_and_dom_exception() {
 
 #[test]
 fn microtask_runs_before_a_timer() {
-  let output = yuzuko(&["test", "tests/order_test.ts"]);
+  let output = yuzuko(&["test", "-A", "tests/order_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
@@ -675,7 +676,7 @@ fn process_info_reads_env_and_changes_directory() {
 
 #[test]
 fn test_records_empty_args_and_exit_skips_the_summary() {
-  let listed = yuzuko(&["test", "tests/process_args_test.ts"]);
+  let listed = yuzuko(&["test", "-A", "tests/process_args_test.ts"]);
   assert_eq!(listed.status.code(), Some(0), "{}", text(&listed.stderr));
   let stdout = text(&listed.stdout);
   assert!(
@@ -684,7 +685,7 @@ fn test_records_empty_args_and_exit_skips_the_summary() {
   );
 
   let stopped = run_deadline(
-    &["test", "tests/cli/exit_from_runner.ts"],
+    &["test", "-A", "tests/cli/exit_from_runner.ts"],
     &workspace(),
     &[],
     Duration::from_secs(20),

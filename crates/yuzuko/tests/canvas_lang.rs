@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn canvas_lang_selects_localized_glyphs() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/canvas_lang_test.ts"])
+    .args(["test", "-A", "tests/canvas_lang_test.ts"])
     .env("YUZUKO_CANVAS", "cpu")
     .env_remove("YUZUKO_HEADLESS")
     .output()

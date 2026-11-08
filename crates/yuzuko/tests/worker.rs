@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn dedicated_workers_pass_under_yuzuko_test() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/worker_test.ts"])
+    .args(["test", "-A", "tests/worker_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");
@@ -25,7 +25,7 @@ fn dedicated_workers_pass_under_yuzuko_test() {
 fn worker_from_module_source() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/source_test.ts"])
+    .args(["test", "-A", "tests/source_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");
@@ -41,7 +41,7 @@ fn worker_from_module_source() {
 fn module_worker_defers_evaluation() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/defer_worker_test.ts"])
+    .args(["test", "-A", "tests/defer_worker_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");

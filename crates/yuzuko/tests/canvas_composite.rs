@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn canvas_composites_and_shadows_pass() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/canvas_composite_test.ts"])
+    .args(["test", "-A", "tests/canvas_composite_test.ts"])
     .env("YUZUKO_CANVAS", "cpu")
     .env_remove("YUZUKO_HEADLESS")
     .output()

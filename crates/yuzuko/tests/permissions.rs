@@ -367,11 +367,19 @@ fn repl_accepts_permission_flags_only() {
 }
 
 #[test]
-fn test_allows_reads_until_a_deny_flag() {
-  let dir = scratch("test");
-  write(&dir.join("note.txt"), "hello\n");
+fn test_starts_closed_and_an_allow_does_not_grant_the_rest() {
+  let root = scratch("test");
+  let work = root.join("work");
+  fs::create_dir_all(&work).unwrap();
+  fs::create_dir_all(root.join("other")).unwrap();
+  write(&work.join("note.txt"), "hello\n");
+  write(&root.join("other/secret.txt"), "hidden-oracle\n");
   write(
-    &dir.join("read_test.ts"),
+    &work.join("yuzuko.json"),
+    "{ \"permissions\": { \"read\": true } }\n",
+  );
+  write(
+    &work.join("read_test.ts"),
     r#"Yuzuko.test("reads a file", async () => {
   const text = await Yuzuko.readTextFile("note.txt");
   if (text !== "hello\n") {
@@ -380,17 +388,57 @@ fn test_allows_reads_until_a_deny_flag() {
 });
 "#,
   );
-  let allowed = run(&dir, &["test", "read_test.ts"]);
-  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
-  assert!(
-    text(&allowed.stdout).contains("1 passed"),
-    "{}",
-    text(&allowed.stdout)
+  write(
+    &work.join("outside_test.ts"),
+    r#"Yuzuko.test("stays inside the grant", async () => {
+  const text = await Yuzuko.readTextFile("note.txt");
+  if (text !== "hello\n") {
+    throw new Error(text);
+  }
+  try {
+    await Yuzuko.readTextFile("../other/secret.txt");
+    throw new Error("leaked");
+  } catch (error) {
+    if (error.name !== "NotAllowedError") {
+      throw error;
+    }
+  }
+});
+"#,
   );
-  let denied = run(&dir, &["test", "--deny-read", "read_test.ts"]);
+  let work = fs::canonicalize(&work).unwrap();
+  let closed = run(&work, &["test", "read_test.ts"]);
+  assert_ne!(closed.status.code(), Some(0));
+  let combined = format!("{}{}", text(&closed.stdout), text(&closed.stderr));
+  assert!(combined.contains("NotAllowedError"), "{combined}");
+  assert!(!combined.contains("hidden-oracle"), "{combined}");
+  let granted = run(&work, &["test", "--allow-read=.", "read_test.ts"]);
+  assert_eq!(granted.status.code(), Some(0), "{}", text(&granted.stderr));
+  assert!(
+    text(&granted.stdout).contains("1 passed"),
+    "{}",
+    text(&granted.stdout)
+  );
+  let net_only = run(&work, &["test", "--allow-net=127.0.0.1", "read_test.ts"]);
+  assert_ne!(net_only.status.code(), Some(0));
+  let combined =
+    format!("{}{}", text(&net_only.stdout), text(&net_only.stderr));
+  assert!(combined.contains("NotAllowedError"), "{combined}");
+  let all = run(&work, &["test", "--allow-all", "read_test.ts"]);
+  assert_eq!(all.status.code(), Some(0), "{}", text(&all.stderr));
+  let denied = run(
+    &work,
+    &["test", "--allow-all", "--deny-read", "read_test.ts"],
+  );
   assert_ne!(denied.status.code(), Some(0));
   let combined = format!("{}{}", text(&denied.stdout), text(&denied.stderr));
   assert!(combined.contains("NotAllowedError"), "{combined}");
+  let outside = run(&work, &["test", "--allow-read=.", "outside_test.ts"]);
+  assert_eq!(outside.status.code(), Some(0), "{}", text(&outside.stderr));
+  let outside_text =
+    format!("{}{}", text(&outside.stdout), text(&outside.stderr));
+  assert!(outside_text.contains("1 passed"), "{outside_text}");
+  assert!(!outside_text.contains("hidden-oracle"), "{outside_text}");
 }
 
 #[test]

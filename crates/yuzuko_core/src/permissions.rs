@@ -1,10 +1,11 @@
 //! Process permissions for filesystem, network, environment, subprocess, and
 //! native-library access.
 //!
-//! No installed policy allows every check. `yuzuko run` and `yuzuko repl`
-//! install a sandbox. A packaged app installs one when its manifest has
-//! `permissions`. `query` does not prompt. `request` and a gated operation
-//! prompt when the policy says to and standard input is a terminal.
+//! No installed policy allows every check. `yuzuko run`, `yuzuko repl`, and
+//! `yuzuko test` install a sandbox. A packaged app installs one when its
+//! manifest has `permissions`. `query` does not prompt. `request` and a
+//! gated operation prompt when the policy says to and standard input is a
+//! terminal.
 
 use std::cell::RefCell;
 use std::io::{IsTerminal, Write};

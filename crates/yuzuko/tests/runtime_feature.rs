@@ -132,7 +132,7 @@ fn accessible_inject_is_rejected_without_the_feature() {
   }
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/accessibility_off_test.ts"])
+    .args(["test", "-A", "tests/accessibility_off_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .env("YUZUKO_TEST_INPUT", "1")
     .output()

@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn mp4_passes_under_yuzuko_test() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/mp4_test.ts"])
+    .args(["test", "-A", "tests/mp4_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .output()
     .expect("spawn yuzuko");

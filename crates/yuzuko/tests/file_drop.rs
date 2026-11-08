@@ -9,7 +9,7 @@ fn workspace() -> PathBuf {
 fn file_drop_passes_under_yuzuko_test() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())
-    .args(["test", "tests/file_drop_test.ts"])
+    .args(["test", "-A", "tests/file_drop_test.ts"])
     .env_remove("YUZUKO_HEADLESS")
     .env("YUZUKO_TEST_INPUT", "1")
     .output()
