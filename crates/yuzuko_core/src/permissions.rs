@@ -1025,6 +1025,8 @@ fn strip_verbatim(path: PathBuf) -> PathBuf {
 }
 
 fn paths_equal(left: &Path, right: &Path) -> bool {
+  let left = strip_verbatim(left.to_path_buf());
+  let right = strip_verbatim(right.to_path_buf());
   let mut left = left.components();
   let mut right = right.components();
   loop {
@@ -1037,6 +1039,9 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
 }
 
 fn path_covers(grant: &Path, request: &Path) -> bool {
+  // `\\?\` and `\\?\UNC\` are two spellings of one Windows path.
+  let grant = strip_verbatim(grant.to_path_buf());
+  let request = strip_verbatim(request.to_path_buf());
   let mut grant = grant.components();
   let mut request = request.components();
   loop {
