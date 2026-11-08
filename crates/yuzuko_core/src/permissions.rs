@@ -1018,7 +1018,7 @@ fn strip_verbatim(path: PathBuf) -> PathBuf {
       return PathBuf::from(format!(r"\\{rest}"));
     }
     if let Some(rest) = text.strip_prefix(r"\\?\") {
-      return PathBuf::from(rest.as_ref());
+      return PathBuf::from(rest);
     }
   }
   path
@@ -1876,7 +1876,7 @@ mod tests {
     spec
       .allow("ffi", Some(vec![entry.display().to_string()]))
       .unwrap();
-    let mut sandbox = Sandbox::compile(&spec, &entry).unwrap();
+    let sandbox = Sandbox::compile(&spec, &entry).unwrap();
     let benign = entry.join("sub").join("..").join("note.txt");
     assert_eq!(
       sandbox.classify(Kind::Read, &Detail::Path(benign)).unwrap(),
@@ -1891,6 +1891,7 @@ mod tests {
     );
     #[cfg(unix)]
     {
+      let mut sandbox = sandbox;
       let escape = entry.join("sub").join("link").join("..").join("ident.env");
       assert_eq!(
         sandbox
