@@ -3884,9 +3884,9 @@ declare namespace Yuzuko {
    * is allowed only when `ffi` is granted as a whole. A directory grant
    * does not cover it. The call blocks while the operating system loads
    * `path` and resolves every symbol. On Unix this is `dlopen` with
-   * `RTLD_NOW` and `RTLD_LOCAL`, then `dlsym`. The path string is passed
-   * through, so a name with no separator is searched and a name that
-   * contains a separator is that pathname only. The C name has no Mach-O
+   * `RTLD_NOW` and `RTLD_LOCAL`, then `dlsym`. A path that contains `/` or
+   * `\` is the absolute path from the permission check. A name with no
+   * separator is passed through and searched by the loader. The C name has no Mach-O
    * underscore. On Windows a path with no separator is `LoadLibraryW`. A
    * path that contains `/` or `\` is the absolute path from the permission
    * check, opened with `LoadLibraryExW` and `LOAD_WITH_ALTERED_SEARCH_PATH`,

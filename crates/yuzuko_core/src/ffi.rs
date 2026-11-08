@@ -1113,9 +1113,26 @@ fn define_fn(
   object.set(scope, key.into(), function.into());
 }
 
+/// The path Unix loads.
+///
+/// A relative path such as `sub/x.so` is joined to the current directory
+/// before `dlopen`, so another worker's `chdir` cannot retarget it. A bare
+/// name stays the caller's string and is searched by the loader, which
+/// requires `ffi` granted as a whole.
+#[cfg(unix)]
+fn library_path(path: &str) -> Result<std::path::PathBuf, OpError> {
+  if !path.contains('/') && !path.contains('\\') {
+    return Ok(std::path::PathBuf::from(path));
+  }
+  crate::permissions::anchor_path(std::path::Path::new(path))
+}
+
 #[cfg(unix)]
 fn open_library(path: &str) -> Result<Option<usize>, OpError> {
-  let Ok(path) = CString::new(path) else {
+  use std::os::unix::ffi::OsStrExt;
+
+  let path = library_path(path)?;
+  let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
     return Ok(None);
   };
   let handle =
@@ -1244,6 +1261,26 @@ fn lookup(_handle: usize, _name: &str) -> Option<usize> {
 
 #[cfg(not(any(unix, windows)))]
 fn unload(_handle: usize) {}
+
+#[cfg(all(test, unix))]
+mod tests {
+  use super::library_path;
+
+  #[test]
+  fn a_relative_library_path_is_absolute() {
+    let current = std::env::current_dir().unwrap();
+    let relative = library_path("sub/x.so").unwrap();
+    assert!(relative.is_absolute());
+    assert_eq!(relative, current.join("sub/x.so"));
+
+    let bare = library_path("x.so").unwrap();
+    assert_eq!(bare, std::path::PathBuf::from("x.so"));
+
+    let absolute = current.join("sub/x.so");
+    let loaded = library_path(absolute.to_str().unwrap()).unwrap();
+    assert_eq!(loaded, absolute);
+  }
+}
 
 #[cfg(all(test, windows))]
 mod tests {
