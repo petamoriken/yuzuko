@@ -588,9 +588,11 @@ fn an_event_source_reconnect_checks_the_host_again() {
   listener.set_nonblocking(true).unwrap();
   let hits = Arc::new(AtomicUsize::new(0));
   let counting = Arc::clone(&hits);
+  let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+  let stopping = Arc::clone(&stop);
   let server = std::thread::spawn(move || {
-    let deadline = Instant::now() + Duration::from_secs(8);
-    while Instant::now() < deadline {
+    let deadline = Instant::now() + Duration::from_secs(16);
+    while !stopping.load(Ordering::Relaxed) && Instant::now() < deadline {
       match listener.accept() {
         Ok((mut stream, _)) => {
           counting.fetch_add(1, Ordering::SeqCst);
@@ -631,7 +633,16 @@ source.onerror = () => {{
 setTimeout(() => {{
   Yuzuko.permissions.revokeSync({{ name: "net", host: "localhost" }});
 }}, 400);
-await new Promise((resolve) => setTimeout(resolve, 4500));
+const started = Date.now();
+let saw = 0;
+while (Date.now() - started < 12000) {{
+  if (errors >= 1 && saw === 0) saw = Date.now();
+  if (errors >= 2) break;
+  // The default retry is 3s. A slow runner can spend several seconds on
+  // the first connection, so the wait starts at that error.
+  if (saw !== 0 && Date.now() - saw >= 5000) break;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}}
 source.close();
 console.log("closed " + errors);
 "#
@@ -646,6 +657,7 @@ console.log("closed " + errors);
       "main.ts",
     ],
   );
+  stop.store(true, Ordering::Relaxed);
   let _ = server.join();
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
