@@ -372,23 +372,28 @@ fn spawn_op<'s>(
   } else {
     args.get(1)
   };
-  let request = read_options(scope, options)?;
-  // A relative program is resolved from `cwd`. Check that directory before
-  // asking the operating system whether it exists.
+  let mut request = read_options(scope, options)?;
+  // Join a relative directory before the read check. The child uses that
+  // absolute directory, so a later chdir cannot retarget it.
+  if let Some(dir) = request.cwd.as_mut() {
+    *dir = crate::permissions::anchor_path(dir)?;
+  }
   if let Some(dir) = &request.cwd {
     crate::permissions::check_read(dir)?;
   }
-  let rooted = request.cwd.is_some()
-    && !Path::new(&program).is_absolute()
-    && (program.contains('/') || program.contains('\\'));
-  if rooted {
-    crate::permissions::check_run_at(
-      &program,
-      request.cwd.as_deref().unwrap(),
-    )?;
-  } else {
-    crate::permissions::check_run(&program)?;
-  }
+  let overlay: Vec<_> = request
+    .env
+    .iter()
+    .map(|change| crate::permissions::SpawnEnv {
+      name: &change.name,
+      value: change.value.as_deref(),
+    })
+    .collect();
+  let program = crate::permissions::resolve_spawn(
+    &program,
+    request.cwd.as_deref(),
+    &overlay,
+  )?;
   for change in &request.env {
     crate::permissions::check_env(&change.name)?;
   }

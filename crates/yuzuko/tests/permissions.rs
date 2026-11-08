@@ -56,6 +56,20 @@ fn run_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
+  // A scoped run grant rejects an inherited `LD_*` or `DYLD_*` variable.
+  // Drop those names here so a successful spawn is not tied to the shell
+  // that launched the test. An explicit entry below can set one again.
+  for (key, _) in std::env::vars_os() {
+    let Some(name) = key.to_str() else {
+      continue;
+    };
+    let bytes = name.as_bytes();
+    let loader = (bytes.len() >= 3 && bytes[..3].eq_ignore_ascii_case(b"LD_"))
+      || (bytes.len() >= 5 && bytes[..5].eq_ignore_ascii_case(b"DYLD_"));
+    if loader {
+      command.env_remove(&key);
+    }
+  }
   for (key, value) in env {
     command.env(key, value);
   }
@@ -1292,6 +1306,302 @@ console.log(new TextDecoder().decode(output.stdout));
     "{stdout}\n{}",
     text(&allowed.stderr)
   );
+}
+
+#[test]
+fn an_async_file_call_keeps_the_path_from_the_check() {
+  let parent = scratch("chdir-race");
+  let proj = parent.join("proj");
+  fs::create_dir_all(proj.join("sub")).unwrap();
+  write(&parent.join("secret.txt"), "OUTSIDE\n");
+  write(&parent.join("note.txt"), "OLD\n");
+  write(&proj.join("secret.txt"), "INSIDE\n");
+  write(&proj.join("note.txt"), "OLD\n");
+  write(
+    &proj.join("main.ts"),
+    r#"for (let i = 0; i < 20; i += 1) {
+  Yuzuko.chdir("sub");
+  const pending = Yuzuko.readTextFile("../secret.txt");
+  Yuzuko.chdir("..");
+  const found = (await pending).trim();
+  if (found !== "INSIDE") {
+    console.log("LEAK " + found);
+    break;
+  }
+}
+console.log("read INSIDE");
+for (let i = 0; i < 20; i += 1) {
+  Yuzuko.chdir("sub");
+  const pending = Yuzuko.writeTextFile("../note.txt", "NEW");
+  Yuzuko.chdir("..");
+  await pending;
+}
+console.log("wrote");
+"#,
+  );
+  let output = run(
+    &proj,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read=.",
+      "--allow-write=.",
+      "main.ts",
+    ],
+  );
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  assert!(stdout.contains("read INSIDE"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("wrote"), "{stdout}\n{stderr}");
+  assert!(!stdout.contains("LEAK"), "{stdout}");
+  assert!(!stdout.contains("OUTSIDE"), "{stdout}");
+  assert_eq!(fs::read_to_string(proj.join("note.txt")).unwrap(), "NEW");
+  assert_eq!(
+    fs::read_to_string(parent.join("note.txt")).unwrap(),
+    "OLD\n"
+  );
+  let _ = fs::remove_dir_all(&parent);
+}
+
+#[cfg(feature = "child")]
+#[test]
+fn a_scoped_run_rejects_a_loader_variable() {
+  let dir = scratch("run-loader");
+  let (command, args) = if cfg!(windows) {
+    ("cmd", r#"["/d", "/c", "echo SAFE"]"#)
+  } else {
+    ("echo", r#"["SAFE"]"#)
+  };
+  let grant = format!("--allow-run={command}");
+  write(
+    &dir.join("main.ts"),
+    &format!(
+      r#"async function probe(label, env) {{
+  try {{
+    const child = Yuzuko.spawn({command:?}, {{ args: {args}, env }});
+    const output = await child.output();
+    console.log(label + " OK " + new TextDecoder().decode(output.stdout).trim());
+  }} catch (error) {{
+    console.log(label + " " + error.name + " " + error.message);
+  }}
+}}
+await probe("plain", {{}});
+await probe("preload", {{ LD_PRELOAD: "x" }});
+await probe("dyld", {{ DYLD_INSERT_LIBRARIES: "x" }});
+await probe("lower", {{ ld_preload: "x" }});
+Yuzuko.env.set("LD_PRELOAD", "x");
+await probe("inherited", {{}});
+Yuzuko.env.delete("LD_PRELOAD");
+await probe("restored", {{}});
+Yuzuko.env.set("DYLD_INSERT_LIBRARIES", "x");
+await probe("removed", {{ DYLD_INSERT_LIBRARIES: null }});
+"#,
+      command = command,
+      args = args,
+    ),
+  );
+  let output = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-env",
+      grant.as_str(),
+      "main.ts",
+    ],
+  );
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  for label in ["plain", "restored", "removed"] {
+    assert!(
+      stdout
+        .lines()
+        .any(|line| line == format!("{label} OK SAFE")),
+      "missing {label}\n{stdout}\n{stderr}"
+    );
+  }
+  let denied =
+    "NotAllowedError Requires run access, run again with the --allow-run flag";
+  for label in ["preload", "dyld", "lower", "inherited"] {
+    assert!(
+      stdout
+        .lines()
+        .any(|line| line == format!("{label} {denied}")),
+      "missing {label}\n{stdout}\n{stderr}"
+    );
+  }
+  assert!(!stdout.contains("PWNED"), "{stdout}");
+
+  write(
+    &dir.join("whole.ts"),
+    &format!(
+      r#"try {{
+  const child = Yuzuko.spawn({command:?}, {{
+    args: {args},
+    env: {{ LD_PRELOAD: "", DYLD_INSERT_LIBRARIES: "" }},
+  }});
+  const output = await child.output();
+  console.log("whole OK " + new TextDecoder().decode(output.stdout).trim());
+}} catch (error) {{
+  console.log("whole " + error.name + " " + error.message);
+}}
+"#,
+      command = command,
+      args = args,
+    ),
+  );
+  let whole = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-run",
+      "--allow-env",
+      "whole.ts",
+    ],
+  );
+  let stdout = text(&whole.stdout);
+  let stderr = text(&whole.stderr);
+  assert_eq!(whole.status.code(), Some(0), "{stderr}\n{stdout}");
+  assert!(
+    stdout.lines().any(|line| line == "whole OK SAFE"),
+    "{stdout}\n{stderr}"
+  );
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(all(unix, feature = "child"))]
+#[test]
+fn a_bare_run_grant_stays_on_the_startup_executable() {
+  use std::os::unix::fs::PermissionsExt;
+  let dir = scratch("run-path");
+  let evil = dir.join("evil-bin");
+  fs::create_dir_all(&evil).unwrap();
+  let fake = evil.join("echo");
+  write(&fake, "#!/bin/sh\necho PWNED\n");
+  let mut permissions = fs::metadata(&fake).unwrap().permissions();
+  permissions.set_mode(0o755);
+  fs::set_permissions(&fake, permissions).unwrap();
+  let evil_js = serde_json::to_string(&evil.display().to_string()).unwrap();
+  write(
+    &dir.join("main.ts"),
+    &format!(
+      r#"async function probe(label, env) {{
+  try {{
+    const child = Yuzuko.spawn("echo", {{ args: ["SAFE"], env }});
+    const output = await child.output();
+    console.log(label + " OK " + new TextDecoder().decode(output.stdout).trim());
+  }} catch (error) {{
+    console.log(label + " " + error.name + " " + error.message);
+  }}
+}}
+await probe("same", {{}});
+await probe("swapped", {{ PATH: {evil_js} }});
+Yuzuko.env.set("PATH", {evil_js});
+await probe("assigned", {{}});
+"#,
+      evil_js = evil_js,
+    ),
+  );
+  let output = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-env",
+      "--allow-run=echo",
+      "main.ts",
+    ],
+  );
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  assert!(
+    stdout.lines().any(|line| line == "same OK SAFE"),
+    "{stdout}\n{stderr}"
+  );
+  for label in ["swapped", "assigned"] {
+    let line = stdout
+      .lines()
+      .find(|line| line.starts_with(label))
+      .unwrap_or("");
+    assert!(
+      line.starts_with(&format!("{label} NotAllowedError")),
+      "{line}\n{stdout}\n{stderr}"
+    );
+    assert!(line.contains("evil-bin"), "{line}");
+    assert!(!line.contains("PWNED"), "{line}");
+  }
+  assert!(!stdout.contains("PWNED"), "{stdout}");
+  assert!(!stderr.contains("PWNED"), "{stderr}");
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(all(unix, feature = "child"))]
+#[test]
+fn a_path_run_rule_does_not_match_a_bare_command() {
+  use std::os::unix::fs::PermissionsExt;
+  let dir = scratch("run-bare");
+  let tool = dir.join("tool");
+  let evil = dir.join("evil-bin");
+  fs::create_dir_all(&evil).unwrap();
+  for (path, body) in [
+    (&tool, "#!/bin/sh\necho REAL\n"),
+    (&evil.join("tool"), "#!/bin/sh\necho PWNED\n"),
+  ] {
+    write(path, body);
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).unwrap();
+  }
+  let allow = format!("--allow-run={}", tool.display());
+  let evil_js = serde_json::to_string(&evil.display().to_string()).unwrap();
+  write(
+    &dir.join("main.ts"),
+    &format!(
+      r#"async function probe(label, run) {{
+  try {{
+    console.log(label + " OK " + (await run()));
+  }} catch (error) {{
+    console.log(label + " " + error.name + " " + error.message);
+  }}
+}}
+const text = async (child) => new TextDecoder().decode((await child.output()).stdout).trim();
+await probe("bare", async () => text(Yuzuko.spawn("tool", {{ env: {{ PATH: {evil_js} }} }})));
+await probe("direct", async () => text(Yuzuko.spawn("./tool")));
+"#,
+      evil_js = evil_js,
+    ),
+  );
+  let output = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-env",
+      allow.as_str(),
+      "main.ts",
+    ],
+  );
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  assert!(
+    stdout.lines().any(|line| {
+      line.starts_with("bare NotAllowedError")
+        && line.contains("Requires run access to \"tool\"")
+    }),
+    "{stdout}\n{stderr}"
+  );
+  assert!(
+    stdout.lines().any(|line| line == "direct OK REAL"),
+    "{stdout}\n{stderr}"
+  );
+  assert!(!stdout.contains("PWNED"), "{stdout}");
+  assert!(!stderr.contains("PWNED"), "{stderr}");
+  let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

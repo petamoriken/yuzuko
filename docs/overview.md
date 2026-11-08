@@ -124,7 +124,7 @@ Feature: `fs`.
 
 File-system methods live on `Yuzuko` in the main realm and in a dedicated worker: `open`, `create`, `readFile`, `readTextFile`, `writeFile`, `writeTextFile`, `mkdir`, `remove`, `rename`, `stat`, `lstat`, `readDir`, `copyFile`, `realPath`, `truncate`, `makeTempDir`, `makeTempFile`, `chmod`, `chown`, `link`, `symlink`, `readLink`, `utime`, and `watchFs`. Each of those except `watchFs` has a synchronous twin. `umask` is synchronous. `Yuzuko.FsFile` is the open descriptor, with reads, writes, seeks, locks, terminal mode, and `readable` and `writable` streams. `Yuzuko.FsWatcher` reports directory changes. Failures throw the classes on `Yuzuko.errors`.
 
-A relative path uses the process current directory. Each call checks the read or write permission before the operating-system call. A packaged application can read its bundle and cannot modify it. `file:` fetch stays inside the entry directory and does not use this feature.
+A relative path is joined to the process current directory before the permission check, and that absolute path is opened. Each call checks the read or write permission before the operating-system call. A packaged application can read its bundle and cannot modify it. `file:` fetch stays inside the entry directory and does not use this feature.
 
 ## Datagrams
 

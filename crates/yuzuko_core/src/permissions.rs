@@ -10,6 +10,8 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::OsStr;
+#[cfg(feature = "child")]
+use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
@@ -219,6 +221,10 @@ struct Gate {
 struct Sandbox {
   gates: [Gate; 6],
   prompt: bool,
+  /// Directories on `PATH` when this policy was installed. A bare run
+  /// grant is the executable found here, not a `PATH` the script sets later.
+  #[cfg(feature = "child")]
+  command_path: Vec<PathBuf>,
 }
 
 impl Sandbox {
@@ -226,6 +232,8 @@ impl Sandbox {
     Self {
       gates: std::array::from_fn(|_| Gate::default()),
       prompt,
+      #[cfg(feature = "child")]
+      command_path: Vec::new(),
     }
   }
 
@@ -276,6 +284,10 @@ impl Sandbox {
       &spec.ffi,
       &root,
     )?;
+    #[cfg(feature = "child")]
+    {
+      sandbox.command_path = capture_command_path();
+    }
     Ok(sandbox)
   }
 
@@ -777,6 +789,225 @@ pub(crate) fn check_run_at(command: &str, base: &Path) -> Result<(), OpError> {
   check_run(command)
 }
 
+/// One `options.env` entry. `None` removes the name.
+#[cfg(feature = "child")]
+pub(crate) struct SpawnEnv<'a> {
+  pub name: &'a str,
+  pub value: Option<&'a str>,
+}
+
+/// The program `spawn` may execute.
+///
+/// A bare name is resolved through the child's `PATH` and allowed only when
+/// that file is the one the name found on `PATH` at installation. A path is
+/// the absolute file the run check accepted. When `run` is granted as a
+/// whole, the returned path is the caller's command and loader variables are
+/// left in place. Otherwise an `LD_` or `DYLD_` variable rejects the child.
+#[cfg(feature = "child")]
+pub(crate) fn resolve_spawn(
+  command: &str,
+  cwd: Option<&Path>,
+  env: &[SpawnEnv<'_>],
+) -> Result<PathBuf, OpError> {
+  let path_command = is_command_path(command);
+  if path_command
+    && let Some(base) = cwd
+    && !Path::new(command).is_absolute()
+  {
+    check_run_at(command, base)?;
+  } else {
+    check_run(command)?;
+  }
+  if run_is_whole() {
+    return Ok(PathBuf::from(command));
+  }
+  if loader_env_present(env) {
+    return Err(denied(Kind::Run, &Detail::Any)?);
+  }
+  if path_command {
+    let found = with_run_base(cwd, || executed_path(Path::new(command)));
+    return Ok(found.unwrap_or_else(|| PathBuf::from(command)));
+  }
+  let base = match cwd {
+    Some(path) => path.to_path_buf(),
+    None => current_dir()?,
+  };
+  let trusted = find_command(command, &startup_command_path());
+  let executed = find_command(command, &effective_command_path(env, &base));
+  match (trusted, executed) {
+    (Some(trusted), Some(executed)) if paths_equal(&trusted, &executed) => {
+      Ok(executed)
+    }
+    (_, Some(executed)) => Err(denied(
+      Kind::Run,
+      &Detail::Name(executed.display().to_string()),
+    )?),
+    _ => Err(denied(Kind::Run, &Detail::Name(command.to_string()))?),
+  }
+}
+
+#[cfg(feature = "child")]
+fn with_run_base<T>(base: Option<&Path>, body: impl FnOnce() -> T) -> T {
+  let _guard = base.map(RunBase::set);
+  body()
+}
+
+#[cfg(feature = "child")]
+fn run_is_whole() -> bool {
+  let guard = lock();
+  match &*guard {
+    Mode::Open => true,
+    Mode::Sandbox(sandbox) => {
+      let gate = &sandbox.gates[Kind::Run as usize];
+      if gate.deny_all || gate.session_deny_all {
+        return false;
+      }
+      gate.session_allow_all || (gate.allow_all && !gate.revoked)
+    }
+  }
+}
+
+#[cfg(feature = "child")]
+fn startup_command_path() -> Vec<PathBuf> {
+  let guard = lock();
+  match &*guard {
+    Mode::Sandbox(sandbox) => sandbox.command_path.clone(),
+    Mode::Open => Vec::new(),
+  }
+}
+
+#[cfg(feature = "child")]
+fn capture_command_path() -> Vec<PathBuf> {
+  let Ok(cwd) = std::env::current_dir() else {
+    return Vec::new();
+  };
+  let Some(raw) = std::env::var_os("PATH") else {
+    return Vec::new();
+  };
+  absolute_path_entries(&raw, &cwd)
+}
+
+#[cfg(feature = "child")]
+fn effective_command_path(env: &[SpawnEnv<'_>], base: &Path) -> Vec<PathBuf> {
+  let mut raw = std::env::var_os("PATH");
+  for change in env {
+    if change.value.is_none() && env_eq(change.name, "PATH") {
+      raw = None;
+    }
+  }
+  for change in env {
+    if let Some(value) = change.value
+      && env_eq(change.name, "PATH")
+    {
+      raw = Some(OsString::from(value));
+    }
+  }
+  let Some(raw) = raw else {
+    return Vec::new();
+  };
+  absolute_path_entries(&raw, base)
+}
+
+#[cfg(feature = "child")]
+fn absolute_path_entries(raw: &OsStr, base: &Path) -> Vec<PathBuf> {
+  let mut dirs = Vec::new();
+  for entry in std::env::split_paths(raw) {
+    if entry.as_os_str().is_empty() {
+      dirs.push(base.to_path_buf());
+      continue;
+    }
+    if entry.is_absolute() {
+      dirs.push(entry);
+    } else {
+      dirs.push(base.join(entry));
+    }
+  }
+  dirs
+}
+
+#[cfg(feature = "child")]
+fn find_command(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+  let file_name = command_file_name(name);
+  for dir in dirs {
+    let candidate = dir.join(&file_name);
+    if !command_file_exists(&candidate) {
+      continue;
+    }
+    return executed_path(&candidate).or(Some(candidate));
+  }
+  None
+}
+
+#[cfg(feature = "child")]
+fn command_file_name(name: &str) -> String {
+  // Rust's Windows process spawn appends `.exe` when the name has no
+  // extension and then searches `PATH` for that file.
+  #[cfg(windows)]
+  if Path::new(name).extension().is_none() {
+    return format!("{name}.exe");
+  }
+  name.to_string()
+}
+
+#[cfg(feature = "child")]
+fn command_file_exists(path: &Path) -> bool {
+  let Ok(meta) = std::fs::metadata(path) else {
+    return false;
+  };
+  if !meta.is_file() {
+    return false;
+  }
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    meta.permissions().mode() & 0o111 != 0
+  }
+  #[cfg(not(unix))]
+  {
+    true
+  }
+}
+
+#[cfg(feature = "child")]
+fn loader_env_present(env: &[SpawnEnv<'_>]) -> bool {
+  let mut present: Vec<OsString> =
+    std::env::vars_os().map(|(name, _)| name).collect();
+  for change in env {
+    if change.value.is_none() {
+      present.retain(|name| !env_os_eq(name, change.name));
+    }
+  }
+  if present.iter().any(|name| is_loader_name(name)) {
+    return true;
+  }
+  env.iter().any(|change| {
+    change.value.is_some() && is_loader_name(OsStr::new(change.name))
+  })
+}
+
+#[cfg(feature = "child")]
+fn is_loader_name(name: &OsStr) -> bool {
+  let Some(text) = name.to_str() else {
+    return false;
+  };
+  starts_with_ascii_ignore_case(text, "LD_")
+    || starts_with_ascii_ignore_case(text, "DYLD_")
+}
+
+#[cfg(feature = "child")]
+fn starts_with_ascii_ignore_case(text: &str, prefix: &str) -> bool {
+  text.len() >= prefix.len()
+    && text.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+#[cfg(feature = "child")]
+fn env_os_eq(left: &OsStr, right: &str) -> bool {
+  let Some(left) = left.to_str() else {
+    return false;
+  };
+  env_eq(left, right)
+}
+
 pub fn check_ffi(path: &Path) -> Result<(), OpError> {
   let text = path.to_string_lossy();
   // A slash-free name is searched by the dynamic linker. Checking it as
@@ -1058,6 +1289,30 @@ fn current_dir() -> Result<PathBuf, OpError> {
   std::env::current_dir().map_err(|_| {
     OpError::dom("OperationError", "The current directory could not be read.")
   })
+}
+
+/// The absolute path a check and the following operating-system call share.
+///
+/// A relative path is joined to the current directory. `.` and `..` stay in
+/// the result, so opening it still follows a symlink. A later `chdir` does
+/// not retarget the call.
+pub(crate) fn anchor_path(path: &Path) -> Result<PathBuf, OpError> {
+  if path.as_os_str().is_empty() {
+    return current_dir();
+  }
+  if path.is_absolute() {
+    return Ok(path.to_path_buf());
+  }
+  // `C:name` has a prefix and is not absolute. Joining it would drop the
+  // current directory. `std::path::absolute` asks the operating system for
+  // that drive's directory.
+  #[cfg(windows)]
+  if path.prefix().is_some() {
+    return std::path::absolute(path).map_err(|_| {
+      OpError::dom("OperationError", "The current directory could not be read.")
+    });
+  }
+  Ok(current_dir()?.join(path))
 }
 
 fn push_canonical(found: &mut Vec<PathBuf>, path: &Path) {
@@ -1506,6 +1761,11 @@ fn env_starts(name: &str, prefix: &str) -> bool {
 
 fn run_covers(rule: &str, command: &str) -> bool {
   if is_command_path(rule) {
+    // A bare command is found through `PATH`. Comparing it with `cwd/name`
+    // would let a path grant run a different file.
+    if !is_command_path(command) {
+      return false;
+    }
     let Ok(rule_path) = lexical_absolute(Path::new(rule)) else {
       return false;
     };
@@ -2050,6 +2310,48 @@ mod tests {
         .unwrap(),
       State::Prompt
     );
+  }
+
+  #[test]
+  fn a_bare_command_does_not_match_a_path_run_rule() {
+    let dir = std::env::temp_dir().join(format!(
+      "yuzuko-perm-bare-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let dir = std::fs::canonicalize(&dir).unwrap();
+    let tool = dir.join("tool");
+    std::fs::write(&tool, b"echo\n").unwrap();
+    let mut spec = PermissionSpec::default();
+    spec
+      .allow("run", Some(vec![tool.display().to_string()]))
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, &dir).unwrap();
+    let _base = RunBase::set(&dir);
+    assert_eq!(
+      sandbox
+        .classify(Kind::Run, &Detail::Name("tool".to_string()))
+        .unwrap(),
+      State::Prompt
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Run, &Detail::Name(tool.display().to_string()))
+        .unwrap(),
+      State::Granted
+    );
+    let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]

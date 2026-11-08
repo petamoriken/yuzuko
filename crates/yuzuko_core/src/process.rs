@@ -362,6 +362,15 @@ fn chdir(
     crate::js::throw_type(scope, PATH_NUL);
     return;
   }
+  // Join a relative path before the check. The same absolute path is the
+  // directory this call sets, so a later change cannot retarget it.
+  let path = match crate::permissions::anchor_path(&path) {
+    Ok(path) => path,
+    Err(error) => {
+      error.throw(scope);
+      return;
+    }
+  };
   if let Err(error) = crate::permissions::check_read(&path) {
     error.throw(scope);
     return;

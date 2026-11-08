@@ -2556,8 +2556,9 @@ declare namespace Yuzuko {
   /**
    * Sets the process current directory.
    *
-   * `directory` is a string or a `file:` URL. A relative string resolves
-   * against the current directory. An empty string names the current
+   * `directory` is a string or a `file:` URL. A relative string is joined
+   * to the current directory before the read check, and that absolute path
+   * is the directory the call sets. An empty string names the current
    * directory and succeeds without changing it. The directory may be inside
    * a packaged bundle. The call does not modify the bundle. File-system
    * paths are relative to this directory.
@@ -2662,9 +2663,11 @@ declare namespace Yuzuko {
      * not match a rule for the collapsed path when that is a different
      * file. A grant of a symlink does not match when its target is a
      * different file. A relative command is resolved from `spawn`'s `cwd`
-     * when that option is set. A bare name matches a bare command. On
-     * Windows a bare `git` matches a bare `git.exe`. A bare name does not
-     * match a path.
+     * when that option is set. A bare name matches a bare command and does
+     * not match a path rule. On Windows a bare `git` matches a bare
+     * `git.exe`. `spawn` resolves a bare name through the child's `PATH`
+     * and runs it only when that file is the executable the name had on
+     * `PATH` when the policy was installed.
      */
     command?: string;
   }
@@ -3438,7 +3441,9 @@ declare namespace Yuzuko {
      * variable this object does not replace. `spawn` requires env access
      * for the whole environment, including when `env` is omitted. The
      * environment is not cleared. On Windows, names are case-insensitive
-     * and removals are applied before assignments.
+     * and removals are applied before assignments. Unless `run` is granted
+     * as a whole, a variable whose name begins with `LD_` or `DYLD_` is
+     * rejected. `null` removes it.
      */
     env?: { [name: string]: string | null } | null;
 
@@ -3446,8 +3451,9 @@ declare namespace Yuzuko {
      * Working directory for the child.
      *
      * A string or a `file:` URL. Omitted, `null`, `undefined`, and `""`
-     * inherit the current directory. A relative string is relative to the
-     * process current directory.
+     * inherit the current directory. A relative string is joined to the
+     * process current directory before the read check, and the child uses
+     * that absolute directory.
      */
     cwd?: string | URL | null;
   }
@@ -3729,9 +3735,13 @@ declare namespace Yuzuko {
    * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
    * does not grant the program, read access to `cwd`, a name in `env`, or
    * env access for the whole environment. A bare run grant matches a bare
-   * command name. A command that contains `/` or `\` needs a path grant
-   * for the file that would run. A missing grant for `cwd` does not report
-   * whether that directory exists.
+   * command name only when `PATH` finds the executable recorded for that
+   * name. A command with no `/` or `\` does not match a path grant. A
+   * command that contains `/` or `\` needs a path grant for the file that
+   * would run. Unless `run` is granted as a whole, an `LD_` or `DYLD_`
+   * variable in the child environment is rejected with the unscoped run
+   * message. A missing grant for `cwd` does not report whether that
+   * directory exists.
    * @throws {@link Error} `The child process could not be started.` when
    * the operating system refuses the program. `The directory was not
    * found.` when a granted `cwd` is missing. `The path is not a directory.`

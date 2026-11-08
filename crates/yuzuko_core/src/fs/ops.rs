@@ -112,6 +112,8 @@ fn path_only(
   let path = ready(scope, path)?;
   let options = value::ignore_options(scope, args.get(1));
   ready(scope, options)?;
+  // The job opens this absolute path. A later chdir cannot retarget it.
+  let path = crate::permissions::anchor_path(&path)?;
   crate::permissions::check_read(&path)?;
   Ok(path)
 }
@@ -121,7 +123,8 @@ fn one_path(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<std::path::PathBuf, OpError> {
   let path = value::parse_path(scope, args.get(0));
-  ready(scope, path)
+  let path = ready(scope, path)?;
+  crate::permissions::anchor_path(&path)
 }
 
 fn two_paths(
@@ -133,6 +136,17 @@ fn two_paths(
   let to = value::parse_path(scope, args.get(1));
   let to = ready(scope, to)?;
   Ok((from, to))
+}
+
+fn two_anchored(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), OpError> {
+  let (from, to) = two_paths(scope, args)?;
+  Ok((
+    crate::permissions::anchor_path(&from)?,
+    crate::permissions::anchor_path(&to)?,
+  ))
 }
 
 fn ready_open_flags(
@@ -212,9 +226,14 @@ fn permit_open(
   Ok(())
 }
 
-fn permit_temp(spec: &io::TempSpec) -> Result<(), OpError> {
+fn permit_temp(spec: &mut io::TempSpec) -> Result<(), OpError> {
   match &spec.dir {
-    Some(dir) => crate::permissions::check_write(dir),
+    Some(dir) => {
+      let dir = crate::permissions::anchor_path(dir)?;
+      crate::permissions::check_write(&dir)?;
+      spec.dir = Some(dir);
+      Ok(())
+    }
     None => crate::permissions::check_write(&std::env::temp_dir()),
   }
 }
@@ -455,7 +474,7 @@ fn rename_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let (from, to) = two_paths(scope, args)?;
+  let (from, to) = two_anchored(scope, args)?;
   crate::permissions::check_read(&from)?;
   crate::permissions::check_write(&from)?;
   crate::permissions::check_read(&to)?;
@@ -474,7 +493,7 @@ fn rename_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (from, to) = two_paths(scope, args)?;
+  let (from, to) = two_anchored(scope, args)?;
   crate::permissions::check_read(&from)?;
   crate::permissions::check_write(&from)?;
   crate::permissions::check_read(&to)?;
@@ -579,7 +598,7 @@ fn copy_file_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let (from, to) = two_paths(scope, args)?;
+  let (from, to) = two_anchored(scope, args)?;
   crate::permissions::check_read(&from)?;
   crate::permissions::check_write(&to)?;
   settle!(
@@ -596,7 +615,7 @@ fn copy_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (from, to) = two_paths(scope, args)?;
+  let (from, to) = two_anchored(scope, args)?;
   crate::permissions::check_read(&from)?;
   crate::permissions::check_write(&to)?;
   ready(scope, io::copy_path(&from, &to))
@@ -677,8 +696,8 @@ fn temp_kind(
   args: &v8::FunctionCallbackArguments,
   directory: bool,
 ) -> Result<Js, OpError> {
-  let spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&spec)?;
+  let mut spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&mut spec)?;
   settle!(
     scope,
     move || io::make_temp(directory, spec),
@@ -695,8 +714,8 @@ fn make_temp_dir_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
-  let spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&spec)?;
+  let mut spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&mut spec)?;
   ready(scope, io::make_temp(true, spec))
 }
 
@@ -705,8 +724,8 @@ fn make_temp_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
-  let spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&spec)?;
+  let mut spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&mut spec)?;
   ready(scope, io::make_temp(false, spec))
 }
 
@@ -746,6 +765,9 @@ fn symlink_args(
   let (old, new) = two_paths(scope, args)?;
   let kind = value::link_kind(scope, args.get(2));
   let kind = ready(scope, kind)?;
+  // The stored target stays the caller's string. The new path is absolute
+  // so a later chdir cannot create the link somewhere else.
+  let new = crate::permissions::anchor_path(&new)?;
   // A relative symbolic link is resolved from the new link's directory.
   // A junction stores a target joined to the current directory.
   let junction = matches!(kind, io::LinkKind::Junction);
@@ -841,7 +863,7 @@ fn link_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let (old, new) = two_paths(scope, args)?;
+  let (old, new) = two_anchored(scope, args)?;
   crate::permissions::check_read(&old)?;
   // The new name is the same inode. Writing it changes the old file.
   crate::permissions::check_write(&old)?;
@@ -860,7 +882,7 @@ fn link_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (old, new) = two_paths(scope, args)?;
+  let (old, new) = two_anchored(scope, args)?;
   crate::permissions::check_read(&old)?;
   // The new name is the same inode. Writing it changes the old file.
   crate::permissions::check_write(&old)?;
@@ -951,7 +973,9 @@ fn watch_fs_op(
 ) -> Result<New<FsWatcher>, OpError> {
   let paths = value::watch_paths(scope, args.get(0));
   let paths = ready(scope, paths)?;
-  for path in &paths {
+  let mut paths = paths;
+  for path in &mut paths {
+    *path = crate::permissions::anchor_path(path)?;
     crate::permissions::check_read(path)?;
   }
   let recursive = value::watch_recursive(scope, args.get(1));
