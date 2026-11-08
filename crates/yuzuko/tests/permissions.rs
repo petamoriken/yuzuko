@@ -1217,10 +1217,11 @@ await probe("rel", () => Yuzuko.dlopen("./no-such-library", {{}}));
     )),
     "{stdout}"
   );
+  let shown_absolute = absolute.replace('\\', "\\\\");
   assert!(
     stdout.lines().any(|line| {
       line.starts_with("abs NotAllowedError Requires ffi access to \"")
-        && line.contains(absolute)
+        && line.contains(&shown_absolute)
     }),
     "{stdout}"
   );
