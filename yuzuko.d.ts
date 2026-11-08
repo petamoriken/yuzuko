@@ -2472,9 +2472,11 @@ declare namespace Yuzuko {
   /**
    * Environment variables of this process.
    *
-   * The methods do not read `this`. `set` and `delete` do not run while a
-   * host lookup is inside `getaddrinfo`, and a host lookup waits until
-   * they return. A change is visible to a later read in
+   * The methods do not read `this`. `get`, `has`, and `toObject` may run
+   * while a host lookup is inside `getaddrinfo`. Host lookups may overlap.
+   * `set` and `delete` wait until those reads and lookups finish, and they
+   * do not run at the same time as each other or as {@link chdir}. A change
+   * is visible to a later read in
    * every realm. On Windows a lookup ignores ASCII case, and {@link Env.set}
    * of a name that differs only by that case updates the existing variable.
    * On the other targets the name is case-sensitive. Bytes that are not
@@ -2551,7 +2553,7 @@ declare namespace Yuzuko {
    *
    * @throws {@link DOMException} `OperationError` with
    * `The current directory could not be read.` when the operating system
-   * cannot report the directory.
+   * cannot report the directory. This call may run during a host lookup.
    */
   function cwd(): string;
 
@@ -2560,7 +2562,9 @@ declare namespace Yuzuko {
    *
    * `directory` is a string or a `file:` URL. A relative string is joined
    * to the current directory before the read check, and that absolute path
-   * is the directory the call sets. An empty string names the current
+   * is the directory the call sets. `chdir` waits for a host lookup, for
+   * {@link cwd}, and for {@link Env.set} or {@link Env.delete}, and those
+   * wait for `chdir`. An empty string names the current
    * directory and succeeds without changing it. The directory may be inside
    * a packaged bundle. The call does not modify the bundle. File-system
    * paths are relative to this directory.

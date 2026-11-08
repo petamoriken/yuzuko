@@ -7,14 +7,17 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::op::OpException;
 
 static EXIT: AtomicI32 = AtomicI32::new(-1);
 static ARGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
-/// Orders this process's own environment and current-directory changes.
-static IO: Mutex<()> = Mutex::new(());
+/// Shares environment reads and host lookup, and excludes changes.
+///
+/// `getaddrinfo` and `getenv` take the read side and may overlap. `setenv`,
+/// `unsetenv`, and `chdir` take the write side.
+static IO: RwLock<()> = RwLock::new(());
 
 const EXIT_CODE: &str = "The exit code must be an integer from 0 through 255.";
 const NAME_TYPE: &str = "The name must be a string.";
@@ -158,7 +161,7 @@ fn env_get(
     return;
   }
   let value = {
-    let _guard = io_lock();
+    let _guard = io_read();
     std::env::var_os(&name).map(|value| value.to_string_lossy().into_owned())
   };
   let Some(value) = value else {
@@ -182,12 +185,13 @@ fn env_set(
     error.throw(scope);
     return;
   }
-  let _guard = io_lock();
+  let _guard = io_write();
   // SAFETY: `name` is not empty and contains neither `=` nor NUL, and
   // `value` contains no NUL, so these calls do not panic on those inputs.
-  // The mutex orders Yuzuko's own environment and directory changes. Other
-  // threads may still read the process environment. Rust documents that
-  // race for `set_var` in a multi-threaded process; this does not stop them.
+  // The write lock keeps this `setenv` off `getaddrinfo` and off another
+  // change. A lookup or an environment read may overlap another read.
+  // Rust documents that `set_var` can race with a thread that does not
+  // take this lock; this does not stop that thread.
   unsafe {
     std::env::set_var(&name, &value);
   }
@@ -205,7 +209,7 @@ fn env_delete(
     error.throw(scope);
     return;
   }
-  let _guard = io_lock();
+  let _guard = io_write();
   // SAFETY: see [`env_set`]. A missing name is a successful removal.
   unsafe {
     std::env::remove_var(&name);
@@ -225,7 +229,7 @@ fn env_has(
     return;
   }
   let present = {
-    let _guard = io_lock();
+    let _guard = io_read();
     std::env::var_os(&name).is_some()
   };
   ret.set(v8::Boolean::new(scope, present).into());
@@ -241,7 +245,7 @@ fn env_to_object(
     return;
   }
   let pairs = {
-    let _guard = io_lock();
+    let _guard = io_read();
     std::env::vars_os()
       .map(|(key, value)| {
         (
@@ -325,7 +329,7 @@ fn cwd(
   mut ret: v8::ReturnValue,
 ) {
   let path = {
-    let _guard = io_lock();
+    let _guard = io_read();
     std::env::current_dir()
   };
   let Ok(path) = path else {
@@ -375,7 +379,7 @@ fn chdir(
     error.throw(scope);
     return;
   }
-  let guard = io_lock();
+  let guard = io_write();
   match std::fs::metadata(&path) {
     Ok(info) if info.is_dir() => {}
     Ok(_) => {
@@ -471,16 +475,21 @@ fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
   crate::js::throw_type(scope, &format!("{name}: {message}"));
 }
 
-fn io_lock() -> MutexGuard<'static, ()> {
-  lock(&IO)
+fn io_read() -> RwLockReadGuard<'static, ()> {
+  IO.read().unwrap_or_else(|poison| poison.into_inner())
 }
 
-/// Runs `body` while no other caller is inside `setenv` or `getaddrinfo`.
+fn io_write() -> RwLockWriteGuard<'static, ()> {
+  IO.write().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// Runs `body` while no caller is inside `setenv`, `unsetenv`, or `chdir`.
 ///
-/// Those libc calls are not safe to run together. `Yuzuko.env.set` holds
-/// this lock around `setenv`. A host lookup holds it around `getaddrinfo`.
+/// `getaddrinfo` is not safe beside those libc calls. Lookups and
+/// environment reads share the read side and may overlap. `Yuzuko.env.set`,
+/// `delete`, and `chdir` take the write side.
 pub fn with_env<T>(body: impl FnOnce() -> T) -> T {
-  let _guard = io_lock();
+  let _guard = io_read();
   body()
 }
 
@@ -499,6 +508,45 @@ mod tests {
   fn exited(source: &str) -> u8 {
     let error = crate::run_scripts(&[source]).expect_err("exit");
     error.exit_code.expect("exit status")
+  }
+
+  #[test]
+  fn host_lookups_overlap() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    let entered = Arc::new(AtomicUsize::new(0));
+    let release = Arc::new(AtomicBool::new(false));
+    let mut threads = Vec::new();
+    for _ in 0..2 {
+      let entered = Arc::clone(&entered);
+      let release = Arc::clone(&release);
+      threads.push(std::thread::spawn(move || {
+        super::with_env(|| {
+          entered.fetch_add(1, Ordering::SeqCst);
+          let start = Instant::now();
+          while !release.load(Ordering::SeqCst) {
+            if start.elapsed() > Duration::from_secs(2) {
+              break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+          }
+        });
+      }));
+    }
+    let start = Instant::now();
+    while entered.load(Ordering::SeqCst) < 2
+      && start.elapsed() < Duration::from_secs(1)
+    {
+      std::thread::sleep(Duration::from_millis(5));
+    }
+    let overlapped = entered.load(Ordering::SeqCst) == 2;
+    release.store(true, Ordering::SeqCst);
+    for thread in threads {
+      thread.join().unwrap();
+    }
+    assert!(overlapped);
   }
 
   #[test]
