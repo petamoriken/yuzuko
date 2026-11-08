@@ -17,7 +17,7 @@ static MODE: Mutex<Mode> = Mutex::new(Mode::Open);
 
 enum Mode {
   Open,
-  Sandbox(Sandbox),
+  Sandbox(Box<Sandbox>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,7 +114,7 @@ pub struct PermissionRules {
 /// `prompt` is whether a missing grant may ask on a terminal. Relative
 /// filesystem paths are resolved against the root passed to
 /// [`install_permissions`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PermissionSpec {
   pub read: PermissionRules,
   pub write: PermissionRules,
@@ -123,20 +123,6 @@ pub struct PermissionSpec {
   pub run: PermissionRules,
   pub ffi: PermissionRules,
   pub prompt: bool,
-}
-
-impl Default for PermissionSpec {
-  fn default() -> Self {
-    Self {
-      read: PermissionRules::default(),
-      write: PermissionRules::default(),
-      net: PermissionRules::default(),
-      env: PermissionRules::default(),
-      run: PermissionRules::default(),
-      ffi: PermissionRules::default(),
-      prompt: false,
-    }
-  }
 }
 
 impl PermissionSpec {
@@ -626,7 +612,7 @@ fn hits(
 }
 
 fn combine(states: &[State]) -> State {
-  if states.iter().any(|state| *state == State::Denied) {
+  if states.contains(&State::Denied) {
     return State::Denied;
   }
   if !states.is_empty() && states.iter().all(|state| *state == State::Granted) {
@@ -665,7 +651,7 @@ pub fn install_permissions(
   root: &Path,
 ) -> Result<(), String> {
   let sandbox = Sandbox::compile(spec, root)?;
-  *lock() = Mode::Sandbox(sandbox);
+  *lock() = Mode::Sandbox(Box::new(sandbox));
   Ok(())
 }
 
@@ -808,7 +794,7 @@ fn interact(
 fn revoke_detail(kind: Kind, detail: &Detail) -> Result<State, OpError> {
   let mut guard = lock();
   if matches!(*guard, Mode::Open) {
-    *guard = Mode::Sandbox(Sandbox::allow_all(false));
+    *guard = Mode::Sandbox(Box::new(Sandbox::allow_all(false)));
   }
   let Mode::Sandbox(sandbox) = &mut *guard else {
     return Ok(State::Granted);
@@ -1527,7 +1513,7 @@ fn parse_detail(kind: Kind, text: &str) -> Result<Detail, OpError> {
       Ok(Detail::Path(PathBuf::from(text)))
     }
     Kind::Net => {
-      let rule = parse_net(text).map_err(|message| OpError::type_(message))?;
+      let rule = parse_net(text).map_err(OpError::type_)?;
       Ok(Detail::Net {
         host: rule.host,
         port: rule.port,

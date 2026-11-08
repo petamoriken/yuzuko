@@ -169,9 +169,7 @@ fn split_flag(
     return Some(Ok(None));
   }
   let prefix = format!("{flag}=");
-  let Some(rest) = token.strip_prefix(&prefix) else {
-    return None;
-  };
+  let rest = token.strip_prefix(&prefix)?;
   if rest.is_empty() {
     return Some(Err(format!("{flag} requires a value.")));
   }
@@ -187,10 +185,9 @@ fn split_list(text: &str) -> Result<Vec<String>, String> {
       if chars.peek() == Some(&',') {
         chars.next();
         current.push(',');
+      } else if current.is_empty() {
+        return Err("A permission list contains an empty item.".to_string());
       } else {
-        if current.is_empty() {
-          return Err("A permission list contains an empty item.".to_string());
-        }
         items.push(std::mem::take(&mut current));
       }
     } else {

@@ -43,8 +43,10 @@ fn main() -> ExitCode {
     yuzuko_core::set_process_bundle_root(&application_bundle_root(&bundle));
     yuzuko::enable_updater(bundle.resources);
     if let Some(value) = &bundle.permissions {
-      let mut spec = PermissionSpec::default();
-      spec.prompt = false;
+      let mut spec = PermissionSpec {
+        prompt: false,
+        ..PermissionSpec::default()
+      };
       if let Err(error) = apply_permission_config(&mut spec, value, true)
         .and_then(|_| install_permissions(&spec, &bundle.sandbox))
       {
@@ -314,8 +316,10 @@ fn install_test(flags: &[PermissionFlag]) -> Result<(), String> {
 }
 
 fn install_repl(flags: &[PermissionFlag]) -> Result<(), String> {
-  let mut spec = PermissionSpec::default();
-  spec.prompt = false;
+  let mut spec = PermissionSpec {
+    prompt: false,
+    ..PermissionSpec::default()
+  };
   let cwd = permission_dir()?;
   apply_permission_flags(&mut spec, flags, &cwd)?;
   install_permissions(&spec, &cwd)

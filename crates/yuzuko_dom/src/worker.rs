@@ -313,14 +313,14 @@ fn import_scripts(
         return;
       }
       None => {
-        if url.starts_with("http:") || url.starts_with("https:") {
-          if let Ok(parsed) = url::Url::parse(&url) {
-            let host = parsed.host_str().unwrap_or("");
-            let port = parsed.port_or_known_default().unwrap_or(0);
-            if let Err(error) = yuzuko_core::check_net(host, port) {
-              error.throw(scope);
-              return;
-            }
+        if (url.starts_with("http:") || url.starts_with("https:"))
+          && let Ok(parsed) = url::Url::parse(&url)
+        {
+          let host = parsed.host_str().unwrap_or("");
+          let port = parsed.port_or_known_default().unwrap_or(0);
+          if let Err(error) = yuzuko_core::check_net(host, port) {
+            error.throw(scope);
+            return;
           }
         }
         match load_import_script(&url, sandbox.as_deref()) {
