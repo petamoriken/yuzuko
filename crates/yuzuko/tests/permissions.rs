@@ -604,7 +604,9 @@ fn an_event_source_reconnect_checks_the_host_again() {
 Content-Type: text/event-stream\r\n\
 Connection: close\r\n\
 \r\n\
-data: hi\n\n",
+retry: 50\n\
+data: hi\n\
+\n",
           );
           let _ = stream.shutdown(Shutdown::Both);
         }
@@ -633,16 +635,8 @@ source.onerror = () => {{
 setTimeout(() => {{
   Yuzuko.permissions.revokeSync({{ name: "net", host: "localhost" }});
 }}, 400);
-const started = Date.now();
-let saw = 0;
-while (Date.now() - started < 12000) {{
-  if (errors >= 1 && saw === 0) saw = Date.now();
-  if (errors >= 2) break;
-  // The default retry is 3s. A slow runner can spend several seconds on
-  // the first connection, so the wait starts at that error.
-  if (saw !== 0 && Date.now() - saw >= 5000) break;
-  await new Promise((resolve) => setTimeout(resolve, 100));
-}}
+await new Promise((resolve) => setTimeout(resolve, 8000));
+console.log("state " + source.readyState);
 source.close();
 console.log("closed " + errors);
 "#
