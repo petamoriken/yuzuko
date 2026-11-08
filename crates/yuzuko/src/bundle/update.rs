@@ -805,8 +805,7 @@ fn http_get(url_text: &str, max: usize) -> Result<Vec<u8>, Failure> {
 }
 
 fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, Failure> {
-  let addresses = (host, port)
-    .to_socket_addrs()
+  let addresses = yuzuko_core::with_env(|| (host, port).to_socket_addrs())
     .map_err(|_| DOWNLOAD_FAILED)?;
   for address in addresses {
     if let Ok(stream) = TcpStream::connect_timeout(&address, TIMEOUT) {

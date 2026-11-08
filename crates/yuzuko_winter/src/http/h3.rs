@@ -128,6 +128,13 @@ async fn open(
   host: &str,
   port: u16,
 ) -> Result<Opened, HttpFailure> {
+  if yuzuko_core::check_net(host, port).is_err() {
+    // `lookup` already applied this check. It runs again after that call
+    // returns so a revoke cannot be dialed. The caller skips HTTP/3.
+    return Err(HttpFailure::Network(
+      "The HTTP/3 alternative is not allowed".to_string(),
+    ));
+  }
   super::super::install_tls();
   let server_name = alt_svc::server_name(attempt.url)
     .ok_or_else(|| HttpFailure::Type("The URL is invalid".to_string()))?;

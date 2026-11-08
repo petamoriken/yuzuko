@@ -5,7 +5,7 @@
 
 use std::collections::VecDeque;
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll, Waker};
@@ -376,13 +376,16 @@ async fn open_stream(
 ) -> Result<Stream, ()> {
   let host = url.host_str().ok_or(())?;
   let port = url.port_or_known_default().ok_or(())?;
-  let tcp = tokio::time::timeout(
-    Duration::from_secs(10),
-    tokio::net::TcpStream::connect((host, port)),
-  )
+  // DNS can return a restricted address for an allowed name. Connect only
+  // to an address the second check kept.
+  let tcp = tokio::time::timeout(Duration::from_secs(10), async {
+    let addrs = super::resolve::checked_addrs(host, port)
+      .await
+      .map_err(|_| ())?;
+    connect_kept(addrs).await
+  })
   .await
-  .map_err(|_| ())?
-  .map_err(|_| ())?;
+  .map_err(|_| ())??;
   let peer = tcp.peer_addr().map_err(|_| ())?.ip();
   if target.is_some_and(|space| address_space(peer) != space) {
     return Err(());
@@ -395,6 +398,18 @@ async fn open_stream(
   let connector = tls_connector();
   let tls = connector.connect(name, tcp).await.map_err(|_| ())?;
   Ok(Stream::Tls(Box::new(tls)))
+}
+
+async fn connect_kept(
+  addrs: Vec<SocketAddr>,
+) -> Result<tokio::net::TcpStream, ()> {
+  for addr in addrs {
+    if let Ok(stream) = tokio::net::TcpStream::connect(addr).await {
+      let _ = stream.set_nodelay(true);
+      return Ok(stream);
+    }
+  }
+  Err(())
 }
 
 enum Stream {

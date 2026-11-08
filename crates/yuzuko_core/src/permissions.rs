@@ -13,7 +13,7 @@ use std::ffi::OsStr;
 #[cfg(feature = "child")]
 use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -445,11 +445,7 @@ impl Sandbox {
           gate.session_allow_nets.push(rule);
           Ok(())
         }
-        Detail::Name(name) => {
-          gate.session_deny_names.retain(|item| item != name);
-          gate.session_allow_names.push(name.clone());
-          Ok(())
-        }
+        Detail::Name(name) => record_session_name(gate, kind, name, true),
       },
       Answer::Deny => match detail {
         Detail::Any => {
@@ -475,11 +471,7 @@ impl Sandbox {
           gate.session_deny_nets.push(rule);
           Ok(())
         }
-        Detail::Name(name) => {
-          gate.session_allow_names.retain(|item| item != name);
-          gate.session_deny_names.push(name.clone());
-          Ok(())
-        }
+        Detail::Name(name) => record_session_name(gate, kind, name, false),
       },
     }
   }
@@ -517,11 +509,7 @@ impl Sandbox {
         gate.session_deny_nets.push(rule);
         Ok(())
       }
-      Detail::Name(name) => {
-        gate.session_allow_names.retain(|item| item != name);
-        gate.session_deny_names.push(name.clone());
-        Ok(())
-      }
+      Detail::Name(name) => record_session_name(gate, kind, name, false),
     }
   }
 
@@ -678,6 +666,26 @@ pub fn install_permissions(
   Ok(())
 }
 
+/// Whether `path` is granted. This does not ask.
+///
+/// A call that already opened a file descriptor uses this on the file it
+/// opened. A missing grant stays closed, so a swapped symlink cannot prompt
+/// for the other file.
+#[cfg(feature = "fs")]
+pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
+  let kind = if write { Kind::Write } else { Kind::Read };
+  Ok(
+    interact(kind, &Detail::Path(path.to_path_buf()), false)? == State::Granted,
+  )
+}
+
+/// `NotAllowedError` naming `path`, the path the caller requested.
+#[cfg(feature = "fs")]
+pub fn path_not_allowed(write: bool, path: &Path) -> OpError {
+  let kind = if write { Kind::Write } else { Kind::Read };
+  denied(kind, &Detail::Path(path.to_path_buf())).unwrap_or_else(|error| error)
+}
+
 pub fn check_read(path: &Path) -> Result<(), OpError> {
   require(Kind::Read, &Detail::Path(path.to_path_buf()))
 }
@@ -703,10 +711,10 @@ pub fn check_net(host: &str, port: u16) -> Result<(), OpError> {
 /// Keeps addresses the net policy allows this connection to use.
 ///
 /// A globally routable address is kept. A loopback, private, link-local,
-/// unique-local, shared, multicast, broadcast, or unspecified address is
-/// checked again with [`check_net`]. An IPv4-mapped IPv6 address is that
-/// IPv4 address. When every address is rejected, the error is the first
-/// denial. An empty input stays empty.
+/// unique-local, site-local, NAT64, shared, multicast, broadcast, or
+/// unspecified address is checked again with [`check_net`]. An IPv4-mapped
+/// IPv6 address is that IPv4 address. When every address is rejected, the
+/// error is the first denial. An empty input stays empty.
 pub fn retain_resolved_addresses(
   addrs: Vec<SocketAddr>,
 ) -> Result<Vec<SocketAddr>, OpError> {
@@ -1135,9 +1143,10 @@ fn display(detail: &Detail) -> Result<String, OpError> {
   Ok(sanitize_prompt(&text))
 }
 
-/// Keep a prompt on one line. Control characters, bidirectional overrides,
-/// quotes, and backslashes are escaped so the requested name cannot redraw
-/// the terminal.
+/// Keep a prompt on one line. Control characters, quotes, backslashes,
+/// bidirectional overrides, the Arabic letter mark, and line and paragraph
+/// separators are escaped so the requested name cannot redraw the terminal.
+/// Other format characters, including ZWJ, stay.
 fn sanitize_prompt(text: &str) -> String {
   let mut out = String::with_capacity(text.len());
   for char in text.chars() {
@@ -1147,7 +1156,7 @@ fn sanitize_prompt(text: &str) -> String {
       '\n' => out.push_str("\\n"),
       '\r' => out.push_str("\\r"),
       '\t' => out.push_str("\\t"),
-      char if char.is_control() || is_bidi_control(char) => {
+      char if char.is_control() || is_prompt_mark(char) => {
         out.push_str(&format!("\\u{{{:x}}}", u32::from(char)));
       }
       char => out.push(char),
@@ -1156,11 +1165,16 @@ fn sanitize_prompt(text: &str) -> String {
   out
 }
 
-/// Bidirectional format characters that can reorder a prompt line.
-fn is_bidi_control(char: char) -> bool {
+/// Characters that can reorder or break a prompt line and are not controls.
+///
+/// ZWJ (U+200D) is a format character and is not in this set.
+fn is_prompt_mark(char: char) -> bool {
   matches!(
     char,
-    '\u{200E}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    '\u{061C}'
+      | '\u{200E}'..='\u{200F}'
+      | '\u{2028}'..='\u{202E}'
+      | '\u{2066}'..='\u{2069}'
   )
 }
 
@@ -1180,6 +1194,9 @@ fn ask(kind: Kind, detail: &str) -> Option<Answer> {
      ┗ Allow? [y/n/a] (y = yes, n = no, a = allow all {name}) "
   );
   let _ = std::io::stderr().flush();
+  // Drop keystrokes and injected input that arrived before the question.
+  // A failure here still reads the next line.
+  discard_pending_input();
   let mut line = String::new();
   if std::io::stdin().read_line(&mut line).is_err() {
     return None;
@@ -1189,6 +1206,33 @@ fn ask(kind: Kind, detail: &str) -> Option<Answer> {
     "a" | "all" => Answer::All,
     _ => Answer::Deny,
   })
+}
+
+/// Discard unread terminal input so it cannot answer the prompt.
+fn discard_pending_input() {
+  #[cfg(unix)]
+  discard_fd(libc::STDIN_FILENO);
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::System::Console::{
+      FlushConsoleInputBuffer, GetStdHandle, STD_INPUT_HANDLE,
+    };
+    // SAFETY: the process standard-input handle. This clears a console
+    // input queue and fails on any other handle. The prompt is still read.
+    unsafe {
+      FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+    }
+  }
+}
+
+/// `TCIFLUSH` on `fd`. A failure leaves the next line to be read.
+#[cfg(unix)]
+fn discard_fd(fd: i32) {
+  // SAFETY: `fd` is a terminal descriptor owned by this process. `TCIFLUSH`
+  // discards input that has been received and not read.
+  unsafe {
+    libc::tcflush(fd, libc::TCIFLUSH);
+  }
 }
 
 fn lexical_absolute(path: &Path) -> Result<PathBuf, OpError> {
@@ -1305,9 +1349,13 @@ pub(crate) fn anchor_path(path: &Path) -> Result<PathBuf, OpError> {
   }
   // `C:name` has a prefix and is not absolute. Joining it would drop the
   // current directory. `std::path::absolute` asks the operating system for
-  // that drive's directory.
+  // that drive's directory. `Path::prefix` is private.
   #[cfg(windows)]
-  if path.prefix().is_some() {
+  if path
+    .components()
+    .next()
+    .is_some_and(|component| matches!(component, Component::Prefix(_)))
+  {
     return std::path::absolute(path).map_err(|_| {
       OpError::dom("OperationError", "The current directory could not be read.")
     });
@@ -1624,7 +1672,29 @@ fn normalize_host(host: &str) -> String {
   // A zone id does not parse and stays in the string.
   match lower.parse::<IpAddr>() {
     Ok(addr) => canonical_ip(addr).to_string(),
-    Err(_) => lower,
+    Err(_) => domain_host(&lower).unwrap_or(lower),
+  }
+}
+
+/// ASCII spelling of a domain. A trailing DNS root dot is removed, and a
+/// Unicode name becomes its A-label. An address is handled before this runs,
+/// so `localhost` stays a name and is not `127.0.0.1`.
+fn domain_host(host: &str) -> Option<String> {
+  if host.is_empty()
+    || host.contains(':')
+    || host.contains('/')
+    || host.contains('\\')
+  {
+    return None;
+  }
+  let url::Host::Domain(domain) = url::Host::parse(host).ok()? else {
+    return None;
+  };
+  let domain = domain.trim_end_matches('.').to_ascii_lowercase();
+  if domain.is_empty() {
+    None
+  } else {
+    Some(domain)
   }
 }
 
@@ -1664,6 +1734,8 @@ fn is_restricted_ip(addr: IpAddr) -> bool {
         || addr.is_unique_local()
         || addr.is_unspecified()
         || addr.is_multicast()
+        || is_site_local(addr)
+        || is_nat64(addr)
     }
   }
 }
@@ -1673,6 +1745,18 @@ fn is_restricted_ip(addr: IpAddr) -> bool {
 fn is_shared_v4(addr: Ipv4Addr) -> bool {
   let [first, second, _, _] = addr.octets();
   first == 100 && (second & 0b1100_0000) == 0b0100_0000
+}
+
+/// `fec0::/10`, the deprecated site-local prefix.
+fn is_site_local(addr: Ipv6Addr) -> bool {
+  let [first, second, ..] = addr.octets();
+  first == 0xfe && (second & 0xc0) == 0xc0
+}
+
+/// `64:ff9b::/96`, the well-known NAT64 prefix.
+fn is_nat64(addr: Ipv6Addr) -> bool {
+  let octets = addr.octets();
+  octets[..12] == [0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 
 fn format_host(host: &str, port: Option<u16>) -> String {
@@ -1819,6 +1903,69 @@ fn executed_path(path: &Path) -> Option<PathBuf> {
 
 fn is_command_path(text: &str) -> bool {
   text.contains('/') || text.contains('\\')
+}
+
+/// The string a prompt answer or `revoke` stores for `name`.
+///
+/// A run command that contains a separator is the absolute file resolved
+/// now. `absolute_path` uses the current directory, or `spawn`'s cwd when
+/// this check set it. The executed file is stored when it is that path or
+/// its canonical spelling, so `/var` and `/private/var` stay one grant. A
+/// different file reached by a symlink and then `..` is not stored. A bare
+/// command and an env name stay the caller's string.
+fn session_name(kind: Kind, name: &str) -> Result<String, OpError> {
+  if kind != Kind::Run || !is_command_path(name) {
+    return Ok(name.to_string());
+  }
+  let lexical = normalize(&absolute_path(Path::new(name))?);
+  let mut allowed = vec![lexical.clone()];
+  push_canonical(&mut allowed, &lexical);
+  if let Some(executed) = executed_path(Path::new(name))
+    && allowed.iter().any(|item| paths_equal(item, &executed))
+  {
+    return Ok(executed.display().to_string());
+  }
+  Ok(lexical.display().to_string())
+}
+
+fn record_session_name(
+  gate: &mut Gate,
+  kind: Kind,
+  name: &str,
+  allow: bool,
+) -> Result<(), OpError> {
+  let stored = session_name(kind, name)?;
+  gate
+    .session_allow_names
+    .retain(|item| !session_name_hit(kind, item, name, &stored));
+  gate
+    .session_deny_names
+    .retain(|item| !session_name_hit(kind, item, name, &stored));
+  if allow {
+    gate.session_allow_names.push(stored);
+  } else {
+    gate.session_deny_names.push(stored);
+  }
+  Ok(())
+}
+
+/// True when `item` is this answer's string or another spelling of the same
+/// requested file. A later directory does not make `./tool` cover a file
+/// granted earlier. A symlink followed by `..` does not drop a grant of the
+/// other file, because that comparison uses the stored path.
+fn session_name_hit(
+  kind: Kind,
+  item: &str,
+  requested: &str,
+  stored: &str,
+) -> bool {
+  if item == requested || item == stored {
+    return true;
+  }
+  if kind != Kind::Run || !is_command_path(requested) {
+    return false;
+  }
+  run_covers(item, stored) || run_covers(stored, item)
 }
 
 fn command_names_equal(rule: &str, command: &str) -> bool {
@@ -2355,6 +2502,164 @@ mod tests {
   }
 
   #[test]
+  fn a_prompt_yes_for_a_relative_command_stays_on_that_file() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-perm-prompt-run-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let sub = root.join("sub");
+    let other = root.join("other");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(sub.join("tool"), b"sub\n").unwrap();
+    std::fs::write(other.join("tool"), b"other\n").unwrap();
+    let sub = std::fs::canonicalize(&sub).unwrap();
+    let other = std::fs::canonicalize(&other).unwrap();
+    let sub_tool = sub.join("tool");
+    let other_tool = other.join("tool");
+    let mut sandbox =
+      Sandbox::compile(&PermissionSpec::default(), &sub).unwrap();
+    {
+      let _base = RunBase::set(&sub);
+      sandbox
+        .remember(Kind::Run, &Detail::Name("./tool".to_string()), Answer::Once)
+        .unwrap();
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name(sub_tool.display().to_string()))
+          .unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("tool".to_string()))
+          .unwrap(),
+        State::Prompt
+      );
+    }
+    {
+      let _base = RunBase::set(&other);
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Prompt
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name(sub_tool.display().to_string()))
+          .unwrap(),
+        State::Granted
+      );
+      sandbox
+        .remember(Kind::Run, &Detail::Name("./tool".to_string()), Answer::Deny)
+        .unwrap();
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Denied
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name(other_tool.display().to_string()),)
+          .unwrap(),
+        State::Denied
+      );
+    }
+    {
+      let _base = RunBase::set(&sub);
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Granted
+      );
+      sandbox
+        .revoke(Kind::Run, &Detail::Name("./tool".to_string()))
+        .unwrap();
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Denied
+      );
+    }
+    {
+      let _base = RunBase::set(&other);
+      assert_eq!(
+        sandbox
+          .classify(Kind::Run, &Detail::Name("./tool".to_string()))
+          .unwrap(),
+        State::Denied
+      );
+    }
+    sandbox
+      .remember(Kind::Env, &Detail::Name("./tool".to_string()), Answer::Once)
+      .unwrap();
+    assert_eq!(
+      sandbox
+        .classify(Kind::Env, &Detail::Name("./tool".to_string()))
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Env, &Detail::Name(sub_tool.display().to_string()))
+        .unwrap(),
+      State::Prompt
+    );
+    #[cfg(unix)]
+    {
+      let outside = root.join("outside");
+      std::fs::create_dir_all(outside.join("bin")).unwrap();
+      let outside_tool = outside.join("tool");
+      std::fs::write(&outside_tool, b"out\n").unwrap();
+      let outside_tool = std::fs::canonicalize(&outside_tool).unwrap();
+      std::os::unix::fs::symlink(outside.join("bin"), sub.join("link"))
+        .unwrap();
+      let mut escape =
+        Sandbox::compile(&PermissionSpec::default(), &sub).unwrap();
+      let _base = RunBase::set(&sub);
+      let command = "link/../tool".to_string();
+      escape
+        .remember(Kind::Run, &Detail::Name(command.clone()), Answer::Once)
+        .unwrap();
+      assert_eq!(
+        escape.classify(Kind::Run, &Detail::Name(command)).unwrap(),
+        State::Prompt
+      );
+      assert_eq!(
+        escape
+          .classify(
+            Kind::Run,
+            &Detail::Name(outside_tool.display().to_string()),
+          )
+          .unwrap(),
+        State::Prompt
+      );
+      assert_eq!(
+        escape
+          .classify(Kind::Run, &Detail::Name(sub_tool.display().to_string()))
+          .unwrap(),
+        State::Granted
+      );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
   fn revoke_masks_an_allow_until_it_is_granted_again() {
     let spec = PermissionSpec::allow_all();
     let mut sandbox = Sandbox::compile(&spec, Path::new("/")).unwrap();
@@ -2753,8 +3058,80 @@ mod tests {
     assert!(!shown.contains('\u{200E}'), "{shown}");
     assert!(!shown.contains('\u{2066}'), "{shown}");
     assert_eq!(shown, "safe\\u{202e}txt.exe\\u{200e}\\u{2066}");
+    let marks =
+      display(&Detail::Name("a\u{061C}b\u{2028}c\u{2029}d".to_string()))
+        .unwrap();
+    assert!(!marks.contains('\u{061C}'), "{marks}");
+    assert!(!marks.contains('\u{2028}'), "{marks}");
+    assert!(!marks.contains('\u{2029}'), "{marks}");
+    assert_eq!(marks, "a\\u{61c}b\\u{2028}c\\u{2029}d");
     let zwj = display(&Detail::Name("a\u{200D}b".to_string())).unwrap();
     assert_eq!(zwj, "a\u{200D}b");
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn queued_terminal_input_is_discarded_before_the_answer() {
+    let mut primary = 0;
+    let mut secondary = 0;
+    let opened = unsafe {
+      libc::openpty(
+        &mut primary,
+        &mut secondary,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+      )
+    };
+    assert_eq!(opened, 0, "openpty");
+    let _close = PtyFds { primary, secondary };
+    let queued = b"y\n";
+    let wrote =
+      unsafe { libc::write(primary, queued.as_ptr().cast(), queued.len()) };
+    assert_eq!(wrote, queued.len() as isize);
+    assert!(
+      input_waiting(secondary, 1000),
+      "queued answer did not arrive"
+    );
+    discard_fd(secondary);
+    assert!(
+      !input_waiting(secondary, 0),
+      "queued answer survived the discard"
+    );
+    let next = b"n\n";
+    let wrote =
+      unsafe { libc::write(primary, next.as_ptr().cast(), next.len()) };
+    assert_eq!(wrote, next.len() as isize);
+    assert!(
+      input_waiting(secondary, 1000),
+      "input after the discard did not arrive"
+    );
+  }
+
+  #[cfg(unix)]
+  struct PtyFds {
+    primary: i32,
+    secondary: i32,
+  }
+
+  #[cfg(unix)]
+  impl Drop for PtyFds {
+    fn drop(&mut self) {
+      unsafe {
+        libc::close(self.primary);
+        libc::close(self.secondary);
+      }
+    }
+  }
+
+  #[cfg(unix)]
+  fn input_waiting(fd: i32, timeout_ms: i32) -> bool {
+    let mut poll = libc::pollfd {
+      fd,
+      events: libc::POLLIN,
+      revents: 0,
+    };
+    (unsafe { libc::poll(&mut poll, 1, timeout_ms) }) > 0
   }
 
   #[test]
@@ -2765,6 +3142,12 @@ mod tests {
     assert_eq!(normalize_host("[::ffff:7f00:1]"), "127.0.0.1");
     assert_eq!(normalize_host("::1"), "::1");
     assert_eq!(normalize_host("Fe80::1%ETH0"), "fe80::1%eth0");
+    assert_eq!(normalize_host("evil.com."), "evil.com");
+    assert_eq!(normalize_host("Evil.COM."), "evil.com");
+    assert_eq!(normalize_host("localhost."), "localhost");
+    assert_ne!(normalize_host("localhost"), "127.0.0.1");
+    assert_eq!(normalize_host("例え.jp"), normalize_host("xn--r8jz45g.jp"));
+    assert_eq!(normalize_host("例え.jp."), normalize_host("xn--r8jz45g.jp"));
     assert_eq!(
       display(&Detail::Net {
         host: "::ffff:127.0.0.1".to_string(),
@@ -2860,6 +3243,10 @@ mod tests {
     assert!(restricted_host("fe80::1".parse().unwrap()).is_some());
     assert!(restricted_host("8.8.8.8".parse().unwrap()).is_none());
     assert!(restricted_host("2001:db8::1".parse().unwrap()).is_none());
+    assert!(restricted_host("fec0::1".parse().unwrap()).is_some());
+    assert!(restricted_host("64:ff9b::8.8.8.8".parse().unwrap()).is_some());
+    assert!(restricted_host("64:ff9b::1".parse().unwrap()).is_some());
+    assert!(restricted_host("64:ff9b:1::".parse().unwrap()).is_none());
     assert!(restricted_host("::ffff:8.8.8.8".parse().unwrap()).is_none());
     assert!(restricted_host("100.127.255.255".parse().unwrap()).is_some());
     assert!(restricted_host("100.63.0.1".parse().unwrap()).is_none());

@@ -7,6 +7,9 @@
 #[cfg(any(feature = "fetch", feature = "socket"))]
 use std::sync::Once;
 
+#[cfg(any(feature = "fetch", feature = "socket"))]
+mod resolve;
+
 #[cfg(feature = "fetch")]
 mod alt_svc;
 #[cfg(feature = "fetch")]

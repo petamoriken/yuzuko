@@ -126,7 +126,15 @@ pub(super) fn clear() {
 #[derive(Debug)]
 pub(super) enum FsError {
   Type(String),
-  Os { class: Class, message: String },
+  Os {
+    class: Class,
+    message: String,
+  },
+  /// A `DOMException`, such as `NotAllowedError` for a file opened after a swap.
+  Host {
+    name: String,
+    message: String,
+  },
 }
 
 impl FsError {
@@ -223,8 +231,13 @@ impl FsError {
   }
 
   pub(super) fn fail(self, scope: &mut v8::PinScope) -> OpError {
-    let exception = self.exception(scope);
-    OpError::thrown(scope, exception)
+    match self {
+      Self::Host { name, message } => OpError::dom(name, message),
+      other => {
+        let exception = other.exception(scope);
+        OpError::thrown(scope, exception)
+      }
+    }
   }
 
   pub(super) fn exception<'s>(
@@ -233,6 +246,11 @@ impl FsError {
   ) -> v8::Local<'s, v8::Value> {
     match self {
       Self::Type(message) => type_error(scope, &message),
+      Self::Host { name, message } => {
+        crate::op::new_dom_exception(scope, &name, &message)
+          .map(v8::Local::into)
+          .unwrap_or_else(|| plain_error(scope, &message))
+      }
       Self::Os {
         class: Class::Generic,
         message,

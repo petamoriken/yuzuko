@@ -256,13 +256,21 @@ async fn handshake(
     .host_str()
     .ok_or_else(|| "The URL has no host".to_string())?;
   let port = url.port_or_known_default().unwrap_or(443);
-  let dial = format!("{host}:{port}");
-  let mut looked = tokio::net::lookup_host(dial)
-    .await
-    .map_err(|error| error.to_string())?;
-  let addr = looked
-    .next()
-    .ok_or_else(|| "The address lookup failed".to_string())?;
+  // The first lookup address can be restricted. Use the first address the
+  // net policy still allows, and do not open a socket when none remain.
+  let addr = match super::resolve::checked_addrs(host, port).await {
+    Ok(addrs) => addrs
+      .into_iter()
+      .next()
+      .ok_or_else(|| "The address lookup failed".to_string())?,
+    Err(super::resolve::ResolveFailure::Denied { message, .. }) => {
+      return Err(message);
+    }
+    Err(
+      super::resolve::ResolveFailure::Network(message)
+      | super::resolve::ResolveFailure::Type(message),
+    ) => return Err(message),
+  };
   let bind = match addr {
     SocketAddr::V4(_) => SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
     SocketAddr::V6(_) => SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),

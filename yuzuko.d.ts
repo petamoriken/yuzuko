@@ -2472,7 +2472,9 @@ declare namespace Yuzuko {
   /**
    * Environment variables of this process.
    *
-   * The methods do not read `this`. A change is visible to a later read in
+   * The methods do not read `this`. `set` and `delete` do not run while a
+   * host lookup is inside `getaddrinfo`, and a host lookup waits until
+   * they return. A change is visible to a later read in
    * every realm. On Windows a lookup ignores ASCII case, and {@link Env.set}
    * of a name that differs only by that case updates the existing variable.
    * On the other targets the name is case-sensitive. Bytes that are not
@@ -2667,7 +2669,11 @@ declare namespace Yuzuko {
      * not match a path rule. On Windows a bare `git` matches a bare
      * `git.exe`. `spawn` resolves a bare name through the child's `PATH`
      * and runs it only when that file is the executable the name had on
-     * `PATH` when the policy was installed.
+     * `PATH` when the policy was installed. A prompt answer and `revoke`
+     * for a command that contains `/` or `\` store the absolute path
+     * resolved when the answer is read. That uses the current directory,
+     * or `spawn`'s `cwd` when the check uses it. A later check uses the
+     * stored path. A bare command stores the bare name.
      */
     command?: string;
   }
@@ -2691,12 +2697,17 @@ declare namespace Yuzuko {
    * An `AudioWorklet` processor realm does not have it. The policy is
    * process-wide. `query` reports the stored state and does not ask.
    * `request` asks when the policy allows a prompt and stdin is a terminal,
-   * and that call can block the calling thread. `--no-prompt`, and a stdin
-   * that is not a terminal, make `request` return `"denied"` and leave the
-   * stored state at `"prompt"`. A prompt answer of `y` or `yes` grants that
-   * resource for this process. `a` or `all` grants the kind. Any other line
-   * stores a session deny. Each function has length 1. Calling one with
-   * `new` throws. A returned promise is fulfilled in the same turn.
+   * and that call can block the calling thread. Unread terminal input is
+   * discarded before that line is read. A failure to discard it does not
+   * reject the request. `--no-prompt`, and a stdin that is not a terminal,
+   * make `request` return `"denied"` and leave the stored state at
+   * `"prompt"`. A prompt answer of `y` or `yes` grants that resource for
+   * this process. `a` or `all` grants the kind. Any other line stores a
+   * session deny. The quoted text in a denial escapes `\`, `"`, control
+   * characters, U+061C, U+200E, U+200F, U+202A through U+202E, U+2066
+   * through U+2069, U+2028, and U+2029. Other format characters stay. Each
+   * function has length 1. Calling one with `new` throws. A returned
+   * promise is fulfilled in the same turn.
    *
    * `query` of a name with no detail is `"granted"` only when that kind is
    * allowed as a whole. `revoke` of a kind hides the base allow and clears
@@ -3872,8 +3883,12 @@ declare namespace Yuzuko {
    * `RTLD_NOW` and `RTLD_LOCAL`, then `dlsym`. The path string is passed
    * through, so a name with no separator is searched and a name that
    * contains a separator is that pathname only. The C name has no Mach-O
-   * underscore. On Windows this is `LoadLibraryW`, then `GetProcAddress`.
-   * Symbol definitions are checked before the library is opened.
+   * underscore. On Windows a path with no separator is `LoadLibraryW`. A
+   * path that contains `/` or `\` is the absolute path from the permission
+   * check, opened with `LoadLibraryExW` and `LOAD_WITH_ALTERED_SEARCH_PATH`,
+   * so the loader does not search for another file of that relative name.
+   * `GetProcAddress` resolves each symbol. Symbol definitions are checked
+   * before the library is opened.
    *
    * @param path - Library path. A non-empty string primitive.
    * @param symbols - Own enumerable string keys are C names. Each value
@@ -4736,7 +4751,8 @@ declare namespace Yuzuko {
    * `options` is not an object, or when the flags disagree.
    * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
    * does not grant the path. `read` checks read access. A flag that writes,
-   * appends, truncates, or creates checks write access.
+   * appends, truncates, or creates checks write access. The opened file is
+   * checked again, and a different file is not returned.
    * @throws {@link errors.NotSupported} When a write would modify the
    * application bundle.
    */
@@ -4759,6 +4775,9 @@ declare namespace Yuzuko {
    * Reads `path` as bytes.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the path. The opened file is checked again, and a
+   * different file is not read.
    * @throws {@link errors.IsADirectory} When `path` is a directory.
    * @throws {@link errors.NotFound} When no file is at `path`.
    */
@@ -4771,6 +4790,9 @@ declare namespace Yuzuko {
    * Reads `path` as UTF-8 text.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the path. The opened file is checked again, and a
+   * different file is not read.
    * @throws {@link errors.InvalidData} When the bytes are not UTF-8.
    * @throws {@link errors.IsADirectory} When `path` is a directory.
    */
@@ -4784,6 +4806,9 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `data` is not a buffer source, or when `options` is not an object.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the path. The opened file is checked again, and a
+   * different file is not written.
    * @throws {@link errors.NotSupported} When the resolved path is inside the
    * application bundle.
    */
@@ -4805,6 +4830,9 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `text` is not a string, or when `options` is not an object.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant the path. The opened file is checked again, and a
+   * different file is not written.
    */
   function writeTextFile(
     path: string | URL,
@@ -4906,10 +4934,12 @@ declare namespace Yuzuko {
   function copyFileSync(from: string | URL, to: string | URL): void;
 
   /**
-   * Returns the canonical path of `path`.
+   * Returns the canonical path of `path` when that path is granted.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
    * @throws {@link errors.NotFound} When `path` does not exist.
+   * @throws {@link DOMException} `NotAllowedError` when the canonical path
+   * is not granted. The message names the requested path.
    */
   function realPath(path: string | URL): Promise<string>;
 
@@ -13427,7 +13457,9 @@ declare var ImageTrack: {
  *
  * The URL scheme must be `http:` or `https:`. `withCredentials` is stored and
  * does not change the request. There is no cookie jar and no CORS check.
- * The default reconnection time is 3000ms.
+ * The default reconnection time is 3000ms. Each connection, including a
+ * reconnect, checks the net permission again. A denial does not open a
+ * socket.
  *
  * @throws {@link DOMException} `SyntaxError` when the scheme is not `http` or `https`.
  *
@@ -13497,7 +13529,13 @@ interface WebSocketInit {
  *
  * The constructor takes a `ws:` or `wss:` URL. `protocols` is a protocol
  * string, a sequence of protocol strings, or a {@link WebSocketInit}. A
- * further argument is ignored.
+ * further argument is ignored. A resolved loopback, private, link-local,
+ * unique-local, site-local, NAT64 (`64:ff9b::/96`), shared, multicast,
+ * broadcast, or unspecified address is checked again before the socket
+ * connects. The connection uses only an
+ * address that check allows. When every address is denied, the constructor
+ * still returns, and the socket dispatches `error` and closes with code
+ * 1006.
  *
  * @throws {@link TypeError} When `targetAddressSpace` is not `loopback`,
  * `local`, or `public`, including the legacy alias `"private"`.
@@ -13810,7 +13848,12 @@ interface WebTransportErrorOptions {
  * is resolved against the entry URL. The constructor is on `globalThis` in
  * the main realm and in a dedicated worker. This is not an `EventTarget`.
  * `ready` and `closed` reject when the handshake fails, and those
- * rejections are marked handled. `datagrams` is a plain
+ * rejections are marked handled. A resolved loopback, private, link-local,
+ * unique-local, site-local, NAT64 (`64:ff9b::/96`), shared, multicast,
+ * broadcast, or unspecified address is checked again before the QUIC
+ * connection. `ready` rejects with the net
+ * denial when every resolved address is denied, and that address is not
+ * contacted. `datagrams` is a plain
  * `{ readable, writable }`. Chunks are `Uint8Array` values. The readable
  * side of a bidirectional stream, and each incoming unidirectional stream,
  * is a readable byte stream. `reliability` is `"pending"` until `ready`

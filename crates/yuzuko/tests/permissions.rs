@@ -450,6 +450,388 @@ fn an_allowed_name_cannot_connect_to_a_loopback_address() {
   assert!(stdout.contains("https://localhost:9/"), "{stdout}");
 }
 
+#[cfg(feature = "socket")]
+#[test]
+fn an_allowed_name_cannot_open_a_socket_to_a_loopback_address() {
+  use std::io::ErrorKind;
+  use std::net::{TcpListener, UdpSocket};
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+  use std::thread::JoinHandle;
+
+  let hits = Arc::new(AtomicUsize::new(0));
+  let stop = Arc::new(AtomicBool::new(false));
+  let v4 = TcpListener::bind("127.0.0.1:0").unwrap();
+  let port = v4.local_addr().unwrap().port();
+  let mut listeners = vec![v4];
+  if let Ok(v6) = TcpListener::bind(format!("[::1]:{port}")) {
+    listeners.push(v6);
+  }
+  let mut threads: Vec<JoinHandle<()>> = Vec::new();
+  for listener in listeners {
+    listener.set_nonblocking(true).unwrap();
+    let hits = Arc::clone(&hits);
+    let stop = Arc::clone(&stop);
+    threads.push(std::thread::spawn(move || {
+      while !stop.load(Ordering::Relaxed) {
+        match listener.accept() {
+          Ok((stream, _)) => {
+            hits.fetch_add(1, Ordering::SeqCst);
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+          }
+          Err(error) if error.kind() == ErrorKind::WouldBlock => {
+            std::thread::sleep(Duration::from_millis(10));
+          }
+          Err(_) => break,
+        }
+      }
+    }));
+  }
+  let mut udp = vec![UdpSocket::bind(("127.0.0.1", port)).unwrap()];
+  if let Ok(v6) = UdpSocket::bind(format!("[::1]:{port}")) {
+    udp.push(v6);
+  }
+  for socket in &udp {
+    socket.set_nonblocking(true).unwrap();
+  }
+
+  let dir = scratch("socket-rebind");
+  let ws_script = format!(
+    r#"const port = {port};
+await new Promise((resolve) => {{
+  const ws = new WebSocket("ws://localhost:" + port + "/");
+  let opened = false;
+  ws.addEventListener("open", () => {{
+    opened = true;
+    ws.close();
+  }});
+  ws.addEventListener("close", () => {{
+    console.log(opened ? "ws opened" : "ws closed");
+    resolve();
+  }});
+}});
+"#
+  );
+  write(
+    &dir.join("deny.ts"),
+    &format!(
+      r#"{ws_script}try {{
+  const transport = new WebTransport("https://localhost:{port}/");
+  await transport.ready;
+  console.log("wt opened");
+}} catch (error) {{
+  console.log("wt " + error.name + ":" + error.message);
+}}
+"#
+    ),
+  );
+  write(&dir.join("allow.ts"), &ws_script);
+  let denied = run(
+    &dir,
+    &["run", "--no-prompt", "--allow-net=localhost", "deny.ts"],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(stdout.contains("ws closed"), "{stdout}");
+  assert!(!stdout.contains("ws opened"), "{stdout}");
+  assert!(stdout.contains("wt WebTransportError:"), "{stdout}");
+  assert!(
+    stdout.contains("127.0.0.1") || stdout.contains("[::1]"),
+    "{stdout}"
+  );
+  assert_eq!(hits.load(Ordering::SeqCst), 0, "{stdout}");
+  let mut packets = 0;
+  let mut buf = [0u8; 2048];
+  for socket in &udp {
+    while socket.recv(&mut buf).is_ok() {
+      packets += 1;
+    }
+  }
+  assert_eq!(packets, 0, "{stdout}");
+
+  let allowed = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-net=localhost,127.0.0.1,::1",
+      "allow.ts",
+    ],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  let stdout = text(&allowed.stdout);
+  assert!(
+    stdout.contains("ws closed") || stdout.contains("ws opened"),
+    "{stdout}"
+  );
+  assert!(
+    hits.load(Ordering::SeqCst) > 0,
+    "stdout={stdout} hits={}",
+    hits.load(Ordering::SeqCst)
+  );
+
+  stop.store(true, Ordering::Relaxed);
+  for thread in threads {
+    let _ = thread.join();
+  }
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn an_event_source_reconnect_checks_the_host_again() {
+  use std::io::{ErrorKind, Read, Write};
+  use std::net::{Shutdown, TcpListener};
+  use std::sync::atomic::AtomicUsize;
+
+  let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+  let port = listener.local_addr().unwrap().port();
+  listener.set_nonblocking(true).unwrap();
+  let hits = Arc::new(AtomicUsize::new(0));
+  let counting = Arc::clone(&hits);
+  let server = std::thread::spawn(move || {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while Instant::now() < deadline {
+      match listener.accept() {
+        Ok((mut stream, _)) => {
+          counting.fetch_add(1, Ordering::SeqCst);
+          let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+          let mut buf = [0u8; 1024];
+          let _ = stream.read(&mut buf);
+          let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\n\
+Content-Type: text/event-stream\r\n\
+Connection: close\r\n\
+\r\n\
+data: hi\n\n",
+          );
+          let _ = stream.shutdown(Shutdown::Both);
+        }
+        Err(error)
+          if error.kind() == ErrorKind::WouldBlock
+            || error.kind() == ErrorKind::Interrupted =>
+        {
+          std::thread::sleep(Duration::from_millis(20));
+        }
+        Err(_) => break,
+      }
+    }
+  });
+  let dir = scratch("event-source-revoke");
+  write(
+    &dir.join("main.ts"),
+    &format!(
+      r#"let errors = 0;
+const source = new EventSource("http://localhost:{port}/");
+source.onopen = () => console.log("open");
+source.onerror = () => {{
+  errors += 1;
+  Yuzuko.permissions.revokeSync({{ name: "net", host: "localhost" }});
+  console.log("error " + errors);
+}};
+setTimeout(() => {{
+  Yuzuko.permissions.revokeSync({{ name: "net", host: "localhost" }});
+}}, 400);
+await new Promise((resolve) => setTimeout(resolve, 4500));
+source.close();
+console.log("closed " + errors);
+"#
+    ),
+  );
+  let output = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-net=localhost,127.0.0.1,::1",
+      "main.ts",
+    ],
+  );
+  let _ = server.join();
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(stdout.contains("open"), "{stdout}");
+  assert!(stdout.contains("error 2"), "{stdout}");
+  // `127.0.0.1` stays granted. Only the `localhost` name is revoked, so a
+  // reconnect that skipped the host check would still be accepted here.
+  assert_eq!(hits.load(Ordering::SeqCst), 1, "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_swap_does_not_return_the_other_file() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let root = scratch("swap");
+  let proj = root.join("proj");
+  let outside = root.join("outside");
+  fs::create_dir_all(&proj).unwrap();
+  fs::create_dir_all(&outside).unwrap();
+  let inside = proj.join("inside.txt");
+  let secret = outside.join("secret.txt");
+  fs::write(&inside, "INSIDE\n").unwrap();
+  fs::write(&secret, "OUTSIDE\n").unwrap();
+  let link = proj.join("link");
+  std::os::unix::fs::symlink(&inside, &link).unwrap();
+  write(
+    &proj.join("once.ts"),
+    r#"console.log(Yuzuko.readTextFileSync("link"));
+"#,
+  );
+  let once = run(
+    &proj,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read=.",
+      "--allow-write=.",
+      "once.ts",
+    ],
+  );
+  assert_eq!(once.status.code(), Some(0), "{}", text(&once.stderr));
+  assert_eq!(text(&once.stdout).trim(), "INSIDE");
+
+  let stop = Arc::new(AtomicBool::new(false));
+  let swapping = Arc::clone(&stop);
+  let link_swap = link.clone();
+  let inside_swap = inside.clone();
+  let secret_swap = secret.clone();
+  let swapper = std::thread::spawn(move || {
+    let mut to_outside = true;
+    while !swapping.load(Ordering::Relaxed) {
+      let target = if to_outside {
+        &secret_swap
+      } else {
+        &inside_swap
+      };
+      let temporary = link_swap.with_extension("tmp");
+      let _ = fs::remove_file(&temporary);
+      if std::os::unix::fs::symlink(target, &temporary).is_ok() {
+        let _ = fs::rename(&temporary, &link_swap);
+      }
+      to_outside = !to_outside;
+    }
+  });
+  write(
+    &proj.join("race.ts"),
+    r#"for (let i = 0; i < 40; i++) {
+  try {
+    console.log("R " + JSON.stringify(Yuzuko.readTextFileSync("link")));
+  } catch (error) {
+    console.log("R " + error.name);
+  }
+  try {
+    Yuzuko.writeTextFileSync("link", "NEW\n");
+    console.log("W ok");
+  } catch (error) {
+    console.log("W " + error.name);
+  }
+}
+"#,
+  );
+  let raced = run(
+    &proj,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read=.",
+      "--allow-write=.",
+      "race.ts",
+    ],
+  );
+  stop.store(true, Ordering::Relaxed);
+  let _ = swapper.join();
+  assert_eq!(raced.status.code(), Some(0), "{}", text(&raced.stderr));
+  let stdout = text(&raced.stdout);
+  assert!(!stdout.contains("OUTSIDE"), "{stdout}");
+  assert_eq!(fs::read_to_string(&secret).unwrap(), "OUTSIDE\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn real_path_does_not_return_a_path_outside_the_grant() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let root = scratch("real-path");
+  let proj = root.join("proj");
+  let outside = root.join("outside");
+  fs::create_dir_all(&proj).unwrap();
+  fs::create_dir_all(&outside).unwrap();
+  let inside = proj.join("inside.txt");
+  let secret = outside.join("secret.txt");
+  fs::write(&inside, "INSIDE\n").unwrap();
+  fs::write(&secret, "OUTSIDE\n").unwrap();
+  let link = proj.join("link");
+  std::os::unix::fs::symlink(&inside, &link).unwrap();
+  write(
+    &proj.join("once.ts"),
+    r#"console.log(Yuzuko.realPathSync("inside.txt"));
+console.log(Yuzuko.realPathSync("link"));
+"#,
+  );
+  let once = run(&proj, &["run", "--no-prompt", "--allow-read=.", "once.ts"]);
+  assert_eq!(once.status.code(), Some(0), "{}", text(&once.stderr));
+  let stdout = text(&once.stdout);
+  assert!(stdout.contains("inside.txt"), "{stdout}");
+  assert!(!stdout.contains("secret"), "{stdout}");
+
+  std::os::unix::fs::symlink(&secret, proj.join("out")).unwrap();
+  write(
+    &proj.join("out.ts"),
+    r#"try {
+  console.log("PATH " + Yuzuko.realPathSync("out"));
+} catch (error) {
+  console.log("ERR " + error.name);
+}
+"#,
+  );
+  let denied = run(&proj, &["run", "--no-prompt", "--allow-read=.", "out.ts"]);
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let denied_out = text(&denied.stdout);
+  assert!(denied_out.contains("ERR NotAllowedError"), "{denied_out}");
+  assert!(!denied_out.contains("secret"), "{denied_out}");
+
+  let stop = Arc::new(AtomicBool::new(false));
+  let swapping = Arc::clone(&stop);
+  let link_swap = link.clone();
+  let inside_swap = inside.clone();
+  let secret_swap = secret.clone();
+  let swapper = std::thread::spawn(move || {
+    let mut to_outside = true;
+    while !swapping.load(Ordering::Relaxed) {
+      let target = if to_outside {
+        &secret_swap
+      } else {
+        &inside_swap
+      };
+      let temporary = link_swap.with_extension("tmp");
+      let _ = fs::remove_file(&temporary);
+      if std::os::unix::fs::symlink(target, &temporary).is_ok() {
+        let _ = fs::rename(&temporary, &link_swap);
+      }
+      to_outside = !to_outside;
+    }
+  });
+  write(
+    &proj.join("race.ts"),
+    r#"for (let i = 0; i < 40; i++) {
+  try {
+    console.log("P " + Yuzuko.realPathSync("link"));
+  } catch (error) {
+    console.log("P " + error.name);
+  }
+}
+"#,
+  );
+  let raced = run(&proj, &["run", "--no-prompt", "--allow-read=.", "race.ts"]);
+  stop.store(true, Ordering::Relaxed);
+  let _ = swapper.join();
+  assert_eq!(raced.status.code(), Some(0), "{}", text(&raced.stderr));
+  let raced_out = text(&raced.stdout);
+  assert!(!raced_out.contains("secret"), "{raced_out}");
+}
+
 #[cfg(feature = "ffi")]
 #[test]
 fn a_bad_symbol_is_rejected_before_the_ffi_grant() {

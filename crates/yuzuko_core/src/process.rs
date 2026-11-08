@@ -475,6 +475,15 @@ fn io_lock() -> MutexGuard<'static, ()> {
   lock(&IO)
 }
 
+/// Runs `body` while no other caller is inside `setenv` or `getaddrinfo`.
+///
+/// Those libc calls are not safe to run together. `Yuzuko.env.set` holds
+/// this lock around `setenv`. A host lookup holds it around `getaddrinfo`.
+pub fn with_env<T>(body: impl FnOnce() -> T) -> T {
+  let _guard = io_lock();
+  body()
+}
+
 fn lock<T>(mutex: &'static Mutex<T>) -> MutexGuard<'static, T> {
   mutex.lock().unwrap_or_else(|poison| poison.into_inner())
 }

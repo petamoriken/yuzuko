@@ -219,7 +219,7 @@ fn dlopen_op<'s>(
   let prepared = read_symbols(scope, args.get(1))?;
   crate::permissions::check_ffi(std::path::Path::new(&path))?;
   let handle =
-    open_library(&path).ok_or_else(|| plain_error(scope, OPEN_FAIL))?;
+    open_library(&path)?.ok_or_else(|| plain_error(scope, OPEN_FAIL))?;
   let mut loaded = Loaded {
     handle: Some(handle),
   };
@@ -1114,14 +1114,16 @@ fn define_fn(
 }
 
 #[cfg(unix)]
-fn open_library(path: &str) -> Option<usize> {
-  let path = CString::new(path).ok()?;
+fn open_library(path: &str) -> Result<Option<usize>, OpError> {
+  let Ok(path) = CString::new(path) else {
+    return Ok(None);
+  };
   let handle =
     unsafe { libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
   if handle.is_null() {
-    None
+    Ok(None)
   } else {
-    Some(handle as usize)
+    Ok(Some(handle as usize))
   }
 }
 
@@ -1150,16 +1152,59 @@ fn unload(handle: usize) {
 }
 
 #[cfg(windows)]
-fn open_library(path: &str) -> Option<usize> {
-  use windows_sys::Win32::System::LibraryLoader::LoadLibraryW;
-  let mut wide: Vec<u16> = path.encode_utf16().collect();
+fn open_library(path: &str) -> Result<Option<usize>, OpError> {
+  use std::os::windows::ffi::OsStrExt;
+
+  use windows_sys::Win32::System::LibraryLoader::{
+    LOAD_WITH_ALTERED_SEARCH_PATH, LoadLibraryExW, LoadLibraryW,
+  };
+  let load = library_load(path)?;
+  let mut wide: Vec<u16> = load.path.as_os_str().encode_wide().collect();
   wide.push(0);
-  let handle = unsafe { LoadLibraryW(wide.as_ptr()) };
+  // SAFETY: `wide` is a NUL-terminated path. `LOAD_WITH_ALTERED_SEARCH_PATH`
+  // is passed only with an absolute path. The reserved file handle is null.
+  let handle = unsafe {
+    if load.altered {
+      LoadLibraryExW(
+        wide.as_ptr(),
+        std::ptr::null_mut(),
+        LOAD_WITH_ALTERED_SEARCH_PATH,
+      )
+    } else {
+      LoadLibraryW(wide.as_ptr())
+    }
+  };
   if handle.is_null() {
-    None
+    Ok(None)
   } else {
-    Some(handle as usize)
+    Ok(Some(handle as usize))
   }
+}
+
+/// The path Windows loads, and whether the default DLL search is disabled.
+///
+/// A relative path such as `sub\x.dll` would otherwise match
+/// `System32\sub\x.dll`. The absolute path is the one the permission check
+/// named. A bare name still uses the loader search, which requires `ffi`
+/// granted as a whole.
+#[cfg(windows)]
+struct LibraryLoad {
+  path: std::path::PathBuf,
+  altered: bool,
+}
+
+#[cfg(windows)]
+fn library_load(path: &str) -> Result<LibraryLoad, OpError> {
+  if !path.contains('/') && !path.contains('\\') {
+    return Ok(LibraryLoad {
+      path: std::path::PathBuf::from(path),
+      altered: false,
+    });
+  }
+  Ok(LibraryLoad {
+    path: crate::permissions::anchor_path(std::path::Path::new(path))?,
+    altered: true,
+  })
 }
 
 #[cfg(windows)]
@@ -1188,8 +1233,8 @@ fn unload(handle: usize) {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_library(_path: &str) -> Option<usize> {
-  None
+fn open_library(_path: &str) -> Result<Option<usize>, OpError> {
+  Ok(None)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -1199,3 +1244,38 @@ fn lookup(_handle: usize, _name: &str) -> Option<usize> {
 
 #[cfg(not(any(unix, windows)))]
 fn unload(_handle: usize) {}
+
+#[cfg(all(test, windows))]
+mod tests {
+  use super::library_load;
+
+  #[test]
+  fn a_relative_library_path_is_absolute() {
+    let current = std::env::current_dir().unwrap();
+    let relative = library_load(r"sub\x.dll").unwrap();
+    assert!(relative.altered);
+    assert!(relative.path.is_absolute());
+    assert_eq!(relative.path, current.join(r"sub\x.dll"));
+
+    let slashed = library_load("sub/x.dll").unwrap();
+    assert!(slashed.altered);
+    assert_eq!(slashed.path, current.join("sub/x.dll"));
+
+    let bare = library_load("x.dll").unwrap();
+    assert!(!bare.altered);
+    assert_eq!(bare.path, std::path::Path::new("x.dll"));
+
+    let absolute = current.join(r"sub\x.dll");
+    let loaded = library_load(absolute.to_str().unwrap()).unwrap();
+    assert!(loaded.altered);
+    assert_eq!(loaded.path, absolute);
+
+    let prefix: String = current.to_string_lossy().chars().take(2).collect();
+    if prefix.ends_with(':') {
+      let drive_relative = format!("{prefix}sub\\x.dll");
+      let loaded = library_load(&drive_relative).unwrap();
+      assert!(loaded.altered);
+      assert_eq!(loaded.path, current.join(r"sub\x.dll"));
+    }
+  }
+}

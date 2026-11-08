@@ -253,6 +253,14 @@ pub(crate) fn clear() {
   LIVE.with(|slot| slot.borrow_mut().clear());
 }
 
+/// The host is checked again on every connection, including a reconnect.
+fn stream_permitted(url: &str) -> bool {
+  let Ok(url) = url::Url::parse(url) else {
+    return false;
+  };
+  yuzuko_core::authorize_url(&url).is_ok()
+}
+
 fn begin(
   id: u64,
   url: String,
@@ -275,6 +283,13 @@ fn run_stream(
   notes: Arc<SourceQueue>,
 ) {
   if closed.load(Ordering::Relaxed) {
+    return;
+  }
+  if !stream_permitted(&url) {
+    notes.push(Tagged {
+      generation,
+      note: SourceNote::Down,
+    });
     return;
   }
   let mut headers = vec![

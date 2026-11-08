@@ -130,34 +130,41 @@ pub(super) fn open_file(
   path: &Path,
   flags: OpenFlags,
 ) -> Result<File, FsError> {
-  let path = if flags.writes() {
-    path::ensure_mutable(path, Link::Follow)?
-  } else {
-    path.to_path_buf()
-  };
+  if flags.writes() {
+    // The bundle guard resolves the path. The open below keeps the caller's
+    // spelling, including a Windows alternate data stream.
+    path::ensure_mutable(path, Link::Follow)?;
+  }
   let mut options = OpenOptions::new();
   options.read(flags.read);
-  options.write(flags.write || flags.append);
+  options.write(flags.write || flags.append || flags.truncate);
   options.append(flags.append);
-  if flags.truncate {
-    options.truncate(true);
-  }
+  // Truncate after the opened descriptor is confirmed, so a swapped symlink
+  // is not cleared before the denial.
   if flags.create_new {
     options.create_new(true);
   } else if flags.create {
     options.create(true);
   }
   apply_file_mode(&mut options, flags.mode);
-  options.open(&path).map_err(FsError::io)
+  let file = options.open(path).map_err(FsError::io)?;
+  permit_opened(path, &file, flags.read, flags.writes())?;
+  if flags.truncate {
+    file.set_len(0).map_err(FsError::io)?;
+  }
+  Ok(file)
 }
 
 pub(super) fn read_bytes(path: &Path) -> Result<Vec<u8>, FsError> {
-  match fs::metadata(path) {
-    Ok(meta) if meta.is_dir() => return Err(FsError::directory()),
-    Ok(_) => {}
-    Err(error) => return Err(FsError::io(error)),
+  let mut file = File::open(path).map_err(FsError::io)?;
+  permit_opened(path, &file, true, false)?;
+  let meta = file.metadata().map_err(FsError::io)?;
+  if meta.is_dir() {
+    return Err(FsError::directory());
   }
-  fs::read(path).map_err(FsError::io)
+  let mut bytes = Vec::new();
+  file.read_to_end(&mut bytes).map_err(FsError::io)?;
+  Ok(bytes)
 }
 
 pub(super) fn read_text(path: &Path) -> Result<String, FsError> {
@@ -170,16 +177,68 @@ pub(super) fn write_bytes(
   bytes: &[u8],
   flags: WriteFlags,
 ) -> Result<(), FsError> {
-  let path = path::ensure_mutable(path, Link::Follow)?;
+  path::ensure_mutable(path, Link::Follow)?;
   let mut options = OpenOptions::new();
   options.write(true);
   options.append(flags.append);
-  options.truncate(!flags.append && !flags.create_new);
   options.create(flags.create && !flags.create_new);
   options.create_new(flags.create_new);
   apply_file_mode(&mut options, flags.mode);
-  let mut file = options.open(&path).map_err(FsError::io)?;
+  let mut file = options.open(path).map_err(FsError::io)?;
+  permit_opened(path, &file, false, true)?;
+  if !flags.append && !flags.create_new {
+    file.set_len(0).map_err(FsError::io)?;
+  }
   file.write_all(bytes).map_err(FsError::io)
+}
+
+/// The descriptor is the file the call may use. A path lookup after the
+/// permission check can follow a different symlink; this refuses that file
+/// and names the requested path.
+fn permit_opened(
+  path: &Path,
+  file: &File,
+  read: bool,
+  write: bool,
+) -> Result<(), FsError> {
+  if !read && !write {
+    return Ok(());
+  }
+  let real = match fd_path(file) {
+    Ok(real) => real,
+    Err(_) => return Err(host_denial(write, path)),
+  };
+  if read {
+    match crate::permissions::path_is_granted(false, &real) {
+      Ok(true) => {}
+      Ok(false) => return Err(host_denial(false, path)),
+      Err(error) => return Err(host_error(error)),
+    }
+  }
+  if write {
+    match crate::permissions::path_is_granted(true, &real) {
+      Ok(true) => {}
+      Ok(false) => return Err(host_denial(true, path)),
+      Err(error) => return Err(host_error(error)),
+    }
+  }
+  Ok(())
+}
+
+fn host_denial(write: bool, path: &Path) -> FsError {
+  host_error(crate::permissions::path_not_allowed(write, path))
+}
+
+fn host_error(error: crate::op::OpError) -> FsError {
+  match error {
+    crate::op::OpError::Dom { name, message } => {
+      FsError::Host { name, message }
+    }
+    crate::op::OpError::Type(message) | crate::op::OpError::Range(message) => {
+      FsError::Type(message)
+    }
+    crate::op::OpError::Thrown(_) => FsError::failed(),
+  }
 }
 
 pub(super) fn write_text(
@@ -244,7 +303,12 @@ pub(super) fn copy_path(from: &Path, to: &Path) -> Result<(), FsError> {
 
 pub(super) fn real_path(path: &Path) -> Result<String, FsError> {
   let canonical = crate::canonicalize(path).map_err(FsError::io)?;
-  Ok(canonical.to_string_lossy().into_owned())
+  // A swap after the caller's check must not return the other file's path.
+  match crate::permissions::path_is_granted(false, &canonical) {
+    Ok(true) => Ok(canonical.to_string_lossy().into_owned()),
+    Ok(false) => Err(host_denial(false, path)),
+    Err(error) => Err(host_error(error)),
+  }
 }
 
 pub(super) fn stat_path(path: &Path, follow: bool) -> Result<Info, FsError> {

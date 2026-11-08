@@ -6,7 +6,7 @@
 //! passed that check.
 
 use std::future::Future;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -68,25 +68,23 @@ pub(super) fn denied_from(
   None
 }
 
-fn failure_from(error: yuzuko_core::op::OpError) -> HttpFailure {
-  match error {
-    yuzuko_core::op::OpError::Dom { name, message } => {
-      HttpFailure::Denied { name, message }
-    }
-    yuzuko_core::op::OpError::Type(message)
-    | yuzuko_core::op::OpError::Range(message) => HttpFailure::Type(message),
-    yuzuko_core::op::OpError::Thrown(_) => {
-      HttpFailure::Type("The URL is invalid".to_string())
-    }
-  }
-}
-
 pub(super) async fn checked_addrs(
   host: &str,
   port: u16,
 ) -> Result<Vec<SocketAddr>, HttpFailure> {
-  let addrs = lookup(host, port).await?;
-  yuzuko_core::retain_resolved_addresses(addrs).map_err(failure_from)
+  super::super::resolve::checked_addrs(host, port)
+    .await
+    .map_err(|failure| match failure {
+      super::super::resolve::ResolveFailure::Type(message) => {
+        HttpFailure::Type(message)
+      }
+      super::super::resolve::ResolveFailure::Network(message) => {
+        HttpFailure::Network(message)
+      }
+      super::super::resolve::ResolveFailure::Denied { name, message } => {
+        HttpFailure::Denied { name, message }
+      }
+    })
 }
 
 pub(super) async fn connect_tcp(
@@ -95,33 +93,6 @@ pub(super) async fn connect_tcp(
 ) -> Result<TcpStream, HttpFailure> {
   let addrs = checked_addrs(host, port).await?;
   connect_addrs(addrs).await
-}
-
-fn strip_brackets(host: &str) -> &str {
-  host
-    .strip_prefix('[')
-    .and_then(|rest| rest.strip_suffix(']'))
-    .filter(|inner| !inner.is_empty())
-    .unwrap_or(host)
-}
-
-async fn lookup(host: &str, port: u16) -> Result<Vec<SocketAddr>, HttpFailure> {
-  let bare = strip_brackets(host.trim());
-  if bare.is_empty() {
-    return Err(HttpFailure::Type("The URL has no host".to_string()));
-  }
-  if let Ok(ip) = bare.parse::<IpAddr>() {
-    return Ok(vec![SocketAddr::new(ip, port)]);
-  }
-  let dial = if bare.contains(':') {
-    format!("[{bare}]:{port}")
-  } else {
-    format!("{bare}:{port}")
-  };
-  let looked_up = tokio::net::lookup_host(dial)
-    .await
-    .map_err(|error| HttpFailure::Network(error.to_string()))?;
-  Ok(looked_up.collect())
 }
 
 async fn connect_addrs(

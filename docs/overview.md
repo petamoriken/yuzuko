@@ -110,7 +110,7 @@ Feature: `codec`. It enables `image` and `window`.
 
 Feature: `fetch`.
 
-`fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, and `EventSource` load `file:`, `blob:`, `data:`, `http:`, and `https:`. A `file:` URL stays under the entry module's directory. `https:` negotiates HTTP/2 and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement. `http:` stays HTTP/1.1. The client follows the unrestricted WinterTC fetch posture in the spec. `EventSource` reads an `http:` or `https:` event stream.
+`fetch`, `Headers`, `Request`, `Response`, `caches`, `XMLHttpRequest`, and `EventSource` load `file:`, `blob:`, `data:`, `http:`, and `https:`. A `file:` URL stays under the entry module's directory. `https:` negotiates HTTP/2 and uses HTTP/3 on a later request to that origin after an `Alt-Svc` `h3` advertisement whose host and port are granted. `http:` stays HTTP/1.1. The client follows the unrestricted WinterTC fetch posture in the spec. `EventSource` reads an `http:` or `https:` event stream.
 
 ## Sockets
 
@@ -160,7 +160,7 @@ Feature: `child`.
 
 Feature: `ffi`.
 
-`Yuzuko.dlopen` loads a shared library and returns a `Yuzuko.Library`. Each symbol is one `extern "C"` function. Parameters are `"i32"`, `"f64"`, `"pointer"`, `"buffer"`, or `"cstring"`, in the combinations the spec allows. The loader is `dlopen` on Unix and `LoadLibraryW` on Windows. A name with no path separator is allowed only when `ffi` is granted as a whole. A buffer or C-string pointer is valid only for that call.
+`Yuzuko.dlopen` loads a shared library and returns a `Yuzuko.Library`. Each symbol is one `extern "C"` function. Parameters are `"i32"`, `"f64"`, `"pointer"`, `"buffer"`, or `"cstring"`, in the combinations the spec allows. The loader is `dlopen` on Unix. On Windows a bare name is `LoadLibraryW`, and a path is `LoadLibraryExW` of the absolute file. A name with no path separator is allowed only when `ffi` is granted as a whole. A buffer or C-string pointer is valid only for that call.
 
 ## Accessibility
 

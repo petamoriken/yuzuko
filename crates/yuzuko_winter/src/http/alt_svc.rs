@@ -33,6 +33,24 @@ pub(super) fn origin_key(url: &str) -> Option<String> {
 }
 
 pub(super) fn lookup(url: &str) -> Option<(String, u16)> {
+  // The policy check runs after the cache lock is released. A prompt can
+  // re-enter the client, and that client takes this lock.
+  lookup_if(url, alternative_allowed)
+}
+
+fn lookup_if(
+  url: &str,
+  allow: impl Fn(&str, u16) -> bool,
+) -> Option<(String, u16)> {
+  let (host, port) = cached(url)?;
+  if !allow(&host, port) {
+    return None;
+  }
+  Some((host, port))
+}
+
+/// The cached alternative, without a permission check.
+fn cached(url: &str) -> Option<(String, u16)> {
   let key = origin_key(url)?;
   let mut cache = CACHE.lock().expect("alt-svc");
   let map = cache.get_or_insert_with(HashMap::new);
@@ -42,6 +60,13 @@ pub(super) fn lookup(url: &str) -> Option<(String, u16)> {
     return None;
   }
   Some((record.host.clone(), record.port))
+}
+
+/// Whether this process may dial `host` on `port`.
+///
+/// The origin check does not cover an `Alt-Svc` host or a different port.
+fn alternative_allowed(host: &str, port: u16) -> bool {
+  yuzuko_core::check_net(host, port).is_ok()
 }
 
 pub(super) fn invalidate(url: &str) {
@@ -280,7 +305,11 @@ pub(super) fn server_name(url: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-  use super::first_h3;
+  use super::{cached, first_h3, invalidate, lookup_if, record};
+
+  fn allow_origin_443(host: &str, port: u16) -> bool {
+    host.eq_ignore_ascii_case("alt-svc-perm.example") && port == 443
+  }
 
   #[test]
   fn parses_same_host_and_max_age() {
@@ -301,5 +330,34 @@ mod tests {
   #[test]
   fn clear_is_not_an_alternative() {
     assert!(first_h3("clear").is_none());
+  }
+
+  #[test]
+  fn a_denied_alternative_is_not_dialed() {
+    let url = "https://alt-svc-perm.example/path";
+    let _clear = Clear(url);
+    record(url, r#"h3="evil.example:443"; ma=60"#);
+    assert!(lookup_if(url, allow_origin_443).is_none());
+    let stored = cached(url).unwrap();
+    assert_eq!(stored.0, "evil.example");
+    assert_eq!(stored.1, 443);
+
+    record(url, r#"h3=":444"; ma=60"#);
+    assert!(lookup_if(url, allow_origin_443).is_none());
+    assert_eq!(cached(url).unwrap().1, 444);
+
+    record(url, r#"h3=":443"; ma=60"#);
+    assert_eq!(
+      lookup_if(url, allow_origin_443).unwrap(),
+      ("alt-svc-perm.example".to_string(), 443)
+    );
+  }
+
+  struct Clear(&'static str);
+
+  impl Drop for Clear {
+    fn drop(&mut self) {
+      invalidate(self.0);
+    }
   }
 }

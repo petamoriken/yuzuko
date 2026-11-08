@@ -79,7 +79,7 @@ pub use permissions::{
   grant_read, grant_write, install_permissions, retain_resolved_addresses,
   validate_permissions,
 };
-pub use process::set_args;
+pub use process::{set_args, with_env};
 pub use reach::walk_objects;
 pub use realm::{
   clone_value, delete_intl_v8_break_iterator, delete_object_prototype_proto,
