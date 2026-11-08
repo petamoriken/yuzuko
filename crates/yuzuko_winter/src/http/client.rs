@@ -7,6 +7,8 @@
 
 #[path = "h3.rs"]
 mod h3;
+#[path = "net_guard.rs"]
+mod net_guard;
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -322,6 +324,9 @@ async fn exchange(
     let response = match response {
       Ok(response) => response,
       Err(error) => {
+        if let Some(denied) = net_guard::denied_from(&error) {
+          return Err(denied);
+        }
         let idempotent = method.eq_ignore_ascii_case("GET")
           || method.eq_ignore_ascii_case("HEAD");
         if idempotent && url.starts_with("http://") {
@@ -561,9 +566,7 @@ fn authorize_redirect(next: &url::Url) -> Result<(), HttpFailure> {
 
 fn https_connector(
   roots: Option<&rustls::RootCertStore>,
-) -> hyper_rustls::HttpsConnector<
-  hyper_util::client::legacy::connect::HttpConnector,
-> {
+) -> hyper_rustls::HttpsConnector<net_guard::GuardedHttp> {
   let builder = hyper_rustls::HttpsConnectorBuilder::new();
   let builder = if let Some(roots) = roots {
     // ALPN stays empty here. `enable_http2` writes `h2` and `http/1.1`.
@@ -578,7 +581,7 @@ fn https_connector(
     .https_or_http()
     .enable_http1()
     .enable_http2()
-    .build()
+    .wrap_connector(net_guard::GuardedHttp)
 }
 
 /// One wire header per name, using the first spelling. `set-cookie` stays
@@ -808,9 +811,7 @@ async fn exchange_http1(
       .host_str()
       .ok_or_else(|| HttpFailure::Type("The URL has no host".to_string()))?;
     let port = parsed.port_or_known_default().unwrap_or(80);
-    let mut stream = TcpStream::connect((host, port))
-      .await
-      .map_err(|error| HttpFailure::Network(error.to_string()))?;
+    let mut stream = net_guard::connect_tcp(host, port).await?;
     let message = raw_request(method, &parsed, headers, body);
     stream
       .write_all(&message)
@@ -1371,9 +1372,7 @@ async fn raw_http1_exchange(
   if cancel.load(Ordering::Relaxed) {
     return Err(HttpFailure::Abort);
   }
-  let mut stream = tokio::net::TcpStream::connect((host, port))
-    .await
-    .map_err(|error| HttpFailure::Network(error.to_string()))?;
+  let mut stream = net_guard::connect_tcp(host, port).await?;
   let mut path = parsed.path().to_string();
   if path.is_empty() {
     path.push('/');

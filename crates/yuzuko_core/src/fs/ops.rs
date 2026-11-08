@@ -744,10 +744,13 @@ fn symlink_args(
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(std::path::PathBuf, std::path::PathBuf, io::LinkKind), OpError> {
   let (old, new) = two_paths(scope, args)?;
-  crate::permissions::check_read(&old)?;
-  crate::permissions::check_write(&new)?;
   let kind = value::link_kind(scope, args.get(2));
   let kind = ready(scope, kind)?;
+  // A relative symbolic link is resolved from the new link's directory.
+  // A junction stores a target joined to the current directory.
+  let junction = matches!(kind, io::LinkKind::Junction);
+  crate::permissions::check_symlink_target(&old, &new, junction)?;
+  crate::permissions::check_write(&new)?;
   Ok((old, new, kind))
 }
 
@@ -840,6 +843,8 @@ fn link_op(
 ) -> Result<Js, OpError> {
   let (old, new) = two_paths(scope, args)?;
   crate::permissions::check_read(&old)?;
+  // The new name is the same inode. Writing it changes the old file.
+  crate::permissions::check_write(&old)?;
   crate::permissions::check_write(&new)?;
   settle!(
     scope,
@@ -857,6 +862,8 @@ fn link_sync_op(
 ) -> Result<(), OpError> {
   let (old, new) = two_paths(scope, args)?;
   crate::permissions::check_read(&old)?;
+  // The new name is the same inode. Writing it changes the old file.
+  crate::permissions::check_write(&old)?;
   crate::permissions::check_write(&new)?;
   ready(scope, io::link(&old, &new))
 }

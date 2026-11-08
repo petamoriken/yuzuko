@@ -7,8 +7,11 @@
 //! gated operation prompt when the policy says to and standard input is a
 //! terminal.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::ffi::OsStr;
 use std::io::{IsTerminal, Write};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -685,6 +688,73 @@ pub fn check_net(host: &str, port: u16) -> Result<(), OpError> {
   )
 }
 
+/// Keeps addresses the net policy allows this connection to use.
+///
+/// A globally routable address is kept. A loopback, private, link-local,
+/// unique-local, shared, multicast, broadcast, or unspecified address is
+/// checked again with [`check_net`]. An IPv4-mapped IPv6 address is that
+/// IPv4 address. When every address is rejected, the error is the first
+/// denial. An empty input stays empty.
+pub fn retain_resolved_addresses(
+  addrs: Vec<SocketAddr>,
+) -> Result<Vec<SocketAddr>, OpError> {
+  let mut kept = Vec::new();
+  let mut denial = None;
+  for addr in addrs {
+    let Some(host) = restricted_host(addr.ip()) else {
+      kept.push(addr);
+      continue;
+    };
+    match check_net(&host, addr.port()) {
+      Ok(()) => kept.push(addr),
+      Err(error) => {
+        if denial.is_none() {
+          denial = Some(error);
+        }
+      }
+    }
+  }
+  if kept.is_empty()
+    && let Some(error) = denial
+  {
+    return Err(error);
+  }
+  Ok(kept)
+}
+
+/// Read-checks the path a symbolic link will name.
+///
+/// An absolute target is checked as written. A relative target is joined to
+/// the parent of `new`, which is the directory POSIX uses. A junction is
+/// checked as written because its reparse text is joined to the current
+/// directory. The stored link text is unchanged.
+#[cfg(feature = "fs")]
+pub(crate) fn check_symlink_target(
+  old: &Path,
+  new: &Path,
+  junction: bool,
+) -> Result<(), OpError> {
+  check_read(&symlink_target(old, new, junction)?)
+}
+
+#[cfg(feature = "fs")]
+fn symlink_target(
+  old: &Path,
+  new: &Path,
+  junction: bool,
+) -> Result<PathBuf, OpError> {
+  if junction || old.is_absolute() {
+    return Ok(old.to_path_buf());
+  }
+  let new = absolute_path(new)?;
+  let parent = new.parent().filter(|parent| !parent.as_os_str().is_empty());
+  let parent = match parent {
+    Some(parent) => parent.to_path_buf(),
+    None => current_dir()?,
+  };
+  Ok(parent.join(old))
+}
+
 pub fn check_env(name: &str) -> Result<(), OpError> {
   require(Kind::Env, &Detail::Name(name.to_string()))
 }
@@ -834,8 +904,9 @@ fn display(detail: &Detail) -> Result<String, OpError> {
   Ok(sanitize_prompt(&text))
 }
 
-/// Keep a prompt on one line. Control characters, quotes, and backslashes
-/// are escaped so the requested name cannot redraw the terminal.
+/// Keep a prompt on one line. Control characters, bidirectional overrides,
+/// quotes, and backslashes are escaped so the requested name cannot redraw
+/// the terminal.
 fn sanitize_prompt(text: &str) -> String {
   let mut out = String::with_capacity(text.len());
   for char in text.chars() {
@@ -845,13 +916,21 @@ fn sanitize_prompt(text: &str) -> String {
       '\n' => out.push_str("\\n"),
       '\r' => out.push_str("\\r"),
       '\t' => out.push_str("\\t"),
-      char if char.is_control() => {
+      char if char.is_control() || is_bidi_control(char) => {
         out.push_str(&format!("\\u{{{:x}}}", u32::from(char)));
       }
       char => out.push(char),
     }
   }
   out
+}
+
+/// Bidirectional format characters that can reorder a prompt line.
+fn is_bidi_control(char: char) -> bool {
+  matches!(
+    char,
+    '\u{200E}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+  )
 }
 
 fn ask(kind: Kind, detail: &str) -> Option<Answer> {
@@ -898,15 +977,29 @@ fn normalize(path: &Path) -> PathBuf {
   for component in path.components() {
     match component {
       Component::CurDir => {}
-      Component::ParentDir => {
-        if matches!(out.components().next_back(), Some(Component::Normal(_))) {
-          out.pop();
-        }
-      }
+      Component::ParentDir => pop_parent(&mut out),
+      Component::Normal(name) => push_normal(&mut out, name),
       other => out.push(other.as_os_str()),
     }
   }
   out
+}
+
+fn pop_parent(out: &mut PathBuf) {
+  if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+    out.pop();
+  }
+}
+
+fn push_normal(out: &mut PathBuf, name: &OsStr) {
+  #[cfg(windows)]
+  match interpret_normal(name) {
+    Interpreted::Current => {}
+    Interpreted::Parent => pop_parent(out),
+    Interpreted::Name(name) => out.push(name),
+  }
+  #[cfg(not(windows))]
+  out.push(name);
 }
 
 struct PathCandidates {
@@ -1119,9 +1212,60 @@ fn component_eq(left: Component<'_>, right: Component<'_>) -> bool {
     (Component::RootDir, Component::RootDir)
     | (Component::CurDir, Component::CurDir)
     | (Component::ParentDir, Component::ParentDir) => true,
-    (Component::Normal(left), Component::Normal(right)) => os_eq(left, right),
+    (Component::Normal(left), Component::Normal(right)) => {
+      os_eq(compared_name(left).as_ref(), compared_name(right).as_ref())
+    }
     _ => false,
   }
+}
+
+fn compared_name(name: &OsStr) -> Cow<'_, OsStr> {
+  #[cfg(windows)]
+  {
+    let name = match interpret_normal(name) {
+      Interpreted::Current => OsStr::new(".").to_os_string(),
+      Interpreted::Parent => OsStr::new("..").to_os_string(),
+      Interpreted::Name(name) => name,
+    };
+    Cow::Owned(name)
+  }
+  #[cfg(not(windows))]
+  {
+    Cow::Borrowed(name)
+  }
+}
+
+/// Win32 deletes trailing dots and spaces, and `name:stream` is `name`.
+#[cfg(windows)]
+enum Interpreted {
+  Current,
+  Parent,
+  Name(std::ffi::OsString),
+}
+
+#[cfg(windows)]
+fn interpret_normal(name: &OsStr) -> Interpreted {
+  use std::os::windows::ffi::{OsStrExt, OsStringExt};
+  let mut units: Vec<u16> = name.encode_wide().collect();
+  if let Some(index) = units.iter().position(|unit| *unit == u16::from(b':')) {
+    units.truncate(index);
+  }
+  while units
+    .last()
+    .is_some_and(|unit| *unit == u16::from(b'.') || *unit == u16::from(b' '))
+  {
+    units.pop();
+  }
+  if units.is_empty() {
+    return Interpreted::Name(name.to_os_string());
+  }
+  if units.as_slice() == [u16::from(b'.')] {
+    return Interpreted::Current;
+  }
+  if units.as_slice() == [u16::from(b'.'), u16::from(b'.')] {
+    return Interpreted::Parent;
+  }
+  Interpreted::Name(std::ffi::OsString::from_wide(&units))
 }
 
 fn os_eq(left: &std::ffi::OsStr, right: &std::ffi::OsStr) -> bool {
@@ -1219,7 +1363,61 @@ fn normalize_host(host: &str) -> String {
   } else {
     host
   };
-  bare.to_ascii_lowercase()
+  let lower = bare.to_ascii_lowercase();
+  // A parseable address has one spelling. `2001:0db8::1` and
+  // `::ffff:127.0.0.1` compare as `2001:db8::1` and `127.0.0.1`.
+  // A zone id does not parse and stays in the string.
+  match lower.parse::<IpAddr>() {
+    Ok(addr) => canonical_ip(addr).to_string(),
+    Err(_) => lower,
+  }
+}
+
+fn canonical_ip(addr: IpAddr) -> IpAddr {
+  match addr {
+    IpAddr::V4(addr) => IpAddr::V4(addr),
+    IpAddr::V6(addr) => match addr.to_ipv4_mapped() {
+      Some(mapped) => IpAddr::V4(mapped),
+      None => IpAddr::V6(addr),
+    },
+  }
+}
+
+/// The host to check when `addr` is not a globally routable destination.
+fn restricted_host(addr: IpAddr) -> Option<String> {
+  let addr = canonical_ip(addr);
+  if !is_restricted_ip(addr) {
+    return None;
+  }
+  Some(addr.to_string())
+}
+
+fn is_restricted_ip(addr: IpAddr) -> bool {
+  match addr {
+    IpAddr::V4(addr) => {
+      addr.is_loopback()
+        || addr.is_private()
+        || addr.is_link_local()
+        || addr.is_broadcast()
+        || addr.is_unspecified()
+        || addr.is_multicast()
+        || is_shared_v4(addr)
+    }
+    IpAddr::V6(addr) => {
+      addr.is_loopback()
+        || addr.is_unicast_link_local()
+        || addr.is_unique_local()
+        || addr.is_unspecified()
+        || addr.is_multicast()
+    }
+  }
+}
+
+/// `100.64.0.0/10`, the shared carrier-grade range. `Ipv4Addr::is_shared`
+/// is unstable.
+fn is_shared_v4(addr: Ipv4Addr) -> bool {
+  let [first, second, _, _] = addr.octets();
+  first == 100 && (second & 0b1100_0000) == 0b0100_0000
 }
 
 fn format_host(host: &str, port: Option<u16>) -> String {
@@ -2241,5 +2439,247 @@ mod tests {
     assert!(!shown.contains('\n'), "{shown}");
     assert!(!shown.contains('\u{1b}'), "{shown}");
     assert_eq!(shown, "note\\n\\u{1b}[1A\\\"x\\\\y");
+  }
+
+  #[test]
+  fn the_prompt_text_escapes_bidi_controls() {
+    let shown = display(&Detail::Name(
+      "safe\u{202E}txt.exe\u{200E}\u{2066}".to_string(),
+    ))
+    .unwrap();
+    assert!(!shown.contains('\u{202E}'), "{shown}");
+    assert!(!shown.contains('\u{200E}'), "{shown}");
+    assert!(!shown.contains('\u{2066}'), "{shown}");
+    assert_eq!(shown, "safe\\u{202e}txt.exe\\u{200e}\\u{2066}");
+    let zwj = display(&Detail::Name("a\u{200D}b".to_string())).unwrap();
+    assert_eq!(zwj, "a\u{200D}b");
+  }
+
+  #[test]
+  fn an_ip_literal_has_one_spelling() {
+    assert_eq!(normalize_host("[2001:0DB8::1]"), "2001:db8::1");
+    assert_eq!(normalize_host("2001:0db8::1"), "2001:db8::1");
+    assert_eq!(normalize_host("::ffff:127.0.0.1"), "127.0.0.1");
+    assert_eq!(normalize_host("[::ffff:7f00:1]"), "127.0.0.1");
+    assert_eq!(normalize_host("::1"), "::1");
+    assert_eq!(normalize_host("Fe80::1%ETH0"), "fe80::1%eth0");
+    assert_eq!(
+      display(&Detail::Net {
+        host: "::ffff:127.0.0.1".to_string(),
+        port: Some(9),
+      })
+      .unwrap(),
+      "127.0.0.1:9"
+    );
+    assert_eq!(
+      display(&Detail::Net {
+        host: "2001:0db8::1".to_string(),
+        port: None,
+      })
+      .unwrap(),
+      "[2001:db8::1]"
+    );
+    let mut spec = PermissionSpec::default();
+    spec
+      .deny(
+        "net",
+        Some(vec![
+          "[2001:0db8::1]".to_string(),
+          "[::ffff:127.0.0.1]".to_string(),
+        ]),
+      )
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, Path::new("/")).unwrap();
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "2001:db8::1".to_string(),
+            port: Some(9),
+          },
+        )
+        .unwrap(),
+      State::Denied
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "127.0.0.1".to_string(),
+            port: Some(80),
+          },
+        )
+        .unwrap(),
+      State::Denied
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "example.com".to_string(),
+            port: Some(80),
+          },
+        )
+        .unwrap(),
+      State::Prompt
+    );
+  }
+
+  #[test]
+  fn a_restricted_address_is_checked_again() {
+    assert_eq!(
+      restricted_host("127.0.0.1".parse().unwrap()).as_deref(),
+      Some("127.0.0.1")
+    );
+    assert_eq!(
+      restricted_host("::ffff:127.0.0.1".parse().unwrap()).as_deref(),
+      Some("127.0.0.1")
+    );
+    assert_eq!(
+      restricted_host("10.1.2.3".parse().unwrap()).as_deref(),
+      Some("10.1.2.3")
+    );
+    assert_eq!(
+      restricted_host("169.254.169.254".parse().unwrap()).as_deref(),
+      Some("169.254.169.254")
+    );
+    assert_eq!(
+      restricted_host("100.64.0.1".parse().unwrap()).as_deref(),
+      Some("100.64.0.1")
+    );
+    assert_eq!(
+      restricted_host("::1".parse().unwrap()).as_deref(),
+      Some("::1")
+    );
+    assert!(restricted_host("fc00::1".parse().unwrap()).is_some());
+    assert!(restricted_host("fe80::1".parse().unwrap()).is_some());
+    assert!(restricted_host("8.8.8.8".parse().unwrap()).is_none());
+    assert!(restricted_host("2001:db8::1".parse().unwrap()).is_none());
+    assert!(restricted_host("::ffff:8.8.8.8".parse().unwrap()).is_none());
+    assert!(restricted_host("100.127.255.255".parse().unwrap()).is_some());
+    assert!(restricted_host("100.63.0.1".parse().unwrap()).is_none());
+    assert!(restricted_host("100.128.0.1".parse().unwrap()).is_none());
+    assert_eq!(
+      restricted_host("224.0.0.1".parse().unwrap()).as_deref(),
+      Some("224.0.0.1")
+    );
+    assert_eq!(
+      restricted_host("255.255.255.255".parse().unwrap()).as_deref(),
+      Some("255.255.255.255")
+    );
+    assert_eq!(
+      restricted_host("0.0.0.0".parse().unwrap()).as_deref(),
+      Some("0.0.0.0")
+    );
+    assert_eq!(
+      restricted_host("::".parse().unwrap()).as_deref(),
+      Some("::")
+    );
+  }
+
+  #[cfg(feature = "fs")]
+  #[test]
+  fn a_relative_symlink_is_checked_from_the_new_parent() {
+    let new = std::env::temp_dir().join("dirB").join("link");
+    let relative =
+      symlink_target(Path::new("target.txt"), &new, false).unwrap();
+    assert_eq!(
+      relative,
+      std::env::temp_dir().join("dirB").join("target.txt")
+    );
+    let nested =
+      symlink_target(Path::new("../secret.txt"), &new, false).unwrap();
+    assert_eq!(
+      nested,
+      std::env::temp_dir()
+        .join("dirB")
+        .join("..")
+        .join("secret.txt")
+    );
+    let old = std::env::temp_dir().join("dirA").join("target.txt");
+    let absolute = symlink_target(&old, &new, false).unwrap();
+    assert_eq!(absolute, old);
+    let junction = symlink_target(Path::new("target.txt"), &new, true).unwrap();
+    assert_eq!(junction, PathBuf::from("target.txt"));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn a_windows_deny_covers_a_trailing_dot_and_a_stream() {
+    let dir = std::env::temp_dir()
+      .join(format!("yuzuko-perm-ads-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let secret = dir.join("secret.txt");
+    let mut spec = PermissionSpec::default();
+    spec
+      .deny("write", Some(vec![secret.display().to_string()]))
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, &dir).unwrap();
+    for name in [
+      "secret.txt.",
+      "secret.txt... ",
+      "secret.txt ",
+      "SECRET.TXT.",
+      "secret.txt:hidden",
+      "secret.txt:hidden:$DATA",
+      "secret.txt::$DATA",
+    ] {
+      assert_eq!(
+        sandbox
+          .classify(Kind::Write, &Detail::Path(dir.join(name)))
+          .unwrap(),
+        State::Denied,
+        "{name}"
+      );
+    }
+    assert_eq!(
+      sandbox
+        .classify(Kind::Write, &Detail::Path(dir.join("other.txt")))
+        .unwrap(),
+      State::Prompt
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Write, &Detail::Path(dir.join("...")))
+        .unwrap(),
+      State::Prompt
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Write, &Detail::Path(dir.join(":stream")))
+        .unwrap(),
+      State::Prompt
+    );
+    let mut dotted = PermissionSpec::default();
+    dotted
+      .deny(
+        "write",
+        Some(vec![dir.join("secret.txt.").display().to_string()]),
+      )
+      .unwrap();
+    let dotted = Sandbox::compile(&dotted, &dir).unwrap();
+    assert_eq!(
+      dotted.classify(Kind::Write, &Detail::Path(secret)).unwrap(),
+      State::Denied
+    );
+    let mut allowed = PermissionSpec::default();
+    let project = dir.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    allowed
+      .allow("read", Some(vec![project.display().to_string()]))
+      .unwrap();
+    let allowed = Sandbox::compile(&allowed, &dir).unwrap();
+    let escaped = project.join(".. ").join("sibling");
+    assert_ne!(
+      allowed
+        .classify(Kind::Read, &Detail::Path(escaped))
+        .unwrap(),
+      State::Granted
+    );
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }

@@ -4997,9 +4997,13 @@ declare namespace Yuzuko {
   /**
    * Creates a hard link from `oldPath` to `newPath`.
    *
-   * The final component of neither path is followed.
+   * The final component of neither path is followed. The new name is the
+   * same file, so a later write through `newPath` changes `oldPath`.
    *
    * @throws {@link TypeError} When either path is not a string or a file URL.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant read and write access to `oldPath`, or write access to
+   * `newPath`.
    * @throws {@link errors.NotSupported} When either resolved directory entry
    * is inside the application bundle.
    */
@@ -5012,13 +5016,18 @@ declare namespace Yuzuko {
    * Creates a symbolic link at `newPath` whose text is `oldPath`.
    *
    * A string is stored as that string. A file URL is stored as its
-   * file-system path. The target does not have to exist. Unix ignores
-   * `options.type`. On Windows, creating a symlink can throw
+   * file-system path. The target does not have to exist. The permission
+   * check for a relative target uses the parent of `newPath`. A junction
+   * is checked from the current directory. Unix ignores `options.type`.
+   * On Windows, creating a symlink can throw
    * {@link errors.PermissionDenied} when the process may not create one.
    *
    * @throws {@link TypeError} When either path is not a string or a file URL,
    * when `options` is not an object, or when `type` is not `"file"`,
    * `"dir"`, or `"junction"`.
+   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * does not grant read access to the path the link will name, or write
+   * access to `newPath`.
    * @throws {@link errors.NotSupported} When `newPath` is inside the
    * application bundle.
    */

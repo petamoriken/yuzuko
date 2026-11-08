@@ -177,6 +177,265 @@ fn an_ipv6_deny_matches_a_bracketed_url() {
   assert!(!stdout.contains("NotAllowedError"), "{stdout}");
 }
 
+#[test]
+fn a_hard_link_needs_write_access_to_the_old_file() {
+  let root = scratch("link");
+  let secret = root.join("secret.txt");
+  let out = root.join("out");
+  fs::create_dir_all(&out).unwrap();
+  write(&secret, "original\n");
+  let linked = out.join("link.txt");
+  write(
+    &root.join("main.ts"),
+    r#"const [oldPath, newPath] = Yuzuko.args;
+try {
+  await Yuzuko.link(oldPath, newPath);
+  await Yuzuko.writeTextFile(newPath, "changed\n");
+  console.log(await Yuzuko.readTextFile(oldPath));
+} catch (error) {
+  console.log(error.name);
+}
+"#,
+  );
+  let secret_arg = secret.display().to_string();
+  let linked_arg = linked.display().to_string();
+  let read = format!("--allow-read={secret_arg}");
+  let write_out = format!("--allow-write={}", out.display());
+  let denied = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      &read,
+      &write_out,
+      "main.ts",
+      &secret_arg,
+      &linked_arg,
+    ],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert!(!linked.exists());
+  assert_eq!(fs::read_to_string(&secret).unwrap(), "original\n");
+
+  let write_old = format!("--allow-write={secret_arg}");
+  let allowed = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      &read,
+      &write_old,
+      &write_out,
+      "main.ts",
+      &secret_arg,
+      &linked_arg,
+    ],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  assert_eq!(text(&allowed.stdout).trim(), "changed");
+  assert_eq!(fs::read_to_string(&secret).unwrap(), "changed\n");
+}
+
+#[test]
+fn a_relative_symlink_is_checked_from_the_link_directory() {
+  let root = scratch("symlink");
+  let dir_a = root.join("dirA");
+  let dir_b = root.join("dirB");
+  fs::create_dir_all(&dir_a).unwrap();
+  fs::create_dir_all(&dir_b).unwrap();
+  write(&dir_a.join("target.txt"), "from-a\n");
+  write(&dir_b.join("target.txt"), "from-b\n");
+  write(
+    &dir_a.join("main.ts"),
+    r#"const newPath = Yuzuko.args[0];
+try {
+  await Yuzuko.symlink("target.txt", newPath);
+  console.log("linked");
+} catch (error) {
+  console.log(error.name);
+}
+"#,
+  );
+  let link = dir_b.join("link");
+  let link_arg = link.display().to_string();
+  let read_a = format!("--allow-read={}", dir_a.join("target.txt").display());
+  let write_b = format!("--allow-write={}", dir_b.display());
+  let denied = run(
+    &dir_a,
+    &[
+      "run",
+      "--no-prompt",
+      &read_a,
+      &write_b,
+      "main.ts",
+      &link_arg,
+    ],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert!(fs::read_link(&link).is_err());
+
+  let read_b = format!("--allow-read={}", dir_b.display());
+  let allowed = run(
+    &dir_a,
+    &[
+      "run",
+      "--no-prompt",
+      &read_b,
+      &write_b,
+      "main.ts",
+      &link_arg,
+    ],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  let stdout = text(&allowed.stdout);
+  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+  if stdout.contains("linked") {
+    assert_eq!(fs::read_link(&link).unwrap(), Path::new("target.txt"));
+  } else {
+    assert!(stdout.contains("PermissionDenied"), "{stdout}");
+  }
+}
+
+#[cfg(feature = "fetch")]
+fn fetch_probe(url: &str) -> String {
+  format!(
+    r#"try {{
+  await fetch({url:?});
+  console.log("opened");
+}} catch (error) {{
+  console.log(error.name + ":" + error.message);
+}}
+"#
+  )
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn an_ipv4_mapped_address_uses_the_ipv4_grant() {
+  let dir = scratch("mapped");
+  write(
+    &dir.join("main.ts"),
+    &fetch_probe("http://[::ffff:127.0.0.1]:9/"),
+  );
+  let denied = run(
+    &dir,
+    &["run", "--no-prompt", "--deny-net=127.0.0.1", "main.ts"],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(
+    stdout.contains("NotAllowedError") && stdout.contains("127.0.0.1"),
+    "{stdout}"
+  );
+  assert!(!stdout.contains("::ffff"), "{stdout}");
+
+  let allowed = run(
+    &dir,
+    &["run", "--no-prompt", "--allow-net=127.0.0.1", "main.ts"],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  assert!(
+    !text(&allowed.stdout).contains("NotAllowedError"),
+    "{}",
+    text(&allowed.stdout)
+  );
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn a_deny_of_a_mapped_address_covers_the_ipv4_host() {
+  let dir = scratch("mapped-rule");
+  write(&dir.join("main.ts"), &fetch_probe("http://127.0.0.1:9/"));
+  let denied = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--deny-net=[::ffff:127.0.0.1]",
+      "main.ts",
+    ],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(
+    stdout.contains("NotAllowedError") && stdout.contains("127.0.0.1"),
+    "{stdout}"
+  );
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn an_ipv6_deny_matches_the_canonical_spelling() {
+  let dir = scratch("ipv6-canonical");
+  write(
+    &dir.join("main.ts"),
+    &fetch_probe("http://[2001:db8::1]:9/"),
+  );
+  let denied = run(
+    &dir,
+    &["run", "--no-prompt", "--deny-net=[2001:0db8::1]", "main.ts"],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(
+    stdout.contains("NotAllowedError") && stdout.contains("[2001:db8::1]"),
+    "{stdout}"
+  );
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn an_allowed_name_cannot_connect_to_a_loopback_address() {
+  let dir = scratch("rebind");
+  write(
+    &dir.join("main.ts"),
+    r#"for (const url of ["http://localhost:9/", "https://localhost:9/"]) {
+  try {
+    await fetch(url);
+    console.log(url + " opened");
+  } catch (error) {
+    console.log(url + " " + error.name + ":" + error.message);
+  }
+}
+"#,
+  );
+  let denied = run(
+    &dir,
+    &["run", "--no-prompt", "--allow-net=localhost", "main.ts"],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(
+    stdout.contains("http://localhost:9/ NotAllowedError"),
+    "{stdout}"
+  );
+  assert!(
+    stdout.contains("https://localhost:9/ NotAllowedError"),
+    "{stdout}"
+  );
+  assert!(
+    stdout.contains("127.0.0.1") || stdout.contains("[::1]"),
+    "{stdout}"
+  );
+
+  let allowed = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-net=localhost,127.0.0.1,::1",
+      "main.ts",
+    ],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  let stdout = text(&allowed.stdout);
+  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+  assert!(stdout.contains("http://localhost:9/"), "{stdout}");
+  assert!(stdout.contains("https://localhost:9/"), "{stdout}");
+}
+
 #[cfg(feature = "ffi")]
 #[test]
 fn a_bad_symbol_is_rejected_before_the_ffi_grant() {

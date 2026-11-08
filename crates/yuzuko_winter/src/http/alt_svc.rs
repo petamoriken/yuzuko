@@ -4,7 +4,6 @@
 //! UDP endpoint of one `h3` alternative. `clear` and `ma=0` drop it.
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -274,19 +273,9 @@ fn skip_until_comma(rest: &mut &str) {
   *rest = "";
 }
 
-pub(super) fn dial_host(host: &str, port: u16) -> String {
-  format!("{host}:{port}")
-}
-
 pub(super) fn server_name(url: &str) -> Option<String> {
   let url = url::Url::parse(url).ok()?;
   origin_host(&url)
-}
-
-pub(super) async fn resolve(host: &str, port: u16) -> Option<SocketAddr> {
-  let dial = dial_host(host, port);
-  let mut addrs = tokio::net::lookup_host(dial).await.ok()?;
-  addrs.next()
 }
 
 #[cfg(test)]

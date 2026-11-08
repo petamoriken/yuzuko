@@ -139,9 +139,12 @@ async fn open(
       "The HTTP/3 server name is invalid".to_string(),
     ));
   }
-  let addr = alt_svc::resolve(host, port).await.ok_or_else(|| {
-    HttpFailure::Network("HTTP/3 address lookup failed".into())
-  })?;
+  let addrs = super::net_guard::checked_addrs(host, port).await?;
+  let Some(addr) = addrs.into_iter().next() else {
+    return Err(HttpFailure::Network(
+      "HTTP/3 address lookup failed".to_string(),
+    ));
+  };
   let bind = match addr {
     std::net::SocketAddr::V4(_) => {
       std::net::SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, 0))

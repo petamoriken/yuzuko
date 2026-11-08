@@ -9252,6 +9252,7 @@ dependencies = [
  "slh-dsa",
  "tokio",
  "tokio-rustls",
+ "tower-service",
  "url",
  "urlpattern",
  "v8",
