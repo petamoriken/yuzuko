@@ -712,8 +712,10 @@ fn realtime_audio_keeps_time_while_the_prompt_waits() {
   if !printed_line(&pty.text, "audio-skip-undefined") {
     let (dt, wall) = audio_pace(&pty.text).expect(&pty.text);
     assert!(wall >= 0.3, "wall {wall} dt {dt}\n{}", pty.text);
+    // The script prints both times to three decimals. A clock near half
+    // of wall time can miss this ratio by less than one millisecond.
     assert!(
-      dt > wall * 0.5,
+      dt + 0.001 >= wall * 0.5,
       "audio clock stalled: dt {dt} wall {wall}\n{}",
       pty.text
     );
