@@ -1020,10 +1020,16 @@ fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
           }
           Ok(meta) => {
             out.push(name);
-            // A file cannot contain the next component. Windows reports
-            // that child as NotFound, so the check is made here.
-            if !meta.file_type().is_dir() && index + 1 < components.len() {
-              return Err(());
+            // A file cannot contain a normal child. Windows reports that
+            // child as NotFound. `..` still leaves the file.
+            if !meta.file_type().is_dir() {
+              for component in components.iter().skip(index + 1) {
+                match component {
+                  Component::CurDir => {}
+                  Component::ParentDir => break,
+                  _ => return Err(()),
+                }
+              }
             }
           }
           Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
