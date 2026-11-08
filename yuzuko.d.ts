@@ -2631,7 +2631,9 @@ declare namespace Yuzuko {
      *
      * A check follows a symlink and then applies `..`, including when the
      * final component is missing. A directory grant does not cover the file
-     * reached that way. The denial names this path.
+     * reached that way. The denial names this path. When the operating
+     * system cannot resolve the path, the call is `NotAllowedError` and
+     * does not report whether a component exists.
      *
      * For `ffi`, this names a file. {@link dlopen} of a string with no `/`
      * or `\` is allowed only when `ffi` is granted as a whole, because the
@@ -2644,7 +2646,8 @@ declare namespace Yuzuko {
      *
      * A host with no port matches every port. `host:port` matches that
      * port. `*:port` matches every host on that port. An IPv6 host is
-     * `[::1]` or `[::1]:443`.
+     * `[::1]` or `[::1]:443`. A check treats `[::1]` and `::1` as the same
+     * host. The denial shows the brackets once.
      */
     host?: string;
 

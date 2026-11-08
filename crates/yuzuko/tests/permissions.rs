@@ -120,6 +120,97 @@ fn run_without_a_grant_throws_not_allowed() {
 }
 
 #[test]
+fn a_missing_component_does_not_reveal_the_file() {
+  let dir = scratch("oracle");
+  write(&dir.join("secret"), "hidden-oracle\n");
+  write(
+    &dir.join("main.ts"),
+    r#"async function probe(path) {
+  try {
+    await Yuzuko.readTextFile(path);
+    console.log("opened");
+  } catch (error) {
+    console.log(error.name);
+  }
+}
+await probe("secret/probe");
+await probe("absent/probe");
+"#,
+  );
+  let output = run(&dir, &["run", "--no-prompt", "main.ts"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert_eq!(stdout, "NotAllowedError\nNotAllowedError\n");
+  assert!(!stdout.contains("hidden-oracle"), "{stdout}");
+  assert!(!stdout.contains("OperationError"), "{stdout}");
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn an_ipv6_deny_matches_a_bracketed_url() {
+  let dir = scratch("ipv6");
+  write(
+    &dir.join("main.ts"),
+    r#"try {
+  await fetch("http://[::1]:9/");
+  console.log("opened");
+} catch (error) {
+  console.log(error.name + ":" + error.message);
+}
+"#,
+  );
+  let denied =
+    run(&dir, &["run", "--no-prompt", "--deny-net=[::1]", "main.ts"]);
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  let stdout = text(&denied.stdout);
+  assert!(
+    stdout.contains("NotAllowedError") && stdout.contains("[::1]"),
+    "{stdout}"
+  );
+  assert!(!stdout.contains("[[::1]]"), "{stdout}");
+  let allowed = run(
+    &dir,
+    &["run", "--no-prompt", "--allow-net=[::1]", "main.ts"],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  let stdout = text(&allowed.stdout);
+  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+}
+
+#[cfg(feature = "ffi")]
+#[test]
+fn a_bad_symbol_is_rejected_before_the_ffi_grant() {
+  let dir = scratch("ffi-order");
+  write(
+    &dir.join("main.ts"),
+    r#"async function probe(label, symbols) {
+  try {
+    await Yuzuko.dlopen("libunused", symbols);
+    console.log(label + " opened");
+  } catch (error) {
+    console.log(label + " " + error.name + " " + error.message);
+  }
+}
+await probe("bad", { nope: "nope" });
+await probe("empty", {});
+"#,
+  );
+  let output = run(&dir, &["run", "--no-prompt", "main.ts"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains("bad TypeError The symbol definition must be an object."),
+    "{stdout}"
+  );
+  assert!(
+    stdout.contains(
+      "empty NotAllowedError Requires ffi access, run again with the --allow-ffi flag"
+    ),
+    "{stdout}"
+  );
+}
+
+#[test]
 fn allow_read_flag_permits_the_current_directory_only() {
   let root = scratch("flag");
   let work = root.join("work");

@@ -279,12 +279,19 @@ impl Sandbox {
     match detail {
       Detail::Any => Ok(self.unscoped(kind)),
       Detail::Path(path) => {
-        let candidates = path_candidates(path)?;
-        let states = candidates
+        let found = path_candidates(path)?;
+        let states = found
+          .paths
           .iter()
           .map(|candidate| self.resource(kind, &Resource::Path(candidate)))
           .collect::<Vec<_>>();
-        Ok(combine(&states))
+        let state = combine(&states);
+        // A failed walk must not skip the operating-system candidate, and
+        // it must not surface a distinct error that reveals the file.
+        if !found.resolved && state == State::Granted {
+          return Ok(State::Denied);
+        }
+        Ok(state)
       }
       Detail::Net { host, port: None } => Ok(self.net_host(kind, host)),
       Detail::Net {
@@ -671,7 +678,7 @@ pub fn check_net(host: &str, port: u16) -> Result<(), OpError> {
   require(
     Kind::Net,
     &Detail::Net {
-      host: host.to_string(),
+      host: normalize_host(host),
       port: Some(port),
     },
   )
@@ -817,12 +824,33 @@ fn denied(kind: Kind, detail: &Detail) -> Result<OpError, OpError> {
 }
 
 fn display(detail: &Detail) -> Result<String, OpError> {
-  match detail {
-    Detail::Any => Ok(String::new()),
-    Detail::Path(path) => Ok(lexical_absolute(path)?.display().to_string()),
-    Detail::Net { host, port } => Ok(format_host(host, *port)),
-    Detail::Name(name) => Ok(name.clone()),
+  let text = match detail {
+    Detail::Any => String::new(),
+    Detail::Path(path) => lexical_absolute(path)?.display().to_string(),
+    Detail::Net { host, port } => format_host(host, *port),
+    Detail::Name(name) => name.clone(),
+  };
+  Ok(sanitize_prompt(&text))
+}
+
+/// Keep a prompt on one line. Control characters, quotes, and backslashes
+/// are escaped so the requested name cannot redraw the terminal.
+fn sanitize_prompt(text: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  for char in text.chars() {
+    match char {
+      '\\' => out.push_str("\\\\"),
+      '"' => out.push_str("\\\""),
+      '\n' => out.push_str("\\n"),
+      '\r' => out.push_str("\\r"),
+      '\t' => out.push_str("\\t"),
+      char if char.is_control() => {
+        out.push_str(&format!("\\u{{{:x}}}", u32::from(char)));
+      }
+      char => out.push(char),
+    }
   }
+  out
 }
 
 fn ask(kind: Kind, detail: &str) -> Option<Answer> {
@@ -880,20 +908,34 @@ fn normalize(path: &Path) -> PathBuf {
   out
 }
 
-fn path_candidates(path: &Path) -> Result<Vec<PathBuf>, OpError> {
+struct PathCandidates {
+  paths: Vec<PathBuf>,
+  /// False when the walk could not name the file the OS would open.
+  resolved: bool,
+}
+
+fn path_candidates(path: &Path) -> Result<PathCandidates, OpError> {
   let absolute = absolute_path(path)?;
   let lexical = normalize(&absolute);
-  let mut found = vec![lexical.clone()];
-  push_canonical(&mut found, &lexical);
+  let mut paths = vec![lexical.clone()];
+  push_canonical(&mut paths, &lexical);
   // The operating system follows a symlink and then applies `..`. Collapsing
   // `..` first would erase the link and allow a directory grant to escape.
-  let resolved = operating_path(&absolute)?;
+  let Some(resolved) = operating_path(&absolute) else {
+    return Ok(PathCandidates {
+      paths,
+      resolved: false,
+    });
+  };
   let resolved = normalize(&strip_verbatim(resolved));
-  if !found.iter().any(|item| paths_equal(item, &resolved)) {
-    found.push(resolved.clone());
+  if !paths.iter().any(|item| paths_equal(item, &resolved)) {
+    paths.push(resolved.clone());
   }
-  push_canonical(&mut found, &resolved);
-  Ok(found)
+  push_canonical(&mut paths, &resolved);
+  Ok(PathCandidates {
+    paths,
+    resolved: true,
+  })
 }
 
 /// The file a prompt yes or a dialog grant names. This is the lexical path
@@ -934,13 +976,14 @@ fn push_canonical(found: &mut Vec<PathBuf>, path: &Path) {
   }
 }
 
-fn operating_path(path: &Path) -> Result<PathBuf, OpError> {
+fn operating_path(path: &Path) -> Option<PathBuf> {
   if let Ok(real) = std::fs::canonicalize(path) {
-    return Ok(real);
+    return Some(real);
   }
-  walk_operating(path, 0).map_err(|_| {
-    OpError::dom("OperationError", "The path could not be resolved.")
-  })
+  // NotFound keeps a lexical tail. Any other error, including ENOTDIR,
+  // means the walk cannot name the file. The caller denies that shape
+  // instead of reporting a distinct resolution error.
+  walk_operating(path, 0).ok()
 }
 
 /// Follows symlinks and applies `..` to the resolved path. A missing
@@ -1151,14 +1194,26 @@ fn parse_port(text: &str) -> Result<u16, String> {
 }
 
 fn normalize_host(host: &str) -> String {
-  host.trim().to_ascii_lowercase()
+  let host = host.trim();
+  // `url`'s host for IPv6 is `[::1]`. Rules are stored without brackets.
+  let bare = if let Some(inner) = host
+    .strip_prefix('[')
+    .and_then(|rest| rest.strip_suffix(']'))
+    && !inner.is_empty()
+  {
+    inner.trim()
+  } else {
+    host
+  };
+  bare.to_ascii_lowercase()
 }
 
 fn format_host(host: &str, port: Option<u16>) -> String {
+  let host = normalize_host(host);
   let shown = if host.contains(':') {
     format!("[{host}]")
   } else {
-    host.to_string()
+    host
   };
   match port {
     Some(port) => format!("{shown}:{port}"),
@@ -1171,15 +1226,17 @@ fn host_eq(left: &str, right: &str) -> bool {
 }
 
 fn net_covers(rule: &NetRule, host: &str, port: u16) -> bool {
-  if rule.host != "*" && !host_eq(&rule.host, host) {
+  let host = normalize_host(host);
+  if rule.host != "*" && !host_eq(&rule.host, &host) {
     return false;
   }
   rule.port.is_none_or(|value| value == port)
 }
 
 fn net_host_hit(rules: &[NetRule], host: &str) -> bool {
+  let host = normalize_host(host);
   rules.iter().any(|rule| {
-    rule.port.is_none() && (rule.host == "*" || host_eq(&rule.host, host))
+    rule.port.is_none() && (rule.host == "*" || host_eq(&rule.host, &host))
   })
 }
 
@@ -1284,7 +1341,7 @@ fn run_base() -> Option<PathBuf> {
 /// The file the operating system would execute for `path`.
 fn executed_path(path: &Path) -> Option<PathBuf> {
   let absolute = absolute_path(path).ok()?;
-  let resolved = operating_path(&absolute).ok()?;
+  let resolved = operating_path(&absolute)?;
   Some(normalize(&strip_verbatim(resolved)))
 }
 
@@ -2062,5 +2119,113 @@ mod tests {
     spec.allow("net", Some(vec!["[::1".to_string()])).unwrap();
     let error = Sandbox::compile(&spec, Path::new("/")).unwrap_err();
     assert!(error.contains("invalid"), "{error}");
+  }
+
+  #[test]
+  fn an_ipv6_rule_matches_a_bracketed_host() {
+    let mut spec = PermissionSpec::default();
+    spec
+      .deny("net", Some(vec!["[::1]:8080".to_string()]))
+      .unwrap();
+    spec
+      .allow("net", Some(vec!["[2001:db8::1]".to_string()]))
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, Path::new("/")).unwrap();
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "[::1]".to_string(),
+            port: Some(8080),
+          },
+        )
+        .unwrap(),
+      State::Denied
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "::1".to_string(),
+            port: Some(80),
+          },
+        )
+        .unwrap(),
+      State::Prompt
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Net,
+          &Detail::Net {
+            host: "[2001:DB8::1]".to_string(),
+            port: Some(443),
+          },
+        )
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      display(&Detail::Net {
+        host: "[::1]".to_string(),
+        port: Some(8080),
+      })
+      .unwrap(),
+      "[::1]:8080"
+    );
+  }
+
+  #[test]
+  fn a_failed_walk_does_not_reveal_the_file() {
+    let dir = std::env::temp_dir().join(format!(
+      "yuzuko-perm-walk-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("secret");
+    std::fs::write(&file, "hidden").unwrap();
+    let sandbox = Sandbox::compile(&PermissionSpec::default(), &dir).unwrap();
+    assert_eq!(
+      sandbox
+        .classify(Kind::Read, &Detail::Path(file.join("probe")))
+        .unwrap(),
+      State::Prompt
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Read, &Detail::Path(dir.join("absent").join("probe")),)
+        .unwrap(),
+      State::Prompt
+    );
+    let allowed = Sandbox::allow_all(false);
+    assert_eq!(
+      allowed
+        .classify(Kind::Read, &Detail::Path(file.clone()))
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      allowed
+        .classify(Kind::Read, &Detail::Path(file.join("probe")))
+        .unwrap(),
+      State::Denied
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn the_prompt_text_escapes_controls() {
+    let shown =
+      display(&Detail::Name("note\n\u{1b}[1A\"x\\y".to_string())).unwrap();
+    assert!(!shown.contains('\n'), "{shown}");
+    assert!(!shown.contains('\u{1b}'), "{shown}");
+    assert_eq!(shown, "note\\n\\u{1b}[1A\\\"x\\\\y");
   }
 }
