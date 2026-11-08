@@ -1470,7 +1470,10 @@ declare namespace Yuzuko {
      * at that maximum while a frame is scheduled. Linux and Windows use the
      * monitor's current mode. Moving the window adopts the new monitor on the
      * next frame. A headless window, or a rate that cannot be read, runs at
-     * 60 Hz. A rate below 10 Hz or above 1000 Hz is treated as 60 Hz.
+     * 60 Hz. A rate below 10 Hz or above 1000 Hz is treated as 60 Hz. If this
+     * callback is still running when the next frame's deadline has passed,
+     * that next frame runs one refresh period after this callback returns.
+     * The event loop pumps the operating system before it.
      *
      * The main global has no `requestAnimationFrame`. Frames are not throttled
      * while the surface is hidden. After the window is closed this returns `0`

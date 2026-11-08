@@ -83,6 +83,7 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
   crate::shell::dock::poll(scope);
   os::begin_present_turn();
   let mut did = false;
+  let mut ran_frame = Vec::new();
   #[cfg(feature = "accessibility")]
   if crate::a11y::drain(scope) {
     did = true;
@@ -97,6 +98,7 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
     }
     if inbox::frame_due(id, deadline) {
       surface::Window::run_frame(scope, id, deadline);
+      ran_frame.push(id);
       did = true;
     }
   }
@@ -104,6 +106,12 @@ fn run_ready(scope: &mut v8::PinScope, deadline: Instant) -> bool {
   // is shown once. A present that already ran this turn is left alone.
   if surface::present_pending() {
     did = true;
+  }
+  // A present that outlasts the successor's deadline would make the next
+  // turn due immediately, so this function would return before the OS pump.
+  // That successor runs one period after the work above finishes.
+  for id in ran_frame {
+    inbox::defer_elapsed_frame(id);
   }
   did
 }

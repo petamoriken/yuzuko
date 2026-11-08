@@ -1231,6 +1231,44 @@ impl App {
     host.configured = true;
   }
 
+  /// `Err(true)` asks the caller to configure the surface again.
+  ///
+  /// `notify` is for the drawable that will be presented. A probe that is
+  /// discarded must not tell the window a present is starting.
+  fn acquire_drawable(
+    &self,
+    window_id: WindowId,
+    width: u32,
+    height: u32,
+    notify: bool,
+  ) -> Result<wgpu::SurfaceTexture, bool> {
+    let Some(host) = self.windows.get(&window_id) else {
+      return Err(false);
+    };
+    if notify {
+      host.window.pre_present_notify();
+    }
+    let Some(surface) = host.surface.as_ref() else {
+      return Err(false);
+    };
+    match surface.get_current_texture() {
+      wgpu::CurrentSurfaceTexture::Success(frame)
+      | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
+        let size = frame.texture.size();
+        if size.width == width && size.height == height {
+          Ok(frame)
+        } else {
+          Err(true)
+        }
+      }
+      wgpu::CurrentSurfaceTexture::Lost
+      | wgpu::CurrentSurfaceTexture::Outdated => Err(true),
+      wgpu::CurrentSurfaceTexture::Timeout
+      | wgpu::CurrentSurfaceTexture::Occluded
+      | wgpu::CurrentSurfaceTexture::Validation => Err(false),
+    }
+  }
+
   fn present_window(&mut self, window_id: WindowId) -> bool {
     if self.gpu.is_none() {
       self.configure_surface(window_id);
@@ -1261,42 +1299,26 @@ impl App {
     let device = gpu.device.clone();
     let queue = gpu.queue.clone();
     let format = gpu.format;
-    // A readback waits on the GPU. Doing that while the swapchain texture is
+    // Refuse the drawable before building the scene. An occluded window, a
+    // timeout, or a size change would otherwise rasterize and then discard
+    // that scene, and the same turn would build it again. The probe is
+    // released before rasterizing: a readback while a swapchain texture is
     // held makes the next drawable time out after about a second.
+    match self.acquire_drawable(window_id, width, height, false) {
+      Ok(probe) => drop(probe),
+      Err(true) => {
+        self.configure_surface(window_id);
+        return false;
+      }
+      Err(false) => return false,
+    }
     let canvas_ready =
       crate::canvas::stage_canvas(&device, &queue, surface_id, width, height);
     let webgpu_ready = !canvas_ready
       && crate::canvas::stage_webgpu(
         &device, &queue, surface_id, width, height,
       );
-    let acquired = {
-      let Some(host) = self.windows.get(&window_id) else {
-        crate::canvas::discard_staged();
-        return false;
-      };
-      host.window.pre_present_notify();
-      let Some(surface) = host.surface.as_ref() else {
-        crate::canvas::discard_staged();
-        return false;
-      };
-      match surface.get_current_texture() {
-        wgpu::CurrentSurfaceTexture::Success(frame)
-        | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
-          let size = frame.texture.size();
-          if size.width == width && size.height == height {
-            Ok(frame)
-          } else {
-            Err(true)
-          }
-        }
-        wgpu::CurrentSurfaceTexture::Lost
-        | wgpu::CurrentSurfaceTexture::Outdated => Err(true),
-        wgpu::CurrentSurfaceTexture::Timeout
-        | wgpu::CurrentSurfaceTexture::Occluded
-        | wgpu::CurrentSurfaceTexture::Validation => Err(false),
-      }
-    };
-    let frame = match acquired {
+    let frame = match self.acquire_drawable(window_id, width, height, true) {
       Ok(frame) => frame,
       Err(true) => {
         crate::canvas::discard_staged();

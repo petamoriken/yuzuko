@@ -367,7 +367,7 @@ Canvas 2D drawing, a `bitmaprenderer` update, a bitmap copied from a worker fram
 For each window:
 
 1. Dispatch that window's OS events to its `Window`, one at a time, and run a microtask checkpoint after each event.
-2. When an animation frame is due, run the `requestAnimationFrame` callbacks already queued on that surface. Callbacks queued during those callbacks wait for the next frame.
+2. When an animation frame is due, run the `requestAnimationFrame` callbacks already queued on that surface. Callbacks queued during those callbacks wait for the next frame. If this frame is still running when that next frame's deadline has passed, the next frame runs one refresh period after this frame returns, and the event loop pumps the operating system before it.
 3. Run a microtask checkpoint.
 4. When that frame ran, or the canvas changed as described above, update that surface. For WebGPU, follow "update the rendering of a WebGPU canvas": expire the current texture and present. For Canvas 2D, rasterize the recorded commands and present. For `bitmaprenderer`, present the transferred bitmap.
 5. If another animation frame is queued, request a redraw of that window.

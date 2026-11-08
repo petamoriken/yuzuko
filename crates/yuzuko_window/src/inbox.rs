@@ -418,6 +418,37 @@ pub fn arm_frame(id: u64) {
   });
 }
 
+/// A deadline that is already due at `now` moves one `interval` past `now`.
+///
+/// A deadline still in the future is unchanged. An absent frame stays absent.
+fn frame_after_overrun(
+  armed: Option<Instant>,
+  now: Instant,
+  interval: Duration,
+) -> Option<Instant> {
+  match armed {
+    Some(at) if at <= now => Some(now + interval),
+    other => other,
+  }
+}
+
+/// If this surface's next frame is already due, schedule it one period from now.
+///
+/// The callback arms that frame when it starts. A present that runs longer
+/// than the period would leave the deadline in the past, and the event loop
+/// would run another frame without pumping the operating system.
+pub(crate) fn defer_elapsed_frame(id: u64) {
+  SLOTS.with(|slots| {
+    let mut slots = slots.borrow_mut();
+    let Some(slot) = slots.get_mut(&id) else {
+      return;
+    };
+    let now = Instant::now();
+    slot.frame_at =
+      frame_after_overrun(slot.frame_at, now, slot.frame_interval);
+  });
+}
+
 /// Stores the monitor period used the next time a frame is armed.
 ///
 /// An already armed deadline is left in place. Returns whether the period
@@ -509,8 +540,31 @@ pub fn any_open() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::{FRAME, absolute_dropped_path, interval_from_millihertz};
-  use std::time::Duration;
+  use super::{
+    FRAME, absolute_dropped_path, frame_after_overrun, interval_from_millihertz,
+  };
+  use std::time::{Duration, Instant};
+
+  #[test]
+  fn an_overrun_frame_waits_one_period() {
+    let start = Instant::now();
+    let interval = Duration::from_millis(16);
+    let armed = Some(start + interval);
+    assert_eq!(
+      frame_after_overrun(armed, start + Duration::from_millis(10), interval),
+      armed
+    );
+    let finished = start + Duration::from_millis(30);
+    assert_eq!(
+      frame_after_overrun(armed, finished, interval),
+      Some(finished + interval)
+    );
+    assert_eq!(
+      frame_after_overrun(Some(finished), finished, interval),
+      Some(finished + interval)
+    );
+    assert_eq!(frame_after_overrun(None, finished, interval), None);
+  }
 
   #[test]
   fn unknown_refresh_is_60_hz() {
