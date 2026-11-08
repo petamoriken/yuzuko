@@ -3716,7 +3716,9 @@ declare namespace Yuzuko {
    * `options.env` does not replace. A bare run grant matches a bare
    * command name. A command that contains `/` or `\` needs a path grant
    * for the file the operating system would execute. A relative command is
-   * resolved from `cwd` when that option is set. Read access to `cwd` is
+   * resolved from `cwd` when that option is set. When `run` is not granted
+   * as a whole, that command is passed as an absolute path, including when
+   * the file cannot be resolved. Read access to `cwd` is
    * checked before the directory is queried. Standard input defaults to
    * closed. Standard output and standard error are collected unless a
    * mode selects another disposition. The call blocks only while the
@@ -4871,7 +4873,10 @@ declare namespace Yuzuko {
   /**
    * Removes `path`.
    *
-   * A symlink is removed as a file and is not followed.
+   * A symlink is removed as a file and is not followed. The write check names
+   * that directory entry and does not require write of the target. A parent
+   * symlink is still followed. `recursive: true` is denied when a descendant
+   * is denied, and that denial names `path`.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, or
    * when `options` is not an object.
@@ -4894,6 +4899,10 @@ declare namespace Yuzuko {
   /**
    * Describes `path`, following a final symlink.
    *
+   * The read check names that directory entry and does not require read of
+   * the target, so the result can describe a file outside the grant. A parent
+   * symlink is still followed. `lstat` reports the link itself.
+   *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
    * @throws {@link errors.NotFound} When `path` does not exist.
    */
@@ -4904,6 +4913,9 @@ declare namespace Yuzuko {
 
   /**
    * Describes `path` without following a final symlink.
+   *
+   * The read check names that directory entry. A parent symlink is still
+   * followed.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
    */

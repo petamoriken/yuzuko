@@ -108,13 +108,34 @@ fn path_only(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<std::path::PathBuf, OpError> {
+  path_read(scope, args, false)
+}
+
+fn path_entry(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<std::path::PathBuf, OpError> {
+  path_read(scope, args, true)
+}
+
+fn path_read(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  entry: bool,
+) -> Result<std::path::PathBuf, OpError> {
   let path = value::parse_path(scope, args.get(0));
   let path = ready(scope, path)?;
   let options = value::ignore_options(scope, args.get(1));
   ready(scope, options)?;
   // The job opens this absolute path. A later chdir cannot retarget it.
   let path = crate::permissions::anchor_path(&path)?;
-  crate::permissions::check_read(&path)?;
+  if entry {
+    // `stat` and `lstat` name the directory entry. A final symlink's target
+    // is not a separate read.
+    crate::permissions::check_read_entry(&path)?;
+  } else {
+    crate::permissions::check_read(&path)?;
+  }
   Ok(path)
 }
 
@@ -448,7 +469,7 @@ fn remove_op(
 ) -> Result<Js, OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_remove_flags(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  permit_remove(&path, flags.recursive)?;
   settle!(
     scope,
     move || io::remove_path(&path, flags),
@@ -465,8 +486,21 @@ fn remove_sync_op(
 ) -> Result<(), OpError> {
   let path = one_path(scope, args)?;
   let flags = ready_remove_flags(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  permit_remove(&path, flags.recursive)?;
   ready(scope, io::remove_path(&path, flags))
+}
+
+fn permit_remove(
+  path: &std::path::Path,
+  recursive: bool,
+) -> Result<(), OpError> {
+  if recursive {
+    // A deny inside the tree blocks the delete. One entry does not look
+    // inside, and neither check follows a final symlink.
+    crate::permissions::check_write_tree(path)
+  } else {
+    crate::permissions::check_write_entry(path)
+  }
 }
 
 callback!(rename, rename_op);
@@ -522,7 +556,7 @@ fn stat_kind(
   args: &v8::FunctionCallbackArguments,
   follow: bool,
 ) -> Result<Js, OpError> {
-  let path = path_only(scope, args)?;
+  let path = path_entry(scope, args)?;
   settle!(
     scope,
     move || io::stat_path(&path, follow),
@@ -555,7 +589,7 @@ fn stat_sync_kind(
   args: &v8::FunctionCallbackArguments,
   follow: bool,
 ) -> Result<Js, OpError> {
-  let path = path_only(scope, args)?;
+  let path = path_entry(scope, args)?;
   let info = io::stat_path(&path, follow);
   let info = ready(scope, info)?;
   let value = value::info_value(scope, &info);

@@ -215,6 +215,11 @@ fn permit_opened(
   if !read && !write {
     return Ok(());
   }
+  // No installed policy allows every path. Reading the descriptor path
+  // first would reject that file when `F_GETPATH` or `/proc` is unavailable.
+  if crate::permissions::permissions_are_open() {
+    return Ok(());
+  }
   let real = match fd_path(file) {
     Ok(real) => real,
     Err(_) => return Err(host_denial(write, path)),
@@ -261,11 +266,14 @@ pub(super) fn write_text(
 }
 
 pub(super) fn truncate_path(path: &Path, len: u64) -> Result<(), FsError> {
-  let path = path::ensure_mutable(path, Link::Follow)?;
+  // The bundle guard follows the link. The open keeps the caller's path,
+  // and the length changes only after that descriptor is confirmed.
+  path::ensure_mutable(path, Link::Follow)?;
   let file = OpenOptions::new()
     .write(true)
-    .open(&path)
+    .open(path)
     .map_err(FsError::io)?;
+  permit_opened(path, &file, false, true)?;
   file.set_len(len).map_err(FsError::io)
 }
 
@@ -308,8 +316,32 @@ pub(super) fn rename_path(from: &Path, to: &Path) -> Result<(), FsError> {
 }
 
 pub(super) fn copy_path(from: &Path, to: &Path) -> Result<(), FsError> {
-  let to = path::ensure_mutable(to, Link::Follow)?;
-  fs::copy(from, &to).map(|_| ()).map_err(FsError::io)
+  // The bundle guard follows the destination link. Both opens keep the
+  // caller's paths. Bytes are written only after each descriptor is
+  // confirmed. `create` can still leave an empty destination.
+  path::ensure_mutable(to, Link::Follow)?;
+  let mut source = File::open(from).map_err(FsError::io)?;
+  permit_opened(from, &source, true, false)?;
+  let meta = source.metadata().map_err(FsError::io)?;
+  if meta.is_dir() {
+    return Err(FsError::directory());
+  }
+  let mut dest = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .truncate(false)
+    .open(to)
+    .map_err(FsError::io)?;
+  permit_opened(to, &dest, false, true)?;
+  dest.set_len(0).map_err(FsError::io)?;
+  io::copy(&mut source, &mut dest).map_err(FsError::io)?;
+  #[cfg(unix)]
+  {
+    dest
+      .set_permissions(meta.permissions())
+      .map_err(FsError::io)?;
+  }
+  Ok(())
 }
 
 pub(super) fn real_path(path: &Path) -> Result<String, FsError> {
@@ -1558,4 +1590,35 @@ fn set_times_path(
   Err(FsError::not_supported(
     "utime is not supported on this operating system.",
   ))
+}
+
+#[cfg(test)]
+mod tests {
+  use std::fs;
+  use std::time::{SystemTime, UNIX_EPOCH};
+
+  #[test]
+  fn copy_and_truncate_use_the_opened_file() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-fs-copy-{}-{}",
+      std::process::id(),
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    let from = root.join("from.txt");
+    let to = root.join("to.txt");
+    fs::write(&from, b"hello").unwrap();
+    fs::write(&to, b"stale-tail").unwrap();
+    super::copy_path(&from, &to).unwrap();
+    assert_eq!(fs::read(&to).unwrap(), b"hello");
+    super::truncate_path(&from, 2).unwrap();
+    assert_eq!(fs::read(&from).unwrap(), b"he");
+    super::copy_path(&from, &to).unwrap();
+    assert_eq!(fs::read(&to).unwrap(), b"he");
+    let _ = fs::remove_dir_all(&root);
+  }
 }

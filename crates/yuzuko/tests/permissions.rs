@@ -2434,6 +2434,118 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
   let _ = fs::remove_dir_all(&outside);
 }
 
+#[test]
+fn recursive_remove_stops_at_a_denied_descendant() {
+  let entry = scratch("tree-deny");
+  write(&entry.join("tree").join("keep").join("note"), "keep\n");
+  write(
+    &entry.join("tree").join("secret").join("hidden"),
+    "hidden\n",
+  );
+  write(
+    &entry.join("main.ts"),
+    r#"try {
+  Yuzuko.removeSync("tree", { recursive: true });
+  console.log("tree ok");
+} catch (error) {
+  console.log("tree " + error.name + " " + error.message);
+}
+try {
+  Yuzuko.removeSync("tree/secret/hidden");
+  console.log("child ok");
+} catch (error) {
+  console.log("child " + error.name);
+}
+Yuzuko.removeSync("tree/keep/note");
+console.log("note removed");
+"#,
+  );
+  let write = format!("--allow-write={}", entry.display());
+  let deny = format!(
+    "--deny-write={}",
+    entry.join("tree").join("secret").display()
+  );
+  let output = run(&entry, &["run", "--no-prompt", &write, &deny, "main.ts"]);
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  assert!(
+    stdout
+      .lines()
+      .any(|line| line.starts_with("tree NotAllowedError")
+        && line.contains("tree")),
+    "{stdout}\n{stderr}"
+  );
+  assert!(
+    stdout
+      .lines()
+      .any(|line| line.starts_with("child NotAllowedError")),
+    "{stdout}\n{stderr}"
+  );
+  assert!(
+    stdout.lines().any(|line| line == "note removed"),
+    "{stdout}\n{stderr}"
+  );
+  assert!(entry.join("tree").join("secret").join("hidden").is_file());
+  assert!(!entry.join("tree").join("keep").join("note").exists());
+  let _ = fs::remove_dir_all(&entry);
+}
+
+#[cfg(unix)]
+#[test]
+fn stat_and_remove_name_the_symlink() {
+  let entry = scratch("stat-link");
+  let outside = scratch("stat-out");
+  let secret = outside.join("secret.txt");
+  write(&secret, "SECRET-BYTES\n");
+  std::os::unix::fs::symlink(&secret, entry.join("link")).unwrap();
+  write(
+    &entry.join("main.ts"),
+    r#"const stat = Yuzuko.statSync("link");
+console.log("stat " + stat.isFile + " " + stat.isSymlink + " " + stat.size);
+const listed = Yuzuko.lstatSync("link");
+console.log("lstat " + listed.isSymlink + " " + listed.isFile);
+try {
+  const text = Yuzuko.readTextFileSync("link");
+  console.log("read " + text);
+} catch (error) {
+  console.log("read " + error.name);
+}
+Yuzuko.removeSync("link");
+console.log("removed");
+"#,
+  );
+  let read = format!("--allow-read={}", entry.display());
+  let write = format!("--allow-write={}", entry.display());
+  let output = run(&entry, &["run", "--no-prompt", &read, &write, "main.ts"]);
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  let size = fs::metadata(&secret).unwrap().len();
+  assert!(
+    stdout.contains(&format!("stat true false {size}")),
+    "{stdout}\n{stderr}"
+  );
+  assert!(
+    stdout.lines().any(|line| line == "lstat true false"),
+    "{stdout}\n{stderr}"
+  );
+  assert!(
+    stdout
+      .lines()
+      .any(|line| line.starts_with("read NotAllowedError")),
+    "{stdout}\n{stderr}"
+  );
+  assert!(stdout.lines().any(|line| line == "removed"), "{stdout}");
+  assert!(!stdout.contains("SECRET-BYTES"), "{stdout}");
+  assert!(!stderr.contains("SECRET-BYTES"), "{stderr}");
+  assert!(secret.is_file());
+  assert_eq!(fs::read_to_string(&secret).unwrap(), "SECRET-BYTES\n");
+  assert!(fs::symlink_metadata(entry.join("link")).is_err());
+  let _ = fs::remove_dir_all(&entry);
+  let _ = fs::remove_dir_all(&outside);
+}
+
 #[cfg(all(unix, feature = "child"))]
 #[test]
 fn a_relative_spawn_runs_the_child_directory() {

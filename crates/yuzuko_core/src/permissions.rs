@@ -89,9 +89,26 @@ impl State {
 
 enum Detail {
   Any,
+  /// Follow every symlink, including the final component.
   Path(PathBuf),
-  Net { host: String, port: Option<u16> },
+  /// The directory entry. A final symlink is not resolved.
+  Entry(PathBuf),
+  /// [`Entry`](Self::Entry), and a deny of a descendant blocks the call.
+  Tree(PathBuf),
+  Net {
+    host: String,
+    port: Option<u16>,
+  },
   Name(String),
+}
+
+/// Whether the final path component is resolved before the rules are applied.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PathLink {
+  /// Follow every symlink, including the final component.
+  Follow,
+  /// Follow symlinks in ancestors. A final symlink stays that entry.
+  Entry,
 }
 
 enum Resource<'a> {
@@ -295,19 +312,13 @@ impl Sandbox {
     match detail {
       Detail::Any => Ok(self.unscoped(kind)),
       Detail::Path(path) => {
-        let found = path_candidates(path)?;
-        let states = found
-          .paths
-          .iter()
-          .map(|candidate| self.resource(kind, &Resource::Path(candidate)))
-          .collect::<Vec<_>>();
-        let state = combine(&states);
-        // A failed walk must not skip the operating-system candidate, and
-        // it must not surface a distinct error that reveals the file.
-        if !found.resolved && state == State::Granted {
-          return Ok(State::Denied);
-        }
-        Ok(state)
+        self.classify_path(kind, path, PathLink::Follow, false)
+      }
+      Detail::Entry(path) => {
+        self.classify_path(kind, path, PathLink::Entry, false)
+      }
+      Detail::Tree(path) => {
+        self.classify_path(kind, path, PathLink::Entry, true)
       }
       Detail::Net { host, port: None } => Ok(self.net_host(kind, host)),
       Detail::Net {
@@ -354,6 +365,51 @@ impl Sandbox {
       return State::Granted;
     }
     State::Prompt
+  }
+
+  fn classify_path(
+    &self,
+    kind: Kind,
+    path: &Path,
+    link: PathLink,
+    strict: bool,
+  ) -> Result<State, OpError> {
+    let found = path_candidates(path, link)?;
+    let states = found
+      .paths
+      .iter()
+      .map(|candidate| self.resource(kind, &Resource::Path(candidate)))
+      .collect::<Vec<_>>();
+    let mut state = combine(&states);
+    // A failed walk must not skip the operating-system candidate, and
+    // it must not surface a distinct error that reveals the file.
+    if !found.resolved && state == State::Granted {
+      state = State::Denied;
+    }
+    // A recursive delete would remove a denied descendant. One path does
+    // not, so only the strict check looks inside the tree.
+    if strict
+      && state != State::Denied
+      && self.descendant_denied(kind, &found.paths)
+    {
+      state = State::Denied;
+    }
+    Ok(state)
+  }
+
+  fn descendant_denied(&self, kind: Kind, candidates: &[PathBuf]) -> bool {
+    let gate = &self.gates[kind as usize];
+    gate
+      .deny_paths
+      .iter()
+      .chain(gate.session_deny_paths.iter())
+      .any(|deny| {
+        same_entry_spellings(deny).iter().any(|form| {
+          candidates.iter().any(|candidate| {
+            path_covers(candidate, form) && !paths_equal(candidate, form)
+          })
+        })
+      })
   }
 
   fn resource(&self, kind: Kind, resource: &Resource<'_>) -> State {
@@ -428,13 +484,10 @@ impl Sandbox {
           Ok(())
         }
         Detail::Path(path) => {
-          for candidate in session_candidates(path)? {
-            gate
-              .session_deny_paths
-              .retain(|item| !paths_equal(item, &candidate));
-            gate.session_allow_paths.push(candidate);
-          }
-          Ok(())
+          record_session_paths(gate, path, PathLink::Follow, true)
+        }
+        Detail::Entry(path) | Detail::Tree(path) => {
+          record_session_paths(gate, path, PathLink::Entry, true)
         }
         Detail::Net { host, port } => {
           let rule = NetRule {
@@ -454,13 +507,10 @@ impl Sandbox {
           Ok(())
         }
         Detail::Path(path) => {
-          for candidate in session_candidates(path)? {
-            gate
-              .session_allow_paths
-              .retain(|item| !paths_equal(item, &candidate));
-            gate.session_deny_paths.push(candidate);
-          }
-          Ok(())
+          record_session_paths(gate, path, PathLink::Follow, false)
+        }
+        Detail::Entry(path) | Detail::Tree(path) => {
+          record_session_paths(gate, path, PathLink::Entry, false)
         }
         Detail::Net { host, port } => {
           let rule = NetRule {
@@ -492,13 +542,10 @@ impl Sandbox {
         Ok(())
       }
       Detail::Path(path) => {
-        for candidate in session_candidates(path)? {
-          gate
-            .session_allow_paths
-            .retain(|item| !paths_equal(item, &candidate));
-          gate.session_deny_paths.push(candidate);
-        }
-        Ok(())
+        record_session_paths(gate, path, PathLink::Follow, false)
+      }
+      Detail::Entry(path) | Detail::Tree(path) => {
+        record_session_paths(gate, path, PathLink::Entry, false)
       }
       Detail::Net { host, port } => {
         let rule = NetRule {
@@ -514,7 +561,7 @@ impl Sandbox {
   }
 
   fn grant_path(&mut self, kind: Kind, path: &Path) -> Result<(), OpError> {
-    let candidates = session_candidates(path)?;
+    let candidates = session_candidates(path, PathLink::Follow)?;
     // A sticky deny blocks the grant. A previous prompt denial is only a
     // session deny, so a later dialog can replace it.
     let gate = &self.gates[kind as usize];
@@ -655,6 +702,16 @@ pub fn validate_permissions(
   Sandbox::compile(spec, root).map(|_| ())
 }
 
+/// Whether this process has not installed a sandbox.
+///
+/// An open process allows every path, so a caller can skip naming an opened
+/// file. A sandbox still checks that file, including one that grants every
+/// path.
+#[cfg(any(test, feature = "fs"))]
+pub(crate) fn permissions_are_open() -> bool {
+  matches!(*lock(), Mode::Open)
+}
+
 /// Replace the process policy. An open process allows every check until this
 /// runs.
 pub fn install_permissions(
@@ -690,8 +747,25 @@ pub fn check_read(path: &Path) -> Result<(), OpError> {
   require(Kind::Read, &Detail::Path(path.to_path_buf()))
 }
 
+/// Read of the directory entry. A final symlink is not resolved, so the
+/// grant covers the link and does not have to cover its target.
+pub fn check_read_entry(path: &Path) -> Result<(), OpError> {
+  require(Kind::Read, &Detail::Entry(path.to_path_buf()))
+}
+
 pub fn check_write(path: &Path) -> Result<(), OpError> {
   require(Kind::Write, &Detail::Path(path.to_path_buf()))
+}
+
+/// Write of the directory entry. A final symlink is not resolved.
+pub fn check_write_entry(path: &Path) -> Result<(), OpError> {
+  require(Kind::Write, &Detail::Entry(path.to_path_buf()))
+}
+
+/// Write of a tree. A final symlink is not resolved, and a deny of a
+/// descendant blocks the call.
+pub fn check_write_tree(path: &Path) -> Result<(), OpError> {
+  require(Kind::Write, &Detail::Tree(path.to_path_buf()))
 }
 
 pub fn check_write_all() -> Result<(), OpError> {
@@ -833,8 +907,7 @@ pub(crate) fn resolve_spawn(
     return Err(denied(Kind::Run, &Detail::Any)?);
   }
   if path_command {
-    let found = with_run_base(cwd, || executed_path(Path::new(command)));
-    return Ok(found.unwrap_or_else(|| PathBuf::from(command)));
+    return with_run_base(cwd, || absolute_command(Path::new(command)));
   }
   let base = match cwd {
     Some(path) => path.to_path_buf(),
@@ -1136,7 +1209,9 @@ fn denied(kind: Kind, detail: &Detail) -> Result<OpError, OpError> {
 fn display(detail: &Detail) -> Result<String, OpError> {
   let text = match detail {
     Detail::Any => String::new(),
-    Detail::Path(path) => lexical_absolute(path)?.display().to_string(),
+    Detail::Path(path) | Detail::Entry(path) | Detail::Tree(path) => {
+      lexical_absolute(path)?.display().to_string()
+    }
     Detail::Net { host, port } => format_host(host, *port),
     Detail::Name(name) => name.clone(),
   };
@@ -1283,14 +1358,19 @@ struct PathCandidates {
   resolved: bool,
 }
 
-fn path_candidates(path: &Path) -> Result<PathCandidates, OpError> {
+fn path_candidates(
+  path: &Path,
+  link: PathLink,
+) -> Result<PathCandidates, OpError> {
   let absolute = absolute_path(path)?;
   let lexical = normalize(&absolute);
   let mut paths = vec![lexical.clone()];
-  push_canonical(&mut paths, &lexical);
+  push_canonical(&mut paths, &lexical, link);
   // The operating system follows a symlink and then applies `..`. Collapsing
   // `..` first would erase the link and allow a directory grant to escape.
-  let Some(resolved) = operating_path(&absolute) else {
+  // `Entry` still follows a parent symlink. It leaves a final symlink as
+  // that directory entry, so the grant covers the link and not its target.
+  let Some(resolved) = operating_path(&absolute, link) else {
     return Ok(PathCandidates {
       paths,
       resolved: false,
@@ -1300,7 +1380,7 @@ fn path_candidates(path: &Path) -> Result<PathCandidates, OpError> {
   if !paths.iter().any(|item| paths_equal(item, &resolved)) {
     paths.push(resolved.clone());
   }
-  push_canonical(&mut paths, &resolved);
+  push_canonical(&mut paths, &resolved, link);
   Ok(PathCandidates {
     paths,
     resolved: true,
@@ -1310,11 +1390,36 @@ fn path_candidates(path: &Path) -> Result<PathCandidates, OpError> {
 /// The file a prompt yes or a dialog grant names. This is the lexical path
 /// and its canonical spelling, not a different file reached by `..` after a
 /// symlink.
-fn session_candidates(path: &Path) -> Result<Vec<PathBuf>, OpError> {
+fn session_candidates(
+  path: &Path,
+  link: PathLink,
+) -> Result<Vec<PathBuf>, OpError> {
   let lexical = lexical_absolute(path)?;
   let mut found = vec![lexical.clone()];
-  push_canonical(&mut found, &lexical);
+  push_canonical(&mut found, &lexical, link);
   Ok(found)
+}
+
+fn record_session_paths(
+  gate: &mut Gate,
+  path: &Path,
+  link: PathLink,
+  allow: bool,
+) -> Result<(), OpError> {
+  for candidate in session_candidates(path, link)? {
+    if allow {
+      gate
+        .session_deny_paths
+        .retain(|item| !paths_equal(item, &candidate));
+      gate.session_allow_paths.push(candidate);
+    } else {
+      gate
+        .session_allow_paths
+        .retain(|item| !paths_equal(item, &candidate));
+      gate.session_deny_paths.push(candidate);
+    }
+  }
+  Ok(())
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf, OpError> {
@@ -1363,8 +1468,13 @@ pub(crate) fn anchor_path(path: &Path) -> Result<PathBuf, OpError> {
   Ok(current_dir()?.join(path))
 }
 
-fn push_canonical(found: &mut Vec<PathBuf>, path: &Path) {
-  let Some(real) = flexible_canonical(path) else {
+fn push_canonical(found: &mut Vec<PathBuf>, path: &Path, link: PathLink) {
+  let real = if link == PathLink::Entry && final_is_symlink(path) {
+    entry_spelling(path)
+  } else {
+    flexible_canonical(path)
+  };
+  let Some(real) = real else {
     return;
   };
   let real = normalize(&strip_verbatim(real));
@@ -1373,19 +1483,27 @@ fn push_canonical(found: &mut Vec<PathBuf>, path: &Path) {
   }
 }
 
-fn operating_path(path: &Path) -> Option<PathBuf> {
-  if let Ok(real) = std::fs::canonicalize(path) {
+fn operating_path(path: &Path, link: PathLink) -> Option<PathBuf> {
+  // Canonicalize follows a final symlink. An entry check must not, or the
+  // target would become a candidate.
+  if (link == PathLink::Follow || !final_is_symlink(path))
+    && let Ok(real) = std::fs::canonicalize(path)
+  {
     return Some(real);
   }
   // NotFound keeps a lexical tail. Any other error, including ENOTDIR,
   // means the walk cannot name the file. The caller denies that shape
   // instead of reporting a distinct resolution error.
-  walk_operating(path, 0).ok()
+  walk_operating(path, 0, link).ok()
 }
 
 /// Follows symlinks and applies `..` to the resolved path. A missing
 /// component cannot be a symlink, so the rest of the path is kept as named.
-fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
+fn walk_operating(
+  path: &Path,
+  depth: u32,
+  link: PathLink,
+) -> Result<PathBuf, ()> {
   if depth > 40 {
     return Err(());
   }
@@ -1403,6 +1521,14 @@ fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
         let candidate = out.join(name);
         match std::fs::symlink_metadata(&candidate) {
           Ok(meta) if meta.file_type().is_symlink() => {
+            let final_entry = link == PathLink::Entry
+              && components[index + 1..]
+                .iter()
+                .all(|component| matches!(component, Component::CurDir));
+            if final_entry {
+              out.push(name);
+              return Ok(out);
+            }
             let target = std::fs::read_link(&candidate).map_err(|_| ())?;
             let mut rest = if target.is_absolute() {
               target
@@ -1412,7 +1538,7 @@ fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
             for later in components.iter().skip(index + 1) {
               rest.push(later);
             }
-            return walk_operating(&rest, depth + 1);
+            return walk_operating(&rest, depth + 1, link);
           }
           Ok(meta) => {
             out.push(name);
@@ -1448,6 +1574,53 @@ fn walk_operating(path: &Path, depth: u32) -> Result<PathBuf, ()> {
     index += 1;
   }
   Ok(out)
+}
+
+/// The parent and final name, ignoring a trailing `.`.
+fn split_final(path: &Path) -> Option<(PathBuf, std::ffi::OsString)> {
+  let components: Vec<Component> = path.components().collect();
+  let mut end = components.len();
+  while end > 0 && matches!(components[end - 1], Component::CurDir) {
+    end -= 1;
+  }
+  let Component::Normal(name) = components.get(end.wrapping_sub(1))? else {
+    return None;
+  };
+  let mut parent = PathBuf::new();
+  for component in &components[..end - 1] {
+    parent.push(component.as_os_str());
+  }
+  if parent.as_os_str().is_empty() {
+    parent.push(".");
+  }
+  Some((parent, name.to_os_string()))
+}
+
+fn final_is_symlink(path: &Path) -> bool {
+  let Some((parent, name)) = split_final(path) else {
+    return false;
+  };
+  std::fs::symlink_metadata(parent.join(name))
+    .is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
+/// Canonical spelling of the directory entry. A final symlink is not resolved.
+fn entry_spelling(path: &Path) -> Option<PathBuf> {
+  let (parent, name) = split_final(path)?;
+  let parent = std::fs::canonicalize(parent).ok()?;
+  Some(parent.join(name))
+}
+
+/// Stored deny spellings of one entry, without following a final symlink.
+fn same_entry_spellings(path: &Path) -> Vec<PathBuf> {
+  let mut forms = vec![normalize(&strip_verbatim(path.to_path_buf()))];
+  if let Some(real) = entry_spelling(path) {
+    let real = normalize(&strip_verbatim(real));
+    if !forms.iter().any(|item| paths_equal(item, &real)) {
+      forms.push(real);
+    }
+  }
+  forms
 }
 
 fn flexible_canonical(path: &Path) -> Option<PathBuf> {
@@ -1897,8 +2070,41 @@ fn run_base() -> Option<PathBuf> {
 /// The file the operating system would execute for `path`.
 fn executed_path(path: &Path) -> Option<PathBuf> {
   let absolute = absolute_path(path).ok()?;
-  let resolved = operating_path(&absolute)?;
+  let resolved = operating_path(&absolute, PathLink::Follow)?;
   Some(normalize(&strip_verbatim(resolved)))
+}
+
+/// Absolute program for a scoped path command.
+///
+/// The file the operating system would execute is used when it can be
+/// named. A missing file is still absolute, from the current directory or
+/// from `spawn`'s `cwd`, so the child does not resolve a relative path
+/// after `chdir`. `run` granted as a whole does not use this.
+#[cfg(any(test, feature = "child"))]
+fn absolute_command(path: &Path) -> Result<PathBuf, OpError> {
+  if let Some(found) = executed_path(path) {
+    return Ok(found);
+  }
+  if path.as_os_str().is_empty() {
+    return current_dir();
+  }
+  if path.is_absolute() {
+    return Ok(path.to_path_buf());
+  }
+  // A drive-relative path such as `C:name` is resolved from that drive's
+  // directory. A normal relative path uses `spawn`'s `cwd` through
+  // [`absolute_path`].
+  #[cfg(windows)]
+  if path
+    .components()
+    .next()
+    .is_some_and(|component| matches!(component, Component::Prefix(_)))
+  {
+    return std::path::absolute(path).map_err(|_| {
+      OpError::dom("OperationError", "The current directory could not be read.")
+    });
+  }
+  absolute_path(path)
 }
 
 fn is_command_path(text: &str) -> bool {
@@ -1919,7 +2125,7 @@ fn session_name(kind: Kind, name: &str) -> Result<String, OpError> {
   }
   let lexical = normalize(&absolute_path(Path::new(name))?);
   let mut allowed = vec![lexical.clone()];
-  push_canonical(&mut allowed, &lexical);
+  push_canonical(&mut allowed, &lexical, PathLink::Follow);
   if let Some(executed) = executed_path(Path::new(name))
     && allowed.iter().any(|item| paths_equal(item, &executed))
   {
@@ -2271,6 +2477,145 @@ fn resolved<'s>(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn an_open_process_has_no_path_policy() {
+    assert!(permissions_are_open());
+  }
+
+  #[test]
+  fn a_missing_relative_command_stays_absolute() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-perm-anchor-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let sub = root.join("sub");
+    std::fs::create_dir_all(sub.join("nested")).unwrap();
+    let sub = std::fs::canonicalize(&sub).unwrap();
+    let _base = RunBase::set(&sub);
+    let missing = absolute_command(Path::new("nested/missing")).unwrap();
+    assert!(missing.is_absolute());
+    assert!(paths_equal(&missing, &sub.join("nested").join("missing")));
+    let tool = sub.join("nested").join("tool");
+    std::fs::write(&tool, b"x").unwrap();
+    let found = absolute_command(Path::new("nested/tool")).unwrap();
+    assert!(paths_equal(&found, &std::fs::canonicalize(&tool).unwrap()));
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn an_entry_check_names_the_link_and_a_tree_deny_blocks_remove() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-perm-entry-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let project = root.join("project");
+    let outside = root.join("outside");
+    std::fs::create_dir_all(project.join("keep")).unwrap();
+    std::fs::create_dir_all(project.join("secret")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secret.txt"), b"SECRET").unwrap();
+    std::fs::write(project.join("keep").join("note"), b"n").unwrap();
+    std::fs::write(project.join("secret").join("hidden"), b"h").unwrap();
+    let project = std::fs::canonicalize(&project).unwrap();
+    #[cfg(unix)]
+    {
+      let outside = std::fs::canonicalize(&outside).unwrap();
+      std::os::unix::fs::symlink(
+        outside.join("secret.txt"),
+        project.join("link"),
+      )
+      .unwrap();
+    }
+    let mut spec = PermissionSpec::default();
+    spec
+      .allow("read", Some(vec![project.display().to_string()]))
+      .unwrap();
+    spec
+      .allow("write", Some(vec![project.display().to_string()]))
+      .unwrap();
+    spec
+      .deny(
+        "write",
+        Some(vec![project.join("secret").display().to_string()]),
+      )
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, &project).unwrap();
+    assert_eq!(
+      sandbox
+        .classify(Kind::Write, &Detail::Path(project.clone()))
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      sandbox
+        .classify(Kind::Write, &Detail::Tree(project.clone()))
+        .unwrap(),
+      State::Denied
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Write,
+          &Detail::Entry(project.join("keep").join("note")),
+        )
+        .unwrap(),
+      State::Granted
+    );
+    assert_eq!(
+      sandbox
+        .classify(
+          Kind::Write,
+          &Detail::Entry(project.join("secret").join("hidden")),
+        )
+        .unwrap(),
+      State::Denied
+    );
+    #[cfg(unix)]
+    {
+      let link = project.join("link");
+      assert_eq!(
+        sandbox
+          .classify(Kind::Read, &Detail::Entry(link.clone()))
+          .unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Read, &Detail::Path(link.clone()))
+          .unwrap(),
+        State::Prompt
+      );
+      let through = link.join("..").join("secret.txt");
+      assert_ne!(
+        sandbox
+          .classify(Kind::Read, &Detail::Entry(through))
+          .unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        sandbox
+          .classify(Kind::Write, &Detail::Entry(link.clone()))
+          .unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        sandbox.classify(Kind::Write, &Detail::Tree(link)).unwrap(),
+        State::Granted
+      );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+  }
 
   #[test]
   fn a_directory_grant_covers_descendants_only() {
