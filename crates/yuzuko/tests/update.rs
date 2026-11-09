@@ -574,3 +574,63 @@ fn unpackaged_run_and_repl_have_no_updater() {
     "{stdout}"
   );
 }
+
+#[test]
+fn a_feed_host_that_resolves_to_loopback_needs_that_address() {
+  let payload = encode_payload("1.1.0", "src/main.ts", "console.log(1);\n");
+  let server = feed_server(payload, BASE64_STANDARD.encode([0u8; 64]));
+  let dir = scratch("resolved");
+  // `localhost` is granted by name. It resolves to a loopback address, and
+  // that address is not granted, so the updater does not connect.
+  let base = format!("http://localhost:{}/game", server.port);
+  fs::write(
+    dir.join("yuzuko.json"),
+    format!(
+      r#"{{
+  "name": "Update Game",
+  "version": "1.0.0",
+  "permissions": {{ "net": ["localhost"] }},
+  "release": {{
+    "baseUrl": "{base}",
+    "publicKey": "{}"
+  }}
+}}
+"#,
+      BASE64_STANDARD.encode(signing().verifying_key().to_bytes())
+    ),
+  )
+  .unwrap();
+  fs::create_dir_all(dir.join("src")).unwrap();
+  fs::write(
+    dir.join("src/main.ts"),
+    r#"try {
+  await Yuzuko.updater.check();
+  console.log("checked");
+} catch (error) {
+  console.log("update-error " + error.name);
+}
+"#,
+  )
+  .unwrap();
+  let app = dir.join(bundle_name());
+  let packaged = Command::new(bin())
+    .current_dir(&dir)
+    .args(["package", "src/main.ts", "--output", app.to_str().unwrap()])
+    .output()
+    .unwrap();
+  assert_eq!(
+    packaged.status.code(),
+    Some(0),
+    "{}",
+    text(&packaged.stderr)
+  );
+  let (_, exe) = bundle_paths(&app);
+  let (status, stdout, stderr) = launch(&exe);
+  assert_eq!(status, 0, "{stdout}\n{stderr}");
+  assert!(
+    stdout.contains("update-error NotAllowedError"),
+    "{stdout}\n{stderr}"
+  );
+  assert!(server.hits.lock().unwrap().is_empty());
+  let _ = fs::remove_dir_all(&dir);
+}

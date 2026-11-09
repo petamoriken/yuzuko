@@ -251,6 +251,65 @@ try {
   assert_eq!(fs::read_to_string(&secret).unwrap(), "changed\n");
 }
 
+/// Unix ignores the link type, so a `"junction"` is a symbolic link resolved
+/// from the link directory and is checked from there.
+#[cfg(unix)]
+#[test]
+fn a_unix_junction_type_is_checked_from_the_link_directory() {
+  let root = scratch("junction-type");
+  let dir_a = root.join("dirA");
+  let dir_b = root.join("dirB");
+  fs::create_dir_all(&dir_a).unwrap();
+  fs::create_dir_all(&dir_b).unwrap();
+  write(&dir_a.join("target.txt"), "from-a\n");
+  write(&dir_b.join("target.txt"), "from-b\n");
+  write(
+    &dir_a.join("main.ts"),
+    r#"try {
+  await Yuzuko.symlink("target.txt", Yuzuko.args[0], { type: "junction" });
+  console.log("linked");
+} catch (error) {
+  console.log(error.name);
+}
+"#,
+  );
+  let link = dir_b.join("link");
+  let link_arg = link.display().to_string();
+  let read_a = format!("--allow-read={}", dir_a.join("target.txt").display());
+  let write_b = format!("--allow-write={}", dir_b.display());
+  let denied = run(
+    &dir_a,
+    &[
+      "run",
+      "--no-prompt",
+      &read_a,
+      &write_b,
+      "main.ts",
+      &link_arg,
+    ],
+  );
+  assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
+  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert!(fs::symlink_metadata(&link).is_err());
+
+  let read_b = format!("--allow-read={}", dir_b.join("target.txt").display());
+  let allowed = run(
+    &dir_a,
+    &[
+      "run",
+      "--no-prompt",
+      &read_b,
+      &write_b,
+      "main.ts",
+      &link_arg,
+    ],
+  );
+  assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
+  assert_eq!(text(&allowed.stdout), "linked\n");
+  assert_eq!(fs::read_to_string(&link).unwrap(), "from-b\n");
+  let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn a_relative_symlink_is_checked_from_the_link_directory() {
   let root = scratch("symlink");

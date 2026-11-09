@@ -803,8 +803,15 @@ fn symlink_args(
   // so a later chdir cannot create the link somewhere else.
   let new = crate::permissions::anchor_path(&new)?;
   // A relative symbolic link is resolved from the new link's directory.
-  // A junction stores a target joined to the current directory.
-  let junction = matches!(kind, io::LinkKind::Junction);
+  // A Windows junction stores a target joined to the current directory. It
+  // is joined once, here, so a later chdir cannot change the stored target
+  // after the check. Unix ignores the type and creates a symbolic link.
+  let junction = cfg!(windows) && matches!(kind, io::LinkKind::Junction);
+  let old = if junction {
+    crate::permissions::anchor_path(&old)?
+  } else {
+    old
+  };
   crate::permissions::check_symlink_target(&old, &new, junction)?;
   crate::permissions::check_write(&new)?;
   Ok((old, new, kind))

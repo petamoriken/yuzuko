@@ -1337,14 +1337,13 @@ fn set_handle_times(
 }
 
 #[cfg(windows)]
+/// `target` is the absolute path the permission check named.
 fn junction(link: &Path, target: &Path) -> Result<(), FsError> {
-  let absolute = if target.is_absolute() {
-    target.to_path_buf()
-  } else {
-    std::env::current_dir().map_err(FsError::io)?.join(target)
-  };
+  if !target.is_absolute() {
+    return Err(FsError::failed());
+  }
   fs::create_dir(link).map_err(FsError::io)?;
-  let created = write_junction(link, &absolute);
+  let created = write_junction(link, target);
   if created.is_err() {
     let _ = fs::remove_dir(link);
   }

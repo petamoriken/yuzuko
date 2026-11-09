@@ -804,9 +804,17 @@ fn http_get(url_text: &str, max: usize) -> Result<Vec<u8>, Failure> {
   }
 }
 
+/// Connects only to resolved addresses the net policy allows.
+///
+/// The feed names the payload URL, so its host can resolve to a loopback or
+/// private address. Each such address is checked again, as `fetch` does.
 fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, Failure> {
-  let addresses = yuzuko_core::with_env(|| (host, port).to_socket_addrs())
-    .map_err(|_| DOWNLOAD_FAILED)?;
+  let addresses: Vec<_> =
+    yuzuko_core::with_env(|| (host, port).to_socket_addrs())
+      .map_err(|_| DOWNLOAD_FAILED)?
+      .collect();
+  let addresses = yuzuko_core::retain_resolved_addresses(addresses)
+    .map_err(|_| NET_DENIED)?;
   for address in addresses {
     if let Ok(stream) = TcpStream::connect_timeout(&address, TIMEOUT) {
       let _ = stream.set_read_timeout(Some(TIMEOUT));
