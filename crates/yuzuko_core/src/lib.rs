@@ -31,6 +31,8 @@ mod repl;
 mod runtime;
 #[cfg(feature = "signal")]
 mod signal;
+#[cfg(any(feature = "tcp", feature = "udp", feature = "http"))]
+mod socket_endpoint;
 #[cfg(feature = "tcp")]
 mod tcp;
 mod timers;

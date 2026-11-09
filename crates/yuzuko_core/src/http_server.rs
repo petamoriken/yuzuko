@@ -8,9 +8,7 @@
 
 use std::cell::RefCell;
 use std::io::{self, ErrorKind, Read, Write};
-use std::net::{
-  IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener as StdListener, TcpStream,
-};
+use std::net::{Shutdown, SocketAddr, TcpListener as StdListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -26,7 +24,6 @@ const IO_WAIT: Duration = Duration::from_millis(50);
 
 const OPTIONS: &str = "Options must be an object.";
 const OPTIONS_READ: &str = "The options could not be read.";
-const HOSTNAME: &str = "The hostname must be an IP address or \"localhost\".";
 const PORT_BIND: &str = "The port must be an integer from 0 through 65535.";
 const BIND: &str = "The socket could not bind.";
 const CLOSED: &str = "The socket is closed.";
@@ -742,8 +739,7 @@ fn listen_op(
   options: v8::Local<v8::Value>,
 ) -> Result<New<Server>, OpError> {
   let addr = if options.is_null_or_undefined() {
-    crate::permissions::check_net("127.0.0.1", 0)?;
-    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+    crate::socket_endpoint::loopback_bind()?
   } else {
     endpoint(scope, options)?
   };
@@ -769,9 +765,7 @@ fn endpoint(
     Some(value) if !value.is_undefined() => to_port(scope, value)?,
     _ => 0,
   };
-  crate::permissions::check_net(&hostname, port)?;
-  let ip = parse_host(&hostname)?;
-  Ok(SocketAddr::new(ip, port))
+  crate::socket_endpoint::checked_host(&hostname, port)
 }
 
 fn to_port(
@@ -800,15 +794,6 @@ fn to_status(
     return Err(OpError::type_(STATUS));
   }
   Ok(number as u16)
-}
-
-fn parse_host(hostname: &str) -> Result<IpAddr, OpError> {
-  if hostname.eq_ignore_ascii_case("localhost") {
-    return Ok(IpAddr::V4(Ipv4Addr::LOCALHOST));
-  }
-  hostname
-    .parse::<IpAddr>()
-    .map_err(|_| OpError::type_(HOSTNAME))
 }
 
 fn read_field<'s>(

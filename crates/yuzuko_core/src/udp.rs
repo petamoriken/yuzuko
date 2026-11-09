@@ -7,14 +7,14 @@
 
 use std::cell::RefCell;
 use std::io::{self, ErrorKind};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use yuzuko_macros::op;
 
-use crate::op::{FromV8, Js, New, OpError, OpException, ToV8};
+use crate::op::{Js, New, OpError, OpException, ToV8};
 
 const MAX_DATAGRAM: usize = 65507;
 const RECV_CAP: usize = 65536;
@@ -24,7 +24,6 @@ const OPTIONS: &str = "Options must be an object.";
 const OPTIONS_READ: &str = "The options could not be read.";
 const ADDRESS: &str = "The address must be an object.";
 const ADDRESS_READ: &str = "The address could not be read.";
-const HOSTNAME: &str = "The hostname must be an IP address or \"localhost\".";
 const PORT_BIND: &str = "The port must be an integer from 0 through 65535.";
 const PORT_DEST: &str = "The port must be an integer from 1 through 65535.";
 const BIND: &str = "The socket could not bind.";
@@ -243,7 +242,14 @@ impl Datagram {
     addr: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
     let bytes = copy_source(scope, data)?;
-    let dest = endpoint(scope, addr, 1, PORT_DEST, ADDRESS, ADDRESS_READ)?;
+    let dest = crate::socket_endpoint::endpoint(
+      scope,
+      addr,
+      1,
+      PORT_DEST,
+      ADDRESS,
+      ADDRESS_READ,
+    )?;
     if self.shared.bound.is_ipv4() != dest.is_ipv4() {
       return Err(OpError::type_(FAMILY));
     }
@@ -311,106 +317,19 @@ fn listen_op(
   options: v8::Local<v8::Value>,
 ) -> Result<New<Datagram>, OpError> {
   let addr = if options.is_null_or_undefined() {
-    crate::permissions::check_net("127.0.0.1", 0)?;
-    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+    crate::socket_endpoint::loopback_bind()?
   } else {
-    endpoint(scope, options, 0, PORT_BIND, OPTIONS, OPTIONS_READ)?
+    crate::socket_endpoint::endpoint(
+      scope,
+      options,
+      0,
+      PORT_BIND,
+      OPTIONS,
+      OPTIONS_READ,
+    )?
   };
   let shared = bind_udp(addr).map_err(|_| plain_error(scope, BIND))?;
   Ok(New(Datagram { shared }))
-}
-
-fn endpoint(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-  min_port: u16,
-  port_message: &'static str,
-  object_message: &'static str,
-  read_message: &'static str,
-) -> Result<SocketAddr, OpError> {
-  if !value.is_object() {
-    return Err(OpError::type_(object_message));
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
-    return Err(OpError::type_(object_message));
-  };
-  let hostname = match read_field(scope, object, "hostname", read_message)? {
-    Some(value) if !value.is_undefined() => String::from_v8(scope, value)?,
-    _ => "127.0.0.1".to_string(),
-  };
-  let port = match read_field(scope, object, "port", read_message)? {
-    Some(value) if !value.is_undefined() => {
-      to_port(scope, value, min_port, port_message)?
-    }
-    _ if min_port > 0 => return Err(OpError::type_(port_message)),
-    _ => 0,
-  };
-  crate::permissions::check_net(&hostname, port)?;
-  let ip = parse_host(&hostname)?;
-  Ok(SocketAddr::new(ip, port))
-}
-
-fn to_port(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-  min_port: u16,
-  message: &str,
-) -> Result<u16, OpError> {
-  let number = f64::from_v8(scope, value)?;
-  if !number.is_finite()
-    || number.fract() != 0.0
-    || number < f64::from(min_port)
-    || number > 65535.0
-  {
-    return Err(OpError::type_(message));
-  }
-  Ok(number as u16)
-}
-
-fn parse_host(hostname: &str) -> Result<IpAddr, OpError> {
-  if hostname.eq_ignore_ascii_case("localhost") {
-    return Ok(IpAddr::V4(Ipv4Addr::LOCALHOST));
-  }
-  hostname
-    .parse::<IpAddr>()
-    .map_err(|_| OpError::type_(HOSTNAME))
-}
-
-fn read_field<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  object: v8::Local<'_, v8::Object>,
-  name: &str,
-  read_message: &str,
-) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let Some(key) = v8::String::new(tc, name) else {
-      return Err(OpError::type_(read_message));
-    };
-    let object = v8::Local::new(tc, object);
-    match object.get(tc, key.into()) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(Some(v8::Local::new(scope, value))),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(read_message)),
-  }
 }
 
 fn copy_source(
