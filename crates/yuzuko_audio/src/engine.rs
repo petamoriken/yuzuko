@@ -744,6 +744,11 @@ pub fn set_param_value(id: u64, value: f64) -> Result<(), Fault> {
   })
 }
 
+fn automation_time(id: u64, time: f64) -> Result<f64, Fault> {
+  ensure_unlocked(id)?;
+  clamp_past(id, check_time(time)?)
+}
+
 pub fn set_value_at_time(id: u64, value: f64, time: f64) -> Result<(), Fault> {
   ensure_unlocked(id)?;
   let time = check_time(time)?;
@@ -766,8 +771,7 @@ pub fn linear_ramp_to_value_at_time(
   value: f64,
   time: f64,
 ) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   let value = check_finite(value)?;
   with_param(id, |param| {
     require_earlier(&param.events, time)?;
@@ -788,8 +792,7 @@ pub fn exponential_ramp_to_value_at_time(
   value: f64,
   time: f64,
 ) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   let value = check_finite(value)?;
   if value <= 0.0 {
     return Err(Fault::range("The exponential ramp value must be positive"));
@@ -817,8 +820,7 @@ pub fn set_target_at_time(
   time: f64,
   time_constant: f64,
 ) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   let target = check_finite(target)?;
   if !time_constant.is_finite() {
     return Err(Fault::type_("The value is not finite"));
@@ -850,8 +852,7 @@ pub fn set_value_curve_at_time(
   time: f64,
   duration: f64,
 ) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   if values.len() < 2 {
     return Err(Fault::dom(
       "InvalidStateError",
@@ -888,8 +889,7 @@ pub fn set_value_curve_at_time(
 }
 
 pub fn cancel_scheduled_values(id: u64, time: f64) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   with_param(id, |param| {
     param.events.retain(|event| event.time < time);
     Ok(())
@@ -897,8 +897,7 @@ pub fn cancel_scheduled_values(id: u64, time: f64) -> Result<(), Fault> {
 }
 
 pub fn cancel_and_hold_at_time(id: u64, time: f64) -> Result<(), Fault> {
-  ensure_unlocked(id)?;
-  let time = clamp_past(id, check_time(time)?)?;
+  let time = automation_time(id, time)?;
   with_param(id, |param| {
     hold_at(&mut param.events, param.value, time);
     Ok(())
