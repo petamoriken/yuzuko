@@ -2264,19 +2264,8 @@ fn query(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let desc = match descriptor(scope, args.get(0)) {
-    Ok(desc) => desc,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
-  };
-  let state = match interact(desc.kind, &desc.detail, false) {
-    Ok(state) => state,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
+  let Ok(state) = permission_state(scope, args.get(0), false) else {
+    return;
   };
   let object = state_object(scope, state);
   ret.set(resolved(scope, object.into()));
@@ -2287,19 +2276,8 @@ fn query_sync(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let desc = match descriptor(scope, args.get(0)) {
-    Ok(desc) => desc,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
-  };
-  let state = match interact(desc.kind, &desc.detail, false) {
-    Ok(state) => state,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
+  let Ok(state) = permission_state(scope, args.get(0), false) else {
+    return;
   };
   ret.set(state_object(scope, state).into());
 }
@@ -2309,19 +2287,8 @@ fn request(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let desc = match descriptor(scope, args.get(0)) {
-    Ok(desc) => desc,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
-  };
-  let state = match interact(desc.kind, &desc.detail, true) {
-    Ok(state) => state,
-    Err(error) => {
-      error.throw(scope);
-      return;
-    }
+  let Ok(state) = permission_state(scope, args.get(0), true) else {
+    return;
   };
   let object = state_object(scope, state);
   ret.set(resolved(scope, object.into()));
@@ -2332,21 +2299,31 @@ fn request_sync(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let desc = match descriptor(scope, args.get(0)) {
+  let Ok(state) = permission_state(scope, args.get(0), true) else {
+    return;
+  };
+  ret.set(state_object(scope, state).into());
+}
+
+fn permission_state(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  prompt_now: bool,
+) -> Result<State, ()> {
+  let desc = match descriptor(scope, value) {
     Ok(desc) => desc,
     Err(error) => {
       error.throw(scope);
-      return;
+      return Err(());
     }
   };
-  let state = match interact(desc.kind, &desc.detail, true) {
-    Ok(state) => state,
+  match interact(desc.kind, &desc.detail, prompt_now) {
+    Ok(state) => Ok(state),
     Err(error) => {
       error.throw(scope);
-      return;
+      Err(())
     }
-  };
-  ret.set(state_object(scope, state).into());
+  }
 }
 
 fn revoke(

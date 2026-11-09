@@ -153,13 +153,9 @@ fn env_get(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let Some(name) = env_name(scope, args.get(0)) else {
+  let Some(name) = permitted_env_name(scope, args.get(0)) else {
     return;
   };
-  if let Err(error) = crate::permissions::check_env(&name) {
-    error.throw(scope);
-    return;
-  }
   let value = {
     let _guard = io_read();
     std::env::var_os(&name).map(|value| value.to_string_lossy().into_owned())
@@ -202,13 +198,9 @@ fn env_delete(
   args: v8::FunctionCallbackArguments,
   mut _ret: v8::ReturnValue,
 ) {
-  let Some(name) = env_name(scope, args.get(0)) else {
+  let Some(name) = permitted_env_name(scope, args.get(0)) else {
     return;
   };
-  if let Err(error) = crate::permissions::check_env(&name) {
-    error.throw(scope);
-    return;
-  }
   let _guard = io_write();
   // SAFETY: see [`env_set`]. A missing name is a successful removal.
   unsafe {
@@ -221,13 +213,9 @@ fn env_has(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let Some(name) = env_name(scope, args.get(0)) else {
+  let Some(name) = permitted_env_name(scope, args.get(0)) else {
     return;
   };
-  if let Err(error) = crate::permissions::check_env(&name) {
-    error.throw(scope);
-    return;
-  }
   let present = {
     let _guard = io_read();
     std::env::var_os(&name).is_some()
@@ -275,6 +263,20 @@ fn env_to_object(
     );
   }
   ret.set(object.into());
+}
+
+fn permitted_env_name(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Option<String> {
+  let Some(name) = env_name(scope, value) else {
+    return None;
+  };
+  if let Err(error) = crate::permissions::check_env(&name) {
+    error.throw(scope);
+    return None;
+  }
+  Some(name)
 }
 
 fn env_name(
