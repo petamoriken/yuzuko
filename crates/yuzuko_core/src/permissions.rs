@@ -1726,9 +1726,13 @@ fn interpret_normal(name: &OsStr) -> Interpreted {
   if let Some(index) = units.iter().position(|unit| *unit == u16::from(b':')) {
     units.truncate(index);
   }
+  // Stop at `.` or `..`, so `.. ` compares as `..` instead of becoming empty.
+  let dot = u16::from(b'.');
   while units
     .last()
-    .is_some_and(|unit| *unit == u16::from(b'.') || *unit == u16::from(b' '))
+    .is_some_and(|unit| *unit == dot || *unit == u16::from(b' '))
+    && units.as_slice() != [dot]
+    && units.as_slice() != [dot, dot]
   {
     units.pop();
   }
@@ -3707,13 +3711,16 @@ mod tests {
       .allow("read", Some(vec![project.display().to_string()]))
       .unwrap();
     let allowed = Sandbox::compile(&allowed, &dir).unwrap();
-    let escaped = project.join(".. ").join("sibling");
-    assert_ne!(
-      allowed
-        .classify(Kind::Read, &Detail::Path(escaped))
-        .unwrap(),
-      State::Granted
-    );
+    for parent in [".. ", "... "] {
+      let escaped = project.join(parent).join("sibling");
+      assert_ne!(
+        allowed
+          .classify(Kind::Read, &Detail::Path(escaped))
+          .unwrap(),
+        State::Granted,
+        "{parent:?}"
+      );
+    }
     let _ = std::fs::remove_dir_all(&dir);
   }
 }
