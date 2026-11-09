@@ -112,6 +112,18 @@ struct Gpu {
   format: wgpu::TextureFormat,
   present_mode: wgpu::PresentMode,
   alpha: wgpu::CompositeAlphaMode,
+  /// Whether a drawable acquired and dropped unpresented goes back to the
+  /// swapchain. See [`releases_discarded_drawable`].
+  probe_drawable: bool,
+}
+
+/// Whether `backend` returns a drawable that is dropped without a present.
+///
+/// Metal releases it. Vulkan's discard is a no-op in wgpu-hal, so each
+/// dropped image stays acquired until the swapchain runs out and every later
+/// acquire times out. Other backends are not probed.
+fn releases_discarded_drawable(backend: wgpu::Backend) -> bool {
+  backend == wgpu::Backend::Metal
 }
 
 struct HostWindow {
@@ -1303,14 +1315,17 @@ impl App {
     // timeout, or a size change would otherwise rasterize and then discard
     // that scene, and the same turn would build it again. The probe is
     // released before rasterizing: a readback while a swapchain texture is
-    // held makes the next drawable time out after about a second.
-    match self.acquire_drawable(window_id, width, height, false) {
-      Ok(probe) => drop(probe),
-      Err(true) => {
-        self.configure_surface(window_id);
-        return false;
+    // held makes the next drawable time out after about a second. Only a
+    // backend that takes the dropped drawable back is probed.
+    if gpu.probe_drawable {
+      match self.acquire_drawable(window_id, width, height, false) {
+        Ok(probe) => drop(probe),
+        Err(true) => {
+          self.configure_surface(window_id);
+          return false;
+        }
+        Err(false) => return false,
       }
-      Err(false) => return false,
     }
     let canvas_ready =
       crate::canvas::stage_canvas(&device, &queue, surface_id, width, height);
@@ -1681,6 +1696,7 @@ fn build_gpu(
     let (device, queue) = crate::gpu::request_device(&adapter)?;
     (adapter, device, queue)
   };
+  let probe_drawable = releases_discarded_drawable(adapter.get_info().backend);
   let caps = surface.get_capabilities(&adapter);
   let format = choose_format(&caps.formats).ok_or_else(|| {
     "The window surface has no presentation format.".to_string()
@@ -1698,6 +1714,7 @@ fn build_gpu(
     format,
     present_mode,
     alpha,
+    probe_drawable,
   }))
 }
 
@@ -1798,5 +1815,18 @@ fn map_ime(ime: Ime) -> Option<RawIme> {
     Ime::Preedit(text, _) => Some(RawIme::Preedit(text)),
     Ime::Commit(text) => Some(RawIme::Commit(text)),
     Ime::Disabled => Some(RawIme::Disabled),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::releases_discarded_drawable;
+
+  #[test]
+  fn only_metal_probes_the_drawable() {
+    assert!(releases_discarded_drawable(wgpu::Backend::Metal));
+    assert!(!releases_discarded_drawable(wgpu::Backend::Vulkan));
+    assert!(!releases_discarded_drawable(wgpu::Backend::Dx12));
+    assert!(!releases_discarded_drawable(wgpu::Backend::Gl));
   }
 }
