@@ -247,16 +247,16 @@ fn permit_open(
   Ok(())
 }
 
+/// Fixes the directory the file is created in, then checks write access to it.
+///
+/// An omitted `dir` reads the temporary directory once. Creation uses the
+/// directory that was checked, so a later change to `TMPDIR` does not move it.
 fn permit_temp(spec: &mut io::TempSpec) -> Result<(), OpError> {
-  match &spec.dir {
-    Some(dir) => {
-      let dir = crate::permissions::anchor_path(dir)?;
-      crate::permissions::check_write(&dir)?;
-      spec.dir = Some(dir);
-      Ok(())
-    }
-    None => crate::permissions::check_write(&std::env::temp_dir()),
-  }
+  let dir = spec.dir.take().unwrap_or_else(std::env::temp_dir);
+  let dir = crate::permissions::anchor_path(&dir)?;
+  crate::permissions::check_write(&dir)?;
+  spec.dir = Some(dir);
+  Ok(())
 }
 
 callback!(open, open_op);
@@ -1016,4 +1016,22 @@ fn watch_fs_op(
   let recursive = ready(scope, recursive)?;
   let watcher = ready(scope, super::watch::start(paths, recursive))?;
   Ok(New(watcher))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{io, permit_temp};
+
+  #[test]
+  fn an_omitted_temp_dir_is_fixed_when_checked() {
+    let mut spec = io::TempSpec {
+      dir: None,
+      prefix: String::new(),
+      suffix: String::new(),
+    };
+    permit_temp(&mut spec).unwrap();
+    let dir = spec.dir.expect("the checked directory");
+    assert!(dir.is_absolute());
+    assert_eq!(dir, std::env::temp_dir());
+  }
 }

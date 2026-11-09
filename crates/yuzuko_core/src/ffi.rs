@@ -217,9 +217,12 @@ fn dlopen_op<'s>(
     return Err(OpError::type_(PATH_NUL));
   }
   let prepared = read_symbols(scope, args.get(1))?;
-  crate::permissions::check_ffi(std::path::Path::new(&path))?;
+  // Anchor once. The check and the loader see the same path, so another
+  // worker's `chdir` between them cannot retarget a relative path.
+  let load = library_load(&path)?;
+  crate::permissions::check_ffi(&load.path)?;
   let handle =
-    open_library(&path)?.ok_or_else(|| plain_error(scope, OPEN_FAIL))?;
+    open_library(&load)?.ok_or_else(|| plain_error(scope, OPEN_FAIL))?;
   let mut loaded = Loaded {
     handle: Some(handle),
   };
@@ -1113,26 +1116,34 @@ fn define_fn(
   object.set(scope, key.into(), function.into());
 }
 
-/// The path Unix loads.
+/// The path Unix checks and loads.
 ///
 /// A relative path such as `sub/x.so` is joined to the current directory
-/// before `dlopen`, so another worker's `chdir` cannot retarget it. A bare
-/// name stays the caller's string and is searched by the loader, which
-/// requires `ffi` granted as a whole.
-#[cfg(unix)]
-fn library_path(path: &str) -> Result<std::path::PathBuf, OpError> {
+/// once, before the permission check, so another worker's `chdir` cannot
+/// retarget it. A bare name stays the caller's string and is searched by the
+/// loader, which requires `ffi` granted as a whole.
+#[cfg(not(windows))]
+struct LibraryLoad {
+  path: std::path::PathBuf,
+}
+
+#[cfg(not(windows))]
+fn library_load(path: &str) -> Result<LibraryLoad, OpError> {
   if !path.contains('/') && !path.contains('\\') {
-    return Ok(std::path::PathBuf::from(path));
+    return Ok(LibraryLoad {
+      path: std::path::PathBuf::from(path),
+    });
   }
-  crate::permissions::anchor_path(std::path::Path::new(path))
+  Ok(LibraryLoad {
+    path: crate::permissions::anchor_path(std::path::Path::new(path))?,
+  })
 }
 
 #[cfg(unix)]
-fn open_library(path: &str) -> Result<Option<usize>, OpError> {
+fn open_library(load: &LibraryLoad) -> Result<Option<usize>, OpError> {
   use std::os::unix::ffi::OsStrExt;
 
-  let path = library_path(path)?;
-  let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
+  let Ok(path) = CString::new(load.path.as_os_str().as_bytes()) else {
     return Ok(None);
   };
   let handle =
@@ -1169,13 +1180,12 @@ fn unload(handle: usize) {
 }
 
 #[cfg(windows)]
-fn open_library(path: &str) -> Result<Option<usize>, OpError> {
+fn open_library(load: &LibraryLoad) -> Result<Option<usize>, OpError> {
   use std::os::windows::ffi::OsStrExt;
 
   use windows_sys::Win32::System::LibraryLoader::{
     LOAD_WITH_ALTERED_SEARCH_PATH, LoadLibraryExW, LoadLibraryW,
   };
-  let load = library_load(path)?;
   let mut wide: Vec<u16> = load.path.as_os_str().encode_wide().collect();
   wide.push(0);
   // SAFETY: `wide` is a NUL-terminated path. `LOAD_WITH_ALTERED_SEARCH_PATH`
@@ -1198,11 +1208,12 @@ fn open_library(path: &str) -> Result<Option<usize>, OpError> {
   }
 }
 
-/// The path Windows loads, and whether the default DLL search is disabled.
+/// The path Windows checks and loads, and whether the default DLL search is
+/// disabled.
 ///
 /// A relative path such as `sub\x.dll` would otherwise match
-/// `System32\sub\x.dll`. The absolute path is the one the permission check
-/// named. A bare name still uses the loader search, which requires `ffi`
+/// `System32\sub\x.dll`. It is anchored once, before the permission check,
+/// so the loader opens the path that check named. A bare name still uses the loader search, which requires `ffi`
 /// granted as a whole.
 #[cfg(windows)]
 struct LibraryLoad {
@@ -1250,7 +1261,7 @@ fn unload(handle: usize) {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_library(_path: &str) -> Result<Option<usize>, OpError> {
+fn open_library(_load: &LibraryLoad) -> Result<Option<usize>, OpError> {
   Ok(None)
 }
 
@@ -1264,20 +1275,20 @@ fn unload(_handle: usize) {}
 
 #[cfg(all(test, unix))]
 mod tests {
-  use super::library_path;
+  use super::library_load;
 
   #[test]
   fn a_relative_library_path_is_absolute() {
     let current = std::env::current_dir().unwrap();
-    let relative = library_path("sub/x.so").unwrap();
+    let relative = library_load("sub/x.so").unwrap().path;
     assert!(relative.is_absolute());
     assert_eq!(relative, current.join("sub/x.so"));
 
-    let bare = library_path("x.so").unwrap();
+    let bare = library_load("x.so").unwrap().path;
     assert_eq!(bare, std::path::PathBuf::from("x.so"));
 
     let absolute = current.join("sub/x.so");
-    let loaded = library_path(absolute.to_str().unwrap()).unwrap();
+    let loaded = library_load(absolute.to_str().unwrap()).unwrap().path;
     assert_eq!(loaded, absolute);
   }
 }

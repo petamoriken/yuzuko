@@ -861,16 +861,6 @@ pub fn check_run(command: &str) -> Result<(), OpError> {
   require(Kind::Run, &Detail::Name(command.to_string()))
 }
 
-/// Like [`check_run`], resolving a relative command from `base`.
-///
-/// `spawn` uses this when `cwd` is set. The operating system resolves a
-/// relative program from that directory, not from the process directory.
-#[cfg(feature = "child")]
-pub(crate) fn check_run_at(command: &str, base: &Path) -> Result<(), OpError> {
-  let _base = RunBase::set(base);
-  check_run(command)
-}
-
 /// One `options.env` entry. `None` removes the name.
 #[cfg(feature = "child")]
 pub(crate) struct SpawnEnv<'a> {
@@ -891,23 +881,29 @@ pub(crate) fn resolve_spawn(
   cwd: Option<&Path>,
   env: &[SpawnEnv<'_>],
 ) -> Result<PathBuf, OpError> {
-  let path_command = is_command_path(command);
-  if path_command
-    && let Some(base) = cwd
-    && !Path::new(command).is_absolute()
-  {
-    check_run_at(command, base)?;
-  } else {
-    check_run(command)?;
+  if is_command_path(command) {
+    // Resolve once and check that file. Resolving again for `exec` would let
+    // a symlink swapped between the two run a file the check never saw.
+    // The denial names the caller's command, so it does not reveal where a
+    // symlink outside the grant leads.
+    let executed = with_run_base(cwd, || absolute_command(Path::new(command)))?;
+    if check_run(&executed.to_string_lossy()).is_err() {
+      return Err(denied(Kind::Run, &Detail::Name(command.to_string()))?);
+    }
+    if run_is_whole() {
+      return Ok(PathBuf::from(command));
+    }
+    if loader_env_present(env) {
+      return Err(denied(Kind::Run, &Detail::Any)?);
+    }
+    return Ok(executed);
   }
+  check_run(command)?;
   if run_is_whole() {
     return Ok(PathBuf::from(command));
   }
   if loader_env_present(env) {
     return Err(denied(Kind::Run, &Detail::Any)?);
-  }
-  if path_command {
-    return with_run_base(cwd, || absolute_command(Path::new(command)));
   }
   let base = match cwd {
     Some(path) => path.to_path_buf(),
@@ -1170,6 +1166,25 @@ fn interact(
   let Some(answer) = ask(kind, &text) else {
     return Ok(State::Denied);
   };
+  settle_answer(sandbox, kind, detail, answer)
+}
+
+/// Stores a prompt answer and returns the state of the call that asked.
+fn settle_answer(
+  sandbox: &mut Sandbox,
+  kind: Kind,
+  detail: &Detail,
+  answer: Answer,
+) -> Result<State, OpError> {
+  // A stored `*` would be read back as a wildcard rule, so a yes to `env`
+  // `FOO*` or `net` `*:80` would cover names never asked about. That answer
+  // applies to this call only.
+  if answer != Answer::All && is_wildcard_request(kind, detail) {
+    return Ok(match answer {
+      Answer::Once => State::Granted,
+      Answer::All | Answer::Deny => State::Denied,
+    });
+  }
   sandbox.remember(kind, detail, answer)?;
   // A yes stores the requested file, not a different file reached by
   // following a symlink and then `..`. Classify again so that yes cannot
@@ -1179,6 +1194,15 @@ fn interact(
     Answer::All => State::Granted,
     Answer::Once => sandbox.classify(kind, detail)?,
   })
+}
+
+/// A requested name that a stored rule would read as a wildcard.
+fn is_wildcard_request(kind: Kind, detail: &Detail) -> bool {
+  match (kind, detail) {
+    (Kind::Env, Detail::Name(name)) => name.ends_with('*'),
+    (Kind::Net, Detail::Net { host, .. }) => host == "*",
+    _ => false,
+  }
 }
 
 fn revoke_detail(kind: Kind, detail: &Detail) -> Result<State, OpError> {
@@ -2848,6 +2872,89 @@ mod tests {
       State::Granted
     );
     let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn a_prompt_answer_for_a_wildcard_name_is_not_stored() {
+    let root = std::env::temp_dir();
+    let mut sandbox =
+      Sandbox::compile(&PermissionSpec::default(), &root).unwrap();
+    for name in ["*", "SECRET*"] {
+      let asked = Detail::Name(name.to_string());
+      assert_eq!(
+        settle_answer(&mut sandbox, Kind::Env, &asked, Answer::Once).unwrap(),
+        State::Granted
+      );
+      assert_eq!(
+        settle_answer(&mut sandbox, Kind::Env, &asked, Answer::Deny).unwrap(),
+        State::Denied
+      );
+    }
+    let other = Detail::Name("SECRET".to_string());
+    assert_eq!(sandbox.classify(Kind::Env, &other).unwrap(), State::Prompt);
+    let any = Detail::Net {
+      host: "*".to_string(),
+      port: Some(80),
+    };
+    assert_eq!(
+      settle_answer(&mut sandbox, Kind::Net, &any, Answer::Once).unwrap(),
+      State::Granted
+    );
+    let host = Detail::Net {
+      host: "example.com".to_string(),
+      port: Some(80),
+    };
+    assert_eq!(sandbox.classify(Kind::Net, &host).unwrap(), State::Prompt);
+    assert_eq!(
+      settle_answer(&mut sandbox, Kind::Env, &other, Answer::Once).unwrap(),
+      State::Granted
+    );
+    assert_eq!(sandbox.classify(Kind::Env, &other).unwrap(), State::Granted);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn a_spawned_path_is_resolved_once_for_the_check_and_exec() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-perm-run-once-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let root = std::fs::canonicalize(&root).unwrap();
+    let allowed = root.join("allowed.sh");
+    let evil = root.join("evil.sh");
+    std::fs::write(&allowed, b"#!/bin/sh\n").unwrap();
+    std::fs::write(&evil, b"#!/bin/sh\n").unwrap();
+    let link = root.join("l");
+    std::os::unix::fs::symlink(&allowed, &link).unwrap();
+    let mut spec = PermissionSpec::default();
+    spec
+      .allow("run", Some(vec![allowed.display().to_string()]))
+      .unwrap();
+    let sandbox = Sandbox::compile(&spec, &root).unwrap();
+    let executed = absolute_command(&link).unwrap();
+    assert!(paths_equal(&executed, &allowed));
+    // The link now names another file. The checked path is still the file
+    // that `exec` receives.
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&evil, &link).unwrap();
+    let checked = Detail::Name(executed.display().to_string());
+    assert_eq!(
+      sandbox.classify(Kind::Run, &checked).unwrap(),
+      State::Granted
+    );
+    assert!(paths_equal(&executed, &allowed));
+    let swapped = Detail::Name(link.display().to_string());
+    assert_ne!(
+      sandbox.classify(Kind::Run, &swapped).unwrap(),
+      State::Granted
+    );
+    let _ = std::fs::remove_dir_all(&root);
   }
 
   #[test]
