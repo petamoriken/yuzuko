@@ -303,10 +303,18 @@ pub(super) fn attach_root(window: u64, node: u64) -> Result<(), Fail> {
   Ok(())
 }
 
-pub(super) fn append_child(parent: u64, node: u64) -> Result<Vec<u64>, Fail> {
-  let mut forest = lock();
+fn prepared_edit(
+  parent: u64,
+  node: u64,
+) -> Result<std::sync::MutexGuard<'static, Forest>, Fail> {
+  let forest = lock();
   require_node(&forest, parent)?;
   require_node(&forest, node)?;
+  Ok(forest)
+}
+
+pub(super) fn append_child(parent: u64, node: u64) -> Result<Vec<u64>, Fail> {
+  let mut forest = prepared_edit(parent, node)?;
   pre_insert(&mut forest, parent, node, None)
 }
 
@@ -315,9 +323,7 @@ pub(super) fn insert_before(
   node: u64,
   before: Option<u64>,
 ) -> Result<Vec<u64>, Fail> {
-  let mut forest = lock();
-  require_node(&forest, parent)?;
-  require_node(&forest, node)?;
+  let mut forest = prepared_edit(parent, node)?;
   let Some(before) = before else {
     return pre_insert(&mut forest, parent, node, None);
   };
@@ -340,9 +346,7 @@ pub(super) fn replace_child(
   node: u64,
   child: u64,
 ) -> Result<Vec<u64>, Fail> {
-  let mut forest = lock();
-  require_node(&forest, parent)?;
-  require_node(&forest, node)?;
+  let mut forest = prepared_edit(parent, node)?;
   require_node(&forest, child)?;
   let child_of_parent = is_child(&forest, parent, child);
   if node == child {
@@ -390,9 +394,7 @@ pub(super) fn replace_child(
 }
 
 pub(super) fn remove_child(parent: u64, node: u64) -> Result<Vec<u64>, Fail> {
-  let mut forest = lock();
-  require_node(&forest, parent)?;
-  require_node(&forest, node)?;
+  let mut forest = prepared_edit(parent, node)?;
   if !is_child(&forest, parent, node) {
     return Err(Fail::NotChild);
   }
