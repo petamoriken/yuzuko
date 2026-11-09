@@ -1169,7 +1169,6 @@ fn interact(
   settle_answer(sandbox, kind, detail, answer)
 }
 
-/// Stores a prompt answer and returns the state of the call that asked.
 fn settle_answer(
   sandbox: &mut Sandbox,
   kind: Kind,
@@ -2095,7 +2094,6 @@ fn run_base() -> Option<PathBuf> {
   RUN_BASE.with(|slot| slot.borrow().clone())
 }
 
-/// The file the operating system would execute for `path`.
 fn executed_path(path: &Path) -> Option<PathBuf> {
   let absolute = absolute_path(path).ok()?;
   let resolved = operating_path(&absolute, PathLink::Follow)?;

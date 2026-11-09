@@ -159,7 +159,6 @@ pub enum Raw {
   FileCancel,
 }
 
-/// Whether a queued path is a hover or a drop.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FilePhase {
   Hover,
@@ -418,9 +417,6 @@ pub fn arm_frame(id: u64) {
   });
 }
 
-/// A deadline that is already due at `now` moves one `interval` past `now`.
-///
-/// A deadline still in the future is unchanged. An absent frame stays absent.
 fn frame_after_overrun(
   armed: Option<Instant>,
   now: Instant,
@@ -451,8 +447,7 @@ pub(crate) fn defer_elapsed_frame(id: u64) {
 
 /// Stores the monitor period used the next time a frame is armed.
 ///
-/// An already armed deadline is left in place. Returns whether the period
-/// changed.
+/// An already armed deadline is left in place.
 pub fn set_frame_interval(id: u64, interval: Duration) -> bool {
   let changed = SLOTS.with(|slots| {
     let mut slots = slots.borrow_mut();

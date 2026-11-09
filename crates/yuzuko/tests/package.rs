@@ -87,7 +87,6 @@ fn game_tree(dir: &Path, config: &str) {
 fn base_config(extra: &str) -> String {
   format!(
     r#"{{
-  // display name
   "name": "My Game",
   "version": "1.4.2",
   "assets": ["./assets/**"],

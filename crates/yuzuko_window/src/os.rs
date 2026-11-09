@@ -190,7 +190,6 @@ thread_local! {
   static PRESENTED_TURN: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
-/// Forgets which windows presented during the previous turn.
 pub(crate) fn begin_present_turn() {
   PRESENTED_TURN.with(|turn| turn.borrow_mut().clear());
 }
@@ -213,7 +212,6 @@ impl Drop for PumpGuard {
   }
 }
 
-/// Device-pixel size of an open OS window. Headless windows have none.
 pub fn current_size(id: u64) -> Option<crate::inbox::Size> {
   if session::headless() {
     return None;
@@ -361,12 +359,11 @@ pub fn publish_accessible(id: u64) {
   });
 }
 
-/// Outer and client origins. `None` when this process has no OS window.
 pub fn frame_origin(id: u64) -> Option<FrameOrigin> {
   with_window(id, origin_of).flatten()
 }
 
-/// Moves the frame's top-left corner. Returns true after a live window pump.
+/// Returns true after a live window pump.
 pub fn move_outer(id: u64, x: f64, y: f64) -> bool {
   let found = with_window(id, |window| {
     window.set_outer_position(LogicalPosition::new(x, y));
@@ -408,7 +405,7 @@ pub fn ensure_running() -> Result<(), String> {
   Ok(())
 }
 
-/// Requests attention for one open OS window. Returns false when none exists.
+/// Signals the first open OS window only.
 #[cfg(not(target_os = "macos"))]
 pub fn request_attention(critical: bool) -> bool {
   let kind = if critical {
@@ -505,7 +502,6 @@ static TRANSPARENT_WINDOWS: std::sync::LazyLock<
   std::sync::Mutex<HashSet<u64>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashSet::new()));
 
-/// Whether the canvas presented in this window should keep alpha.
 pub fn canvas_is_transparent(canvas_id: u64) -> bool {
   let windows = TRANSPARENT_WINDOWS.lock().expect("transparent windows");
   if windows.contains(&canvas_id) {
@@ -797,7 +793,7 @@ pub fn request_redraw(id: u64) {
   with_window(id, |window| window.request_redraw());
 }
 
-/// Presents one window. `true` when a drawable was presented.
+/// `true` when a drawable was presented.
 pub fn present(id: u64) -> bool {
   if session::headless() {
     return false;
@@ -840,7 +836,6 @@ pub fn shutdown() {
   });
 }
 
-/// Pumps the OS event loop. Returns false when no OS loop exists.
 pub fn pump(timeout: Option<Duration>) -> bool {
   if session::headless() && OS.with(|slot| slot.borrow().is_none()) {
     return false;

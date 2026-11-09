@@ -144,7 +144,7 @@ fn exit_byte(
   {
     return Err(());
   }
-  // `code` is an integer in 0..=255. `-0` compares equal to `0`.
+  // `-0` compares equal to `0`.
   Ok(code as u8)
 }
 

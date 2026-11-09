@@ -18,7 +18,6 @@ use super::{
   ReadableStream, TransformStream, WritableStream, is_locked, writable_locked,
 };
 
-/// Which stream a transfer record describes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
   Readable,
@@ -37,7 +36,6 @@ pub enum StreamStatus {
   Locked,
 }
 
-/// A stream transfer failed.
 pub enum TransferError {
   /// The helper threw. The caller rethrows this and does not create another
   /// `DataCloneError`.

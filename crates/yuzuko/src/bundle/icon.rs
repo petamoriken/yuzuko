@@ -77,7 +77,6 @@ pub(crate) fn group_resource(
   group
 }
 
-/// Writes the icon of `ico` into the executable at `exe`.
 #[cfg(windows)]
 pub(crate) fn embed(
   exe: &std::path::Path,
@@ -145,7 +144,6 @@ pub(crate) fn embed(
 mod tests {
   use super::{group_resource, parse_ico};
 
-  /// An `.ico` with two images of the given payloads.
   fn ico(first: &[u8], second: &[u8]) -> Vec<u8> {
     let mut file = vec![0, 0, 1, 0, 2, 0];
     let offset = 6 + 2 * 16;

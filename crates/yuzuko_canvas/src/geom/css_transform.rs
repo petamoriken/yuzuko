@@ -537,7 +537,6 @@ enum AngleUnit {
 }
 
 impl AngleUnit {
-  /// The factor to the canonical unit, `deg`.
   /// https://www.w3.org/TR/css-values-4/#angles
   #[inline]
   fn deg_factor(self) -> f64 {
@@ -609,7 +608,6 @@ enum TimeUnit {
 }
 
 impl TimeUnit {
-  /// The factor to the canonical unit, `s`.
   /// https://www.w3.org/TR/css-values-4/#time
   #[inline]
   fn s_factor(self) -> f64 {
@@ -665,7 +663,6 @@ enum FrequencyUnit {
 }
 
 impl FrequencyUnit {
-  /// The factor to the canonical unit, `hz`.
   /// https://www.w3.org/TR/css-values-4/#frequency
   #[inline]
   fn hz_factor(self) -> f64 {
@@ -722,7 +719,6 @@ enum ResolutionUnit {
 }
 
 impl ResolutionUnit {
-  /// The factor to the canonical unit, `dppx`.
   /// https://www.w3.org/TR/css-values-4/#resolution
   #[inline]
   fn dppx_factor(self) -> f64 {

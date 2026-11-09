@@ -1872,7 +1872,6 @@ impl WindowSurface {
     *self.accessible_root.borrow_mut() = Some(traced(scope, object));
   }
 
-  /// The canvas this surface draws into.
   pub(crate) fn drawing_canvas(&self) -> &OffscreenCanvas {
     &self.canvas
   }
