@@ -269,9 +269,7 @@ fn permitted_env_name(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Option<String> {
-  let Some(name) = env_name(scope, value) else {
-    return None;
-  };
+  let name = env_name(scope, value)?;
   if let Err(error) = crate::permissions::check_env(&name) {
     error.throw(scope);
     return None;
