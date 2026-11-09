@@ -95,8 +95,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
-    let view = value::require_view(scope, buffer);
-    let (view, requested) = super::ready(scope, view)?;
+    let (view, requested) = read_view(scope, buffer)?;
     let inner = Arc::clone(&self.inner);
     settle!(
       scope,
@@ -119,8 +118,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
   ) -> Result<Option<u32>, OpError> {
-    let view = value::require_view(scope, buffer);
-    let (view, requested) = super::ready(scope, view)?;
+    let (view, requested) = read_view(scope, buffer)?;
     let read = self.with_file(|file| io::read_at(file, requested));
     let read = super::ready(scope, read)?;
     let view = v8::Local::new(scope, view);
@@ -135,8 +133,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     data: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
-    let bytes = value::copy_source(scope, data);
-    let bytes = super::ready(scope, bytes)?;
+    let bytes = write_bytes(scope, data)?;
     let inner = Arc::clone(&self.inner);
     settle!(
       scope,
@@ -154,8 +151,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     data: v8::Local<v8::Value>,
   ) -> Result<u32, OpError> {
-    let bytes = value::copy_source(scope, data);
-    let bytes = super::ready(scope, bytes)?;
+    let bytes = write_bytes(scope, data)?;
     let count = self.with_file(|file| io::write_at(file, &bytes));
     let count = super::ready(scope, count)?;
     Ok(u32::try_from(count).unwrap_or(u32::MAX))
@@ -269,8 +265,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     exclusive: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
-    let exclusive = value::exclusive_arg(scope, exclusive);
-    let exclusive = super::ready(scope, exclusive)?;
+    let exclusive = exclusive_flag(scope, exclusive)?;
     let inner = Arc::clone(&self.inner);
     settle!(
       scope,
@@ -286,8 +281,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     exclusive: Option<v8::Local<v8::Value>>,
   ) -> Result<(), OpError> {
-    let exclusive = value::exclusive_arg(scope, exclusive);
-    let exclusive = super::ready(scope, exclusive)?;
+    let exclusive = exclusive_flag(scope, exclusive)?;
     super::ready(scope, self.with_file(|file| io::lock_file(file, exclusive)))
   }
 
@@ -297,8 +291,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     exclusive: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
-    let exclusive = value::exclusive_arg(scope, exclusive);
-    let exclusive = super::ready(scope, exclusive)?;
+    let exclusive = exclusive_flag(scope, exclusive)?;
     let inner = Arc::clone(&self.inner);
     settle!(
       scope,
@@ -316,8 +309,7 @@ impl FsFile {
     scope: &mut v8::PinScope,
     exclusive: Option<v8::Local<v8::Value>>,
   ) -> Result<bool, OpError> {
-    let exclusive = value::exclusive_arg(scope, exclusive);
-    let exclusive = super::ready(scope, exclusive)?;
+    let exclusive = exclusive_flag(scope, exclusive)?;
     super::ready(
       scope,
       self.with_file(|file| io::try_lock_file(file, exclusive)),
@@ -347,8 +339,7 @@ impl FsFile {
     atime: v8::Local<v8::Value>,
     mtime: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
-    let atime = file_time(scope, atime)?;
-    let mtime = file_time(scope, mtime)?;
+    let (atime, mtime) = utime_times(scope, atime, mtime)?;
     let inner = Arc::clone(&self.inner);
     settle!(
       scope,
@@ -365,8 +356,7 @@ impl FsFile {
     atime: v8::Local<v8::Value>,
     mtime: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let atime = file_time(scope, atime)?;
-    let mtime = file_time(scope, mtime)?;
+    let (atime, mtime) = utime_times(scope, atime, mtime)?;
     super::ready(
       scope,
       self.with_file(|file| io::utime_file(file, atime, mtime)),
@@ -449,6 +439,38 @@ pub(super) fn async_dispose(
       let _ = resolver.reject(scope, exception);
     }
   }
+}
+
+fn read_view(
+  scope: &mut v8::PinScope,
+  buffer: v8::Local<v8::Value>,
+) -> Result<(v8::Global<v8::ArrayBufferView>, usize), OpError> {
+  let view = value::require_view(scope, buffer);
+  super::ready(scope, view)
+}
+
+fn write_bytes(
+  scope: &mut v8::PinScope,
+  data: v8::Local<v8::Value>,
+) -> Result<Vec<u8>, OpError> {
+  let bytes = value::copy_source(scope, data);
+  super::ready(scope, bytes)
+}
+
+fn exclusive_flag(
+  scope: &mut v8::PinScope,
+  exclusive: Option<v8::Local<v8::Value>>,
+) -> Result<bool, OpError> {
+  let exclusive = value::exclusive_arg(scope, exclusive);
+  super::ready(scope, exclusive)
+}
+
+fn utime_times(
+  scope: &mut v8::PinScope,
+  atime: v8::Local<v8::Value>,
+  mtime: v8::Local<v8::Value>,
+) -> Result<(FileTime, FileTime), OpError> {
+  Ok((file_time(scope, atime)?, file_time(scope, mtime)?))
 }
 
 fn file_time(

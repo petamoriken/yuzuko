@@ -158,6 +158,8 @@ check((await Yuzuko.readTextFile("note.txt")) === "hello", "readTextFile");
 check(Yuzuko.readTextFileSync("note.txt") === "hello", "readTextFileSync");
 const bytes = await Yuzuko.readFile("note.txt");
 check(bytes.length === 5 && bytes[0] === 104, "readFile");
+const syncBytes = Yuzuko.readFileSync("note.txt");
+check(syncBytes.length === 5 && syncBytes[0] === 104, "readFileSync");
 
 await Yuzuko.mkdir("sub/nested", { recursive: true });
 const file = await Yuzuko.open("sub/nested/data.bin", {

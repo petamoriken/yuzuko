@@ -259,14 +259,22 @@ fn permit_temp(spec: &mut io::TempSpec) -> Result<(), OpError> {
   Ok(())
 }
 
+fn open_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, OpenFlags), OpError> {
+  let path = one_path(scope, args)?;
+  let flags = ready_open_flags(scope, args.get(1))?;
+  permit_open(&path, flags)?;
+  Ok((path, flags))
+}
+
 callback!(open, open_op);
 fn open_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_open_flags(scope, args.get(1))?;
-  permit_open(&path, flags)?;
+  let (path, flags) = open_args(scope, args)?;
   settle!(
     scope,
     move || io::open_file(&path, flags),
@@ -285,11 +293,18 @@ fn open_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<New<FsFile>, OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_open_flags(scope, args.get(1))?;
-  permit_open(&path, flags)?;
+  let (path, flags) = open_args(scope, args)?;
   let file = ready(scope, io::open_file(&path, flags))?;
   Ok(New(FsFile::from_std(file)))
+}
+
+fn create_path(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<std::path::PathBuf, OpError> {
+  let path = one_path(scope, args)?;
+  crate::permissions::check_write(&path)?;
+  Ok(path)
 }
 
 callback!(create, create_op);
@@ -297,9 +312,8 @@ fn create_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
+  let path = create_path(scope, args)?;
   let flags = OpenFlags::create_file();
-  crate::permissions::check_write(&path)?;
   settle!(
     scope,
     move || io::open_file(&path, flags),
@@ -318,8 +332,7 @@ fn create_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<New<FsFile>, OpError> {
-  let path = one_path(scope, args)?;
-  crate::permissions::check_write(&path)?;
+  let path = create_path(scope, args)?;
   let file = ready(scope, io::open_file(&path, OpenFlags::create_file()))?;
   Ok(New(FsFile::from_std(file)))
 }
@@ -374,15 +387,23 @@ fn read_text_file_sync_op(
   ready(scope, io::read_text(&path))
 }
 
+fn write_file_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, Vec<u8>, io::WriteFlags), OpError> {
+  let path = one_path(scope, args)?;
+  let bytes = ready_copy(scope, args.get(1))?;
+  let flags = ready_write_flags(scope, args.get(2))?;
+  crate::permissions::check_write(&path)?;
+  Ok((path, bytes, flags))
+}
+
 callback!(write_file, write_file_op);
 fn write_file_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let bytes = ready_copy(scope, args.get(1))?;
-  let flags = ready_write_flags(scope, args.get(2))?;
-  crate::permissions::check_write(&path)?;
+  let (path, bytes, flags) = write_file_args(scope, args)?;
   settle!(
     scope,
     move || io::write_bytes(&path, &bytes, flags),
@@ -397,11 +418,19 @@ fn write_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
+  let (path, bytes, flags) = write_file_args(scope, args)?;
+  ready(scope, io::write_bytes(&path, &bytes, flags))
+}
+
+fn write_text_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, String, io::WriteFlags), OpError> {
   let path = one_path(scope, args)?;
-  let bytes = ready_copy(scope, args.get(1))?;
+  let text = ready_text(scope, args.get(1))?;
   let flags = ready_write_flags(scope, args.get(2))?;
   crate::permissions::check_write(&path)?;
-  ready(scope, io::write_bytes(&path, &bytes, flags))
+  Ok((path, text, flags))
 }
 
 callback!(write_text_file, write_text_file_op);
@@ -409,10 +438,7 @@ fn write_text_file_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let text = ready_text(scope, args.get(1))?;
-  let flags = ready_write_flags(scope, args.get(2))?;
-  crate::permissions::check_write(&path)?;
+  let (path, text, flags) = write_text_args(scope, args)?;
   settle!(
     scope,
     move || io::write_text(&path, &text, flags),
@@ -427,11 +453,18 @@ fn write_text_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let path = one_path(scope, args)?;
-  let text = ready_text(scope, args.get(1))?;
-  let flags = ready_write_flags(scope, args.get(2))?;
-  crate::permissions::check_write(&path)?;
+  let (path, text, flags) = write_text_args(scope, args)?;
   ready(scope, io::write_text(&path, &text, flags))
+}
+
+fn mkdir_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, io::MkdirFlags), OpError> {
+  let path = one_path(scope, args)?;
+  let flags = ready_mkdir_flags(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
+  Ok((path, flags))
 }
 
 callback!(mkdir, mkdir_op);
@@ -439,9 +472,7 @@ fn mkdir_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_mkdir_flags(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, flags) = mkdir_args(scope, args)?;
   settle!(
     scope,
     move || io::mkdir_path(&path, flags),
@@ -456,10 +487,18 @@ fn mkdir_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_mkdir_flags(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, flags) = mkdir_args(scope, args)?;
   ready(scope, io::mkdir_path(&path, flags))
+}
+
+fn remove_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, io::RemoveFlags), OpError> {
+  let path = one_path(scope, args)?;
+  let flags = ready_remove_flags(scope, args.get(1))?;
+  permit_remove(&path, flags.recursive)?;
+  Ok((path, flags))
 }
 
 callback!(remove, remove_op);
@@ -467,9 +506,7 @@ fn remove_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_remove_flags(scope, args.get(1))?;
-  permit_remove(&path, flags.recursive)?;
+  let (path, flags) = remove_args(scope, args)?;
   settle!(
     scope,
     move || io::remove_path(&path, flags),
@@ -484,9 +521,7 @@ fn remove_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let path = one_path(scope, args)?;
-  let flags = ready_remove_flags(scope, args.get(1))?;
-  permit_remove(&path, flags.recursive)?;
+  let (path, flags) = remove_args(scope, args)?;
   ready(scope, io::remove_path(&path, flags))
 }
 
@@ -503,16 +538,24 @@ fn permit_remove(
   }
 }
 
-callback!(rename, rename_op);
-fn rename_op(
+fn rename_args(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
-) -> Result<Js, OpError> {
+) -> Result<(std::path::PathBuf, std::path::PathBuf), OpError> {
   let (from, to) = two_anchored(scope, args)?;
   crate::permissions::check_read(&from)?;
   crate::permissions::check_write(&from)?;
   crate::permissions::check_read(&to)?;
   crate::permissions::check_write(&to)?;
+  Ok((from, to))
+}
+
+callback!(rename, rename_op);
+fn rename_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (from, to) = rename_args(scope, args)?;
   settle!(
     scope,
     move || io::rename_path(&from, &to),
@@ -527,11 +570,7 @@ fn rename_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (from, to) = two_anchored(scope, args)?;
-  crate::permissions::check_read(&from)?;
-  crate::permissions::check_write(&from)?;
-  crate::permissions::check_read(&to)?;
-  crate::permissions::check_write(&to)?;
+  let (from, to) = rename_args(scope, args)?;
   ready(scope, io::rename_path(&from, &to))
 }
 
@@ -627,14 +666,22 @@ fn read_dir_sync_op(
   Ok(Js(v8::Global::new(scope, value)))
 }
 
+fn copy_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), OpError> {
+  let (from, to) = two_anchored(scope, args)?;
+  crate::permissions::check_read(&from)?;
+  crate::permissions::check_write(&to)?;
+  Ok((from, to))
+}
+
 callback!(copy_file, copy_file_op);
 fn copy_file_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let (from, to) = two_anchored(scope, args)?;
-  crate::permissions::check_read(&from)?;
-  crate::permissions::check_write(&to)?;
+  let (from, to) = copy_args(scope, args)?;
   settle!(
     scope,
     move || io::copy_path(&from, &to),
@@ -649,9 +696,7 @@ fn copy_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (from, to) = two_anchored(scope, args)?;
-  crate::permissions::check_read(&from)?;
-  crate::permissions::check_write(&to)?;
+  let (from, to) = copy_args(scope, args)?;
   ready(scope, io::copy_path(&from, &to))
 }
 
@@ -681,14 +726,22 @@ fn real_path_sync_op(
   ready(scope, io::real_path(&path))
 }
 
+fn truncate_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, u64), OpError> {
+  let path = one_path(scope, args)?;
+  let len = ready_length(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
+  Ok((path, len))
+}
+
 callback!(truncate, truncate_op);
 fn truncate_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let len = ready_length(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, len) = truncate_args(scope, args)?;
   settle!(
     scope,
     move || io::truncate_path(&path, len),
@@ -703,9 +756,7 @@ fn truncate_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let path = one_path(scope, args)?;
-  let len = ready_length(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, len) = truncate_args(scope, args)?;
   ready(scope, io::truncate_path(&path, len))
 }
 
@@ -725,13 +776,21 @@ fn make_temp_file_op(
   temp_kind(scope, args, false)
 }
 
+fn temp_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<io::TempSpec, OpError> {
+  let mut spec = ready_temp(scope, args.get(0))?;
+  permit_temp(&mut spec)?;
+  Ok(spec)
+}
+
 fn temp_kind(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
   directory: bool,
 ) -> Result<Js, OpError> {
-  let mut spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&mut spec)?;
+  let spec = temp_args(scope, args)?;
   settle!(
     scope,
     move || io::make_temp(directory, spec),
@@ -748,8 +807,7 @@ fn make_temp_dir_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
-  let mut spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&mut spec)?;
+  let spec = temp_args(scope, args)?;
   ready(scope, io::make_temp(true, spec))
 }
 
@@ -758,8 +816,7 @@ fn make_temp_file_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
-  let mut spec = ready_temp(scope, args.get(0))?;
-  permit_temp(&mut spec)?;
+  let spec = temp_args(scope, args)?;
   ready(scope, io::make_temp(false, spec))
 }
 
@@ -832,14 +889,22 @@ fn utime_args(
   Ok((path, atime, mtime))
 }
 
+fn chmod_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(std::path::PathBuf, u32), OpError> {
+  let path = one_path(scope, args)?;
+  let mode = ready_mode(scope, args.get(1))?;
+  crate::permissions::check_write(&path)?;
+  Ok((path, mode))
+}
+
 callback!(chmod, chmod_op);
 fn chmod_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  let mode = ready_mode(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, mode) = chmod_args(scope, args)?;
   settle!(
     scope,
     move || io::chmod(&path, mode),
@@ -854,9 +919,7 @@ fn chmod_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let path = one_path(scope, args)?;
-  let mode = ready_mode(scope, args.get(1))?;
-  crate::permissions::check_write(&path)?;
+  let (path, mode) = chmod_args(scope, args)?;
   ready(scope, io::chmod(&path, mode))
 }
 
@@ -899,16 +962,24 @@ fn umask_op(
   ready(scope, io::umask(mask))
 }
 
-callback!(link, link_op);
-fn link_op(
+fn link_args(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
-) -> Result<Js, OpError> {
+) -> Result<(std::path::PathBuf, std::path::PathBuf), OpError> {
   let (old, new) = two_anchored(scope, args)?;
   crate::permissions::check_read(&old)?;
   // The new name is the same inode. Writing it changes the old file.
   crate::permissions::check_write(&old)?;
   crate::permissions::check_write(&new)?;
+  Ok((old, new))
+}
+
+callback!(link, link_op);
+fn link_op(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Js, OpError> {
+  let (old, new) = link_args(scope, args)?;
   settle!(
     scope,
     move || io::link(&old, &new),
@@ -923,11 +994,7 @@ fn link_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), OpError> {
-  let (old, new) = two_anchored(scope, args)?;
-  crate::permissions::check_read(&old)?;
-  // The new name is the same inode. Writing it changes the old file.
-  crate::permissions::check_write(&old)?;
-  crate::permissions::check_write(&new)?;
+  let (old, new) = link_args(scope, args)?;
   ready(scope, io::link(&old, &new))
 }
 
@@ -955,13 +1022,21 @@ fn symlink_sync_op(
   ready(scope, io::symlink(&old, &new, kind))
 }
 
+fn read_link_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<std::path::PathBuf, OpError> {
+  let path = one_path(scope, args)?;
+  crate::permissions::check_read(&path)?;
+  Ok(path)
+}
+
 callback!(read_link, read_link_op);
 fn read_link_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<Js, OpError> {
-  let path = one_path(scope, args)?;
-  crate::permissions::check_read(&path)?;
+  let path = read_link_args(scope, args)?;
   settle!(
     scope,
     move || io::read_link(&path),
@@ -978,8 +1053,7 @@ fn read_link_sync_op(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<String, OpError> {
-  let path = one_path(scope, args)?;
-  crate::permissions::check_read(&path)?;
+  let path = read_link_args(scope, args)?;
   ready(scope, io::read_link(&path))
 }
 

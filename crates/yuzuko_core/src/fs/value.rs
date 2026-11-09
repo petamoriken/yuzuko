@@ -355,16 +355,7 @@ pub(super) fn copy_source(
     return shared_copy(&buffer);
   }
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    if view
-      .buffer(scope)
-      .is_some_and(|buffer| buffer.was_detached())
-    {
-      return Err(FsError::type_("The buffer is detached."));
-    }
-    let length = view.byte_length();
-    if length > io::MAX_BUFFER {
-      return Err(FsError::type_("The buffer is too large."));
-    }
+    let length = capped_view(scope, view)?;
     let mut bytes = vec![0u8; length];
     if length == 0 {
       return Ok(bytes);
@@ -386,6 +377,14 @@ pub(super) fn require_view(
   let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) else {
     return Err(FsError::type_("The buffer must be a Uint8Array."));
   };
+  let length = capped_view(scope, view)?;
+  Ok((v8::Global::new(scope, view), length))
+}
+
+fn capped_view(
+  scope: &mut v8::PinScope,
+  view: v8::Local<v8::ArrayBufferView>,
+) -> Result<usize, FsError> {
   if view
     .buffer(scope)
     .is_some_and(|buffer| buffer.was_detached())
@@ -396,7 +395,7 @@ pub(super) fn require_view(
   if length > io::MAX_BUFFER {
     return Err(FsError::type_("The buffer is too large."));
   }
-  Ok((v8::Global::new(scope, view), length))
+  Ok(length)
 }
 
 pub(super) fn write_view(
