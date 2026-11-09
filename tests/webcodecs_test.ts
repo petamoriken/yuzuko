@@ -366,6 +366,55 @@ Yuzuko.test("WebCodecs constructors exist and encoders do not", () => {
   assert(name === "TypeError", "AudioData " + name);
 });
 
+Yuzuko.test("VideoDecoder dispatches a dequeue event", () => {
+  const decoder = new VideoDecoder({ output: () => {}, error: () => {} });
+  assert(decoder instanceof EventTarget, "EventTarget");
+  assert(decoder.ondequeue === null, "ondequeue starts null");
+  decoder.configure({
+    codec: "av01.0.04M.08",
+    hardwareAcceleration: "prefer-software",
+  });
+  const handled: Event[] = [];
+  const listened: Event[] = [];
+  decoder.ondequeue = (event) => {
+    assert(event instanceof Event, "handler event");
+    assert(event.type === "dequeue", event.type);
+    assert(event.target === decoder, "target");
+    assert(event.currentTarget === decoder, "currentTarget");
+    assert(event.eventPhase === Event.AT_TARGET, "phase");
+    assert(event.isTrusted === true, "trusted");
+    assert(event.bubbles === false, "bubbles");
+    assert(event.cancelable === false, "cancelable");
+    assert(decoder.decodeQueueSize === 0, "size while handling");
+    handled.push(event);
+  };
+  decoder.addEventListener("dequeue", (event) => {
+    listened.push(event);
+  });
+  const chunk = new EncodedVideoChunk({
+    type: "key",
+    timestamp: 0,
+    data: new Uint8Array([1, 2, 3, 4]),
+  });
+  decoder.decode(chunk);
+  assert(decoder.decodeQueueSize === 1, "queued");
+  decoder.reset();
+  assert(decoder.decodeQueueSize === 0, "cleared");
+  assert(handled.length === 1, "one handler call");
+  assert(listened.length === 1 && listened[0] === handled[0], "same event");
+  decoder.ondequeue = null;
+  assert(decoder.ondequeue === null, "cleared handler");
+  decoder.configure({
+    codec: "av01.0.04M.08",
+    hardwareAcceleration: "prefer-software",
+  });
+  decoder.decode(chunk);
+  decoder.reset();
+  assert(handled.length === 1, "removed handler stays quiet");
+  assert(listened.length === 2, "listener still runs");
+  decoder.close();
+});
+
 Yuzuko.test("an unconfigured decoder rejects decode and flush", async () => {
   const decoder = new VideoDecoder({ output: () => {}, error: () => {} });
   assert(decoder.state === "unconfigured", decoder.state);
@@ -376,6 +425,24 @@ Yuzuko.test("an unconfigured decoder rejects decode and flush", async () => {
   });
   await assertThrows(() => decoder.decode(chunk), "InvalidStateError");
   await assertThrows(() => decoder.flush(), "InvalidStateError");
+  const foreign = VideoDecoder.prototype.flush.call({});
+  assert(foreign instanceof Promise, "foreign flush returns a promise");
+  let foreignName = "";
+  try {
+    await foreign;
+  } catch (error) {
+    foreignName = error instanceof TypeError ? "TypeError" : String(error);
+  }
+  assert(foreignName === "TypeError", foreignName);
+  const foreignAudio = AudioDecoder.prototype.flush.call({});
+  assert(foreignAudio instanceof Promise, "foreign audio flush returns a promise");
+  foreignName = "";
+  try {
+    await foreignAudio;
+  } catch (error) {
+    foreignName = error instanceof TypeError ? "TypeError" : String(error);
+  }
+  assert(foreignName === "TypeError", foreignName);
   decoder.close();
   await assertThrows(() => decoder.configure({ codec: "avc1" }), "InvalidStateError");
 });
@@ -784,6 +851,48 @@ function solidBitmap(pixels: number[]): ImageBitmap {
   context.putImageData(data, 0, 0);
   return canvas.transferToImageBitmap();
 }
+
+Yuzuko.test("VideoFrame metadata is empty and copyTo checks its receiver", async () => {
+  const init = {
+    format: "RGBA" as const,
+    codedWidth: 1,
+    codedHeight: 1,
+    timestamp: 0,
+    metadata: { rtpTimestamp: 7 },
+  };
+  const frame = new VideoFrame(new Uint8Array([1, 2, 3, 255]), init);
+  assert(VideoFrame.prototype.metadata.length === 0, "metadata length");
+  assert(VideoFrame.prototype.metadata.name === "metadata", "metadata name");
+  const meta = frame.metadata();
+  assert(meta !== null && typeof meta === "object" && !Array.isArray(meta), "object");
+  assert(Object.keys(meta).length === 0, "empty");
+  assert(frame.metadata() !== meta, "fresh object");
+  assertTypeError(() => VideoFrame.prototype.metadata.call({}), "foreign metadata");
+  assertTypeError(() => VideoFrame.prototype.metadata.call(null), "null metadata");
+  assert(VideoFrame.prototype.copyTo.length === 1, "copyTo length");
+  const foreign = VideoFrame.prototype.copyTo.call({}, new Uint8Array(4));
+  assert(foreign instanceof Promise, "foreign copyTo returns a promise");
+  const missing = frame.copyTo();
+  assert(missing instanceof Promise, "missing destination returns a promise");
+  let foreignName = "";
+  let missingName = "";
+  try {
+    await foreign;
+  } catch (error) {
+    foreignName = error instanceof TypeError ? "TypeError" : String(error);
+  }
+  try {
+    await missing;
+  } catch (error) {
+    missingName = error instanceof TypeError ? "TypeError" : String(error);
+  }
+  assert(foreignName === "TypeError", foreignName);
+  assert(missingName === "TypeError", missingName);
+  frame.close();
+  const closed = frame.metadata();
+  assert(Object.keys(closed).length === 0, "closed metadata");
+  frame.close();
+});
 
 Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async () => {
   const bitmap = solidBitmap([

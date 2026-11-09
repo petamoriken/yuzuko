@@ -229,6 +229,7 @@ impl ImageDecoder {
   }
 
   #[getter]
+  #[promise]
   fn completed(&self, scope: &mut v8::PinScope) -> Js {
     stored_promise(scope, &self.completed)
   }
@@ -238,6 +239,7 @@ impl ImageDecoder {
     stored_object(scope, &self.tracks)
   }
 
+  #[promise]
   fn decode(
     &self,
     scope: &mut v8::PinScope,
@@ -270,6 +272,7 @@ impl ImageDecoder {
   }
 
   #[static_method]
+  #[promise]
   #[length(1)]
   fn is_type_supported(scope: &mut v8::PinScope, mime: String) -> Js {
     let Some(resolver) = v8::PromiseResolver::new(scope) else {
@@ -532,6 +535,7 @@ impl ImageDecoder {
 #[op]
 impl ImageTrackList {
   #[getter]
+  #[promise]
   fn ready(&self, scope: &mut v8::PinScope) -> Js {
     let Some(decoder) = open_decoder(scope, &self.decoder) else {
       return Js::null(scope);

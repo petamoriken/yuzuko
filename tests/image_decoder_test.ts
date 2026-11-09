@@ -32,6 +32,39 @@ Yuzuko.test("isTypeSupported knows the still-image decoders", async () => {
   assert(!(await ImageDecoder.isTypeSupported("image/gif")), "gif");
 });
 
+async function rejectionName(value: Promise<unknown>): Promise<string> {
+  try {
+    await value;
+  } catch (error) {
+    return error instanceof TypeError ? "TypeError" : String(error);
+  }
+  return "resolved";
+}
+
+Yuzuko.test("ImageDecoder promise members reject a foreign receiver", async () => {
+  const completed = ImageDecoder.prototype.completed;
+  assert(completed instanceof Promise, "completed is a promise");
+  assert(await rejectionName(completed) === "TypeError", "prototype completed");
+  const ready = ImageTrackList.prototype.ready;
+  assert(ready instanceof Promise, "ready is a promise");
+  assert(await rejectionName(ready) === "TypeError", "prototype ready");
+  const decode = ImageDecoder.prototype.decode.call({});
+  assert(decode instanceof Promise, "foreign decode returns a promise");
+  assert(await rejectionName(decode) === "TypeError", "foreign decode");
+  assert(ImageDecoder.isTypeSupported.length === 1, "isTypeSupported length");
+  const missing = ImageDecoder.isTypeSupported();
+  assert(missing instanceof Promise, "missing type returns a promise");
+  assert(await rejectionName(missing) === "TypeError", "missing type");
+
+  const encoded = await bytes("corners.png");
+  const decoder = new ImageDecoder({ type: "image/png", data: encoded });
+  await decoder.completed;
+  await decoder.tracks.ready;
+  const result = await decoder.decode();
+  result.image.close();
+  decoder.close();
+});
+
 Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   const encoded = await bytes("corners.png");
   const direct = await bitmapPixels(new Blob([encoded], { type: "image/png" }));

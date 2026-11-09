@@ -12746,6 +12746,16 @@ interface VideoFrameCopyToOptions {
 }
 
 /**
+ * Members of a {@link VideoFrame} from the VideoFrame Metadata Registry.
+ *
+ * This runtime records none, so {@link VideoFrame.metadata} returns an empty
+ * object.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/metadata)
+ */
+interface VideoFrameMetadata {}
+
+/**
  * A video frame.
  *
  * `new VideoFrame(image, init)` copies an `ImageBitmap`, an `OffscreenCanvas`,
@@ -12765,6 +12775,8 @@ interface VideoFrameCopyToOptions {
  * `codedRect` are null, and `colorSpace` members are null. `timestamp` and
  * `duration` stay. `clone`, `allocationSize`, `copyTo`, `drawImage`, and
  * `createImageBitmap` then throw `InvalidStateError`.
+ * `metadata()` still returns a new empty object. No VideoFrame Metadata
+ * Registry member is recorded, and constructor `metadata` is not stored.
  * `structuredClone` and `postMessage` copy the frame and leave it open.
  * Listing it in a transfer list closes it, and the receiver gets the pixels.
  *
@@ -12830,8 +12842,20 @@ interface VideoFrame {
   allocationSize(options?: VideoFrameCopyToOptions): number;
 
   /**
+   * Returns a new empty object. No VideoFrame Metadata Registry member is
+   * recorded, including after `close()`. Constructor `metadata` is not stored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/metadata)
+   */
+  metadata(): VideoFrameMetadata;
+
+  /**
+   * A missing destination rejects `TypeError`. A call on a value that is not
+   * this frame rejects `TypeError`.
+   *
    * @throws {@link DOMException} `NotSupportedError` when `options.format` is
-   * not the source format and not an RGB format.
+   * not the source format and not an RGB format. The rejection is from this
+   * promise.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/copyTo)
    */
@@ -12930,26 +12954,28 @@ interface EncodedVideoChunkInit {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
  */
-interface VideoDecoder {
+interface VideoDecoder extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/state) */
   readonly state: CodecState;
 
   /**
-   * Number of chunks waiting to be decoded. `ondequeue` is called when this
-   * decreases. No `dequeue` event is dispatched.
+   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched
+   * when this decreases.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decodeQueueSize)
    */
   readonly decodeQueueSize: number;
 
   /**
-   * Called with no arguments when `decodeQueueSize` decreases.
-   * No `dequeue` event is dispatched.
+   * Handler for the `dequeue` event. The event is dispatched when
+   * `decodeQueueSize` decreases. It does not bubble and is not cancelable.
+   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch
+   * one event after the size becomes 0.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/ondequeue)
    */
-  ondequeue: ((this: VideoDecoder) => void) | null;
+  ondequeue: ((this: VideoDecoder, ev: Event) => any) | null;
 
   /**
    * An omitted or empty `description` is Annex B for H.264 and a raw OBU
@@ -13311,7 +13337,8 @@ interface AudioDecoderConfig {
  * Decodes a PNG, JPEG, WebP, JPEG XL, or AVIF image.
  *
  * `isTypeSupported` resolves `true` for `image/png`, `image/jpeg`,
- * `image/webp`, `image/jxl`, and `image/avif`. The constructor still returns
+ * `image/webp`, `image/jxl`, and `image/avif`. A call with too few arguments
+ * rejects `TypeError`. The constructor still returns
  * a decoder for any other type. `completed`, `tracks.ready`, and `decode()`
  * then reject
  * `NotSupportedError`. A still image has one track, `frameCount` 1,
