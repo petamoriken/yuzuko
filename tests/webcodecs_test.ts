@@ -64,9 +64,9 @@ function framesOf(blob: Uint8Array): Uint8Array[] {
 
 /**
  * H.264 decodes only in the platform hardware decoder. A Windows or Linux
- * machine without one, such as a VM or WSL without VA-API, rejects the valid
- * fixture config with `NotSupportedError`, and the picture tests are ignored
- * there. macOS always has VideoToolbox, so the probe must succeed.
+ * machine without one, such as a VM or WSL without VA-API, closes the
+ * decoder and reports `NotSupportedError`. The picture tests are ignored
+ * there. macOS always has VideoToolbox, so the probe must stay configured.
  */
 async function probeHardwareAvc(): Promise<boolean> {
   const decoder = new VideoDecoder({ output: () => {}, error: () => {} });
@@ -77,16 +77,18 @@ async function probeHardwareAvc(): Promise<boolean> {
       codedWidth: 64,
       codedHeight: 64,
     });
-    return true;
-  } catch (error) {
-    const unsupported = error instanceof DOMException &&
-      error.name === "NotSupportedError";
-    if (!unsupported || Yuzuko.build.os === "darwin") {
-      throw error;
+    await Promise.resolve();
+    if (decoder.state === "configured") {
+      return true;
+    }
+    if (Yuzuko.build.os === "darwin") {
+      throw new Error("VideoToolbox rejected the H.264 probe");
     }
     return false;
   } finally {
-    decoder.close();
+    if (decoder.state !== "closed") {
+      decoder.close();
+    }
   }
 }
 
