@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use yuzuko_core::op::{Js, New, OpError};
 use yuzuko_dom::EventTarget;
@@ -1304,6 +1305,7 @@ fn build_buffer_source(
     shell(context, &opts, 0, 1),
     Kind::Buffer {
       buffer,
+      buffer_assigned: buffer.is_some(),
       acquired: None,
       rate: rate_id,
       detune: detune_id,
@@ -2210,6 +2212,113 @@ impl AudioContext {
 }
 
 #[repr(C)]
+pub struct OfflineAudioCompletionEvent {
+  base: yuzuko_dom::Event,
+  rendered: RefCell<v8::TracedReference<v8::Object>>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for OfflineAudioCompletionEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    if let Ok(rendered) = self.rendered.try_borrow() {
+      visitor.trace(&*rendered);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"OfflineAudioCompletionEvent"
+  }
+}
+
+fn completion_buffer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  if args.length() < 2 || args.get(1).is_null_or_undefined() {
+    return Err(OpError::type_("renderedBuffer is required"));
+  }
+  let init = v8::Local::<v8::Object>::try_from(args.get(1))
+    .map_err(|_| OpError::type_("renderedBuffer is required"))?;
+  let Some(raw) = util::member(scope, init, "renderedBuffer") else {
+    return Err(OpError::type_("renderedBuffer is required"));
+  };
+  if raw.is_null_or_undefined() {
+    return Err(OpError::type_("renderedBuffer is required"));
+  }
+  let buffer = v8::Local::<v8::Object>::try_from(raw)
+    .map_err(|_| OpError::type_("renderedBuffer is not an AudioBuffer"))?;
+  if unsafe { yuzuko_core::op::host_ref::<AudioBuffer>(scope, buffer) }
+    .is_none()
+  {
+    return Err(OpError::type_("renderedBuffer is not an AudioBuffer"));
+  }
+  Ok(buffer)
+}
+
+#[op(inherit = yuzuko_dom::Event, inspect_after = ["renderedBuffer"])]
+impl OfflineAudioCompletionEvent {
+  #[constructor]
+  #[length(2)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    let base = yuzuko_dom::Event::from_args(scope, args, false)?;
+    let rendered = completion_buffer(scope, args)?;
+    Ok(Self {
+      base,
+      rendered: RefCell::new(yuzuko_core::op::traced(scope, rendered)),
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    yuzuko_dom::define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn rendered_buffer(&self, scope: &mut v8::PinScope) -> Js {
+    let value = yuzuko_core::op::traced_local(scope, &self.rendered.borrow())
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| v8::null(scope).into());
+    Js(v8::Global::new(scope, value))
+  }
+}
+
+/// Dispatches `complete`, then resolves `startRendering` with the same
+/// `AudioBuffer`. `resume` resolves `undefined`.
+fn queue_offline_completion(
+  context: u64,
+  buffer: u64,
+  buffer_resolver: Option<v8::Global<v8::PromiseResolver>>,
+  void_resolver: Option<v8::Global<v8::PromiseResolver>>,
+) {
+  yuzuko_core::schedule_host(Duration::ZERO, move |scope| {
+    let rendered = unsafe {
+      yuzuko_core::op::wrap_instance(scope, AudioBuffer { id: buffer })
+    };
+    let event = OfflineAudioCompletionEvent {
+      base: yuzuko_dom::Event::new("complete", false, false, false, true),
+      rendered: RefCell::new(yuzuko_core::op::traced(scope, rendered)),
+    };
+    let event_object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+    yuzuko_dom::define_is_trusted(scope, event_object);
+    if let Some(target) = engine::context_object(context) {
+      let target = v8::Local::new(scope, target);
+      let _ = yuzuko_dom::dispatch(scope, target, event_object);
+    }
+    if let Some(resolver) = buffer_resolver {
+      let resolver = v8::Local::new(scope, resolver);
+      resolver.resolve(scope, rendered.into());
+    }
+    if let Some(resolver) = void_resolver {
+      resolve_undefined(scope, v8::Local::new(scope, resolver));
+    }
+  });
+}
+
+#[repr(C)]
 pub struct OfflineAudioContext {
   pub base: BaseAudioContext,
 }
@@ -2322,16 +2431,34 @@ impl OfflineAudioContext {
     }
   }
 
+  #[getter]
+  fn oncomplete(&self, scope: &mut v8::PinScope) -> Js {
+    engine::handler(scope, self.base.id, "complete")
+  }
+
+  #[setter]
+  fn oncomplete(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
+    engine::bind_handler(
+      scope,
+      &self.base.base,
+      self.base.id,
+      "complete",
+      value,
+    );
+  }
+
   #[promise]
   fn start_rendering(&self, scope: &mut v8::PinScope) -> Js {
     let id = self.base.id;
     promise_of(scope, move |scope, resolver| {
       match engine::start_offline(scope, id) {
         Ok(DriveResult::Done(buffer)) => {
-          let object = unsafe {
-            yuzuko_core::op::wrap_instance(scope, AudioBuffer { id: buffer })
-          };
-          resolver.resolve(scope, object.into());
+          queue_offline_completion(
+            id,
+            buffer,
+            Some(v8::Global::new(scope, resolver)),
+            None,
+          );
         }
         Ok(DriveResult::Suspended) => {
           engine::set_rendering(id, v8::Global::new(scope, resolver));
@@ -2375,14 +2502,12 @@ impl OfflineAudioContext {
     promise_of(scope, move |scope, resolver| {
       match engine::resume_offline(scope, id) {
         Ok(DriveResult::Done(buffer)) => {
-          let object = unsafe {
-            yuzuko_core::op::wrap_instance(scope, AudioBuffer { id: buffer })
-          };
-          if let Some(pending) = engine::take_rendering(id) {
-            let pending = v8::Local::new(scope, pending);
-            pending.resolve(scope, object.into());
-          }
-          resolve_undefined(scope, resolver);
+          queue_offline_completion(
+            id,
+            buffer,
+            engine::take_rendering(id),
+            Some(v8::Global::new(scope, resolver)),
+          );
         }
         Ok(DriveResult::Suspended) => resolve_undefined(scope, resolver),
         Err(fault) => fault.reject(scope, resolver),
@@ -2772,6 +2897,7 @@ pub fn install(scope: &mut v8::PinScope) {
   PeriodicWave::install(scope);
   BaseAudioContext::install(scope);
   AudioContext::install(scope);
+  OfflineAudioCompletionEvent::install(scope);
   OfflineAudioContext::install(scope);
   AudioWorklet::install(scope);
   AudioWorkletNode::install(scope);

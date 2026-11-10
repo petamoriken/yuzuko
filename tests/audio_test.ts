@@ -8,6 +8,16 @@ function assertClose(actual: number, expected: number, message: string): void {
   assert(Math.abs(actual - expected) < 1e-5, `${message}: ${actual}`);
 }
 
+function assertTypeError(run: () => unknown, message: string): void {
+  try {
+    run();
+  } catch (error) {
+    assert(error instanceof TypeError, `${message}: ${String(error)}`);
+    return;
+  }
+  throw new Error(`${message} did not throw`);
+}
+
 async function assertThrows(
   run: () => unknown,
   name: string,
@@ -408,6 +418,7 @@ Yuzuko.test("a constant source fires ended when it is not connected", async () =
   source.start();
   source.stop(numberOfFrames / context.sampleRate);
   const rendering = context.startRendering();
+  assert(!fired, "ended waits for a task");
   await ended;
   assert(fired, "onended");
   await rendering;
@@ -531,6 +542,45 @@ Yuzuko.test("cancelAndHoldAtTime keeps the partial ramp", async () => {
   const channel = rendered.getChannelData(0);
   assertClose(channel[64], 0.25, "partial ramp");
   assertClose(channel[200], 0.5, "held ramp");
+});
+
+Yuzuko.test("a buffer source fires ended after the buffer plays", async () => {
+  const context = new OfflineAudioContext(1, 32, 44100);
+  const buffer = context.createBuffer(1, 32, 44100);
+  buffer.getChannelData(0).fill(1);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  let fired = false;
+  const ended = new Promise<void>((resolve) => {
+    source.onended = () => {
+      fired = true;
+      resolve();
+    };
+  });
+  source.start(0);
+  const rendering = context.startRendering();
+  assert(!fired, "ended waits for a task");
+  await ended;
+  await rendering;
+});
+
+Yuzuko.test("a ramp stays when setValueAtTime shares its end time", async () => {
+  const context = new OfflineAudioContext(1, 256, 48000);
+  const source = new ConstantSourceNode(context, { offset: 1 });
+  const gain = context.createGain();
+  const end = 128 / 48000;
+  gain.gain.setValueAtTime(0, 0);
+  gain.gain.linearRampToValueAtTime(1, end);
+  gain.gain.setValueAtTime(0, end);
+  source.connect(gain).connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  assertClose(channel[0], 0, "ramp start");
+  assertClose(channel[127], 127 / 128, "sample before the shared time");
+  assertClose(channel[128], 0, "setValue at the ramp end");
+  assertClose(channel[255], 0, "held setValue");
 });
 
 Yuzuko.test("an AudioParam input sums output 0 into the parameter", async () => {
@@ -1270,5 +1320,135 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     assert(frame.displayWidth === 0, "closed display");
   } finally {
     await context.close();
+  }
+});
+
+Yuzuko.test("offline rendering dispatches complete before resolving", async () => {
+  const context = new OfflineAudioContext(1, 128, 48000);
+  const buffer = context.createBuffer(1, 128, 48000);
+  buffer.getChannelData(0).fill(0.25);
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  source.start();
+  let eventBuffer: AudioBuffer | null = null;
+  let sawEvent = false;
+  context.oncomplete = (event) => {
+    sawEvent = true;
+    eventBuffer = event.renderedBuffer;
+    assert(event.isTrusted, "trusted");
+    assert(event.bubbles === false, "bubbles");
+  };
+  const rendered = await context.startRendering();
+  assert(sawEvent, "complete ran before the promise resolved");
+  assert(eventBuffer === rendered, "same buffer");
+  assertClose(rendered.getChannelData(0)[0], 0.25, "sample");
+});
+
+Yuzuko.test("a cycle without a DelayNode is silent", async () => {
+  const context = new OfflineAudioContext(1, 512, 48000);
+  const oscillator = new OscillatorNode(context);
+  const feedback = new GainNode(context);
+  oscillator.connect(feedback).connect(feedback).connect(context.destination);
+  oscillator.start();
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  for (let index = 0; index < channel.length; index += 1) {
+    assert(channel[index] === 0, `cycle sample ${index}`);
+  }
+});
+
+Yuzuko.test("a DelayNode in a cycle delays by one quantum", async () => {
+  const context = new OfflineAudioContext(1, 512, 48000);
+  const buffer = context.createBuffer(1, 1, 48000);
+  buffer.getChannelData(0)[0] = 1;
+  const impulse = new AudioBufferSourceNode(context, { buffer });
+  impulse.start();
+  const delay = new DelayNode(context, { delayTime: 64 / 48000 });
+  const feedback = new GainNode(context);
+  impulse.connect(feedback).connect(delay).connect(feedback).connect(
+    context.destination,
+  );
+  const rendered = await context.startRendering();
+  const channel = rendered.getChannelData(0);
+  for (let index = 0; index < channel.length; index += 1) {
+    const expected = index % 128 === 0 ? 1 : 0;
+    assertClose(channel[index], expected, `delay sample ${index}`);
+  }
+});
+
+Yuzuko.test("AudioBufferSourceNode accepts one non-null buffer", async () => {
+  const context = new AudioContext();
+  try {
+    const source = new AudioBufferSourceNode(context);
+    source.buffer = null;
+    const buffer = new AudioBuffer({
+      length: 128,
+      sampleRate: context.sampleRate,
+    });
+    source.buffer = buffer;
+    await assertThrows(() => {
+      source.buffer = new AudioBuffer({
+        length: 128,
+        sampleRate: context.sampleRate,
+      });
+    }, "InvalidStateError");
+    source.buffer = null;
+    await assertThrows(() => {
+      source.buffer = buffer;
+    }, "InvalidStateError");
+    const played = new AudioBufferSourceNode(context);
+    played.buffer = null;
+    let endedAt = -1;
+    played.onended = () => {
+      endedAt = context.currentTime;
+    };
+    played.start(1);
+    assert(endedAt === 0, `ended time ${endedAt}`);
+  } finally {
+    await context.close();
+  }
+});
+
+Yuzuko.test("setPosition rejects a coordinate outside the float range", () => {
+  const context = new OfflineAudioContext(1, 1, 24000);
+  const panner = context.createPanner();
+  const huge = 2 * 3.40282e38;
+  assertTypeError(() => panner.setPosition(huge, 0, 0), "x");
+  assert(panner.positionX.value === 0, "positionX");
+  assertTypeError(() => panner.setPosition(0, -huge, 0), "y");
+  assert(panner.positionX.value === 0, "positionX after y");
+  assertTypeError(() => panner.setOrientation(-huge, 0, 0), "orientation");
+  assert(panner.orientationX.value === 1, "orientationX");
+  assertTypeError(() => context.listener.setPosition(huge, 0, 0), "listener");
+  assertTypeError(
+    () => context.listener.setOrientation(-huge, 0, 0, 0, 1, 0),
+    "listener orientation",
+  );
+});
+
+Yuzuko.test("createIIRFilter accepts a Float64Array", async () => {
+  const context = new OfflineAudioContext(2, 256, 24000);
+  const buffer = context.createBuffer(1, 1, 24000);
+  buffer.getChannelData(0)[0] = 1;
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const normalized = context.createIIRFilter([1], [1, 0.9]);
+  const scaled = context.createIIRFilter([1], new Float64Array([2, 1.8]));
+  const gain = context.createGain();
+  // Dividing by the first feedback coefficient scales the feedforward too.
+  gain.gain.value = 2;
+  const merger = context.createChannelMerger(2);
+  source.connect(normalized);
+  source.connect(scaled);
+  normalized.connect(merger, 0, 0);
+  scaled.connect(gain).connect(merger, 0, 1);
+  merger.connect(context.destination);
+  source.start();
+  const rendered = await context.startRendering();
+  const left = rendered.getChannelData(0);
+  const right = rendered.getChannelData(1);
+  for (let index = 0; index < left.length; index += 1) {
+    assertClose(right[index], left[index], `iir sample ${index}`);
   }
 });

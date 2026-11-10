@@ -177,8 +177,10 @@ fn node_time(id: u64) -> f64 {
 }
 
 fn schedule(ids: &[u64], values: &[f64], time: f64) -> Result<(), OpError> {
-  if values.iter().any(|value| !value.is_finite()) {
-    return Err(OpError::type_("The value is not finite"));
+  // Web IDL `float` rejects NaN, infinities, and magnitudes past f32::MAX.
+  // Check every coordinate before writing any of them.
+  if values.iter().any(|value| !(*value as f32).is_finite()) {
+    return Err(OpError::type_("The value is outside the float range"));
   }
   for (id, value) in ids.iter().zip(values) {
     engine::set_value_at_time(*id, *value, time).map_err(op_fault)?;

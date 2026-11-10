@@ -168,15 +168,65 @@ pub fn read_f32_sequence(
     }
     return Ok(samples);
   }
-  let array = v8::Local::<v8::Array>::try_from(value)
-    .map_err(|_| OpError::type_("The coefficient list is not a sequence"))?;
-  let mut samples = Vec::with_capacity(array.length() as usize);
-  for index in 0..array.length() {
-    let item = array.get_index(scope, index).ok_or_else(|| {
-      OpError::type_("The coefficient list is not a sequence")
-    })?;
-    let number = finite_number(scope, item)?;
-    samples.push(number as f32);
+  if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
+    let mut samples = Vec::with_capacity(array.length() as usize);
+    for index in 0..array.length() {
+      let item = array.get_index(scope, index).ok_or_else(|| {
+        OpError::type_("The coefficient list is not a sequence")
+      })?;
+      let number = finite_number(scope, item)?;
+      samples.push(number as f32);
+    }
+    return Ok(samples);
   }
-  Ok(samples)
+  read_iterable_f32(scope, value)
+}
+
+/// Web IDL sequence conversion. A `Float64Array` is not a JavaScript `Array`.
+fn read_iterable_f32(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<f32>, OpError> {
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_("The coefficient list is not a sequence"))?;
+  let symbol = v8::Symbol::get_iterator(scope);
+  let Some(next) = object
+    .get(scope, symbol.into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return Err(OpError::type_("The coefficient list is not a sequence"));
+  };
+  let Some(iterator) = next
+    .call(scope, object.into(), &[])
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return Err(OpError::type_("The coefficient list is not a sequence"));
+  };
+  let next_key = v8::String::new(scope, "next").unwrap();
+  let done_key = v8::String::new(scope, "done").unwrap();
+  let value_key = v8::String::new(scope, "value").unwrap();
+  let mut samples = Vec::new();
+  loop {
+    if samples.len() > 1024 {
+      return Err(OpError::type_("The coefficient list is not a sequence"));
+    }
+    let Some(step) = iterator
+      .get(scope, next_key.into())
+      .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+      .and_then(|step| step.call(scope, iterator.into(), &[]))
+      .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+    else {
+      return Err(OpError::type_("The coefficient list is not a sequence"));
+    };
+    let done = step
+      .get(scope, done_key.into())
+      .is_some_and(|value| value.boolean_value(scope));
+    if done {
+      return Ok(samples);
+    }
+    let Some(item) = step.get(scope, value_key.into()) else {
+      return Err(OpError::type_("The coefficient list is not a sequence"));
+    };
+    samples.push(finite_number(scope, item)? as f32);
+  }
 }

@@ -146,6 +146,9 @@ pub enum Kind {
   },
   Buffer {
     buffer: Option<u64>,
+    /// True after the first non-null assignment, including the constructor.
+    /// `null` does not clear it. A later non-null value is `InvalidStateError`.
+    buffer_assigned: bool,
     acquired: Option<Vec<Vec<f32>>>,
     rate: u64,
     detune: u64,
@@ -412,6 +415,9 @@ thread_local! {
     RefCell::new(HashMap::new());
   static CONVOLVER_BUFFERS: RefCell<HashMap<u64, v8::Global<v8::Object>>> =
     RefCell::new(HashMap::new());
+  /// Nodes on a cycle that has no `DelayNode`. Their output for this quantum
+  /// is silence, including the forward path, not only the back edge.
+  static MUTED: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
 pub fn clear() {
@@ -426,6 +432,7 @@ pub fn clear() {
   CURVES.with(|slot| slot.borrow_mut().clear());
   LISTENERS.with(|slot| slot.borrow_mut().clear());
   CONVOLVER_BUFFERS.with(|slot| slot.borrow_mut().clear());
+  MUTED.with(|slot| slot.borrow_mut().clear());
   DRIVING.with(|slot| slot.set(0));
 }
 
@@ -1011,8 +1018,13 @@ fn reject_inside_curve(
 }
 
 fn insert_event(events: &mut Vec<AutomationEvent>, event: AutomationEvent) {
-  if let Some(index) = events.iter().position(|found| found.time == event.time)
-  {
+  // A later call replaces an event only when the time and the kind match.
+  // `setValueAtTime` and a ramp may share an end time, and both stay.
+  if let Some(index) = events.iter().position(|found| {
+    found.time == event.time
+      && std::mem::discriminant(&found.kind)
+        == std::mem::discriminant(&event.kind)
+  }) {
     events[index] = event;
     return;
   }
@@ -1958,7 +1970,7 @@ pub fn source_start(
   })?;
   let acquired =
     buffer_id.map(|buffer| acquire_contents(scope, buffer).unwrap_or_default());
-  NODES.with(|nodes| {
+  let fire_ended_now = NODES.with(|nodes| {
     let mut nodes = nodes.borrow_mut();
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
@@ -1976,6 +1988,12 @@ pub fn source_start(
           ));
         }
         arm_play(play, start_frame, duration, rate);
+        if buffer_id.is_none() {
+          *slot = Some(Vec::new());
+          node.pending_ended = true;
+          node.ended = false;
+          return Ok(true);
+        }
         if let Some(buffer_rate) = buffer_rate {
           play.position = offset * buffer_rate;
         }
@@ -1999,8 +2017,13 @@ pub fn source_start(
       }
     }
     node.ended = false;
-    Ok(())
+    Ok(false)
   })?;
+  if fire_ended_now {
+    // `currentTime` is still the time of the `start()` call. A null buffer
+    // finishes before its scheduled start.
+    fire_ended(scope);
+  }
   if realtime {
     CONTEXTS.with(|contexts| {
       if let Some(context) = contexts.borrow_mut().get_mut(&ctx) {
@@ -2091,16 +2114,28 @@ pub fn set_source_buffer(
   id: u64,
   buffer: Option<u64>,
 ) -> Result<(), Fault> {
-  let started = NODES.with(|nodes| {
+  let (started, assigned) = NODES.with(|nodes| {
     let nodes = nodes.borrow();
     let Some(node) = nodes.get(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
     match &node.kind {
-      Kind::Buffer { play, .. } => Ok(play.started),
+      Kind::Buffer {
+        play,
+        buffer_assigned,
+        ..
+      } => Ok((play.started, *buffer_assigned)),
       _ => Err(Fault::type_("The node is not an AudioBufferSourceNode")),
     }
   })?;
+  if buffer.is_some() && assigned {
+    return Err(Fault::dom(
+      "InvalidStateError",
+      "The buffer has already been set",
+    ));
+  }
+  // Playback acquires at `start()`. The first non-null assignment after
+  // that, which is how a grain can be armed, replaces those samples.
   let acquired = if started {
     Some(match buffer {
       Some(buffer) => acquire_contents(scope, buffer).unwrap_or_default(),
@@ -2116,12 +2151,16 @@ pub fn set_source_buffer(
     };
     if let Kind::Buffer {
       buffer: slot,
+      buffer_assigned,
       play,
       acquired: stored,
       ..
     } = &mut node.kind
     {
       *slot = buffer;
+      if buffer.is_some() {
+        *buffer_assigned = true;
+      }
       if let Some(acquired) = acquired {
         *stored = Some(acquired);
       } else {
@@ -2535,7 +2574,9 @@ fn drive_loop(scope: &mut v8::PinScope, id: u64) -> Result<DriveResult, Fault> {
       }
     });
     publish_worklet_time(scope, id);
-    fire_ended(scope);
+    // User listeners must not run inside `startRendering`. Audit calls
+    // `test()` from `onended`, and that throws while a test step is active.
+    queue_ended();
   }
 }
 
@@ -2725,7 +2766,7 @@ fn pump_quantum(
     }
   });
   publish_worklet_time(scope, id);
-  fire_ended(scope);
+  queue_ended();
   if !playback_active(id, generation) {
     release_pump(id, generation);
     return false;
@@ -2790,6 +2831,7 @@ fn render_destination(
   let Some(destination) = destination else {
     return Vec::new();
   };
+  MUTED.with(|muted| muted.borrow_mut().clear());
   let mut cache = RenderCache::new();
   let mut stack = Vec::new();
   let mut ended = Vec::new();
@@ -2853,7 +2895,16 @@ fn pull_output(
     return cached_output(hit, output, quantum);
   }
   if stack.contains(&id) {
-    return silent_block(quantum);
+    let repeats = stack.iter().filter(|found| **found == id).count();
+    if !cycle_has_delay(stack, id) {
+      mute_cycle(stack, id);
+      return silent_block(quantum);
+    }
+    // One re-entry lets a DelayNode pull the upstream node. That pull sees
+    // the delay's cached past output. A second re-entry is silence.
+    if repeats > 1 {
+      return silent_block(quantum);
+    }
   }
   stack.push(id);
   let kind =
@@ -2919,6 +2970,7 @@ fn pull_output(
       looped,
       loop_start,
       loop_end,
+      ..
     } => {
       let context_rate =
         context_of(id).and_then(context_rate).unwrap_or(48000.0);
@@ -3071,6 +3123,11 @@ fn pull_output(
     }
   };
   stack.pop();
+  let outputs = if node_muted(id) {
+    one(silent_block(quantum))
+  } else {
+    outputs
+  };
   let block = cached_output(&outputs, output, quantum);
   cache.insert(id, outputs);
   block
@@ -3413,6 +3470,7 @@ fn render_buffer_source(
   let mut output = vec![vec![0.0; quantum]; channels.len()];
   let length = channels[0].len() as f64;
   let mut stop = false;
+  let mut active = false;
   for index in 0..quantum {
     let playback = rate_curve.get(index).copied().unwrap_or(1.0);
     let cents = detune_curve.get(index).copied().unwrap_or(0.0);
@@ -3433,6 +3491,7 @@ fn render_buffer_source(
       stop = true;
       continue;
     }
+    active = true;
     for (channel, data) in output.iter_mut().zip(channels.iter()) {
       channel[index] = interpolate(data, play.position);
     }
@@ -3454,6 +3513,10 @@ fn render_buffer_source(
         play.position = start + (play.position - start).rem_euclid(span);
       }
     }
+  }
+  if !active {
+    // Not playing for any frame of this quantum: one channel of silence.
+    return (vec![vec![0.0; quantum]], play, stop);
   }
   (output, play, stop)
 }
@@ -3586,8 +3649,8 @@ fn mark_pending(id: u64) {
   });
 }
 
-fn fire_ended(scope: &mut v8::PinScope) {
-  let objects = NODES.with(|nodes| {
+fn take_ended_objects() -> Vec<v8::Global<v8::Object>> {
+  NODES.with(|nodes| {
     let mut nodes = nodes.borrow_mut();
     let mut objects = Vec::new();
     for node in nodes.values_mut() {
@@ -3599,11 +3662,27 @@ fn fire_ended(scope: &mut v8::PinScope) {
       }
     }
     objects
-  });
-  for object in objects {
+  })
+}
+
+fn fire_ended(scope: &mut v8::PinScope) {
+  for object in take_ended_objects() {
     let object = v8::Local::new(scope, object);
     yuzuko_dom::dispatch_trusted_event(scope, object, "ended");
   }
+}
+
+fn queue_ended() {
+  let objects = take_ended_objects();
+  if objects.is_empty() {
+    return;
+  }
+  yuzuko_core::schedule_host(Duration::ZERO, move |scope| {
+    for object in objects {
+      let object = v8::Local::new(scope, object);
+      yuzuko_dom::dispatch_trusted_event(scope, object, "ended");
+    }
+  });
 }
 
 pub fn bind_handler(
@@ -4394,7 +4473,11 @@ fn render_delay(
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
 ) -> Block {
-  let cycled = in_cycle(id);
+  if in_cycle(id) {
+    return render_delay_in_cycle(
+      scope, id, delay, frames, origin, quantum, cache, stack, ended,
+    );
+  }
   let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
   let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
   let curve = param_block(scope, delay, origin, quantum, cache, stack, ended)
@@ -4408,10 +4491,80 @@ fn render_delay(
       write: 0,
     },
   };
-  let minimum = if cycled { quantum as f64 } else { 0.0 };
-  let block = process::delay_block(&mixed, &curve, frames, minimum, &mut state);
+  let block = process::delay_block(&mixed, &curve, frames, 0.0, &mut state);
   put_tail(id, Tail::Delay(state));
   block
+}
+
+/// A delay on a cycle publishes the samples already in the line, then pulls
+/// its input. The minimum delay is one quantum, so the input written this
+/// quantum cannot be read until the next one.
+#[allow(clippy::too_many_arguments)]
+fn render_delay_in_cycle(
+  scope: &mut v8::PinScope,
+  id: u64,
+  delay: u64,
+  frames: usize,
+  origin: u64,
+  quantum: usize,
+  cache: &mut RenderCache,
+  stack: &mut Vec<u64>,
+  ended: &mut Vec<u64>,
+) -> Block {
+  let rate = context_of(id).and_then(context_rate).unwrap_or(48000.0);
+  let curve = param_block(scope, delay, origin, quantum, cache, stack, ended)
+    .into_iter()
+    .map(|seconds| seconds * rate)
+    .collect::<Vec<_>>();
+  let state = match take_tail(id) {
+    Some(Tail::Delay(state)) => state,
+    _ => process::DelayState {
+      lines: Vec::new(),
+      write: 0,
+    },
+  };
+  let output =
+    process::delay_read_past(&state, &curve, quantum as f64, quantum);
+  put_tail(id, Tail::Delay(state));
+  cache.insert(id, vec![output.clone()]);
+  let mixed = mix_inputs(scope, id, 0, origin, quantum, cache, stack, ended);
+  let mut state = match take_tail(id) {
+    Some(Tail::Delay(state)) => state,
+    _ => process::DelayState {
+      lines: Vec::new(),
+      write: 0,
+    },
+  };
+  process::delay_commit(&mut state, &mixed, frames);
+  put_tail(id, Tail::Delay(state));
+  output
+}
+
+fn cycle_has_delay(stack: &[u64], id: u64) -> bool {
+  let Some(pos) = stack.iter().rposition(|found| *found == id) else {
+    return false;
+  };
+  stack[pos..].iter().any(|node| is_delay(*node))
+}
+
+fn is_delay(id: u64) -> bool {
+  matches!(cloned_kind(id), Some(Kind::Delay { .. }))
+}
+
+fn mute_cycle(stack: &[u64], id: u64) {
+  let Some(pos) = stack.iter().rposition(|found| *found == id) else {
+    return;
+  };
+  MUTED.with(|muted| {
+    let mut muted = muted.borrow_mut();
+    for node in &stack[pos..] {
+      muted.insert(*node);
+    }
+  });
+}
+
+fn node_muted(id: u64) -> bool {
+  MUTED.with(|muted| muted.borrow().contains(&id))
 }
 
 #[allow(clippy::too_many_arguments)]

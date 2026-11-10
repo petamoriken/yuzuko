@@ -20,21 +20,9 @@
   "webaudio/the-audio-api/media-playback-while-not-visible-permission-policy/viewport.tentative.sub.html": {
     "ignore": "The runner does not apply .sub. substitutions."
   },
-  "webaudio/the-audio-api/processing-model/cycle-without-delay.html": {
-    "expectedFailures": [
-      "Test that cycles that don't contain a DelayNode are muted"
-    ]
-  },
-  "webaudio/the-audio-api/processing-model/delay-time-clamping.html": {
-    "expectedFailures": [
-      "Test that a DelayNode allows a feedback loop of a single rendering quantum"
-    ]
-  },
-  "webaudio/the-audio-api/processing-model/feedback-delay-time.html": {
-    "expectedFailures": [
-      "Test that a DelayNode allows a feedback loop of a single rendering quantum"
-    ]
-  },
+  "webaudio/the-audio-api/processing-model/cycle-without-delay.html": true,
+  "webaudio/the-audio-api/processing-model/delay-time-clamping.html": true,
+  "webaudio/the-audio-api/processing-model/feedback-delay-time.html": true,
   "webaudio/the-audio-api/rendersizehint-smoke-tests.https.html": true,
   "webaudio/the-audio-api/the-analysernode-interface/analysernode-rendersizehint.https.html": true,
   "webaudio/the-audio-api/the-analysernode-interface/ctor-analyser.html": true,
@@ -75,11 +63,7 @@
     ]
   },
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-basic.html": true,
-  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-channels.html": {
-    "expectedFailures": [
-      "validate .buffer: Validation of AudioBuffer in .buffer attribute setter"
-    ]
-  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-channels.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-duration-loop-playbackrate.html": {
     "expectedFailures": [
       "loop and duration with dynamic playbackRate automation",
@@ -91,21 +75,14 @@
     ]
   },
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-duration-loop.html": true,
-  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-ended.html": false,
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-ended.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-grain.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-loop-continuous.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-loop-short-duration.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-multi-channels.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-null.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-one-sample-loop.html": true,
-  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-output-channel-count.html": {
-    "expectedFailures": [
-      "A playing source outputs the buffer channel count, then one channel at the end of the buffer",
-      "A source outputs one channel after its duration has elapsed",
-      "A source that is stopped outputs one channel after the stop time",
-      "A source with a stereo buffer that was never started outputs one channel"
-    ]
-  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-output-channel-count.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-playbackrate-dynamic-direction.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-playbackrate-negative.html": {
     "expectedFailures": [
@@ -124,11 +101,7 @@
     ]
   },
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-reverse-long-buffer.html": true,
-  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-start-null-buffer.html": {
-    "expectedFailures": [
-      "start() with null buffer fires ended event immediately and ignores subsequent buffer assignment"
-    ]
-  },
+  "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-start-null-buffer.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiobuffersource-start.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiosource-onended.html": true,
   "webaudio/the-audio-api/the-audiobuffersourcenode-interface/audiosource-time-limits.html": true,
@@ -311,20 +284,19 @@
       "X gain.gain.setValueCurveAtTime([0,0,0],NaN,1) threw \"RangeError\" instead of EcmaScript error TypeError."
     ]
   },
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-exponentialRampToValueAtTime.html": false,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-exponentialRampToValueAtTime.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-large-endtime.html": true,
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-linearRampToValueAtTime.html": false,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-linearRampToValueAtTime.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-method-chaining.html": {
     "expectedFailures": [
-      "AudioParam: Chaining of envelope methods schedules values as expected",
       "AudioParam: Each method returns the same object to allow chaining"
     ]
   },
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-nominal-range.html": {
     "ignore": "The runner has no media element or MediaStream audio node."
   },
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setTargetAtTime.html": false,
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueAtTime.html": false,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setTargetAtTime.html": true,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueAtTime.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurve-exceptions.html": {
     "expectedFailures": [
       "# AUDIT TASK RUNNER FINISHED: 5 out of 7 tasks were failed.",
@@ -355,7 +327,7 @@
       "X value setter did not throw an exception."
     ]
   },
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurveAtTime.html": false,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurveAtTime.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-summingjunction.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-zero-duration-ramp.html": {
     "expectedFailures": [
@@ -378,15 +350,9 @@
   },
   "webaudio/the-audio-api/the-audioparam-interface/event-insertion.html": {
     "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 5 out of 6 tasks were failed.",
-      "< [Expo + Linear] 1 out of 6 assertions were failed.",
-      "< [Linear + Expo] 1 out of 6 assertions were failed.",
-      "< [Linear + SetTarget] 1 out of 7 assertions were failed.",
+      "# AUDIT TASK RUNNER FINISHED: 2 out of 6 tasks were failed.",
       "< [Multiple exponential ramps at the same time] 1 out of 6 assertions were failed.",
       "< [Multiple linear ramps at the same time] 1 out of 6 assertions were failed.",
-      "X Expo+Linear: At time 0.01556396484375 (frame 255) output is not close to 2.9871532226369792 within a relative error of 0.0000042533 (RelErr=0.331773899352273). Got 1.99609375.",
-      "X Linear+Expo: At time 0.01556396484375 (frame 255) output is not close to 1.99609375 within a relative error of 0 (RelErr=0.4964994964301003). Got 2.9871532917022705.",
-      "X Linear+SetTarget: At time 0.01556396484375 (frame 255) output is not close to 2.9921875 within a relative error of 0 (RelErr=0.6657963446475196). Got 1.",
       "X Multiple exponential ramps: Output at frame 63 is not close to 1.978456026387951 within a relative error of 5.3924e-7 (RelErr=3.875830371457587). Got 9.646615982055664.",
       "X Multiple linear ramps: Output at frame 63 is not close to 1.984375 within a relative error of 0 (RelErr=3.968503937007874). Got 9.859375."
     ]
@@ -601,7 +567,7 @@
   "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-onended.html": true,
   "webaudio/the-audio-api/the-constantsourcenode-interface/constant-source-output.html": true,
   "webaudio/the-audio-api/the-constantsourcenode-interface/ctor-constantsource.html": true,
-  "webaudio/the-audio-api/the-constantsourcenode-interface/test-constantsourcenode.html": false,
+  "webaudio/the-audio-api/the-constantsourcenode-interface/test-constantsourcenode.html": true,
   "webaudio/the-audio-api/the-convolvernode-interface/active-processing.https.html": false,
   "webaudio/the-audio-api/the-convolvernode-interface/convolution-mono-mono.html": {
     "expectedFailures": [
@@ -634,7 +600,13 @@
   "webaudio/the-audio-api/the-convolvernode-interface/realtime-conv.html": {
     "ignore": "The runner has no media element or MediaStream audio node."
   },
-  "webaudio/the-audio-api/the-convolvernode-interface/transferred-buffer-output.html": false,
+  "webaudio/the-audio-api/the-convolvernode-interface/transferred-buffer-output.html": {
+    "expectedFailures": [
+      "# AUDIT TASK RUNNER FINISHED: 1 out of 1 tasks were failed.",
+      "< [Test Convolver with transferred buffer] 1 out of 2 assertions were failed.",
+      "X Convolver channel 1 output[0:1279]: Expected 0 for all values but found 1280 unexpected values: \n\tIndex\tActual\n\t[0]\t2\n\t[1]\t4\n\t[2]\t6\n\t[3]\t8\n\t...and 1276 more errors."
+    ]
+  },
   "webaudio/the-audio-api/the-delaynode-interface/ctor-delay.html": true,
   "webaudio/the-audio-api/the-delaynode-interface/delay-test.html": true,
   "webaudio/the-audio-api/the-delaynode-interface/delaynode-channel-count-1.html": {
@@ -681,14 +653,13 @@
   },
   "webaudio/the-audio-api/the-iirfilternode-interface/iirfilter.html": {
     "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 7 out of 13 tasks were failed.",
+      "# AUDIT TASK RUNNER FINISHED: 6 out of 13 tasks were failed.",
       "< [1: highpass] 2 out of 2 assertions were failed.",
       "< [2: bandpass] 2 out of 2 assertions were failed.",
       "< [4th-order-iir] 2 out of 2 assertions were failed.",
       "< [5: lowshelf] 2 out of 2 assertions were failed.",
       "< [6: highshelf] 2 out of 2 assertions were failed.",
       "< [one-pole] 1 out of 1 assertions were failed.",
-      "Executing \"coefficient-normalization\"",
       "X 4-th order IIRFilter (biquad ref) does not equal [0.000004181719305051956,0.000032965795980999246,0.00012939768203068525,0.0003477365826256573,0.0007387272780761123,0.0013446896336972713,0.0021993760019540787,0.0033279552590101957,0.004747116006910801,0.006465280428528786,0.008482920937240124,0.010792967863380909,0.013381300494074821,0.01622730866074562,0.019304513931274414,0.02258124388754368...] with an element-wise tolerance of {\"absoluteThreshold\":1.59e-7,\"relativeThreshold\":0.0000211}.\n\tIndex\tActual\t\t\tExpected\t\tAbsError\t\tRelError\t\tTest threshold\n\t[17]\t2.9584258794784546e-2\t2.9584893956780434e-2\t6.3516199588775635e-7\t2.1469132078541264e-5\t6.2424126248806722e-7\n\t[18]\t3.3228117972612381e-2\t3.3229012042284012e-2\t8.9406967163085938e-7\t2.6906297138571353e-5\t7.0113215409219266e-7\n\t[19]\t3.6907333880662918e-2\t3.6908566951751709e-2\t1.2330710887908936e-6\t3.3408804259531703e-5\t7.7877076268196114e-7\n\t[20]\t4.0575295686721802e-2\t4.0576964616775513e-2\t1.6689300537109375e-6\t4.1129987653659065e-5\t8.5617395341396333e-7\n\t[21]\t4.4184669852256775e-2\t4.4186890125274658e-2\t2.2202730178833008e-6\t5.0247324751494944e-5\t9.3234338164329535e-7\n\t...and 542 more errors.\n\tMax AbsError of 2.9723905026912689e-4 at index of 99.\n\t[99]\t2.9476990923285484e-2\t2.9179751873016357e-2\t2.9723905026912689e-4\t1.0186483132640868e-2\t6.1569276452064521e-7\n\tMax RelError of 2.8439373737654734e+1 at index of 124.\n\t[124]\t-1.4822151570115238e-4\t-5.0348053264315240e-6\t1.4318671037472086e-4\t2.8439373737654734e+1\t1.5900000000000001e-7\n",
       "X IIR 1-pole output does not equal [1,-0.9,0.81,-0.7290000000000001,0.6561000000000001,-0.5904900000000002,0.5314410000000002,-0.47829690000000014,0.43046721000000016,-0.38742048900000015,0.34867844010000015,-0.31381059609000017,0.28242953648100017,-0.25418658283290013,0.22876792454961012,-0.2058911320946491...] with an element-wise tolerance of {\"absoluteThreshold\":2.7657e-8,\"relativeThreshold\":0}.\n\tIndex\tActual\t\t\tExpected\t\tAbsError\t\tRelError\t\tTest threshold\n\t[2]\t8.0999994277954102e-1\t8.1000000000000005e-1\t5.7220459037665705e-8\t7.0642542021809509e-8\t2.7657000000000001e-8\n\t[3]\t-7.2899991273880005e-1\t-7.2900000000000009e-1\t8.7261200043542431e-8\t1.1969986288551773e-7\t2.7657000000000001e-8\n\t[4]\t6.5609991550445557e-1\t6.5610000000000013e-1\t8.4495544561136171e-8\t1.2878455199075775e-7\t2.7657000000000001e-8\n\t[5]\t-5.9048992395401001e-1\t-5.9049000000000018e-1\t7.6045990171635935e-8\t1.2878455210356808e-7\t2.7657000000000001e-8\n\t[6]\t5.3144091367721558e-1\t5.3144100000000016e-1\t8.6322784587089529e-8\t1.6243154853895260e-7\t2.7657000000000001e-8\n\t...and 26 more errors.\n\tMax AbsError of 1.0957250712317901e-7 at index of 12.\n\t[12]\t2.8242942690849304e-1\t2.8242953648100017e-1\t1.0957250712317901e-7\t3.8796405109899069e-7\t2.7657000000000001e-8\n\tMax RelError of 8.7017519826255668e-7 at index of 31.\n\t[31]\t-3.8152009248733521e-2\t-3.8152042447694622e-2\t3.3198961101044144e-8\t8.7017519826255668e-7\t2.7657000000000001e-8\n",
       "X IIRFilter for Biquad bandpass does not equal [0.004554244689643383,0.013583214953541756,0.022416498512029648,0.03098210319876671,0.03921092674136162,0.047037310898303986,0.054399557411670685,0.06124040484428406,0.06750746816396713,0.07315362989902496,0.07813739031553268,0.08242315798997879,0.08598149567842484,0.08878931403160095,0.090829998254776,0.09209349006414413...] with an element-wise tolerance of {\"absoluteThreshold\":2e-7,\"relativeThreshold\":0.00087}.\n\tIndex\tActual\t\t\tExpected\t\tAbsError\t\tRelError\t\tTest threshold\n\t[68]\t-1.0557040804997087e-3\t-1.0568774305284023e-3\t1.1733500286936760e-6\t1.1102044520971948e-3\t9.1948336455971000e-7\n\t[137]\t9.0556353097781539e-4\t9.0368301607668400e-4\t1.8805149011313915e-6\t2.0809452735933861e-3\t7.8620422398671509e-7\n\t[171]\t5.9608538867905736e-4\t5.9809250524267554e-4\t2.0071165636181831e-6\t3.3558630914523788e-3\t5.2034047956112767e-7\n\t[205]\t-1.6834022244438529e-3\t-1.6855081776157022e-3\t2.1059531718492508e-6\t1.2494470212706442e-3\t1.4663921145256608e-6\n\t[206]\t1.8816435476765037e-3\t1.8795534269884229e-3\t2.0901206880807877e-6\t1.1120304738715266e-3\t1.6352114814799279e-6\n\t...and 105 more errors.\n\tMax AbsError of 2.1059531718492508e-6 at index of 205.\n\tMax RelError of 1.1323069356463104e-1 at index of 995.\n\t[995]\t2.1481628209585324e-6\t2.4224596018029843e-6\t2.7429678084445186e-7\t1.1323069356463104e-1\t1.9999999999999999e-7\n",
@@ -699,8 +670,7 @@
       "X SNR for IIRFIlter for Biquad highpass is not greater than or equal to 105.459. Got 94.12614313216753.",
       "X SNR for IIRFIlter for Biquad highshelf is not greater than or equal to 103.159. Got 1.5568026933751185.",
       "X SNR for IIRFIlter for Biquad lowshelf is not greater than or equal to 90.609. Got 7.249470405170758.",
-      "X SNR of 4-th order IIRFilter (biquad ref) is not greater than or equal to 108.947. Got 44.69894430391293.",
-      "X createIIRFilter with unnormalized coefficients incorrectly threw TypeError: \"The coefficient list is not a sequence\"."
+      "X SNR of 4-th order IIRFilter (biquad ref) is not greater than or equal to 108.947. Got 44.69894430391293."
     ]
   },
   "webaudio/the-audio-api/the-iirfilternode-interface/test-iirfilternode.html": true,
@@ -806,25 +776,7 @@
       "Test the PannerNode interface"
     ]
   },
-  "webaudio/the-audio-api/the-pannernode-interface/pannernode-setposition-throws.html": {
-    "expectedFailures": [
-      "listener.setOrientation x",
-      "listener.setOrientation xUp",
-      "listener.setOrientation y",
-      "listener.setOrientation yUp",
-      "listener.setOrientation z",
-      "listener.setOrientation zUp",
-      "listener.setPosition x",
-      "listener.setPosition y",
-      "listener.setPosition z",
-      "setOrientation x",
-      "setOrientation y",
-      "setOrientation z",
-      "setPosition x",
-      "setPosition y",
-      "setPosition z"
-    ]
-  },
+  "webaudio/the-audio-api/the-pannernode-interface/pannernode-setposition-throws.html": true,
   "webaudio/the-audio-api/the-pannernode-interface/test-pannernode-automation.html": true,
   "webaudio/the-audio-api/the-periodicwave-interface/createPeriodicWaveInfiniteValuesThrows.html": true,
   "webaudio/the-audio-api/the-periodicwave-interface/periodicWave.html": true,
@@ -839,7 +791,7 @@
   "webaudio/the-audio-api/the-stereopanner-interface/stereopannernode-basic.html": true,
   "webaudio/the-audio-api/the-stereopanner-interface/stereopannernode-panning.html": true,
   "webaudio/the-audio-api/the-waveshapernode-interface/ctor-waveshaper.html": true,
-  "webaudio/the-audio-api/the-waveshapernode-interface/curve-tests.html": false,
+  "webaudio/the-audio-api/the-waveshapernode-interface/curve-tests.html": true,
   "webaudio/the-audio-api/the-waveshapernode-interface/silent-inputs.html": true,
   "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper-copy-curve.html": true,
   "webaudio/the-audio-api/the-waveshapernode-interface/waveshaper-limits.html": true,

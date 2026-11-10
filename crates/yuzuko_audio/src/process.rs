@@ -141,6 +141,67 @@ pub fn delay_block(
   output
 }
 
+/// Output of one quantum from samples already stored in the delay line.
+///
+/// `min_samples` is one render quantum when the node is in a cycle, so none
+/// of these reads overlap the input that [`delay_commit`] will append.
+#[allow(clippy::needless_range_loop)]
+pub fn delay_read_past(
+  state: &DelayState,
+  delay: &[f64],
+  min_samples: f64,
+  quantum: usize,
+) -> Vec<Vec<f32>> {
+  let channels = state.lines.len().max(1);
+  let mut output = vec![vec![0.0; quantum]; channels];
+  if state.lines.is_empty() {
+    return output;
+  }
+  let width = state.lines[0].len().max(2);
+  let limit = (width.saturating_sub(2)) as f64;
+  let floor = min_samples.max(0.0);
+  for index in 0..quantum {
+    let samples = delay.get(index).copied().unwrap_or(0.0);
+    let delay_samples = if samples.is_finite() {
+      samples.clamp(floor, limit)
+    } else {
+      floor.clamp(0.0, limit)
+    };
+    let cursor = state.write as f64 + index as f64;
+    for channel in 0..channels {
+      let line = &state.lines[channel];
+      let position = (cursor - delay_samples).rem_euclid(width as f64);
+      let base = position.floor() as usize % width;
+      let fraction = (position - base as f64) as f32;
+      let next = (base + 1) % width;
+      output[channel][index] =
+        line[base] * (1.0 - fraction) + line[next] * fraction;
+    }
+  }
+  output
+}
+
+/// Append `input` to the delay line. The line is resized to `frames` when the
+/// channel count or capacity does not match, which drops history.
+pub fn delay_commit(state: &mut DelayState, input: &[Vec<f32>], frames: usize) {
+  let quantum = input.first().map(|channel| channel.len()).unwrap_or(0);
+  let channels = input.len().max(1);
+  let width = frames.max(2);
+  if state.lines.len() != channels
+    || state.lines.first().is_some_and(|line| line.len() != width)
+  {
+    state.lines = vec![vec![0.0; width]; channels];
+    state.write = 0;
+  }
+  for index in 0..quantum {
+    let write = state.write % width;
+    for channel in 0..channels {
+      state.lines[channel][write] = channel_sample(input, channel, index);
+    }
+    state.write = (write + 1) % width;
+  }
+}
+
 #[allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 pub fn biquad_block(
   input: &[Vec<f32>],

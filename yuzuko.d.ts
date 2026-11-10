@@ -11697,9 +11697,35 @@ declare var AudioContext: {
 
 
 /**
+ * Fired when an {@link OfflineAudioContext} finishes rendering.
+ *
+ * `renderedBuffer` is the same `AudioBuffer` the `startRendering` promise
+ * receives. A zero-delay task dispatches the event before that promise
+ * resolves.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioCompletionEvent)
+ */
+interface OfflineAudioCompletionEvent extends Event {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioCompletionEvent/renderedBuffer) */
+  readonly renderedBuffer: AudioBuffer;
+}
+declare var OfflineAudioCompletionEvent: {
+  prototype: OfflineAudioCompletionEvent;
+  new(type: string, eventInitDict: OfflineAudioCompletionEventInit): OfflineAudioCompletionEvent;
+};
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioCompletionEvent/OfflineAudioCompletionEvent) */
+interface OfflineAudioCompletionEventInit extends EventInit {
+  renderedBuffer: AudioBuffer;
+}
+
+/**
  * An offline context.
  *
  * The three-argument constructor uses a quantum of 128. `"hardware"` is 128.
+ * `startRendering` renders on the calling stack, then a zero-delay task
+ * dispatches `complete` and resolves the promise with the same buffer.
  *
  * @throws {@link DOMException} `NotSupportedError` for the same channel,
  * length, rate, and `renderSizeHint` limits as {@link BaseAudioContext.createBuffer}.
@@ -11710,6 +11736,9 @@ interface OfflineAudioContext extends BaseAudioContext {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioContext/length) */
   readonly length: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioContext/oncomplete) */
+  oncomplete: ((this: OfflineAudioContext, ev: OfflineAudioCompletionEvent) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioContext/startRendering) */
   startRendering(): Promise<AudioBuffer>;
@@ -11783,8 +11812,10 @@ interface AudioBufferOptions {
  * and `maxValue`. That read does not include samples connected to the
  * parameter. `value`, `defaultValue`, `minValue`, and `maxValue` are
  * single-precision floats. Assigning `value` sets the intrinsic value and inserts
- * `setValueAtTime` at `currentTime`. `NaN` is ignored. An event at the same
- * time replaces the previous event. A ramp with no earlier event throws
+ * `setValueAtTime` at `currentTime`. `NaN` is ignored. An event replaces an
+ * existing event only when both have the same time and the same kind. A
+ * different kind at that time stays, in call order. A ramp with no earlier
+ * event throws
  * `InvalidStateError`. Each method returns this parameter.
  *
  * @throws {@link TypeError} Illegal constructor.
@@ -11990,7 +12021,12 @@ interface AudioScheduledSourceNode extends AudioNode {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioScheduledSourceNode/stop) */
   stop(when?: number): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioScheduledSourceNode/ended_event) */
+  /**
+   * A null `AudioBufferSourceNode` buffer fires this during `start()`. Any
+   * other stop dispatches the event as a zero-delay task.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioScheduledSourceNode/ended_event)
+   */
   onended: ((this: AudioScheduledSourceNode, ev: Event) => any) | null;
 }
 declare var AudioScheduledSourceNode: {
@@ -12080,7 +12116,19 @@ interface OscillatorOptions extends AudioNodeOptions {
  */
 interface AudioBufferSourceNode extends AudioScheduledSourceNode {
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/buffer) */
+  /**
+   * One non-null assignment. Another non-null value throws
+   * `InvalidStateError`. `null` clears the attribute. `start()` acquires the
+   * samples. The first non-null assignment is still accepted after `start()`
+   * and acquires those samples. A null buffer at `start()` dispatches
+   * `ended` immediately. While no frame of a quantum is playing, the output
+   * is one silent channel.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when a non-null buffer
+   * is assigned after one has already been set.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/buffer)
+   */
   buffer: AudioBuffer | null;
 
   /**
@@ -12232,10 +12280,18 @@ interface AudioListener {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/upZ) */
   readonly upZ: AudioParam;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setPosition) */
+  /**
+   * @throws {TypeError} when a coordinate is not a finite single-precision float.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setPosition)
+   */
   setPosition(x: number, y: number, z: number): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setOrientation) */
+  /**
+   * @throws {TypeError} when a coordinate is not a finite single-precision float.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioListener/setOrientation)
+   */
   setOrientation(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void;
 }
 declare var AudioListener: {
@@ -12476,10 +12532,18 @@ interface PannerNode extends AudioNode {
    */
   coneOuterGain: number;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setPosition) */
+  /**
+   * @throws {TypeError} when a coordinate is not a finite single-precision float.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setPosition)
+   */
   setPosition(x: number, y: number, z: number): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setOrientation) */
+  /**
+   * @throws {TypeError} when a coordinate is not a finite single-precision float.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PannerNode/setOrientation)
+   */
   setOrientation(x: number, y: number, z: number): void;
 }
 declare var PannerNode: {
