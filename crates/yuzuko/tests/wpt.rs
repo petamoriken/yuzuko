@@ -271,8 +271,10 @@ fn wpt_expectations_match() {
           .get(&case.key)
           .is_some_and(|expect| noted_on(&expect.flaky, host));
       let attempts = if flaky { FLAKY_ATTEMPTS } else { 1 };
-      eprintln!("{}", case.key);
       let mut outcome = execute(&suite, case, &mut session, &shared);
+      if env_flag("YUZUKO_WPT_VERBOSE") {
+        eprintln!("{} {}", case.key, summarize(&outcome));
+      }
       let mut matched = saved
         .get(&case.key)
         .is_some_and(|expect| expectation_matches(expect, &outcome));
