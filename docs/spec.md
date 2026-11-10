@@ -1304,7 +1304,7 @@ The next launch of that same packaged executable applies a staged update before 
 
 ## Distribution
 
-The Release workflow, `.github/workflows/release.yml`, is manual. Its tag input is a tag that is already on the repository, such as `v0.2.0`. The workflow builds that tag. The tag's workspace `version` is the same number without the leading `v`. A tag that does not match fails the run. The build is `cargo build -p yuzuko --release` with the default Cargo features, once for every triple in Platforms. `x86_64-apple-darwin` is cross-compiled on the macOS arm64 runner. `aarch64-unknown-linux-gnu` is built on the Linux arm64 runner. The Windows binary keeps the static CRT from `.cargo/config.toml`.
+The Release workflow, `.github/workflows/release.yml`, is manual. Its tag input is a tag that is already on the repository, such as `v0.2.0`. The workflow builds that tag. The tag's workspace `version` is the same number without the leading `v`. A tag that does not match fails the run. The build is `cargo build -p yuzuko --release` with the default Cargo features, once for every triple in Platforms. The release build does not restore a Cargo cache. `x86_64-apple-darwin` is cross-compiled on the macOS arm64 runner. `aarch64-unknown-linux-gnu` is built on the Linux arm64 runner. The Windows binary keeps the static CRT from `.cargo/config.toml`.
 
 The workflow uploads these assets to the GitHub release for that tag:
 

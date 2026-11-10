@@ -84,44 +84,6 @@ jobs:
         with:
           targets: ${{ matrix.triple }}
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: yuzuko-release-${{ matrix.triple }}
-          save-if: true
-
-      - name: Restore the V8 static library
-        shell: bash
-        run: |
-          set -euo pipefail
-          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
-          # puts librusty_v8.a in the profile's gn_out, so a saved cache
-          # does not contain it. Relinking v8 from that cache fails with
-          # "could not find native static library `rusty_v8`" unless the
-          # build script runs again and downloads the archive. A --target
-          # build stores that profile under target/<triple>/release.
-          shopt -s nullglob
-          for profile in target/*/ target/*/*/; do
-            if [ ! -d "${profile}.fingerprint" ]; then
-              continue
-            fi
-            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
-              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
-              continue
-            fi
-            to_remove=(
-              "${profile}.fingerprint"/v8-*
-              "${profile}build"/v8-*
-              "${profile}deps"/libv8-*
-              "${profile}deps"/v8-*
-            )
-            if [ "${#to_remove[@]}" -eq 0 ]; then
-              continue
-            fi
-            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
-            rm -rf "${to_remove[@]}"
-          done
-
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
@@ -164,7 +126,7 @@ jobs:
           ASSET: ${{ matrix.asset }}
 
       - name: Upload the binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -202,7 +164,7 @@ jobs:
           TAG: ${{ inputs.tag }}
 
       - name: Upload yuzuko.d.ts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: yuzuko.d.ts
           path: yuzuko.d.ts
@@ -226,7 +188,7 @@ jobs:
         run: node npm/check-versions.mjs "${{ inputs.tag }}"
 
       - name: Download assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -262,10 +224,11 @@ jobs:
 
       - name: Install Node
         if: inputs.publish_npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - name: Publish npm packages
         if: inputs.publish_npm
