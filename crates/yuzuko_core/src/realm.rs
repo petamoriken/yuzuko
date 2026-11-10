@@ -175,7 +175,9 @@ fn performance_now() -> f64 {
 
 fn install_navigator(scope: &mut v8::PinScope, global: v8::Local<v8::Object>) {
   let navigator = v8::Object::new(scope);
-  let agent = v8::String::new(scope, "Yuzuko/0.1.0").unwrap();
+  let agent =
+    v8::String::new(scope, concat!("Yuzuko/", env!("CARGO_PKG_VERSION")))
+      .unwrap();
   js::set_value(scope, navigator, "userAgent", agent.into());
   let platform = v8::String::new(scope, navigator_platform()).unwrap();
   js::set_value(scope, navigator, "platform", platform.into());
