@@ -1,0 +1,31 @@
+{
+  "name": "@yuzuko/cli",
+  "description": "Yuzuko desktop JavaScript runtime",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "yuzuko": "bin/yuzuko.js"
+  },
+  "files": [
+    "bin/yuzuko.js",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@yuzuko/cli-darwin-arm64": "",
+    "@yuzuko/cli-darwin-x64": "",
+    "@yuzuko/cli-linux-arm64": "",
+    "@yuzuko/cli-linux-x64": "",
+    "@yuzuko/cli-win32-x64": ""
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petamoriken/yuzuko.git",
+    "directory": "npm/cli"
+  }
+}

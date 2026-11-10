@@ -87,6 +87,7 @@ The default Cargo features include every surface below. Build features lists the
 
 - [Packaging](#packaging)
 - [Automatic updates](#automatic-updates)
+- [Distribution](#distribution)
 
 **Implementation**
 
@@ -1300,6 +1301,29 @@ The next launch of that same packaged executable applies a staged update before 
 | Status is not 200, the connection fails, the body is chunked, a limit is exceeded, or the response times out | `NetworkError` | The update could not be downloaded. |
 | The connection closes before `Content-Length` bytes arrive | `NetworkError` | The connection closed before the body ended. |
 | The net permission is not granted | `NotAllowedError` | Requires net access, run again with the --allow-net flag |
+
+## Distribution
+
+The Release workflow, `.github/workflows/release.yml`, is manual. Its tag input is a tag that is already on the repository, such as `v0.2.0`. The workflow builds that tag. The tag's workspace `version` is the same number without the leading `v`. A tag that does not match fails the run. The build is `cargo build -p yuzuko --release` with the default Cargo features, once for every triple in Platforms. `x86_64-apple-darwin` is cross-compiled on the macOS arm64 runner. `aarch64-unknown-linux-gnu` is built on the Linux arm64 runner. The Windows binary keeps the static CRT from `.cargo/config.toml`.
+
+The workflow uploads these assets to the GitHub release for that tag:
+
+| Asset | Contents |
+| --- | --- |
+| `yuzuko-aarch64-apple-darwin` | `aarch64-apple-darwin` binary |
+| `yuzuko-x86_64-apple-darwin` | `x86_64-apple-darwin` binary |
+| `yuzuko-aarch64-unknown-linux-gnu` | `aarch64-unknown-linux-gnu` binary |
+| `yuzuko-x86_64-unknown-linux-gnu` | `x86_64-unknown-linux-gnu` binary |
+| `yuzuko-x86_64-pc-windows-msvc.exe` | `x86_64-pc-windows-msvc` binary |
+| `yuzuko.d.ts` | The root declaration file at that tag |
+
+The Linux binaries link GTK 3, libxdo, libudev, libayatana-appindicator, and ALSA. A machine that runs them needs those shared libraries. The assets are not notarized and have no Authenticode signature. Running the workflow again replaces those assets on the existing release.
+
+The same binaries are published inside `@yuzuko/cli-darwin-arm64`, `@yuzuko/cli-darwin-x64`, `@yuzuko/cli-linux-arm64`, `@yuzuko/cli-linux-x64`, and `@yuzuko/cli-win32-x64`. A Unix package contains `bin/yuzuko`. `@yuzuko/cli-win32-x64` contains `bin/yuzuko.exe`. Each package sets `os` and `cpu`, and `preferUnplugged`, and does not set `bin`. `@yuzuko/cli` is an ES module and requires Node.js 22 or newer. It lists all five as `optionalDependencies`. npm installs the one that matches the installing Node process. `@yuzuko/cli` has no install script. The `yuzuko` command is the JavaScript shim. It resolves that package's executable with `import.meta.resolve` and runs it with the same arguments and standard streams. It does not download a GitHub release asset. It exits with the binary's status. When the binary reports no status, the command exits 1. An unsupported platform prints an error and exits 1. A missing optional package does the same and names `--omit=optional`.
+
+`@yuzuko/types` publishes that same `yuzuko.d.ts`. The package `types` entry is the file. A TypeScript program includes the globals with `/// <reference types="@yuzuko/types" />`, or by listing `@yuzuko/types` in `compilerOptions.types`.
+
+The workflow's npm input publishes those packages. The input is enabled by default. Publishing authenticates with GitHub Actions OpenID Connect. The release job allows `id-token: write` and does not set `NODE_AUTH_TOKEN`. Each package names `.github/workflows/release.yml` in `petamoriken/yuzuko` as a trusted publisher and allows `npm publish`. npm accepts that publisher when `release.yml` is on the default branch. npm attaches provenance from that identity. A trusted publisher can be saved only after the package exists. Version `0.0.0` of each package is that existing package. Its tarball contains a readme and no binary, command, or types. The dist-tag is `placeholder`. The registry also keeps `latest` on `0.0.0` until a later version is published, and it rejects deleting that tag. `0.0.0` is deprecated. The Release workflow does not publish `0.0.0`. The repository `package.json` files leave `version` unset, and each optional dependency range is an empty string. Publishing writes the Cargo workspace `version` into every package `version` and into each optional dependency range, then publishes each `@yuzuko/cli-*` package, then `@yuzuko/types`, then `@yuzuko/cli`. The npm packages and this workflow are taken from the commit selected when the workflow starts. That commit's workspace version must equal the tag. The binaries and `yuzuko.d.ts` are taken from the tag.
 
 ## Architecture
 

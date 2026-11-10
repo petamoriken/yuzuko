@@ -11,3 +11,7 @@
 .env
 .env.*
 !.env.example
+
+# Release staging. The workflow copies the built binary and yuzuko.d.ts here.
+npm/platforms/*/bin/
+npm/types/yuzuko.d.ts

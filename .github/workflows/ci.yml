@@ -253,6 +253,10 @@ jobs:
         if: matrix.task == 'fmt'
         run: cargo fmt --all -- --check
 
+      - name: CLI package
+        if: matrix.task == 'fmt'
+        run: node --test npm/cli/bin/yuzuko.test.js
+
       - name: Cache Cargo
         if: matrix.task == 'clippy'
         uses: Swatinem/rust-cache@v2

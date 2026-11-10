@@ -1,0 +1,17 @@
+{
+  "name": "@yuzuko/cli-darwin-arm64",
+  "description": "Yuzuko command-line binary for macOS arm64",
+  "license": "MIT",
+  "preferUnplugged": true,
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petamoriken/yuzuko.git",
+    "directory": "npm/platforms/darwin-arm64"
+  }
+}

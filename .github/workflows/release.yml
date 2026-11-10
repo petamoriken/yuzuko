@@ -1,0 +1,276 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, such as v0.2.0. The tag must already be on the repository.
+        required: true
+        type: string
+      publish_npm:
+        description: Publish @yuzuko/cli and @yuzuko/types
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - triple: aarch64-apple-darwin
+            os: macos-15
+            asset: yuzuko-aarch64-apple-darwin
+            exe: ""
+          # The hosted macOS runner is arm64. Cargo cross-compiles Intel.
+          - triple: x86_64-apple-darwin
+            os: macos-15
+            asset: yuzuko-x86_64-apple-darwin
+            exe: ""
+          - triple: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            asset: yuzuko-aarch64-unknown-linux-gnu
+            exe: ""
+          - triple: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+            asset: yuzuko-x86_64-unknown-linux-gnu
+            exe: ""
+          - triple: x86_64-pc-windows-msvc
+            os: windows-2025
+            asset: yuzuko-x86_64-pc-windows-msvc.exe
+            exe: ".exe"
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 1
+
+      - name: Require the workspace version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(awk '
+            $0 == "[workspace.package]" { found = 1; next }
+            found && /^\[/ { exit }
+            found && /^version = / {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)
+          if [ "$version" != "${TAG#v}" ]; then
+            echo "tag $TAG does not match workspace version ${version:-<missing>}"
+            exit 1
+          fi
+        env:
+          TAG: ${{ inputs.tag }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: yuzuko-release-${{ matrix.triple }}
+          save-if: true
+
+      - name: Restore the V8 static library
+        shell: bash
+        run: |
+          set -euo pipefail
+          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
+          # puts librusty_v8.a in the profile's gn_out, so a saved cache
+          # does not contain it. Relinking v8 from that cache fails with
+          # "could not find native static library `rusty_v8`" unless the
+          # build script runs again and downloads the archive. A --target
+          # build stores that profile under target/<triple>/release.
+          shopt -s nullglob
+          for profile in target/*/ target/*/*/; do
+            if [ ! -d "${profile}.fingerprint" ]; then
+              continue
+            fi
+            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
+              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
+              continue
+            fi
+            to_remove=(
+              "${profile}.fingerprint"/v8-*
+              "${profile}build"/v8-*
+              "${profile}deps"/libv8-*
+              "${profile}deps"/v8-*
+            )
+            if [ "${#to_remove[@]}" -eq 0 ]; then
+              continue
+            fi
+            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+            rm -rf "${to_remove[@]}"
+          done
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p yuzuko --release --target "$TRIPLE"
+          cp "target/$TRIPLE/release/yuzuko$EXE" "$ASSET"
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          EXE: ${{ matrix.exe }}
+          ASSET: ${{ matrix.asset }}
+
+      - name: Check the binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The arm64 runner does not promise Rosetta, so the Intel macOS
+          # binary is identified instead of executed.
+          if [ "$TRIPLE" = "x86_64-apple-darwin" ]; then
+            file "$ASSET" | grep -q x86_64
+          else
+            "./$ASSET" --help
+          fi
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          ASSET: ${{ matrix.asset }}
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  types:
+    name: Types
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 1
+
+      - name: Require the workspace version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(awk '
+            $0 == "[workspace.package]" { found = 1; next }
+            found && /^\[/ { exit }
+            found && /^version = / {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)
+          if [ "$version" != "${TAG#v}" ]; then
+            echo "tag $TAG does not match workspace version ${version:-<missing>}"
+            exit 1
+          fi
+        env:
+          TAG: ${{ inputs.tag }}
+
+      - name: Upload yuzuko.d.ts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yuzuko.d.ts
+          path: yuzuko.d.ts
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [build, types]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Write package versions from Cargo.toml
+        run: node npm/check-versions.mjs "${{ inputs.tag }}"
+
+      - name: Download assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          assets=(
+            dist/yuzuko-aarch64-apple-darwin
+            dist/yuzuko-x86_64-apple-darwin
+            dist/yuzuko-aarch64-unknown-linux-gnu
+            dist/yuzuko-x86_64-unknown-linux-gnu
+            dist/yuzuko-x86_64-pc-windows-msvc.exe
+            dist/yuzuko.d.ts
+          )
+          for asset in "${assets[@]}"; do
+            test -f "$asset"
+          done
+          version=${TAG#v}
+          notes=$(printf '%s\n' \
+            "Yuzuko ${version}." \
+            "" \
+            "The binaries are the default Cargo features, built with the release profile." \
+            "yuzuko.d.ts is the TypeScript surface for this tag.")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --notes "$notes"
+          fi
+
+      - name: Install Node
+        if: inputs.publish_npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish npm packages
+        if: inputs.publish_npm
+        env:
+          TAG: ${{ inputs.tag }}
+          DIST: dist
+          PUBLISH: "1"
+        run: bash npm/publish.sh

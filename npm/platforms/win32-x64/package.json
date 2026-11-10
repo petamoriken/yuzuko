@@ -1,0 +1,17 @@
+{
+  "name": "@yuzuko/cli-win32-x64",
+  "description": "Yuzuko command-line binary for Windows x64",
+  "license": "MIT",
+  "preferUnplugged": true,
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petamoriken/yuzuko.git",
+    "directory": "npm/platforms/win32-x64"
+  }
+}

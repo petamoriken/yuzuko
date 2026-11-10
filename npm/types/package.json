@@ -1,0 +1,23 @@
+{
+  "name": "@yuzuko/types",
+  "description": "TypeScript types for the Yuzuko runtime",
+  "license": "MIT",
+  "types": "yuzuko.d.ts",
+  "exports": {
+    ".": {
+      "types": "./yuzuko.d.ts"
+    }
+  },
+  "files": [
+    "yuzuko.d.ts",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petamoriken/yuzuko.git",
+    "directory": "npm/types"
+  }
+}

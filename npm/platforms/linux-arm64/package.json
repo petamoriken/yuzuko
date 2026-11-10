@@ -1,0 +1,17 @@
+{
+  "name": "@yuzuko/cli-linux-arm64",
+  "description": "Yuzuko command-line binary for Linux arm64",
+  "license": "MIT",
+  "preferUnplugged": true,
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petamoriken/yuzuko.git",
+    "directory": "npm/platforms/linux-arm64"
+  }
+}

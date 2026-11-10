@@ -29,6 +29,23 @@ cargo run -p yuzuko -- run examples/clock.ts
 cargo run -p yuzuko -- test tests/pass_test.ts
 ```
 
+## Install
+
+The manual Release workflow builds the default release binary for every supported triple. It uploads those binaries and `yuzuko.d.ts` to the GitHub release for the tag, and it can publish the npm packages below.
+
+```sh
+npm install -g @yuzuko/cli
+yuzuko run examples/hello.ts
+```
+
+`@yuzuko/cli` requires Node.js 22 or newer. It depends on `@yuzuko/cli-darwin-arm64`, `@yuzuko/cli-darwin-x64`, `@yuzuko/cli-linux-arm64`, `@yuzuko/cli-linux-x64`, and `@yuzuko/cli-win32-x64`. npm installs the one optional package for this machine, and that package contains the executable the command runs. A Linux install needs the shared libraries named under Platforms.
+
+```sh
+npm install -D @yuzuko/types
+```
+
+`@yuzuko/types` is the `yuzuko.d.ts` from that release. Include it beside other types with `/// <reference types="@yuzuko/types" />`. Listing `@yuzuko/types` in `compilerOptions.types` also loads it, and that list replaces the default `@types` set.
+
 ## Platforms
 
 | Triple | OS | Architecture |
