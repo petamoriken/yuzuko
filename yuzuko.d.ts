@@ -4006,7 +4006,8 @@ declare namespace Yuzuko {
    * processor realm. A build without `codec` leaves this function absent.
    * The call is synchronous and does not decode a frame or start a clock.
    * `video` lists `avc1`, `avc3`, and `av01` tracks. `audio` lists `mp4a`
-   * tracks. A 10-bit or 4:4:4 `av01` track is still returned.
+   * tracks. A 10-bit or 4:4:4 `av01` track is returned, and `configure`
+   * accepts that `av1C`.
    * Sample bytes stay as stored. Timestamps are microseconds on the media
    * timeline. One edit-list entry with media rate 1 shifts them. Fragmented
    * MP4 is rejected.
@@ -10154,6 +10155,9 @@ interface ImageBitmapOptions {
  * Decodes or copies `image`.
  *
  * A `Blob` is identified by its signature: JPEG, PNG, WebP, JPEG XL, or AVIF.
+ * An AVIF blob is one still frame at profiles 0–2 and 8, 10, or 12 bits.
+ * The bitmap stores the unorm8 sRGB display image. `drawImage`,
+ * `createPattern`, and `copyExternalImageToTexture` sample that image.
  * `colorSpaceConversion: "none"` keeps an sRGB or Display P3 source.
  * `"default"` stores sRGB. Any other source profile is converted to sRGB.
  * `resizeQuality` `"pixelated"` and `"low"` are nearest-neighbor. `"medium"`
@@ -12782,8 +12786,12 @@ interface VideoFrameMetadata {}
  *
  * @throws {@link TypeError} when an argument is missing or invalid, including
  * a non-finite `rotation`.
- * @throws {@link DOMException} `NotSupportedError` for a 10-bit or 12-bit
- * pixel format.
+ * @throws {@link DOMException} `NotSupportedError` for a pixel format this
+ * runtime does not store. Stored 10-bit and 12-bit formats are `I420P10`,
+ * `I420P12`, `I422P10`, `I422P12`, `I444P10`, and `I444P12`. Samples are
+ * little-endian and the low bits are significant. `I422A`, `I444A`, and the
+ * 10-bit and 12-bit alpha formats are not stored. `VideoPixelFormat` matches
+ * TypeScript's DOM alias and does not list those stored names yet.
  * @throws {@link DOMException} `InvalidStateError` when the source image or
  * canvas is closed or has no pixels.
  * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned.
@@ -12938,19 +12946,25 @@ interface EncodedVideoChunkInit {
  * `avc1` and `avc3` use the platform hardware decoder: VideoToolbox on
  * Darwin, the Media Foundation transform decoding through DXVA on Windows,
  * and VA-API on Linux. There is no software H.264 decoder.
- * `hardwareAcceleration: "prefer-software"` does not select one. `av01` is
- * profile 0, 8-bit, 4:2:0. Profile 1, profile 2, 10-bit, 12-bit, monochrome,
- * and any other chroma subsampling fail `configure`. When
- * `hardwareAcceleration` is `"no-preference"` or `"prefer-hardware"`,
- * `configure` uses VideoToolbox on Darwin or the Media Foundation AV1
- * transform on Windows if that hardware decoder accepts the `av1C`, the
- * coded size, and the session. `"prefer-software"`, a missing decoder, a
- * rejected session, an omitted description, or a missing coded size uses
- * rav1d. On Linux, `configure` uses VA-API when `VAProfileAV1Profile0` is
- * present. A missing library or profile uses rav1d. A rejected frame does
- * not switch decoders.
- * `vp8`, `vp09`, and every other codec string fail `configure`.
- * `VideoEncoder` is absent.
+ * `hardwareAcceleration: "prefer-software"` does not select one. `av01`
+ * accepts profiles 0, 1, and 2 at 8, 10, and 12 bits, including monochrome,
+ * 4:2:2, and 4:4:4. Hardware decode stays profile 0, 8-bit, 4:2:0. Any other
+ * accepted configuration uses rav1d. When `hardwareAcceleration` is
+ * `"no-preference"` or `"prefer-hardware"`, `configure` uses VideoToolbox on
+ * Darwin or the Media Foundation AV1 transform on Windows if that hardware
+ * decoder accepts the `av1C`, the coded size, and the session.
+ * `"prefer-software"`, a missing decoder, a rejected session, an omitted
+ * description, a missing coded size, or a configuration outside that
+ * hardware subset uses rav1d. On Linux, `configure` uses VA-API when
+ * `VAProfileAV1Profile0` is present and the configuration is that hardware
+ * subset. A missing library or profile uses rav1d. A rejected frame does
+ * not switch decoders. A rav1d picture keeps `I420`, `I420P10`, `I420P12`,
+ * `I422`, `I422P10`, `I422P12`, `I444`, `I444P10`, or `I444P12`. Monochrome
+ * is stored as 4:2:0 with neutral chroma.
+ * An unsupported codec string, including `vp8` and `vp09`, closes the
+ * decoder before `configure` returns and reports `NotSupportedError` to
+ * `error`. `configure` does not throw for that case. `VideoEncoder` is
+ * absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
  */
@@ -12979,25 +12993,34 @@ interface VideoDecoder extends EventTarget {
 
   /**
    * An omitted or empty `description` is Annex B for H.264 and a raw OBU
-   * sequence for AV1. For H.264, `configure` leaves the decoder configured,
-   * and the hardware session opens when `decode` processes an access unit
-   * that contains an SPS and a PPS. A present H.264 `description` is a
-   * length-prefixed `avcC` and is not scanned for start codes. A present
-   * AV1 `description` is an `av1C`. Its config OBUs are given to the
-   * decoder before the first chunk. A hardware session that does not open
-   * leaves this decoder configured on rav1d.
+   * sequence for AV1. For H.264, `configure` leaves the decoder configured
+   * even when the platform has no H.264 decoder, and the hardware session
+   * opens when `decode` processes an access unit that contains an SPS and a
+   * PPS. That `decode` then fails with `EncodingError` when the decoder is
+   * missing. A present H.264 `description` is a length-prefixed `avcC` and
+   * is not scanned for start codes. A present AV1 `description` is an
+   * `av1C`. Its config OBUs are given to the decoder before the first chunk.
+   * A hardware AV1 session that does not open leaves this decoder configured
+   * on rav1d.
+   *
+   * An unsupported codec string, a present `av1C` outside profiles 0–2 at
+   * 8, 10, or 12 bits, or a present `avcC` the hardware decoder rejects
+   * does not throw. `state` becomes `"closed"` before this method returns,
+   * and `error` receives `NotSupportedError` as a microtask. `flush` in
+   * that turn rejects with the same error. On Darwin, an MBAFF interlaced
+   * `avcC` is rejected while creating the decompression session, and the
+   * message includes VideoToolbox status -12911
+   * (`kVTVideoDecoderMalfunctionErr`). On Windows the decoder is missing
+   * when no Direct3D 11 device offers the H.264 decoder profile. On Linux
+   * it is missing when VA-API has no H.264 profile. No frame is produced.
+   * A dotted H.264 string is `avc1` or `avc3`, a dot, and six hexadecimal
+   * digits whose profile is Baseline, Main, Extended, High, High 10,
+   * High 4:2:2, or High 4:4:4 Predictive and whose level is a real
+   * `level_idc`. A bare `avc1` or `avc3` is accepted. `avc1.FF000b` and
+   * `avc1.4D401D` are not.
    *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, or a present dimension is 0.
-   * @throws {@link DOMException} `NotSupportedError` when `codec` is not
-   * `avc1`, `avc3`, or an 8-bit 4:2:0 `av01`, when a present `av1C` is not
-   * 8-bit 4:2:0, or when the H.264 hardware decoder is missing or rejects a
-   * present `avcC`. On Darwin, an MBAFF interlaced `avcC` is rejected while
-   * creating the decompression session, and the message includes
-   * VideoToolbox status -12911 (`kVTVideoDecoderMalfunctionErr`). On Windows
-   * the decoder is missing when no Direct3D 11 device offers the H.264
-   * decoder profile. On Linux it is missing when VA-API has no H.264
-   * profile. No frame is produced.
    * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/configure)
@@ -13048,10 +13071,12 @@ declare var VideoDecoder: {
   new(init: VideoDecoderInit): VideoDecoder;
   /**
    * Resolves `{ supported, config }` without opening a decoder and without
-   * producing a frame. `supported` is true for an `avc1` or `avc3` codec
-   * string, and for an 8-bit 4:2:0 `av01` string whose `description`
-   * `configure` would accept. It is false for any other codec string,
-   * including a 10-bit or non-4:2:0 `av01` string or `av1C`. The returned
+   * producing a frame. `supported` is true for a bare `avc1` or `avc3`, a
+   * dotted H.264 string with a known profile and level, and an `av01`
+   * string at profile 0, 1, or 2 and bit depth 8, 10, or 12 whose
+   * `description` `configure` would accept. It is false for any other codec
+   * string, including `avc1.FF000b`, `avc1.4D401D`, a malformed `av01`
+   * string, or an `av1C` `configure` would reject. The returned
    * `config` copies `colorSpace`. An omitted member is null. An unrecognized
    * member is omitted. An invalid config rejects
    * `TypeError`. Too few arguments reject `TypeError`.
@@ -13249,11 +13274,19 @@ interface EncodedAudioChunkInit {
 }
 
 /**
- * Decodes AAC elementary packets.
+ * Decodes AAC and Opus elementary packets.
  *
- * `mp4a` is the only audio codec. `opus`, `vorbis`, and every other codec
- * string fail `configure`. `AudioEncoder` is absent. AAC uses a portable
- * decoder on every target.
+ * The accepted AAC strings are `mp4a`, `mp4a.40.2`, `mp4a.40.02`,
+ * `mp4a.40.5`, `mp4a.40.05`, `mp4a.40.29`, and `mp4a.67`. Opus is the exact
+ * string `opus`. `vorbis`, `flac`, `mp3`, and every other codec string are
+ * not supported. An unsupported configuration closes the decoder before
+ * `configure` returns and reports `NotSupportedError` to `error`.
+ * `configure` does not throw for that case. `AudioEncoder` is absent. AAC
+ * and Opus use portable decoders on every target. Opus output is 48000 Hz.
+ * One or two channels configure. More than two channels does not, including
+ * a valid multichannel OpusHead. An empty Opus description discards no
+ * samples. An OpusHead description drops its pre-skip from the start of the
+ * stream, and that duration is added to a negative timestamp only.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder)
  */
@@ -13262,37 +13295,68 @@ interface AudioDecoder extends EventTarget {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/state) */
   readonly state: CodecState;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decodeQueueSize) */
+  /**
+   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched
+   * when this decreases.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decodeQueueSize)
+   */
   readonly decodeQueueSize: number;
 
   /**
+   * Handler for the `dequeue` event. The event is dispatched when
+   * `decodeQueueSize` decreases. It does not bubble and is not cancelable.
+   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch
+   * one event after the size becomes 0.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/ondequeue)
+   */
+  ondequeue: ((this: AudioDecoder, ev: Event) => any) | null;
+
+  /**
+   * An omitted or empty AAC `description` is ADTS. The first frame header
+   * supplies the AudioSpecificConfig, and each chunk's header is removed
+   * before the frame is decoded. A present `description` is an
+   * AudioSpecificConfig, and the chunks are raw frames. An omitted Opus
+   * `description` is a raw packet. A present one is an OpusHead, and its
+   * channel count must match `numberOfChannels`.
+   *
+   * An unsupported codec, or Opus with more than two channels, does not
+   * throw. `state` becomes `"closed"` before this method returns, and
+   * `error` receives `NotSupportedError` as a microtask. `flush` in that
+   * turn rejects with the same error.
+   *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, or `sampleRate` or
    * `numberOfChannels` is not greater than 0.
-   * @throws {@link DOMException} `NotSupportedError` when `codec` is not `mp4a`.
+   * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/configure)
    */
   configure(config: AudioDecoderConfig): void;
 
   /**
-   * Returns before `output` or `error` runs. Those callbacks are microtasks.
-   * A packet the decoder rejects closes the decoder and reports
-   * `EncodingError` to `error`.
+   * Enqueues `chunk` and returns before the decoder runs. `output` runs
+   * from the microtask that decodes the chunk. A packet the decoder rejects
+   * closes the decoder, calls `error` with `EncodingError`, and rejects an
+   * in-flight `flush` with that error. This method does not throw
+   * `DataError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the decoder is not
-   * configured.
+   * configured or is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decode)
    */
   decode(chunk: EncodedAudioChunk): void;
 
   /**
-   * Resolves without waiting for more packets. Samples `decode` already
-   * produced are delivered before this promise settles.
-   *
-   * @throws {@link DOMException} `InvalidStateError` when the decoder is not
-   * configured.
+   * Settles after the queued chunks are processed. `output` for those chunks
+   * runs before the promise resolves. A rejected sample rejects
+   * `EncodingError` after `error` has run. `reset` or `close` rejects an
+   * in-flight promise with `AbortError`. When the decoder is not configured,
+   * the returned promise rejects `InvalidStateError` and this method does
+   * not throw. After an unsupported `configure`, it rejects
+   * `NotSupportedError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/flush)
    */
@@ -13309,9 +13373,10 @@ declare var AudioDecoder: {
   new(init: AudioDecoderInit): AudioDecoder;
   /**
    * Resolves `{ supported, config }` without opening a decoder and without
-   * producing samples. `supported` is true only for an `mp4a` codec string
-   * that `configure` accepts, and false for any other codec string. An
-   * invalid config rejects `TypeError`. Too few arguments reject `TypeError`.
+   * producing samples. `supported` is true for an accepted AAC string and
+   * for `opus`, including more than two channels. It is false for any other
+   * codec string, including `mp4a.FF.9` and `opus.123`. An invalid config
+   * rejects `TypeError`. Too few arguments reject `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/isConfigSupported)
    */
@@ -13350,10 +13415,21 @@ interface AudioDecoderConfig {
  * microseconds. A still frame has `timestamp` 0 and `duration` null.
  * `createImageBitmap` uses the first frame. This decoder does not advance
  * frames. An AVIF file is one still frame from the primary item, including
- * when the file is animated. The color item is 8-bit 4:2:0. An alpha item
- * is composited, and a premultiplied alpha item stays premultiplied.
- * 10-bit, 12-bit, monochrome color, and subsampling other than 4:2:0 are
- * rejected. Rotation, clean aperture, ICC, and HDR are not applied.
+ * when the file is animated. The color item is profiles 0–2 at 8, 10, or 12
+ * bits, including 4:2:0, 4:2:2, 4:4:4, and monochrome. `decode()` returns a
+ * YUV `VideoFrame`: `I420`, `I422`, and `I444` at 8, 10, and 12 bits.
+ * Monochrome is stored as 4:2:0 with neutral chroma. 10-bit and 12-bit
+ * samples are little-endian, and the low bits are significant. An `nclx`
+ * colour property on the primary item replaces the sequence header color.
+ * When that property is absent, the sequence header color is stored.
+ * `drawImage`, `createPattern`, `createImageBitmap`, and
+ * `copyExternalImageToTexture` sample that frame as unorm8 sRGB. Identity
+ * reads the Y plane as G, the U plane as B, and the V plane as R. An alpha item is composited into the display image, and the frame
+ * format stays the color format. A premultiplied alpha item stays
+ * premultiplied. Any other bit depth is rejected. `desiredWidth` or
+ * `desiredHeight` scales the display image, and that frame is RGBA.
+ * Rotation, clean aperture, and ICC are not applied. PQ and HLG transfers
+ * are not applied.
  * `desiredWidth` and `desiredHeight` scale every frame with a
  * triangle filter. One of them preserves aspect ratio by rounding the other
  * edge up. Both set the exact size. A value of 0 throws `TypeError`.

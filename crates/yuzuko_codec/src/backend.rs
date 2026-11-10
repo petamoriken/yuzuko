@@ -6,6 +6,11 @@ use yuzuko_image::Raster;
 
 use crate::error::DecodeError;
 
+pub enum Picture {
+  Raster(Raster),
+  Av1(yuzuko_image::av1::Av1Picture),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Codec {
   Avc,
@@ -61,11 +66,14 @@ impl VideoBackend {
     if config.codec == Codec::Av1 {
       return open_av1(config);
     }
-    if config.codec != Codec::Avc || !hardware_avc() {
+    if config.codec != Codec::Avc {
       return Err(DecodeError::Unsupported);
     }
     let width = config.width;
     let height = config.height;
+    // Annex B configures before a hardware decoder exists. The session
+    // opens from the first access unit that contains SPS and PPS, and
+    // that decode fails when the platform has no H.264 decoder.
     if config.description.is_empty() {
       return Ok(Self {
         inner: VideoInner::Deferred,
@@ -73,6 +81,9 @@ impl VideoBackend {
         width,
         height,
       });
+    }
+    if !hardware_avc() {
+      return Err(DecodeError::Unsupported);
     }
     Ok(Self {
       inner: hardware_session(&config.description, width, height)?,
@@ -82,7 +93,7 @@ impl VideoBackend {
     })
   }
 
-  pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Raster>, DecodeError> {
+  pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Picture>, DecodeError> {
     let converted = if self.annex_b {
       Some(crate::h264::annex_b_access_unit(bytes)?)
     } else {
@@ -104,8 +115,13 @@ impl VideoBackend {
         target_os = "windows",
         target_os = "linux"
       ))]
-      VideoInner::Hardware(session) => session.decode(sample),
-      VideoInner::Av1(session) => session.send(sample).map_err(map_av1),
+      VideoInner::Hardware(session) => session
+        .decode(sample)
+        .map(|frames| frames.into_iter().map(Picture::Raster).collect()),
+      VideoInner::Av1(session) => session
+        .send(sample)
+        .map(|frames| frames.into_iter().map(Picture::Av1).collect())
+        .map_err(map_av1),
       VideoInner::Deferred => Err(DecodeError::Rejected),
       #[cfg(not(any(
         target_os = "macos",
@@ -116,15 +132,20 @@ impl VideoBackend {
     }
   }
 
-  pub fn flush(&mut self) -> Result<Vec<Raster>, DecodeError> {
+  pub fn flush(&mut self) -> Result<Vec<Picture>, DecodeError> {
     match &mut self.inner {
       #[cfg(any(
         target_os = "macos",
         target_os = "windows",
         target_os = "linux"
       ))]
-      VideoInner::Hardware(session) => session.flush(),
-      VideoInner::Av1(session) => session.flush().map_err(map_av1),
+      VideoInner::Hardware(session) => session
+        .flush()
+        .map(|frames| frames.into_iter().map(Picture::Raster).collect()),
+      VideoInner::Av1(session) => session
+        .flush()
+        .map(|frames| frames.into_iter().map(Picture::Av1).collect())
+        .map_err(map_av1),
       VideoInner::Deferred => Ok(Vec::new()),
       #[cfg(not(any(
         target_os = "macos",
@@ -170,7 +191,10 @@ fn open_av1(config: VideoConfig) -> Result<VideoBackend, DecodeError> {
 /// configuration. A missing decoder selects rav1d.
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 fn hardware_av1(config: &VideoConfig) -> Option<VideoInner> {
-  if !crate::platform::supports_av1() || config.width == 0 || config.height == 0
+  if !crate::platform::supports_av1()
+    || config.width == 0
+    || config.height == 0
+    || !crate::av1::hardware_description(&config.description)
   {
     return None;
   }
@@ -277,7 +301,9 @@ fn hardware_session(
 
 #[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
 mod tests {
-  use super::{Acceleration, Codec, VideoBackend, VideoConfig, VideoInner};
+  use super::{
+    Acceleration, Codec, Picture, VideoBackend, VideoConfig, VideoInner,
+  };
   use crate::mp4::{Sample, parse};
   use yuzuko_image::Raster;
 
@@ -320,13 +346,21 @@ mod tests {
     }
     frames.extend(backend.flush().expect("flush"));
     let frame = frames.first().expect("frame");
-    let pixel = center(frame);
+    let raster = displayed(frame);
+    let pixel = center(raster);
     assert!(
       pixel[0] > 180 && pixel[1] < 80 && pixel[2] < 80 && pixel[3] == 255,
       "{pixel:?} {}x{}",
-      frame.width,
-      frame.height
+      raster.width,
+      raster.height
     );
+  }
+
+  fn displayed(picture: &Picture) -> &Raster {
+    match picture {
+      Picture::Raster(raster) => raster,
+      Picture::Av1(picture) => &picture.display,
+    }
   }
 
   fn center(frame: &Raster) -> [u8; 4] {
@@ -368,5 +402,39 @@ mod tests {
       open_track("red-av1.mp4", Acceleration::PreferHardware);
     assert_selected(&small, opened);
     assert_red(&mut small, &samples);
+  }
+
+  #[test]
+  fn av1_software_reports_chrome_formats() {
+    for (file, format) in [
+      ("av1-420p10.mp4", "I420P10"),
+      ("av1-420p12.mp4", "I420P12"),
+      ("av1-422.mp4", "I422"),
+      ("av1-422p10.mp4", "I422P10"),
+      ("av1-444.mp4", "I444"),
+      ("av1-444p10.mp4", "I444P10"),
+      ("av1-mono.mp4", "I420"),
+    ] {
+      let (mut backend, samples, _) =
+        open_track(file, Acceleration::PreferSoftware);
+      assert!(matches!(backend.inner, VideoInner::Av1(_)));
+      let mut frames = Vec::new();
+      for sample in &samples {
+        frames.extend(backend.decode(&sample.data).expect(file));
+      }
+      frames.extend(backend.flush().expect(file));
+      let picture = frames.first().unwrap_or_else(|| panic!("{file} frame"));
+      let Picture::Av1(picture) = picture else {
+        panic!("{file} used hardware");
+      };
+      assert_eq!(picture.format.name(), format, "{file}");
+      assert_eq!((picture.width, picture.height), (16, 16), "{file}");
+      if file == "av1-mono.mp4" {
+        assert!(
+          picture.planes[1].iter().all(|sample| *sample == 128),
+          "neutral chroma"
+        );
+      }
+    }
   }
 }

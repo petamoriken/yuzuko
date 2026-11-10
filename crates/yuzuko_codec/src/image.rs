@@ -8,6 +8,7 @@ use std::cell::{Cell, RefCell};
 
 use yuzuko_core::op::{Js, OpError, host_ref, new_dom_exception, traced};
 use yuzuko_core::rust_string;
+use yuzuko_image::av1::Av1Picture;
 use yuzuko_image::{
   ImageDecodeError, PixelError, Raster, decode_frames, orient,
 };
@@ -51,6 +52,7 @@ struct Waiter {
 
 struct SequenceFrame {
   raster: Raster,
+  yuv: Option<Av1Picture>,
   duration_us: Option<f64>,
 }
 
@@ -403,17 +405,17 @@ impl ImageDecoder {
         OpError::dom("InvalidStateError", "No track is selected"),
       );
     }
-    let (raster, timestamp, duration) = match self.frame_at(index) {
+    let (raster, yuv, timestamp, duration) = match self.frame_at(index) {
       Ok(frame) => frame,
       Err(error) => return rejected_error(scope, error),
     };
-    resolve_frame(scope, raster, timestamp, duration)
+    resolve_frame(scope, raster, yuv, timestamp, duration)
   }
 
   fn frame_at(
     &self,
     index: u32,
-  ) -> Result<(Raster, f64, Option<f64>), OpError> {
+  ) -> Result<(Raster, Option<Av1Picture>, f64, Option<f64>), OpError> {
     let borrowed = self.sequence.borrow();
     let Some(sequence) = borrowed.as_ref() else {
       return Err(OpError::dom(
@@ -428,7 +430,12 @@ impl ImageDecoder {
     for earlier in &sequence.frames[..index as usize] {
       timestamp += earlier.duration_us.unwrap_or(0.0);
     }
-    Ok((frame.raster.clone(), timestamp, frame.duration_us))
+    Ok((
+      frame.raster.clone(),
+      frame.yuv.clone(),
+      timestamp,
+      frame.duration_us,
+    ))
   }
 
   fn flush_waiters(&self, scope: &mut v8::PinScope) {
@@ -447,7 +454,8 @@ impl ImageDecoder {
         );
         continue;
       }
-      let (raster, timestamp, duration) = match self.frame_at(waiter.index) {
+      let (raster, yuv, timestamp, duration) = match self.frame_at(waiter.index)
+      {
         Ok(frame) => frame,
         Err(error) => {
           reject_with(scope, resolver, error);
@@ -457,7 +465,7 @@ impl ImageDecoder {
       let frame = unsafe {
         yuzuko_core::op::wrap_instance(
           scope,
-          VideoFrame::from_timed(raster, timestamp, duration),
+          host_frame(raster, yuv, timestamp, duration),
         )
       };
       let result = decode_result(scope, frame);
@@ -665,10 +673,16 @@ fn decode_sequence(bytes: Vec<u8>, to_srgb: bool) -> Result<Sequence, String> {
   }
   let mut frames = Vec::with_capacity(decoded.frames.len());
   for frame in decoded.frames {
+    let yuv = if frame.orientation == 1 {
+      frame.yuv
+    } else {
+      None
+    };
     let raster =
       orient(frame.raster, frame.orientation).map_err(pixel_message)?;
     frames.push(SequenceFrame {
       raster,
+      yuv,
       duration_us: frame.duration_us,
     });
   }
@@ -952,9 +966,30 @@ fn fail_thrown(
     .reject_waiters(scope, OpError::dom("EncodingError", message));
 }
 
+fn host_frame(
+  raster: Raster,
+  yuv: Option<Av1Picture>,
+  timestamp: f64,
+  duration: Option<f64>,
+) -> VideoFrame {
+  if let Some(mut picture) = yuv
+    && picture.width == raster.width
+    && picture.height == raster.height
+  {
+    picture.display = raster;
+    return VideoFrame::from_data(
+      crate::layout::frame_from_av1(picture),
+      timestamp,
+      duration,
+    );
+  }
+  VideoFrame::from_timed(raster, timestamp, duration)
+}
+
 fn resolve_frame(
   scope: &mut v8::PinScope,
   raster: Raster,
+  yuv: Option<Av1Picture>,
   timestamp: f64,
   duration: Option<f64>,
 ) -> Js {
@@ -964,7 +999,7 @@ fn resolve_frame(
   let frame = unsafe {
     yuzuko_core::op::wrap_instance(
       scope,
-      VideoFrame::from_timed(raster, timestamp, duration),
+      host_frame(raster, yuv, timestamp, duration),
     )
   };
   let result = decode_result(scope, frame);

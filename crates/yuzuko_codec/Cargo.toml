@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 symphonia = { workspace = true, features = ["aac"] }
+ruopus.workspace = true
 v8.workspace = true
 yuzuko_core.workspace = true
 yuzuko_dom.workspace = true

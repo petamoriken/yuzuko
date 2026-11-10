@@ -33,6 +33,26 @@ if (!("Window" in globalThis)) {
 }
 "#;
 
+/// `promise_setup` records `assert_implements_optional` as a harness error.
+/// Tag that rejection so a variant whose tests never started can be omitted.
+const OPTIONAL_ASSERT: &str = r#"
+if (typeof assert_implements_optional === "function") {
+  var yuzukoOptionalAssert = assert_implements_optional;
+  assert_implements_optional = function(condition, description) {
+    try {
+      return yuzukoOptionalAssert(condition, description);
+    } catch (error) {
+      if (typeof OptionalFeatureUnsupportedError === "function" &&
+          error instanceof OptionalFeatureUnsupportedError &&
+          String(error.message).indexOf("OptionalFeatureUnsupportedError:") !== 0) {
+        error.message = "OptionalFeatureUnsupportedError: " + error.message;
+      }
+      throw error;
+    }
+  };
+}
+"#;
+
 const COMPLETION: &str = r#"
 add_completion_callback(function(tests, status) {
   var results = [];
@@ -689,6 +709,7 @@ fn execute_query(
         ) {
           return Outcome::Error(error);
         }
+        parts.insert(0, OPTIONAL_ASSERT.to_string());
         parts.insert(0, session.interned_source(shared.harness).to_string());
         parts.push(source.to_string());
         if !source.contains("done()") {
@@ -752,6 +773,7 @@ fn execute_query(
       yuzuko_core::ClassicPart::Source(&location),
       yuzuko_core::ClassicPart::Source(&fetch),
       yuzuko_core::ClassicPart::Shared(shared.harness),
+      yuzuko_core::ClassicPart::Source(OPTIONAL_ASSERT),
       yuzuko_core::ClassicPart::Shared(shared.completion),
     ];
     for script in &extra {
@@ -1075,7 +1097,12 @@ fn merge_outcomes(parts: Vec<Outcome>) -> Outcome {
   let mut tests = Vec::new();
   let mut status = 0;
   let mut message = String::new();
+  let mut kept = false;
   for part in parts {
+    if optional_variant_skip(&part) {
+      continue;
+    }
+    kept = true;
     match part {
       Outcome::Error(error) => return Outcome::Error(error),
       Outcome::Report {
@@ -1095,11 +1122,36 @@ fn merge_outcomes(parts: Vec<Outcome>) -> Outcome {
       }
     }
   }
+  if !kept {
+    return Outcome::Report {
+      status: 3,
+      message: String::new(),
+      tests,
+    };
+  }
   Outcome::Report {
     status,
     message,
     tests,
   }
+}
+
+/// `promise_setup` turns `assert_implements_optional` into harness status 1.
+/// A variant that never started its subtests is not a file failure.
+fn optional_variant_skip(outcome: &Outcome) -> bool {
+  let Outcome::Report {
+    status,
+    message,
+    tests,
+  } = outcome
+  else {
+    return false;
+  };
+  *status == 1
+    && message.contains("OptionalFeatureUnsupportedError:")
+    && tests
+      .iter()
+      .all(|test| test.status == 3 || test.status == 4)
 }
 
 fn push_meta_scripts(
@@ -1767,6 +1819,54 @@ fn platforms_json(platforms: &BTreeMap<Platform, String>) -> Value {
     map.insert(platform.as_str().to_string(), Value::String(reason.clone()));
   }
   Value::Object(map)
+}
+
+#[test]
+fn optional_variant_skip_does_not_fail_the_file() {
+  let passed = Outcome::Report {
+    status: 0,
+    message: String::new(),
+    tests: vec![Subtest {
+      name: "Test decoding".to_string(),
+      status: 0,
+      message: String::new(),
+    }],
+  };
+  let skipped = Outcome::Report {
+    status: 1,
+    message: "Error: OptionalFeatureUnsupportedError: mp3 unsupported"
+      .to_string(),
+    tests: vec![Subtest {
+      name: "Test decoding".to_string(),
+      status: 3,
+      message: String::new(),
+    }],
+  };
+  assert_eq!(
+    expect_of(&merge_outcomes(vec![passed, skipped])),
+    FileResult::Pass
+  );
+  let broken = Outcome::Report {
+    status: 1,
+    message: "Error: boom".to_string(),
+    tests: vec![Subtest {
+      name: "Test decoding".to_string(),
+      status: 3,
+      message: String::new(),
+    }],
+  };
+  assert_eq!(expect_of(&merge_outcomes(vec![broken])), FileResult::Fail);
+  let mixed = Outcome::Report {
+    status: 1,
+    message: "Error: OptionalFeatureUnsupportedError: mp3 unsupported"
+      .to_string(),
+    tests: vec![Subtest {
+      name: "Test decoding".to_string(),
+      status: 1,
+      message: "failed".to_string(),
+    }],
+  };
+  assert_eq!(expect_of(&merge_outcomes(vec![mixed])), FileResult::Fail);
 }
 
 #[test]

@@ -6,19 +6,7 @@
   "webcodecs/audio-data.any.js": true,
   "webcodecs/audio-data.crossOriginIsolated.https.any.js": true,
   "webcodecs/audio-decoder.crossOriginIsolated.https.any.js": true,
-  "webcodecs/audio-decoder.https.any.js": {
-    "expectedFailures": [
-      "Test that AudioDecoder.configure() doesn't support config: Ambiguous codec",
-      "Test that AudioDecoder.configure() doesn't support config: Codec with MIME type",
-      "Test that AudioDecoder.configure() doesn't support config: Possible future aac codec string",
-      "Test that AudioDecoder.configure() doesn't support config: Possible future opus codec string",
-      "Test that AudioDecoder.configure() doesn't support config: Unrecognized codec",
-      "Test that AudioDecoder.configure() doesn't support config: Video codec",
-      "Test that AudioDecoder.configure() doesn't support config: codec with spaces",
-      "Test that AudioDecoder.isConfigSupported() doesn't support config: Possible future aac codec string",
-      "Verify unconfigured AudioDecoder operations"
-    ]
-  },
+  "webcodecs/audio-decoder.https.any.js": true,
   "webcodecs/audio-encoder-aac-description.html": {
     "expectedFailures": [
       "The decoderConfig of an AAC encoder can be used to configure an AudioDecoder",
@@ -123,7 +111,7 @@
   "webcodecs/audio-serialization.crossAgentCluster.https.html": {
     "ignore": "The file needs a document."
   },
-  "webcodecs/audioDecoder-codec-specific.https.any.js": false,
+  "webcodecs/audioDecoder-codec-specific.https.any.js": true,
   "webcodecs/chunk-serialization.any.js": true,
   "webcodecs/encoded-audio-chunk.any.js": true,
   "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": true,
@@ -145,10 +133,6 @@
   },
   "webcodecs/idlharness.https.any.js": {
     "expectedFailures": [
-      "AudioDecoder interface: attribute ondequeue",
-      "AudioDecoder interface: existence and properties of interface object",
-      "AudioDecoder interface: existence and properties of interface prototype object",
-      "AudioDecoder interface: new AudioDecoder(defaultCodecInit) must inherit property \"ondequeue\" with the proper type",
       "AudioEncoder interface object length",
       "AudioEncoder interface object name",
       "AudioEncoder interface: attribute encodeQueueSize",
@@ -229,7 +213,6 @@
   },
   "webcodecs/opus-multichannel.https.any.js": {
     "expectedFailures": [
-      "Configuring AudioDecoder with 16ch Opus without description must fail.",
       "Encoding 16ch Opus produces a valid OpusHead decoderConfig description.",
       "Encoding then decoding 16ch Opus produces frames with 16 channels."
     ]
@@ -285,29 +268,7 @@
       "windows": "A SharedArrayBuffer codec description is not supported."
     }
   },
-  "webcodecs/video-decoder.https.any.js": {
-    "expectedFailures": [
-      "Test that VideoDecoder.configure() doesn't support config: Ambiguous codec",
-      "Test that VideoDecoder.configure() doesn't support config: Audio codec",
-      "Test that VideoDecoder.configure() doesn't support config: Codec with MIME type",
-      "Test that VideoDecoder.configure() doesn't support config: Codec with bad casing",
-      "Test that VideoDecoder.configure() doesn't support config: Possible future AV1 codec string",
-      "Test that VideoDecoder.configure() doesn't support config: Possible future H264 codec string",
-      "Test that VideoDecoder.configure() doesn't support config: Possible future H264 codec string (level 2.9)",
-      "Test that VideoDecoder.configure() doesn't support config: Possible future HEVC codec string",
-      "Test that VideoDecoder.configure() doesn't support config: Possible future VP9 codec string",
-      "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec",
-      "Test that VideoDecoder.configure() doesn't support config: Unrecognized codec with dataview description",
-      "Test that VideoDecoder.configure() doesn't support config: codec with spaces",
-      "Test that VideoDecoder.isConfigSupported() accepts config:variant 1 of h264 codec string",
-      "Test that VideoDecoder.isConfigSupported() accepts config:variant 2 of h264 codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string",
-      "Test that VideoDecoder.isConfigSupported() doesn't support config: Possible future H264 codec string (level 2.9)"
-    ],
-    "ignore": {
-      "macos": "VideoToolbox rejects codec strings that the shared failure list still records."
-    }
-  },
+  "webcodecs/video-decoder.https.any.js": true,
   "webcodecs/video-encoder-canvasImageSource.https.html": {
     "ignore": "The file needs a document."
   },
@@ -495,18 +456,12 @@
     "expectedFailures": [
       "Test we can construct a I420AP10 VideoFrame",
       "Test we can construct a I420AP12 VideoFrame",
-      "Test we can construct a I420P10 VideoFrame",
-      "Test we can construct a I420P12 VideoFrame",
       "Test we can construct a I422A VideoFrame",
       "Test we can construct a I422AP10 VideoFrame",
       "Test we can construct a I422AP12 VideoFrame",
-      "Test we can construct a I422P10 VideoFrame",
-      "Test we can construct a I422P12 VideoFrame",
       "Test we can construct a I444A VideoFrame",
       "Test we can construct a I444AP10 VideoFrame",
-      "Test we can construct a I444AP12 VideoFrame",
-      "Test we can construct a I444P10 VideoFrame",
-      "Test we can construct a I444P12 VideoFrame"
+      "Test we can construct a I444AP12 VideoFrame"
     ]
   },
   "webcodecs/videoFrame-construction.crossOriginIsolated.https.any.js": true,
@@ -551,11 +506,7 @@
       "Create ImageBitmap for a VideoFrame from VP9 decoder."
     ]
   },
-  "webcodecs/videoFrame-drawImage-hbd.any.js": {
-    "expectedFailures": [
-      "drawImage with 10-bit YUV VideoFrame"
-    ]
-  },
+  "webcodecs/videoFrame-drawImage-hbd.any.js": true,
   "webcodecs/videoFrame-drawImage-rgbx.any.js": true,
   "webcodecs/videoFrame-drawImage.any.js": {
     "expectedFailures": [

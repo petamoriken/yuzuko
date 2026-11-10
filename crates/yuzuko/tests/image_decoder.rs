@@ -18,7 +18,7 @@ fn image_decoder_passes_under_yuzuko_test() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
   assert!(
-    stdout.contains("ok | 11 passed | 0 failed | 0 ignored"),
+    stdout.contains("ok | 12 passed | 0 failed | 0 ignored"),
     "{stdout}\n{stderr}"
   );
 }

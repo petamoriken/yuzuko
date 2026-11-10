@@ -10,7 +10,7 @@ claxon = "0.4"
 cpal = { version = "0.18.2", default-features = false }
 hound = "3.5"
 lewton = "0.10"
-ruopus = "0.1.2"
+ruopus.workspace = true
 symphonia = { workspace = true, features = ["mp3", "all-meta"] }
 v8.workspace = true
 yuzuko_core.workspace = true

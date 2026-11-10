@@ -189,6 +189,7 @@ Yuzuko.test("AVIF decodes as one still frame", async () => {
   assert(result.complete, "complete");
   assert(result.image.displayWidth === 16, "width");
   assert(result.image.displayHeight === 16, "height");
+  assert(result.image.format === "I420", result.image.format);
   assert(result.image.timestamp === 0, "timestamp");
   assert(result.image.duration === null, "duration");
   const decoded = await bitmapPixels(result.image);
@@ -204,6 +205,158 @@ Yuzuko.test("AVIF decodes as one still frame", async () => {
   result.image.close();
   decoder.close();
 });
+
+function samePixels(actual, expected, message) {
+  assert(actual.length === expected.length, `${message} length`);
+  for (let index = 0; index < actual.length; index += 1) {
+    if (actual[index] !== expected[index]) {
+      assert(false, `${message} at ${index}: ${actual[index]} vs ${expected[index]}`);
+    }
+  }
+}
+
+function corner(pixels, x, y, width) {
+  const index = (y * width + x) * 4;
+  return pixels.slice(index, index + 4);
+}
+
+function assertCorner(pixel, kind, name) {
+  const [red, green, blue, alpha] = pixel;
+  assert(alpha === 255, `${name} ${kind} alpha ${alpha}`);
+  if (kind === "yellow") {
+    assert(red >= 250 && green >= 250 && blue <= 8, `${name} yellow ${pixel}`);
+  } else if (kind === "red") {
+    assert(red >= 250 && green <= 20 && blue <= 8, `${name} red ${pixel}`);
+  } else if (kind === "blue") {
+    assert(blue >= 240 && red <= 16 && green <= 16, `${name} blue ${pixel}`);
+  } else {
+    assert(green >= 240 && red <= 16 && blue <= 16, `${name} green ${pixel}`);
+  }
+}
+
+async function drawnPixels(source) {
+  const bitmap = await createImageBitmap(source);
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext("2d");
+  assert(context, "context");
+  context.drawImage(bitmap, 0, 0);
+  const pixels = [...context.getImageData(0, 0, bitmap.width, bitmap.height).data];
+  return { bitmap, pixels };
+}
+
+Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () => {
+  const root = new URL("./wpt/suite/webcodecs/", import.meta.url);
+  const cases = [
+    ["four-colors.avif", "I444"],
+    ["four-colors-limited-range-420-8bpc.avif", "I420"],
+    ["four-colors-limited-range-422-8bpc.avif", "I422"],
+    ["four-colors-limited-range-444-8bpc.avif", "I444"],
+    ["four-colors-full-range-hlg-420-10bpc.avif", "I420P10"],
+    ["four-colors-full-range-hlg-444-12bpc.avif", "I444P12"],
+    ["four-colors-full-range-bt2020-pq-444-10bpc.avif", "I444P10"],
+  ];
+  const adapter = await navigator.gpu.requestAdapter();
+  let device = null;
+  if (adapter) {
+    device = await adapter.requestDevice();
+  }
+  try {
+    for (const [name, format] of cases) {
+      const encoded = new Uint8Array(
+        await (await fetch(new URL(name, root))).arrayBuffer(),
+      );
+      const bare = await drawnPixels(new Blob([encoded]));
+      const typed = await drawnPixels(
+        new Blob([encoded], { type: "image/avif" }),
+      );
+      assert(bare.bitmap.width === 320 && bare.bitmap.height === 240, name);
+      samePixels(typed.pixels, bare.pixels, `${name} mime`);
+      assertCorner(corner(bare.pixels, 0, 0, 320), "yellow", name);
+      assertCorner(corner(bare.pixels, 319, 0, 320), "red", name);
+      assertCorner(corner(bare.pixels, 0, 239, 320), "blue", name);
+      assertCorner(corner(bare.pixels, 319, 239, 320), "green", name);
+
+      const patternCanvas = new OffscreenCanvas(1, 1);
+      const patternContext = patternCanvas.getContext("2d");
+      assert(patternContext, "pattern context");
+      const pattern = patternContext.createPattern(bare.bitmap, "repeat");
+      assert(pattern !== null, `${name} pattern`);
+      patternContext.fillStyle = pattern;
+      patternContext.fillRect(0, 0, 1, 1);
+      samePixels(
+        [...patternContext.getImageData(0, 0, 1, 1).data],
+        bare.pixels.slice(0, 4),
+        `${name} pattern pixel`,
+      );
+
+      const frame = new VideoFrame(bare.bitmap, { timestamp: 0 });
+      assert(frame.format === "RGBA", `${name} ${frame.format}`);
+      const fromFrame = await drawnPixels(frame);
+      samePixels(fromFrame.pixels, bare.pixels, `${name} video frame`);
+      fromFrame.bitmap.close();
+      frame.close();
+
+      const decoder = new ImageDecoder({ type: "image/avif", data: encoded });
+      const result = await decoder.decode();
+      assert(result.image.format === format, `${name} ${result.image.format}`);
+      const direct = new OffscreenCanvas(320, 240);
+      const directContext = direct.getContext("2d");
+      assert(directContext, "direct context");
+      directContext.drawImage(result.image, 0, 0);
+      samePixels(
+        [...directContext.getImageData(0, 0, 320, 240).data],
+        bare.pixels,
+        `${name} drawImage`,
+      );
+      const framePattern = directContext.createPattern(result.image, "repeat");
+      assert(framePattern !== null, `${name} frame pattern`);
+      const fromDecoder = await drawnPixels(result.image);
+      samePixels(fromDecoder.pixels, bare.pixels, `${name} decoder bitmap`);
+      fromDecoder.bitmap.close();
+
+      if (device && name === "four-colors.avif") {
+        await assertGpuPixel(device, bare.bitmap, bare.pixels);
+        await assertGpuPixel(device, result.image, bare.pixels);
+      }
+
+      result.image.close();
+      decoder.close();
+      bare.bitmap.close();
+      typed.bitmap.close();
+    }
+  } finally {
+    device?.destroy();
+  }
+});
+
+async function assertGpuPixel(device, source, pixels) {
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  device.queue.copyExternalImageToTexture(
+    { source },
+    { texture, colorSpace: "srgb" },
+    [1, 1],
+  );
+  const buffer = device.createBuffer({
+    size: 256,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer(
+    { texture },
+    { buffer, bytesPerRow: 256 },
+    [1, 1],
+  );
+  device.queue.submit([encoder.finish()]);
+  await buffer.mapAsync(GPUMapMode.READ);
+  const copied = [...new Uint8Array(buffer.getMappedRange()).slice(0, 4)];
+  buffer.unmap();
+  texture.destroy();
+  samePixels(copied, pixels.slice(0, 4), "gpu pixel");
+}
 
 Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
   const encoded = await bytes("corners.png");

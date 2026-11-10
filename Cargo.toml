@@ -53,7 +53,8 @@ rustls = { version = "0.23.46", default-features = false, features = [
 webpki-roots = "1.0.11"
 ed25519-dalek = "3.0.0"
 symphonia = { version = "0.6", default-features = false }
-# Software AV1. Assembly needs nasm on x86 and stays off. 8-bit only.
+ruopus = "0.1.2"
+# Software AV1. Assembly needs nasm on x86 and stays off.
 rav1d = { version = "1.1.0", default-features = false }
 avif-parse = "2.1.0"
 brotli = "9.0.0"

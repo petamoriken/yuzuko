@@ -1,6 +1,7 @@
 //! AV1 codec strings and `av1C` records.
 //!
-//! Demux keeps a 10-bit or 4:4:4 track. `configure` rejects it.
+//! `configure` accepts profiles 0–2 at 8, 10, and 12 bits. Hardware decode
+//! stays profile 0, 8-bit, 4:2:0.
 
 #[derive(Clone, Copy)]
 struct Av1c {
@@ -16,30 +17,45 @@ struct Av1c {
 struct CodecString {
   profile: u8,
   bit_depth: u8,
+  /// Parsed so a bad digit rejects the string. Support does not filter it.
+  #[allow(dead_code)]
   monochrome: bool,
-  /// `(x, y)` when the string includes chroma subsampling.
+  /// Parsed so a bad digit rejects the string. Support does not filter it.
+  #[allow(dead_code)]
   subsampling: Option<(u8, u8)>,
 }
 
-/// `av01` and an 8-bit 4:2:0 string. A 10-bit, 12-bit, monochrome, or
-/// non-4:2:0 string is not supported. A malformed string is not either.
+/// A parsed `av01` string. Profile is 0–2 and bit depth is 8, 10, or 12.
+/// Monochrome and 4:2:2 / 4:4:4 are included. A malformed string is not.
 pub(crate) fn string_supported(codec: &str) -> bool {
-  let Some(parsed) = parse_string(codec) else {
-    return false;
-  };
-  parsed.profile == 0
-    && parsed.bit_depth == 8
-    && !parsed.monochrome
-    && parsed.subsampling.is_none_or(|(x, y)| x == 1 && y == 1)
+  matches!(
+    parse_string(codec),
+    Some(CodecString {
+      profile: 0..=2,
+      bit_depth: 8 | 10 | 12,
+      ..
+    })
+  )
 }
 
 /// An omitted or empty description is a raw OBU sequence. A present `av1C`
-/// must be 8-bit 4:2:0.
+/// is accepted when its profile is 0–2 and its bit depth is 8, 10, or 12.
 pub(crate) fn description_supported(description: Option<&[u8]>) -> bool {
   match description {
     None | Some([]) => true,
     Some(bytes) => parse_av1c(bytes).is_some_and(decodable),
   }
+}
+
+/// Profile 0, 8-bit, 4:2:0. Hardware sessions stay inside this subset.
+pub(crate) fn hardware_description(bytes: &[u8]) -> bool {
+  parse_av1c(bytes).is_some_and(|record| {
+    record.profile == 0
+      && record.bit_depth == 8
+      && !record.monochrome
+      && record.subsampling_x
+      && record.subsampling_y
+  })
 }
 
 pub(crate) fn codec_string(record: &[u8]) -> Option<String> {
@@ -59,11 +75,7 @@ pub(crate) fn config_obus(record: &[u8]) -> Option<&[u8]> {
 }
 
 fn decodable(record: Av1c) -> bool {
-  record.profile == 0
-    && record.bit_depth == 8
-    && !record.monochrome
-    && record.subsampling_x
-    && record.subsampling_y
+  record.profile <= 2 && matches!(record.bit_depth, 8 | 10 | 12)
 }
 
 fn parse_av1c(bytes: &[u8]) -> Option<Av1c> {
@@ -187,27 +199,35 @@ fn two_digits(text: &str) -> Option<u8> {
 mod tests {
   use super::codec_string;
   use super::description_supported;
+  use super::hardware_description;
   use super::string_supported;
 
   #[test]
-  fn eight_bit_420_strings_are_supported() {
-    assert!(string_supported("av01"));
-    assert!(string_supported("av01.0.05M.08"));
-    assert!(string_supported("av01.0.08H.08"));
-    assert!(string_supported("av01.0.05M.08.0.110.01.01.01.0"));
-    assert!(string_supported("av01.0.05M.08.0.112.01.01.01.1"));
-  }
-
-  #[test]
-  fn other_av1_strings_are_rejected() {
+  fn chrome_av1_strings_are_supported() {
     for codec in [
+      "av01",
+      "av01.0.05M.08",
+      "av01.0.08H.08",
+      "av01.0.05M.08.0.110.01.01.01.0",
+      "av01.0.05M.08.0.112.01.01.01.1",
       "av01.0.05M.10",
       "av01.0.05M.12",
       "av01.1.05M.08",
+      "av01.1.04M.10",
       "av01.2.05M.08",
+      "av01.2.04M.12",
       "av01.0.05M.08.1.110.01.01.01.0",
       "av01.0.05M.08.0.000.01.01.01.0",
       "av01.0.05M.08.0.100.01.01.01.0",
+    ] {
+      assert!(string_supported(codec), "{codec}");
+    }
+  }
+
+  #[test]
+  fn malformed_av1_strings_are_rejected() {
+    for codec in [
+      "av01.0.05M.09",
       "av01.0.05M.08.0.110",
       "av01.9.99M.08",
       "av010",
@@ -224,9 +244,15 @@ mod tests {
     assert!(description_supported(None));
     assert!(description_supported(Some(&[])));
     assert!(description_supported(Some(&eight)));
+    assert!(hardware_description(&eight));
     let ten = [0x81, 0x00, 0x4c, 0x00];
     assert_eq!(codec_string(&ten).as_deref(), Some("av01.0.00M.10"));
-    assert!(!description_supported(Some(&ten)));
+    assert!(description_supported(Some(&ten)));
+    assert!(!hardware_description(&ten));
+    let twelve = [0x81, 0x40, 0x6c, 0x00];
+    assert_eq!(codec_string(&twelve).as_deref(), Some("av01.2.00M.12"));
+    assert!(description_supported(Some(&twelve)));
+    assert!(!hardware_description(&twelve));
     assert!(codec_string(&[0x01, 0x00, 0x0c, 0x00]).is_none());
     assert!(!description_supported(Some(&[1, 2, 3, 4])));
   }

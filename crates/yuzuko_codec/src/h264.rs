@@ -472,6 +472,39 @@ fn push_counted(nal: &[u8], out: &mut Vec<u8>) -> Result<(), DecodeError> {
   Ok(())
 }
 
+/// A bare `avc1` or `avc3`, or `.` plus six hex digits whose profile and
+/// level Chrome accepts. The constraint byte is ignored.
+pub fn codec_string_supported(codec: &str) -> bool {
+  let rest = if let Some(rest) = codec.strip_prefix("avc1") {
+    rest
+  } else if let Some(rest) = codec.strip_prefix("avc3") {
+    rest
+  } else {
+    return false;
+  };
+  if rest.is_empty() {
+    return true;
+  }
+  let Some(digits) = rest.strip_prefix('.') else {
+    return false;
+  };
+  if digits.len() != 6 || !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    return false;
+  }
+  let Ok(profile) = u8::from_str_radix(&digits[0..2], 16) else {
+    return false;
+  };
+  let Ok(level) = u8::from_str_radix(&digits[4..6], 16) else {
+    return false;
+  };
+  const PROFILES: [u8; 7] = [0x42, 0x4d, 0x58, 0x64, 0x6e, 0x7a, 0xf4];
+  const LEVELS: [u8; 20] = [
+    9, 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52, 60, 61,
+    62,
+  ];
+  PROFILES.contains(&profile) && LEVELS.contains(&level)
+}
+
 /// Whether a length-prefixed access unit holds an IDR slice (NAL type 5).
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn has_idr(sample: &[u8]) -> bool {
@@ -1189,7 +1222,7 @@ impl<'a> Bits<'a> {
 mod tests {
   use super::{
     Sets, annex_b_access_unit, annex_b_header, annex_b_sample, avcc_nals,
-    has_idr, parse_access_unit,
+    codec_string_supported, has_idr, parse_access_unit,
   };
 
   fn read(name: &str) -> Vec<u8> {
@@ -1197,6 +1230,20 @@ mod tests {
       .join("../../tests/fixtures/webcodecs")
       .join(name);
     std::fs::read(path).expect(name)
+  }
+
+  #[test]
+  fn h264_strings_match_chrome() {
+    assert!(codec_string_supported("avc1"));
+    assert!(codec_string_supported("avc3"));
+    assert!(codec_string_supported("avc1.42001E"));
+    assert!(codec_string_supported("avc3.42001E"));
+    assert!(codec_string_supported("avc1.42E01E"));
+    assert!(codec_string_supported("avc1.64000B"));
+    assert!(!codec_string_supported("avc1.FF000b"));
+    assert!(!codec_string_supported("avc1.4D401D"));
+    assert!(!codec_string_supported("avc1.42001"));
+    assert!(!codec_string_supported("avc1extra"));
   }
 
   #[test]

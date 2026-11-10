@@ -11,6 +11,8 @@ use super::{DecodeError, Decoded, Kind};
 
 pub struct ImageFrame {
   pub raster: Raster,
+  /// AVIF color planes. The display image is `raster`.
+  pub yuv: Option<crate::av1::Av1Picture>,
   pub orientation: u8,
   /// Display time in microseconds. Absent for a still image.
   pub duration_us: Option<f64>,
@@ -44,6 +46,7 @@ fn still(
   Ok(ImageFrames {
     frames: vec![ImageFrame {
       raster: decoded.raster,
+      yuv: decoded.yuv,
       orientation: decoded.orientation,
       duration_us: None,
     }],
@@ -153,6 +156,7 @@ fn decode_png_frames(
       super::finish(&mut raster, icc.as_deref(), cicp, to_srgb, orientation)?;
     frames.push(ImageFrame {
       raster: decoded.raster,
+      yuv: None,
       orientation: decoded.orientation,
       duration_us: Some(png_delay_us(control.delay_num, control.delay_den)),
     });
@@ -541,6 +545,7 @@ fn decode_webp_frames(
       super::finish(&mut raster, icc.as_deref(), None, to_srgb, orientation)?;
     frames.push(ImageFrame {
       raster: decoded.raster,
+      yuv: None,
       orientation: decoded.orientation,
       duration_us: Some(f64::from(milliseconds) * 1000.0),
     });
@@ -576,6 +581,7 @@ fn decode_jxl_frames(
     let decoded = super::finish(&mut raster, icc.as_deref(), cicp, to_srgb, 1)?;
     frames.push(ImageFrame {
       raster: decoded.raster,
+      yuv: None,
       orientation: decoded.orientation,
       duration_us: Some(ticks_to_us(ticks, numerator, denominator)),
     });

@@ -28,6 +28,8 @@ pub struct Decoded {
   pub raster: Raster,
   /// EXIF orientation 1 through 8. JPEG XL is already oriented, so this is 1.
   pub orientation: u8,
+  /// AVIF color planes. Absent for every other format.
+  pub yuv: Option<crate::av1::Av1Picture>,
 }
 
 pub use animation::{ImageFrame, ImageFrames};
@@ -117,8 +119,11 @@ fn is_avif(bytes: &[u8]) -> bool {
 }
 
 fn decode_avif(bytes: &[u8], to_srgb: bool) -> Result<Decoded, DecodeError> {
-  let mut raster = crate::av1::decode_avif(bytes).map_err(av1_error)?;
-  finish(&mut raster, None, None, to_srgb, 1)
+  let mut image = crate::av1::decode_avif(bytes).map_err(av1_error)?;
+  let mut decoded = finish(&mut image.picture.display, None, None, to_srgb, 1)?;
+  image.picture.display = decoded.raster.clone();
+  decoded.yuv = Some(image.picture);
+  Ok(decoded)
 }
 
 fn av1_error(error: crate::av1::Av1Error) -> DecodeError {
@@ -151,6 +156,7 @@ fn finish(
         .map_err(|_| DecodeError::TooLarge)?,
     ),
     orientation,
+    yuv: None,
   })
 }
 

@@ -443,6 +443,16 @@ Yuzuko.test("an unconfigured decoder rejects decode and flush", async () => {
     foreignName = error instanceof TypeError ? "TypeError" : String(error);
   }
   assert(foreignName === "TypeError", foreignName);
+  const audio = new AudioDecoder({ output: () => {}, error: () => {} });
+  const packet = new EncodedAudioChunk({
+    type: "key",
+    timestamp: 0,
+    data: new Uint8Array([1]),
+  });
+  await assertThrows(() => audio.decode(packet), "InvalidStateError");
+  await assertThrows(() => audio.flush(), "InvalidStateError");
+  audio.close();
+  await assertThrows(() => audio.flush(), "InvalidStateError");
   decoder.close();
   await assertThrows(() => decoder.configure({ codec: "avc1" }), "InvalidStateError");
 });
@@ -459,61 +469,75 @@ Yuzuko.test("unsupported codecs do not decode", async () => {
     "vp09.00.10.08",
   ]) {
     const frames: VideoFrame[] = [];
+    let seen = "";
     const decoder = new VideoDecoder({
       output: (frame) => {
         frames.push(frame);
       },
-      error: () => {},
+      error: (error) => {
+        seen = error instanceof DOMException ? error.name : "";
+      },
     });
-    await assertThrows(
-      () =>
-        decoder.configure({
-          codec,
-          codedWidth: 64,
-          codedHeight: 64,
-          description: new Uint8Array([1, 2, 3, 4]),
-        }),
-      "NotSupportedError",
-    );
+    decoder.configure({
+      codec,
+      codedWidth: 64,
+      codedHeight: 64,
+      description: new Uint8Array([1, 2, 3, 4]),
+    });
+    assert(decoder.state === "closed", codec);
+    await assertThrows(() => decoder.flush(), "NotSupportedError");
+    assert(seen === "NotSupportedError", `${codec} ${seen}`);
     assert(frames.length === 0, codec);
-    decoder.close();
   }
-  for (const codec of ["flac", "opus", "vorbis"]) {
-    const audio = new AudioDecoder({ output: () => {}, error: () => {} });
-    await assertThrows(
-      () =>
-        audio.configure({
-          codec,
-          sampleRate: 48000,
-          numberOfChannels: 1,
-        }),
-      "NotSupportedError",
-    );
-    audio.close();
+  for (const codec of ["flac", "vorbis"]) {
+    let seen = "";
+    const audio = new AudioDecoder({
+      output: () => {},
+      error: (error) => {
+        seen = error instanceof DOMException ? error.name : "";
+      },
+    });
+    audio.configure({
+      codec,
+      sampleRate: 48000,
+      numberOfChannels: 1,
+    });
+    assert(audio.state === "closed", codec);
+    await assertThrows(() => audio.flush(), "NotSupportedError");
+    assert(seen === "NotSupportedError", `${codec} ${seen}`);
   }
+  const opus = new AudioDecoder({ output: () => {}, error: () => {} });
+  opus.configure({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  assert(opus.state === "configured", opus.state);
+  opus.close();
 });
 
 Yuzuko.test("a rejected avc1 config yields no VideoFrame", async () => {
   const frames: VideoFrame[] = [];
+  let seen = "";
   const decoder = new VideoDecoder({
     output: (frame) => {
       frames.push(frame);
     },
-    error: () => {},
+    error: (error) => {
+      seen = error instanceof DOMException ? error.name : "";
+    },
   });
   const bad = await bytes("avc1-bad.avcC");
-  await assertThrows(
-    () =>
-      decoder.configure({
-        codec: "avc1.42E01E",
-        codedWidth: 64,
-        codedHeight: 64,
-        description: bad,
-      }),
-    "NotSupportedError",
-  );
+  decoder.configure({
+    codec: "avc1.42E01E",
+    codedWidth: 64,
+    codedHeight: 64,
+    description: bad,
+  });
+  assert(decoder.state === "closed", decoder.state);
+  await assertThrows(() => decoder.flush(), "NotSupportedError");
+  assert(seen === "NotSupportedError", seen);
   assert(frames.length === 0, "hardware reject produced a frame");
-  decoder.close();
 });
 
 Yuzuko.test({
@@ -693,8 +717,9 @@ Yuzuko.test("AudioDecoder error runs after decode returns", async () => {
     }),
   );
   assert(errors === 0, "error during decode");
-  assert(decoder.state === "closed", decoder.state);
+  assert(decoder.state === "configured", decoder.state);
   await Promise.resolve();
+  assert(decoder.state === "closed", decoder.state);
   assert(errors === 1, `errors ${errors}`);
   assert(name === "EncodingError", name);
 });
@@ -1083,8 +1108,25 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   assert(rgbxOut[4] === 0 && rgbxOut[5] === 255 && rgbxOut[7] === 255, "rgbx second");
   rgbx.close();
 
-  await assertThrows(() => new VideoFrame(new Uint8Array(8), {
+  const p10 = new Uint8Array([
+    1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0,
+    9, 0, 10, 0,
+    11, 0, 12, 0,
+  ]);
+  const tenBit = new VideoFrame(p10, {
     format: "I420P10",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+  });
+  assert(tenBit.format === "I420P10", tenBit.format ?? "null");
+  assert(tenBit.allocationSize() === 24, "p10 size");
+  const tenOut = new Uint8Array(24);
+  await tenBit.copyTo(tenOut);
+  assert(tenOut[0] === 1 && tenOut[1] === 0 && tenOut[16] === 9, "p10 bytes");
+  tenBit.close();
+  await assertThrows(() => new VideoFrame(new Uint8Array(16), {
+    format: "I420AP10",
     timestamp: 0,
     codedWidth: 2,
     codedHeight: 2,
@@ -1329,11 +1371,19 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   const av1Ten = await VideoDecoder.isConfigSupported({
     codec: "av01.0.05M.10",
   });
-  assert(av1Ten.supported === false, "av01 10-bit");
+  assert(av1Ten.supported === true, "av01 10-bit");
   const av1Profile = await VideoDecoder.isConfigSupported({
     codec: "av01.1.05M.08",
   });
-  assert(av1Profile.supported === false, "av01 profile 1");
+  assert(av1Profile.supported === true, "av01 profile 1");
+  const av1Professional = await VideoDecoder.isConfigSupported({
+    codec: "av01.2.05M.12",
+  });
+  assert(av1Professional.supported === true, "av01 profile 2");
+  const av1Mono = await VideoDecoder.isConfigSupported({
+    codec: "av01.0.05M.08.1.110.01.01.01.0",
+  });
+  assert(av1Mono.supported === true, "av01 monochrome");
   const av1Bad = await VideoDecoder.isConfigSupported({
     codec: "av01.0.00M.08",
     description: new Uint8Array([1, 2, 3, 4]),
@@ -1395,8 +1445,32 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
     sampleRate: 48000,
     numberOfChannels: 2,
   });
-  assert(opus.supported === false, "opus");
+  assert(opus.supported === true, "opus");
   assert(opus.config?.codec === "opus", "opus codec");
+  const opusWide = await AudioDecoder.isConfigSupported({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 16,
+  });
+  assert(opusWide.supported === true, "opus 16ch");
+  const opusFuture = await AudioDecoder.isConfigSupported({
+    codec: "opus.123",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(opusFuture.supported === false, "opus.123");
+  const aacFuture = await AudioDecoder.isConfigSupported({
+    codec: "mp4a.FF.9",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(aacFuture.supported === false, "mp4a.FF.9");
+  const futureAvc = await VideoDecoder.isConfigSupported({ codec: "avc1.FF000b" });
+  assert(futureAvc.supported === false, "avc1.FF000b");
+  const futureLevel = await VideoDecoder.isConfigSupported({
+    codec: "avc1.4D401D",
+  });
+  assert(futureLevel.supported === false, "avc1.4D401D");
   await assertRejectsType(
     () =>
       AudioDecoder.isConfigSupported({
@@ -1517,23 +1591,89 @@ Yuzuko.test("AV1 decodes an 8-bit 4:2:0 MP4", async () => {
   }
   decoder.close();
 
-  const bad = new VideoDecoder({ output: () => {}, error: () => {} });
-  await assertThrows(
-    () =>
-      bad.configure({
-        codec: "av01.0.00M.08",
-        codedWidth: 16,
-        codedHeight: 16,
-        description: new Uint8Array([1, 2, 3, 4]),
-      }),
-    "NotSupportedError",
-  );
-  bad.close();
+  let rejected = "";
+  const bad = new VideoDecoder({
+    output: () => {},
+    error: (error) => {
+      rejected = error instanceof DOMException ? error.name : "";
+    },
+  });
+  bad.configure({
+    codec: "av01.0.00M.08",
+    codedWidth: 16,
+    codedHeight: 16,
+    description: new Uint8Array([1, 2, 3, 4]),
+  });
+  assert(bad.state === "closed", bad.state);
+  await assertThrows(() => bad.flush(), "NotSupportedError");
+  assert(rejected === "NotSupportedError", rejected);
 
   const empty = new VideoDecoder({ output: () => {}, error: () => {} });
   empty.configure({ codec: "av01.0.04M.08", codedWidth: 16, codedHeight: 16 });
   assert(empty.state === "configured", empty.state);
   empty.close();
+});
+
+Yuzuko.test("AV1 software output matches Chrome pixel formats", async () => {
+  const cases: Array<[string, VideoPixelFormat | "I420P10" | "I420P12" | "I422P10" | "I444P10"]> = [
+    ["av1-420p10.mp4", "I420P10"],
+    ["av1-420p12.mp4", "I420P12"],
+    ["av1-422.mp4", "I422"],
+    ["av1-422p10.mp4", "I422P10"],
+    ["av1-444.mp4", "I444"],
+    ["av1-444p10.mp4", "I444P10"],
+    ["av1-mono.mp4", "I420"],
+  ];
+  for (const [name, format] of cases) {
+    const response = await fetch(
+      new URL(`./fixtures/media/${name}`, import.meta.url),
+    );
+    const file = new Uint8Array(await response.arrayBuffer());
+    const track = Yuzuko.demuxMp4(file).video[0];
+    const supported = await VideoDecoder.isConfigSupported({
+      codec: track.codec,
+      description: track.description,
+      codedWidth: track.codedWidth,
+      codedHeight: track.codedHeight,
+      hardwareAcceleration: "prefer-software",
+    });
+    assert(supported.supported === true, name);
+    const frames: VideoFrame[] = [];
+    let failed = "";
+    const decoder = new VideoDecoder({
+      output: (frame) => {
+        frames.push(frame);
+      },
+      error: (error) => {
+        failed = `${error.name}: ${error.message}`;
+      },
+    });
+    decoder.configure({
+      codec: track.codec,
+      description: track.description,
+      codedWidth: track.codedWidth,
+      codedHeight: track.codedHeight,
+      hardwareAcceleration: "prefer-software",
+    });
+    for (const chunk of track.chunks) {
+      decoder.decode(chunk);
+    }
+    await decoder.flush();
+    assert(failed === "", `${name} ${failed}`);
+    assert(frames.length >= 1, name);
+    assert(frames[0].format === format, `${name} ${frames[0].format}`);
+    if (name === "av1-mono.mp4") {
+      const bytes = new Uint8Array(frames[0].allocationSize());
+      await frames[0].copyTo(bytes);
+      assert(bytes[256] === 128 && bytes[bytes.length - 1] === 128, "neutral");
+    }
+    const image = await drawFrame(frames[0]);
+    assert(image.data[3] === 255, `${name} alpha`);
+    for (const frame of frames) {
+      frame.close();
+    }
+    decoder.close();
+  }
 });
 
 Yuzuko.test("AV1 prefers the hardware decoder when it accepts the frame", async () => {
@@ -1667,4 +1807,133 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
       }),
     "rotation",
   );
+});
+
+Yuzuko.test("AudioDecoder dispatches a dequeue event", () => {
+  const decoder = new AudioDecoder({ output: () => {}, error: () => {} });
+  assert(decoder instanceof EventTarget, "EventTarget");
+  assert(decoder.ondequeue === null, "ondequeue starts null");
+  decoder.configure({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  const handled: Event[] = [];
+  const listened: Event[] = [];
+  decoder.ondequeue = (event) => {
+    assert(event instanceof Event, "handler event");
+    assert(event.type === "dequeue", event.type);
+    assert(event.target === decoder, "target");
+    assert(event.currentTarget === decoder, "currentTarget");
+    assert(event.eventPhase === Event.AT_TARGET, "phase");
+    assert(event.isTrusted === true, "trusted");
+    assert(event.bubbles === false, "bubbles");
+    assert(event.cancelable === false, "cancelable");
+    assert(decoder.decodeQueueSize === 0, "size while handling");
+    handled.push(event);
+  };
+  decoder.addEventListener("dequeue", (event) => {
+    listened.push(event);
+  });
+  const chunk = new EncodedAudioChunk({
+    type: "key",
+    timestamp: 0,
+    data: new Uint8Array([1, 2, 3, 4]),
+  });
+  decoder.decode(chunk);
+  assert(decoder.decodeQueueSize === 1, "queued");
+  decoder.reset();
+  assert(decoder.decodeQueueSize === 0, "cleared");
+  assert(handled.length === 1, "one handler call");
+  assert(listened.length === 1 && listened[0] === handled[0], "same event");
+  decoder.ondequeue = null;
+  assert(decoder.ondequeue === null, "cleared handler");
+  decoder.configure({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 1,
+  });
+  decoder.decode(chunk);
+  decoder.reset();
+  assert(handled.length === 1, "removed handler stays quiet");
+  assert(listened.length === 2, "listener still runs");
+  decoder.close();
+});
+
+Yuzuko.test("Opus pre-skip moves only a negative timestamp", async () => {
+  const response = await fetch(
+    new URL("./wpt/suite/webcodecs/sfx-opus.ogg", import.meta.url),
+  );
+  const file = new Uint8Array(await response.arrayBuffer());
+  const description = file.subarray(28, 47);
+  const first = file.subarray(185, 635);
+  const second = file.subarray(635, 903);
+  const decode = async (timestamp: number): Promise<AudioData[]> => {
+    const frames: AudioData[] = [];
+    let failed = "";
+    const decoder = new AudioDecoder({
+      output: (data) => {
+        frames.push(data);
+      },
+      error: (error) => {
+        failed = error instanceof DOMException ? error.name : String(error);
+      },
+    });
+    decoder.configure({
+      codec: "opus",
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      description,
+    });
+    decoder.decode(
+      new EncodedAudioChunk({ type: "key", timestamp, data: first }),
+    );
+    decoder.decode(
+      new EncodedAudioChunk({
+        type: "key",
+        timestamp: 20_000 + timestamp,
+        data: second,
+      }),
+    );
+    await decoder.flush();
+    assert(failed === "", failed);
+    decoder.close();
+    return frames;
+  };
+  const early = await decode(-42);
+  assert(early.length === 2, `frames ${early.length}`);
+  assert(early[0].sampleRate === 48000, `rate ${early[0].sampleRate}`);
+  assert(early[0].numberOfChannels === 1, "channels");
+  assert(early[0].numberOfFrames === 960 - 312, `frames ${early[0].numberOfFrames}`);
+  assert(early[0].timestamp === -42 + 6500, `timestamp ${early[0].timestamp}`);
+  assert(early[1].numberOfFrames === 960, `second ${early[1].numberOfFrames}`);
+  assert(early[1].timestamp === 20_000 - 42, `second time ${early[1].timestamp}`);
+  for (const frame of early) {
+    frame.close();
+  }
+
+  const kept = await decode(42);
+  assert(kept.length === 2, `kept ${kept.length}`);
+  assert(kept[0].timestamp === 42, `kept time ${kept[0].timestamp}`);
+  assert(kept[0].sampleRate === 48000, "kept rate");
+  assert(kept[0].numberOfFrames === 960 - 312, `kept frames ${kept[0].numberOfFrames}`);
+  for (const frame of kept) {
+    frame.close();
+  }
+
+  let seen = "";
+  const wide = new AudioDecoder({
+    output: () => {},
+    error: (error) => {
+      seen = error instanceof DOMException ? error.name : "";
+    },
+  });
+  wide.configure({
+    codec: "opus",
+    sampleRate: 48000,
+    numberOfChannels: 16,
+  });
+  assert(wide.state === "closed", wide.state);
+  await assertThrows(() => wide.flush(), "NotSupportedError");
+  assert(seen === "NotSupportedError", seen);
 });

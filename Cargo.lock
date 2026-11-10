@@ -9092,6 +9092,7 @@ name = "yuzuko_codec"
 version = "0.1.0"
 dependencies = [
  "libloading 0.9.0",
+ "ruopus",
  "symphonia",
  "v8",
  "windows",

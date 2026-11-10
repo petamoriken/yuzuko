@@ -19,11 +19,17 @@ pub(crate) enum PixelFormat {
   I422,
   I444,
   Nv12,
+  I420P10,
+  I420P12,
+  I422P10,
+  I422P12,
+  I444P10,
+  I444P12,
 }
 
 pub(crate) enum FormatClass {
   Stored(PixelFormat),
-  /// A WebCodecs format this runtime does not store, such as `I420P10`.
+  /// A WebCodecs format this runtime does not store, such as `I420AP10`.
   Unsupported,
   Unknown,
 }
@@ -154,8 +160,7 @@ struct CombinedLayout {
 }
 
 const UNSUPPORTED: &[&str] = &[
-  "I420P10", "I420P12", "I420AP10", "I420AP12", "I422P10", "I422P12", "I422A",
-  "I422AP10", "I422AP12", "I444P10", "I444P12", "I444A", "I444AP10",
+  "I420AP10", "I420AP12", "I422A", "I422AP10", "I422AP12", "I444A", "I444AP10",
   "I444AP12",
 ];
 
@@ -171,6 +176,35 @@ impl PixelFormat {
       Self::I422 => "I422",
       Self::I444 => "I444",
       Self::Nv12 => "NV12",
+      Self::I420P10 => "I420P10",
+      Self::I420P12 => "I420P12",
+      Self::I422P10 => "I422P10",
+      Self::I422P12 => "I422P12",
+      Self::I444P10 => "I444P10",
+      Self::I444P12 => "I444P12",
+    }
+  }
+
+  /// Little-endian sample size for a Y, U, or V plane. `NV12` chroma is
+  /// interleaved and is not this value.
+  fn yuv_bytes(self) -> u32 {
+    match self {
+      Self::I420P10
+      | Self::I422P10
+      | Self::I444P10
+      | Self::I420P12
+      | Self::I422P12
+      | Self::I444P12 => 2,
+      _ => 1,
+    }
+  }
+
+  /// Right shift that brings a stored 10-bit or 12-bit sample to 8 bits.
+  fn value_shift(self) -> u8 {
+    match self {
+      Self::I420P10 | Self::I422P10 | Self::I444P10 => 2,
+      Self::I420P12 | Self::I422P12 | Self::I444P12 => 4,
+      _ => 0,
     }
   }
 
@@ -189,6 +223,12 @@ impl PixelFormat {
       Self::I422 => 6,
       Self::I444 => 7,
       Self::Nv12 => 8,
+      Self::I420P10 => 9,
+      Self::I420P12 => 10,
+      Self::I422P10 => 11,
+      Self::I422P12 => 12,
+      Self::I444P10 => 13,
+      Self::I444P12 => 14,
     }
   }
 
@@ -203,6 +243,12 @@ impl PixelFormat {
       6 => Self::I422,
       7 => Self::I444,
       8 => Self::Nv12,
+      9 => Self::I420P10,
+      10 => Self::I420P12,
+      11 => Self::I422P10,
+      12 => Self::I422P12,
+      13 => Self::I444P10,
+      14 => Self::I444P12,
       _ => return None,
     })
   }
@@ -211,7 +257,15 @@ impl PixelFormat {
     match self {
       Self::Rgba | Self::Bgra | Self::Rgbx | Self::Bgrx => 1,
       Self::Nv12 => 2,
-      Self::I420 | Self::I422 | Self::I444 => 3,
+      Self::I420
+      | Self::I422
+      | Self::I444
+      | Self::I420P10
+      | Self::I420P12
+      | Self::I422P10
+      | Self::I422P12
+      | Self::I444P10
+      | Self::I444P12 => 3,
       Self::I420A => 4,
     }
   }
@@ -222,25 +276,45 @@ impl PixelFormat {
       sample_height: 1,
       sample_bytes: 1,
     };
+    let yuv = self.yuv_bytes();
     match (self, index) {
       (Self::Rgba | Self::Bgra | Self::Rgbx | Self::Bgrx, 0) => PlaneKind {
         sample_bytes: 4,
         ..full
       },
-      (Self::I420 | Self::I420A | Self::I422 | Self::I444, 0)
+      (
+        Self::I420
+        | Self::I420A
+        | Self::I422
+        | Self::I444
+        | Self::I420P10
+        | Self::I420P12
+        | Self::I422P10
+        | Self::I422P12
+        | Self::I444P10
+        | Self::I444P12,
+        0,
+      )
       | (Self::I420A, 3)
-      | (Self::Nv12, 0) => full,
-      (Self::I420 | Self::I420A, 1 | 2) | (Self::Nv12, 1) => PlaneKind {
+      | (Self::Nv12, 0) => PlaneKind {
+        sample_bytes: if index == 0 { yuv } else { 1 },
+        ..full
+      },
+      (Self::I420 | Self::I420A | Self::I420P10 | Self::I420P12, 1 | 2)
+      | (Self::Nv12, 1) => PlaneKind {
         sample_width: 2,
         sample_height: 2,
-        sample_bytes: if self == Self::Nv12 { 2 } else { 1 },
+        sample_bytes: if self == Self::Nv12 { 2 } else { yuv },
       },
-      (Self::I422, 1 | 2) => PlaneKind {
+      (Self::I422 | Self::I422P10 | Self::I422P12, 1 | 2) => PlaneKind {
         sample_width: 2,
         sample_height: 1,
-        sample_bytes: 1,
+        sample_bytes: yuv,
       },
-      (Self::I444, 1 | 2) => full,
+      (Self::I444 | Self::I444P10 | Self::I444P12, 1 | 2) => PlaneKind {
+        sample_bytes: yuv,
+        ..full
+      },
       _ => full,
     }
   }
@@ -257,6 +331,12 @@ pub(crate) fn classify(name: &str) -> FormatClass {
     "I422" => Some(PixelFormat::I422),
     "I444" => Some(PixelFormat::I444),
     "NV12" => Some(PixelFormat::Nv12),
+    "I420P10" => Some(PixelFormat::I420P10),
+    "I420P12" => Some(PixelFormat::I420P12),
+    "I422P10" => Some(PixelFormat::I422P10),
+    "I422P12" => Some(PixelFormat::I422P12),
+    "I444P10" => Some(PixelFormat::I444P10),
+    "I444P12" => Some(PixelFormat::I444P12),
     _ => None,
   };
   if let Some(format) = stored {
@@ -334,6 +414,77 @@ pub(crate) fn display_size(
   unsigned_round(width)?;
   unsigned_round(height)?;
   Ok((unsigned_round(width)?, unsigned_round(height)?))
+}
+
+pub(crate) fn frame_from_av1(
+  picture: yuzuko_image::av1::Av1Picture,
+) -> FrameData {
+  let format = match picture.format {
+    yuzuko_image::av1::Av1PixelFormat::I420 => PixelFormat::I420,
+    yuzuko_image::av1::Av1PixelFormat::I420P10 => PixelFormat::I420P10,
+    yuzuko_image::av1::Av1PixelFormat::I420P12 => PixelFormat::I420P12,
+    yuzuko_image::av1::Av1PixelFormat::I422 => PixelFormat::I422,
+    yuzuko_image::av1::Av1PixelFormat::I422P10 => PixelFormat::I422P10,
+    yuzuko_image::av1::Av1PixelFormat::I422P12 => PixelFormat::I422P12,
+    yuzuko_image::av1::Av1PixelFormat::I444 => PixelFormat::I444,
+    yuzuko_image::av1::Av1PixelFormat::I444P10 => PixelFormat::I444P10,
+    yuzuko_image::av1::Av1PixelFormat::I444P12 => PixelFormat::I444P12,
+  };
+  FrameData {
+    format,
+    coded_width: picture.width,
+    coded_height: picture.height,
+    visible_x: 0.0,
+    visible_y: 0.0,
+    visible_width: f64::from(picture.width),
+    visible_height: f64::from(picture.height),
+    display_width: picture.width,
+    display_height: picture.height,
+    rotation: 0,
+    flip: false,
+    color: FrameColor {
+      primaries: cicp_primaries(picture.primaries).map(str::to_string),
+      transfer: cicp_transfer(picture.transfer).map(str::to_string),
+      matrix: cicp_matrix(picture.matrix).map(str::to_string),
+      full_range: Some(picture.full_range),
+    },
+    planes: picture.planes,
+    raster: picture.display,
+  }
+}
+
+fn cicp_primaries(value: u8) -> Option<&'static str> {
+  match value {
+    1 => Some("bt709"),
+    5 => Some("bt470bg"),
+    6 => Some("smpte170m"),
+    9 => Some("bt2020"),
+    12 => Some("smpte432"),
+    _ => None,
+  }
+}
+
+fn cicp_transfer(value: u8) -> Option<&'static str> {
+  match value {
+    1 => Some("bt709"),
+    6 => Some("smpte170m"),
+    8 => Some("linear"),
+    13 => Some("iec61966-2-1"),
+    16 => Some("pq"),
+    18 => Some("hlg"),
+    _ => None,
+  }
+}
+
+fn cicp_matrix(value: u8) -> Option<&'static str> {
+  match value {
+    0 => Some("rgb"),
+    1 => Some("bt709"),
+    5 => Some("bt470bg"),
+    6 => Some("smpte170m"),
+    9 => Some("bt2020-ncl"),
+    _ => None,
+  }
 }
 
 pub(crate) fn frame_from_raster(raster: &Raster) -> FrameData {
@@ -833,10 +984,15 @@ fn sample(
   let row = coded_row_bytes(format, plane, coded_width)?;
   let index =
     py as usize * row + px as usize * kind.sample_bytes as usize + channel;
-  planes
-    .get(plane)
-    .and_then(|bytes| bytes.get(index).copied())
-    .ok_or(LayoutError::TooSmall)
+  let bytes = planes.get(plane).ok_or(LayoutError::TooSmall)?;
+  let shift = format.value_shift();
+  if kind.sample_bytes == 2 && shift > 0 {
+    let lo = *bytes.get(index).ok_or(LayoutError::TooSmall)?;
+    let hi = *bytes.get(index + 1).ok_or(LayoutError::TooSmall)?;
+    let value = u16::from_le_bytes([lo, hi]);
+    return Ok((value >> shift) as u8);
+  }
+  bytes.get(index).copied().ok_or(LayoutError::TooSmall)
 }
 
 fn unpack_rgb(format: PixelFormat, pixel: &[u8]) -> [u8; 4] {
