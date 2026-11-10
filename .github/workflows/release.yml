@@ -81,8 +81,19 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.triple }}
+
+      - name: Install the build target
+        shell: bash
+        run: |
+          set -euo pipefail
+          # cargo uses the channel in rust-toolchain.toml. A target passed to
+          # dtolnay/rust-toolchain@stable is installed on stable, which cargo
+          # does not use.
+          channel=$(awk -F'"' '/^channel = / { print $2; exit }' rust-toolchain.toml)
+          test -n "$channel"
+          rustup toolchain install "$channel" --profile minimal --target "$TRIPLE" --no-self-update
+        env:
+          TRIPLE: ${{ matrix.triple }}
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
