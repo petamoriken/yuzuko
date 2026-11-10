@@ -6376,6 +6376,159 @@ declare var WheelEvent: {
 
 
 /**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/Touch)
+ */
+interface TouchInit {
+  identifier: number;
+  target: EventTarget;
+  clientX?: number;
+  clientY?: number;
+  screenX?: number;
+  screenY?: number;
+  pageX?: number;
+  pageY?: number;
+  radiusX?: number;
+  radiusY?: number;
+  rotationAngle?: number;
+  force?: number;
+}
+
+/**
+ * One contact point in a {@link TouchEvent}.
+ *
+ * `identifier` and `target` are required. The coordinate members default to 0.
+ * The runtime does not dispatch a trusted touch event. A touch contact is a
+ * {@link PointerEvent} with `pointerType` `"touch"`.
+ *
+ * @throws {@link TypeError} When `identifier` or `target` is missing, or
+ * `target` is not an `EventTarget`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch)
+ */
+interface Touch {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/identifier) */
+  readonly identifier: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/target) */
+  readonly target: EventTarget;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/screenX) */
+  readonly screenX: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/screenY) */
+  readonly screenY: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/clientX) */
+  readonly clientX: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/clientY) */
+  readonly clientY: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/pageX) */
+  readonly pageX: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/pageY) */
+  readonly pageY: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/radiusX) */
+  readonly radiusX: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/radiusY) */
+  readonly radiusY: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/rotationAngle) */
+  readonly rotationAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/force) */
+  readonly force: number;
+}
+declare var Touch: {
+  prototype: Touch;
+  new(touchInitDict: TouchInit): Touch;
+};
+
+
+/**
+ * List of {@link Touch} objects created for a {@link TouchEvent}.
+ *
+ * An index is that `Touch`. `item` returns `null` when the index is past the
+ * end. An index cannot be assigned or deleted.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchList)
+ */
+interface TouchList {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchList/length) */
+  readonly length: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchList/item) */
+  item(index: number): Touch | null;
+
+  [index: number]: Touch;
+}
+declare var TouchList: {
+  prototype: TouchList;
+  new(): TouchList;
+};
+
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/TouchEvent)
+ */
+interface TouchEventInit extends UIEventInit {
+  touches?: Touch[];
+  targetTouches?: Touch[];
+  changedTouches?: Touch[];
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+}
+
+/**
+ * A constructed touch event.
+ *
+ * `cancelable` defaults to false. `touches`, `targetTouches`, and
+ * `changedTouches` default to empty {@link TouchList} objects. The runtime
+ * does not dispatch a trusted `TouchEvent`.
+ *
+ * @throws {@link TypeError} When a touch list is not a sequence of `Touch`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent)
+ */
+interface TouchEvent extends UIEvent {
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/touches) */
+  readonly touches: TouchList;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/targetTouches) */
+  readonly targetTouches: TouchList;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/changedTouches) */
+  readonly changedTouches: TouchList;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/ctrlKey) */
+  readonly ctrlKey: boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/shiftKey) */
+  readonly shiftKey: boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/altKey) */
+  readonly altKey: boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TouchEvent/metaKey) */
+  readonly metaKey: boolean;
+}
+declare var TouchEvent: {
+  prototype: TouchEvent;
+  new(type: string, eventInitDict?: TouchEventInit): TouchEvent;
+};
+
+
+/**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/KeyboardEvent)
  */
 interface KeyboardEventInit extends UIEventInit {

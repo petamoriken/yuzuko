@@ -414,14 +414,7 @@
   "dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-window.html": {
     "ignore": "The file needs a document."
   },
-  "dom/events/non-cancelable-when-passive/synthetic-events-cancelable.html": {
-    "expectedFailures": [
-      "Synthetic touchcancel event with interface TouchEvent is not cancelable",
-      "Synthetic touchend event with interface TouchEvent is not cancelable",
-      "Synthetic touchmove event with interface TouchEvent is not cancelable",
-      "Synthetic touchstart event with interface TouchEvent is not cancelable"
-    ]
-  },
+  "dom/events/non-cancelable-when-passive/synthetic-events-cancelable.html": true,
   "dom/events/passive-by-default-non-node.html": true,
   "dom/events/passive-by-default.html": {
     "ignore": "The file needs a document."

@@ -7,7 +7,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
+use yuzuko_core::op::{FromV8, Js, OpError, host_ref, traced, traced_local};
 use yuzuko_macros::op;
 
 use crate::event::{self, Event};
@@ -1563,11 +1563,594 @@ pub fn dispatch_focus(
   dispatch_sealed(scope, target, object)
 }
 
+/// One contact point in a `TouchEvent`.
+#[repr(C)]
+pub struct Touch {
+  identifier: i32,
+  target: v8::TracedReference<v8::Object>,
+  screen_x: f64,
+  screen_y: f64,
+  client_x: f64,
+  client_y: f64,
+  page_x: f64,
+  page_y: f64,
+  radius_x: f64,
+  radius_y: f64,
+  rotation_angle: f64,
+  force: f64,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for Touch {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.target);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Touch"
+  }
+}
+
+#[op]
+impl Touch {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Touch, OpError> {
+    let init = touch_init(args)?;
+    let identifier = require_dict(scope, init, "identifier")?;
+    let identifier = idl_long(f64::from_v8(scope, identifier)?);
+    let target = require_dict(scope, init, "target")?;
+    let target = event_target(scope, target)?;
+    let target = traced(scope, target);
+    let screen_x = dict_unrestricted(scope, init, "screenX")?;
+    let screen_y = dict_unrestricted(scope, init, "screenY")?;
+    let client_x = dict_unrestricted(scope, init, "clientX")?;
+    let client_y = dict_unrestricted(scope, init, "clientY")?;
+    let page_x = dict_unrestricted(scope, init, "pageX")?;
+    let page_y = dict_unrestricted(scope, init, "pageY")?;
+    let radius_x = dict_unrestricted(scope, init, "radiusX")?;
+    let radius_y = dict_unrestricted(scope, init, "radiusY")?;
+    let rotation_angle = dict_unrestricted(scope, init, "rotationAngle")?;
+    let force = dict_unrestricted(scope, init, "force")?;
+    Ok(Touch {
+      identifier,
+      target,
+      screen_x,
+      screen_y,
+      client_x,
+      client_y,
+      page_x,
+      page_y,
+      radius_x,
+      radius_y,
+      rotation_angle,
+      force,
+    })
+  }
+
+  #[getter]
+  fn identifier(&self) -> i32 {
+    self.identifier
+  }
+
+  #[getter]
+  fn target(&self, scope: &mut v8::PinScope) -> Js {
+    list_value(scope, &self.target)
+  }
+
+  #[getter]
+  fn screen_x(&self) -> f64 {
+    self.screen_x
+  }
+
+  #[getter]
+  fn screen_y(&self) -> f64 {
+    self.screen_y
+  }
+
+  #[getter]
+  fn client_x(&self) -> f64 {
+    self.client_x
+  }
+
+  #[getter]
+  fn client_y(&self) -> f64 {
+    self.client_y
+  }
+
+  #[getter]
+  fn page_x(&self) -> f64 {
+    self.page_x
+  }
+
+  #[getter]
+  fn page_y(&self) -> f64 {
+    self.page_y
+  }
+
+  #[getter]
+  fn radius_x(&self) -> f64 {
+    self.radius_x
+  }
+
+  #[getter]
+  fn radius_y(&self) -> f64 {
+    self.radius_y
+  }
+
+  #[getter]
+  fn rotation_angle(&self) -> f64 {
+    self.rotation_angle
+  }
+
+  #[getter]
+  fn force(&self) -> f64 {
+    self.force
+  }
+}
+
+/// Immutable list of `Touch` objects. `new TouchList()` throws.
+#[repr(C)]
+pub struct TouchList {
+  touches: RefCell<Vec<v8::TracedReference<v8::Object>>>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for TouchList {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    trace_list(visitor, &self.touches);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TouchList"
+  }
+}
+
+#[op]
+impl TouchList {
+  #[getter]
+  fn length(&self) -> u32 {
+    self.touches.borrow().len() as u32
+  }
+
+  fn item(&self, scope: &mut v8::PinScope, index: u32) -> Js {
+    let local = {
+      let list = self.touches.borrow();
+      let Some(reference) = list.get(index as usize) else {
+        return Js::null(scope);
+      };
+      traced_local(scope, reference)
+    };
+    match local {
+      Some(object) => {
+        let value: v8::Local<v8::Value> = object.into();
+        Js(v8::Global::new(scope, value))
+      }
+      None => Js::null(scope),
+    }
+  }
+}
+
+#[repr(C)]
+pub struct TouchEvent {
+  base: UIEvent,
+  touches: v8::TracedReference<v8::Object>,
+  target_touches: v8::TracedReference<v8::Object>,
+  changed_touches: v8::TracedReference<v8::Object>,
+  modifiers: Modifiers,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for TouchEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    visitor.trace(&self.touches);
+    visitor.trace(&self.target_touches);
+    visitor.trace(&self.changed_touches);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TouchEvent"
+  }
+}
+
+#[op(inherit = UIEvent)]
+impl TouchEvent {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<TouchEvent, OpError> {
+    let base = ui_from_args(scope, args)?;
+    let init = util::init_arg(args);
+    let touches = make_touch_list(scope, init, "touches")?;
+    let touches = traced(scope, touches);
+    let target_touches = make_touch_list(scope, init, "targetTouches")?;
+    let target_touches = traced(scope, target_touches);
+    let changed_touches = make_touch_list(scope, init, "changedTouches")?;
+    let changed_touches = traced(scope, changed_touches);
+    let modifiers = read_modifiers(scope, init);
+    Ok(TouchEvent {
+      base,
+      touches,
+      target_touches,
+      changed_touches,
+      modifiers,
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    event::define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn touches(&self, scope: &mut v8::PinScope) -> Js {
+    list_value(scope, &self.touches)
+  }
+
+  #[getter]
+  fn target_touches(&self, scope: &mut v8::PinScope) -> Js {
+    list_value(scope, &self.target_touches)
+  }
+
+  #[getter]
+  fn changed_touches(&self, scope: &mut v8::PinScope) -> Js {
+    list_value(scope, &self.changed_touches)
+  }
+
+  #[getter]
+  fn ctrl_key(&self) -> bool {
+    self.modifiers.ctrl
+  }
+
+  #[getter]
+  fn shift_key(&self) -> bool {
+    self.modifiers.shift
+  }
+
+  #[getter]
+  fn alt_key(&self) -> bool {
+    self.modifiers.alt
+  }
+
+  #[getter]
+  fn meta_key(&self) -> bool {
+    self.modifiers.meta
+  }
+}
+
+fn list_value(
+  scope: &mut v8::PinScope,
+  reference: &v8::TracedReference<v8::Object>,
+) -> Js {
+  match traced_local(scope, reference) {
+    Some(object) => {
+      let value: v8::Local<v8::Value> = object.into();
+      Js(v8::Global::new(scope, value))
+    }
+    None => Js::null(scope),
+  }
+}
+
+fn touch_init<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  if args.length() < 1 || args.get(0).is_null_or_undefined() {
+    return Err(OpError::type_("TouchInit.identifier is required"));
+  }
+  let Ok(init) = v8::Local::<v8::Object>::try_from(args.get(0)) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'TouchInit'.",
+    ));
+  };
+  Ok(init)
+}
+
+fn require_dict<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  init: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let value = get_property(scope, init, name)?;
+  if value.is_undefined() {
+    return Err(OpError::type_(&format!("TouchInit.{name} is required")));
+  }
+  Ok(value)
+}
+
+fn dict_unrestricted(
+  scope: &mut v8::PinScope,
+  init: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<f64, OpError> {
+  let value = get_property(scope, init, name)?;
+  if value.is_undefined() {
+    return Ok(0.0);
+  }
+  f64::from_v8(scope, value)
+}
+
+fn event_target<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'EventTarget'.",
+    ));
+  };
+  let global = scope.get_current_context().global(scope);
+  let is_target = global
+    .get(scope, key(scope, "EventTarget").into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    .and_then(|constructor| object.instance_of(scope, constructor.into()))
+    .unwrap_or(false);
+  if !is_target {
+    return Err(OpError::type_(
+      "The provided value is not of type 'EventTarget'.",
+    ));
+  }
+  Ok(yuzuko_core::op::root(scope, object))
+}
+
+fn make_touch_list<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  init: Option<v8::Local<'_, v8::Value>>,
+  name: &str,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let touches = read_touch_sequence(scope, init, name)?;
+  let list = TouchList {
+    touches: RefCell::new(touches),
+  };
+  Ok(unsafe { yuzuko_core::op::wrap_instance(scope, list) })
+}
+
+fn read_touch_sequence(
+  scope: &mut v8::PinScope,
+  init: Option<v8::Local<v8::Value>>,
+  name: &str,
+) -> Result<Vec<v8::TracedReference<v8::Object>>, OpError> {
+  let Some(value) = util::dict_get(scope, init, name) else {
+    return Ok(Vec::new());
+  };
+  if value.is_undefined() {
+    return Ok(Vec::new());
+  }
+  let Ok(iterable) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value cannot be converted to a sequence.",
+    ));
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let method = get_keyed(scope, iterable, symbol.into())?;
+  let Ok(method) = v8::Local::<v8::Function>::try_from(method) else {
+    return Err(OpError::type_(
+      "The provided value cannot be converted to a sequence.",
+    ));
+  };
+  let iterator = invoke(scope, method, iterable.into(), &[])?;
+  let Ok(iterator) = v8::Local::<v8::Object>::try_from(iterator) else {
+    return Err(OpError::type_(
+      "The provided value cannot be converted to a sequence.",
+    ));
+  };
+  let mut touches = Vec::new();
+  loop {
+    let next = get_property(scope, iterator, "next")?;
+    let Ok(next) = v8::Local::<v8::Function>::try_from(next) else {
+      return Err(OpError::type_(
+        "The provided value cannot be converted to a sequence.",
+      ));
+    };
+    let step = invoke(scope, next, iterator.into(), &[])?;
+    let Ok(step) = v8::Local::<v8::Object>::try_from(step) else {
+      return Err(OpError::type_(
+        "The provided value cannot be converted to a sequence.",
+      ));
+    };
+    let done = get_property(scope, step, "done")?;
+    if done.boolean_value(scope) {
+      return Ok(touches);
+    }
+    let item = get_property(scope, step, "value")?;
+    let Ok(object) = v8::Local::<v8::Object>::try_from(item) else {
+      return Err(OpError::type_("The provided value is not of type 'Touch'."));
+    };
+    if unsafe { host_ref::<Touch>(scope, object) }.is_none() {
+      return Err(OpError::type_("The provided value is not of type 'Touch'."));
+    }
+    touches.push(traced(scope, object));
+  }
+}
+
+fn get_property<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let key = key(scope, name);
+  get_keyed(scope, object, key.into())
+}
+
+fn get_keyed<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  key: v8::Local<'_, v8::Value>,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let object = yuzuko_core::op::root(tc, object);
+    let key = yuzuko_core::op::root(tc, key);
+    match object.get(tc, key) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  match captured {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+  }
+}
+
+fn invoke<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  function: v8::Local<'_, v8::Function>,
+  receiver: v8::Local<'_, v8::Value>,
+  args: &[v8::Local<'_, v8::Value>],
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let function = yuzuko_core::op::root(tc, function);
+    let receiver = yuzuko_core::op::root(tc, receiver);
+    let args: Vec<v8::Local<v8::Value>> = args
+      .iter()
+      .copied()
+      .map(|arg| yuzuko_core::op::root(tc, arg))
+      .collect();
+    match function.call(tc, receiver, &args) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => {
+        let exception =
+          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
+        Err(v8::Global::new(tc, exception))
+      }
+    }
+  };
+  match captured {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+  }
+}
+
+fn touch_list_count(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> u32 {
+  unsafe { host_ref::<TouchList>(scope, object) }
+    .map(|host| host.get().touches.borrow().len() as u32)
+    .unwrap_or(0)
+}
+
+fn touch_list_at<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  index: u32,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let host = unsafe { host_ref::<TouchList>(scope, object) }?;
+  let list = host.get().touches.borrow();
+  let reference = list.get(index as usize)?;
+  traced_local(scope, reference)
+}
+
+fn touch_list_get_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Value>,
+) -> v8::Intercepted {
+  let Some(touch) = touch_list_at(scope, args.holder(), index) else {
+    return v8::Intercepted::kNo;
+  };
+  ret.set(touch.into());
+  v8::Intercepted::kYes
+}
+
+fn touch_list_query_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Integer>,
+) -> v8::Intercepted {
+  if index >= touch_list_count(scope, args.holder()) {
+    return v8::Intercepted::kNo;
+  }
+  // `PropertyAttribute::READ_ONLY`: enumerable and configurable, not writable.
+  ret.set_int32(1);
+  v8::Intercepted::kYes
+}
+
+fn touch_list_reject_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  if index >= touch_list_count(scope, args.holder()) {
+    return v8::Intercepted::kNo;
+  }
+  ret.set_bool(false);
+  v8::Intercepted::kYes
+}
+
+fn touch_list_set_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  _value: v8::Local<v8::Value>,
+  args: v8::PropertyCallbackArguments,
+  ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  touch_list_reject_index(scope, index, args, ret)
+}
+
+fn touch_list_delete_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  touch_list_reject_index(scope, index, args, ret)
+}
+
+fn touch_list_enumerate(
+  scope: &mut v8::PinScope,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Array>,
+) {
+  let count = touch_list_count(scope, args.holder());
+  let indices: Vec<v8::Local<v8::Value>> = (0..count)
+    .map(|index| v8::Integer::new_from_unsigned(scope, index).into())
+    .collect();
+  ret.set(v8::Array::new_with_elements(scope, &indices));
+}
+
+fn install_touch_list_indices(scope: &mut v8::PinScope) {
+  // `GetFunction` instantiates the template. `SetHandler` after that is a V8
+  // fatal, and later realms reuse the isolate-cached template.
+  if yuzuko_core::op::cached_template::<TouchList>(scope).is_some() {
+    return;
+  }
+  let templ = TouchList::template(scope);
+  templ.instance_template(scope).set_indexed_property_handler(
+    v8::IndexedPropertyHandlerConfiguration::new()
+      .getter(touch_list_get_index)
+      .query(touch_list_query_index)
+      .setter(touch_list_set_index)
+      .deleter(touch_list_delete_index)
+      .enumerator(touch_list_enumerate)
+      .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT),
+  );
+}
+
 pub(crate) fn install(scope: &mut v8::PinScope) {
   UIEvent::install(scope);
   FocusEvent::install(scope);
   MouseEvent::install(scope);
   WheelEvent::install(scope);
+  Touch::install(scope);
+  install_touch_list_indices(scope);
+  TouchList::install(scope);
+  TouchEvent::install(scope);
   KeyboardEvent::install(scope);
   CompositionEvent::install(scope);
   InputEvent::install(scope);
