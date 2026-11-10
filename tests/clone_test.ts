@@ -1111,3 +1111,95 @@ Yuzuko.test("a worker transfers a readable back to its owner", async () => {
     worker.terminate();
   }
 });
+
+function nextSelfMessage() {
+  return new Promise((resolve) => {
+    addEventListener("message", (event) => resolve(event), { once: true });
+  });
+}
+
+Yuzuko.test("postMessage transfers a readable stream to this realm", async () => {
+  const readable = chunkStream("self");
+  const pending = nextSelfMessage();
+  postMessage(readable, "*", [readable]);
+  if (!readable.locked) {
+    throw new Error("original locked");
+  }
+  const event = await pending;
+  if (event.source !== null) {
+    throw new Error("source");
+  }
+  if (!Array.isArray(event.ports) || event.ports.length !== 0) {
+    throw new Error("ports " + event.ports.length);
+  }
+  if (event.data === readable || !(event.data instanceof ReadableStream)) {
+    throw new Error("identity");
+  }
+  const reader = event.data.getReader();
+  const first = await reader.read();
+  if (first.value !== "self" || first.done) {
+    throw new Error("chunk");
+  }
+  if ((await reader.read()).done !== true) {
+    throw new Error("done");
+  }
+});
+
+Yuzuko.test("postMessage ports lists a transferred MessagePort", async () => {
+  const channel = new MessageChannel();
+  const readable = chunkStream("with-port");
+  const pending = nextSelfMessage();
+  postMessage(
+    { stream: readable, port: channel.port1 },
+    { targetOrigin: "*", transfer: [readable, channel.port1] },
+  );
+  const event = await pending;
+  if (event.ports.length !== 1 || !(event.ports[0] instanceof MessagePort)) {
+    throw new Error("ports");
+  }
+  if (Object.isFrozen(event.ports) !== true) {
+    throw new Error("frozen");
+  }
+  if (!(event.data.stream instanceof ReadableStream)) {
+    throw new Error("stream");
+  }
+  const reader = event.data.stream.getReader();
+  const first = await reader.read();
+  if (first.value !== "with-port" || first.done) {
+    throw new Error("chunk");
+  }
+});
+
+Yuzuko.test("postMessage rejects / and a different origin without transferring", async () => {
+  const slash = chunkStream("slash");
+  const slashFailure = cloneFailure(() => postMessage(slash, "/", [slash]));
+  if (slashFailure.name !== "SyntaxError" || slash.locked) {
+    throw new Error("slash " + slashFailure.name + " " + slash.locked);
+  }
+  const omitted = chunkStream("omitted");
+  const omittedFailure = cloneFailure(() => postMessage(omitted));
+  if (omittedFailure.name !== "SyntaxError" || omitted.locked) {
+    throw new Error("omitted " + omittedFailure.name);
+  }
+  const empty = chunkStream("empty");
+  const emptyFailure = cloneFailure(() => postMessage(empty, {}));
+  if (emptyFailure.name !== "SyntaxError" || empty.locked) {
+    throw new Error("empty " + emptyFailure.name);
+  }
+  const foreign = chunkStream("foreign");
+  let saw = false;
+  const stop = () => {
+    saw = true;
+  };
+  addEventListener("message", stop);
+  postMessage(foreign, "https://example.test", [foreign]);
+  if (foreign.locked) {
+    throw new Error("foreign locked");
+  }
+  await turn();
+  await turn();
+  removeEventListener("message", stop);
+  if (saw) {
+    throw new Error("foreign delivered");
+  }
+});

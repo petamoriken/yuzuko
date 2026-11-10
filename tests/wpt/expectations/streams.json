@@ -89,56 +89,8 @@
   "streams/transferable/gc-crash.html": {
     "ignore": "The file is not a testharness document."
   },
-  "streams/transferable/readable-stream.html": {
-    "expectedFailures": [
-      "cancel should abort a pending read()",
-      "cancel should be propagated to the original",
-      "errors should be passed through",
-      "race between cancel() and close() should be benign",
-      "race between cancel() and enqueue() should be benign",
-      "race between cancel() and error() should leave sides in different states",
-      "sending one chunk through a transferred stream should work",
-      "sending ten chunks on demand should work",
-      "sending ten chunks one at a time should work",
-      "sending ten chunks through a transferred stream should work",
-      "serialization should not happen until the value is read",
-      "stream cancel should not wait for underlying source cancel",
-      "the extra queue from transferring is counted in chunks",
-      "transferring a non-serializable chunk should error both sides",
-      "transferring a stream should add one chunk to the queue size",
-      "transferring a stream should relieve backpressure"
-    ]
-  },
-  "streams/transferable/reason.html": {
-    "expectedFailures": [
-      "DOMException errors should be preserved",
-      "EvalError should be preserved",
-      "RangeError should be preserved",
-      "ReferenceError should be preserved",
-      "SyntaxError should be preserved",
-      "TypeError should be preserved",
-      "URIError should be preserved",
-      "a TypeError message should be converted to a string",
-      "a TypeError message should not be preserved if it is a getter",
-      "a TypeError message should not be preserved if it is inherited",
-      "objects that can be completely expressed in JSON should be preserved",
-      "objects that cannot be expressed in JSON should also be preserved",
-      "other attributes of a TypeError should not be preserved",
-      "reason with a simple value of '\t\r\n' should be preserved",
-      "reason with a simple value of '3' should be preserved",
-      "reason with a simple value of '7' should be preserved",
-      "reason with a simple value of 'Infinity' should be preserved",
-      "reason with a simple value of 'NaN' should be preserved",
-      "reason with a simple value of 'false' should be preserved",
-      "reason with a simple value of 'hi' should be preserved",
-      "reason with a simple value of 'null' should be preserved",
-      "reason with a simple value of 'true' should be preserved",
-      "reason with a simple value of 'undefined' should be preserved",
-      "reason with a type of 'function' should be rejected and error the stream",
-      "reason with a type of 'symbol' should be rejected and error the stream",
-      "the type and message of a TypeError should be preserved"
-    ]
-  },
+  "streams/transferable/readable-stream.html": true,
+  "streams/transferable/reason.html": true,
   "streams/transferable/service-worker.https.html": {
     "ignore": "The runner has no shared worker or service worker."
   },
@@ -150,44 +102,19 @@
   },
   "streams/transferable/transfer-with-messageport.window.js": {
     "expectedFailures": [
-      "ReadableStream must not be serializable",
-      "Transferring a MessagePort with a ReadableStream should set `.ports`",
       "Transferring a MessagePort with a ReadableStream should set `.ports`, advanced",
-      "Transferring a MessagePort with a TransformStream should set `.ports`",
       "Transferring a MessagePort with a TransformStream should set `.ports`, advanced",
-      "Transferring a MessagePort with a WritableStream should set `.ports`",
       "Transferring a MessagePort with a WritableStream should set `.ports`, advanced",
-      "Transferring a MessagePort with multiple streams should set `.ports`",
-      "TransformStream must not be serializable",
-      "WritableStream must not be serializable"
+      "Transferring a MessagePort with multiple streams should set `.ports`"
     ]
   },
   "streams/transferable/transform-stream-members.any.js": true,
-  "streams/transferable/transform-stream.html": {
-    "expectedFailures": [
-      "a TransformStream with a locked readable should not be transferable",
-      "a TransformStream with a locked writable should not be transferable",
-      "a TransformStream with both sides locked should not be transferable",
-      "piping through transferred transforms should work",
-      "window.postMessage should be able to transfer a TransformStream"
-    ]
-  },
+  "streams/transferable/transform-stream.html": true,
   "streams/transferable/window.html": {
     "ignore": "The file needs a document."
   },
   "streams/transferable/worker.html": true,
-  "streams/transferable/writable-stream.html": {
-    "expectedFailures": [
-      "a locked WritableStream should not be transferable",
-      "abort() should work",
-      "desiredSize for a newly-transferred stream should be 1",
-      "effective queue size of a transferred writable should be 2",
-      "second write should wait for first underlying write to complete",
-      "window.postMessage should be able to transfer a WritableStream",
-      "window.postMessage should be able to transfer a {readable, writable} pair",
-      "writing a unclonable object should error the stream"
-    ]
-  },
+  "streams/transferable/writable-stream.html": true,
   "streams/transform-streams/backpressure.any.js": true,
   "streams/transform-streams/cancel.any.js": true,
   "streams/transform-streams/errors.any.js": true,

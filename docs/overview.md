@@ -30,7 +30,7 @@ Time and text: `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `pe
 
 Bytes: `Blob`, `File`, `FormData`, streams, `CompressionStream`, and `DecompressionStream`. `crypto`, `CryptoKey`, and `SubtleCrypto` provide digests, signatures, encryption, key derivation, and the additional algorithms recorded in [deviations.md](deviations.md).
 
-`MessageChannel` and dedicated workers are in every build. The main realm has `requestIdleCallback` and `cancelIdleCallback`. The main global has no `requestAnimationFrame`. A frame belongs to a window, or to a dedicated worker that draws into a transferred canvas.
+`MessageChannel` and dedicated workers are in every build. The main global has `postMessage`, which posts to that same realm. A dedicated worker's `postMessage` posts to its owner. The main realm has `requestIdleCallback` and `cancelIdleCallback`. The main global has no `requestAnimationFrame`. A frame belongs to a window, or to a dedicated worker that draws into a transferred canvas.
 
 `Intl` uses the full ICU locale data linked into this V8 build. `WebAssembly` includes streaming compilation, a direct `.wasm` import, `import source`, and `import defer`. `import source` of JavaScript or TypeScript yields a `ModuleSource` for `new Worker`. Text and bytes imports use `with { type: "text" }` and `with { type: "bytes" }`.
 

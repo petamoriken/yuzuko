@@ -8,6 +8,7 @@ use std::sync::{LazyLock, Mutex};
 
 use yuzuko_core::op::Js;
 use yuzuko_core::op::OpError;
+use yuzuko_core::op::OpException;
 use yuzuko_core::op::traced;
 use yuzuko_core::op::traced_local;
 use yuzuko_macros::op;
@@ -106,7 +107,7 @@ pub(crate) fn message_event_for<'s>(
   data: v8::Local<v8::Value>,
 ) -> v8::Local<'s, v8::Object> {
   let data = v8::Global::new(scope, data);
-  message_event(scope, &data)
+  message_event(scope, &data, &[], "")
 }
 
 const TAG_PORT: u32 = 12;
@@ -623,6 +624,8 @@ impl MessageChannel {
 pub struct MessageEvent {
   base: Event,
   data: RefCell<Option<v8::TracedReference<v8::Value>>>,
+  /// Frozen array of caller-transferred `MessagePort`s. Stream ports are absent.
+  ports: v8::TracedReference<v8::Object>,
   origin: String,
   last_event_id: String,
 }
@@ -630,6 +633,7 @@ pub struct MessageEvent {
 unsafe impl v8::cppgc::GarbageCollected for MessageEvent {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    visitor.trace(&self.ports);
     if let Ok(data) = self.data.try_borrow() {
       visitor.trace(&*data);
     }
@@ -662,9 +666,11 @@ impl MessageEvent {
       .unwrap_or_else(|| v8::undefined(scope).into());
     let origin = crate::util::dict_string(scope, init, "origin");
     let last_event_id = crate::util::dict_string(scope, init, "lastEventId");
+    let ports = port_array_from_init(scope, init)?;
     Ok(Self {
       base,
       data: RefCell::new(Some(traced(scope, data))),
+      ports,
       origin,
       last_event_id,
     })
@@ -705,8 +711,9 @@ impl MessageEvent {
 
   #[getter]
   fn ports(&self, scope: &mut v8::PinScope) -> Js {
-    let array = v8::Array::new(scope, 0);
-    let value: v8::Local<v8::Value> = array.into();
+    let value = traced_local(scope, &self.ports)
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| v8::Array::new(scope, 0).into());
     Js(v8::Global::new(scope, value))
   }
 }
@@ -722,6 +729,7 @@ pub(crate) fn trusted_message<'s>(
   let event = MessageEvent {
     base: Event::new(type_name, false, false, false, true),
     data: RefCell::new(Some(traced(scope, data))),
+    ports: empty_port_array(scope),
     origin,
     last_event_id,
   };
@@ -920,7 +928,7 @@ fn deliver(scope: &mut v8::PinScope, id: u64) {
   };
   for data in pending {
     let target = v8::Local::new(scope, &wrapper);
-    let event = message_event(scope, &data);
+    let event = message_event(scope, &data, &[], "");
     let _ = target::dispatch(scope, target, event);
   }
 }
@@ -928,24 +936,86 @@ fn deliver(scope: &mut v8::PinScope, id: u64) {
 fn message_event<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   data: &v8::Global<v8::Value>,
+  ports: &[v8::Global<v8::Object>],
+  origin: &str,
 ) -> v8::Local<'s, v8::Object> {
   let _ = MessageEvent::template(scope);
   let data = v8::Local::new(scope, data);
   let data = yuzuko_core::op::root(scope, data);
   let data = traced(scope, data);
+  let ports = port_array(scope, ports);
+  let origin = origin.to_string();
   let event = unsafe {
     yuzuko_core::op::wrap_instance(
       scope,
       MessageEvent {
         base: Event::new("message", false, false, false, true),
         data: RefCell::new(Some(data)),
-        origin: String::new(),
+        ports,
+        origin,
         last_event_id: String::new(),
       },
     )
   };
   define_is_trusted(scope, event);
   event
+}
+
+fn empty_port_array(
+  scope: &mut v8::PinScope,
+) -> v8::TracedReference<v8::Object> {
+  port_array(scope, &[])
+}
+
+fn port_array(
+  scope: &mut v8::PinScope,
+  ports: &[v8::Global<v8::Object>],
+) -> v8::TracedReference<v8::Object> {
+  let length = i32::try_from(ports.len()).unwrap_or(i32::MAX);
+  let array = v8::Array::new(scope, length);
+  for (index, port) in ports.iter().enumerate() {
+    let Ok(index) = u32::try_from(index) else {
+      break;
+    };
+    let port = v8::Local::new(scope, port);
+    let _ = array.set_index(scope, index, port.into());
+  }
+  let object: v8::Local<v8::Object> = array.into();
+  let _ = object.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  traced(scope, object)
+}
+
+fn port_array_from_init(
+  scope: &mut v8::PinScope,
+  init: Option<v8::Local<v8::Value>>,
+) -> Result<v8::TracedReference<v8::Object>, OpError> {
+  let Some(value) = crate::util::dict_get(scope, init, "ports") else {
+    return Ok(empty_port_array(scope));
+  };
+  if value.is_undefined() {
+    return Ok(empty_port_array(scope));
+  }
+  let Ok(list) = v8::Local::<v8::Array>::try_from(value) else {
+    return Err(OpError::type_("The ports list is not an array"));
+  };
+  let length = list.length();
+  let mut ports = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
+  for index in 0..length {
+    let Some(item) = list.get_index(scope, index) else {
+      return Err(OpError::type_("The ports list is not readable"));
+    };
+    let Ok(object) = v8::Local::<v8::Object>::try_from(item) else {
+      return Err(OpError::type_("A message port is required"));
+    };
+    let is_port =
+      unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) }
+        .is_some();
+    if !is_port {
+      return Err(OpError::type_("A message port is required"));
+    }
+    ports.push(v8::Global::new(scope, object));
+  }
+  Ok(port_array(scope, &ports))
 }
 
 fn traced_js(
@@ -962,4 +1032,190 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   MessagePort::install(scope);
   MessageEvent::install(scope);
   MessageChannel::install(scope);
+  if yuzuko_core::is_dedicated_worker() {
+    return;
+  }
+  let global = yuzuko_core::global(scope);
+  yuzuko_core::set_function(scope, global, "postMessage", post_to_self);
+}
+
+fn post_to_self(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  if let Err(error) = queue_self_message(scope, &args) {
+    error.throw(scope);
+  }
+}
+
+fn queue_self_message(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(), OpError> {
+  if args.length() < 1 {
+    return Err(OpError::type_("postMessage requires a message"));
+  }
+  let (origin, transfer) = message_target(scope, args)?;
+  if !target_origin_matches(&origin)? {
+    return Ok(());
+  }
+  let message = args.get(0);
+  let message = v8::Local::new(scope, v8::Global::new(scope, message));
+  let transfer = match transfer {
+    Some(transfer) => v8::Local::new(scope, transfer),
+    None => v8::undefined(scope).into(),
+  };
+  let (objects, buffers) = transfer_parts(scope, transfer)?;
+  // `read_port_clone` records a `MessagePort` reached from the value.
+  // A stream's own channel port is moved without that record.
+  capture_ports(true);
+  let cloned = {
+    let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
+    match yuzuko_core::clone_value(scope, message) {
+      Ok(cloned) => {
+        yuzuko_core::detach_structured_transfers(scope);
+        Ok(cloned)
+      }
+      Err(error) => Err(error),
+    }
+  };
+  let ports = take_captured_ports();
+  let cloned = match cloned {
+    Ok(cloned) => cloned,
+    Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
+    Err(None) => {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The object could not be cloned.",
+      ));
+    }
+  };
+  for buffer in &buffers {
+    let buffer = v8::Local::new(scope, buffer);
+    let _ = buffer.detach(None);
+  }
+  let data = v8::Global::new(scope, cloned);
+  let origin = realm_origin();
+  // A zero-delay timer runs before a `setTimeout` scheduled after this
+  // call returns. A macrotask queued behind timers would leave the message
+  // for the next test's listener.
+  yuzuko_core::schedule_host(std::time::Duration::ZERO, move |scope| {
+    let event = message_event(scope, &data, &ports, &origin);
+    let global = yuzuko_core::global(scope);
+    let _ = target::dispatch(scope, global, event);
+  });
+  Ok(())
+}
+
+fn message_target(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<(String, Option<v8::Global<v8::Value>>), OpError> {
+  if args.length() < 2 {
+    return Ok(("/".to_string(), None));
+  }
+  let second = args.get(1);
+  if second.is_null() || !second.is_object() {
+    let origin = usv_string(scope, second)?;
+    let transfer =
+      (args.length() > 2).then(|| v8::Global::new(scope, args.get(2)));
+    return Ok((origin, transfer));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(second) else {
+    return Err(OpError::type_("The message options are not an object"));
+  };
+  let origin = option_origin(scope, object)?;
+  let transfer = option_transfer(scope, object)?;
+  Ok((origin, transfer))
+}
+
+fn option_origin(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<String, OpError> {
+  let value = read_option(scope, object, "targetOrigin")?;
+  let value = v8::Local::new(scope, value);
+  if value.is_undefined() {
+    return Ok("/".to_string());
+  }
+  usv_string(scope, value)
+}
+
+fn option_transfer(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<v8::Global<v8::Value>>, OpError> {
+  let value = read_option(scope, object, "transfer")?;
+  let local = v8::Local::new(scope, &value);
+  if local.is_undefined() {
+    Ok(None)
+  } else {
+    Ok(Some(value))
+  }
+}
+
+fn read_option(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<v8::Global<v8::Value>, OpError> {
+  v8::tc_scope!(let tc, scope);
+  let Some(key) = v8::String::new(tc, name) else {
+    return Err(OpError::type_("The message options are not readable"));
+  };
+  match object.get(tc, key.into()) {
+    Some(value) => Ok(v8::Global::new(tc, value)),
+    None => Err(match tc.exception() {
+      Some(thrown) => OpError::thrown(tc, thrown),
+      None => OpError::type_("The message options are not readable"),
+    }),
+  }
+}
+
+fn usv_string(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<String, OpError> {
+  v8::tc_scope!(let tc, scope);
+  let Some(text) = value.to_string(tc) else {
+    return Err(match tc.exception() {
+      Some(thrown) => OpError::thrown(tc, thrown),
+      None => OpError::type_("The target origin is not a string"),
+    });
+  };
+  Ok(text.to_rust_string_lossy(tc))
+}
+
+/// `Ok(true)` serializes. `Ok(false)` returns without cloning.
+fn target_origin_matches(target: &str) -> Result<bool, OpError> {
+  if target == "/" {
+    return Err(OpError::dom("SyntaxError", "The target origin is \"/\"."));
+  }
+  if target == "*" {
+    return Ok(true);
+  }
+  let Ok(parsed) = url::Url::parse(target) else {
+    return Err(OpError::dom(
+      "SyntaxError",
+      "The target origin is not a URL.",
+    ));
+  };
+  let Some(entry) = yuzuko_core::entry_url() else {
+    return Ok(false);
+  };
+  let Ok(current) = url::Url::parse(&entry) else {
+    return Ok(false);
+  };
+  Ok(parsed.origin() == current.origin())
+}
+
+fn realm_origin() -> String {
+  let Some(entry) = yuzuko_core::entry_url() else {
+    return "null".to_string();
+  };
+  let Ok(url) = url::Url::parse(&entry) else {
+    return "null".to_string();
+  };
+  url.origin().ascii_serialization()
 }

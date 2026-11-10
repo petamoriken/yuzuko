@@ -5372,10 +5372,54 @@ declare function structuredClone(
 ): any;
 
 /**
+ * Posts `message` to this realm.
+ *
+ * Installed on the main global. A dedicated worker uses
+ * {@link DedicatedWorkerGlobalScope.postMessage}, which posts to its owner.
+ * `postMessage(message, targetOrigin, transfer)` clones `message` when
+ * `targetOrigin` is `"*"` or the entry URL's origin. `"/"` and a value that
+ * does not parse as a URL throw `SyntaxError` before the clone. A different
+ * origin returns without cloning, so a listed stream stays unlocked.
+ * `postMessage(message)` and `postMessage(message, options)` use
+ * `options.targetOrigin`, which defaults to `"/"`.
+ *
+ * A zero-delay timer dispatches a trusted `message` event on `globalThis`.
+ * Microtasks from the clone run first, and the event runs before a
+ * `setTimeout` scheduled after `postMessage` returns.
+ * `source` is null. `ports` is a frozen array of the {@link MessagePort}s
+ * that were reachable from `message` and listed in `transfer`. A port created
+ * to carry a transferred stream is not included. There is no `onmessage`
+ * attribute.
+ *
+ * @throws {@link DOMException} `SyntaxError` when `targetOrigin` is `"/"` or
+ * does not parse as a URL.
+ * @throws {@link DOMException} `DataCloneError` when `message` cannot be
+ * cloned, including a locked stream or a stream left out of `transfer`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/postMessage)
+ */
+declare function postMessage(
+  message: any,
+  targetOrigin: string,
+  transfer?: Transferable[],
+): void;
+declare function postMessage(
+  message: any,
+  options?: WindowPostMessageOptions,
+): void;
+
+/**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/structuredClone)
  */
 interface StructuredSerializeOptions {
   transfer?: Transferable[];
+}
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/postMessage)
+ */
+interface WindowPostMessageOptions extends StructuredSerializeOptions {
+  targetOrigin?: string;
 }
 
 /**
@@ -6675,7 +6719,12 @@ interface MessageEvent<T = any> extends Event {
    */
   readonly source: null;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports) */
+  /**
+   * Frozen array of transferred {@link MessagePort}s that were reachable
+   * from the message. Each read returns that same array.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports)
+   */
   readonly ports: readonly MessagePort[];
 }
 declare var MessageEvent: {
