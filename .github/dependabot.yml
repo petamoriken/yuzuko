@@ -16,16 +16,3 @@ updates:
     ignore:
       - dependency-name: "v8"
       - dependency-name: "oxc_*"
-      # These majors need a source migration before they can land in the weekly group.
-      - dependency-name: "cssparser"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "getrandom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "p256"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "p384"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "p521"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "symphonia"
-        update-types: ["version-update:semver-major"]
