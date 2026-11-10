@@ -270,21 +270,20 @@ fn construct_from_frame(
   };
   let (rotation, flip) =
     compose_orientation(data.rotation, data.flip, init.rotation, init.flip);
-  let explicit = init.display.is_some();
   let display = if let Some(display) = init.display {
     display
   } else {
-    display_size(
+    scaled_display(
       visible.width,
       visible.height,
       data.visible_width,
       data.visible_height,
-      f64::from(data.display_width),
-      f64::from(data.display_height),
+      (data.display_width, data.display_height),
+      data.rotation,
+      rotation,
     )
     .map_err(|error| layout_error(error, true))?
   };
-  let display = oriented_display(display, explicit, data.rotation, rotation);
   let timestamp = init.timestamp.unwrap_or_else(|| source.timestamp_us());
   let duration = if init.duration_set {
     init.duration
@@ -725,14 +724,62 @@ fn read_orientation(
   Ok((rotation, flip))
 }
 
-/// `Math.round` to a multiple of 90, then a non-negative residue modulo 360.
+/// Nearest multiple of 90, ties toward positive infinity, then reduced to
+/// `[0, 360)`. The residue is the exact value of `floor(number)` modulo 360,
+/// so magnitudes past `2^53` still land on the quarter turn `videoFrame-rotation`
+/// expects.
 pub(crate) fn normalize_rotation(number: f64) -> u16 {
-  let turns = (number / 90.0 + 0.5).floor();
-  let mut degrees = (turns * 90.0) % 360.0;
-  if degrees < 0.0 {
-    degrees += 360.0;
+  let residue = nonnegative_residue(number.floor());
+  let quarter = (residue + 45) / 90;
+  ((quarter % 4) * 90) as u16
+}
+
+/// Non-negative residue of an integer-valued `f64` modulo 360.
+fn nonnegative_residue(floored: f64) -> i32 {
+  if !floored.is_finite() || floored == 0.0 {
+    return 0;
   }
-  degrees as u16
+  let bits = floored.to_bits();
+  let negative = bits >> 63 != 0;
+  let exponent = ((bits >> 52) & 0x7ff) as i32;
+  let fraction = bits & ((1 << 52) - 1);
+  if exponent == 0 {
+    return 0;
+  }
+  let significand = fraction | (1 << 52);
+  let power = exponent - 1023 - 52;
+  let magnitude = magnitude_mod_360(significand, power);
+  if !negative || magnitude == 0 {
+    magnitude
+  } else {
+    360 - magnitude
+  }
+}
+
+fn magnitude_mod_360(significand: u64, power: i32) -> i32 {
+  if power < 0 {
+    let shift = (-power) as u32;
+    if shift >= 64 {
+      return 0;
+    }
+    return ((significand >> shift) % 360) as i32;
+  }
+  if power >= 3 {
+    // `360 = 8 * 45`, and `2^power` supplies the factor of 8.
+    let reduced = (significand % 45) as i32;
+    let factor = pow2_mod_45((power - 3) as u32);
+    return 8 * ((reduced * factor) % 45);
+  }
+  ((significand << power) % 360) as i32
+}
+
+/// `2^exponent` modulo 45. The order of 2 modulo 45 is 12.
+fn pow2_mod_45(exponent: u32) -> i32 {
+  let mut result = 1i32;
+  for _ in 0..(exponent % 12) {
+    result = (result * 2) % 45;
+  }
+  result
 }
 
 pub(crate) fn compose_orientation(
@@ -762,6 +809,40 @@ fn oriented_display(
   } else {
     (display.1, display.0)
   }
+}
+
+/// Scale a copied frame's display size in coded axes, then apply `rotation`.
+///
+/// The stored display size is already oriented. A source rotation of 90 or
+/// 270 is removed before the visible-rectangle ratio is applied, and the
+/// composed rotation swaps the result again.
+fn scaled_display(
+  visible_width: f64,
+  visible_height: f64,
+  source_visible_width: f64,
+  source_visible_height: f64,
+  source_display: (u32, u32),
+  source_rotation: u16,
+  rotation: u16,
+) -> Result<(u32, u32), LayoutError> {
+  let aligned = if source_rotation == 90 || source_rotation == 270 {
+    (source_display.1, source_display.0)
+  } else {
+    source_display
+  };
+  let scaled = display_size(
+    visible_width,
+    visible_height,
+    source_visible_width,
+    source_visible_height,
+    f64::from(aligned.0),
+    f64::from(aligned.1),
+  )?;
+  Ok(if rotation == 90 || rotation == 270 {
+    (scaled.1, scaled.0)
+  } else {
+    scaled
+  })
 }
 
 fn required_size(
@@ -1151,13 +1232,70 @@ mod tests {
 
   #[test]
   fn rotation_rounds_like_math_round() {
-    assert_eq!(normalize_rotation(-315.0), 90);
-    assert_eq!(normalize_rotation(0.0), 0);
-    assert_eq!(normalize_rotation(90.0), 90);
-    assert_eq!(normalize_rotation(45.0), 90);
-    assert_eq!(normalize_rotation(-45.0), 0);
-    assert_eq!(normalize_rotation(270.0), 270);
-    assert_eq!(normalize_rotation(360.0), 0);
+    let cases = [
+      (-315.0, 90),
+      (-360.0, 0),
+      (-90.0, 270),
+      (-45.0, 0),
+      (-135.0, 270),
+      (-1.0, 0),
+      (44.0, 0),
+      (45.0, 90),
+      (89.9, 90),
+      (135.0, 180),
+      (315.0, 0),
+      (359.0, 0),
+      (360.0, 0),
+      (450.0, 90),
+      (720.0, 0),
+      (0.5, 0),
+      (-0.5, 0),
+      (1080.5, 0),
+      (-1080.5, 0),
+      (1124.99, 0),
+      (-1124.99, 0),
+      (1125.0, 90),
+      (-1125.0, 0),
+      (123456.789, 0),
+      (1e6, 270),
+      (-1e6, 90),
+      ((1u64 << 53) as f64, 0),
+      (((1u64 << 53) + 2) as f64, 0),
+      (1e15, 270),
+      (1e16, 270),
+      (1e17, 270),
+      (1e20, 270),
+      (1e300, 0),
+      (-1e300, 0),
+      (f64::MAX, 90),
+      (-f64::MAX, 270),
+      (f64::from_bits(1), 0),
+      (-f64::from_bits(1), 0),
+    ];
+    for (number, expected) in cases {
+      assert_eq!(normalize_rotation(number), expected, "{number}");
+    }
+  }
+
+  #[test]
+  fn visible_rect_scales_on_coded_axes() {
+    use super::scaled_display;
+    assert_eq!(
+      scaled_display(2.0, 2.0, 4.0, 2.0, (2, 4), 90, 180).unwrap(),
+      (2, 2)
+    );
+    assert_eq!(
+      scaled_display(4.0, 2.0, 4.0, 2.0, (2, 4), 90, 90).unwrap(),
+      (2, 4)
+    );
+    assert_eq!(
+      scaled_display(4.0, 2.0, 4.0, 2.0, (4, 2), 0, 90).unwrap(),
+      (2, 4)
+    );
+    assert_eq!(
+      scaled_display(2.0, 2.0, 4.0, 2.0, (20, 10), 90, 90).unwrap(),
+      (20, 5)
+    );
   }
 
   #[test]

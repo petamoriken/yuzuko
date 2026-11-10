@@ -575,6 +575,10 @@ pub struct VideoDecoder {
   generation: Cell<u64>,
   scheduled: Cell<bool>,
   close_error: RefCell<Option<StoredError>>,
+  /// `VideoDecoderConfig.rotation`, applied to each output frame.
+  rotation: Cell<u16>,
+  /// `VideoDecoderConfig.flip`, applied after `rotation`.
+  flip: Cell<bool>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for VideoDecoder {
@@ -627,6 +631,8 @@ impl VideoDecoder {
       generation: Cell::new(0),
       scheduled: Cell::new(false),
       close_error: RefCell::new(None),
+      rotation: Cell::new(0),
+      flip: Cell::new(false),
     })
   }
 
@@ -694,6 +700,8 @@ impl VideoDecoder {
     match opened {
       Ok(Ok(backend)) => {
         *self.backend.borrow_mut() = Some(backend);
+        self.rotation.set(checked.rotation);
+        self.flip.set(checked.flip);
         self.state.set(State::Configured);
         Ok(())
       }
@@ -1055,10 +1063,11 @@ impl VideoDecoder {
       return self.still_configured(generation);
     };
     let _ = VideoFrame::template(scope);
-    let data = match picture {
+    let mut data = match picture {
       Picture::Raster(raster) => frame_from_raster(&raster),
       Picture::Av1(picture) => frame_from_av1(picture),
     };
+    apply_orientation(&mut data, self.rotation.get(), self.flip.get());
     let frame = unsafe {
       wrap_instance(scope, VideoFrame::from_data(data, timestamp, duration))
     };
@@ -2005,6 +2014,8 @@ struct VideoChecked {
   display_height: Option<u32>,
   acceleration: Option<String>,
   color_space: Option<VideoColorInit>,
+  rotation: u16,
+  flip: bool,
 }
 
 struct AudioChecked {
@@ -2046,6 +2057,9 @@ fn check_video(
     None => None,
   };
   let color_space = optional_color_space(scope, object)?;
+  let rotation = config_rotation(scope, object)?;
+  let flip = member(scope, object, "flip")
+    .is_some_and(|value| value.boolean_value(scope));
   let kind = video_codec(&codec);
   let supported = match kind {
     Some(Codec::Avc) => crate::h264::codec_string_supported(&codec),
@@ -2065,7 +2079,41 @@ fn check_video(
     display_height,
     acceleration,
     color_space,
+    rotation,
+    flip,
   })
+}
+
+/// `[EnforceRange] unsigned short`, then a quarter turn.
+fn config_rotation(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<u16, OpError> {
+  let Some(value) = member(scope, object, "rotation") else {
+    return Ok(0);
+  };
+  let number = value
+    .number_value(scope)
+    .ok_or_else(|| OpError::type_("rotation is out of range"))?;
+  if !number.is_finite() {
+    return Err(OpError::type_("rotation is out of range"));
+  }
+  let truncated = number.trunc();
+  if !(0.0..=65535.0).contains(&truncated) {
+    return Err(OpError::type_("rotation is out of range"));
+  }
+  match truncated as u16 {
+    quarter @ (0 | 90 | 180 | 270) => Ok(quarter),
+    _ => Err(OpError::type_("rotation must be 0, 90, 180, or 270")),
+  }
+}
+
+fn apply_orientation(data: &mut FrameData, rotation: u16, flip: bool) {
+  if rotation == 90 || rotation == 270 {
+    std::mem::swap(&mut data.display_width, &mut data.display_height);
+  }
+  data.rotation = rotation;
+  data.flip = flip;
 }
 
 /// `colorSpace` on a `VideoDecoderConfig`. Omitted members stay null.
@@ -2431,6 +2479,13 @@ fn video_support_object<'s>(
   if let Some(hint) = &checked.acceleration {
     set_string(scope, object, "hardwareAcceleration", hint);
   }
+  set_number(scope, object, "rotation", f64::from(checked.rotation));
+  set_value(
+    scope,
+    object,
+    "flip",
+    v8::Boolean::new(scope, checked.flip).into(),
+  );
   if let Some(color) = &checked.color_space {
     let space = v8::Object::new(scope);
     put_color_string(scope, space, "primaries", &color.primaries);

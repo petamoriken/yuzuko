@@ -1780,6 +1780,57 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
   assert(wrapped.rotation === 0 && wrapped.flip === false, "composed");
   assert(wrapped.displayWidth === 4 && wrapped.displayHeight === 2, "composed display");
   wrapped.close();
+
+  const upright = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: 90,
+  });
+  const cropped = new VideoFrame(upright, {
+    rotation: 90,
+    visibleRect: { x: 0, y: 0, width: 2, height: 2 },
+  });
+  assert(cropped.rotation === 180, "cropped rotation");
+  assert(
+    cropped.visibleRect?.width === 2 && cropped.visibleRect.height === 2,
+    "cropped visible",
+  );
+  assert(cropped.displayWidth === 2 && cropped.displayHeight === 2, "cropped display");
+  cropped.close();
+  upright.close();
+
+  const huge = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: Number.MAX_VALUE,
+  });
+  assert(huge.rotation === 90, "max rotation");
+  huge.close();
+  const negative = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: -Number.MAX_VALUE,
+  });
+  assert(negative.rotation === 270, "min rotation");
+  negative.close();
+  const quarter = new VideoFrame(bytes, {
+    format: "RGBX",
+    codedWidth: 4,
+    codedHeight: 2,
+    timestamp: 0,
+    rotation: 90,
+  });
+  const wide = new VideoFrame(quarter, { rotation: 1e17 });
+  assert(wide.rotation === 0, "1e17 composed");
+  assert(wide.displayWidth === 4 && wide.displayHeight === 2, "1e17 display");
+  wide.close();
+  quarter.close();
   frame.close();
   assert(frame.rotation === 0 && frame.flip === false, "closed");
 
@@ -1809,6 +1860,78 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
       }),
     "rotation",
   );
+});
+
+Yuzuko.test("VideoDecoder copies rotation and flip onto output frames", async () => {
+  const response = await fetch(
+    new URL("./fixtures/media/av1-mono.mp4", import.meta.url),
+  );
+  const file = new Uint8Array(await response.arrayBuffer());
+  const track = Yuzuko.demuxMp4(file).video[0];
+  const base = {
+    codec: track.codec,
+    description: track.description,
+    codedWidth: track.codedWidth,
+    codedHeight: track.codedHeight,
+    hardwareAcceleration: "prefer-software" as const,
+  };
+  const support = await VideoDecoder.isConfigSupported({
+    ...base,
+    rotation: 90.9,
+    flip: true,
+  });
+  assert(support.supported === true, "supported");
+  assert(support.config.rotation === 90, `rotation ${support.config.rotation}`);
+  assert(support.config.flip === true, "flip");
+  let rejected = false;
+  try {
+    await VideoDecoder.isConfigSupported({ ...base, rotation: 45 });
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  assert(rejected, "quarter turn");
+
+  const frames: VideoFrame[] = [];
+  let failed = "";
+  const decoder = new VideoDecoder({
+    output: (frame) => {
+      frames.push(frame);
+    },
+    error: (error) => {
+      failed = `${error.name}: ${error.message}`;
+    },
+  });
+  assertTypeError(
+    () => decoder.configure({ ...base, rotation: 45 }),
+    "configure rotation",
+  );
+  assert(decoder.state === "unconfigured", decoder.state);
+  decoder.configure({ ...base, rotation: 90, flip: true });
+  decoder.decode(track.chunks[0]);
+  await decoder.flush();
+  assert(failed === "", failed);
+  assert(frames.length >= 1, "frames");
+  const turned = frames[0];
+  assert(turned.rotation === 90 && turned.flip === true, "oriented");
+  assert(
+    turned.displayWidth === turned.codedHeight
+      && turned.displayHeight === turned.codedWidth,
+    `display ${turned.displayWidth}x${turned.displayHeight}`,
+  );
+  decoder.configure({ ...base, rotation: 180, flip: false });
+  decoder.decode(track.chunks[0]);
+  await decoder.flush();
+  assert(failed === "", failed);
+  const flat = frames[frames.length - 1];
+  assert(flat.rotation === 180 && flat.flip === false, "reconfigured");
+  assert(
+    flat.displayWidth === flat.codedWidth && flat.displayHeight === flat.codedHeight,
+    "display stays",
+  );
+  for (const frame of frames) {
+    frame.close();
+  }
+  decoder.close();
 });
 
 Yuzuko.test("AudioDecoder dispatches a dequeue event", () => {

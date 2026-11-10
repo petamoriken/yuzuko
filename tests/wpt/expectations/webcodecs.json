@@ -413,10 +413,10 @@
     }
   },
   "webcodecs/videoDecoder-codec-specific-orientation.https.any.js": {
-    "expectedFailures": [
-      "Decode frames with orientation metadata",
-      "Test that isConfigSupported() with orientation"
-    ]
+    "ignore": {
+      "linux": "H.264 variants in this file need a hardware decoder.",
+      "windows": "H.264 variants in this file need a hardware decoder."
+    }
   },
   "webcodecs/videoDecoder-codec-specific.https.any.js": {
     "ignore": {
@@ -590,19 +590,7 @@
       "texImage2D() of a cloned RGBX VideoFrame is opaque"
     ]
   },
-  "webcodecs/videoFrame-rotation.any.js": {
-    "expectedFailures": [
-      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of -1.7976931348623157e+308",
-      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 1.7976931348623157e+308",
-      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 100000000000000000",
-      "A VideoFrame created from a VideoFrame rotated by 90 with an init rotation of 100000000000000000000",
-      "A VideoFrame created from a rotated VideoFrame can also change the visible rect",
-      "An init rotation of -1.7976931348623157e+308 gives a VideoFrame rotation of 270",
-      "An init rotation of 1.7976931348623157e+308 gives a VideoFrame rotation of 90",
-      "An init rotation of 100000000000000000 gives a VideoFrame rotation of 270",
-      "An init rotation of 100000000000000000000 gives a VideoFrame rotation of 270"
-    ]
-  },
+  "webcodecs/videoFrame-rotation.any.js": true,
   "webcodecs/videoFrame-serialization.crossAgentCluster.helper.html": {
     "ignore": "The file is not a testharness document."
   },

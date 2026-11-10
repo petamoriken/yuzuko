@@ -12687,9 +12687,9 @@ interface VideoFrameInit {
   displayWidth?: number;
   displayHeight?: number;
   /**
-   * Clockwise degrees. Rounded to a multiple of 90 the way `Math.round`
-   * rounds, then reduced to 0, 90, 180, or 270. A non-finite value throws
-   * `TypeError`.
+   * Clockwise degrees. The exact value is reduced modulo 360, then rounded
+   * to the nearest multiple of 90. A tie rounds toward positive infinity.
+   * A non-finite value throws `TypeError`.
    */
   rotation?: number;
   /**
@@ -12721,9 +12721,9 @@ interface VideoFrameBufferInit {
   displayHeight?: number;
   colorSpace?: VideoColorSpaceInit;
   /**
-   * Clockwise degrees. Rounded to a multiple of 90 the way `Math.round`
-   * rounds, then reduced to 0, 90, 180, or 270. A non-finite value throws
-   * `TypeError`.
+   * Clockwise degrees. The exact value is reduced modulo 360, then rounded
+   * to the nearest multiple of 90. A tie rounds toward positive infinity.
+   * A non-finite value throws `TypeError`.
    */
   rotation?: number;
   /**
@@ -12765,12 +12765,14 @@ interface VideoFrameMetadata {}
  * `new VideoFrame(image, init)` copies an `ImageBitmap`, an `OffscreenCanvas`,
  * or another `VideoFrame`. `new VideoFrame(buffer, init)` copies an 8-bit
  * buffer. `timestamp` is required unless the source is a `VideoFrame`.
- * `rotation` is clockwise degrees, rounded to a multiple of 90 the way
- * `Math.round` rounds, then reduced to 0, 90, 180, or 270. `flip` mirrors
- * horizontally after that rotation. `visibleRect` stays in coded pixels.
- * `copyTo` returns those coded samples. When display size is omitted, a
- * rotation of 90 or 270 swaps `displayWidth` and `displayHeight`. Copying a
- * `VideoFrame` composes the new rotation and flip with the source.
+ * `rotation` is clockwise degrees. The exact value is reduced modulo 360,
+ * then rounded to the nearest multiple of 90. A tie rounds toward positive
+ * infinity. `flip` mirrors horizontally after that rotation. `visibleRect`
+ * stays in coded pixels. `copyTo` returns those coded samples. When display
+ * size is omitted, a source rotation of 90 or 270 is removed so the display
+ * size lines up with the visible rectangle, that size is scaled by the new
+ * visible rectangle, and a composed rotation of 90 or 270 swaps it again.
+ * Copying a `VideoFrame` composes the new rotation and flip with the source.
  * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` sample
  * the oriented visible pixels at that oriented size. An explicit display
  * size does not scale the draw further. `close()` releases the frame. A
@@ -12963,8 +12965,10 @@ interface EncodedVideoChunkInit {
  * is stored as 4:2:0 with neutral chroma.
  * An unsupported codec string, including `vp8` and `vp09`, closes the
  * decoder before `configure` returns and reports `NotSupportedError` to
- * `error`. `configure` does not throw for that case. `VideoEncoder` is
- * absent.
+ * `error`. `configure` does not throw for that case. `rotation` is 0, 90,
+ * 180, or 270, and `flip` is a boolean. Each output frame uses that pair.
+ * A rotation of 90 or 270 swaps `displayWidth` and `displayHeight`.
+ * `VideoEncoder` is absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
  */
@@ -13020,7 +13024,8 @@ interface VideoDecoder extends EventTarget {
    * `avc1.4D401D` are not.
    *
    * @throws {@link TypeError} when `config` is missing a required member,
-   * `codec` is empty, `description` is detached, or a present dimension is 0.
+   * `codec` is empty, `description` is detached, a present dimension is 0,
+   * or `rotation` is outside 0 through 65535 or is not 0, 90, 180, or 270.
    * @throws {@link DOMException} `InvalidStateError` when the decoder is closed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/configure)
@@ -13077,8 +13082,10 @@ declare var VideoDecoder: {
    * `description` `configure` would accept. It is false for any other codec
    * string, including `avc1.FF000b`, `avc1.4D401D`, a malformed `av01`
    * string, or an `av1C` `configure` would reject. The returned
-   * `config` copies `colorSpace`. An omitted member is null. An unrecognized
-   * member is omitted. An invalid config rejects
+   * `config` copies `rotation`, `flip`, and `colorSpace`. An omitted
+   * `rotation` is 0 and an omitted `flip` is false. An omitted `colorSpace`
+   * member is null. An unrecognized member is omitted. An invalid config,
+   * including a `rotation` that is not 0, 90, 180, or 270, rejects
    * `TypeError`. Too few arguments reject `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/isConfigSupported)
@@ -13101,6 +13108,17 @@ interface VideoDecoderConfig {
   codedHeight?: number;
   hardwareAcceleration?: HardwareAcceleration;
   optimizeForLatency?: boolean;
+  /**
+   * Clockwise degrees: 0, 90, 180, or 270. The default is 0. Each decoded
+   * frame uses this value, and 90 or 270 swaps `displayWidth` and
+   * `displayHeight`. Any other number throws `TypeError`.
+   */
+  rotation?: number;
+  /**
+   * Mirrors each decoded frame horizontally after `rotation`. The default
+   * is false.
+   */
+  flip?: boolean;
   /**
    * Copied by `isConfigSupported`. An omitted member is null.
    */
