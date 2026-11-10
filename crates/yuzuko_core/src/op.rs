@@ -297,16 +297,33 @@ impl ToV8 for Vec<String> {
 }
 
 /// A cppgc instance created with the class's cached template.
+///
+/// Wrapping runs the class `#[construct_hook]`, the same hook `new` runs.
+/// Factory methods return `New<T>`, so they store the JavaScript object too.
 pub struct New<T>(pub T);
+
+/// Post-wrap initialization for an `#[op]` class.
+///
+/// The class macro implements this. A class with no `#[construct_hook]`
+/// returns `true`. A hook that throws returns `false` and leaves the
+/// exception pending.
+pub trait AfterWrap: v8::cppgc::GarbageCollected + 'static {
+  fn after_wrap(
+    scope: &mut v8::PinScope,
+    object: v8::Local<v8::Object>,
+  ) -> bool;
+}
 
 impl<T> ToV8 for New<T>
 where
-  T: v8::cppgc::GarbageCollected + 'static,
+  T: AfterWrap,
 {
   #[inline]
   fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {
     let object = unsafe { wrap_instance(scope, self.0) };
-    ret.set(object.into());
+    if T::after_wrap(scope, object) {
+      ret.set(object.into());
+    }
   }
 }
 

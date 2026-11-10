@@ -27,7 +27,8 @@
 //! sets the JavaScript name. A snake_case Rust name otherwise becomes
 //! camelCase. `#[this]` passes the JavaScript receiver instead of unwrapping
 //! it. `#[construct_hook]` runs after the instance is wrapped and is not
-//! installed. The Rust type implements `v8::cppgc::GarbageCollected`.
+//! installed. `new` and a factory `New<T>` both run that hook. The Rust
+//! type implements `v8::cppgc::GarbageCollected`.
 
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -260,7 +261,7 @@ fn expand_result(
       "a class can have one #[construct_hook]",
     ));
   }
-  let hook_call = hook_call(hook);
+  let after_wrap = after_wrap_impl(&self_ty, hook);
 
   let mut callbacks = Vec::new();
   let mut inners = Vec::new();
@@ -269,7 +270,7 @@ fn expand_result(
       inners.push(plain_inner(member));
       continue;
     }
-    let (inner, callback) = emit_member(&self_ty, member, &hook_call)?;
+    let (inner, callback) = emit_member(&self_ty, member)?;
     inners.push(inner);
     callbacks.push(callback);
   }
@@ -419,6 +420,8 @@ fn expand_result(
         );
       }
     }
+
+    #after_wrap
   })
 }
 
@@ -671,38 +674,50 @@ fn plain_inner(member: &Member) -> TokenStream {
   quote! { #vis #inner_sig #block }
 }
 
-fn hook_call(hook: Option<&Member>) -> TokenStream {
-  let Some(hook) = hook else {
-    return quote! {};
-  };
-  let inner = &hook.inner;
-  let call = quote! {
-    if let Some(wrapped) = unsafe {
-      ::yuzuko_core::op::host_ref::<Self>(scope, object)
-    } {
-      Self::#inner(wrapped.get(), scope, object)
-    }
-  };
-  if is_result_return(&hook.signature) {
-    quote! {
-      if let Some(wrapped) = unsafe {
-        ::yuzuko_core::op::host_ref::<Self>(scope, object)
-      } {
-        if let Err(error) = Self::#inner(wrapped.get(), scope, object) {
-          ::yuzuko_core::op::OpException::throw(error, scope);
-          return;
+fn after_wrap_impl(self_ty: &Type, hook: Option<&Member>) -> TokenStream {
+  let body = match hook {
+    None => quote! { true },
+    Some(hook) => {
+      let inner = &hook.inner;
+      if is_result_return(&hook.signature) {
+        quote! {
+          if let Some(wrapped) = unsafe {
+            ::yuzuko_core::op::host_ref::<Self>(scope, object)
+          } {
+            if let Err(error) = Self::#inner(wrapped.get(), scope, object) {
+              ::yuzuko_core::op::OpException::throw(error, scope);
+              return false;
+            }
+          }
+          true
+        }
+      } else {
+        quote! {
+          if let Some(wrapped) = unsafe {
+            ::yuzuko_core::op::host_ref::<Self>(scope, object)
+          } {
+            Self::#inner(wrapped.get(), scope, object);
+          }
+          true
         }
       }
     }
-  } else {
-    call
+  };
+  quote! {
+    impl ::yuzuko_core::op::AfterWrap for #self_ty {
+      fn after_wrap(
+        scope: &mut ::v8::PinScope,
+        object: ::v8::Local<::v8::Object>,
+      ) -> bool {
+        #body
+      }
+    }
   }
 }
 
 fn emit_member(
   self_ty: &Type,
   member: &Member,
-  hook_call: &TokenStream,
 ) -> syn::Result<(TokenStream, TokenStream)> {
   let has_self = member
     .signature
@@ -804,7 +819,12 @@ fn emit_member(
               value,
             )
           };
-          #hook_call
+          if !<Self as ::yuzuko_core::op::AfterWrap>::after_wrap(
+            scope,
+            object,
+          ) {
+            return;
+          }
           ret.set(object.into());
         }
       }
