@@ -21,7 +21,7 @@ pub struct Pcm {
 
 enum Inner {
   Aac(AacDecoder),
-  Opus(OpusStream),
+  Opus(Box<OpusStream>),
 }
 
 pub struct AudioBackend {
@@ -39,7 +39,9 @@ impl AudioBackend {
       AudioCodec::Aac => {
         Inner::Aac(AacDecoder::open(description, sample_rate, channels)?)
       }
-      AudioCodec::Opus => Inner::Opus(OpusStream::open(description, channels)?),
+      AudioCodec::Opus => {
+        Inner::Opus(Box::new(OpusStream::open(description, channels)?))
+      }
     };
     Ok(Self { inner })
   }

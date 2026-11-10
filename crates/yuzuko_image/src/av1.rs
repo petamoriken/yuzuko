@@ -386,7 +386,18 @@ fn video_picture(picture: &Dav1dPicture) -> Result<Frame, Av1Error> {
   };
   let (matrix, full, primaries, transfer, coefficients) = color_of(picture);
   let display = display_raster(
-    &y, &u, &v, width, height, chroma_x, chroma_y, bpc, matrix, full,
+    &y,
+    &u,
+    &v,
+    DisplayLayout {
+      width,
+      height,
+      chroma_x,
+      chroma_y,
+      bpc,
+      matrix,
+      full,
+    },
   )?;
   Ok(Frame::Video(Av1Picture {
     format,
@@ -547,13 +558,15 @@ fn apply_container_color(
       y,
       u,
       v,
-      picture.width,
-      picture.height,
-      chroma_x,
-      chroma_y,
-      bpc,
-      next,
-      color.full_range,
+      DisplayLayout {
+        width: picture.width,
+        height: picture.height,
+        chroma_x,
+        chroma_y,
+        bpc,
+        matrix: next,
+        full: color.full_range,
+      },
     )?
   };
   picture.display = display;
@@ -686,10 +699,7 @@ fn cicp(value: u32) -> u8 {
   u8::try_from(value).unwrap_or(2)
 }
 
-fn display_raster(
-  y: &[u8],
-  u: &[u8],
-  v: &[u8],
+struct DisplayLayout {
   width: u32,
   height: u32,
   chroma_x: usize,
@@ -697,7 +707,23 @@ fn display_raster(
   bpc: c_int,
   matrix: Matrix,
   full: bool,
+}
+
+fn display_raster(
+  y: &[u8],
+  u: &[u8],
+  v: &[u8],
+  layout: DisplayLayout,
 ) -> Result<Raster, Av1Error> {
+  let DisplayLayout {
+    width,
+    height,
+    chroma_x,
+    chroma_y,
+    bpc,
+    matrix,
+    full,
+  } = layout;
   let width = width as usize;
   let height = height as usize;
   let chroma_w = width.div_ceil(chroma_x);
