@@ -98,11 +98,13 @@ quinn = { version = "0.11.12", optional = true, default-features = false, featur
   "rustls-ring",
 ] }
 regex = "1"
-rsa = { version = "0.9.8", features = ["sha1", "sha2"] }
+# pkcs1v15 is WebCrypto's RSASSA-PKCS1-v1_5 padding. hazmat lifts the
+# crate's 1024-bit floor so a modulus from 256 through 16384 bits can
+# be generated.
+rsa = { version = "0.10.0", features = ["pkcs1v15", "hazmat"] }
 rustls = { workspace = true, optional = true }
 ruzstd = { version = "0.9.1", optional = true }
-sha1 = "0.11.0"
-sha1_10 = { package = "sha1", version = "0.10.6", features = ["oid"] }
+sha1 = { version = "0.11.0", features = ["oid"] }
 sha2.workspace = true
 sha3 = "0.12"
 slh-dsa = { version = "0.2.0-rc.5", default-features = false, features = ["alloc"] }

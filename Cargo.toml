@@ -103,7 +103,9 @@ lto = "thin"
 opt-level = 1
 
 # RSA key generation is too slow to exercise at opt-level 0.
-[profile.dev.package.num-bigint-dig]
+[profile.dev.package.crypto-bigint]
+opt-level = 3
+[profile.dev.package.crypto-primes]
 opt-level = 3
 
 # A 320x320 60-frame JPEG XL exceeds the 8s WPT deadline at opt-level 0.

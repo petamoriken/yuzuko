@@ -3,21 +3,26 @@
 //! Private keys are PKCS#8 DER. Public keys are SPKI DER. Callers that
 //! imported those encodings keep the original bytes so export is identical.
 
-use rsa::BigUint;
+use rsa::BoxedUint;
 use rsa::Oaep;
-use rsa::RsaPrivateKey;
-use rsa::RsaPublicKey;
+use rsa::PrivateKey;
+use rsa::PublicKey;
 use rsa::pkcs8::DecodePrivateKey;
-use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs8::EncodePrivateKey;
 use rsa::pkcs8::EncodePublicKey;
-use rsa::rand_core::CryptoRng;
-use rsa::rand_core::RngCore;
+use rsa::rand_core::TryCryptoRng;
+use rsa::rand_core::TryRng;
 use rsa::signature::RandomizedSigner;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::Verifier;
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
+
+/// WebCrypto modulus lengths accepted by this runtime, in bits.
+const MODULUS_BITS: std::ops::RangeInclusive<usize> = 256..=16_384;
+
+/// A signature for the largest accepted modulus is 2048 bytes.
+const SIGNATURE_LIMIT: usize = 16_384 / 8;
 
 #[derive(Debug)]
 pub enum RsaError {
@@ -53,42 +58,44 @@ pub struct PrivateJwk {
   pub qi: Vec<u8>,
 }
 
-struct SysRng;
+#[derive(Debug)]
+struct SysRngError;
 
-impl RngCore for SysRng {
-  fn next_u32(&mut self) -> u32 {
-    let mut bytes = [0u8; 4];
-    self.fill_bytes(&mut bytes);
-    u32::from_le_bytes(bytes)
-  }
-
-  fn next_u64(&mut self) -> u64 {
-    let mut bytes = [0u8; 8];
-    self.fill_bytes(&mut bytes);
-    u64::from_le_bytes(bytes)
-  }
-
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
-    if self.try_fill_bytes(dest).is_err() {
-      panic!("getrandom failed");
-    }
-  }
-
-  fn try_fill_bytes(
-    &mut self,
-    dest: &mut [u8],
-  ) -> Result<(), rsa::rand_core::Error> {
-    getrandom::fill(dest).map_err(|_| {
-      rsa::rand_core::Error::new(std::io::Error::other("getrandom failed"))
-    })
+impl core::fmt::Display for SysRngError {
+  fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    formatter.write_str("getrandom failed")
   }
 }
 
-impl CryptoRng for SysRng {}
+impl core::error::Error for SysRngError {}
+
+struct SysRng;
+
+impl TryRng for SysRng {
+  type Error = SysRngError;
+
+  fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+    let mut bytes = [0u8; 4];
+    self.try_fill_bytes(&mut bytes)?;
+    Ok(u32::from_le_bytes(bytes))
+  }
+
+  fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+    let mut bytes = [0u8; 8];
+    self.try_fill_bytes(&mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
+  }
+
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+    getrandom::fill(dest).map_err(|_| SysRngError)
+  }
+}
+
+impl TryCryptoRng for SysRng {}
 
 pub fn acceptable_exponent(bytes: &[u8]) -> bool {
-  let value = BigUint::from_bytes_be(bytes);
-  value == BigUint::from(3u32) || value == BigUint::from(65_537u32)
+  let bytes = minimal(bytes);
+  bytes == [3] || bytes == [1, 0, 1]
 }
 
 pub fn modulus_acceptable(bits: u32) -> bool {
@@ -130,11 +137,16 @@ pub fn generate(
   if !modulus_acceptable(bits) || !acceptable_exponent(exponent) {
     return Err(RsaError::Operation);
   }
-  let exponent = BigUint::from_bytes_be(exponent);
+  let exponent = uint_from_be(exponent)?;
   let mut rng = SysRng;
-  let private = RsaPrivateKey::new_with_exp(&mut rng, bits as usize, &exponent)
-    .map_err(|_| RsaError::Operation)?;
-  if private.n().bits() != bits as usize {
+  let bits = bits as usize;
+  let private = if bits < PublicKey::MIN_SIZE {
+    PrivateKey::new_with_exp_unchecked(&mut rng, bits, exponent)
+  } else {
+    PrivateKey::new_with_exp(&mut rng, bits, exponent)
+  }
+  .map_err(|_| RsaError::Operation)?;
+  if PublicKeyParts::n(&private).bit_width() != bits as u32 {
     return Err(RsaError::Operation);
   }
   let public = private.to_public_key();
@@ -152,23 +164,23 @@ pub fn generate(
 }
 
 pub fn public_parts(spki: &[u8]) -> Result<RsaParts, RsaError> {
-  let key =
-    RsaPublicKey::from_public_key_der(spki).map_err(|_| RsaError::Data)?;
-  Ok(parts_public(&key))
+  Ok(parts_public(&public_key(spki)?))
 }
 
 pub fn private_parts(pkcs8: &[u8]) -> Result<RsaParts, RsaError> {
-  let key = private_key(pkcs8)?;
-  Ok(parts_of(&key))
+  Ok(parts_of(&private_key(pkcs8)?))
 }
 
 pub fn import_public_jwk(
   n: &[u8],
   e: &[u8],
 ) -> Result<(Vec<u8>, RsaParts), RsaError> {
-  let key =
-    RsaPublicKey::new(BigUint::from_bytes_be(n), BigUint::from_bytes_be(e))
-      .map_err(|_| RsaError::Data)?;
+  let key = PublicKey::new_with_size_limits(
+    uint_from_be(n)?,
+    uint_from_be(e)?,
+    MODULUS_BITS,
+  )
+  .map_err(|_| RsaError::Data)?;
   let spki = key
     .to_public_key_der()
     .map_err(|_| RsaError::Data)?
@@ -180,14 +192,11 @@ pub fn import_public_jwk(
 pub fn import_private_jwk(
   jwk: &PrivateJwk,
 ) -> Result<(Vec<u8>, RsaParts), RsaError> {
-  let key = RsaPrivateKey::from_components(
-    BigUint::from_bytes_be(&jwk.n),
-    BigUint::from_bytes_be(&jwk.e),
-    BigUint::from_bytes_be(&jwk.d),
-    vec![
-      BigUint::from_bytes_be(&jwk.p),
-      BigUint::from_bytes_be(&jwk.q),
-    ],
+  let key = PrivateKey::from_components(
+    uint_from_be(&jwk.n)?,
+    uint_from_be(&jwk.e)?,
+    uint_from_be(&jwk.d)?,
+    vec![uint_from_be(&jwk.p)?, uint_from_be(&jwk.q)?],
   )
   .map_err(|_| RsaError::Data)?;
   if !same_uint(key.dp(), &jwk.dp)
@@ -205,10 +214,9 @@ pub fn import_private_jwk(
 }
 
 pub fn public_jwk(spki: &[u8]) -> Result<RsaJwk, RsaError> {
-  let key =
-    RsaPublicKey::from_public_key_der(spki).map_err(|_| RsaError::Data)?;
+  let key = public_key(spki)?;
   Ok(RsaJwk {
-    n: encode_uint(key.n()),
+    n: encode_uint(key.n().as_ref()),
     e: encode_uint(key.e()),
     d: None,
     p: None,
@@ -227,13 +235,13 @@ pub fn private_jwk(pkcs8: &[u8]) -> Result<RsaJwk, RsaError> {
   }
   let dp = key.dp().ok_or(RsaError::Data)?;
   let dq = key.dq().ok_or(RsaError::Data)?;
-  let qi = qinv_uint(&key)?;
+  let qi = key.crt_coefficient().ok_or(RsaError::Data)?;
   Ok(RsaJwk {
-    n: encode_uint(key.n()),
+    n: encode_uint(key.n().as_ref()),
     e: encode_uint(key.e()),
     d: Some(encode_uint(key.d())),
-    p: Some(encode_uint(&primes[0])),
-    q: Some(encode_uint(&primes[1])),
+    p: Some(encode_uint(primes[0].as_ref())),
+    q: Some(encode_uint(primes[1].as_ref())),
     dp: Some(encode_uint(dp)),
     dq: Some(encode_uint(dq)),
     qi: Some(encode_uint(&qi)),
@@ -247,10 +255,10 @@ pub fn sign_pkcs1(
 ) -> Result<Vec<u8>, RsaError> {
   let key = private_key(pkcs8)?;
   match hash {
-    "SHA-1" => Ok(pkcs1_sign::<sha1_10::Sha1>(key, data)),
-    "SHA-256" => Ok(pkcs1_sign::<rsa::sha2::Sha256>(key, data)),
-    "SHA-384" => Ok(pkcs1_sign::<rsa::sha2::Sha384>(key, data)),
-    "SHA-512" => Ok(pkcs1_sign::<rsa::sha2::Sha512>(key, data)),
+    "SHA-1" => pkcs1_sign::<sha1::Sha1>(key, data),
+    "SHA-256" => pkcs1_sign::<rsa::sha2::Sha256>(key, data),
+    "SHA-384" => pkcs1_sign::<rsa::sha2::Sha384>(key, data),
+    "SHA-512" => pkcs1_sign::<rsa::sha2::Sha512>(key, data),
     _ => Err(RsaError::Unsupported),
   }
 }
@@ -261,10 +269,9 @@ pub fn verify_pkcs1(
   data: &[u8],
   signature: &[u8],
 ) -> Result<bool, RsaError> {
-  let key =
-    RsaPublicKey::from_public_key_der(spki).map_err(|_| RsaError::Data)?;
+  let key = public_key(spki)?;
   Ok(match hash {
-    "SHA-1" => pkcs1_verify::<sha1_10::Sha1>(key, data, signature),
+    "SHA-1" => pkcs1_verify::<sha1::Sha1>(key, data, signature),
     "SHA-256" => pkcs1_verify::<rsa::sha2::Sha256>(key, data, signature),
     "SHA-384" => pkcs1_verify::<rsa::sha2::Sha384>(key, data, signature),
     "SHA-512" => pkcs1_verify::<rsa::sha2::Sha512>(key, data, signature),
@@ -279,13 +286,12 @@ pub fn sign_pss(
   data: &[u8],
 ) -> Result<Vec<u8>, RsaError> {
   let key = private_key(pkcs8)?;
-  let limit = key.size();
-  check_salt(limit, hash, salt_len)?;
+  check_salt(key.size(), hash, salt_len)?;
   match hash {
-    "SHA-1" => Ok(pss_sign::<sha1_10::Sha1>(key, salt_len, data)),
-    "SHA-256" => Ok(pss_sign::<rsa::sha2::Sha256>(key, salt_len, data)),
-    "SHA-384" => Ok(pss_sign::<rsa::sha2::Sha384>(key, salt_len, data)),
-    "SHA-512" => Ok(pss_sign::<rsa::sha2::Sha512>(key, salt_len, data)),
+    "SHA-1" => pss_sign::<sha1::Sha1>(key, salt_len, data),
+    "SHA-256" => pss_sign::<rsa::sha2::Sha256>(key, salt_len, data),
+    "SHA-384" => pss_sign::<rsa::sha2::Sha384>(key, salt_len, data),
+    "SHA-512" => pss_sign::<rsa::sha2::Sha512>(key, salt_len, data),
     _ => Err(RsaError::Unsupported),
   }
 }
@@ -297,11 +303,10 @@ pub fn verify_pss(
   data: &[u8],
   signature: &[u8],
 ) -> Result<bool, RsaError> {
-  let key =
-    RsaPublicKey::from_public_key_der(spki).map_err(|_| RsaError::Data)?;
+  let key = public_key(spki)?;
   check_salt(key.size(), hash, salt_len)?;
   Ok(match hash {
-    "SHA-1" => pss_verify::<sha1_10::Sha1>(key, salt_len, data, signature),
+    "SHA-1" => pss_verify::<sha1::Sha1>(key, salt_len, data, signature),
     "SHA-256" => {
       pss_verify::<rsa::sha2::Sha256>(key, salt_len, data, signature)
     }
@@ -321,10 +326,9 @@ pub fn encrypt_oaep(
   label: &[u8],
   data: &[u8],
 ) -> Result<Vec<u8>, RsaError> {
-  let key =
-    RsaPublicKey::from_public_key_der(spki).map_err(|_| RsaError::Data)?;
+  let key = public_key(spki)?;
   match hash {
-    "SHA-1" => oaep_encrypt::<sha1_10::Sha1>(&key, label, data),
+    "SHA-1" => oaep_encrypt::<sha1::Sha1>(&key, label, data),
     "SHA-256" => oaep_encrypt::<rsa::sha2::Sha256>(&key, label, data),
     "SHA-384" => oaep_encrypt::<rsa::sha2::Sha384>(&key, label, data),
     "SHA-512" => oaep_encrypt::<rsa::sha2::Sha512>(&key, label, data),
@@ -340,7 +344,7 @@ pub fn decrypt_oaep(
 ) -> Result<Vec<u8>, RsaError> {
   let key = private_key(pkcs8)?;
   match hash {
-    "SHA-1" => oaep_decrypt::<sha1_10::Sha1>(&key, label, data),
+    "SHA-1" => oaep_decrypt::<sha1::Sha1>(&key, label, data),
     "SHA-256" => oaep_decrypt::<rsa::sha2::Sha256>(&key, label, data),
     "SHA-384" => oaep_decrypt::<rsa::sha2::Sha384>(&key, label, data),
     "SHA-512" => oaep_decrypt::<rsa::sha2::Sha512>(&key, label, data),
@@ -348,47 +352,93 @@ pub fn decrypt_oaep(
   }
 }
 
-fn private_key(pkcs8: &[u8]) -> Result<RsaPrivateKey, RsaError> {
-  RsaPrivateKey::from_pkcs8_der(pkcs8).map_err(|_| RsaError::Data)
+fn private_key(pkcs8: &[u8]) -> Result<PrivateKey, RsaError> {
+  PrivateKey::from_pkcs8_der(pkcs8).map_err(|_| RsaError::Data)
 }
 
-fn parts_of(key: &RsaPrivateKey) -> RsaParts {
+/// `PublicKey::from_public_key_der` only accepts 1024 through 8192 bits.
+/// WebCrypto here accepts 256 through 16384, so the components are decoded
+/// and checked against that range.
+fn public_key(bytes: &[u8]) -> Result<PublicKey, RsaError> {
+  use rsa::pkcs1::RsaPublicKeyRef;
+  use rsa::pkcs8::SubjectPublicKeyInfoRef;
+  use rsa::pkcs8::der::Decode;
+  use rsa::pkcs8::der::asn1::Null;
+
+  let info =
+    SubjectPublicKeyInfoRef::from_der(bytes).map_err(|_| RsaError::Data)?;
+  if info.algorithm.oid != rsa::pkcs1::ALGORITHM_OID {
+    return Err(RsaError::Data);
+  }
+  let parameters = info
+    .algorithm
+    .parameters_any()
+    .map_err(|_| RsaError::Data)?;
+  if parameters != Null.into() {
+    return Err(RsaError::Data);
+  }
+  let key_bytes = info.subject_public_key.as_bytes().ok_or(RsaError::Data)?;
+  let key = RsaPublicKeyRef::from_der(key_bytes).map_err(|_| RsaError::Data)?;
+  let n = uint_from_be(key.modulus.as_bytes())?;
+  let e = uint_from_be(key.public_exponent.as_bytes())?;
+  PublicKey::new_with_size_limits(n, e, MODULUS_BITS)
+    .map_err(|_| RsaError::Data)
+}
+
+fn parts_of(key: &PrivateKey) -> RsaParts {
   parts_public(key)
 }
 
 fn parts_public(key: &impl PublicKeyParts) -> RsaParts {
-  let mut exponent = key.e().to_bytes_be();
+  let mut exponent = key.e_bytes().into_vec();
   if exponent.is_empty() {
     exponent.push(0);
   }
   RsaParts {
-    modulus_length: key.n().bits() as u32,
+    modulus_length: key.n().bit_width(),
     public_exponent: exponent,
   }
 }
 
-fn encode_uint(value: &BigUint) -> String {
-  let bytes = value.to_bytes_be();
-  let bytes = if bytes.is_empty() {
-    &[0]
-  } else {
-    bytes.as_slice()
-  };
+fn encode_uint(value: &BoxedUint) -> String {
+  let bytes = value.to_be_bytes_trimmed_vartime();
+  let bytes = nonzero_or_zero(bytes.as_ref());
   crate::text::base64::encode_url(bytes)
 }
 
-fn same_uint(value: Option<&BigUint>, bytes: &[u8]) -> bool {
-  value.is_some_and(|value| value == &BigUint::from_bytes_be(bytes))
+fn same_uint(value: Option<&BoxedUint>, bytes: &[u8]) -> bool {
+  value.is_some_and(|value| {
+    minimal(value.to_be_bytes_trimmed_vartime().as_ref()) == minimal(bytes)
+  })
 }
 
-fn qinv_matches(key: &RsaPrivateKey, bytes: &[u8]) -> bool {
-  qinv_uint(key).is_ok_and(|value| value == BigUint::from_bytes_be(bytes))
+fn qinv_matches(key: &PrivateKey, bytes: &[u8]) -> bool {
+  key.crt_coefficient().is_some_and(|value| {
+    minimal(value.to_be_bytes_trimmed_vartime().as_ref()) == minimal(bytes)
+  })
 }
 
-fn qinv_uint(key: &RsaPrivateKey) -> Result<BigUint, RsaError> {
-  let qi = key.qinv().ok_or(RsaError::Data)?;
-  let (_, magnitude) = qi.to_bytes_be();
-  Ok(BigUint::from_bytes_be(&magnitude))
+fn uint_from_be(bytes: &[u8]) -> Result<BoxedUint, RsaError> {
+  if bytes.is_empty() {
+    return Err(RsaError::Data);
+  }
+  let bits = u32::try_from(bytes.len())
+    .ok()
+    .and_then(|len| len.checked_mul(8))
+    .ok_or(RsaError::Data)?;
+  BoxedUint::from_be_slice(bytes, bits).map_err(|_| RsaError::Data)
+}
+
+fn minimal(bytes: &[u8]) -> &[u8] {
+  match bytes.iter().position(|byte| *byte != 0) {
+    Some(index) => &bytes[index..],
+    None => &[],
+  }
+}
+
+fn nonzero_or_zero(bytes: &[u8]) -> &[u8] {
+  let bytes = minimal(bytes);
+  if bytes.is_empty() { &[0] } else { bytes }
 }
 
 fn check_salt(
@@ -403,35 +453,48 @@ fn check_salt(
   Ok(())
 }
 
-fn pkcs1_sign<D>(key: RsaPrivateKey, data: &[u8]) -> Vec<u8>
+fn pkcs1_sign<D>(key: PrivateKey, data: &[u8]) -> Result<Vec<u8>, RsaError>
 where
   D: rsa::sha2::digest::Digest + rsa::pkcs8::AssociatedOid,
 {
   let signing = rsa::pkcs1v15::SigningKey::<D>::new(key);
-  RandomizedSigner::sign_with_rng(&signing, &mut SysRng, data).to_vec()
+  let signature =
+    RandomizedSigner::try_sign_with_rng(&signing, &mut SysRng, data)
+      .map_err(|_| RsaError::Operation)?;
+  Ok(signature.to_vec())
 }
 
-fn pkcs1_verify<D>(key: RsaPublicKey, data: &[u8], signature: &[u8]) -> bool
+fn pkcs1_verify<D>(key: PublicKey, data: &[u8], signature: &[u8]) -> bool
 where
   D: rsa::sha2::digest::Digest + rsa::pkcs8::AssociatedOid,
 {
-  let Ok(signature) = rsa::pkcs1v15::Signature::try_from(signature) else {
+  let Ok(signature) = rsa::pkcs1v15::Signature::from_bytes_with_max_len(
+    signature,
+    SIGNATURE_LIMIT,
+  ) else {
     return false;
   };
   let verifying = rsa::pkcs1v15::VerifyingKey::<D>::new(key);
   Verifier::verify(&verifying, data, &signature).is_ok()
 }
 
-fn pss_sign<D>(key: RsaPrivateKey, salt_len: usize, data: &[u8]) -> Vec<u8>
+fn pss_sign<D>(
+  key: PrivateKey,
+  salt_len: usize,
+  data: &[u8],
+) -> Result<Vec<u8>, RsaError>
 where
   D: rsa::sha2::digest::Digest + rsa::sha2::digest::FixedOutputReset,
 {
   let signing = rsa::pss::SigningKey::<D>::new_with_salt_len(key, salt_len);
-  RandomizedSigner::sign_with_rng(&signing, &mut SysRng, data).to_vec()
+  let signature =
+    RandomizedSigner::try_sign_with_rng(&signing, &mut SysRng, data)
+      .map_err(|_| RsaError::Operation)?;
+  Ok(signature.to_vec())
 }
 
 fn pss_verify<D>(
-  key: RsaPublicKey,
+  key: PublicKey,
   salt_len: usize,
   data: &[u8],
   signature: &[u8],
@@ -439,7 +502,9 @@ fn pss_verify<D>(
 where
   D: rsa::sha2::digest::Digest + rsa::sha2::digest::FixedOutputReset,
 {
-  let Ok(signature) = rsa::pss::Signature::try_from(signature) else {
+  let Ok(signature) =
+    rsa::pss::Signature::from_bytes_with_max_len(signature, SIGNATURE_LIMIT)
+  else {
     return false;
   };
   let verifying = rsa::pss::VerifyingKey::<D>::new_with_salt_len(key, salt_len);
@@ -447,52 +512,40 @@ where
 }
 
 fn oaep_encrypt<D>(
-  key: &RsaPublicKey,
+  key: &PublicKey,
   label: &[u8],
   data: &[u8],
 ) -> Result<Vec<u8>, RsaError>
 where
-  D: 'static
-    + rsa::sha2::digest::Digest
-    + rsa::sha2::digest::DynDigest
-    + Send
-    + Sync,
+  D: rsa::sha2::digest::Digest + rsa::sha2::digest::FixedOutputReset,
 {
-  let padding = oaep_padding::<D>(label)?;
   key
-    .encrypt(&mut SysRng, padding, data)
+    .encrypt(&mut SysRng, oaep_padding::<D>(label), data)
     .map_err(|_| RsaError::Operation)
 }
 
 fn oaep_decrypt<D>(
-  key: &RsaPrivateKey,
+  key: &PrivateKey,
   label: &[u8],
   data: &[u8],
 ) -> Result<Vec<u8>, RsaError>
 where
-  D: 'static
-    + rsa::sha2::digest::Digest
-    + rsa::sha2::digest::DynDigest
-    + Send
-    + Sync,
+  D: rsa::sha2::digest::Digest + rsa::sha2::digest::FixedOutputReset,
 {
-  let padding = oaep_padding::<D>(label)?;
-  key.decrypt(padding, data).map_err(|_| RsaError::Operation)
+  key
+    .decrypt_blinded(&mut SysRng, oaep_padding::<D>(label), data)
+    .map_err(|_| RsaError::Operation)
 }
 
-fn oaep_padding<D>(label: &[u8]) -> Result<Oaep, RsaError>
+fn oaep_padding<D>(label: &[u8]) -> Oaep<D>
 where
-  D: 'static
-    + rsa::sha2::digest::Digest
-    + rsa::sha2::digest::DynDigest
-    + Send
-    + Sync,
+  D: rsa::sha2::digest::Digest + rsa::sha2::digest::FixedOutputReset,
 {
   if label.is_empty() {
-    return Ok(Oaep::new::<D>());
+    Oaep::new()
+  } else {
+    Oaep::new_with_label(label)
   }
-  let label = std::str::from_utf8(label).map_err(|_| RsaError::Operation)?;
-  Ok(Oaep::new_with_label::<D, _>(label))
 }
 
 #[cfg(test)]
