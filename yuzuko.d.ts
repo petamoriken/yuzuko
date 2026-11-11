@@ -5661,10 +5661,13 @@ interface Navigator {
   readonly hardwareConcurrency: number;
 
   /**
-   * Maximum simultaneous touch contacts.
+   * Maximum simultaneous contacts among connected touch screens.
    *
-   * No touch digitizer is reported, so the value is 0. Main global only.
-   * A dedicated worker does not have this attribute.
+   * Each access reads the count from the operating system. A trackpad is
+   * not a touch screen. When no touch screen is connected, the value is
+   * 0. A touch screen that does not report a maximum counts as 1.
+   * Several touch screens use the largest count, not the sum. Main
+   * global only. A dedicated worker does not have this attribute.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/maxTouchPoints)
    */

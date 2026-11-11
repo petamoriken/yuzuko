@@ -3,6 +3,7 @@
 pub(crate) mod gamepad;
 pub(crate) mod keyboard;
 pub(crate) mod keys;
+mod touch;
 
 use std::cell::RefCell;
 use std::time::Instant;

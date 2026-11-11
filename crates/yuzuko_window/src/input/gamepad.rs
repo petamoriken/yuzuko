@@ -1739,7 +1739,7 @@ impl Navigator {
   #[getter]
   fn max_touch_points(&self) -> i32 {
     let _ = self;
-    0
+    super::touch::max_touch_points()
   }
 
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {
