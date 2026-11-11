@@ -9,7 +9,8 @@ use yuzuko::{
 };
 use yuzuko_core::{
   PermissionSpec, WatchMode, install_permissions, run_file, run_file_sandboxed,
-  run_file_watch, run_repl, run_tests, set_args, status_of,
+  run_file_watch, run_repl, run_tests, set_args, set_build_standalone,
+  status_of,
 };
 
 fn main() -> ExitCode {
@@ -42,6 +43,7 @@ fn main() -> ExitCode {
     }
     #[cfg(feature = "fs")]
     yuzuko_core::set_process_bundle_root(&application_bundle_root(&bundle));
+    set_build_standalone(true);
     yuzuko::enable_updater(bundle.resources);
     if let Some(value) = &bundle.permissions {
       let mut spec = PermissionSpec {

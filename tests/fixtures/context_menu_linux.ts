@@ -1,6 +1,5 @@
-// Run by the Linux-only `context_menu` test with `yuzuko run`, where
-// `Yuzuko.build` is absent. showContextMenu needs a GTK window winit does not
-// expose.
+// Run by the Linux-only `context_menu` test with `yuzuko run`.
+// showContextMenu needs a GTK window winit does not expose.
 
 const win = new Yuzuko.Window({
   width: 80,

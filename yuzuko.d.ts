@@ -15,9 +15,10 @@
  * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
- * on the main realm and in a dedicated worker. `Yuzuko.args`, `Yuzuko.env`,
- * `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`, and `Yuzuko.permissions` are
- * part of that object in every build. That build omits `fetch`,
+ * on the main realm and in a dedicated worker. `Yuzuko.build`, `Yuzuko.args`,
+ * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`, and
+ * `Yuzuko.permissions` are part of that object in every build. That build
+ * omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
  * listeners, a child process, foreign functions, virtual and computed
  * accessibility nodes,
@@ -2610,6 +2611,71 @@ declare namespace Yuzuko {
   function exit(code?: number): never;
 
   /**
+   * The target this runtime was built for.
+   *
+   * Present on the main realm and in a dedicated worker in every build,
+   * including `yuzuko run`, `yuzuko repl`, `yuzuko test`, and a packaged
+   * application. The object is frozen. Assigning a field leaves the value
+   * unchanged. In strict mode that assignment throws {@link TypeError}. A
+   * classic script continues with the field unchanged. Assigning
+   * {@link build} replaces it in the current realm and leaves another
+   * realm's object unchanged. Reading it does not require a permission.
+   * An `AudioWorklet` processor realm does not have `Yuzuko`.
+   */
+  interface Build {
+    /**
+     * The Rust target triple of this binary.
+     *
+     * One of `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+     * `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, or
+     * `x86_64-pc-windows-msvc`.
+     */
+    readonly target:
+      | "aarch64-apple-darwin"
+      | "x86_64-apple-darwin"
+      | "aarch64-unknown-linux-gnu"
+      | "x86_64-unknown-linux-gnu"
+      | "x86_64-pc-windows-msvc";
+
+    /** `"x86_64"` or `"aarch64"`. */
+    readonly arch: "x86_64" | "aarch64";
+
+    /**
+     * The operating system.
+     *
+     * `"darwin"` is macOS. `"linux"` and `"windows"` are those systems.
+     */
+    readonly os: "darwin" | "linux" | "windows";
+
+    /**
+     * The vendor component of {@link Build.target}.
+     *
+     * `"apple"` on macOS, `"unknown"` on Linux, and `"pc"` on Windows.
+     */
+    readonly vendor: string;
+
+    /**
+     * The environment component of {@link Build.target}, or `undefined`
+     * when the triple has none.
+     *
+     * `"gnu"` on Linux and `"msvc"` on Windows. The property is present
+     * when the value is `undefined`.
+     */
+    readonly env: string | undefined;
+
+    /**
+     * `true` when this process is a packaged application.
+     *
+     * `false` for `yuzuko run`, `yuzuko repl`, `yuzuko test`, and
+     * `yuzuko package`. A dedicated worker reports the same value.
+     */
+    readonly standalone: boolean;
+  }
+
+  /** The target this runtime was built for. See {@link Build}. */
+  let build: Build;
+
+  /**
    * A permission name checked by {@link permissions}.
    *
    * `read` and `write` cover file-system paths and `chdir`. `net` covers
@@ -4177,9 +4243,9 @@ declare namespace Yuzuko {
   /**
    * Registers a test.
    *
-   * Installed only for `yuzuko test`, together with {@link build}. Absent
-   * during `yuzuko run` and `yuzuko repl`. Registration happens while the
-   * module evaluates. A nested call throws. `fn` may be async.
+   * Installed only for `yuzuko test`. Absent during `yuzuko run` and
+   * `yuzuko repl`. Registration happens while the module evaluates. A nested
+   * call throws. `fn` may be async.
    *
    * @throws {@link TypeError} When the arguments do not match a call form, or
    * when called from inside a running test.
@@ -4223,20 +4289,6 @@ declare namespace Yuzuko {
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
     function only(definition: TestDefinition): void;
-  }
-
-  /**
-   * Host description installed with {@link test}.
-   *
-   * Absent outside `yuzuko test`.
-   */
-  namespace build {
-    /**
-     * The host operating system.
-     *
-     * `"darwin"`, `"linux"`, or `"windows"`.
-     */
-    const os: "darwin" | "linux" | "windows" | "unknown";
   }
 
   /**
@@ -14639,7 +14691,8 @@ declare class WorkerGlobalScope extends EventTarget {
  * `Yuzuko.setDialogLabels`,
  * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.appVersion`, `Yuzuko.autoUpdate`,
  * `navigator.clipboard`, and
- * `navigator.getGamepads`. `FileReaderSync` is on this global. `self.fonts`
+ * `navigator.getGamepads`. The worker has `Yuzuko.build`. `FileReaderSync`
+ * is on this global. `self.fonts`
  * and `globalThis.fonts` are that worker's {@link FontFaceSet}.
  * `requestAnimationFrame` runs the callback at
  * the slowest refresh rate among the open windows whose canvas this worker

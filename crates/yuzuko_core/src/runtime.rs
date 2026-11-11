@@ -17,6 +17,9 @@ static QUEUE: OnceLock<Arc<TaskQueue>> = OnceLock::new();
 static PLATFORM: OnceLock<v8::SharedRef<v8::Platform>> = OnceLock::new();
 static RUNTIME: Mutex<()> = Mutex::new(());
 static RETAIN_HOST_LOOP: AtomicBool = AtomicBool::new(false);
+/// Set by a packaged launch before the first realm. `Yuzuko.build.standalone`
+/// copies this value on the main realm and in a dedicated worker.
+static BUILD_STANDALONE: AtomicBool = AtomicBool::new(false);
 
 struct ConsoleState {
   times: HashMap<String, f64>,
@@ -2125,7 +2128,70 @@ fn install_yuzuko_namespace(scope: &mut v8::PinScope<'_, '_>) {
 fn install_process(scope: &mut v8::PinScope<'_, '_>) {
   let yuzuko = crate::js::namespace(scope, "Yuzuko");
   crate::process::install(scope, yuzuko);
+  install_build(scope, yuzuko);
   crate::permissions::install(scope, yuzuko);
+}
+
+/// Records whether later realms report `Yuzuko.build.standalone` as true.
+///
+/// The CLI sets this when the executable is a packaged application. The
+/// bundle layout stays in that crate.
+pub fn set_build_standalone(standalone: bool) {
+  BUILD_STANDALONE.store(standalone, Ordering::SeqCst);
+}
+
+/// `Yuzuko.build`. The fields come from the Rust target triple of this binary.
+fn install_build(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
+  let build = v8::Object::new(scope);
+  let (arch, vendor, os, env) = target_parts();
+  set_build_string(scope, build, "target", TARGET);
+  set_build_string(scope, build, "arch", arch);
+  set_build_string(scope, build, "os", os);
+  set_build_string(scope, build, "vendor", vendor);
+  let env_key = v8::String::new(scope, "env").expect("env");
+  let env_value = match env {
+    Some(env) => v8::String::new(scope, env).expect("env").into(),
+    None => v8::undefined(scope).into(),
+  };
+  let _ = build.set(scope, env_key.into(), env_value);
+  let standalone_key =
+    v8::String::new(scope, "standalone").expect("standalone");
+  let _ = build.set(
+    scope,
+    standalone_key.into(),
+    v8::Boolean::new(scope, BUILD_STANDALONE.load(Ordering::SeqCst)).into(),
+  );
+  let _ = build.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  let key = v8::String::new(scope, "build").expect("build");
+  let _ = yuzuko.set(scope, key.into(), build.into());
+}
+
+const TARGET: &str = env!("YUZUKO_TARGET");
+
+/// `arch`, `vendor`, `os`, and the optional environment of [`TARGET`].
+fn target_parts() -> (
+  &'static str,
+  &'static str,
+  &'static str,
+  Option<&'static str>,
+) {
+  let mut parts = TARGET.splitn(4, '-');
+  let arch = parts.next().unwrap_or("unknown");
+  let vendor = parts.next().unwrap_or("unknown");
+  let os = parts.next().unwrap_or("unknown");
+  let env = parts.next().filter(|env| !env.is_empty());
+  (arch, vendor, os, env)
+}
+
+fn set_build_string(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: &str,
+) {
+  let key = v8::String::new(scope, name).expect(name);
+  let text = v8::String::new(scope, value).expect(name);
+  let _ = object.set(scope, key.into(), text.into());
 }
 
 fn install_console(scope: &mut v8::PinScope<'_, '_>) {
@@ -2498,25 +2564,6 @@ fn install_test_api(scope: &mut v8::PinScope<'_, '_>) {
   test.set(scope, only_name.into(), only.into());
   let test_name = v8::String::new(scope, "test").unwrap();
   yuzuko.set(scope, test_name.into(), test.into());
-
-  let build = v8::Object::new(scope);
-  let os = v8::String::new(scope, host_os()).unwrap();
-  let os_name = v8::String::new(scope, "os").unwrap();
-  build.set(scope, os_name.into(), os.into());
-  let build_name = v8::String::new(scope, "build").unwrap();
-  yuzuko.set(scope, build_name.into(), build.into());
-}
-
-fn host_os() -> &'static str {
-  if cfg!(target_os = "macos") {
-    "darwin"
-  } else if cfg!(target_os = "windows") {
-    "windows"
-  } else if cfg!(target_os = "linux") {
-    "linux"
-  } else {
-    "unknown"
-  }
 }
 
 fn register_test(

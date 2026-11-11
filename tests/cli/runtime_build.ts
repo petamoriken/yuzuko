@@ -46,6 +46,7 @@ const names = [
   typeof Yuzuko.cwd,
   typeof Yuzuko.chdir,
   typeof Yuzuko.exit,
+  typeof Yuzuko.build,
 ].join(" ");
 
 const worker = new Worker(new URL("./runtime_worker.ts", import.meta.url), {

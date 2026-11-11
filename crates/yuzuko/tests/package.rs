@@ -62,6 +62,7 @@ console.log(mark);
 console.log(typeof Yuzuko.test);
 console.log("autoUpdate:" + typeof Yuzuko.autoUpdate);
 console.log("appVersion:" + JSON.stringify(Yuzuko.appVersion));
+console.log("standalone:" + Yuzuko.build.standalone);
 console.log("args:" + JSON.stringify(Yuzuko.args));
 let blocked = false;
 try {
@@ -695,6 +696,7 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
     "{}",
     first.stdout
   );
+  assert!(first.stdout.contains("standalone:true"), "{}", first.stdout);
   assert!(
     first.stdout.contains("Contents/Resources/app"),
     "{}",
@@ -856,6 +858,7 @@ fn directory_bundle_launches_with_assets_and_title() {
     "{}",
     first.stdout
   );
+  assert!(first.stdout.contains("standalone:true"), "{}", first.stdout);
   assert!(
     first.stdout.contains("/app/src/main.ts"),
     "{}",

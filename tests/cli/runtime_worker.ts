@@ -31,6 +31,7 @@ self.onmessage = () => {
       typeof Yuzuko.cwd,
       typeof Yuzuko.chdir,
       typeof Yuzuko.exit,
+      typeof Yuzuko.build,
     ].join(" "),
   );
 };

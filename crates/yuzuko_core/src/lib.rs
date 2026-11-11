@@ -92,8 +92,8 @@ pub use runtime::{
   ClassicPart, ClassicRun, ClassicSession, InternedScript, LoopInterest,
   RuntimeError, WatchMode, poll_task_poke, retain_host_loop,
   run_classic_scripts, run_classic_scripts_at, run_file, run_file_sandboxed,
-  run_file_watch, run_scripts, run_tests, set_loop_hooks, set_retain_host_loop,
-  set_task_waker, status_of, wait_for_tasks,
+  run_file_watch, run_scripts, run_tests, set_build_standalone, set_loop_hooks,
+  set_retain_host_loop, set_task_waker, status_of, wait_for_tasks,
 };
 pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,

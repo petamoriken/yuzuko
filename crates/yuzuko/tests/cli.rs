@@ -55,14 +55,85 @@ fn javascript_specifier_prefers_the_typescript_sibling() {
   assert_eq!(text(&output.stdout), "hello from greeting\n");
 }
 
+/// `target`, `arch`, `os`, `vendor`, and the printed `env` line for this host.
+fn host_build() -> (
+  &'static str,
+  &'static str,
+  &'static str,
+  &'static str,
+  &'static str,
+) {
+  #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+  {
+    return (
+      "aarch64-apple-darwin",
+      "aarch64",
+      "darwin",
+      "apple",
+      "env-absent",
+    );
+  }
+  #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+  {
+    return (
+      "x86_64-apple-darwin",
+      "x86_64",
+      "darwin",
+      "apple",
+      "env-absent",
+    );
+  }
+  #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+  {
+    return (
+      "aarch64-unknown-linux-gnu",
+      "aarch64",
+      "linux",
+      "unknown",
+      "env gnu",
+    );
+  }
+  #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+  {
+    return (
+      "x86_64-unknown-linux-gnu",
+      "x86_64",
+      "linux",
+      "unknown",
+      "env gnu",
+    );
+  }
+  #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+  {
+    return (
+      "x86_64-pc-windows-msvc",
+      "x86_64",
+      "windows",
+      "pc",
+      "env msvc",
+    );
+  }
+  #[cfg(not(any(
+    all(target_arch = "aarch64", target_os = "macos"),
+    all(target_arch = "x86_64", target_os = "macos"),
+    all(target_arch = "aarch64", target_os = "linux"),
+    all(target_arch = "x86_64", target_os = "linux"),
+    all(target_arch = "x86_64", target_os = "windows"),
+  )))]
+  {
+    panic!("unsupported Yuzuko.build test host");
+  }
+}
+
 #[test]
 fn run_does_not_install_yuzuko_test() {
   let output = yuzuko(&["run", "tests/cli/typeof_yuzuko.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(
-    text(&output.stdout),
-    "undefined\nundefined\nfunction\nundefined\n"
+  let (target, arch, os, vendor, env) = host_build();
+  let expected = format!(
+    "undefined\nundefined\nfunction\nundefined\nobject\n{target}\n{arch}\n{os}\n{vendor}\n{env}\nfalse\nTypeError\n{os}\nworker {target} {os} false\n"
   );
+  assert_eq!(text(&output.stdout), expected);
 }
 
 #[test]

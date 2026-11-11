@@ -66,6 +66,7 @@ fn expected() -> String {
     "function",
     "function",
     "function",
+    "object",
   ]
   .join(" ");
   let worker = [
@@ -99,6 +100,7 @@ fn expected() -> String {
     "function",
     "function",
     "function",
+    "object",
   ]
   .join(" ");
   format!("{main}\n{worker}")
