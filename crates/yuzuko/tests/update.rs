@@ -235,15 +235,35 @@ fn bundle_paths(app: &Path) -> (PathBuf, PathBuf) {
   }
 }
 
-fn launch(exe: &Path) -> (i32, String, String) {
+fn launch(
+  exe: &Path,
+  update_url: Option<&str>,
+  update_key: Option<&str>,
+) -> (i32, String, String) {
   let cwd = exe.parent().unwrap().to_path_buf();
-  let mut child = Command::new(exe)
+  let mut command = Command::new(exe);
+  command
     .current_dir(&cwd)
     .env_remove("YUZUKO_HEADLESS")
     .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .expect("spawn packaged app");
+    .stderr(Stdio::piped());
+  match update_url {
+    Some(url) => {
+      command.env("UPDATE_URL", url);
+    }
+    None => {
+      command.env_remove("UPDATE_URL");
+    }
+  }
+  match update_key {
+    Some(key) => {
+      command.env("UPDATE_KEY", key);
+    }
+    None => {
+      command.env_remove("UPDATE_KEY");
+    }
+  }
+  let mut child = command.spawn().expect("spawn packaged app");
   let start = Instant::now();
   loop {
     if let Some(status) = child.try_wait().unwrap() {
@@ -276,6 +296,7 @@ fn assert_old(status: i32, stdout: &str, stderr: &str) {
 fn assert_no_stage(resources: &Path) {
   assert!(!resources.join("Updates/payload").is_file());
   assert!(!resources.join("Updates/signature").is_file());
+  assert!(!resources.join("Updates/public-key").is_file());
 }
 
 #[test]
@@ -289,35 +310,44 @@ fn packaged_app_updates_on_the_next_launch() {
   let server = feed_server(payload.clone(), signature_b64);
   let dir = scratch("app");
   let base = format!("http://127.0.0.1:{}/game", server.port);
+  let key_b64 = BASE64_STANDARD.encode(public);
   fs::write(
     dir.join("yuzuko.json"),
-    format!(
-      r#"{{
+    r#"{
   "name": "Update Game",
-  "version": "1.0.0",
-  "release": {{
-    "baseUrl": "{base}",
-    "publicKey": "{}"
-  }}
-}}
+  "version": "1.0.0"
+}
 "#,
-      BASE64_STANDARD.encode(public)
-    ),
   )
   .unwrap();
   fs::create_dir_all(dir.join("src")).unwrap();
   fs::write(
     dir.join("src/main.ts"),
-    r#"console.log("token-old");
+    r#"console.log("version " + JSON.stringify(Yuzuko.appVersion));
+console.log("token-old");
 try {
-  const status = await Yuzuko.updater.check("http://127.0.0.1:9/not-the-feed");
-  console.log("status " + JSON.stringify(status));
-  if (status.available) {
-    await Yuzuko.updater.download("http://127.0.0.1:9/not-the-payload");
-    console.log("downloaded");
-  } else {
-    console.log("not-available");
+  await Yuzuko.autoUpdate("http://127.0.0.1:9/not-the-feed");
+  console.log("string-accepted");
+} catch (error) {
+  console.log("string-error " + error.name);
+}
+const key = Yuzuko.env.get("UPDATE_KEY");
+const url = Yuzuko.env.get("UPDATE_URL");
+let ready = "none";
+try {
+  const options = {
+    onUpdateReady(version) {
+      ready = version;
+    },
+  };
+  if (key !== undefined) {
+    options.publicKey = key;
   }
+  if (url !== undefined) {
+    options.url = url;
+  }
+  await Yuzuko.autoUpdate(options);
+  console.log("ready " + ready);
 } catch (error) {
   console.log("update-error " + error.name + " " + error.message);
 }
@@ -339,18 +369,22 @@ console.log("token-old");
   );
   let (resources, exe) = bundle_paths(&app);
   assert!(exe.is_file(), "missing {}", exe.display());
-  let key_path = resources.join("yuzuko.update-key");
-  assert_eq!(fs::read(&key_path).unwrap(), public);
+  assert!(!resources.join("yuzuko.update-key").exists());
   let manifest_path = resources.join("yuzuko.bundle.json");
   let original_manifest = fs::read_to_string(&manifest_path).unwrap();
-  assert!(original_manifest.contains(&base), "{original_manifest}");
+  assert!(!original_manifest.contains(&base), "{original_manifest}");
+  assert!(
+    !original_manifest.contains("releaseBaseUrl"),
+    "{original_manifest}"
+  );
   assert!(
     original_manifest.contains("\"version\": \"1.0.0\""),
     "{original_manifest}"
   );
   if cfg!(target_os = "macos") {
     let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
-    assert!(plist.contains(&base), "{plist}");
+    assert!(!plist.contains(&base), "{plist}");
+    assert!(!plist.contains("YuzukoReleaseBaseURL"), "{plist}");
     assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
   }
   let source = resources.join("app/src/main.ts");
@@ -358,26 +392,18 @@ console.log("token-old");
   let exe_id = fingerprint(&exe);
   let mut mark = 0usize;
 
-  let saved = original_manifest.clone();
-  let mut value: serde_json::Value = serde_json::from_str(&saved).unwrap();
-  value.as_object_mut().unwrap().remove("releaseBaseUrl");
-  fs::write(
-    &manifest_path,
-    serde_json::to_string_pretty(&value).unwrap(),
-  )
-  .unwrap();
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, None, Some(&key_b64));
   assert_old(status, &stdout, &stderr);
+  assert!(stdout.contains("version \"1.0.0\""), "{stdout}");
+  assert!(stdout.contains("string-error TypeError"), "{stdout}");
   assert!(
     stdout.contains("update-error InvalidStateError There is no update feed."),
     "{stdout}\n{stderr}"
   );
   assert!(new_hits(&server, &mut mark).is_empty(), "contacted a host");
-  fs::write(&manifest_path, &saved).unwrap();
   assert_no_stage(&resources);
 
-  fs::remove_file(&key_path).unwrap();
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), None);
   assert_old(status, &stdout, &stderr);
   assert!(
     stdout.contains(
@@ -386,25 +412,20 @@ console.log("token-old");
     "{stdout}\n{stderr}"
   );
   assert!(new_hits(&server, &mut mark).is_empty(), "contacted a host");
-  fs::write(&key_path, public).unwrap();
   assert_no_stage(&resources);
 
   *server.mode.lock().unwrap() = Mode::Older;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
-  assert!(stdout.contains("\"available\":false"), "{stdout}");
-  assert!(stdout.contains("\"version\":\"1.0.0\""), "{stdout}");
-  assert!(stdout.contains("not-available"), "{stdout}");
+  assert!(stdout.contains("ready none"), "{stdout}");
   let hits = new_hits(&server, &mut mark);
   assert_eq!(hits, vec!["/game/feed.json".to_string()], "{hits:?}");
   assert_no_stage(&resources);
 
   *server.mode.lock().unwrap() = Mode::Equal;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
-  assert!(stdout.contains("\"available\":false"), "{stdout}");
-  assert!(stdout.contains("\"version\":\"1.0.0\""), "{stdout}");
-  assert!(stdout.contains("not-available"), "{stdout}");
+  assert!(stdout.contains("ready none"), "{stdout}");
   let hits = new_hits(&server, &mut mark);
   assert_eq!(hits, vec!["/game/feed.json".to_string()], "{hits:?}");
   assert_no_stage(&resources);
@@ -414,7 +435,7 @@ console.log("token-old");
   );
 
   *server.mode.lock().unwrap() = Mode::Missing;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
   assert!(
     stdout
@@ -426,7 +447,7 @@ console.log("token-old");
   assert_no_stage(&resources);
 
   *server.mode.lock().unwrap() = Mode::Bad;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
   assert!(
     stdout.contains(
@@ -446,7 +467,7 @@ console.log("token-old");
   assert_no_stage(&resources);
 
   *server.mode.lock().unwrap() = Mode::Drop;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
   assert!(
     stdout.contains(
@@ -458,7 +479,7 @@ console.log("token-old");
   let _ = new_hits(&server, &mut mark);
 
   *server.mode.lock().unwrap() = Mode::Truncate;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
   assert!(
     stdout.contains(
@@ -479,11 +500,9 @@ console.log("token-old");
   assert!(fs::read_to_string(&source).unwrap().contains("token-old"));
 
   *server.mode.lock().unwrap() = Mode::Newer;
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, Some(&base), Some(&key_b64));
   assert_old(status, &stdout, &stderr);
-  assert!(stdout.contains("\"available\":true"), "{stdout}");
-  assert!(stdout.contains("\"version\":\"1.1.0\""), "{stdout}");
-  assert!(stdout.contains("downloaded"), "{stdout}");
+  assert!(stdout.contains("ready 1.1.0"), "{stdout}");
   let hits = new_hits(&server, &mut mark);
   assert!(
     hits.iter().all(|hit| !hit.contains("not-the-feed")),
@@ -505,47 +524,169 @@ console.log("token-old");
     fs::read(resources.join("Updates/signature")).unwrap(),
     signature
   );
+  assert_eq!(
+    fs::read(resources.join("Updates/public-key")).unwrap(),
+    public
+  );
   assert!(fs::read_to_string(&source).unwrap().contains("token-old"));
   assert_eq!(fingerprint(&exe), exe_id);
-  assert_eq!(fs::read(&key_path).unwrap(), public);
+  assert!(!resources.join("yuzuko.update-key").exists());
 
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, None, None);
   assert_eq!(status, 0, "{stdout}\n{stderr}");
   assert!(stdout.contains("token-new"), "{stdout}");
   assert!(!stdout.contains("token-old"), "{stdout}");
   assert_eq!(stdout.matches("token-new").count(), 1, "{stdout}");
   assert!(fs::read_to_string(&source).unwrap().contains("token-new"));
   assert!(!resources.join("Updates/payload").exists());
+  assert!(!resources.join("Updates/public-key").exists());
   let manifest = fs::read_to_string(&manifest_path).unwrap();
   assert!(manifest.contains("\"version\": \"1.1.0\""), "{manifest}");
-  assert!(manifest.contains(&base), "{manifest}");
+  assert!(!manifest.contains(&base), "{manifest}");
+  assert!(!manifest.contains("releaseBaseUrl"), "{manifest}");
   assert!(manifest.contains("src/main.ts"), "{manifest}");
   if cfg!(target_os = "macos") {
     let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
     assert!(plist.contains("<string>1.0.0</string>"), "{plist}");
     assert!(!plist.contains("1.1.0"), "{plist}");
   }
-  assert_eq!(fs::read(&key_path).unwrap(), public);
+  assert!(!resources.join("yuzuko.update-key").exists());
   assert_eq!(fingerprint(&exe), exe_id);
 }
 
 #[test]
-fn unpackaged_run_and_repl_have_no_updater() {
+fn unpackaged_commands_expose_a_null_version() {
   let dir = scratch("unpackaged");
   fs::write(
+    dir.join("worker.js"),
+    "postMessage(typeof Yuzuko.autoUpdate + ' ' + typeof Yuzuko.appVersion);\nclose();\n",
+  )
+  .unwrap();
+  let encoded = BASE64_STANDARD.encode(signing().verifying_key().to_bytes());
+  fs::write(
     dir.join("probe.ts"),
-    "console.log(typeof Yuzuko.updater);\n",
+    format!(
+      r#"console.log("kind " + typeof Yuzuko.autoUpdate);
+console.log("version " + JSON.stringify(Yuzuko.appVersion));
+console.log("updater " + typeof Yuzuko.updater);
+try {{
+  Yuzuko.autoUpdate("https://releases.example.com/app");
+  console.log("string-accepted");
+}} catch (error) {{
+  console.log("string-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ interval: 0 }});
+  console.log("interval-accepted");
+}} catch (error) {{
+  console.log("interval-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ publicKey: "@@@@" }});
+  console.log("key-accepted");
+}} catch (error) {{
+  console.log("key-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ publicKey: 1 }});
+  console.log("number-key-accepted");
+}} catch (error) {{
+  console.log("number-key-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ url: "file:///tmp", publicKey: "{encoded}" }});
+  console.log("url-accepted");
+}} catch (error) {{
+  console.log("url-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ url: 1, publicKey: "{encoded}" }});
+  console.log("number-url-accepted");
+}} catch (error) {{
+  console.log("number-url-error " + error.name);
+}}
+try {{
+  Yuzuko.autoUpdate({{ url: new String("https://example.invalid/feed"), publicKey: "{encoded}" }});
+  console.log("boxed-url-accepted");
+}} catch (error) {{
+  console.log("boxed-url-error " + error.name);
+}}
+await Yuzuko.autoUpdate({{ url: "https://example.invalid/feed", publicKey: "{encoded}" }});
+console.log("valid-url-idle");
+await Yuzuko.autoUpdate({{ url: new URL("https://example.invalid/app"), publicKey: "{encoded}" }});
+console.log("url-object-idle");
+await Yuzuko.autoUpdate({{ publicKey: "{encoded}" }});
+console.log("valid-key-idle");
+let ready = false;
+await Yuzuko.autoUpdate({{
+  onUpdateReady() {{
+    ready = true;
+  }},
+}});
+console.log(ready ? "ready" : "idle");
+const worker = new Worker(new URL("./worker.js", import.meta.url));
+worker.onmessage = (event) => {{
+  console.log("worker " + event.data);
+  Yuzuko.exit(0);
+}};
+worker.onerror = () => Yuzuko.exit(1);
+"#
+    ),
+  )
+  .unwrap();
+  fs::write(
+    dir.join("version.test.ts"),
+    r#"Yuzuko.test("version", () => {
+  if (typeof Yuzuko.autoUpdate !== "function") {
+    throw new Error("missing autoUpdate");
+  }
+  if (Yuzuko.appVersion !== null) {
+    throw new Error("version");
+  }
+  if ("updater" in Yuzuko) {
+    throw new Error("updater");
+  }
+});
+"#,
   )
   .unwrap();
   for _ in 0..2 {
     let output = Command::new(bin())
       .current_dir(&dir)
-      .args(["run", "probe.ts"])
+      .args(["run", "--no-prompt", "--allow-read=.", "probe.ts"])
       .output()
       .unwrap();
     assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-    assert_eq!(text(&output.stdout).trim(), "undefined");
+    let stdout = text(&output.stdout);
+    assert!(stdout.contains("kind function"), "{stdout}");
+    assert!(stdout.contains("version null"), "{stdout}");
+    assert!(stdout.contains("updater undefined"), "{stdout}");
+    assert!(stdout.contains("string-error TypeError"), "{stdout}");
+    assert!(stdout.contains("interval-error TypeError"), "{stdout}");
+    assert!(stdout.contains("key-error TypeError"), "{stdout}");
+    assert!(stdout.contains("number-key-error TypeError"), "{stdout}");
+    assert!(stdout.contains("url-error TypeError"), "{stdout}");
+    assert!(stdout.contains("number-url-error TypeError"), "{stdout}");
+    assert!(stdout.contains("boxed-url-error TypeError"), "{stdout}");
+    assert!(!stdout.contains("number-key-accepted"), "{stdout}");
+    assert!(!stdout.contains("number-url-accepted"), "{stdout}");
+    assert!(!stdout.contains("boxed-url-accepted"), "{stdout}");
+    assert!(stdout.contains("valid-url-idle"), "{stdout}");
+    assert!(stdout.contains("url-object-idle"), "{stdout}");
+    assert!(stdout.contains("valid-key-idle"), "{stdout}");
+    assert!(!stdout.contains("key-accepted"), "{stdout}");
+    assert!(!stdout.contains("url-accepted"), "{stdout}");
+    assert!(stdout.contains("idle"), "{stdout}");
+    assert!(stdout.contains("worker undefined undefined"), "{stdout}");
+    assert!(!stdout.contains("ready"), "{stdout}");
   }
+
+  let tested = Command::new(bin())
+    .current_dir(&dir)
+    .args(["test", "version.test.ts"])
+    .output()
+    .unwrap();
+  assert_eq!(tested.status.code(), Some(0), "{}", text(&tested.stderr));
 
   let mut child = Command::new(bin())
     .current_dir(&dir)
@@ -559,57 +700,65 @@ fn unpackaged_run_and_repl_have_no_updater() {
     .stdin
     .take()
     .unwrap()
-    .write_all(b"typeof Yuzuko.updater\n")
+    .write_all(
+      b"typeof Yuzuko.autoUpdate\nYuzuko.appVersion\ntypeof Yuzuko.updater\n",
+    )
     .unwrap();
   let output = child.wait_with_output().unwrap();
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
-  // The REPL inspects a string completion value with quotes.
-  assert!(
-    stdout.lines().any(|line| line.trim() == "\"undefined\""),
-    "{stdout}"
-  );
-  assert!(
-    !stdout.lines().any(|line| line.trim() == "\"object\""),
-    "{stdout}"
-  );
+  // Completion values may be colored, so match the text rather than a line.
+  assert!(stdout.contains("\"function\""), "{stdout}");
+  assert!(stdout.contains("null"), "{stdout}");
+  assert!(stdout.contains("\"undefined\""), "{stdout}");
 }
 
 #[test]
-fn a_feed_host_that_resolves_to_loopback_needs_that_address() {
-  let payload = encode_payload("1.1.0", "src/main.ts", "console.log(1);\n");
-  let server = feed_server(payload, BASE64_STANDARD.encode([0u8; 64]));
-  let dir = scratch("resolved");
-  // `localhost` is granted by name. It resolves to a loopback address, and
-  // that address is not granted, so the updater does not connect.
-  let base = format!("http://localhost:{}/game", server.port);
+fn auto_update_polls_without_downloading_the_staged_payload_again() {
+  let payload =
+    encode_payload("1.1.0", "src/main.ts", "console.log(\"token-new\");\n");
+  let key = signing();
+  let signature = Signer::try_sign(&key, &payload).unwrap().to_bytes();
+  let server = feed_server(payload, BASE64_STANDARD.encode(signature));
+  *server.mode.lock().unwrap() = Mode::Newer;
+  let dir = scratch("interval");
+  let base = format!("http://127.0.0.1:{}/game", server.port);
+  let encoded = BASE64_STANDARD.encode(key.verifying_key().to_bytes());
   fs::write(
     dir.join("yuzuko.json"),
-    format!(
-      r#"{{
+    r#"{
   "name": "Update Game",
-  "version": "1.0.0",
-  "permissions": {{ "net": ["localhost"] }},
-  "release": {{
-    "baseUrl": "{base}",
-    "publicKey": "{}"
-  }}
-}}
+  "version": "1.0.0"
+}
 "#,
-      BASE64_STANDARD.encode(signing().verifying_key().to_bytes())
-    ),
   )
   .unwrap();
   fs::create_dir_all(dir.join("src")).unwrap();
   fs::write(
     dir.join("src/main.ts"),
-    r#"try {
-  await Yuzuko.updater.check();
-  console.log("checked");
-} catch (error) {
-  console.log("update-error " + error.name);
-}
-"#,
+    format!(
+      r#"console.log("version " + JSON.stringify(Yuzuko.appVersion));
+let ready = 0;
+try {{
+  await Yuzuko.autoUpdate({{
+    url: "{base}",
+    publicKey: "{encoded}",
+    interval: 200,
+    onUpdateReady(version) {{
+      ready += 1;
+      console.log("ready " + ready + " " + version);
+    }},
+  }});
+  console.log("first-done");
+}} catch (error) {{
+  console.log("update-error " + error.name + " " + error.message);
+  Yuzuko.exit(1);
+}}
+await new Promise((resolve) => setTimeout(resolve, 1200));
+console.log("polls " + ready);
+Yuzuko.exit(0);
+"#
+    ),
   )
   .unwrap();
   let app = dir.join(bundle_name());
@@ -625,7 +774,73 @@ fn a_feed_host_that_resolves_to_loopback_needs_that_address() {
     text(&packaged.stderr)
   );
   let (_, exe) = bundle_paths(&app);
-  let (status, stdout, stderr) = launch(&exe);
+  let (status, stdout, stderr) = launch(&exe, None, None);
+  assert_eq!(status, 0, "{stdout}\n{stderr}");
+  assert!(stdout.contains("version \"1.0.0\""), "{stdout}");
+  assert!(stdout.contains("ready 1 1.1.0"), "{stdout}");
+  assert!(!stdout.contains("ready 2"), "{stdout}");
+  assert!(stdout.contains("polls 1"), "{stdout}");
+  let hits = server.hits.lock().unwrap().clone();
+  let feeds = hits
+    .iter()
+    .filter(|hit| hit.ends_with("/feed.json"))
+    .count();
+  let payloads = hits
+    .iter()
+    .filter(|hit| hit.ends_with("/1.1.0.yuzuko"))
+    .count();
+  assert!(feeds >= 2, "{hits:?}");
+  assert_eq!(payloads, 1, "{hits:?}");
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_feed_host_that_resolves_to_loopback_needs_that_address() {
+  let payload = encode_payload("1.1.0", "src/main.ts", "console.log(1);\n");
+  let server = feed_server(payload, BASE64_STANDARD.encode([0u8; 64]));
+  let dir = scratch("resolved");
+  // `localhost` is granted by name. It resolves to a loopback address, and
+  // that address is not granted, so the updater does not connect.
+  let base = format!("http://localhost:{}/game", server.port);
+  let encoded = BASE64_STANDARD.encode(signing().verifying_key().to_bytes());
+  fs::write(
+    dir.join("yuzuko.json"),
+    r#"{
+  "name": "Update Game",
+  "version": "1.0.0",
+  "permissions": { "net": ["localhost"] }
+}
+"#,
+  )
+  .unwrap();
+  fs::create_dir_all(dir.join("src")).unwrap();
+  fs::write(
+    dir.join("src/main.ts"),
+    format!(
+      r#"try {{
+  await Yuzuko.autoUpdate({{ url: "{base}", publicKey: "{encoded}" }});
+  console.log("checked");
+}} catch (error) {{
+  console.log("update-error " + error.name);
+}}
+"#
+    ),
+  )
+  .unwrap();
+  let app = dir.join(bundle_name());
+  let packaged = Command::new(bin())
+    .current_dir(&dir)
+    .args(["package", "src/main.ts", "--output", app.to_str().unwrap()])
+    .output()
+    .unwrap();
+  assert_eq!(
+    packaged.status.code(),
+    Some(0),
+    "{}",
+    text(&packaged.stderr)
+  );
+  let (_, exe) = bundle_paths(&app);
+  let (status, stdout, stderr) = launch(&exe, None, None);
   assert_eq!(status, 0, "{stdout}\n{stderr}");
   assert!(
     stdout.contains("update-error NotAllowedError"),

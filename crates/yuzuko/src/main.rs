@@ -27,6 +27,7 @@ fn main() -> ExitCode {
   yuzuko_webgpu::register();
   #[cfg(feature = "audio")]
   yuzuko_audio::register();
+  yuzuko::install_auto_update();
   let args = std::env::args().skip(1).collect::<Vec<_>>();
   // A packaged executable always runs its entry. It does not dispatch
   // `run`, `test`, `package`, or `repl`. macOS Launch Services may insert

@@ -1,7 +1,9 @@
 //! Packaged-application updates.
 //!
-//! The feed may carry a signature. It may not carry a public key.
-//! Verification uses `yuzuko.update-key`, written when the app was packaged.
+//! The feed carries a signature and does not carry a public key. The caller
+//! passes the feed URL and the Ed25519 trust anchor to `autoUpdate`. The key
+//! that verified a staged payload is stored beside that stage and used on the
+//! next launch. The feed URL is not stored.
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -9,6 +11,7 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, Once, OnceLock};
 use std::time::Duration;
 
@@ -37,10 +40,6 @@ const NO_ANCHOR: Failure = Failure {
 const BAD_PACKAGED: Failure = Failure {
   name: "InvalidStateError",
   message: "The packaged version cannot be compared.",
-};
-const NO_DOWNLOAD: Failure = Failure {
-  name: "InvalidStateError",
-  message: "There is no update to download.",
 };
 const INVALID_FEED: Failure = Failure {
   name: "InvalidStateError",
@@ -73,17 +72,23 @@ pub(crate) struct Failure {
   pub message: &'static str,
 }
 
-#[derive(Clone)]
-struct Remembered {
-  version: String,
-  payload_url: String,
-  signature: [u8; 64],
+const EXPECTS_OBJECT: &str = "Yuzuko.autoUpdate expects an options object.";
+const BAD_URL: &str = "url must be an absolute http or https URL.";
+const BAD_KEY: &str =
+  "publicKey must be standard base64 of a 32-byte Ed25519 public key.";
+const BAD_CALLBACK: &str = "onUpdateReady must be a function.";
+const BAD_INTERVAL: &str = "The update interval must be a finite number of milliseconds from 1 through 2147483647.";
+
+struct Options {
+  ready: Option<v8::Global<v8::Function>>,
+  interval: Option<Duration>,
+  public_key: Option<[u8; 32]>,
+  url: Option<String>,
 }
 
-#[derive(Debug)]
-struct Checked {
-  available: bool,
-  version: String,
+enum OptionsError {
+  Type(&'static str),
+  Thrown(v8::Global<v8::Value>),
 }
 
 pub(crate) struct BundleMeta {
@@ -91,7 +96,6 @@ pub(crate) struct BundleMeta {
   pub identifier: Option<String>,
   pub version: String,
   pub entry: String,
-  pub release_base_url: Option<String>,
   pub permissions: Option<serde_json::Value>,
 }
 
@@ -114,12 +118,19 @@ struct FeedJson {
 }
 
 static RESOURCES: Mutex<Option<PathBuf>> = Mutex::new(None);
-static PENDING: Mutex<Option<Remembered>> = Mutex::new(None);
 static INSTALL: Once = Once::new();
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+static TIMER: Mutex<Option<i32>> = Mutex::new(None);
+static FETCH: Mutex<()> = Mutex::new(());
+
+/// Installs `Yuzuko.appVersion` and `Yuzuko.autoUpdate` on the main realm.
+pub fn install_auto_update() {
+  INSTALL.call_once(|| yuzuko_core::add_extension(&install_updater));
+}
 
 pub fn enable_updater(resources: PathBuf) {
   *lock(&RESOURCES) = Some(resources);
-  INSTALL.call_once(|| yuzuko_core::add_extension(&install_updater));
+  install_auto_update();
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -131,87 +142,350 @@ fn install_updater(scope: &mut v8::PinScope) {
     return;
   }
   let yuzuko = yuzuko_core::namespace(scope, "Yuzuko");
-  let updater = v8::Object::new(scope);
-  yuzuko_core::set_function(scope, updater, "check", check);
-  yuzuko_core::set_function(scope, updater, "download", download);
-  yuzuko_core::set_value(scope, yuzuko, "updater", updater.into());
+  let version = match packaged_version() {
+    Some(text) => match v8::String::new(scope, &text) {
+      Some(text) => text.into(),
+      None => v8::null(scope).into(),
+    },
+    None => v8::null(scope).into(),
+  };
+  yuzuko_core::set_value(scope, yuzuko, "appVersion", version);
+  yuzuko_core::set_function(scope, yuzuko, "autoUpdate", auto_update);
 }
 
-fn check(
+fn auto_update(
   scope: &mut v8::PinScope,
-  _args: v8::FunctionCallbackArguments,
+  args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
+  let options = match read_options(scope, args.get(0)) {
+    Ok(options) => options,
+    Err(OptionsError::Type(message)) => {
+      yuzuko_core::throw_type(scope, message);
+      return;
+    }
+    Err(OptionsError::Thrown(error)) => {
+      let error = v8::Local::new(scope, error);
+      scope.throw_exception(error);
+      return;
+    }
+  };
   let Some(resolver) = v8::PromiseResolver::new(scope) else {
     return;
   };
   let promise = resolver.get_promise(scope);
+  ret.set(promise.into());
+  if !packaged() {
+    resolver.resolve(scope, v8::undefined(scope).into());
+    return;
+  }
+  let generation = GENERATION.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+  if let Some(id) = lock(&TIMER).take() {
+    yuzuko_core::cancel_host(id);
+  }
   let resolver = v8::Global::new(scope, resolver);
+  start_check(
+    generation,
+    options.interval,
+    options.ready,
+    Some(resolver),
+    options.public_key,
+    options.url,
+  );
+}
+
+fn start_check(
+  generation: u64,
+  interval: Option<Duration>,
+  ready: Option<v8::Global<v8::Function>>,
+  resolver: Option<v8::Global<v8::PromiseResolver>>,
+  key: Option<[u8; 32]>,
+  url: Option<String>,
+) {
+  let fetch_url = url.clone();
   yuzuko_core::spawn(
-    || match resources_dir() {
-      Ok(resources) => check_feed(&resources),
+    move || match resources_dir() {
+      Ok(resources) => stage_update(&resources, key, fetch_url.as_deref()),
       Err(error) => Err(error),
     },
     move |scope, result| {
-      let resolver = v8::Local::new(scope, resolver);
-      match result {
-        Ok(Ok(checked)) => match status_object(scope, &checked) {
-          Some(object) => {
-            resolver.resolve(scope, object.into());
-          }
-          None => reject(scope, resolver, &DOWNLOAD_FAILED),
-        },
-        Ok(Err(error)) => reject(scope, resolver, &error),
-        Err(()) => reject(scope, resolver, &DOWNLOAD_FAILED),
-      }
+      finish_check(
+        scope, generation, interval, ready, resolver, key, url, result,
+      );
     },
   );
-  ret.set(promise.into());
 }
 
-fn download(
+fn finish_check(
   scope: &mut v8::PinScope,
-  _args: v8::FunctionCallbackArguments,
-  mut ret: v8::ReturnValue,
+  generation: u64,
+  interval: Option<Duration>,
+  ready: Option<v8::Global<v8::Function>>,
+  resolver: Option<v8::Global<v8::PromiseResolver>>,
+  key: Option<[u8; 32]>,
+  url: Option<String>,
+  result: Result<Result<Option<String>, Failure>, ()>,
 ) {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return;
+  let live = generation == GENERATION.load(AtomicOrdering::Relaxed);
+  let outcome = match result {
+    Ok(outcome) => outcome,
+    Err(()) => Err(DOWNLOAD_FAILED),
   };
-  let promise = resolver.get_promise(scope);
-  let resolver = v8::Global::new(scope, resolver);
-  yuzuko_core::spawn(
-    || match resources_dir() {
-      Ok(resources) => download_feed(&resources),
-      Err(error) => Err(error),
-    },
-    move |scope, result| {
-      let resolver = v8::Local::new(scope, resolver);
-      match result {
-        Ok(Ok(())) => {
+  match outcome {
+    Ok(staged) => {
+      let thrown = if live {
+        staged.as_ref().and_then(|version| {
+          ready
+            .as_ref()
+            .and_then(|ready| call_ready(scope, ready, version).err())
+        })
+      } else {
+        None
+      };
+      if let Some(resolver) = resolver.as_ref() {
+        let resolver = v8::Local::new(scope, resolver);
+        if let Some(error) = &thrown {
+          let error = v8::Local::new(scope, error);
+          resolver.reject(scope, error);
+        } else {
           resolver.resolve(scope, v8::undefined(scope).into());
         }
-        Ok(Err(error)) => reject(scope, resolver, &error),
-        Err(()) => reject(scope, resolver, &DOWNLOAD_FAILED),
+      } else if let Some(error) = &thrown {
+        let error = v8::Local::new(scope, error);
+        report_uncaught(scope, error);
       }
-    },
-  );
-  ret.set(promise.into());
+      let continue_poll = generation
+        == GENERATION.load(AtomicOrdering::Relaxed)
+        && (thrown.is_none() || resolver.is_none());
+      if continue_poll {
+        schedule_next(generation, interval, ready, key, url);
+      }
+    }
+    Err(error) => {
+      if let Some(resolver) = resolver.as_ref() {
+        let resolver = v8::Local::new(scope, resolver);
+        reject(scope, resolver, &error);
+      } else if live {
+        schedule_next(generation, interval, ready, key, url);
+      }
+    }
+  }
+}
+
+fn schedule_next(
+  generation: u64,
+  interval: Option<Duration>,
+  ready: Option<v8::Global<v8::Function>>,
+  key: Option<[u8; 32]>,
+  url: Option<String>,
+) {
+  let Some(interval) = interval else {
+    return;
+  };
+  if generation != GENERATION.load(AtomicOrdering::Relaxed) {
+    return;
+  }
+  let id = yuzuko_core::schedule_host(interval, move |_scope| {
+    if generation != GENERATION.load(AtomicOrdering::Relaxed) {
+      return;
+    }
+    start_check(generation, Some(interval), ready, None, key, url);
+  });
+  *lock(&TIMER) = Some(id);
+}
+
+fn call_ready(
+  scope: &mut v8::PinScope,
+  function: &v8::Global<v8::Function>,
+  version: &str,
+) -> Result<(), v8::Global<v8::Value>> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let function = v8::Local::new(tc, function);
+    match v8::String::new(tc, version) {
+      Some(arg) => {
+        let receiver = v8::undefined(tc);
+        if function.call(tc, receiver.into(), &[arg.into()]).is_some() {
+          Ok(())
+        } else {
+          Err(caught(tc))
+        }
+      }
+      None => Err(caught(tc)),
+    }
+  };
+  captured
+}
+
+fn caught(
+  scope: &mut v8::PinnedRef<v8::TryCatch<v8::HandleScope>>,
+) -> v8::Global<v8::Value> {
+  let exception = scope
+    .exception()
+    .unwrap_or_else(|| v8::undefined(scope).into());
+  v8::Global::new(scope, exception)
+}
+
+fn report_uncaught(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
+  let global = yuzuko_core::global(scope);
+  let Some(key) = v8::String::new(scope, "reportError") else {
+    return;
+  };
+  let Some(report) = global
+    .get(scope, key.into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let _ = report.call(scope, global.into(), &[error]);
+}
+
+fn read_options(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Options, OptionsError> {
+  if value.is_undefined() {
+    return Ok(Options {
+      ready: None,
+      interval: None,
+      public_key: None,
+      url: None,
+    });
+  }
+  if value.is_null()
+    || value.is_function()
+    || value.is_array()
+    || !value.is_object()
+  {
+    return Err(OptionsError::Type(EXPECTS_OBJECT));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OptionsError::Type(EXPECTS_OBJECT));
+  };
+  let url_value = property(scope, object, "url")?;
+  let url_value = v8::Local::new(scope, url_value);
+  let url = read_feed_url(scope, url_value)?;
+  let key_value = property(scope, object, "publicKey")?;
+  let key_value = v8::Local::new(scope, key_value);
+  let public_key = if key_value.is_undefined() {
+    None
+  } else if let Ok(text) = v8::Local::<v8::String>::try_from(key_value) {
+    let text = text.to_rust_string_lossy(scope);
+    Some(decode_public_key(&text).map_err(|()| OptionsError::Type(BAD_KEY))?)
+  } else {
+    return Err(OptionsError::Type(BAD_KEY));
+  };
+  let ready_value = property(scope, object, "onUpdateReady")?;
+  let ready_value = v8::Local::new(scope, ready_value);
+  let ready = if ready_value.is_undefined() {
+    None
+  } else {
+    let Ok(function) = v8::Local::<v8::Function>::try_from(ready_value) else {
+      return Err(OptionsError::Type(BAD_CALLBACK));
+    };
+    Some(v8::Global::new(scope, function))
+  };
+  let interval_value = property(scope, object, "interval")?;
+  let interval_value = v8::Local::new(scope, interval_value);
+  let interval = if interval_value.is_undefined() {
+    None
+  } else if interval_value.is_number() {
+    let ms = interval_value.number_value(scope).unwrap_or(f64::NAN);
+    if !ms.is_finite() || ms < 1.0 || ms > 2_147_483_647.0 {
+      return Err(OptionsError::Type(BAD_INTERVAL));
+    }
+    Some(Duration::from_millis(ms.trunc() as u64))
+  } else {
+    return Err(OptionsError::Type(BAD_INTERVAL));
+  };
+  Ok(Options {
+    ready,
+    interval,
+    public_key,
+    url,
+  })
+}
+
+fn read_feed_url(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Option<String>, OptionsError> {
+  if value.is_undefined() {
+    return Ok(None);
+  }
+  let text = if let Ok(text) = v8::Local::<v8::String>::try_from(value) {
+    text.to_rust_string_lossy(scope)
+  } else if url_instance(scope, value) {
+    let object = v8::Local::<v8::Object>::try_from(value)
+      .map_err(|_| OptionsError::Type(BAD_URL))?;
+    let href = property(scope, object, "href")?;
+    let href = v8::Local::new(scope, href);
+    let Ok(href) = v8::Local::<v8::String>::try_from(href) else {
+      return Err(OptionsError::Type(BAD_URL));
+    };
+    href.to_rust_string_lossy(scope)
+  } else {
+    return Err(OptionsError::Type(BAD_URL));
+  };
+  if absolute_http(&text) {
+    Ok(Some(text))
+  } else {
+    Err(OptionsError::Type(BAD_URL))
+  }
+}
+
+fn url_instance(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
+  let global = scope.get_current_context().global(scope);
+  let Some(key) = v8::String::new(scope, "URL") else {
+    return false;
+  };
+  let Some(ctor) = global.get(scope, key.into()) else {
+    return false;
+  };
+  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
+    return false;
+  };
+  value.instance_of(scope, ctor) == Some(true)
+}
+
+fn absolute_http(text: &str) -> bool {
+  let Ok(url) = url::Url::parse(text) else {
+    return false;
+  };
+  matches!(url.scheme(), "http" | "https") && url.host_str().is_some()
+}
+
+fn property(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<v8::Global<v8::Value>, OptionsError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let Some(key) = v8::String::new(tc, name) else {
+      return Err(OptionsError::Type(EXPECTS_OBJECT));
+    };
+    match object.get(tc, key.into()) {
+      Some(value) if tc.exception().is_none() => Ok(v8::Global::new(tc, value)),
+      _ => Err(OptionsError::Thrown(caught(tc))),
+    }
+  };
+  captured
 }
 
 fn resources_dir() -> Result<PathBuf, Failure> {
   lock(&RESOURCES).clone().ok_or(NO_FEED)
 }
 
-fn status_object<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  checked: &Checked,
-) -> Option<v8::Local<'s, v8::Object>> {
-  let object = v8::Object::new(scope);
-  let available = v8::Boolean::new(scope, checked.available);
-  let version = v8::String::new(scope, &checked.version)?;
-  yuzuko_core::set_value(scope, object, "available", available.into());
-  yuzuko_core::set_value(scope, object, "version", version.into());
-  Some(object)
+fn packaged() -> bool {
+  lock(&RESOURCES).is_some()
+}
+
+fn packaged_version() -> Option<String> {
+  let resources = lock(&RESOURCES).clone()?;
+  read_bundle(&resources)
+    .ok()
+    .map(|manifest| manifest.version)
 }
 
 fn reject(
@@ -229,12 +503,19 @@ fn reject(
   resolver.reject(scope, value);
 }
 
-fn check_feed(resources: &Path) -> Result<Checked, Failure> {
+fn stage_update(
+  resources: &Path,
+  key: Option<[u8; 32]>,
+  url: Option<&str>,
+) -> Result<Option<String>, Failure> {
+  let _fetch = lock(&FETCH);
   let manifest = read_bundle(resources).map_err(|()| NO_FEED)?;
-  let Some(base) = manifest.release_base_url else {
+  let Some(base) = url else {
     return Err(NO_FEED);
   };
-  read_key(resources)?;
+  let Some(key) = key else {
+    return Err(NO_ANCHOR);
+  };
   if version_parts(&manifest.version).is_err() {
     return Err(BAD_PACKAGED);
   }
@@ -244,36 +525,18 @@ fn check_feed(resources: &Path) -> Result<Checked, Failure> {
   let order =
     version_cmp(&feed.version, &manifest.version).map_err(|()| INVALID_FEED)?;
   if order != Ordering::Greater {
-    remember(None);
-    return Ok(Checked {
-      available: false,
-      version: manifest.version,
-    });
+    return Ok(None);
+  }
+  if already_staged(resources, &feed.signature, &key) {
+    return Ok(None);
   }
   let payload_url = payload_url(&base, &feed.payload)?;
-  remember(Some(Remembered {
-    version: feed.version.clone(),
-    payload_url,
-    signature: feed.signature,
-  }));
-  Ok(Checked {
-    available: true,
-    version: feed.version,
-  })
-}
-
-fn download_feed(resources: &Path) -> Result<(), Failure> {
-  let Some(pending) = remembered() else {
-    return Err(NO_DOWNLOAD);
-  };
-  let key = read_key(resources)?;
-  let manifest = read_bundle(resources).map_err(|()| NO_DOWNLOAD)?;
-  let body = http_get(&pending.payload_url, PAYLOAD_LIMIT)?;
-  if !verify_bytes(&key, &body, &pending.signature) {
+  let payload = http_get(&payload_url, PAYLOAD_LIMIT)?;
+  if !verify_bytes(&key, &payload, &feed.signature) {
     return Err(BAD_SIGNATURE);
   }
-  let parsed = parse_payload(&body)?;
-  if parsed.version != pending.version {
+  let parsed = parse_payload(&payload)?;
+  if parsed.version != feed.version {
     return Err(INVALID_PAYLOAD);
   }
   let order = version_cmp(&parsed.version, &manifest.version)
@@ -281,15 +544,27 @@ fn download_feed(resources: &Path) -> Result<(), Failure> {
   if order != Ordering::Greater {
     return Err(INVALID_PAYLOAD);
   }
-  publish_stage(resources, &body, &pending.signature)
+  publish_stage(resources, &payload, &feed.signature, &key)?;
+  Ok(Some(feed.version))
 }
 
-fn remember(update: Option<Remembered>) {
-  *lock(&PENDING) = update;
-}
-
-fn remembered() -> Option<Remembered> {
-  lock(&PENDING).clone()
+fn already_staged(
+  resources: &Path,
+  signature: &[u8; 64],
+  key: &[u8; 32],
+) -> bool {
+  let updates = resources.join("Updates");
+  let Ok(stored_signature) = read_limited(&updates.join("signature"), 64)
+  else {
+    return false;
+  };
+  if stored_signature.as_slice() != signature {
+    return false;
+  }
+  let Ok(stored_key) = read_limited(&updates.join("public-key"), 32) else {
+    return false;
+  };
+  stored_key.as_slice() == key && updates.join("payload").is_file()
 }
 
 pub(crate) fn version_is_ordered(text: &str) -> bool {
@@ -535,11 +810,10 @@ fn verify_bytes(key: &[u8; 32], payload: &[u8], signature: &[u8; 64]) -> bool {
   key.verify_strict(payload, &signature).is_ok()
 }
 
-fn read_key(resources: &Path) -> Result<[u8; 32], Failure> {
-  let bytes = read_limited(&resources.join("yuzuko.update-key"), 32)
-    .map_err(|()| NO_ANCHOR)?;
-  let bytes: [u8; 32] = bytes.try_into().map_err(|_| NO_ANCHOR)?;
-  decode_public_key_bytes(&bytes).map_err(|()| NO_ANCHOR)?;
+fn staged_key(updates: &Path) -> Result<[u8; 32], ()> {
+  let bytes = read_limited(&updates.join("public-key"), 32)?;
+  let bytes: [u8; 32] = bytes.try_into().map_err(|_| ())?;
+  decode_public_key_bytes(&bytes)?;
   Ok(bytes)
 }
 
@@ -572,11 +846,6 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
     .and_then(|item| item.as_str())
     .filter(|id| !id.is_empty())
     .map(str::to_string);
-  let release_base_url = value
-    .get("releaseBaseUrl")
-    .and_then(|item| item.as_str())
-    .filter(|url| !url.is_empty())
-    .map(str::to_string);
   let permissions = match value.get("permissions") {
     None => None,
     Some(item) if item.is_object() => Some(item.clone()),
@@ -587,7 +856,6 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
     identifier,
     version,
     entry,
-    release_base_url,
     permissions,
   })
 }
@@ -607,7 +875,7 @@ fn try_apply(resources: &Path) -> Result<(), ()> {
   if !payload_path.is_file() || !signature_path.is_file() {
     return Ok(());
   }
-  let key = read_key(resources).map_err(|_| ())?;
+  let key = staged_key(&updates)?;
   let payload = read_limited(&payload_path, PAYLOAD_LIMIT)?;
   let signature = read_limited(&signature_path, 64)?;
   let signature: [u8; 64] = signature.try_into().map_err(|_| ())?;
@@ -636,30 +904,44 @@ fn publish_stage(
   resources: &Path,
   payload: &[u8],
   signature: &[u8; 64],
+  key: &[u8; 32],
 ) -> Result<(), Failure> {
   let updates = resources.join("Updates");
   fs::create_dir_all(&updates).map_err(|_| INVALID_PAYLOAD)?;
   let payload_partial = updates.join("payload.partial");
   let signature_partial = updates.join("signature.partial");
+  let key_partial = updates.join("public-key.partial");
   if fs::write(&payload_partial, payload).is_err()
     || fs::write(&signature_partial, signature).is_err()
+    || fs::write(&key_partial, key).is_err()
   {
     let _ = fs::remove_file(&payload_partial);
     let _ = fs::remove_file(&signature_partial);
+    let _ = fs::remove_file(&key_partial);
     return Err(INVALID_PAYLOAD);
   }
   let payload_final = updates.join("payload");
   let signature_final = updates.join("signature");
+  let key_final = updates.join("public-key");
   let _ = fs::remove_file(&payload_final);
   if fs::rename(&payload_partial, &payload_final).is_err() {
     let _ = fs::remove_file(&payload_partial);
     let _ = fs::remove_file(&signature_partial);
+    let _ = fs::remove_file(&key_partial);
     return Err(INVALID_PAYLOAD);
   }
   let _ = fs::remove_file(&signature_final);
   if fs::rename(&signature_partial, &signature_final).is_err() {
     let _ = fs::remove_file(&payload_final);
     let _ = fs::remove_file(&signature_partial);
+    let _ = fs::remove_file(&key_partial);
+    return Err(INVALID_PAYLOAD);
+  }
+  let _ = fs::remove_file(&key_final);
+  if fs::rename(&key_partial, &key_final).is_err() {
+    let _ = fs::remove_file(&payload_final);
+    let _ = fs::remove_file(&signature_final);
+    let _ = fs::remove_file(&key_partial);
     return Err(INVALID_PAYLOAD);
   }
   Ok(())
@@ -670,8 +952,10 @@ fn delete_stage(resources: &Path) {
   for name in [
     "payload",
     "signature",
+    "public-key",
     "payload.partial",
     "signature.partial",
+    "public-key.partial",
   ] {
     let _ = fs::remove_file(updates.join(name));
   }
@@ -1106,6 +1390,17 @@ mod tests {
   }
 
   #[test]
+  fn absolute_http_accepts_only_a_hosted_http_url() {
+    assert!(absolute_http("https://releases.example.com/my-game"));
+    assert!(absolute_http("http://127.0.0.1:9/game?x=1#frag"));
+    assert!(absolute_http("http://user:pass@127.0.0.1:9/game"));
+    assert!(!absolute_http("file:///tmp"));
+    assert!(!absolute_http("https://"));
+    assert!(!absolute_http("/game"));
+    assert!(!absolute_http(""));
+  }
+
+  #[test]
   fn payload_framing_rejects_a_path_that_escapes() {
     let good =
       encode_payload("1.1.0", "src/main.ts", &[("src/main.ts", b"hi")]);
@@ -1124,7 +1419,7 @@ mod tests {
   }
 
   #[test]
-  fn signature_uses_the_packaged_key() {
+  fn signature_uses_the_passed_key() {
     let key = signing();
     let public = key.verifying_key().to_bytes();
     let payload = encode_payload("1.2.0", "a.js", &[("a.js", b"next")]);
@@ -1135,10 +1430,29 @@ mod tests {
     assert!(!verify_bytes(&public, &payload, &bad));
   }
 
+  fn stage_files(
+    dir: &Path,
+    payload: &[u8],
+    signature: &[u8],
+    key: Option<&[u8]>,
+  ) {
+    fs::create_dir_all(dir.join("Updates")).unwrap();
+    fs::write(dir.join("Updates/payload"), payload).unwrap();
+    fs::write(dir.join("Updates/signature"), signature).unwrap();
+    let key_path = dir.join("Updates/public-key");
+    match key {
+      Some(key) => fs::write(key_path, key).unwrap(),
+      None => {
+        let _ = fs::remove_file(key_path);
+      }
+    }
+  }
+
   #[test]
   fn apply_keeps_the_previous_tree_when_the_stage_is_bad() {
     let dir = temp_dir("apply-bad");
     let key = signing().verifying_key().to_bytes();
+    // A leftover package file is not the trust anchor.
     fs::write(dir.join("yuzuko.update-key"), key).unwrap();
     fs::write(
       dir.join("yuzuko.bundle.json"),
@@ -1152,9 +1466,28 @@ mod tests {
       "src/main.ts",
       &[("src/main.ts", b"token-new\n")],
     );
-    fs::create_dir_all(dir.join("Updates")).unwrap();
-    fs::write(dir.join("Updates/payload"), &payload).unwrap();
-    fs::write(dir.join("Updates/signature"), [9u8; 64]).unwrap();
+    let signature = Signer::try_sign(&signing(), &payload).unwrap().to_bytes();
+    stage_files(&dir, &payload, &[9u8; 64], Some(&key));
+    apply_pending(&dir);
+    assert_eq!(
+      fs::read(dir.join("app/src/main.ts")).unwrap(),
+      b"token-old\n"
+    );
+    assert!(!dir.join("Updates/payload").exists());
+    assert!(!dir.join("Updates/public-key").exists());
+
+    let older =
+      encode_payload("0.9.0", "src/main.ts", &[("src/main.ts", b"older\n")]);
+    let older_sig = Signer::try_sign(&signing(), &older).unwrap().to_bytes();
+    stage_files(&dir, &older, &older_sig, Some(&key));
+    apply_pending(&dir);
+    assert_eq!(
+      fs::read(dir.join("app/src/main.ts")).unwrap(),
+      b"token-old\n"
+    );
+    assert!(!dir.join("Updates/payload").exists());
+
+    stage_files(&dir, &payload, &signature, None);
     apply_pending(&dir);
     assert_eq!(
       fs::read(dir.join("app/src/main.ts")).unwrap(),
@@ -1163,23 +1496,17 @@ mod tests {
     assert!(!dir.join("Updates/payload").exists());
     assert_eq!(fs::read(dir.join("yuzuko.update-key")).unwrap(), key);
 
-    let signature = Signer::try_sign(&signing(), &payload).unwrap().to_bytes();
-    let older =
-      encode_payload("0.9.0", "src/main.ts", &[("src/main.ts", b"older\n")]);
-    let older_sig = Signer::try_sign(&signing(), &older).unwrap().to_bytes();
-    fs::create_dir_all(dir.join("Updates")).unwrap();
-    fs::write(dir.join("Updates/payload"), &older).unwrap();
-    fs::write(dir.join("Updates/signature"), older_sig).unwrap();
+    let other = SigningKey::from_bytes(&[9u8; 32])
+      .verifying_key()
+      .to_bytes();
+    stage_files(&dir, &payload, &signature, Some(&other));
     apply_pending(&dir);
     assert_eq!(
       fs::read(dir.join("app/src/main.ts")).unwrap(),
       b"token-old\n"
     );
-    assert!(!dir.join("Updates/payload").exists());
 
-    fs::create_dir_all(dir.join("Updates")).unwrap();
-    fs::write(dir.join("Updates/payload"), &payload).unwrap();
-    fs::write(dir.join("Updates/signature"), signature).unwrap();
+    stage_files(&dir, &payload, &signature, Some(&key));
     apply_pending(&dir);
     assert_eq!(
       fs::read(dir.join("app/src/main.ts")).unwrap(),
@@ -1190,28 +1517,21 @@ mod tests {
     assert!(manifest.contains("1.1.0"), "{manifest}");
     assert!(manifest.contains("src/main.ts"), "{manifest}");
     assert!(!dir.join("Updates/payload").exists());
+    assert!(!dir.join("Updates/public-key").exists());
     assert_eq!(fs::read(dir.join("yuzuko.update-key")).unwrap(), key);
   }
 
   #[test]
-  fn directory_bundles_store_the_trust_anchor_and_are_not_launched() {
+  fn directory_bundles_omit_a_trust_anchor_file() {
     let dir = temp_dir("anchor-layout");
-    let public = signing().verifying_key().to_bytes();
-    let encoded = BASE64_STANDARD.encode(public);
     fs::write(dir.join("main.ts"), "console.log(\"anchor\");\n").unwrap();
     fs::write(dir.join("runtime"), b"not-a-real-binary").unwrap();
     fs::write(
       dir.join("yuzuko.json"),
-      format!(
-        r#"{{
+      r#"{
           "name": "Anchor",
-          "version": "1.2.0",
-          "release": {{
-            "baseUrl": "http://127.0.0.1:9/app",
-            "publicKey": "{encoded}"
-          }}
-        }}"#
-      ),
+          "version": "1.2.0"
+        }"#,
     )
     .unwrap();
     let config =
@@ -1230,21 +1550,13 @@ mod tests {
         &output,
       )
       .unwrap();
-      assert_eq!(fs::read(output.join("yuzuko.update-key")).unwrap(), public);
+      assert!(!output.join("yuzuko.update-key").exists());
       assert!(output.join("yuzuko.bundle.json").is_file());
       assert!(output.join("app/main.ts").is_file());
-      assert!(!output.join("app/yuzuko.update-key").exists());
     }
     assert!(output_absent(
       &dir,
       r#"{"name":"Anchor","version":"1.0.0-beta"}"#
-    ));
-    assert!(output_absent(
-      &dir,
-      &format!(
-        r#"{{"name":"Anchor","release":{{"publicKey":"{}"}}}}"#,
-        BASE64_STANDARD.encode([0u8; 32])
-      ),
     ));
   }
 
@@ -1270,12 +1582,13 @@ mod tests {
     assert!(error.to_string().contains("dot-separated"), "{error}");
     fs::write(
       dir.join("yuzuko.json"),
-      "{\"name\":\"Bad\",\"release\":{\"publicKey\":\"@@@@\"}}\n",
+      "{\"name\":\"Bad\",\"release\":{\"baseUrl\":\"https://example.invalid/app\"}}\n",
     )
     .unwrap();
     let error = crate::bundle::config::load_package(&dir.join("main.ts"), None)
       .unwrap_err();
-    assert!(error.to_string().contains("release.publicKey"), "{error}");
+    assert!(error.to_string().contains("unknown field"), "{error}");
+    assert!(error.to_string().contains("release"), "{error}");
   }
 
   struct Serve {
@@ -1419,26 +1732,21 @@ mod tests {
     });
     let dir = temp_dir("no-connect");
     let key = signing().verifying_key().to_bytes();
-    fs::write(dir.join("yuzuko.update-key"), key).unwrap();
     fs::write(
       dir.join("yuzuko.bundle.json"),
       r#"{"name":"Game","version":"1.0.0","entry":"main.ts"}"#,
     )
     .unwrap();
-    let error = check_feed(&dir).unwrap_err();
+    let error = stage_update(&dir, Some(key), None).unwrap_err();
     assert_eq!(error, NO_FEED);
     assert_eq!(server.hits.load(AtomicOrdering::SeqCst), 0);
 
-    fs::write(
-      dir.join("yuzuko.bundle.json"),
-      format!(
-        r#"{{"name":"Game","version":"1.0.0","entry":"main.ts","releaseBaseUrl":"http://127.0.0.1:{}/game"}}"#,
-        server.port
-      ),
+    let error = stage_update(
+      &dir,
+      None,
+      Some(&format!("http://127.0.0.1:{}/game", server.port)),
     )
-    .unwrap();
-    fs::remove_file(dir.join("yuzuko.update-key")).unwrap();
-    let error = check_feed(&dir).unwrap_err();
+    .unwrap_err();
     assert_eq!(error, NO_ANCHOR);
     assert_eq!(server.hits.load(AtomicOrdering::SeqCst), 0);
     assert_eq!(hits.load(AtomicOrdering::SeqCst), 0);
@@ -1498,41 +1806,44 @@ mod tests {
       let _ = stream.write_all(&ok_response(&payload_thread));
     });
     let dir = temp_dir("stage");
-    fs::write(dir.join("yuzuko.update-key"), public).unwrap();
     fs::create_dir_all(dir.join("app/src")).unwrap();
     fs::write(dir.join("app/src/main.ts"), "token-old\n").unwrap();
     let base = format!("http://127.0.0.1:{}/game", server.port);
     fs::write(
       dir.join("yuzuko.bundle.json"),
-      format!(
-        r#"{{"name":"Game","version":"1.0.0","entry":"src/main.ts","releaseBaseUrl":"{base}"}}"#
-      ),
+      r#"{"name":"Game","version":"1.0.0","entry":"src/main.ts"}"#,
     )
     .unwrap();
 
-    let older = check_feed(&dir).unwrap();
-    assert!(!older.available);
-    assert_eq!(older.version, "1.0.0");
-    assert_eq!(download_feed(&dir).unwrap_err(), NO_DOWNLOAD);
+    assert_eq!(stage_update(&dir, Some(public), Some(&base)).unwrap(), None);
     assert!(!dir.join("Updates/payload").exists());
 
     *mode.lock().unwrap() = "missing";
-    assert_eq!(check_feed(&dir).unwrap_err(), INVALID_FEED);
+    assert_eq!(
+      stage_update(&dir, Some(public), Some(&base)).unwrap_err(),
+      INVALID_FEED
+    );
     assert!(!dir.join("Updates/payload").exists());
 
     *mode.lock().unwrap() = "bad";
-    let available = check_feed(&dir).unwrap();
-    assert!(available.available);
-    assert_eq!(download_feed(&dir).unwrap_err(), BAD_SIGNATURE);
+    assert_eq!(
+      stage_update(&dir, Some(public), Some(&base)).unwrap_err(),
+      BAD_SIGNATURE
+    );
     assert!(!dir.join("Updates/payload").exists());
 
     *mode.lock().unwrap() = "drop";
-    assert_eq!(check_feed(&dir).unwrap_err(), DOWNLOAD_FAILED);
+    assert_eq!(
+      stage_update(&dir, Some(public), Some(&base)).unwrap_err(),
+      DOWNLOAD_FAILED
+    );
     assert!(!dir.join("Updates/payload").exists());
 
     *mode.lock().unwrap() = "truncate";
-    assert!(check_feed(&dir).unwrap().available);
-    assert_eq!(download_feed(&dir).unwrap_err(), TRUNCATED);
+    assert_eq!(
+      stage_update(&dir, Some(public), Some(&base)).unwrap_err(),
+      TRUNCATED
+    );
     assert!(!dir.join("Updates/payload").exists());
     assert_eq!(
       fs::read(dir.join("app/src/main.ts")).unwrap(),
@@ -1540,12 +1851,16 @@ mod tests {
     );
 
     *mode.lock().unwrap() = "newer";
-    let newer = check_feed(&dir).unwrap();
-    assert!(newer.available);
-    assert_eq!(newer.version, "1.1.0");
-    download_feed(&dir).unwrap();
+    assert_eq!(
+      stage_update(&dir, Some(public), Some(&base))
+        .unwrap()
+        .as_deref(),
+      Some("1.1.0")
+    );
+    assert_eq!(stage_update(&dir, Some(public), Some(&base)).unwrap(), None);
     assert_eq!(fs::read(dir.join("Updates/payload")).unwrap(), payload);
     assert_eq!(fs::read(dir.join("Updates/signature")).unwrap(), signature);
+    assert_eq!(fs::read(dir.join("Updates/public-key")).unwrap(), public);
     assert_eq!(
       fs::read(dir.join("app/src/main.ts")).unwrap(),
       b"token-old\n"
@@ -1556,6 +1871,109 @@ mod tests {
       b"token-new\n"
     );
     assert!(!dir.join("Updates/payload").exists());
-    assert_eq!(fs::read(dir.join("yuzuko.update-key")).unwrap(), public);
+    assert!(!dir.join("Updates/public-key").exists());
+  }
+
+  #[test]
+  fn a_rotated_key_replaces_the_staged_trust_anchor() {
+    let first_key = signing();
+    let first_public = first_key.verifying_key().to_bytes();
+    let second_key = SigningKey::from_bytes(&[9u8; 32]);
+    let second_public = second_key.verifying_key().to_bytes();
+    let first_payload =
+      encode_payload("1.1.0", "src/main.ts", &[("src/main.ts", b"one\n")]);
+    let second_payload =
+      encode_payload("1.2.0", "src/main.ts", &[("src/main.ts", b"two\n")]);
+    let first_sig = Signer::try_sign(&first_key, &first_payload)
+      .unwrap()
+      .to_bytes();
+    let second_sig = Signer::try_sign(&second_key, &second_payload)
+      .unwrap()
+      .to_bytes();
+    let mode = Arc::new(Mutex::new("first"));
+    let mode_thread = Arc::clone(&mode);
+    let first_body = first_payload.clone();
+    let second_body = second_payload.clone();
+    let first_b64 = BASE64_STANDARD.encode(first_sig);
+    let second_b64 = BASE64_STANDARD.encode(second_sig);
+    let server = serve(move |stream, path| {
+      let current = *mode_thread.lock().unwrap();
+      let (version, name, signature, body): (&str, &str, &str, &[u8]) =
+        if current == "first" {
+          ("1.1.0", "builds/1.1.0.yuzuko", &first_b64, &first_body)
+        } else {
+          ("1.2.0", "builds/1.2.0.yuzuko", &second_b64, &second_body)
+        };
+      if path.ends_with("/feed.json") {
+        let feed = format!(
+          r#"{{"version":"{version}","payload":"{name}","signature":"{signature}"}}"#
+        );
+        let _ = stream.write_all(&ok_response(feed.as_bytes()));
+      } else {
+        let _ = stream.write_all(&ok_response(body));
+      }
+    });
+    let dir = temp_dir("rotate");
+    fs::create_dir_all(dir.join("app/src")).unwrap();
+    fs::write(dir.join("app/src/main.ts"), "old\n").unwrap();
+    fs::write(dir.join("yuzuko.update-key"), first_public).unwrap();
+    let base = format!("http://127.0.0.1:{}/game", server.port);
+    fs::write(
+      dir.join("yuzuko.bundle.json"),
+      r#"{"name":"Game","version":"1.0.0","entry":"src/main.ts"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      stage_update(&dir, None, Some(&base)).unwrap_err(),
+      NO_ANCHOR
+    );
+    assert_eq!(server.hits.load(AtomicOrdering::SeqCst), 0);
+    assert_eq!(
+      stage_update(&dir, Some(first_public), Some(&base))
+        .unwrap()
+        .as_deref(),
+      Some("1.1.0")
+    );
+    assert_eq!(
+      fs::read(dir.join("Updates/public-key")).unwrap(),
+      first_public
+    );
+    assert_eq!(
+      stage_update(&dir, Some(second_public), Some(&base)).unwrap_err(),
+      BAD_SIGNATURE
+    );
+    assert_eq!(
+      fs::read(dir.join("Updates/public-key")).unwrap(),
+      first_public
+    );
+    assert_eq!(
+      fs::read(dir.join("Updates/payload")).unwrap(),
+      first_payload
+    );
+
+    *mode.lock().unwrap() = "second";
+    assert_eq!(
+      stage_update(&dir, Some(second_public), Some(&base))
+        .unwrap()
+        .as_deref(),
+      Some("1.2.0")
+    );
+    assert_eq!(
+      fs::read(dir.join("Updates/public-key")).unwrap(),
+      second_public
+    );
+    assert_eq!(
+      fs::read(dir.join("Updates/payload")).unwrap(),
+      second_payload
+    );
+    apply_pending(&dir);
+    assert_eq!(fs::read(dir.join("app/src/main.ts")).unwrap(), b"two\n");
+    assert!(!dir.join("Updates/public-key").exists());
+    assert_eq!(
+      fs::read(dir.join("yuzuko.update-key")).unwrap(),
+      first_public
+    );
+    let _ = server;
   }
 }

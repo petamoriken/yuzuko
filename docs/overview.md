@@ -172,7 +172,7 @@ Feature: `accessibility`. It enables `window`. The names are installed on the ma
 
 `yuzuko package` reads `yuzuko.json` or `yuzuko.jsonc` and writes an application that starts from a double click. macOS output is an ad-hoc-signed `.app`. Windows and Linux outputs are directories that carry an application id and an icon. The bundle contains the `yuzuko` executable that ran the command, the module graph, and the assets listed in the config.
 
-`Yuzuko.updater` is installed only on the main global of a packaged entry. `check()` reads `{baseUrl}/feed.json` from `release.baseUrl`. `download()` verifies a signed payload and stages it. The next launch replaces the `app/` tree and leaves the executable, icons, and trust anchor in place.
+`Yuzuko.appVersion` is the packaged manifest version, or `null` during `yuzuko run`, `yuzuko repl`, and `yuzuko test`. `Yuzuko.autoUpdate({ url, publicKey })` reads `{url}/feed.json` and stages a signed newer payload. `url` is an absolute `http:` or `https:` URL, or a `URL`. `publicKey` is standard base64 of the Ed25519 public key. Both names are on the main global and absent in a dedicated worker. The next launch verifies the stage with the key stored beside it, replaces the `app/` tree, and leaves the executable and icons in place. A later version of the application can pass a different key and a different URL.
 
 ## Commands
 

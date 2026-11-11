@@ -2615,7 +2615,7 @@ declare namespace Yuzuko {
    * `read` and `write` cover file-system paths and `chdir`. `net` covers
    * fetch, `XMLHttpRequest`, `EventSource`, `WebSocket`, `WebSocketStream`,
    * `WebTransport`, datagrams, TCP, the HTTP server, an `http:` or `https:`
-   * `importScripts`, and the updater. `env` covers {@link Env}. `run` covers
+   * `importScripts`, and {@link autoUpdate}. `env` covers {@link Env}. `run` covers
    * {@link spawn}. `ffi` covers {@link dlopen}.
    */
   type PermissionName = "read" | "write" | "net" | "env" | "run" | "ffi";
@@ -4034,72 +4034,107 @@ declare namespace Yuzuko {
   function demuxMp4(data: AllowSharedBufferSource): Mp4Movie;
 
   /**
-   * Result of {@link Updater.check}.
-   */
-  interface UpdateCheck {
-    /**
-     * `true` when the feed version is strictly greater than the packaged version.
-     */
-    available: boolean;
-
-    /**
-     * The feed version when `available` is true. Otherwise the packaged version.
-     */
-    version: string;
-  }
-
-  /**
-   * Update client for a packaged application.
+   * Packaged application version.
    *
-   * Installed only on the main global of a packaged entry. Absent during
-   * `yuzuko run`, `yuzuko repl`, `yuzuko test`, and inside a dedicated worker.
-   * `check` and `download` take no URL. There is no `apply()`. The running
-   * process is not replaced. The next launch applies a staged update.
+   * The manifest `version` captured when the realm starts. `null` for
+   * `yuzuko run`, `yuzuko repl`, and `yuzuko test`, and when that version
+   * cannot be read. Absent in a dedicated worker. Assigning to this property
+   * does not change the version {@link autoUpdate} compares.
    */
-  interface Updater {
+  const appVersion: string | null;
+
+  /**
+   * Options for {@link autoUpdate}.
+   */
+  interface AutoUpdateOptions {
     /**
-     * Reads `{baseUrl}/feed.json` and remembers a newer update.
+     * Absolute `http:` or `https:` URL of the release feed.
      *
-     * Nothing is downloaded. A thrown check leaves the remembered update
-     * unchanged. Redirects are not followed.
-     *
-     * @returns `available` and the version to report.
-     * @throws {@link DOMException} `InvalidStateError` when the package has no
-     * feed, no usable trust anchor, a version that cannot be compared, or a
-     * feed document, version, payload path, or signature encoding that is not
-     * valid. The messages are `There is no update feed.`,
-     * `There is no update trust anchor.`,
-     * `The packaged version cannot be compared.`, and
-     * `The update feed is not valid.`
-     * @throws {@link DOMException} `NetworkError` when the status is not 200,
-     * the connection fails, the body is chunked, a limit is exceeded, or the
-     * response times out. The message is `The update could not be downloaded.`
-     * A connection that closes before `Content-Length` bytes arrive uses
-     * `The connection closed before the body ended.`
+     * A string or a `URL`. The check reads `{url}/feed.json`. A query, a
+     * fragment, and userinfo are not sent. Omitted on a packaged app, the
+     * check fails with `InvalidStateError` and does not open a connection.
+     * Omitted when the process is not packaged, the call still resolves
+     * without contacting a host. A later version of the application passes
+     * its own URL.
      */
-    check(): Promise<UpdateCheck>;
+    url?: string | URL;
 
     /**
-     * Downloads the payload remembered by the last successful newer {@link Updater.check}.
+     * Standard base64, with padding, of the 32-byte Ed25519 public key.
      *
-     * The signature is verified before anything is staged. A failed download
-     * does not replace `app/` or the stage.
-     *
-     * @throws {@link DOMException} `InvalidStateError` when no newer update is
-     * remembered, the signature does not verify, or the payload framing does
-     * not match. The messages are `There is no update to download.`,
-     * `The update signature is not valid.`, and
-     * `The update payload is not valid.`
-     * @throws {@link DOMException} `NetworkError` for the same transport
-     * failures as {@link Updater.check}.
+     * The key verifies the payload. The same call stores those bytes with
+     * the stage, and the next launch verifies with that stored key. A later
+     * version of the application passes its own key. Omitted on a packaged
+     * app, the check fails with `InvalidStateError` and does not open a
+     * connection. Omitted when the process is not packaged, the call still
+     * resolves without contacting a host.
      */
-    download(): Promise<void>;
+    publicKey?: string;
+
+    /**
+     * Milliseconds from one successful check to the next.
+     *
+     * Omitted, the call checks once. A finite number from 1 through
+     * 2147483647. The fractional part is truncated toward zero.
+     */
+    interval?: number;
+
+    /**
+     * Called with the feed version when a payload is staged.
+     *
+     * A throw on the first check rejects the returned promise and leaves the
+     * stage in place. A throw on a later check is reported with `reportError`.
+     */
+    onUpdateReady?: (version: string) => void;
   }
 
   /**
-   * Present only on the main global of a packaged application.
+   * Checks the packaged release feed and stages a newer payload.
+   *
+   * Installed on the main global. Absent in a dedicated worker. When this
+   * process is not packaged, the promise resolves and no host is contacted.
+   * A packaged app reads `{url}/feed.json` from the `url` option. A strictly
+   * newer payload is downloaded and staged in the same call. The running
+   * process is not replaced. The next launch applies the stage.
+   *
+   * The promise is the first check. `interval` repeats later checks. A later
+   * call cancels the previous interval. Only the latest call's
+   * `onUpdateReady` runs. An already staged payload is not downloaded again
+   * when the stored signature and the stored public key both match this call.
+   *
+   * @param options - Feed URL, public key, callback, and poll interval.
+   * Omitted, one check. A packaged check needs `url` and `publicKey`.
+   * @returns A promise that resolves when the first check finishes.
+   * @throws {@link TypeError} `Yuzuko.autoUpdate expects an options object.`
+   * when the argument is present and is not an options object.
+   * `url must be an absolute http or https URL.` when `url` is present and is
+   * not a string or a `URL` whose `href` is an absolute `http:` or `https:`
+   * URL with a host. This includes a process that is not packaged.
+   * `publicKey must be standard base64 of a 32-byte Ed25519 public key.`
+   * when `publicKey` is present and is not that string. This includes a
+   * process that is not packaged. `onUpdateReady must be a function.` when that
+   * field is present and is not a function.
+   * `The update interval must be a finite number of milliseconds from 1 through 2147483647.`
+   * when `interval` is present and is not that number.
+   * @throws {@link DOMException} `InvalidStateError` when a packaged call
+   * omits `url`, the call omits `publicKey`, a version that cannot be
+   * compared, or a feed document, version, payload path, or signature
+   * encoding that is not valid. The messages are `There is no update feed.`,
+   * `There is no update trust anchor.`,
+   * `The packaged version cannot be compared.`, and
+   * `The update feed is not valid.`
+   * `The update signature is not valid.` when the signature does not verify.
+   * `The update payload is not valid.` when the payload framing does not match.
+   * @throws {@link DOMException} `NetworkError` when the status is not 200,
+   * the connection fails, the body is chunked, a limit is exceeded, or the
+   * response times out. The message is `The update could not be downloaded.`
+   * A connection that closes before `Content-Length` bytes arrive uses
+   * `The connection closed before the body ended.`
+   * @throws {@link DOMException} `NotAllowedError`
+   * `Requires net access, run again with the --allow-net flag`
+   * when the net permission is not granted.
    */
-  const updater: Updater;
+  function autoUpdate(options?: AutoUpdateOptions): Promise<void>;
 
   /**
    * Options shared by the {@link test} call forms.
@@ -14602,7 +14637,8 @@ declare class WorkerGlobalScope extends EventTarget {
  * The worker has the web globals in this file except `requestIdleCallback`,
  * `cancelIdleCallback`, `Yuzuko.Window`, `Yuzuko.Menu`, `Yuzuko.setMenu`,
  * `Yuzuko.setDialogLabels`,
- * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.updater`, `navigator.clipboard`, and
+ * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.appVersion`, `Yuzuko.autoUpdate`,
+ * `navigator.clipboard`, and
  * `navigator.getGamepads`. `FileReaderSync` is on this global. `self.fonts`
  * and `globalThis.fonts` are that worker's {@link FontFaceSet}.
  * `requestAnimationFrame` runs the callback at

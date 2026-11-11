@@ -5,7 +5,7 @@ mod permissions;
 
 pub use bundle::{
   BundleLaunch, Config, ConfigError, Target, bundled_launch, discover,
-  enable_updater, load_for_run, load_package, package,
+  enable_updater, install_auto_update, load_for_run, load_package, package,
   reject_package_extension,
 };
 pub use permissions::{

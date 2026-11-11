@@ -21,8 +21,6 @@ struct BundleFile {
   version: String,
   identifier: String,
   entry: String,
-  #[serde(rename = "releaseBaseUrl", skip_serializing_if = "Option::is_none")]
-  release_base_url: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   permissions: Option<serde_json::Value>,
 }
@@ -144,7 +142,6 @@ fn write_macos(
   let app_root = resources.join("app");
   let entry = copy_tree(config, &app_root)?;
   write_manifest(config, &entry, &resources.join("yuzuko.bundle.json"))?;
-  write_trust_anchor(config, &resources)?;
   if let Some(icon) = &config.icons.macos {
     let icns = resources.join("AppIcon.icns");
     match icon {
@@ -192,7 +189,6 @@ fn write_directory(
   let app_root = output.join("app");
   let entry = copy_tree(config, &app_root)?;
   write_manifest(config, &entry, &output.join("yuzuko.bundle.json"))?;
-  write_trust_anchor(config, output)?;
   match target {
     Target::Windows => {
       fs::write(output.join("AppUserModelID"), &config.identifier)?;
@@ -520,15 +516,6 @@ fn relative_path(root: &Path, path: &Path) -> Result<String, ConfigError> {
   )
 }
 
-fn write_trust_anchor(config: &Config, dir: &Path) -> Result<(), ConfigError> {
-  let Some(key) = config.release_public_key else {
-    return Ok(());
-  };
-  // Apply never rewrites this file. The feed cannot replace the anchor.
-  fs::write(dir.join("yuzuko.update-key"), key)?;
-  Ok(())
-}
-
 fn write_manifest(
   config: &Config,
   entry: &str,
@@ -539,7 +526,6 @@ fn write_manifest(
     version: config.version.clone(),
     identifier: config.identifier.clone(),
     entry: entry.to_string(),
-    release_base_url: config.release_base_url.clone(),
     permissions: config.permissions.clone(),
   };
   let text = serde_json::to_string_pretty(&file)
@@ -603,12 +589,6 @@ fn info_plist(config: &Config, executable: &str, icon: bool) -> String {
   );
   if icon {
     plist.push_str("<key>CFBundleIconFile</key><string>AppIcon</string>\n");
-  }
-  if let Some(url) = &config.release_base_url {
-    plist.push_str(&format!(
-      "<key>YuzukoReleaseBaseURL</key><string>{}</string>\n",
-      xml(url)
-    ));
   }
   plist.push_str("</dict></plist>\n");
   plist

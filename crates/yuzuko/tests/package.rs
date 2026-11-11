@@ -60,7 +60,8 @@ console.log(titled.surface.title);
 console.log(import.meta.url);
 console.log(mark);
 console.log(typeof Yuzuko.test);
-console.log("updater:" + typeof Yuzuko.updater);
+console.log("autoUpdate:" + typeof Yuzuko.autoUpdate);
+console.log("appVersion:" + JSON.stringify(Yuzuko.appVersion));
 console.log("args:" + JSON.stringify(Yuzuko.args));
 let blocked = false;
 try {
@@ -90,7 +91,6 @@ fn base_config(extra: &str) -> String {
   "name": "My Game",
   "version": "1.4.2",
   "assets": ["./assets/**"],
-  "release": {{ "baseUrl": "https://updates.example.invalid/game" }},
   {extra}
 }}
 "#
@@ -563,16 +563,18 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   );
   assert!(plist.contains("<string>1.4.2</string>"), "{plist}");
   assert!(
-    plist.contains("https://updates.example.invalid/game"),
+    !plist.contains("https://updates.example.invalid/game"),
     "{plist}"
   );
+  assert!(!plist.contains("YuzukoReleaseBaseURL"), "{plist}");
   let manifest =
     fs::read_to_string(app.join("Contents/Resources/yuzuko.bundle.json"))
       .unwrap();
   assert!(
-    manifest.contains("https://updates.example.invalid/game"),
+    !manifest.contains("https://updates.example.invalid/game"),
     "{manifest}"
   );
+  assert!(!manifest.contains("releaseBaseUrl"), "{manifest}");
   assert!(
     manifest.contains("\"entry\": \"src/main.ts\""),
     "{manifest}"
@@ -683,7 +685,16 @@ fn mac_app_launches_with_assets_title_and_adhoc_signature() {
   );
   assert!(first.stdout.contains("My Game"), "{}", first.stdout);
   assert!(first.stdout.contains("scripted"), "{}", first.stdout);
-  assert!(first.stdout.contains("updater:object"), "{}", first.stdout);
+  assert!(
+    first.stdout.contains("autoUpdate:function"),
+    "{}",
+    first.stdout
+  );
+  assert!(
+    first.stdout.contains("appVersion:\"1.4.2\""),
+    "{}",
+    first.stdout
+  );
   assert!(
     first.stdout.contains("Contents/Resources/app"),
     "{}",
@@ -777,9 +788,10 @@ fn directory_bundle_launches_with_assets_and_title() {
   assert!(!bundle.join("app/src/missing-dynamic.ts").exists());
   let manifest = fs::read_to_string(bundle.join("yuzuko.bundle.json")).unwrap();
   assert!(
-    manifest.contains("https://updates.example.invalid/game"),
+    !manifest.contains("https://updates.example.invalid/game"),
     "{manifest}"
   );
+  assert!(!manifest.contains("releaseBaseUrl"), "{manifest}");
   assert!(
     manifest.contains("\"entry\": \"src/main.ts\""),
     "{manifest}"
@@ -834,7 +846,16 @@ fn directory_bundle_launches_with_assets_and_title() {
   );
   assert!(first.stdout.contains("My Game"), "{}", first.stdout);
   assert!(first.stdout.contains("scripted"), "{}", first.stdout);
-  assert!(first.stdout.contains("updater:object"), "{}", first.stdout);
+  assert!(
+    first.stdout.contains("autoUpdate:function"),
+    "{}",
+    first.stdout
+  );
+  assert!(
+    first.stdout.contains("appVersion:\"0.0.0\""),
+    "{}",
+    first.stdout
+  );
   assert!(
     first.stdout.contains("/app/src/main.ts"),
     "{}",

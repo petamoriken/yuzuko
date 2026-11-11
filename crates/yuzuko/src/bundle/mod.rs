@@ -1,4 +1,4 @@
-//! Package config, the bundle writer, and the updater.
+//! Package config, the bundle writer, and automatic updates.
 
 mod config;
 mod icon;
@@ -10,4 +10,4 @@ pub use config::{
   reject_package_extension,
 };
 pub use package::{BundleLaunch, Target, bundled_launch, package};
-pub use update::enable_updater;
+pub use update::{enable_updater, install_auto_update};

@@ -35,8 +35,6 @@ pub struct Config {
   pub icons: Icons,
   pub output: OutputPaths,
   pub codesign_identity: Option<String>,
-  pub release_base_url: Option<String>,
-  pub release_public_key: Option<[u8; 32]>,
   /// The `permissions` object, kept so a package stores the same paths.
   pub permissions: Option<serde_json::Value>,
 }
@@ -71,7 +69,6 @@ struct RawConfig {
   assets: Option<Vec<String>>,
   output: Option<RawOutput>,
   macos: Option<RawMacos>,
-  release: Option<RawRelease>,
   permissions: Option<serde_json::Value>,
 }
 
@@ -110,15 +107,6 @@ struct RawOutput {
 struct RawMacos {
   #[serde(rename = "codesignIdentity")]
   codesign_identity: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawRelease {
-  #[serde(rename = "baseUrl")]
-  base_url: Option<String>,
-  #[serde(rename = "publicKey")]
-  public_key: Option<String>,
 }
 
 /// Nearest `yuzuko.json` or `yuzuko.jsonc`, walking from `start` toward root.
@@ -259,29 +247,6 @@ fn read_config(path: &Path) -> Result<Config, ConfigError> {
     .transpose()?
     .unwrap_or_default();
   let codesign_identity = raw.macos.and_then(|macos| macos.codesign_identity);
-  let (release_base_url, release_public_key) = match raw.release {
-    Some(release) => {
-      let base_url = match release.base_url {
-        Some(url) => {
-          check_base_url(&url)?;
-          Some(url)
-        }
-        None => None,
-      };
-      let public_key = match release.public_key {
-        Some(text) => {
-          Some(crate::bundle::update::decode_public_key(&text).map_err(|()| {
-            ConfigError::new(
-              "release.publicKey must be standard base64 of a 32-byte Ed25519 public key.",
-            )
-          })?)
-        }
-        None => None,
-      };
-      (base_url, public_key)
-    }
-    None => (None, None),
-  };
   let permissions = read_permissions(&directory, raw.permissions)?;
   Ok(Config {
     directory,
@@ -293,8 +258,6 @@ fn read_config(path: &Path) -> Result<Config, ConfigError> {
     icons,
     output,
     codesign_identity,
-    release_base_url,
-    release_public_key,
     permissions,
   })
 }
@@ -434,24 +397,6 @@ pub fn reject_package_extension(path: &str) -> Result<(), ConfigError> {
         "output {path} is not produced in this phase."
       )));
     }
-  }
-  Ok(())
-}
-
-fn check_base_url(url: &str) -> Result<(), ConfigError> {
-  let rest = url
-    .strip_prefix("https://")
-    .or_else(|| url.strip_prefix("http://"));
-  let Some(rest) = rest else {
-    return Err(ConfigError::new(
-      "release.baseUrl must be an absolute http or https URL.",
-    ));
-  };
-  let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-  if host.is_empty() || host.contains(' ') {
-    return Err(ConfigError::new(
-      "release.baseUrl must be an absolute http or https URL.",
-    ));
   }
   Ok(())
 }
