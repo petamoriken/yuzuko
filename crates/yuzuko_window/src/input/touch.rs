@@ -300,7 +300,7 @@ mod macos {
         && CFNumberGetValue(
           value.0,
           SINT32,
-          &mut number as *mut i32 as *mut c_void,
+          std::ptr::from_mut(&mut number).cast(),
         ) != 0
     };
     ok.then_some(number)
@@ -322,14 +322,17 @@ mod macos {
         return None;
       }
       let length = CFDataGetLength(value.0);
-      if length <= 0 || length > 65_536 {
+      let Ok(length) = usize::try_from(length) else {
+        return None;
+      };
+      if length == 0 || length > 65_536 {
         return None;
       }
       let pointer = CFDataGetBytePtr(value.0);
       if pointer.is_null() {
         return None;
       }
-      Some(std::slice::from_raw_parts(pointer, length as usize).to_vec())
+      Some(std::slice::from_raw_parts(pointer, length).to_vec())
     }
   }
 
@@ -478,10 +481,11 @@ fn contact_count_maximum(bytes: &[u8]) -> Option<i32> {
     index = end;
     match item_type {
       MAIN => {
-        if pending && matches!(tag, INPUT | OUTPUT | FEATURE) {
-          if let Some(count) = plausible(globals.logical_max) {
-            found = Some(found.map_or(count, |current| current.max(count)));
-          }
+        if pending
+          && matches!(tag, INPUT | OUTPUT | FEATURE)
+          && let Some(count) = plausible(globals.logical_max)
+        {
+          found = Some(found.map_or(count, |current| current.max(count)));
         }
         pending = false;
         usage_min = None;
@@ -595,7 +599,7 @@ fn unsigned_item(data: &[u8]) -> u32 {
 fn signed_item(data: &[u8]) -> i64 {
   match data {
     [] => 0,
-    [byte] => i64::from(*byte as i8),
+    [byte] => i64::from(i8::from_le_bytes([*byte])),
     [low, high] => i64::from(i16::from_le_bytes([*low, *high])),
     [first, second, third, fourth] => {
       i64::from(i32::from_le_bytes([*first, *second, *third, *fourth]))

@@ -1980,7 +1980,7 @@ fn require_dict<'s>(
 ) -> Result<v8::Local<'s, v8::Value>, OpError> {
   let value = get_property(scope, init, name)?;
   if value.is_undefined() {
-    return Err(OpError::type_(&format!("TouchInit.{name} is required")));
+    return Err(OpError::type_(format!("TouchInit.{name} is required")));
   }
   Ok(value)
 }
