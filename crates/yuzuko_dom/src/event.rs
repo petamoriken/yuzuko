@@ -123,6 +123,22 @@ impl Event {
     *self.current.borrow_mut() = None;
     self.phase.set(0);
   }
+
+  /// Replaces `type`, `bubbles`, and `cancelable` unless the event is dispatching.
+  pub(crate) fn init_type(
+    &self,
+    type_name: String,
+    bubbles: bool,
+    cancelable: bool,
+  ) -> bool {
+    if self.dispatching.get() {
+      return false;
+    }
+    *self.type_name.borrow_mut() = type_name;
+    self.bubbles.set(bubbles);
+    self.cancelable.set(cancelable);
+    true
+  }
 }
 
 #[op(inspect = [

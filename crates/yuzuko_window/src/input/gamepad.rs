@@ -1736,6 +1736,12 @@ impl Navigator {
     crate::input::keyboard::instance(scope)
   }
 
+  #[getter]
+  fn max_touch_points(&self) -> i32 {
+    let _ = self;
+    0
+  }
+
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {
     let _ = self;
     let slots = STORE.with(|slot| slot.borrow().slots.clone());

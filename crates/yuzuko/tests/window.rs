@@ -99,6 +99,23 @@ fn touch_events_follow_the_constructor() {
 }
 
 #[test]
+fn pointer_event_idl_matches() {
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "-A", "tests/pointer_idl_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains("ok | 7 passed | 0 failed | 0 ignored"),
+    "{stdout}\n{}",
+    text(&output.stderr)
+  );
+}
+
+#[test]
 fn opens_an_os_window() {
   let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())

@@ -397,7 +397,7 @@ fn event_list(
 pub struct UIEvent {
   base: Event,
   view: RefCell<Option<v8::TracedReference<v8::Object>>>,
-  detail: i32,
+  detail: Cell<i32>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for UIEvent {
@@ -420,8 +420,19 @@ fn ui_from_args(
   Ok(UIEvent {
     base,
     view: RefCell::new(read_view(scope, init)?),
-    detail: idl_long(raw_number(scope, init, "detail")),
+    detail: Cell::new(idl_long(raw_number(scope, init, "detail"))),
   })
+}
+
+impl UIEvent {
+  fn assign_ui(
+    &self,
+    detail: i32,
+    view: Option<v8::TracedReference<v8::Object>>,
+  ) {
+    self.detail.set(detail);
+    *self.view.borrow_mut() = view;
+  }
 }
 
 #[op(inherit = Event)]
@@ -447,7 +458,7 @@ impl UIEvent {
 
   #[getter]
   fn detail(&self) -> i32 {
-    self.detail
+    self.detail.get()
   }
 }
 
@@ -511,7 +522,7 @@ struct MouseState {
 #[repr(C)]
 pub struct MouseEvent {
   base: UIEvent,
-  state: MouseState,
+  state: RefCell<MouseState>,
   related: RefCell<Option<v8::TracedReference<v8::Object>>>,
 }
 
@@ -535,7 +546,7 @@ impl MouseEvent {
     let init = util::init_arg(args);
     Ok(MouseEvent {
       base: ui,
-      state: MouseState {
+      state: RefCell::new(MouseState {
         screen_x: raw_number(scope, init, "screenX"),
         screen_y: raw_number(scope, init, "screenY"),
         client_x: raw_number(scope, init, "clientX"),
@@ -545,7 +556,7 @@ impl MouseEvent {
         button: idl_long(raw_number(scope, init, "button")),
         buttons: idl_unsigned(raw_number(scope, init, "buttons")) as u16,
         modifiers: read_modifiers(scope, init),
-      },
+      }),
       related: RefCell::new(read_related(scope, init)?),
     })
   }
@@ -554,6 +565,7 @@ impl MouseEvent {
 #[op(inherit = UIEvent)]
 impl MouseEvent {
   #[constructor]
+  #[length(1)]
   fn new(
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
@@ -569,82 +581,94 @@ impl MouseEvent {
 
   #[getter]
   fn screen_x(&self) -> f64 {
-    floor_coord(self.state.screen_x)
+    floor_coord(self.state.borrow().screen_x)
   }
 
   #[getter]
   fn screen_y(&self) -> f64 {
-    floor_coord(self.state.screen_y)
+    floor_coord(self.state.borrow().screen_y)
   }
 
   #[getter]
   fn client_x(&self) -> f64 {
-    floor_coord(self.state.client_x)
+    floor_coord(self.state.borrow().client_x)
   }
 
   #[getter]
   fn client_y(&self) -> f64 {
-    floor_coord(self.state.client_y)
+    floor_coord(self.state.borrow().client_y)
   }
 
   #[getter]
   fn page_x(&self) -> f64 {
-    floor_coord(self.state.client_x)
+    floor_coord(self.state.borrow().client_x)
   }
 
   #[getter]
   fn page_y(&self) -> f64 {
-    floor_coord(self.state.client_y)
+    floor_coord(self.state.borrow().client_y)
   }
 
   #[getter]
   fn offset_x(&self) -> f64 {
-    floor_coord(self.state.client_x)
+    floor_coord(self.state.borrow().client_x)
   }
 
   #[getter]
   fn offset_y(&self) -> f64 {
-    floor_coord(self.state.client_y)
+    floor_coord(self.state.borrow().client_y)
+  }
+
+  /// Same CSS pixels as `offsetX`. There is no stacking context to offset from.
+  #[getter]
+  fn layer_x(&self) -> f64 {
+    floor_coord(self.state.borrow().client_x)
+  }
+
+  /// Same CSS pixels as `offsetY`.
+  #[getter]
+  fn layer_y(&self) -> f64 {
+    floor_coord(self.state.borrow().client_y)
   }
 
   #[getter]
   fn movement_x(&self) -> f64 {
-    self.state.movement_x
+    self.state.borrow().movement_x
   }
 
   #[getter]
   fn movement_y(&self) -> f64 {
-    self.state.movement_y
+    self.state.borrow().movement_y
   }
 
   #[getter]
   fn button(&self) -> i32 {
-    self.state.button
+    self.state.borrow().button
   }
 
   #[getter]
   fn buttons(&self) -> i32 {
-    i32::from(self.state.buttons)
+    i32::from(self.state.borrow().buttons)
   }
 
   #[getter]
   fn ctrl_key(&self) -> bool {
-    self.state.modifiers.ctrl
+    self.state.borrow().modifiers.ctrl
   }
 
   #[getter]
   fn shift_key(&self) -> bool {
-    self.state.modifiers.shift
+    self.state.borrow().modifiers.shift
   }
 
   #[getter]
   fn alt_key(&self) -> bool {
-    self.state.modifiers.alt
+    self.state.borrow().modifiers.alt
   }
 
   #[getter]
   fn meta_key(&self) -> bool {
-    self.state.modifiers.meta
+    self.state.borrow().modifiers.meta
   }
 
   #[getter]
@@ -653,7 +677,51 @@ impl MouseEvent {
   }
 
   fn get_modifier_state(&self, key: String) -> bool {
-    modifier_active(self.state.modifiers, &key)
+    let modifiers = self.state.borrow().modifiers;
+    modifier_active(modifiers, &key)
+  }
+
+  /// Legacy initializer. Argument 10 is `altKey` and argument 11 is `shiftKey`.
+  #[length(1)]
+  fn init_mouse_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = flag_arg(scope, args, 1);
+    let cancelable = flag_arg(scope, args, 2);
+    let view = view_arg(scope, args, 3)?;
+    let detail = long_arg(scope, args, 4)?;
+    let screen_x = double_arg(scope, args, 5)?;
+    let screen_y = double_arg(scope, args, 6)?;
+    let client_x = double_arg(scope, args, 7)?;
+    let client_y = double_arg(scope, args, 8)?;
+    let ctrl = flag_arg(scope, args, 9);
+    let alt = flag_arg(scope, args, 10);
+    let shift = flag_arg(scope, args, 11);
+    let meta = flag_arg(scope, args, 12);
+    let button = long_arg(scope, args, 13)?;
+    let related = related_arg(scope, args, 14)?;
+    if !self.base.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    let view = view.map(|object| traced(scope, object));
+    self.base.assign_ui(detail, view);
+    {
+      let mut state = self.state.borrow_mut();
+      state.screen_x = screen_x;
+      state.screen_y = screen_y;
+      state.client_x = client_x;
+      state.client_y = client_y;
+      state.button = button;
+      state.modifiers.ctrl = ctrl;
+      state.modifiers.alt = alt;
+      state.modifiers.shift = shift;
+      state.modifiers.meta = meta;
+    }
+    *self.related.borrow_mut() = related.map(|object| traced(scope, object));
+    Ok(())
   }
 }
 
@@ -664,6 +732,7 @@ pub struct WheelEvent {
   delta_y: f64,
   delta_z: f64,
   delta_mode: u32,
+  momentum: bool,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for WheelEvent {
@@ -679,6 +748,7 @@ unsafe impl v8::cppgc::GarbageCollected for WheelEvent {
 #[op(inherit = MouseEvent)]
 impl WheelEvent {
   #[constructor]
+  #[length(1)]
   fn new(
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
@@ -691,6 +761,7 @@ impl WheelEvent {
       delta_y: raw_number(scope, init, "deltaY"),
       delta_z: raw_number(scope, init, "deltaZ"),
       delta_mode: idl_unsigned(raw_number(scope, init, "deltaMode")),
+      momentum: util::dict_bool(scope, init, "momentum"),
     })
   }
 
@@ -718,6 +789,57 @@ impl WheelEvent {
   #[getter]
   fn delta_mode(&self) -> f64 {
     f64::from(self.delta_mode)
+  }
+
+  #[getter]
+  fn momentum(&self) -> bool {
+    self.momentum
+  }
+}
+
+/// A constructed drag event. The runtime does not run an HTML drag session.
+#[repr(C)]
+pub struct DragEvent {
+  base: MouseEvent,
+  data_transfer: RefCell<Option<v8::TracedReference<v8::Object>>>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for DragEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    trace_optional(visitor, &self.data_transfer);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DragEvent"
+  }
+}
+
+#[op(inherit = MouseEvent)]
+impl DragEvent {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<DragEvent, OpError> {
+    let base = MouseEvent::from_init(scope, args)?;
+    let init = util::init_arg(args);
+    Ok(DragEvent {
+      base,
+      data_transfer: RefCell::new(read_data_transfer(scope, init)?),
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    event::define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn data_transfer(&self, scope: &mut v8::PinScope) -> Js {
+    traced_object(scope, &self.data_transfer)
   }
 }
 
@@ -1045,6 +1167,7 @@ fn read_pointer_list(
 #[op(inherit = MouseEvent)]
 impl PointerEvent {
   #[constructor]
+  #[length(1)]
   fn new(
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
@@ -1092,42 +1215,42 @@ impl PointerEvent {
 
   #[getter]
   fn screen_x(&self) -> f64 {
-    self.expose(self.base.state.screen_x)
+    self.expose(self.base.state.borrow().screen_x)
   }
 
   #[getter]
   fn screen_y(&self) -> f64 {
-    self.expose(self.base.state.screen_y)
+    self.expose(self.base.state.borrow().screen_y)
   }
 
   #[getter]
   fn client_x(&self) -> f64 {
-    self.expose(self.base.state.client_x)
+    self.expose(self.base.state.borrow().client_x)
   }
 
   #[getter]
   fn client_y(&self) -> f64 {
-    self.expose(self.base.state.client_y)
+    self.expose(self.base.state.borrow().client_y)
   }
 
   #[getter]
   fn page_x(&self) -> f64 {
-    self.expose(self.base.state.client_x)
+    self.expose(self.base.state.borrow().client_x)
   }
 
   #[getter]
   fn page_y(&self) -> f64 {
-    self.expose(self.base.state.client_y)
+    self.expose(self.base.state.borrow().client_y)
   }
 
   #[getter]
   fn offset_x(&self) -> f64 {
-    self.expose(self.base.state.client_x)
+    self.expose(self.base.state.borrow().client_x)
   }
 
   #[getter]
   fn offset_y(&self) -> f64 {
-    self.expose(self.base.state.client_y)
+    self.expose(self.base.state.borrow().client_y)
   }
 
   #[getter]
@@ -1315,9 +1438,9 @@ fn pointer_from_fired(
           true,
         ),
         view: RefCell::new(window_view(scope)),
-        detail: fired.detail,
+        detail: Cell::new(fired.detail),
       },
-      state: mouse_state_from(fired),
+      state: RefCell::new(mouse_state_from(fired)),
       related: RefCell::new(None),
     },
     pointer_id: fired.pointer_id,
@@ -1406,7 +1529,7 @@ pub fn dispatch_key(
     base: UIEvent {
       base: Event::new(fired.type_name.clone(), true, true, true, true),
       view: RefCell::new(window_view(scope)),
-      detail: 0,
+      detail: Cell::new(0),
     },
     key: fired.key.clone(),
     code: fired.code.clone(),
@@ -1444,7 +1567,7 @@ pub fn dispatch_composition(
     base: UIEvent {
       base: Event::new(fired.type_name.clone(), true, cancelable, true, true),
       view: RefCell::new(window_view(scope)),
-      detail: 0,
+      detail: Cell::new(0),
     },
     data: fired.data.clone(),
   };
@@ -1467,7 +1590,7 @@ pub fn dispatch_input(
     base: UIEvent {
       base: Event::new("beforeinput", true, true, true, true),
       view: RefCell::new(window_view(scope)),
-      detail: 0,
+      detail: Cell::new(0),
     },
     data: Some(fired.data.clone()),
     is_composing: Cell::new(fired.is_composing),
@@ -1502,9 +1625,9 @@ pub fn dispatch_wheel(
       base: UIEvent {
         base: Event::new("wheel", true, true, true, true),
         view: RefCell::new(window_view(scope)),
-        detail: 0,
+        detail: Cell::new(0),
       },
-      state: MouseState {
+      state: RefCell::new(MouseState {
         screen_x: fired.screen_x,
         screen_y: fired.screen_y,
         client_x: fired.client_x,
@@ -1521,13 +1644,14 @@ pub fn dispatch_wheel(
           alt_graph: false,
           caps_lock: false,
         },
-      },
+      }),
       related: RefCell::new(None),
     },
     delta_x: fired.delta_x,
     delta_y: fired.delta_y,
     delta_z: fired.delta_z,
     delta_mode: fired.delta_mode,
+    momentum: false,
   };
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   dispatch_sealed(scope, target, object)
@@ -1555,7 +1679,7 @@ pub fn dispatch_focus(
     base: UIEvent {
       base: Event::new(type_name, false, false, true, true),
       view: RefCell::new(window_view(scope)),
-      detail: 0,
+      detail: Cell::new(0),
     },
     related: RefCell::new(None),
   };
@@ -2142,10 +2266,125 @@ fn install_touch_list_indices(scope: &mut v8::PinScope) {
   );
 }
 
+fn flag_arg(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> bool {
+  present_arg(args, index).is_some_and(|value| value.boolean_value(scope))
+}
+
+fn double_arg(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<f64, OpError> {
+  let Some(value) = present_arg(args, index) else {
+    return Ok(0.0);
+  };
+  f64::from_v8(scope, value)
+}
+
+fn long_arg(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<i32, OpError> {
+  Ok(idl_long(double_arg(scope, args, index)?))
+}
+
+fn present_arg<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+  index: i32,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if index < 0 || index >= args.length() {
+    return None;
+  }
+  let value = args.get(index);
+  if value.is_undefined() {
+    None
+  } else {
+    Some(value)
+  }
+}
+
+fn view_arg<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'_>,
+  index: i32,
+) -> Result<Option<v8::Local<'s, v8::Object>>, OpError> {
+  let Some(value) = present_arg(args, index) else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'Window'.",
+    ));
+  };
+  if !util::is_global(scope, object) {
+    return Err(OpError::type_(
+      "The provided value is not of type 'Window'.",
+    ));
+  }
+  Ok(Some(yuzuko_core::op::root(scope, object)))
+}
+
+fn related_arg<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'_>,
+  index: i32,
+) -> Result<Option<v8::Local<'s, v8::Object>>, OpError> {
+  let Some(value) = present_arg(args, index) else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'EventTarget'.",
+    ));
+  };
+  Ok(Some(yuzuko_core::op::root(scope, object)))
+}
+
+fn read_data_transfer(
+  scope: &mut v8::PinScope,
+  init: Option<v8::Local<v8::Value>>,
+) -> Result<Option<v8::TracedReference<v8::Object>>, OpError> {
+  let Some(value) = util::dict_get(scope, init, "dataTransfer") else {
+    return Ok(None);
+  };
+  if value.is_null() || value.is_undefined() {
+    return Ok(None);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'DataTransfer'.",
+    ));
+  };
+  let global = scope.get_current_context().global(scope);
+  let is_transfer = global
+    .get(scope, key(scope, "DataTransfer").into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    .and_then(|constructor| object.instance_of(scope, constructor.into()))
+    .unwrap_or(false);
+  if !is_transfer {
+    return Err(OpError::type_(
+      "The provided value is not of type 'DataTransfer'.",
+    ));
+  }
+  Ok(Some(traced(scope, object)))
+}
+
 pub(crate) fn install(scope: &mut v8::PinScope) {
   UIEvent::install(scope);
   FocusEvent::install(scope);
   MouseEvent::install(scope);
+  DragEvent::install(scope);
   WheelEvent::install(scope);
   Touch::install(scope);
   install_touch_list_indices(scope);
@@ -2199,17 +2438,19 @@ fn define_constants(
   for (name, value) in pairs {
     let number = v8::Integer::new(scope, *value);
     let name = key(scope, name);
+    let attribute =
+      v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE;
     let _ = constructor.define_own_property(
       scope,
       name.into(),
       number.into(),
-      v8::PropertyAttribute::READ_ONLY,
+      attribute,
     );
     let _ = prototype.define_own_property(
       scope,
       name.into(),
       number.into(),
-      v8::PropertyAttribute::READ_ONLY,
+      v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
     );
   }
 }

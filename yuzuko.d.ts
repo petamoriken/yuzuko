@@ -5627,8 +5627,9 @@ declare var performance: Performance;
  * `"Win32"` on Windows, `"MacIntel"` on macOS, and `"Linux"` on Linux.
  * `hardwareConcurrency` is the number of logical processors available to
  * the process, and is at least 1. `clipboard`, `gpu`, `wakeLock`,
- * `keyboard`, and `getGamepads` exist on the main global. A worker
- * navigator has `userAgent`, `platform`, and `hardwareConcurrency`.
+ * `keyboard`, `maxTouchPoints`, and `getGamepads` exist on the main
+ * global. A worker navigator has `userAgent`, `platform`, and
+ * `hardwareConcurrency`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -5658,6 +5659,16 @@ interface Navigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/hardwareConcurrency)
    */
   readonly hardwareConcurrency: number;
+
+  /**
+   * Maximum simultaneous touch contacts.
+   *
+   * No touch digitizer is reported, so the value is 0. Main global only.
+   * A dedicated worker does not have this attribute.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/maxTouchPoints)
+   */
+  readonly maxTouchPoints: number;
 
   /**
    * The process clipboard. Main global only.
@@ -6264,8 +6275,9 @@ interface MouseEventInit extends UIEventInit {
  * A mouse event derived from a pointer event, or a constructed mouse event.
  *
  * Host pointer events target {@link Yuzuko.Window.surface} and propagate
- * through the window. `clientX`, `pageX`, and `offsetX` are CSS pixels from
- * that window's top-left.
+ * through the window. `clientX`, `pageX`, `offsetX`, and `layerX` are CSS
+ * pixels from that window's top-left. There is no stacking context, so
+ * `layerX` and `layerY` match `offsetX` and `offsetY`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent)
  */
@@ -6294,6 +6306,20 @@ interface MouseEvent extends UIEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/offsetY) */
   readonly offsetY: number;
+
+  /**
+   * Same CSS pixels as {@link MouseEvent.offsetX}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/layerX)
+   */
+  readonly layerX: number;
+
+  /**
+   * Same CSS pixels as {@link MouseEvent.offsetY}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/layerY)
+   */
+  readonly layerY: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/movementX) */
   readonly movementX: number;
@@ -6326,10 +6352,76 @@ interface MouseEvent extends UIEvent {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/getModifierState)
    */
   getModifierState(key: string): boolean;
+
+  /**
+   * Legacy initializer.
+   *
+   * The tenth argument is `altKey` and the eleventh is `shiftKey`. Omitted
+   * arguments use false, 0, or null. The call does nothing while the event
+   * is dispatching. It does not change `buttons`, `movementX`, `movementY`,
+   * or `isTrusted`. `view` must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, when `view` is
+   * not this realm's global or null, or when `relatedTarget` is not an
+   * object or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/initMouseEvent)
+   */
+  initMouseEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    detail?: number,
+    screenX?: number,
+    screenY?: number,
+    clientX?: number,
+    clientY?: number,
+    ctrlKey?: boolean,
+    altKey?: boolean,
+    shiftKey?: boolean,
+    metaKey?: boolean,
+    button?: number,
+    relatedTarget?: EventTarget | null,
+  ): void;
 }
 declare var MouseEvent: {
   prototype: MouseEvent;
   new(type: string, eventInitDict?: MouseEventInit): MouseEvent;
+};
+
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DragEvent/DragEvent)
+ */
+interface DragEventInit extends MouseEventInit {
+  dataTransfer?: DataTransfer | null;
+}
+
+/**
+ * A constructed drag event.
+ *
+ * The runtime does not run an HTML drag-and-drop session. `dataTransfer`
+ * is null unless the dictionary passes a {@link DataTransfer}. Coordinates
+ * are floored the same way as a {@link MouseEvent}. A dedicated worker has
+ * this constructor and does not have `DataTransfer`.
+ *
+ * @throws {@link TypeError} When `dataTransfer` is not a `DataTransfer`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DragEvent)
+ */
+interface DragEvent extends MouseEvent {
+
+  /**
+   * The store passed to the constructor, or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DragEvent/dataTransfer)
+   */
+  readonly dataTransfer: DataTransfer | null;
+}
+declare var DragEvent: {
+  prototype: DragEvent;
+  new(type: string, eventInitDict?: DragEventInit): DragEvent;
 };
 
 
@@ -6341,6 +6433,11 @@ interface WheelEventInit extends MouseEventInit {
   deltaY?: number;
   deltaZ?: number;
   deltaMode?: number;
+
+  /**
+   * When true, the event is inertial. A host `wheel` event leaves this false.
+   */
+  momentum?: boolean;
 }
 
 /**
@@ -6361,6 +6458,14 @@ interface WheelEvent extends MouseEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WheelEvent/deltaMode) */
   readonly deltaMode: number;
+
+  /**
+   * True when the constructor dictionary sets it. A host `wheel` event is
+   * false. The runtime does not synthesize scroll inertia.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WheelEvent)
+   */
+  readonly momentum: boolean;
 
   readonly DOM_DELTA_PIXEL: 0;
   readonly DOM_DELTA_LINE: 1;
@@ -14783,6 +14888,7 @@ declare var Clipboard: {
  * `text/plain` from the same cache as {@link Clipboard.readText}. A cancelled
  * host `copy` or `cut` publishes `text/plain` only. `items`, `files`, and
  * `setDragImage` are absent. A dedicated worker has no `DataTransfer`.
+ * A {@link DragEvent} stores this object only when script passes it.
  * File drops do not carry one.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer)
