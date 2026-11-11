@@ -115,24 +115,28 @@ impl Drop for FlagGuard<'_> {
   }
 }
 
-struct ConnParts {
-  stream: TcpStream,
-  local: SocketAddr,
-  remote: SocketAddr,
+pub(crate) struct ConnParts {
+  pub(crate) stream: TcpStream,
+  pub(crate) local: SocketAddr,
+  pub(crate) remote: SocketAddr,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Fail {
+#[derive(Clone, Debug)]
+pub(crate) enum Fail {
   Closed,
   Connect,
   Accept,
   Read,
   Write,
   Detached,
+  Class(crate::socket_error::Class),
+  Denied { name: String, message: String },
+  Resolve,
+  Handshake,
 }
 
 impl Fail {
-  fn message(self) -> &'static str {
+  fn message(&self) -> &'static str {
     match self {
       Self::Closed => CLOSED,
       Self::Connect => CONNECT,
@@ -140,7 +144,18 @@ impl Fail {
       Self::Read => READ_ERR,
       Self::Write => WRITE_ERR,
       Self::Detached => DETACHED,
+      Self::Class(class) => class.message(),
+      Self::Denied { .. } => CONNECT,
+      Self::Resolve => crate::dns::UNRESOLVED,
+      Self::Handshake => "The TLS handshake failed.",
     }
+  }
+}
+
+fn io_fail(error: io::Error, generic: Fail) -> Fail {
+  match crate::socket_error::classify(error.kind()) {
+    Some(class) => Fail::Class(class),
+    None => generic,
   }
 }
 
@@ -151,7 +166,7 @@ enum Deliver {
   Conn(ConnParts),
 }
 
-enum Destination {
+pub(crate) enum Destination {
   View(v8::Global<v8::ArrayBufferView>),
   Buffer(v8::Global<v8::ArrayBuffer>),
   Shared(v8::Global<v8::SharedArrayBuffer>),
@@ -261,13 +276,16 @@ fn accept_conn(shared: &ListenerShared) -> Result<ConnParts, Fail> {
         std::thread::sleep(IO_WAIT);
       }
       Err(_) if shared.is_closed() => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Accept),
+      Err(error) => return Err(io_fail(error, Fail::Accept)),
     }
   }
 }
 
 fn connect_conn(dest: SocketAddr) -> Result<ConnParts, Fail> {
-  let stream = TcpStream::connect(dest).map_err(|_| Fail::Connect)?;
+  let stream = match TcpStream::connect(dest) {
+    Ok(stream) => stream,
+    Err(error) => return Err(io_fail(error, Fail::Connect)),
+  };
   configure(&stream).map_err(|_| Fail::Connect)?;
   let local = stream.local_addr().map_err(|_| Fail::Connect)?;
   let remote = stream.peer_addr().map_err(|_| Fail::Connect)?;
@@ -276,6 +294,31 @@ fn connect_conn(dest: SocketAddr) -> Result<ConnParts, Fail> {
     local,
     remote,
   })
+}
+
+pub(crate) fn connect_target(
+  target: crate::socket_endpoint::Target,
+) -> Result<ConnParts, Fail> {
+  let addrs = match target {
+    crate::socket_endpoint::Target::Addr { addr, .. } => vec![addr],
+    crate::socket_endpoint::Target::Name { host, port } => {
+      match crate::dns::lookup(&host, port) {
+        Ok(addrs) => addrs,
+        Err(crate::dns::LookupError::Resolve) => return Err(Fail::Resolve),
+        Err(crate::dns::LookupError::Denied { name, message }) => {
+          return Err(Fail::Denied { name, message });
+        }
+      }
+    }
+  };
+  let mut last = Fail::Connect;
+  for addr in addrs {
+    match connect_conn(addr) {
+      Ok(parts) => return Ok(parts),
+      Err(fail) => last = fail,
+    }
+  }
+  Err(last)
 }
 
 fn read_conn(shared: &ConnShared, max: usize) -> Result<Deliver, Fail> {
@@ -314,7 +357,7 @@ fn read_conn(shared: &ConnShared, max: usize) -> Result<Deliver, Fail> {
         }
       }
       Err(_) if shared.is_closed() => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Read),
+      Err(error) => return Err(io_fail(error, Fail::Read)),
     }
   }
 }
@@ -352,7 +395,7 @@ fn write_conn(shared: &ConnShared, bytes: &[u8]) -> Result<usize, Fail> {
         }
       }
       Err(_) if shared.is_closed() => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Write),
+      Err(error) => return Err(io_fail(error, Fail::Write)),
     }
   }
   Ok(offset)
@@ -369,7 +412,7 @@ fn is_accept_retry(kind: ErrorKind) -> bool {
   )
 }
 
-fn is_io_retry(kind: ErrorKind) -> bool {
+pub(crate) fn is_io_retry(kind: ErrorKind) -> bool {
   matches!(
     kind,
     ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
@@ -409,6 +452,46 @@ unsafe impl v8::cppgc::GarbageCollected for Conn {
 impl Drop for Conn {
   fn drop(&mut self) {
     let _ = self.shared.mark_closed();
+  }
+}
+
+pub(crate) enum TakeError {
+  Closed,
+  BusyRead,
+  BusyWrite,
+}
+
+impl Conn {
+  pub(crate) fn remote_port(&self) -> u16 {
+    self.shared.remote.port()
+  }
+
+  /// Takes the stream for `startTls`.
+  ///
+  /// A waiting read or write leaves the connection open. Winning the closed
+  /// flag takes the stream without shutting it down, so a concurrent
+  /// `mark_closed` sees the connection as already closed.
+  pub(crate) fn take_stream(
+    &self,
+  ) -> Result<(TcpStream, SocketAddr, SocketAddr), TakeError> {
+    if self.shared.reading.load(Ordering::Acquire) {
+      return Err(TakeError::BusyRead);
+    }
+    if self.shared.writing.load(Ordering::Acquire) {
+      return Err(TakeError::BusyWrite);
+    }
+    let already = self.shared.closed.swap(true, Ordering::AcqRel);
+    let stream = {
+      let mut slot = lock(&self.shared.stream);
+      slot.take()
+    };
+    if already {
+      return Err(TakeError::Closed);
+    }
+    match stream {
+      Some(stream) => Ok((stream, self.shared.local, self.shared.remote)),
+      None => Err(TakeError::Closed),
+    }
   }
 }
 
@@ -602,7 +685,12 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let shared = bind_tcp(addr).map_err(|_| plain_error(scope, BIND))?;
+  let shared = match bind_tcp(addr) {
+    Ok(shared) => shared,
+    Err(error) => {
+      return Err(crate::errors::io_exception(scope, error.kind(), BIND));
+    }
+  };
   Ok(New(Listener { shared }))
 }
 
@@ -613,10 +701,11 @@ fn connect_op(
   if args.length() < 1 {
     return Err(OpError::type_(ARITY));
   }
-  let dest = crate::socket_endpoint::endpoint(
+  let target = crate::socket_endpoint::destination(
     scope,
     args.get(0),
     1,
+    None,
     PORT_DEST,
     ADDRESS,
     ADDRESS_READ,
@@ -624,12 +713,12 @@ fn connect_op(
   settle(
     scope,
     Fail::Connect,
-    move || connect_conn(dest).map(Deliver::Conn),
+    move || connect_target(target).map(Deliver::Conn),
     Finish::Conn,
   )
 }
 
-fn address_value(
+pub(crate) fn address_value(
   scope: &mut v8::PinScope,
   addr: SocketAddr,
 ) -> Result<Js, OpError> {
@@ -640,7 +729,7 @@ fn address_value(
   Ok(Js(v8::Global::new(scope, value)))
 }
 
-fn address_fields(
+pub(crate) fn address_fields(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   hostname: &str,
@@ -661,7 +750,7 @@ fn address_fields(
   Ok(())
 }
 
-fn read_destination(
+pub(crate) fn read_destination(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<(Destination, usize), OpError> {
@@ -698,7 +787,7 @@ fn read_destination(
   Err(OpError::type_(DATA))
 }
 
-fn copy_source(
+pub(crate) fn copy_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
@@ -788,7 +877,7 @@ fn array_copy(buffer: &v8::ArrayBuffer) -> Result<Vec<u8>, OpError> {
   Ok(bytes)
 }
 
-fn write_dest(
+pub(crate) fn write_dest(
   scope: &mut v8::PinScope,
   dest: Destination,
   bytes: &[u8],
@@ -934,7 +1023,7 @@ fn settle(
         let _ = resolver.resolve(scope, value);
       }
       Err(fail) => {
-        let error = error_value(scope, fail.message());
+        let error = fail_value(scope, &fail);
         let _ = resolver.reject(scope, error);
       }
     }
@@ -963,6 +1052,19 @@ fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
   let _ = resolver.reject(scope, error);
   let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
   Ok(Js(v8::Global::new(scope, promise)))
+}
+
+pub(crate) fn fail_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  fail: &Fail,
+) -> v8::Local<'s, v8::Value> {
+  match fail {
+    Fail::Class(class) => crate::errors::class_value(scope, *class),
+    Fail::Denied { name, message } => {
+      crate::errors::denied_value(scope, name, message)
+    }
+    other => error_value(scope, other.message()),
+  }
 }
 
 fn error_value<'s>(

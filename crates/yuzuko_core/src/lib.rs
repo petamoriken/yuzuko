@@ -6,6 +6,8 @@ extern crate self as yuzuko_core;
 mod child;
 mod clone;
 mod color;
+#[cfg(any(feature = "tcp", feature = "udp"))]
+mod dns;
 mod errors;
 mod extensions;
 #[cfg(feature = "ffi")]
@@ -34,9 +36,12 @@ mod runtime;
 mod signal;
 #[cfg(any(feature = "tcp", feature = "udp", feature = "http"))]
 mod socket_endpoint;
+mod socket_error;
 #[cfg(feature = "tcp")]
 mod tcp;
 mod timers;
+#[cfg(feature = "tcp")]
+mod tls;
 #[cfg(feature = "udp")]
 mod udp;
 mod watch;

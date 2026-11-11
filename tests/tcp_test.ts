@@ -13,7 +13,7 @@ const DETACHED = "The buffer is detached.";
 const BUSY_ACCEPT = "An accept is already waiting.";
 const BUSY_READ = "A read is already waiting.";
 const BIND = "The socket could not bind.";
-const CONNECT = "The connection could not be opened.";
+const CONNECT = "The connection was refused.";
 
 type Listener = Yuzuko.TcpListener;
 type Conn = Yuzuko.TcpConn;
@@ -321,12 +321,15 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       const port = listener.addr.port;
       listener.close();
       let refused = "";
+      let refusedClass = false;
       try {
         await Yuzuko.connectTcp({ hostname: "127.0.0.1", port });
       } catch (error) {
         refused = error instanceof Error ? error.message : "other";
+        refusedClass = error instanceof Yuzuko.errors.ConnectionRefused;
       }
       assert(refused === CONNECT, refused);
+      assert(refusedClass, "refused class");
 
       const live = Yuzuko.listenTcp({ hostname: "127.0.0.1", port: 0 });
       open.push(live);

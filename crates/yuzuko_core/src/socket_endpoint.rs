@@ -46,6 +46,73 @@ pub(crate) fn endpoint(
   checked_host(&hostname, port)
 }
 
+/// A connect or send destination.
+///
+/// `localhost` and an IP literal are [`Target::Addr`]. Any other non-empty
+/// name is [`Target::Name`]. `host` is the trimmed caller text, so TLS can
+/// use it as the server name after `localhost` was rewritten to `127.0.0.1`.
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) enum Target {
+  Addr { addr: SocketAddr, host: String },
+  Name { host: String, port: u16 },
+}
+
+/// Reads a connect or send address.
+///
+/// The net check uses the caller host before `localhost` is rewritten. An
+/// omitted port uses `default_port` when it is set. Otherwise a `min_port`
+/// above 0 makes an omitted port an error. An empty or bracketed host throws
+/// after the net check.
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) fn destination(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  min_port: u16,
+  default_port: Option<u16>,
+  port_message: &'static str,
+  object_message: &'static str,
+  read_message: &'static str,
+) -> Result<Target, OpError> {
+  if !value.is_object() {
+    return Err(OpError::type_(object_message));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(object_message));
+  };
+  let hostname = match read_field(scope, object, "hostname", read_message)? {
+    Some(value) if !value.is_undefined() => String::from_v8(scope, value)?,
+    _ => "127.0.0.1".to_string(),
+  };
+  let port = match read_field(scope, object, "port", read_message)? {
+    Some(value) if !value.is_undefined() => {
+      to_port(scope, value, min_port, port_message)?
+    }
+    _ => match default_port {
+      Some(port) => port,
+      None if min_port > 0 => return Err(OpError::type_(port_message)),
+      None => 0,
+    },
+  };
+  crate::permissions::check_net(&hostname, port)?;
+  let host = hostname.trim().to_string();
+  if host.is_empty() || host.contains('[') || host.contains(']') {
+    return Err(OpError::type_(HOSTNAME));
+  }
+  if host.eq_ignore_ascii_case("localhost") {
+    return Ok(Target::Addr {
+      addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+      host,
+    });
+  }
+  if let Ok(ip) = host.parse::<IpAddr>() {
+    return Ok(Target::Addr {
+      addr: SocketAddr::new(ip, port),
+      host,
+    });
+  }
+  Ok(Target::Name { host, port })
+}
+
 pub(crate) fn checked_host(
   hostname: &str,
   port: u16,
@@ -83,7 +150,7 @@ fn parse_host(hostname: &str) -> Result<IpAddr, OpError> {
 }
 
 #[cfg(any(feature = "tcp", feature = "udp"))]
-fn read_field<'s>(
+pub(crate) fn read_field<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,

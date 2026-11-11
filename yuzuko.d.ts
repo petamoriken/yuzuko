@@ -16,7 +16,9 @@
  * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
  * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
  * on the main realm and in a dedicated worker. `Yuzuko.build`, `Yuzuko.args`,
- * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`, and
+ * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`,
+ * `Yuzuko.execPath`, `Yuzuko.pid`, `Yuzuko.ppid`, `Yuzuko.version`,
+ * `Yuzuko.errors.NotCapable`, and
  * `Yuzuko.permissions` are part of that object in every build. That build
  * omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
@@ -2474,6 +2476,51 @@ declare namespace Yuzuko {
   let args: readonly string[];
 
   /**
+   * Absolute path of this executable.
+   *
+   * The path is canonical when the operating system can resolve it.
+   * `execPath` has length 0. A dedicated worker returns the same path.
+   * The call does not take the environment lock.
+   *
+   * @throws {@link DOMException} `OperationError`
+   * `The executable path could not be read.` when the path cannot be read.
+   */
+  function execPath(): string;
+
+  /**
+   * Process id, captured when the realm starts.
+   *
+   * The property is writable. Assigning it replaces the value in this realm
+   * only. A dedicated worker receives the same id.
+   */
+  let pid: number;
+
+  /**
+   * Parent process id, captured when the realm starts.
+   *
+   * The property is writable. A dedicated worker receives the same id.
+   * On Windows, installing the realm throws {@link DOMException}
+   * `OperationError` `The parent process could not be read.` when that id
+   * cannot be read.
+   */
+  let ppid: number;
+
+  /**
+   * Versions captured when the realm starts.
+   *
+   * The object is frozen. Its own enumerable names are `yuzuko` and `v8`,
+   * in that order. Both strings are non-empty. Assigning this property
+   * replaces the object in this realm only. A dedicated worker receives the
+   * same strings.
+   */
+  let version: {
+    /** This package's version. */
+    readonly yuzuko: string;
+    /** The embedded V8 version. */
+    readonly v8: string;
+  };
+
+  /**
    * Environment variables of this process.
    *
    * The methods do not read `this`. `get`, `has`, and `toObject` may run
@@ -2495,7 +2542,7 @@ declare namespace Yuzuko {
      * not a string. `The name must not be empty.` when `name` is empty.
      * ``The name must not contain `=` or NUL.`` when `name` contains `=` or
      * NUL.
-     * @throws {@link DOMException} `NotAllowedError` with
+     * @throws {@link errors.NotCapable} with
      * ``Requires env access to "<name>", run again with the --allow-env flag``
      * when {@link permissions} does not grant `name`.
      */
@@ -2507,7 +2554,7 @@ declare namespace Yuzuko {
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
      * `The value must be a string.` when `value` is not a string.
      * `The value must not contain NUL.` when `value` contains NUL.
-     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * @throws {@link errors.NotCapable} when {@link permissions}
      * does not grant `name`. The message matches {@link Env.get}.
      */
     set(name: string, value: string): void;
@@ -2516,7 +2563,7 @@ declare namespace Yuzuko {
      * Removes `name`. Removing a name that is absent succeeds.
      *
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
-     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * @throws {@link errors.NotCapable} when {@link permissions}
      * does not grant `name`. The message matches {@link Env.get}.
      */
     delete(name: string): void;
@@ -2525,7 +2572,7 @@ declare namespace Yuzuko {
      * Returns whether `name` is present.
      *
      * @throws {@link TypeError} for a `name` that {@link Env.get} rejects.
-     * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+     * @throws {@link errors.NotCapable} when {@link permissions}
      * does not grant `name`. The message matches {@link Env.get}.
      */
     has(name: string): boolean;
@@ -2539,7 +2586,7 @@ declare namespace Yuzuko {
      * A list of names does not grant this call. The kind must be allowed
      * as a whole.
      *
-     * @throws {@link DOMException} `NotAllowedError` with
+     * @throws {@link errors.NotCapable} with
      * `Requires env access, run again with the --allow-env flag` when
      * {@link permissions} does not grant env access for every variable.
      */
@@ -2581,7 +2628,7 @@ declare namespace Yuzuko {
    * @throws {@link DOMException} `NotFoundError` with
    * `The directory was not found.` when the path is missing.
    * `InvalidStateError` with `The path is not a directory.` when the path
-   * exists and is not a directory. `NotAllowedError` with
+   * exists and is not a directory. {@link errors.NotCapable} with
    * ``Requires read access to "<path>", run again with the --allow-read flag``
    * when {@link permissions} does not grant read access to the target.
    * An empty string returns before that check.
@@ -2708,7 +2755,7 @@ declare namespace Yuzuko {
      * A check follows a symlink and then applies `..`, including when the
      * final component is missing. A directory grant does not cover the file
      * reached that way. The denial names this path. When the operating
-     * system cannot resolve the path, the call is `NotAllowedError` and
+     * system cannot resolve the path, the call is `NotCapable` and
      * does not report whether a component exists.
      *
      * For `ffi`, this names a file. {@link dlopen} of a string with no `/`
@@ -2790,7 +2837,7 @@ declare namespace Yuzuko {
    * policy, `query` and `request` report `"granted"`, and `revoke` installs
    * an allow-all policy with prompts off before it applies.
    *
-   * A denied operation throws {@link DOMException} `NotAllowedError`. A
+   * A denied operation throws {@link errors.NotCapable}. The value is an `Error`, not a `DOMException`. A
    * scoped message is
    * ``Requires read access to "<path>", run again with the --allow-read flag``.
    * An unscoped message is
@@ -2909,7 +2956,7 @@ declare namespace Yuzuko {
    * is built with the `udp` feature, which is enabled by default. Absent from
    * an `AudioWorklet` processor realm. A build that does not enable `udp`
    * leaves `Datagram` and {@link listenDatagram} absent. `listenDatagram`
-   * and `send` throw {@link DOMException} `NotAllowedError` when
+   * and `send` throw {@link errors.NotCapable} when
    * {@link permissions} does not grant the address.
    *
    * `send` and `receive` run the operating-system call on a background
@@ -2944,7 +2991,7 @@ declare namespace Yuzuko {
      * `The address must be an object.` when `addr` is not an object.
      * `The address could not be read.` when `addr` cannot be read.
      * `The hostname must be an IP address or "localhost".` when the hostname
-     * is not an IP address or `localhost`.
+     * is empty or bracketed. A DNS name is allowed.
      * `The port must be an integer from 1 through 65535.` when the port is
      * not in that range. `The address family does not match the socket.` when
      * the destination family differs. `illegal invocation` when the receiver
@@ -3016,8 +3063,9 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 0 through 65535.` when the
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
-   * system refuses the address.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * system refuses the address for another reason.
+   * @throws {@link errors.AddrInUse} `The address is already in use.`
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
    */
@@ -3067,7 +3115,7 @@ declare namespace Yuzuko {
    * is built with the `tcp` feature, which is enabled by default. Absent from
    * an `AudioWorklet` processor realm. A build that does not enable `tcp`
    * leaves this class and {@link listenTcp} absent. `listenTcp` and
-   * {@link connectTcp} throw {@link DOMException} `NotAllowedError` when
+   * {@link connectTcp} throw {@link errors.NotCapable} when
    * {@link permissions} does not grant the address.
    */
   class TcpListener {
@@ -3206,8 +3254,9 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 0 through 65535.` when the
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
-   * system refuses the address.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * system refuses the address for another reason.
+   * @throws {@link errors.AddrInUse} `The address is already in use.`
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
    */
@@ -3216,24 +3265,184 @@ declare namespace Yuzuko {
   /**
    * Connects a TCP socket.
    *
-   * `addr.hostname` defaults to `"127.0.0.1"`. `localhost` means that
-   * address. Any other hostname must be an IP address without brackets.
-   * There is no DNS lookup. The call returns a promise and does not block
-   * the caller for the handshake.
+   * `addr.hostname` defaults to `"127.0.0.1"`. The exact name `localhost`
+   * means that address and is not a DNS lookup. An IP address is that
+   * address. Any other non-empty name is resolved. The lookup keeps the
+   * trimmed text, including its case and a trailing DNS root dot. An empty
+   * or bracketed hostname throws. The call returns a promise and does not
+   * block the caller for the connection.
    *
    * @param addr - Destination. An omitted hostname is `127.0.0.1`.
    * @throws {@link TypeError} `Not enough arguments` when `addr` is missing.
    * `The address must be an object.` when it is not an object.
    * `The address could not be read.` when it cannot be read.
    * `The hostname must be an IP address or "localhost".` when the hostname
-   * is not. `The port must be an integer from 1 through 65535.` when the
-   * port is not. `The socket operation failed.` when the promise cannot be
-   * created.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * is empty or bracketed. `The port must be an integer from 1 through 65535.`
+   * when the port is not. `The socket operation failed.` when the promise
+   * cannot be created.
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the destination. The check uses the hostname string
-   * before `localhost` is rewritten to `127.0.0.1`.
+   * before `localhost` is rewritten to `127.0.0.1`. A resolved restricted
+   * address that is not granted rejects the promise with the same class.
+   * @throws {@link Error} `The host could not be resolved.` when the name
+   * has no address. `The connection could not be opened.` when the connect
+   * fails for a reason that has no socket class.
+   * @throws {@link errors.ConnectionRefused} `The connection was refused.`
+   * and the other socket classes in {@link errors} for the matching
+   * operating-system failure. When several addresses are tried, the
+   * rejection is the last failure.
    */
   function connectTcp(addr: TcpAddr): Promise<TcpConn>;
+
+  /**
+   * Resolves `host` to address strings.
+   *
+   * Installed when `tcp` or `udp` is enabled. `host` and `type` must be
+   * string primitives. The call does not use `ToString`. `"A"` keeps IPv4
+   * addresses and `"AAAA"` keeps IPv6. A name that exists and has no records
+   * of that type resolves `[]`. The lookup keeps the trimmed host, including
+   * its case and a trailing DNS root dot, and does not rewrite `localhost`.
+   *
+   * @param host - Name to resolve.
+   * @param type - `"A"` or `"AAAA"`.
+   * @returns Address strings from the system resolver.
+   * @throws {@link TypeError} `Not enough arguments` when an argument is
+   * missing. `The host must be a string.` when `host` is not a string.
+   * `The host must not be empty.` when `host` is empty.
+   * `The record type must be "A" or "AAAA".` when `type` is not.
+   * @throws {@link errors.NotCapable} when {@link permissions} does not
+   * grant `host` with no port. The check runs before a promise is returned.
+   * @throws {@link Error} `The host could not be resolved.` when the name
+   * cannot be resolved, including a lookup the operating system reports as
+   * timed out.
+   */
+  function resolveDns(host: string, type: "A" | "AAAA"): Promise<string[]>;
+
+  /**
+   * Options for {@link connectTls}.
+   */
+  interface TlsOptions {
+    /**
+     * Server name and connect host.
+     *
+     * The same destination rules as {@link connectTcp}. The TLS server name
+     * is this string after trimming, including when it is `localhost` and
+     * the TCP connection uses `127.0.0.1`.
+     *
+     * @defaultValue `"127.0.0.1"`
+     */
+    hostname?: string;
+
+    /**
+     * TCP port.
+     *
+     * @defaultValue 443
+     */
+    port?: number;
+
+    /**
+     * Extra PEM certificates trusted in addition to the web PKI roots.
+     *
+     * `null` or `undefined` adds none. An empty array adds none.
+     */
+    caCerts?: string[];
+  }
+
+  /**
+   * Options for {@link startTls}.
+   */
+  interface StartTlsOptions {
+    /**
+     * TLS server name.
+     *
+     * This call does not resolve the name again. The TCP connection is the
+     * one `conn` already opened.
+     *
+     * @defaultValue `"127.0.0.1"`
+     */
+    hostname?: string;
+
+    /** Extra PEM certificates. The same rules as {@link TlsOptions.caCerts}. */
+    caCerts?: string[];
+  }
+
+  /**
+   * A TLS connection.
+   *
+   * Installed on the main realm and on a dedicated worker when the runtime
+   * is built with the `tcp` feature. Absent when `tcp` is off, and absent
+   * from an `AudioWorklet` processor realm. `read`, `write`, and `close`
+   * follow {@link TcpConn}. A clean read of zero bytes resolves `null`.
+   */
+  class TlsConn {
+    private constructor();
+
+    /** Local address. Each read returns a new object. */
+    readonly localAddr: TcpAddr;
+
+    /** Peer address. Each read returns a new object. */
+    readonly remoteAddr: TcpAddr;
+
+    /**
+     * Reads plaintext into `buffer`.
+     *
+     * @returns The number of bytes copied, or `null` at the end of the stream.
+     */
+    read(buffer: AllowSharedBufferSource): Promise<number | null>;
+
+    /**
+     * Writes plaintext.
+     *
+     * @returns The number of bytes written.
+     */
+    write(data: AllowSharedBufferSource): Promise<number>;
+
+    /** Shuts the socket down. */
+    close(): void;
+  }
+
+  /**
+   * Connects with TLS.
+   *
+   * The promise resolves after the handshake. Certificate verification is
+   * not skipped. `caCerts` is checked before the net permission, so a bad
+   * certificate does not prompt.
+   *
+   * @throws {@link TypeError} `Not enough arguments` when `options` is
+   * missing. `Options must be an object.` when it is not an object.
+   * `caCerts must be an array of PEM strings.` when `caCerts` is not.
+   * `The certificate is not valid PEM.` when a PEM string is empty or cannot
+   * be parsed. `The hostname is invalid.` when it cannot be a TLS server name.
+   * @throws {@link errors.NotCapable} when {@link permissions} does not
+   * grant the destination.
+   * @throws {@link Error} `The TLS handshake failed.` when the handshake
+   * does not finish. Connect and resolve failures use the same classes as
+   * {@link connectTcp}.
+   */
+  function connectTls(options: TlsOptions): Promise<TlsConn>;
+
+  /**
+   * Upgrades an open {@link TcpConn}.
+   *
+   * The net check uses `options.hostname` and the connection's remote port
+   * before the stream is taken. A denial leaves the `TcpConn` open. The call
+   * then marks that connection closed without shutting the socket down.
+   *
+   * @throws {@link TypeError} `Not enough arguments` when an argument is
+   * missing. `The connection must be a TcpConn.` when `conn` is not.
+   * `Options must be an object.` when `options` is not an object.
+   * `A read is already waiting.` or `A write is already waiting.` when that
+   * call is in progress. The connection stays open.
+   * `The hostname is invalid.` when the server name cannot be used.
+   * `caCerts must be an array of PEM strings.` and
+   * `The certificate is not valid PEM.` for a bad certificate.
+   * @throws {@link Error} `The socket is closed.` when `conn` is closed.
+   * `The TLS handshake failed.` when the handshake does not finish. The
+   * `TcpConn` is already closed in that case.
+   * @throws {@link errors.NotCapable} when {@link permissions} does not
+   * grant the hostname and remote port. The `TcpConn` stays open.
+   */
+  function startTls(conn: TcpConn, options: StartTlsOptions): Promise<TlsConn>;
 
   /**
    * Bound HTTP server address.
@@ -3278,7 +3487,7 @@ declare namespace Yuzuko {
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `http` leaves this class and {@link listenHttp} absent. The feature does
    * not enable `tcp` or `fetch`. {@link listenHttp} throws
-   * {@link DOMException} `NotAllowedError` when {@link permissions} does not
+   * {@link errors.NotCapable} when {@link permissions} does not
    * grant the address. There is no TLS and no HTTP/2.
    */
   class HttpServer {
@@ -3405,7 +3614,7 @@ declare namespace Yuzuko {
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
    */
@@ -3779,7 +3988,7 @@ declare namespace Yuzuko {
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `child` leaves this function and {@link Child} absent. The feature does
    * not enable `window`. There is no shell. The call throws
-   * {@link DOMException} `NotAllowedError` when {@link permissions} does not
+   * {@link errors.NotCapable} when {@link permissions} does not
    * grant the program, the working directory, a name in `env`, or env
    * access for the whole environment. The child inherits every variable
    * `options.env` does not replace. A bare run grant matches a bare
@@ -3818,7 +4027,7 @@ declare namespace Yuzuko {
    * URL.`, `The URL scheme must be file.`, `The URL is invalid.`,
    * `The file URL is invalid.`, and `The path must not contain NUL.` for
    * `cwd`.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the program, read access to `cwd`, a name in `env`, or
    * env access for the whole environment. A bare run grant matches a bare
    * command name only when `PATH` finds the executable recorded for that
@@ -3950,7 +4159,7 @@ declare namespace Yuzuko {
    * from an `AudioWorklet` processor realm. A build that does not enable
    * `ffi` leaves this function and {@link Library} absent. The feature does
    * not enable `window`. The call throws {@link DOMException}
-   * `NotAllowedError` when {@link permissions} does not grant `path`. A
+   * `NotCapable` when {@link permissions} does not grant `path`. A
    * path that contains `/` or `\` is that file. A path with no separator
    * is allowed only when `ffi` is granted as a whole. A directory grant
    * does not cover it. The call blocks while the operating system loads
@@ -3981,7 +4190,7 @@ declare namespace Yuzuko {
    * `The symbol definition must be an object.` when a value is not an
    * object. `The function type is not supported.` when the parameters and
    * result are not one of the supported shapes.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant `path`. A path with no `/` or `\` needs `ffi` granted
    * as a whole. The message is
    * `Requires ffi access, run again with the --allow-ffi flag`. A path
@@ -4196,7 +4405,7 @@ declare namespace Yuzuko {
    * response times out. The message is `The update could not be downloaded.`
    * A connection that closes before `Content-Length` bytes arrive uses
    * `The connection closed before the body ended.`
-   * @throws {@link DOMException} `NotAllowedError`
+   * @throws {@link errors.NotCapable}
    * `Requires net access, run again with the --allow-net flag`
    * when the net permission is not granted.
    */
@@ -4643,11 +4852,67 @@ declare namespace Yuzuko {
   }
 
   /**
-   * File-system error classes captured when the realm starts.
+   * Standard input.
    *
-   * The thrown object is an instance of the constructor installed at startup.
+   * An {@link FsFile} for a duplicate of the process descriptor. `close`
+   * closes the duplicate and does not close the process stream. A second
+   * `close` throws {@link errors.BadResource}. The duplicate shares the file
+   * offset. There is no path permission check. The runtime does not call
+   * {@link FsFile.setRaw}. A pipe is not a terminal.
+   */
+  const stdin: FsFile;
+
+  /** Standard output. The same rules as {@link stdin}. */
+  const stdout: FsFile;
+
+  /** Standard error. The same rules as {@link stdin}. */
+  const stderr: FsFile;
+
+  /**
+   * Error classes captured when the realm starts.
+   *
+   * `NotCapable` is present in every build. The socket classes are present
+   * when `tcp` or `udp` is enabled. The file-system classes are present when
+   * `fs` is enabled. The thrown object is an instance of the constructor
+   * installed at startup. Replacing a property later does not change it.
    */
   namespace errors {
+    /**
+     * A host permission was not granted.
+     *
+     * This is an `Error`, not a {@link DOMException}.
+     */
+    class NotCapable extends Error {
+      constructor(message?: string);
+    }
+    /** The address is already in use. */
+    class AddrInUse extends Error {
+      constructor(message?: string);
+    }
+    /** The connection was refused. */
+    class ConnectionRefused extends Error {
+      constructor(message?: string);
+    }
+    /** The connection was reset. */
+    class ConnectionReset extends Error {
+      constructor(message?: string);
+    }
+    /** The socket operation timed out. */
+    class TimedOut extends Error {
+      constructor(message?: string);
+    }
+    /** The socket pipe is broken. */
+    class BrokenPipe extends Error {
+      constructor(message?: string);
+    }
+    /** The socket reached the end of the stream. */
+    class UnexpectedEof extends Error {
+      constructor(message?: string);
+    }
+    /** The network is unreachable. */
+    class NetworkUnreachable extends Error {
+      constructor(message?: string);
+    }
     class NotFound extends Error {
       constructor(message?: string);
     }
@@ -4846,7 +5111,7 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `options` is not an object, or when the flags disagree.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the path. `read` checks read access. A flag that writes,
    * appends, truncates, or creates checks write access. The opened file is
    * checked again, and a different file is not returned.
@@ -4872,7 +5137,7 @@ declare namespace Yuzuko {
    * Reads `path` as bytes.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the path. The opened file is checked again, and a
    * different file is not read.
    * @throws {@link errors.IsADirectory} When `path` is a directory.
@@ -4887,7 +5152,7 @@ declare namespace Yuzuko {
    * Reads `path` as UTF-8 text.
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the path. The opened file is checked again, and a
    * different file is not read.
    * @throws {@link errors.InvalidData} When the bytes are not UTF-8.
@@ -4903,7 +5168,7 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `data` is not a buffer source, or when `options` is not an object.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the path. The opened file is checked again, and a
    * different file is not written.
    * @throws {@link errors.NotSupported} When the resolved path is inside the
@@ -4927,7 +5192,7 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL, when
    * `text` is not a string, or when `options` is not an object.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the path. The opened file is checked again, and a
    * different file is not written.
    */
@@ -5045,7 +5310,7 @@ declare namespace Yuzuko {
    *
    * @throws {@link TypeError} When `path` is not a string or a file URL.
    * @throws {@link errors.NotFound} When `path` does not exist.
-   * @throws {@link DOMException} `NotAllowedError` when the canonical path
+   * @throws {@link errors.NotCapable} when the canonical path
    * is not granted. The message names the requested path.
    */
   function realPath(path: string | URL): Promise<string>;
@@ -5148,7 +5413,7 @@ declare namespace Yuzuko {
    * same file, so a later write through `newPath` changes `oldPath`.
    *
    * @throws {@link TypeError} When either path is not a string or a file URL.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant read and write access to `oldPath`, or write access to
    * `newPath`.
    * @throws {@link errors.NotSupported} When either resolved directory entry
@@ -5172,7 +5437,7 @@ declare namespace Yuzuko {
    * @throws {@link TypeError} When either path is not a string or a file URL,
    * when `options` is not an object, or when `type` is not `"file"`,
    * `"dir"`, or `"junction"`.
-   * @throws {@link DOMException} `NotAllowedError` when {@link permissions}
+   * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant read access to the path the link will name, or write
    * access to `newPath`.
    * @throws {@link errors.NotSupported} When `newPath` is inside the
@@ -14612,8 +14877,8 @@ declare class WebTransportError extends DOMException {
  * entry-directory file for that path, on any port, and requires the same
  * read. A symlink is denied unless its canonical target is allowed too.
  * A missing grant does not run the script. The constructor does not throw
- * `NotAllowedError`. The worker's error event message is
- * `NotAllowedError: Requires read access to "<path>", run again with the --allow-read flag`.
+ * `NotCapable`. The worker's error event message is
+ * `NotCapable: Requires read access to "<path>", run again with the --allow-read flag`.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid, or when
  * `type` is `"classic"` with a source-phase import.
@@ -14668,10 +14933,10 @@ declare class WorkerGlobalScope extends EventTarget {
    * Parses every URL before running any script. A blob URL is captured
    * then, so revoking it inside an earlier script of the same call does
    * not fail a later URL. `data:` accepts a base64 payload. A `file:` URL
-   * requires read access and throws `NotAllowedError`. An `http:` or
+   * requires read access and throws `NotCapable`. An `http:` or
    * `https:` URL requires net access, including each followed redirect.
    *
-   * @throws {@link DOMException} `NotAllowedError` when a `file:` URL is
+   * @throws {@link errors.NotCapable} when a `file:` URL is
    * not granted, or when an `http:` or `https:` URL or a followed redirect
    * is not granted.
    * @throws {@link DOMException} `NetworkError` when a script cannot be loaded,

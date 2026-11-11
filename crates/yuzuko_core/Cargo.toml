@@ -18,7 +18,9 @@ oxc_semantic.workspace = true
 oxc_span.workspace = true
 oxc_transformer.workspace = true
 libc.workspace = true
+rustls = { workspace = true, optional = true }
 unicode-width = "0.2"
+webpki-roots = { workspace = true, optional = true }
 url.workspace = true
 v8.workspace = true
 yuzuko_macros.workspace = true
@@ -30,7 +32,7 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Network
 default = ["fs"]
 fs = []
 udp = []
-tcp = []
+tcp = ["dep:rustls", "dep:webpki-roots"]
 http = []
 signal = []
 child = []

@@ -1,14 +1,30 @@
 //! `Yuzuko.errors` classes that exist outside the file-system feature.
 //!
-//! `NotCapable` is installed in every build. File-system classes stay on
-//! the `fs` feature and publish their own object first; this module adds
-//! properties to that object instead of replacing it.
+//! `NotCapable` is installed in every build. Socket classes are installed
+//! when `tcp` or `udp` is enabled. File-system classes stay on the `fs`
+//! feature and publish their own object first; this module adds properties
+//! to that object instead of replacing it.
 
 use std::cell::RefCell;
+#[cfg(any(feature = "tcp", feature = "udp"))]
+use std::collections::HashMap;
+#[cfg(any(feature = "tcp", feature = "udp"))]
+use std::io::ErrorKind;
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+use crate::op::OpError;
+#[cfg(any(feature = "tcp", feature = "udp"))]
+use crate::socket_error::{self, Class};
 
 thread_local! {
   static NOT_CAPABLE: RefCell<Option<v8::Global<v8::Function>>> =
     const { RefCell::new(None) };
+}
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+thread_local! {
+  static SOCKETS: RefCell<HashMap<Class, v8::Global<v8::Function>>> =
+    RefCell::new(HashMap::new());
 }
 
 const FACTORY: &str = r#"(function (name) {
@@ -39,11 +55,15 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   };
   let key = v8::String::new(scope, "NotCapable").expect("NotCapable");
   object.set(scope, key.into(), not_capable.into());
+  #[cfg(any(feature = "tcp", feature = "udp"))]
+  install_socket_classes(scope, factory, object);
   yuzuko.set(scope, errors_key.into(), object.into());
 }
 
 pub(crate) fn clear() {
   NOT_CAPABLE.with(|slot| *slot.borrow_mut() = None);
+  #[cfg(any(feature = "tcp", feature = "udp"))]
+  SOCKETS.with(|map| map.borrow_mut().clear());
 }
 
 /// The constructor captured at realm start, or a plain `Error` named
@@ -62,6 +82,85 @@ pub(crate) fn new_not_capable<'s>(
     }
   }
   named_object(scope, "NotCapable", message)
+}
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) fn class_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  class: Class,
+) -> v8::Local<'s, v8::Value> {
+  let message = class.message();
+  let ctor = SOCKETS.with(|map| map.borrow().get(&class).cloned());
+  let Some(ctor) = ctor else {
+    return named_error(scope, class.name(), message);
+  };
+  let ctor = v8::Local::new(scope, ctor);
+  let Some(text) = v8::String::new(scope, message) else {
+    return v8::undefined(scope).into();
+  };
+  let instance = {
+    v8::tc_scope!(let tc, scope);
+    ctor.new_instance(tc, &[text.into()])
+  };
+  match instance {
+    Some(object) => object.into(),
+    None => named_error(scope, class.name(), message),
+  }
+}
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) fn denied_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  message: &str,
+) -> v8::Local<'s, v8::Value> {
+  if name == "NotCapable" {
+    return new_not_capable(scope, message)
+      .map(v8::Local::<v8::Value>::from)
+      .unwrap_or_else(|| v8::undefined(scope).into());
+  }
+  crate::op::new_dom_exception(scope, name, message)
+    .map(v8::Local::<v8::Value>::from)
+    .unwrap_or_else(|| named_error(scope, name, message))
+}
+
+/// A synchronous socket failure. Classified kinds use the socket class.
+/// Anything else is a plain `Error` with `generic`.
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) fn io_exception(
+  scope: &mut v8::PinScope,
+  kind: ErrorKind,
+  generic: &str,
+) -> OpError {
+  if let Some(class) = socket_error::classify(kind) {
+    let value = class_value(scope, class);
+    return OpError::thrown(scope, value);
+  }
+  let Some(text) = v8::String::new(scope, generic) else {
+    return OpError::type_(generic);
+  };
+  let error = v8::Exception::error(scope, text);
+  OpError::thrown(scope, error)
+}
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+fn install_socket_classes(
+  scope: &mut v8::PinScope,
+  factory: v8::Local<v8::Function>,
+  object: v8::Local<v8::Object>,
+) {
+  let mut built = Vec::with_capacity(Class::INSTALLED.len());
+  for class in Class::INSTALLED {
+    let ctor = make_class(scope, factory, class.name());
+    let key = v8::String::new(scope, class.name()).expect("socket error");
+    object.set(scope, key.into(), ctor.into());
+    built.push((class, v8::Global::new(scope, ctor)));
+  }
+  SOCKETS.with(|map| {
+    let mut map = map.borrow_mut();
+    map.clear();
+    map.extend(built);
+  });
 }
 
 fn factory<'s>(
@@ -100,6 +199,17 @@ fn named_object<'s>(
   let value = v8::String::new(scope, name)?;
   object.set(scope, key.into(), value.into());
   Some(object)
+}
+
+#[cfg(any(feature = "tcp", feature = "udp"))]
+fn named_error<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  message: &str,
+) -> v8::Local<'s, v8::Value> {
+  named_object(scope, name, message)
+    .map(v8::Local::<v8::Value>::from)
+    .unwrap_or_else(|| v8::undefined(scope).into())
 }
 
 #[cfg(all(test, not(feature = "fs")))]

@@ -101,20 +101,35 @@ struct Packet {
   port: u16,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Fail {
   Closed,
   Send,
   Receive,
+  Class(crate::socket_error::Class),
+  Denied { name: String, message: String },
+  Type(&'static str),
+  Resolve,
 }
 
 impl Fail {
-  fn message(self) -> &'static str {
+  fn message(&self) -> &'static str {
     match self {
       Self::Closed => CLOSED,
       Self::Send => SEND,
       Self::Receive => RECEIVE,
+      Self::Class(class) => class.message(),
+      Self::Denied { .. } => SEND,
+      Self::Type(message) => message,
+      Self::Resolve => crate::dns::UNRESOLVED,
     }
+  }
+}
+
+fn io_fail(error: io::Error, generic: Fail) -> Fail {
+  match crate::socket_error::classify(error.kind()) {
+    Some(class) => Fail::Class(class),
+    None => generic,
   }
 }
 
@@ -160,7 +175,29 @@ fn send_datagram(
   match shared.socket.send_to(bytes, dest) {
     Ok(count) => Ok(count),
     Err(_) if shared.is_closed() => Err(Fail::Closed),
-    Err(_) => Err(Fail::Send),
+    Err(error) => Err(io_fail(error, Fail::Send)),
+  }
+}
+
+fn send_addr(
+  target: &crate::socket_endpoint::Target,
+  ipv4: bool,
+) -> Result<SocketAddr, Fail> {
+  match target {
+    crate::socket_endpoint::Target::Addr { addr, .. } => Ok(*addr),
+    crate::socket_endpoint::Target::Name { host, port } => {
+      let addrs = match crate::dns::lookup(host, *port) {
+        Ok(addrs) => addrs,
+        Err(crate::dns::LookupError::Resolve) => return Err(Fail::Resolve),
+        Err(crate::dns::LookupError::Denied { name, message }) => {
+          return Err(Fail::Denied { name, message });
+        }
+      };
+      addrs
+        .into_iter()
+        .find(|addr| addr.is_ipv4() == ipv4)
+        .ok_or(Fail::Type(FAMILY))
+    }
   }
 }
 
@@ -242,22 +279,27 @@ impl Datagram {
     addr: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
     let bytes = copy_source(scope, data)?;
-    let dest = crate::socket_endpoint::endpoint(
+    let target = crate::socket_endpoint::destination(
       scope,
       addr,
       1,
+      None,
       PORT_DEST,
       ADDRESS,
       ADDRESS_READ,
     )?;
-    if self.shared.bound.is_ipv4() != dest.is_ipv4() {
+    if let crate::socket_endpoint::Target::Addr { addr, .. } = &target
+      && self.shared.bound.is_ipv4() != addr.is_ipv4()
+    {
       return Err(OpError::type_(FAMILY));
     }
     if self.shared.is_closed() {
       return rejected(scope, CLOSED);
     }
     let shared = Arc::clone(&self.shared);
+    let ipv4 = self.shared.bound.is_ipv4();
     settle(scope, Fail::Send, move || {
+      let dest = send_addr(&target, ipv4)?;
       send_datagram(&shared, &bytes, dest).map(Deliver::Count)
     })
   }
@@ -328,7 +370,12 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let shared = bind_udp(addr).map_err(|_| plain_error(scope, BIND))?;
+  let shared = match bind_udp(addr) {
+    Ok(shared) => shared,
+    Err(error) => {
+      return Err(crate::errors::io_exception(scope, error.kind(), BIND));
+    }
+  };
   Ok(New(Datagram { shared }))
 }
 
@@ -512,7 +559,7 @@ fn settle(
         let _ = resolver.resolve(scope, value);
       }
       Err(fail) => {
-        let error = error_value(scope, fail.message());
+        let error = fail_value(scope, &fail);
         let _ = resolver.reject(scope, error);
       }
     }
@@ -528,6 +575,25 @@ fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
   let _ = resolver.reject(scope, error);
   let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
   Ok(Js(v8::Global::new(scope, promise)))
+}
+
+fn fail_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  fail: &Fail,
+) -> v8::Local<'s, v8::Value> {
+  match fail {
+    Fail::Class(class) => crate::errors::class_value(scope, *class),
+    Fail::Denied { name, message } => {
+      crate::errors::denied_value(scope, name, message)
+    }
+    Fail::Type(message) => {
+      let Some(text) = v8::String::new(scope, message) else {
+        return v8::undefined(scope).into();
+      };
+      v8::Exception::type_error(scope, text)
+    }
+    other => error_value(scope, other.message()),
+  }
 }
 
 fn error_value<'s>(

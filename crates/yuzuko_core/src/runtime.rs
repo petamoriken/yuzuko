@@ -503,6 +503,8 @@ fn quiesce_for_reload(scope: &mut v8::PinScope) {
   crate::udp::clear();
   #[cfg(feature = "tcp")]
   crate::tcp::clear();
+  #[cfg(feature = "tcp")]
+  crate::tls::clear();
   #[cfg(feature = "http")]
   crate::http_server::clear();
   #[cfg(feature = "signal")]
@@ -1880,6 +1882,8 @@ fn teardown_realm() {
   crate::errors::clear();
   #[cfg(feature = "fs")]
   crate::fs::clear();
+  #[cfg(feature = "tcp")]
+  crate::tls::clear();
   #[cfg(feature = "udp")]
   crate::udp::clear();
   #[cfg(feature = "tcp")]
@@ -2134,6 +2138,10 @@ fn install_process(scope: &mut v8::PinScope<'_, '_>) {
   // After `fs` publishes `Yuzuko.errors`, so `NotCapable` is added to that
   // object. The captured constructor stays across an HMR module reload.
   crate::errors::install(scope);
+  #[cfg(any(feature = "tcp", feature = "udp"))]
+  crate::dns::install(scope);
+  #[cfg(feature = "tcp")]
+  crate::tls::install(scope);
 }
 
 /// Records whether later realms report `Yuzuko.build.standalone` as true.

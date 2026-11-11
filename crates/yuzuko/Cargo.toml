@@ -92,6 +92,7 @@ windows-sys = { workspace = true, features = [
 [target.'cfg(windows)'.dev-dependencies]
 windows-sys = { workspace = true, features = [
   "Win32_Foundation",
+  "Win32_Networking_WinSock",
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_Console",
@@ -175,6 +176,10 @@ required-features = ["fs"]
 [[test]]
 name = "process_io"
 required-features = ["fs"]
+
+[[test]]
+name = "net_name"
+required-features = ["tcp", "udp"]
 
 [[test]]
 name = "repl"

@@ -8980,9 +8980,11 @@ dependencies = [
  "oxc_semantic",
  "oxc_span",
  "oxc_transformer",
+ "rustls",
  "unicode-width",
  "url",
  "v8",
+ "webpki-roots",
  "windows-sys 0.61.2",
  "yuzuko_macros",
 ]

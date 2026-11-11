@@ -17,6 +17,22 @@ fn text(enabled: bool) -> &'static str {
   if enabled { "string" } else { "undefined" }
 }
 
+fn identity() -> [&'static str; 11] {
+  [
+    "function",
+    "number",
+    "number",
+    "object",
+    object(cfg!(feature = "fs")),
+    object(cfg!(feature = "fs")),
+    object(cfg!(feature = "fs")),
+    kind(cfg!(any(feature = "tcp", feature = "udp"))),
+    kind(cfg!(feature = "tcp")),
+    kind(cfg!(feature = "tcp")),
+    kind(cfg!(feature = "tcp")),
+  ]
+}
+
 fn expected() -> String {
   let main = [
     "function",
@@ -68,6 +84,9 @@ fn expected() -> String {
     "function",
     "object",
   ]
+  .into_iter()
+  .chain(identity())
+  .collect::<Vec<_>>()
   .join(" ");
   let worker = [
     "function",
@@ -102,6 +121,9 @@ fn expected() -> String {
     "function",
     "object",
   ]
+  .into_iter()
+  .chain(identity())
+  .collect::<Vec<_>>()
   .join(" ");
   format!("{main}\n{worker}")
 }

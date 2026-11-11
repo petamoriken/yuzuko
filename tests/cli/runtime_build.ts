@@ -47,6 +47,17 @@ const names = [
   typeof Yuzuko.chdir,
   typeof Yuzuko.exit,
   typeof Yuzuko.build,
+  typeof Yuzuko.execPath,
+  typeof Yuzuko.pid,
+  typeof Yuzuko.ppid,
+  typeof Yuzuko.version,
+  typeof Yuzuko.stdin,
+  typeof Yuzuko.stdout,
+  typeof Yuzuko.stderr,
+  typeof Yuzuko.resolveDns,
+  typeof Yuzuko.connectTls,
+  typeof Yuzuko.startTls,
+  typeof Yuzuko.TlsConn,
 ].join(" ");
 
 const worker = new Worker(new URL("./runtime_worker.ts", import.meta.url), {
