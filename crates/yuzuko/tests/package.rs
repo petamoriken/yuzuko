@@ -854,7 +854,7 @@ fn directory_bundle_launches_with_assets_and_title() {
     first.stdout
   );
   assert!(
-    first.stdout.contains("appVersion:\"0.0.0\""),
+    first.stdout.contains("appVersion:\"1.4.2\""),
     "{}",
     first.stdout
   );

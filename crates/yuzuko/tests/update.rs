@@ -34,7 +34,9 @@ fn scratch(name: &str) -> PathBuf {
   ));
   let _ = fs::remove_dir_all(&dir);
   fs::create_dir_all(&dir).unwrap();
-  dir
+  // Windows temp paths and `/var` on macOS are not the spelling `canonicalize`
+  // returns. A read grant on the other spelling does not cover a worker file.
+  fs::canonicalize(&dir).unwrap_or(dir)
 }
 
 fn signing() -> SigningKey {
@@ -557,11 +559,6 @@ console.log("token-old");
 #[test]
 fn unpackaged_commands_expose_a_null_version() {
   let dir = scratch("unpackaged");
-  fs::write(
-    dir.join("worker.js"),
-    "postMessage(typeof Yuzuko.autoUpdate + ' ' + typeof Yuzuko.appVersion);\nclose();\n",
-  )
-  .unwrap();
   let encoded = BASE64_STANDARD.encode(signing().verifying_key().to_bytes());
   fs::write(
     dir.join("probe.ts"),
@@ -624,12 +621,21 @@ await Yuzuko.autoUpdate({{
   }},
 }});
 console.log(ready ? "ready" : "idle");
-const worker = new Worker(new URL("./worker.js", import.meta.url));
-worker.onmessage = (event) => {{
-  console.log("worker " + event.data);
-  Yuzuko.exit(0);
-}};
-worker.onerror = () => Yuzuko.exit(1);
+const worker = new Worker(
+  "data:text/javascript," +
+    encodeURIComponent(
+      "postMessage(typeof Yuzuko.autoUpdate + ' ' + typeof Yuzuko.appVersion)",
+    ),
+);
+try {{
+  const reply = await new Promise((resolve, reject) => {{
+    worker.onmessage = (event) => resolve(event.data);
+    worker.onerror = (event) => reject(new Error(String(event.message || "worker error")));
+  }});
+  console.log("worker " + reply);
+}} finally {{
+  worker.terminate();
+}}
 "#
     ),
   )
@@ -656,7 +662,13 @@ worker.onerror = () => Yuzuko.exit(1);
       .args(["run", "--no-prompt", "--allow-read=.", "probe.ts"])
       .output()
       .unwrap();
-    assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    assert_eq!(
+      output.status.code(),
+      Some(0),
+      "stdout:\n{}\nstderr:\n{}",
+      text(&output.stdout),
+      text(&output.stderr)
+    );
     let stdout = text(&output.stdout);
     assert!(stdout.contains("kind function"), "{stdout}");
     assert!(stdout.contains("version null"), "{stdout}");
