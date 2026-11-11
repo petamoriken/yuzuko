@@ -40,11 +40,11 @@ The application entry is an ES module. TypeScript is erased with oxc before V8 p
 
 ## Process
 
-`Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, and `Yuzuko.exit` are in every build, on the main realm and in a dedicated worker.
+`Yuzuko.args`, `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`, `Yuzuko.execPath`, `Yuzuko.pid`, `Yuzuko.ppid`, and `Yuzuko.version` are in every build, on the main realm and in a dedicated worker. `Yuzuko.errors.NotCapable` is too.
 
-`args` is the argument vector recorded at launch. `env` reads and writes the process environment. `cwd` and `chdir` are the process current directory. `exit(code)` ends the process with a status from 0 through 255. Which optional surfaces exist is chosen when the runtime is built.
+`args` is the argument vector recorded at launch. `env` reads and writes the process environment. `cwd` and `chdir` are the process current directory. `exit(code)` ends the process with a status from 0 through 255. `execPath()` is the absolute path of this executable. `pid` and `ppid` are this process and its parent. `version` is `{ yuzuko, v8 }`. Which optional surfaces exist is chosen when the runtime is built.
 
-`Yuzuko.permissions` is in every build. The names are `read`, `write`, `net`, `env`, `run`, and `ffi`. `yuzuko run` asks on a terminal when a grant is missing. `yuzuko repl` and `yuzuko test` install a sandbox and do not ask. `permissions` in `yuzuko.json` supplies the grants for `yuzuko run` and for a packaged application. A packaged application that includes the object does not ask, and an omitted name is denied. A packaged application that omits the key allows every check. A denied call throws `NotAllowedError`.
+`Yuzuko.permissions` is in every build. The names are `read`, `write`, `net`, `env`, `run`, and `ffi`. `yuzuko run` asks on a terminal when a grant is missing. `yuzuko repl` and `yuzuko test` install a sandbox and do not ask. `permissions` in `yuzuko.json` supplies the grants for `yuzuko run` and for a packaged application. A packaged application that includes the object does not ask, and an omitted name is denied. A packaged application that omits the key allows every check. A denied call throws `Yuzuko.errors.NotCapable`.
 
 ## Windows and input
 
