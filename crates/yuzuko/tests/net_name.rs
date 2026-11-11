@@ -717,7 +717,7 @@ try {
     lines.push("resolve sync");
   } else {
     const value = await pending;
-    lines.push("resolve resolved " + JSON.stringify(value));
+    lines.push("resolve " + JSON.stringify(value));
   }
 } catch (error) {
   lines.push("resolve " + describe(error));
@@ -742,13 +742,22 @@ console.log(lines.join("\n"));
     &["run", "--allow-net=localhost", "--no-prompt", "main.ts"],
   );
   let stdout = stdout_of(&output);
-  for label in ["resolve", "connect"] {
-    assert!(
-      stdout
-        .lines()
-        .any(|line| line == format!("{label} NotCapable true true false true")),
-      "{label} in\n{stdout}\n{}",
-      text(&output.stderr)
-    );
-  }
+  let resolved = stdout
+    .lines()
+    .find_map(|line| line.strip_prefix("resolve "))
+    .unwrap_or_else(|| {
+      panic!("resolve in\n{stdout}\n{}", text(&output.stderr))
+    });
+  let value: serde_json::Value = serde_json::from_str(resolved)
+    .unwrap_or_else(|error| panic!("resolve {error} in\n{stdout}"));
+  let expected = family(false);
+  assert!(!expected.is_empty(), "localhost. has no A records");
+  assert_eq!(strings(&value), expected, "{stdout}");
+  assert!(
+    stdout
+      .lines()
+      .any(|line| line == "connect NotCapable true true false true"),
+    "connect in\n{stdout}\n{}",
+    text(&output.stderr)
+  );
 }

@@ -3,7 +3,8 @@
 //!
 //! The host string is not rewritten. A trailing DNS root dot stays, and
 //! `localhost` is not turned into `127.0.0.1`. The caller has already checked
-//! the name. This module checks resolved restricted addresses again.
+//! the name. [`lookup`] checks resolved restricted addresses again.
+//! [`records`] does not: `resolveDns` is allowed by the host grant alone.
 
 use std::net::{SocketAddr, ToSocketAddrs};
 
@@ -24,11 +25,7 @@ pub(crate) fn lookup(
   host: &str,
   port: u16,
 ) -> Result<Vec<SocketAddr>, LookupError> {
-  let query = query_host(host);
-  let dial = format!("{query}:{port}");
-  let found = crate::process::with_env(|| dial.to_socket_addrs())
-    .map_err(|_| LookupError::Resolve)?
-    .collect::<Vec<_>>();
+  let found = system_addrs(host, port)?;
   match crate::permissions::retain_resolved_addresses(found) {
     Ok(addrs) if addrs.is_empty() => Err(LookupError::Resolve),
     Ok(addrs) => Ok(addrs),
@@ -45,7 +42,8 @@ pub(crate) fn records(
   host: &str,
   v6: bool,
 ) -> Result<Vec<String>, LookupError> {
-  let addrs = lookup(host, 9)?;
+  // Port 9 only satisfies `to_socket_addrs`. It is not a permission check.
+  let addrs = system_addrs(host, 9)?;
   let mut out = Vec::new();
   for addr in addrs {
     if addr.is_ipv6() != v6 {
@@ -62,6 +60,19 @@ pub(crate) fn records(
 pub(crate) fn install(scope: &mut v8::PinScope) {
   let yuzuko = crate::namespace(scope, "Yuzuko");
   define_fn(scope, yuzuko, "resolveDns", 2, resolve_dns);
+}
+
+fn system_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, LookupError> {
+  let query = query_host(host);
+  let dial = format!("{query}:{port}");
+  let found = crate::process::with_env(|| dial.to_socket_addrs())
+    .map_err(|_| LookupError::Resolve)?
+    .collect::<Vec<_>>();
+  if found.is_empty() {
+    Err(LookupError::Resolve)
+  } else {
+    Ok(found)
+  }
 }
 
 fn query_host(host: &str) -> String {
