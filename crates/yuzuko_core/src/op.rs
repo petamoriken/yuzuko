@@ -641,6 +641,11 @@ pub fn new_dom_exception<'s>(
   name: &str,
   message: &str,
 ) -> Option<v8::Local<'s, v8::Object>> {
+  // A host grant denial is an Error subclass, not a DOMException. Every
+  // other name still uses the captured DOMException constructor.
+  if name == "NotCapable" {
+    return crate::errors::new_not_capable(scope, message);
+  }
   let constructor = host::with(|state| state.dom_exception.clone())?;
   let constructor = v8::Local::new(scope, constructor);
   let message = v8::String::new(scope, message)?;

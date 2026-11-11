@@ -438,7 +438,10 @@ pub(super) fn write_at(
   file: &mut File,
   bytes: &[u8],
 ) -> Result<usize, FsError> {
-  file.write(bytes).map_err(FsError::io)
+  // A pipe can accept fewer bytes than requested. Retry until the buffer
+  // is written, including after `Interrupted`.
+  file.write_all(bytes).map_err(FsError::io)?;
+  Ok(bytes.len())
 }
 
 pub(super) fn seek_file(

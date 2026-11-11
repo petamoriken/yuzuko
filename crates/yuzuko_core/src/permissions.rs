@@ -736,7 +736,7 @@ pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
   )
 }
 
-/// `NotAllowedError` naming `path`, the path the caller requested.
+/// `NotCapable` naming `path`, the path the caller requested.
 #[cfg(feature = "fs")]
 pub fn path_not_allowed(write: bool, path: &Path) -> OpError {
   let kind = if write { Kind::Write } else { Kind::Read };
@@ -778,6 +778,17 @@ pub fn check_net(host: &str, port: u16) -> Result<(), OpError> {
     &Detail::Net {
       host: normalize_host(host),
       port: Some(port),
+    },
+  )
+}
+
+/// Net access to `host` with no port. A grant of one port does not match.
+pub fn check_net_host(host: &str) -> Result<(), OpError> {
+  require(
+    Kind::Net,
+    &Detail::Net {
+      host: normalize_host(host),
+      port: None,
     },
   )
 }
@@ -1226,7 +1237,7 @@ fn denied(kind: Kind, detail: &Detail) -> Result<OpError, OpError> {
       "Requires {name} access to \"{text}\", run again with the --allow-{name} flag"
     )
   };
-  Ok(OpError::dom("NotAllowedError", message))
+  Ok(OpError::dom("NotCapable", message))
 }
 
 fn display(detail: &Detail) -> Result<String, OpError> {

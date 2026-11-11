@@ -258,7 +258,7 @@ mod tests {
   #[test]
   fn a_boxed_denial_stays_a_denial() {
     let error = super::denied_io(
-      "NotAllowedError".to_string(),
+      "NotCapable".to_string(),
       "Requires net access to \"127.0.0.1:9\"".to_string(),
     );
     let HttpFailure::Denied { name, message } =
@@ -266,7 +266,7 @@ mod tests {
     else {
       panic!("not a denial");
     };
-    assert_eq!(name, "NotAllowedError");
+    assert_eq!(name, "NotCapable");
     assert!(message.contains("127.0.0.1"), "{message}");
 
     let layer = ConnectLayer(Box::new(error));
@@ -275,7 +275,7 @@ mod tests {
     else {
       panic!("not a denial");
     };
-    assert_eq!(name, "NotAllowedError");
+    assert_eq!(name, "NotCapable");
     assert!(message.contains("127.0.0.1"), "{message}");
   }
 }

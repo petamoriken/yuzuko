@@ -127,7 +127,7 @@ fn run_without_a_grant_throws_not_allowed() {
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
-    stdout.contains("NotAllowedError:Requires read access"),
+    stdout.contains("NotCapable:Requires read access"),
     "{stdout}"
   );
   assert!(stdout.contains("--allow-read"), "{stdout}");
@@ -154,7 +154,7 @@ await probe("absent/probe");
   let output = run(&dir, &["run", "--no-prompt", "main.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
-  assert_eq!(stdout, "NotAllowedError\nNotAllowedError\n");
+  assert_eq!(stdout, "NotCapable\nNotCapable\n");
   assert!(!stdout.contains("hidden-oracle"), "{stdout}");
   assert!(!stdout.contains("OperationError"), "{stdout}");
 }
@@ -178,7 +178,7 @@ fn an_ipv6_deny_matches_a_bracketed_url() {
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
   assert!(
-    stdout.contains("NotAllowedError") && stdout.contains("[::1]"),
+    stdout.contains("NotCapable") && stdout.contains("[::1]"),
     "{stdout}"
   );
   assert!(!stdout.contains("[[::1]]"), "{stdout}");
@@ -188,7 +188,7 @@ fn an_ipv6_deny_matches_a_bracketed_url() {
   );
   assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
   let stdout = text(&allowed.stdout);
-  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+  assert!(!stdout.contains("NotCapable"), "{stdout}");
 }
 
 #[test]
@@ -228,7 +228,7 @@ try {
     ],
   );
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
-  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert_eq!(text(&denied.stdout), "NotCapable\n");
   assert!(!linked.exists());
   assert_eq!(fs::read_to_string(&secret).unwrap(), "original\n");
 
@@ -289,7 +289,7 @@ fn a_unix_junction_type_is_checked_from_the_link_directory() {
     ],
   );
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
-  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert_eq!(text(&denied.stdout), "NotCapable\n");
   assert!(fs::symlink_metadata(&link).is_err());
 
   let read_b = format!("--allow-read={}", dir_b.join("target.txt").display());
@@ -346,7 +346,7 @@ try {
     ],
   );
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
-  assert_eq!(text(&denied.stdout), "NotAllowedError\n");
+  assert_eq!(text(&denied.stdout), "NotCapable\n");
   assert!(fs::read_link(&link).is_err());
 
   let read_b = format!("--allow-read={}", dir_b.display());
@@ -363,7 +363,7 @@ try {
   );
   assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
   let stdout = text(&allowed.stdout);
-  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+  assert!(!stdout.contains("NotCapable"), "{stdout}");
   if stdout.contains("linked") {
     assert_eq!(fs::read_link(&link).unwrap(), Path::new("target.txt"));
   } else {
@@ -399,7 +399,7 @@ fn an_ipv4_mapped_address_uses_the_ipv4_grant() {
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
   assert!(
-    stdout.contains("NotAllowedError") && stdout.contains("127.0.0.1"),
+    stdout.contains("NotCapable") && stdout.contains("127.0.0.1"),
     "{stdout}"
   );
   assert!(!stdout.contains("::ffff"), "{stdout}");
@@ -410,7 +410,7 @@ fn an_ipv4_mapped_address_uses_the_ipv4_grant() {
   );
   assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
   assert!(
-    !text(&allowed.stdout).contains("NotAllowedError"),
+    !text(&allowed.stdout).contains("NotCapable"),
     "{}",
     text(&allowed.stdout)
   );
@@ -433,7 +433,7 @@ fn a_deny_of_a_mapped_address_covers_the_ipv4_host() {
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
   assert!(
-    stdout.contains("NotAllowedError") && stdout.contains("127.0.0.1"),
+    stdout.contains("NotCapable") && stdout.contains("127.0.0.1"),
     "{stdout}"
   );
 }
@@ -453,7 +453,7 @@ fn an_ipv6_deny_matches_the_canonical_spelling() {
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
   assert!(
-    stdout.contains("NotAllowedError") && stdout.contains("[2001:db8::1]"),
+    stdout.contains("NotCapable") && stdout.contains("[2001:db8::1]"),
     "{stdout}"
   );
 }
@@ -481,11 +481,11 @@ fn an_allowed_name_cannot_connect_to_a_loopback_address() {
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
   assert!(
-    stdout.contains("http://localhost:9/ NotAllowedError"),
+    stdout.contains("http://localhost:9/ NotCapable"),
     "{stdout}"
   );
   assert!(
-    stdout.contains("https://localhost:9/ NotAllowedError"),
+    stdout.contains("https://localhost:9/ NotCapable"),
     "{stdout}"
   );
   assert!(
@@ -504,7 +504,7 @@ fn an_allowed_name_cannot_connect_to_a_loopback_address() {
   );
   assert_eq!(allowed.status.code(), Some(0), "{}", text(&allowed.stderr));
   let stdout = text(&allowed.stdout);
-  assert!(!stdout.contains("NotAllowedError"), "{stdout}");
+  assert!(!stdout.contains("NotCapable"), "{stdout}");
   assert!(stdout.contains("http://localhost:9/"), "{stdout}");
   assert!(stdout.contains("https://localhost:9/"), "{stdout}");
 }
@@ -854,7 +854,7 @@ console.log(Yuzuko.realPathSync("link"));
   let denied = run(&proj, &["run", "--no-prompt", "--allow-read=.", "out.ts"]);
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let denied_out = text(&denied.stdout);
-  assert!(denied_out.contains("ERR NotAllowedError"), "{denied_out}");
+  assert!(denied_out.contains("ERR NotCapable"), "{denied_out}");
   assert!(!denied_out.contains("secret"), "{denied_out}");
 
   let stop = Arc::new(AtomicBool::new(false));
@@ -924,7 +924,7 @@ await probe("empty", {});
   );
   assert!(
     stdout.contains(
-      "empty NotAllowedError Requires ffi access, run again with the --allow-ffi flag"
+      "empty NotCapable Requires ffi access, run again with the --allow-ffi flag"
     ),
     "{stdout}"
   );
@@ -942,7 +942,7 @@ fn allow_read_flag_permits_the_current_directory_only() {
   let work = fs::canonicalize(&work).unwrap();
   let output = run(&work, &["run", "--allow-read=.", "main.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(text(&output.stdout), "hello\nNotAllowedError\n");
+  assert_eq!(text(&output.stdout), "hello\nNotCapable\n");
 }
 
 #[test]
@@ -960,7 +960,7 @@ fn deny_wins_over_allow_all() {
   );
   let output = run(&dir, &["run", "-A", "--deny-read", "main.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(text(&output.stdout), "NotAllowedError\n");
+  assert_eq!(text(&output.stdout), "NotCapable\n");
 }
 
 #[test]
@@ -999,10 +999,7 @@ console.log(envName);
   let work = fs::canonicalize(&work).unwrap();
   let output = run(&work, &["run", "main.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(
-    text(&output.stdout),
-    "hello\nNotAllowedError\nNotAllowedError\n"
-  );
+  assert_eq!(text(&output.stdout), "hello\nNotCapable\nNotCapable\n");
 }
 
 #[test]
@@ -1069,7 +1066,7 @@ worker.terminate();
   );
   let output = run(&dir, &["run", "--allow-read=worker.ts", "main.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(text(&output.stdout), "NotAllowedError\n");
+  assert_eq!(text(&output.stdout), "NotCapable\n");
 }
 
 #[test]
@@ -1119,7 +1116,7 @@ fn test_starts_closed_and_an_allow_does_not_grant_the_rest() {
     await Yuzuko.readTextFile("../other/secret.txt");
     throw new Error("leaked");
   } catch (error) {
-    if (error.name !== "NotAllowedError") {
+    if (error.name !== "NotCapable") {
       throw error;
     }
   }
@@ -1130,7 +1127,7 @@ fn test_starts_closed_and_an_allow_does_not_grant_the_rest() {
   let closed = run(&work, &["test", "read_test.ts"]);
   assert_ne!(closed.status.code(), Some(0));
   let combined = format!("{}{}", text(&closed.stdout), text(&closed.stderr));
-  assert!(combined.contains("NotAllowedError"), "{combined}");
+  assert!(combined.contains("NotCapable"), "{combined}");
   assert!(!combined.contains("hidden-oracle"), "{combined}");
   let granted = run(&work, &["test", "--allow-read=.", "read_test.ts"]);
   assert_eq!(granted.status.code(), Some(0), "{}", text(&granted.stderr));
@@ -1143,7 +1140,7 @@ fn test_starts_closed_and_an_allow_does_not_grant_the_rest() {
   assert_ne!(net_only.status.code(), Some(0));
   let combined =
     format!("{}{}", text(&net_only.stdout), text(&net_only.stderr));
-  assert!(combined.contains("NotAllowedError"), "{combined}");
+  assert!(combined.contains("NotCapable"), "{combined}");
   let all = run(&work, &["test", "--allow-all", "read_test.ts"]);
   assert_eq!(all.status.code(), Some(0), "{}", text(&all.stderr));
   let denied = run(
@@ -1152,7 +1149,7 @@ fn test_starts_closed_and_an_allow_does_not_grant_the_rest() {
   );
   assert_ne!(denied.status.code(), Some(0));
   let combined = format!("{}{}", text(&denied.stdout), text(&denied.stderr));
-  assert!(combined.contains("NotAllowedError"), "{combined}");
+  assert!(combined.contains("NotCapable"), "{combined}");
   let outside = run(&work, &["test", "--allow-read=.", "outside_test.ts"]);
   assert_eq!(outside.status.code(), Some(0), "{}", text(&outside.stderr));
   let outside_text =
@@ -1280,10 +1277,7 @@ console.log(homeName);
     std::thread::sleep(Duration::from_millis(50));
   };
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(
-    text(&output.stdout),
-    "NotAllowedError\npath-ok\nNotAllowedError\n"
-  );
+  assert_eq!(text(&output.stdout), "NotCapable\npath-ok\nNotCapable\n");
 }
 
 #[test]
@@ -1322,7 +1316,7 @@ await load("json", "./trick.js");
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   assert_eq!(
     text(&denied.stdout),
-    "lib-ok\nread:NotAllowedError\ntext:NotAllowedError\njson:NotAllowedError\nbytes:NotAllowedError\njson:NotAllowedError\n"
+    "lib-ok\nread:NotCapable\ntext:NotCapable\njson:NotCapable\nbytes:NotCapable\njson:NotCapable\n"
   );
 
   write(
@@ -1372,7 +1366,9 @@ worker.terminate();
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
-    stdout.starts_with("err:NotAllowedError:"),
+    stdout.contains("NotCapable: Requires read access to \"")
+      && stdout.contains("secret.txt")
+      && stdout.contains("--allow-read flag"),
     "{stdout}\n{}",
     text(&output.stderr)
   );
@@ -1441,7 +1437,7 @@ await probe("ws", "ws://localhost/ident.env");
     assert!(
       stdout
         .lines()
-        .any(|line| line.starts_with(&format!("{label} err NotAllowedError:"))),
+        .any(|line| line.starts_with(&format!("{label} err NotCapable:"))),
       "missing {label}\n{stdout}\n{}",
       text(&denied.stderr)
     );
@@ -1450,7 +1446,7 @@ await probe("ws", "ws://localhost/ident.env");
     assert!(
       stdout
         .lines()
-        .any(|line| line.starts_with("link err NotAllowedError:")),
+        .any(|line| line.starts_with("link err NotCapable:")),
       "{stdout}"
     );
   }
@@ -1487,7 +1483,7 @@ await probe("worker", "http://127.0.0.1/worker.js");
     assert!(
       stdout
         .lines()
-        .any(|line| line.starts_with("link err NotAllowedError:")),
+        .any(|line| line.starts_with("link err NotCapable:")),
       "{stdout}"
     );
     assert!(!stdout.contains("sk_live"), "{stdout}");
@@ -1504,7 +1500,12 @@ fn import_scripts_requires_read() {
   importScripts(new URL("./secret.txt", location.href).href);
   postMessage("loaded");
 } catch (error) {
-  postMessage(error.name + ":" + (error instanceof DOMException));
+  postMessage([
+    error.name,
+    error instanceof Yuzuko.errors.NotCapable,
+    error instanceof DOMException,
+    String(error.message).includes("--allow-read"),
+  ].join(":"));
 }
 "#,
   );
@@ -1524,7 +1525,7 @@ worker.terminate();
     &["run", "--no-prompt", "--allow-read=worker.js", "main.ts"],
   );
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
-  assert_eq!(text(&output.stdout), "NotAllowedError:true\n");
+  assert_eq!(text(&output.stdout), "NotCapable:true:false:true\n");
 }
 
 #[cfg(feature = "fetch")]
@@ -1635,7 +1636,7 @@ console.log(await probe(bounce));
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert_eq!(
     text(&output.stdout),
-    "NotAllowedError\nNotAllowedError\n",
+    "NotCapable\nNotCapable\n",
     "stdout:\n{}\nstderr:\n{}",
     text(&output.stdout),
     text(&output.stderr)
@@ -1666,7 +1667,7 @@ fn spawn_requires_the_whole_environment_and_a_path_grant() {
   );
   assert_eq!(denied.status.code(), Some(0), "{}", text(&denied.stderr));
   let stdout = text(&denied.stdout);
-  assert!(stdout.contains("NotAllowedError:"), "{stdout}");
+  assert!(stdout.contains("NotCapable:"), "{stdout}");
   assert!(stdout.contains("--allow-env"), "{stdout}");
   assert!(!stdout.contains("started"), "{stdout}");
   assert!(!stdout.contains("could not be started"), "{stdout}");
@@ -1870,7 +1871,7 @@ await probe("removed", {{ DYLD_INSERT_LIBRARIES: null }});
     );
   }
   let denied =
-    "NotAllowedError Requires run access, run again with the --allow-run flag";
+    "NotCapable Requires run access, run again with the --allow-run flag";
   for label in ["preload", "dyld", "lower", "inherited"] {
     assert!(
       stdout
@@ -1975,7 +1976,7 @@ await probe("assigned", {{}});
       .find(|line| line.starts_with(label))
       .unwrap_or("");
     assert!(
-      line.starts_with(&format!("{label} NotAllowedError")),
+      line.starts_with(&format!("{label} NotCapable")),
       "{line}\n{stdout}\n{stderr}"
     );
     assert!(line.contains("evil-bin"), "{line}");
@@ -2037,7 +2038,7 @@ await probe("direct", async () => text(Yuzuko.spawn("./tool")));
   assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
   assert!(
     stdout.lines().any(|line| {
-      line.starts_with("bare NotAllowedError")
+      line.starts_with("bare NotCapable")
         && line.contains("Requires run access to \"tool\"")
     }),
     "{stdout}\n{stderr}"
@@ -2149,8 +2150,8 @@ worker.terminate();
   let stdout = text(&output.stdout);
   let expected = [
     "lib-ok",
-    "read NotAllowedError",
-    "text NotAllowedError",
+    "read NotCapable",
+    "text NotCapable",
     "css TypeError",
     "ident TypeError",
     "export TypeError",
@@ -2229,21 +2230,21 @@ await probe("rel", () => Yuzuko.dlopen("./no-such-library", {{}}));
   let stdout = text(&denied.stdout);
   assert!(
     stdout.lines().any(|line| line.starts_with(
-      "env NotAllowedError Requires env access to \"YUZUKO_PERM_CANARY\""
+      "env NotCapable Requires env access to \"YUZUKO_PERM_CANARY\""
     )),
     "{stdout}"
   );
   let shown_absolute = absolute.replace('\\', "\\\\");
   assert!(
     stdout.lines().any(|line| {
-      line.starts_with("abs NotAllowedError Requires ffi access to \"")
+      line.starts_with("abs NotCapable Requires ffi access to \"")
         && line.contains(&shown_absolute)
     }),
     "{stdout}"
   );
   assert!(
     stdout.lines().any(|line| {
-      line == "bare NotAllowedError Requires ffi access, run again with the --allow-ffi flag"
+      line == "bare NotCapable Requires ffi access, run again with the --allow-ffi flag"
     }),
     "{stdout}"
   );
@@ -2404,18 +2405,18 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
   let lines = [
     "benign OK BENIGN-ROOT",
     "inside OK API_KEY=INSIDE-BENIGN",
-    "escape NotAllowedError",
-    "bytes NotAllowedError",
-    "dir NotAllowedError",
-    "real NotAllowedError",
-    "stat NotAllowedError",
-    "write NotAllowedError",
-    "copy NotAllowedError",
-    "chdir NotAllowedError",
-    "direct NotAllowedError",
-    "linktext NotAllowedError",
+    "escape NotCapable",
+    "bytes NotCapable",
+    "dir NotCapable",
+    "real NotCapable",
+    "stat NotCapable",
+    "write NotCapable",
+    "copy NotCapable",
+    "chdir NotCapable",
+    "direct NotCapable",
+    "linktext NotCapable",
     "import TypeError",
-    "import-text NotAllowedError",
+    "import-text NotCapable",
     "import-dot TypeError",
     "import-dir TypeError",
     "alias OK script-ok",
@@ -2432,7 +2433,7 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
     "{stdout}"
   );
   assert!(
-    stdout.contains("import-text NotAllowedError Requires read access to"),
+    stdout.contains("import-text NotCapable Requires read access to"),
     "{stdout}"
   );
   assert!(
@@ -2442,7 +2443,7 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
     "{stdout}"
   );
   if cfg!(feature = "ffi") {
-    for line in ["ffi NotAllowedError", "ffi-direct NotAllowedError"] {
+    for line in ["ffi NotCapable", "ffi-direct NotCapable"] {
       assert!(
         stdout.lines().any(|item| item.starts_with(line)),
         "missing {line}\n{stdout}\n{stderr}"
@@ -2453,7 +2454,7 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
     assert!(
       stdout
         .lines()
-        .any(|item| item.starts_with("spawn NotAllowedError")),
+        .any(|item| item.starts_with("spawn NotCapable")),
       "{stdout}\n{stderr}"
     );
     assert!(
@@ -2465,7 +2466,7 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
     assert!(
       stdout
         .lines()
-        .any(|item| item.starts_with("escape-run NotAllowedError")),
+        .any(|item| item.starts_with("escape-run NotCapable")),
       "{stdout}\n{stderr}"
     );
   }
@@ -2531,14 +2532,13 @@ console.log("note removed");
   assert!(
     stdout
       .lines()
-      .any(|line| line.starts_with("tree NotAllowedError")
-        && line.contains("tree")),
+      .any(|line| line.starts_with("tree NotCapable") && line.contains("tree")),
     "{stdout}\n{stderr}"
   );
   assert!(
     stdout
       .lines()
-      .any(|line| line.starts_with("child NotAllowedError")),
+      .any(|line| line.starts_with("child NotCapable")),
     "{stdout}\n{stderr}"
   );
   assert!(
@@ -2592,7 +2592,7 @@ console.log("removed");
   assert!(
     stdout
       .lines()
-      .any(|line| line.starts_with("read NotAllowedError")),
+      .any(|line| line.starts_with("read NotCapable")),
     "{stdout}\n{stderr}"
   );
   assert!(stdout.lines().any(|line| line == "removed"), "{stdout}");
@@ -2685,14 +2685,14 @@ await probe("hidden-exists", async () => text(Yuzuko.spawn("pwd", { cwd: OUTSIDE
   let stderr = text(&output.stderr);
   assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
   for line in [
-    "cwd-escape NotAllowedError",
+    "cwd-escape NotCapable",
     "cwd-legit OK LEGIT-CWD",
     "direct OK INSIDE-TOOL",
-    "link-run NotAllowedError",
-    "dir-link NotAllowedError",
+    "link-run NotCapable",
+    "dir-link NotCapable",
     "missing-cwd Error The directory was not found.",
-    "hidden-missing NotAllowedError",
-    "hidden-exists NotAllowedError",
+    "hidden-missing NotCapable",
+    "hidden-exists NotCapable",
   ] {
     assert!(
       stdout.lines().any(|item| item.starts_with(line)),
@@ -2758,13 +2758,13 @@ try {
   assert!(
     stdout
       .lines()
-      .any(|item| item.starts_with("link-grant NotAllowedError")),
+      .any(|item| item.starts_with("link-grant NotCapable")),
     "{stdout}\n{stderr}"
   );
   assert!(
     stdout
       .lines()
-      .any(|item| item.starts_with("dir-grant NotAllowedError")),
+      .any(|item| item.starts_with("dir-grant NotCapable")),
     "{stdout}\n{stderr}"
   );
   assert!(stdout.contains("keep/sub/tool-link"), "{stdout}");
@@ -2774,4 +2774,56 @@ try {
   }
   let _ = fs::remove_dir_all(&entry);
   let _ = fs::remove_dir_all(&outside);
+}
+
+#[test]
+fn a_replaced_not_capable_still_throws_the_captured_class() {
+  let dir = scratch("not-capable-class");
+  write(
+    &dir.join("main.ts"),
+    r#"const saved = Yuzuko.errors.NotCapable;
+Yuzuko.errors.NotCapable = class Fake extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "Fake";
+  }
+};
+const checks = [];
+async function capture(kind, body) {
+  try {
+    await body();
+    checks.push(kind + " missing");
+  } catch (error) {
+    checks.push([
+      kind,
+      error instanceof saved,
+      error instanceof Yuzuko.errors.NotCapable,
+      error instanceof Error,
+      error instanceof DOMException,
+      error.name,
+      String(error.message).includes("--allow-" + kind),
+    ].join(" "));
+  }
+}
+await capture("read", () => Yuzuko.readTextFile("secret.txt"));
+await capture("write", () => Yuzuko.writeTextFile("secret.txt", "x"));
+await capture("net", () => Yuzuko.connectTcp({ hostname: "127.0.0.1", port: 9 }));
+await capture("env", () => Yuzuko.env.get("YUZUKO_PERM_CANARY"));
+await capture("run", () => Yuzuko.spawn("true"));
+await capture("ffi", () => Yuzuko.dlopen("missing-lib", {}));
+console.log(checks.join("\n"));
+"#,
+  );
+  let output = run(&dir, &["run", "--no-prompt", "main.ts"]);
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  for kind in ["read", "write", "net", "env", "run", "ffi"] {
+    assert!(
+      stdout.lines().any(|line| {
+        line == format!("{kind} true false true false NotCapable true")
+      }),
+      "{kind} in\n{stdout}\n{stderr}"
+    );
+  }
 }

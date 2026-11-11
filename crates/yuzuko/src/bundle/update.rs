@@ -62,7 +62,7 @@ const TRUNCATED: Failure = Failure {
   message: "The connection closed before the body ended.",
 };
 const NET_DENIED: Failure = Failure {
-  name: "NotAllowedError",
+  name: "NotCapable",
   message: "Requires net access, run again with the --allow-net flag",
 };
 

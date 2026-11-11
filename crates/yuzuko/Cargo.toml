@@ -173,6 +173,10 @@ name = "permissions"
 required-features = ["fs"]
 
 [[test]]
+name = "process_io"
+required-features = ["fs"]
+
+[[test]]
 name = "repl"
 required-features = ["window"]
 

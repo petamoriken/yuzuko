@@ -855,7 +855,7 @@ fn a_feed_host_that_resolves_to_loopback_needs_that_address() {
   let (status, stdout, stderr) = launch(&exe, None, None);
   assert_eq!(status, 0, "{stdout}\n{stderr}");
   assert!(
-    stdout.contains("update-error NotAllowedError"),
+    stdout.contains("update-error NotCapable"),
     "{stdout}\n{stderr}"
   );
   assert!(server.hits.lock().unwrap().is_empty());

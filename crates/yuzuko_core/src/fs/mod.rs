@@ -48,6 +48,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   install_dispose(scope);
   install_async_iterator(scope);
   install_streams(scope);
+  install_stdio(scope);
 }
 
 pub(crate) fn clear() {
@@ -172,6 +173,105 @@ fn install_async_iterator(scope: &mut v8::PinScope) {
       watch::async_iterator,
     );
   }
+}
+
+enum StdSlot {
+  In,
+  Out,
+  Err,
+}
+
+/// Duplicates a process standard stream onto `Yuzuko`.
+///
+/// `close` drops the duplicate. The process descriptor stays open. A failed
+/// duplicate omits that property.
+fn install_stdio(scope: &mut v8::PinScope) {
+  let yuzuko = crate::namespace(scope, "Yuzuko");
+  for (name, slot) in [
+    ("stdin", StdSlot::In),
+    ("stdout", StdSlot::Out),
+    ("stderr", StdSlot::Err),
+  ] {
+    let Some(file) = duplicate_stdio(slot) else {
+      continue;
+    };
+    // Safety: `FsFile::install` cached this realm's template earlier in
+    // `install`.
+    let object =
+      unsafe { crate::op::wrap_instance(scope, file::FsFile::from_std(file)) };
+    let Some(key) = v8::String::new(scope, name) else {
+      continue;
+    };
+    yuzuko.set(scope, key.into(), object.into());
+  }
+}
+
+#[cfg(unix)]
+fn duplicate_stdio(slot: StdSlot) -> Option<std::fs::File> {
+  use std::os::fd::FromRawFd;
+
+  let fd = match slot {
+    StdSlot::In => 0,
+    StdSlot::Out => 1,
+    StdSlot::Err => 2,
+  };
+  // Safety: `fd` is a process standard descriptor. `dup` returns a new
+  // descriptor, or -1. `from_raw_fd` owns that new descriptor. `FD_CLOEXEC`
+  // keeps a later spawn from inheriting it.
+  unsafe {
+    let duped = libc::dup(fd);
+    if duped < 0 {
+      return None;
+    }
+    libc::fcntl(duped, libc::F_SETFD, libc::FD_CLOEXEC);
+    Some(std::fs::File::from_raw_fd(duped))
+  }
+}
+
+#[cfg(windows)]
+fn duplicate_stdio(slot: StdSlot) -> Option<std::fs::File> {
+  use std::os::windows::io::{FromRawHandle, RawHandle};
+
+  use windows_sys::Win32::Foundation::{
+    DUPLICATE_SAME_ACCESS, DuplicateHandle, HANDLE, INVALID_HANDLE_VALUE,
+  };
+  use windows_sys::Win32::System::Console::{
+    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+  };
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  let which = match slot {
+    StdSlot::In => STD_INPUT_HANDLE,
+    StdSlot::Out => STD_OUTPUT_HANDLE,
+    StdSlot::Err => STD_ERROR_HANDLE,
+  };
+  // Safety: the standard handle belongs to this process. The duplicate is
+  // not inheritable. `from_raw_handle` owns it.
+  unsafe {
+    let handle = GetStdHandle(which);
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+      return None;
+    }
+    let mut duped: HANDLE = std::ptr::null_mut();
+    let ok = DuplicateHandle(
+      GetCurrentProcess(),
+      handle,
+      GetCurrentProcess(),
+      &mut duped,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    );
+    if ok == 0 || duped.is_null() {
+      return None;
+    }
+    Some(std::fs::File::from_raw_handle(duped as RawHandle))
+  }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn duplicate_stdio(_slot: StdSlot) -> Option<std::fs::File> {
+  None
 }
 
 fn install_streams(scope: &mut v8::PinScope) {

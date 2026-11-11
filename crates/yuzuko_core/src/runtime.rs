@@ -1877,6 +1877,7 @@ fn install_realm(scope: &mut v8::PinScope<'_, '_>, test_mode: bool) {
 }
 
 fn teardown_realm() {
+  crate::errors::clear();
   #[cfg(feature = "fs")]
   crate::fs::clear();
   #[cfg(feature = "udp")]
@@ -2130,6 +2131,9 @@ fn install_process(scope: &mut v8::PinScope<'_, '_>) {
   crate::process::install(scope, yuzuko);
   install_build(scope, yuzuko);
   crate::permissions::install(scope, yuzuko);
+  // After `fs` publishes `Yuzuko.errors`, so `NotCapable` is added to that
+  // object. The captured constructor stays across an HMR module reload.
+  crate::errors::install(scope);
 }
 
 /// Records whether later realms report `Yuzuko.build.standalone` as true.

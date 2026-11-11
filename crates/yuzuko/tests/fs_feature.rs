@@ -47,7 +47,7 @@ fn fs_feature_installs_the_file_system() {
 fn fs_feature_omits_the_file_system() {
   assert_eq!(
     types(),
-    "undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined"
+    "undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined object undefined"
   );
 }
 

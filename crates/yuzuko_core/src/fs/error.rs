@@ -130,7 +130,7 @@ pub(super) enum FsError {
     class: Class,
     message: String,
   },
-  /// A `DOMException`, such as `NotAllowedError` for a file opened after a swap.
+  /// A host denial, such as `NotCapable` for a file opened after a swap.
   Host {
     name: String,
     message: String,

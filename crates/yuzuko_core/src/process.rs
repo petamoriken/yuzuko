@@ -34,6 +34,7 @@ const CWD_FAILED: &str = "The current directory could not be read.";
 const DIR_MISSING: &str = "The directory was not found.";
 const DIR_KIND: &str = "The path is not a directory.";
 const DIR_DENIED: &str = "The directory could not be changed.";
+const EXEC_PATH: &str = "The executable path could not be read.";
 
 pub(crate) fn exit_code() -> Option<u8> {
   u8::try_from(EXIT.load(Ordering::SeqCst)).ok()
@@ -72,6 +73,26 @@ pub(crate) fn install(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
   define_fn(scope, yuzuko, "cwd", 0, cwd);
   define_fn(scope, yuzuko, "chdir", 1, chdir);
   define_fn(scope, yuzuko, "exit", 0, exit);
+  define_fn(scope, yuzuko, "execPath", 0, exec_path);
+  let pid = v8::Number::new(scope, f64::from(std::process::id()));
+  let pid_key = v8::String::new(scope, "pid").expect("pid");
+  yuzuko.set(scope, pid_key.into(), pid.into());
+  match parent_id() {
+    Ok(id) => {
+      let value = v8::Number::new(scope, f64::from(id));
+      let key = v8::String::new(scope, "ppid").expect("ppid");
+      yuzuko.set(scope, key.into(), value.into());
+    }
+    Err(()) => {
+      throw_dom(
+        scope,
+        "OperationError",
+        "The parent process could not be read.",
+      );
+      return;
+    }
+  }
+  install_version(scope, yuzuko);
 }
 
 fn install_args(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
@@ -337,6 +358,107 @@ fn cwd(
     return;
   };
   set_string(scope, &mut ret, &path.to_string_lossy());
+}
+
+fn exec_path(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  // `current_exe` and `canonicalize` do not call `getenv` or `getaddrinfo`.
+  let Ok(path) = std::env::current_exe() else {
+    throw_dom(scope, "OperationError", EXEC_PATH);
+    return;
+  };
+  let path = std::fs::canonicalize(&path).unwrap_or(path);
+  set_string(scope, &mut ret, &path.to_string_lossy());
+}
+
+fn install_version(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
+  let version = v8::Object::new(scope);
+  set_version_field(scope, version, "yuzuko", env!("CARGO_PKG_VERSION"));
+  set_version_field(scope, version, "v8", v8::V8::get_version());
+  let _ = version.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  let key = v8::String::new(scope, "version").expect("version");
+  yuzuko.set(scope, key.into(), version.into());
+}
+
+fn set_version_field(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  text: &str,
+) {
+  let Some(key) = v8::String::new(scope, name) else {
+    return;
+  };
+  let Some(value) = v8::String::new(scope, text) else {
+    return;
+  };
+  object.set(scope, key.into(), value.into());
+}
+
+/// Parent process id captured when the realm starts.
+///
+/// Unix `getppid` does not fail. Windows reads
+/// `InheritedFromUniqueProcessId` and fails when the status is negative or
+/// the id is 0.
+#[cfg(unix)]
+fn parent_id() -> Result<u32, ()> {
+  // Safety: `getppid` has no arguments and does not touch the environment.
+  let id = unsafe { libc::getppid() };
+  u32::try_from(id).map_err(|_| ())
+}
+
+#[cfg(windows)]
+fn parent_id() -> Result<u32, ()> {
+  use std::ffi::c_void;
+
+  /// `PROCESS_BASIC_INFORMATION` for 64-bit Windows. `repr(C)` inserts the
+  /// pointer alignment padding. Do not add explicit pad fields.
+  #[repr(C)]
+  struct ProcessBasicInformation {
+    exit_status: i32,
+    peb: *mut c_void,
+    affinity: usize,
+    base_priority: i32,
+    unique_process_id: usize,
+    inherited_from_unique_process_id: usize,
+  }
+
+  #[link(name = "ntdll")]
+  unsafe extern "system" {
+    fn NtQueryInformationProcess(
+      process: *mut c_void,
+      class: u32,
+      info: *mut ProcessBasicInformation,
+      length: u32,
+      returned: *mut u32,
+    ) -> i32;
+  }
+
+  // Safety: the process pseudo-handle is this process. The buffer is a
+  // local `ProcessBasicInformation` and the length is its size.
+  unsafe {
+    let mut info = std::mem::zeroed::<ProcessBasicInformation>();
+    let status = NtQueryInformationProcess(
+      windows_sys::Win32::System::Threading::GetCurrentProcess(),
+      0,
+      &mut info,
+      u32::try_from(std::mem::size_of::<ProcessBasicInformation>())
+        .map_err(|_| ())?,
+      std::ptr::null_mut(),
+    );
+    if status < 0 || info.inherited_from_unique_process_id == 0 {
+      return Err(());
+    }
+    u32::try_from(info.inherited_from_unique_process_id).map_err(|_| ())
+  }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn parent_id() -> Result<u32, ()> {
+  Err(())
 }
 
 fn set_string(scope: &mut v8::PinScope, ret: &mut v8::ReturnValue, text: &str) {
