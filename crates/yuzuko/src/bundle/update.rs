@@ -86,6 +86,18 @@ struct Options {
   url: Option<String>,
 }
 
+/// One check and the poll that continues it.
+///
+/// `finish_check` would otherwise take the generation, the interval, the
+/// callback, the key, and the URL as separate arguments.
+struct Check {
+  generation: u64,
+  interval: Option<Duration>,
+  ready: Option<v8::Global<v8::Function>>,
+  key: Option<[u8; 32]>,
+  url: Option<String>,
+}
+
 enum OptionsError {
   Type(&'static str),
   Thrown(v8::Global<v8::Value>),
@@ -185,48 +197,39 @@ fn auto_update(
   }
   let resolver = v8::Global::new(scope, resolver);
   start_check(
-    generation,
-    options.interval,
-    options.ready,
+    Check {
+      generation,
+      interval: options.interval,
+      ready: options.ready,
+      key: options.public_key,
+      url: options.url,
+    },
     Some(resolver),
-    options.public_key,
-    options.url,
   );
 }
 
 fn start_check(
-  generation: u64,
-  interval: Option<Duration>,
-  ready: Option<v8::Global<v8::Function>>,
+  check: Check,
   resolver: Option<v8::Global<v8::PromiseResolver>>,
-  key: Option<[u8; 32]>,
-  url: Option<String>,
 ) {
-  let fetch_url = url.clone();
+  let fetch_url = check.url.clone();
+  let key = check.key;
   yuzuko_core::spawn(
     move || match resources_dir() {
       Ok(resources) => stage_update(&resources, key, fetch_url.as_deref()),
       Err(error) => Err(error),
     },
-    move |scope, result| {
-      finish_check(
-        scope, generation, interval, ready, resolver, key, url, result,
-      );
-    },
+    move |scope, result| finish_check(scope, check, resolver, result),
   );
 }
 
 fn finish_check(
   scope: &mut v8::PinScope,
-  generation: u64,
-  interval: Option<Duration>,
-  ready: Option<v8::Global<v8::Function>>,
+  check: Check,
   resolver: Option<v8::Global<v8::PromiseResolver>>,
-  key: Option<[u8; 32]>,
-  url: Option<String>,
   result: Result<Result<Option<String>, Failure>, ()>,
 ) {
-  let live = generation == GENERATION.load(AtomicOrdering::Relaxed);
+  let live = check.generation == GENERATION.load(AtomicOrdering::Relaxed);
   let outcome = match result {
     Ok(outcome) => outcome,
     Err(()) => Err(DOWNLOAD_FAILED),
@@ -235,7 +238,8 @@ fn finish_check(
     Ok(staged) => {
       let thrown = if live {
         staged.as_ref().and_then(|version| {
-          ready
+          check
+            .ready
             .as_ref()
             .and_then(|ready| call_ready(scope, ready, version).err())
         })
@@ -254,11 +258,11 @@ fn finish_check(
         let error = v8::Local::new(scope, error);
         report_uncaught(scope, error);
       }
-      let continue_poll = generation
+      let continue_poll = check.generation
         == GENERATION.load(AtomicOrdering::Relaxed)
         && (thrown.is_none() || resolver.is_none());
       if continue_poll {
-        schedule_next(generation, interval, ready, key, url);
+        schedule_next(check);
       }
     }
     Err(error) => {
@@ -266,30 +270,25 @@ fn finish_check(
         let resolver = v8::Local::new(scope, resolver);
         reject(scope, resolver, &error);
       } else if live {
-        schedule_next(generation, interval, ready, key, url);
+        schedule_next(check);
       }
     }
   }
 }
 
-fn schedule_next(
-  generation: u64,
-  interval: Option<Duration>,
-  ready: Option<v8::Global<v8::Function>>,
-  key: Option<[u8; 32]>,
-  url: Option<String>,
-) {
-  let Some(interval) = interval else {
+fn schedule_next(check: Check) {
+  let Some(interval) = check.interval else {
     return;
   };
-  if generation != GENERATION.load(AtomicOrdering::Relaxed) {
+  if check.generation != GENERATION.load(AtomicOrdering::Relaxed) {
     return;
   }
+  let generation = check.generation;
   let id = yuzuko_core::schedule_host(interval, move |_scope| {
     if generation != GENERATION.load(AtomicOrdering::Relaxed) {
       return;
     }
-    start_check(generation, Some(interval), ready, None, key, url);
+    start_check(check, None);
   });
   *lock(&TIMER) = Some(id);
 }
@@ -299,22 +298,19 @@ fn call_ready(
   function: &v8::Global<v8::Function>,
   version: &str,
 ) -> Result<(), v8::Global<v8::Value>> {
-  let captured = {
-    v8::tc_scope!(let tc, scope);
-    let function = v8::Local::new(tc, function);
-    match v8::String::new(tc, version) {
-      Some(arg) => {
-        let receiver = v8::undefined(tc);
-        if function.call(tc, receiver.into(), &[arg.into()]).is_some() {
-          Ok(())
-        } else {
-          Err(caught(tc))
-        }
+  v8::tc_scope!(let tc, scope);
+  let function = v8::Local::new(tc, function);
+  match v8::String::new(tc, version) {
+    Some(arg) => {
+      let receiver = v8::undefined(tc);
+      if function.call(tc, receiver.into(), &[arg.into()]).is_some() {
+        Ok(())
+      } else {
+        Err(caught(tc))
       }
-      None => Err(caught(tc)),
     }
-  };
-  captured
+    None => Err(caught(tc)),
+  }
 }
 
 fn caught(
@@ -460,17 +456,14 @@ fn property(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<v8::Global<v8::Value>, OptionsError> {
-  let captured = {
-    v8::tc_scope!(let tc, scope);
-    let Some(key) = v8::String::new(tc, name) else {
-      return Err(OptionsError::Type(EXPECTS_OBJECT));
-    };
-    match object.get(tc, key.into()) {
-      Some(value) if tc.exception().is_none() => Ok(v8::Global::new(tc, value)),
-      _ => Err(OptionsError::Thrown(caught(tc))),
-    }
+  v8::tc_scope!(let tc, scope);
+  let Some(key) = v8::String::new(tc, name) else {
+    return Err(OptionsError::Type(EXPECTS_OBJECT));
   };
-  captured
+  match object.get(tc, key.into()) {
+    Some(value) if tc.exception().is_none() => Ok(v8::Global::new(tc, value)),
+    _ => Err(OptionsError::Thrown(caught(tc))),
+  }
 }
 
 fn resources_dir() -> Result<PathBuf, Failure> {
@@ -519,7 +512,7 @@ fn stage_update(
   if version_parts(&manifest.version).is_err() {
     return Err(BAD_PACKAGED);
   }
-  let url = feed_url(&base)?;
+  let url = feed_url(base)?;
   let body = http_get(&url, FEED_LIMIT)?;
   let feed = parse_feed(&body)?;
   let order =
@@ -530,7 +523,7 @@ fn stage_update(
   if already_staged(resources, &feed.signature, &key) {
     return Ok(None);
   }
-  let payload_url = payload_url(&base, &feed.payload)?;
+  let payload_url = payload_url(base, &feed.payload)?;
   let payload = http_get(&payload_url, PAYLOAD_LIMIT)?;
   if !verify_bytes(&key, &payload, &feed.signature) {
     return Err(BAD_SIGNATURE);

@@ -65,53 +65,53 @@ fn host_build() -> (
 ) {
   #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
   {
-    return (
+    (
       "aarch64-apple-darwin",
       "aarch64",
       "darwin",
       "apple",
       "env-absent",
-    );
+    )
   }
   #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
   {
-    return (
+    (
       "x86_64-apple-darwin",
       "x86_64",
       "darwin",
       "apple",
       "env-absent",
-    );
+    )
   }
   #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
   {
-    return (
+    (
       "aarch64-unknown-linux-gnu",
       "aarch64",
       "linux",
       "unknown",
       "env gnu",
-    );
+    )
   }
   #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
   {
-    return (
+    (
       "x86_64-unknown-linux-gnu",
       "x86_64",
       "linux",
       "unknown",
       "env gnu",
-    );
+    )
   }
   #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
   {
-    return (
+    (
       "x86_64-pc-windows-msvc",
       "x86_64",
       "windows",
       "pc",
       "env msvc",
-    );
+    )
   }
   #[cfg(not(any(
     all(target_arch = "aarch64", target_os = "macos"),
