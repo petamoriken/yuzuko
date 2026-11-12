@@ -306,6 +306,30 @@ const id = setInterval(() => {
 }, 40);
 "#;
 
+const ZERO_TIMEOUT: &str = r#"
+const id = setTimeout(() => {
+  console.log("ran");
+}, 0);
+Yuzuko.unrefTimer(id);
+"#;
+
+const ZERO_INTERVAL: &str = r#"
+const id = setInterval(() => {
+  console.log("ran");
+}, 0);
+Yuzuko.unrefTimer(id);
+"#;
+
+const ZERO_HELD: &str = r#"
+const id = setTimeout(() => {
+  console.log("due");
+}, 0);
+Yuzuko.unrefTimer(id);
+setTimeout(() => {
+  console.log("hold");
+}, 80);
+"#;
+
 fn timer_stdout(dir: &Path, script: &str) -> String {
   let child = command(dir, &["run", "--no-prompt", script])
     .spawn()
@@ -323,10 +347,16 @@ fn unreferenced_timers_do_not_keep_the_process_alive() {
   write_script(&dir, "ref.ts", REF);
   write_script(&dir, "clear.ts", CLEAR);
   write_script(&dir, "interval.ts", INTERVAL);
+  write_script(&dir, "zero-timeout.ts", ZERO_TIMEOUT);
+  write_script(&dir, "zero-interval.ts", ZERO_INTERVAL);
+  write_script(&dir, "zero-held.ts", ZERO_HELD);
   for _ in 0..2 {
     assert_eq!(timer_stdout(&dir, "unref.ts").trim(), "");
     assert_eq!(timer_stdout(&dir, "ref.ts").trim(), "timeout");
     assert_eq!(timer_stdout(&dir, "clear.ts").trim(), "held");
     assert_eq!(timer_stdout(&dir, "interval.ts").trim(), "once");
+    assert_eq!(timer_stdout(&dir, "zero-timeout.ts").trim(), "");
+    assert_eq!(timer_stdout(&dir, "zero-interval.ts").trim(), "");
+    assert_eq!(timer_stdout(&dir, "zero-held.ts").trim(), "due\nhold");
   }
 }

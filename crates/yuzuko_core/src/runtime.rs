@@ -1603,6 +1603,23 @@ fn repl_wait() -> Option<std::time::Duration> {
   }
 }
 
+/// Referenced timers always run. An unreferenced timer runs only when
+/// something besides that timer is keeping the realm alive.
+fn due_timers_should_run(keep_alive: bool, workers: bool) -> bool {
+  if crate::timers::has_pending() {
+    return true;
+  }
+  let queue = host::queue();
+  !queue.is_idle()
+    || crate::jobs::pending()
+    || signals_pending()
+    || wasm_in_flight() > 0
+    || keep_alive
+    || workers
+    || crate::idle::idle_has_pending()
+    || crate::worker::inbound_ready()
+}
+
 pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   if exiting() {
     return false;
@@ -1622,7 +1639,22 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   if crate::idle::poll_idle_timeout(scope) {
     return true;
   }
-  if let Some(timer) = crate::timers::poll_due() {
+  // `poll_due` is before the idle check. A delay of 0 is already due, so an
+  // unreferenced timer would run and keep this turn alive. Run it only when a
+  // referenced timer is pending or another resource is keeping the realm alive.
+  let firing = if host::is_dedicated_worker() {
+    LoopInterest {
+      keep_alive: false,
+      next_wait: None,
+    }
+  } else {
+    loop_interest()
+  };
+  if due_timers_should_run(
+    firing.keep_alive,
+    crate::worker::keeps_alive(host::agent_id()),
+  ) && let Some(timer) = crate::timers::poll_due()
+  {
     crate::timers::fire(scope, timer);
     return true;
   }

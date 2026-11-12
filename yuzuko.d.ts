@@ -2576,7 +2576,8 @@ declare namespace Yuzuko {
    *
    * The callback still runs when the event loop stays alive for another
    * reason. When every pending timer is unreferenced and nothing else keeps
-   * the process alive, the process exits without running those callbacks.
+   * the process alive, the process exits without running those callbacks,
+   * including one whose delay has already elapsed.
    * `clearTimeout` and `clearInterval` still cancel the timer. `id` follows
    * {@link refTimer}. `unrefTimer` has length 1.
    */
