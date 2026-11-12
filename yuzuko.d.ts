@@ -19,7 +19,7 @@
  * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`,
  * `Yuzuko.execPath`, `Yuzuko.pid`, `Yuzuko.ppid`, `Yuzuko.version`,
  * `Yuzuko.memoryUsage`, `Yuzuko.noColor`, `Yuzuko.refTimer`,
- * `Yuzuko.unrefTimer`, `Yuzuko.errors.NotCapable`, and
+ * `Yuzuko.unrefTimer`, `Yuzuko.errors`, and
  * `Yuzuko.permissions` are part of that object in every build. That build
  * omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
@@ -3068,11 +3068,13 @@ declare namespace Yuzuko {
     /**
      * Receives the next datagram.
      *
-     * At most one receive waits. The promise rejects {@link Error} with
-     * `The socket is closed.` when the socket is closed, including when
-     * {@link Datagram.close} runs while this call is waiting, and with
-     * `A receive is already waiting.` when another receive is waiting.
-     * Another operating-system failure rejects `The datagram could not be received.`
+     * At most one receive waits. The promise rejects {@link errors.BadResource}
+     * with `The socket is closed.` when the socket is closed, including when
+     * {@link Datagram.close} runs while this call is waiting, and
+     * {@link errors.Busy} with `A receive is already waiting.` when another
+     * receive is waiting. An operating-system failure whose kind has a socket class
+     * rejects that class. Another failure rejects
+     * `The datagram could not be received.`
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * a `Datagram`. `The socket operation failed.` when the promise cannot
@@ -3086,8 +3088,8 @@ declare namespace Yuzuko {
      * A waiting {@link Datagram.receive} rejects. Dropping the last handle
      * also closes it.
      *
-     * @throws {@link Error} `The socket is closed.` when the socket is
-     * already closed.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * socket is already closed.
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * a `Datagram`.
      */
@@ -3128,8 +3130,12 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 0 through 65535.` when the
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
-   * system refuses the address for another reason.
+   * system refuses the address and the failure is not a socket class.
+   * `InvalidInput` throws {@link TypeError} with that message. The
+   * operating-system error may set `code` to its errno name.
    * @throws {@link errors.AddrInUse} `The address is already in use.`
+   * @throws {@link errors.AddrNotAvailable} `The address is not available.`
+   * Another kind with a socket class on {@link errors} throws that class.
    * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
@@ -3200,11 +3206,12 @@ declare namespace Yuzuko {
     /**
      * Accepts the next connection.
      *
-     * At most one accept waits. The promise rejects {@link Error} with
-     * `The socket is closed.` when the listener is closed, including when
-     * {@link TcpListener.close} runs while this call is waiting, and with
-     * `An accept is already waiting.` when another accept is waiting.
-     * Another operating-system failure rejects
+     * At most one accept waits. The promise rejects {@link errors.BadResource}
+     * with `The socket is closed.` when the listener is closed, including
+     * when {@link TcpListener.close} runs while this call is waiting, and
+     * {@link errors.Busy} with `An accept is already waiting.` when another
+     * accept is waiting. An operating-system failure whose kind has a socket class
+     * rejects that class. Another failure rejects
      * `The connection could not be accepted.`
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
@@ -3219,8 +3226,8 @@ declare namespace Yuzuko {
      * A waiting {@link TcpListener.accept} rejects. Dropping the last handle
      * also closes it.
      *
-     * @throws {@link Error} `The socket is closed.` when the listener is
-     * already closed.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * listener is already closed.
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * a `TcpListener`.
      */
@@ -3260,7 +3267,12 @@ declare namespace Yuzuko {
      * Resolves the number of bytes copied, which may be shorter than
      * `buffer`. Resolves `null` when the peer ended the stream. A
      * zero-length buffer resolves `0` and does not wait. At most one read
-     * waits. A write may wait at the same time.
+     * waits. A second read rejects {@link errors.Busy} with
+     * `A read is already waiting.` A write may wait at the same time. A
+     * closed connection rejects
+     * {@link errors.BadResource} with `The socket is closed.` An
+     * operating-system failure whose kind has a socket class rejects that
+     * class. Another failure rejects `The bytes could not be read.`
      *
      * @param buffer - Destination. A view receives bytes only in its own range.
      * @throws {@link TypeError} `Not enough arguments` when `buffer` is
@@ -3277,7 +3289,12 @@ declare namespace Yuzuko {
      *
      * The bytes are copied before the promise is returned. An empty buffer
      * resolves `0`. The promise resolves the number of bytes written, which
-     * is `data.byteLength`.
+     * is `data.byteLength`. At most one write waits. A second write rejects
+     * {@link errors.Busy} with `A write is already waiting.` A write that
+     * returns zero rejects
+     * {@link errors.WriteZero} with `The bytes could not be written.` A
+     * closed connection rejects {@link errors.BadResource} with
+     * `The socket is closed.`
      *
      * @param data - Payload. A view sends only its own bytes.
      * @throws {@link TypeError} `Not enough arguments` when `data` is
@@ -3295,8 +3312,8 @@ declare namespace Yuzuko {
      * A waiting {@link TcpConn.read} or {@link TcpConn.write} rejects.
      * Dropping the last handle also closes it.
      *
-     * @throws {@link Error} `The socket is closed.` when the connection is
-     * already closed.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * connection is already closed.
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * a `TcpConn`.
      */
@@ -3319,8 +3336,12 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 0 through 65535.` when the
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
-   * system refuses the address for another reason.
+   * system refuses the address and the failure is not a socket class.
+   * `InvalidInput` throws {@link TypeError} with that message. The
+   * operating-system error may set `code` to its errno name.
    * @throws {@link errors.AddrInUse} `The address is already in use.`
+   * @throws {@link errors.AddrNotAvailable} `The address is not available.`
+   * Another kind with a socket class on {@link errors} throws that class.
    * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
@@ -3496,14 +3517,16 @@ declare namespace Yuzuko {
    * @throws {@link TypeError} `Not enough arguments` when an argument is
    * missing. `The connection must be a TcpConn.` when `conn` is not.
    * `Options must be an object.` when `options` is not an object.
-   * `A read is already waiting.` or `A write is already waiting.` when that
-   * call is in progress. The connection stays open.
    * `The hostname is invalid.` when the server name cannot be used.
    * `caCerts must be an array of PEM strings.` and
    * `The certificate is not valid PEM.` for a bad certificate.
-   * @throws {@link Error} `The socket is closed.` when `conn` is closed.
-   * `The TLS handshake failed.` when the handshake does not finish. The
-   * `TcpConn` is already closed in that case.
+   * @throws {@link errors.Busy} `A read is already waiting.` or
+   * `A write is already waiting.` when that call is in progress. The
+   * connection stays open.
+   * @throws {@link errors.BadResource} `The socket is closed.` when `conn`
+   * is closed.
+   * @throws {@link Error} `The TLS handshake failed.` when the handshake
+   * does not finish. The `TcpConn` is already closed in that case.
    * @throws {@link errors.NotCapable} when {@link permissions} does not
    * grant the hostname and remote port. The `TcpConn` stays open.
    */
@@ -3572,15 +3595,17 @@ declare namespace Yuzuko {
     /**
      * Accepts the next HTTP/1 request.
      *
-     * At most one accept waits. The promise rejects {@link Error} with
-     * `The socket is closed.` when the server is closed, including when
-     * {@link HttpServer.close} runs while this call is waiting, and with
-     * `An accept is already waiting.` when another accept is waiting.
-     * A header block longer than 65536 bytes, or a body longer than
-     * 1048576 bytes, rejects `The request is too large.` A malformed
-     * request rejects `The request could not be read.` An operating-system
-     * failure while accepting the connection rejects
-     * `The connection could not be accepted.`
+     * At most one accept waits. The promise rejects {@link errors.BadResource}
+     * with `The socket is closed.` when the server is closed, including when
+     * {@link HttpServer.close} runs while this call is waiting, and
+     * {@link errors.Busy} with `An accept is already waiting.` when another
+     * accept is waiting. A header block longer than 65536 bytes, or a body longer
+     * than 1048576 bytes, rejects {@link Error} with
+     * `The request is too large.` A malformed request rejects
+     * {@link errors.Http} with `The request could not be read.` An
+     * operating-system failure while accepting the connection rejects that
+     * socket class, or {@link Error} with
+     * `The connection could not be accepted.` when the kind is not listed.
      *
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * an `HttpServer`. `The socket operation failed.` when the promise cannot
@@ -3594,8 +3619,8 @@ declare namespace Yuzuko {
      * A waiting {@link HttpServer.accept} rejects. An accepted request stays
      * open. Dropping the last handle also closes the listener.
      *
-     * @throws {@link Error} `The socket is closed.` when the server is
-     * already closed.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * server is already closed.
      * @throws {@link TypeError} `illegal invocation` when the receiver is not
      * an `HttpServer`.
      */
@@ -3643,7 +3668,15 @@ declare namespace Yuzuko {
      *
      * A string is encoded as UTF-8 and sent as `text/plain;charset=UTF-8`.
      * A buffer is sent as `application/octet-stream`. The bytes are copied
-     * before the promise is returned. `status` defaults to `200`.
+     * before the promise is returned. A second call while a write is waiting
+     * rejects {@link errors.Busy} with `A response is already waiting.`
+     * A second call after the write has succeeded throws {@link Error} with
+     * `The response was already sent.` `status` defaults to `200`. A closed
+     * request rejects {@link errors.BadResource} with
+     * `The socket is closed.` A write that returns zero rejects
+     * {@link errors.WriteZero} with `The response could not be written.`
+     * A listed socket failure rejects that class. Any other failed write
+     * rejects {@link Error} with `The response could not be written.`
      *
      * @param body - Response payload. A view sends only its own bytes.
      * @param status - HTTP status from 100 through 599.
@@ -3678,7 +3711,12 @@ declare namespace Yuzuko {
    * is not. `The port must be an integer from 0 through 65535.` when the
    * port is not.
    * @throws {@link Error} `The socket could not bind.` when the operating
-   * system refuses the address.
+   * system refuses the address and the failure is not a socket class.
+   * `InvalidInput` throws {@link TypeError} with that message. The
+   * operating-system error may set `code` to its errno name.
+   * @throws {@link errors.AddrInUse} `The address is already in use.`
+   * @throws {@link errors.AddrNotAvailable} `The address is not available.`
+   * Another kind with a socket class on {@link errors} throws that class.
    * @throws {@link errors.NotCapable} when {@link permissions}
    * does not grant the address. Omitted options check `127.0.0.1` and port
    * `0`.
@@ -4102,10 +4140,16 @@ declare namespace Yuzuko {
    * variable in the child environment is rejected with the unscoped run
    * message. A missing grant for `cwd` does not report whether that
    * directory exists.
-   * @throws {@link Error} `The child process could not be started.` when
-   * the operating system refuses the program. `The directory was not
-   * found.` when a granted `cwd` is missing. `The path is not a directory.`
+   * @throws {@link errors.NotFound} `The directory was not found.` when a
+   * granted `cwd` is missing.
+   * @throws {@link errors.NotADirectory} `The path is not a directory.`
    * when a granted `cwd` is not a directory.
+   * @throws {@link Error} `The child process could not be started.` when
+   * the operating system refuses the program and that failure has no
+   * dedicated class. `InvalidInput` throws {@link TypeError} with that
+   * message. Another operating-system failure throws the class Deno uses
+   * for that error, with the same message. `code` is the errno name when
+   * Deno would set one.
    */
   function spawn(
     command: string,
@@ -4607,15 +4651,24 @@ declare namespace Yuzuko {
    *
    * A synchronous method blocks the calling thread. An asynchronous method
    * runs the operating-system call on a background thread. A bad argument
-   * throws {@link TypeError}. An operating-system failure throws, or rejects
+   * throws {@link TypeError}. An operating-system `InvalidInput` throws
+   * {@link TypeError}. An operating-system failure throws, or rejects
    * with, one of {@link errors.NotFound}, {@link errors.AlreadyExists},
    * {@link errors.PermissionDenied}, {@link errors.IsADirectory},
-   * {@link errors.NotADirectory}, {@link errors.NotSupported},
-   * {@link errors.Busy}, {@link errors.Interrupted},
-   * {@link errors.InvalidData}, {@link errors.BadResource}, or
-   * {@link errors.FilesystemLoop}. A symbolic-link loop is
-   * {@link errors.FilesystemLoop}. A directory that is not empty, and any
-   * other operating-system failure, is a plain {@link Error}. Modifying a
+   * {@link errors.NotADirectory}, {@link errors.Interrupted},
+   * {@link errors.InvalidData}, {@link errors.BadResource},
+   * {@link errors.FilesystemLoop}, {@link errors.ConnectionRefused},
+   * {@link errors.ConnectionReset}, {@link errors.ConnectionAborted},
+   * {@link errors.NotConnected}, {@link errors.AddrInUse},
+   * {@link errors.AddrNotAvailable}, {@link errors.BrokenPipe},
+   * {@link errors.TimedOut}, {@link errors.WriteZero},
+   * {@link errors.UnexpectedEof}, {@link errors.WouldBlock}, or
+   * {@link errors.NetworkUnreachable}. The message for those kinds is the
+   * operating-system text. `code` is the errno name when one is known. A
+   * symbolic-link loop is {@link errors.FilesystemLoop}. An unsupported
+   * operation, a seek on a file that cannot seek, a read-only file system,
+   * a busy resource, a directory that is not empty, and any other
+   * operating-system failure, is a plain {@link Error}. Modifying a
    * packaged application bundle throws {@link errors.NotSupported}.
    *
    * A path string is absolute or relative to the process current directory.
@@ -4936,80 +4989,191 @@ declare namespace Yuzuko {
   /**
    * Error classes captured when the realm starts.
    *
-   * `NotCapable` is present in every build. The socket classes are present
-   * when `tcp` or `udp` is enabled. The file-system classes are present when
-   * `fs` is enabled. The thrown object is an instance of the constructor
-   * installed at startup. Replacing a property later does not change it.
+   * Every class is present in every build, on the main realm and in a
+   * dedicated worker. An `AudioWorklet` processor realm does not have
+   * `Yuzuko`. Each class extends `Error`. `name` is the class name. The
+   * constructor takes a message and the optional options object `Error`
+   * uses for `cause`. An omitted or `undefined` message is `""`. An
+   * operating-system failure may set `code` to the errno name Deno uses,
+   * such as `ENOENT`. `new` does not set `code`. The thrown object is an
+   * instance of the constructor installed at startup. Replacing a property
+   * later does not change it.
    */
   namespace errors {
+    /** The path was not found. The message is operating-system text. */
+    class NotFound extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /**
+     * The operating system refused access.
+     *
+     * This is an `Error`. A host permission denial is {@link NotCapable}.
+     */
+    class PermissionDenied extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The connection was refused. */
+    class ConnectionRefused extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The connection was reset. */
+    class ConnectionReset extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The connection was aborted. */
+    class ConnectionAborted extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The socket is not connected. */
+    class NotConnected extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The address is already in use. */
+    class AddrInUse extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The address is not available. */
+    class AddrNotAvailable extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The socket pipe is broken. */
+    class BrokenPipe extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The path already exists. The message is operating-system text. */
+    class AlreadyExists extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The data is not valid. The message is operating-system text. */
+    class InvalidData extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The socket operation timed out. */
+    class TimedOut extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The call was interrupted. The message is operating-system text. */
+    class Interrupted extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /**
+     * A write returned no bytes.
+     *
+     * A socket write uses `The bytes could not be written.` An HTTP response
+     * write uses `The response could not be written.`
+     */
+    class WriteZero extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The call would block. The message is operating-system text. */
+    class WouldBlock extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The socket reached the end of the stream. */
+    class UnexpectedEof extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The socket or file is already closed. */
+    class BadResource extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The HTTP request could not be read. */
+    class Http extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /**
+     * A socket or HTTP call is already waiting, or `startTls` found a
+     * waiting read or write.
+     *
+     * An operating-system busy failure is a plain {@link Error}.
+     */
+    class Busy extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /**
+     * The operation is explicitly not supported.
+     *
+     * A packaged application bundle, `chown` on Windows, `setRaw` on a
+     * file that is not a terminal, and a lock the platform does not
+     * support throw this. An operating-system unsupported error is a
+     * plain {@link Error}.
+     */
+    class NotSupported extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** A symbolic link loop was encountered. */
+    class FilesystemLoop extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The path is a directory. */
+    class IsADirectory extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The network is unreachable. */
+    class NetworkUnreachable extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
+    /** The path is not a directory. */
+    class NotADirectory extends Error {
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
+    }
     /**
      * A host permission was not granted.
      *
      * This is an `Error`, not a {@link DOMException}.
      */
     class NotCapable extends Error {
-      constructor(message?: string);
-    }
-    /** The address is already in use. */
-    class AddrInUse extends Error {
-      constructor(message?: string);
-    }
-    /** The connection was refused. */
-    class ConnectionRefused extends Error {
-      constructor(message?: string);
-    }
-    /** The connection was reset. */
-    class ConnectionReset extends Error {
-      constructor(message?: string);
-    }
-    /** The socket operation timed out. */
-    class TimedOut extends Error {
-      constructor(message?: string);
-    }
-    /** The socket pipe is broken. */
-    class BrokenPipe extends Error {
-      constructor(message?: string);
-    }
-    /** The socket reached the end of the stream. */
-    class UnexpectedEof extends Error {
-      constructor(message?: string);
-    }
-    /** The network is unreachable. */
-    class NetworkUnreachable extends Error {
-      constructor(message?: string);
-    }
-    class NotFound extends Error {
-      constructor(message?: string);
-    }
-    class AlreadyExists extends Error {
-      constructor(message?: string);
-    }
-    class PermissionDenied extends Error {
-      constructor(message?: string);
-    }
-    class IsADirectory extends Error {
-      constructor(message?: string);
-    }
-    class NotADirectory extends Error {
-      constructor(message?: string);
-    }
-    class NotSupported extends Error {
-      constructor(message?: string);
-    }
-    class Busy extends Error {
-      constructor(message?: string);
-    }
-    class Interrupted extends Error {
-      constructor(message?: string);
-    }
-    class InvalidData extends Error {
-      constructor(message?: string);
-    }
-    class BadResource extends Error {
-      constructor(message?: string);
-    }
-    class FilesystemLoop extends Error {
-      constructor(message?: string);
+      constructor(message?: string, options?: ErrorOptions);
+      /** Errno name, such as `ENOENT`, when the operating system set one. */
+      readonly code?: string;
     }
   }
 

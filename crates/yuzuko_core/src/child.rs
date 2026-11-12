@@ -411,9 +411,9 @@ fn spawn_op<'s>(
   if let Some(dir) = &request.cwd {
     command.current_dir(dir);
   }
-  let mut child = command
-    .spawn()
-    .map_err(|_| plain_error(scope, SPAWN_FAIL))?;
+  let mut child = command.spawn().map_err(|error| {
+    crate::errors::io_exception_message(scope, &error, SPAWN_FAIL)
+  })?;
   let pid = child.id();
   let (stdin_slot, _) = pipe_slot(request.stdin, child.stdin.take());
   let (stdout_slot, stdout_pipe) =
@@ -1486,14 +1486,15 @@ fn ensure_directory(
 ) -> Result<(), OpError> {
   match std::fs::metadata(path) {
     Ok(info) if info.is_dir() => Ok(()),
-    Ok(_) => Err(plain_error(scope, DIR_KIND)),
-    Err(error) if error.kind() == ErrorKind::NotFound => {
-      Err(plain_error(scope, DIR_MISSING))
+    Ok(_) => Err(crate::errors::exception(scope, "NotADirectory", DIR_KIND)),
+    Err(error) => {
+      let message = match error.kind() {
+        ErrorKind::NotFound => DIR_MISSING,
+        ErrorKind::NotADirectory => DIR_KIND,
+        _ => SPAWN_FAIL,
+      };
+      Err(crate::errors::io_exception_message(scope, &error, message))
     }
-    Err(error) if error.kind() == ErrorKind::NotADirectory => {
-      Err(plain_error(scope, DIR_KIND))
-    }
-    Err(_) => Err(plain_error(scope, SPAWN_FAIL)),
   }
 }
 
@@ -1865,14 +1866,6 @@ fn string_primitive(
     return Err(OpError::type_(message));
   };
   Ok(text.to_rust_string_lossy(scope))
-}
-
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
 }
 
 fn move_constructor(scope: &mut v8::PinScope, name: &str) {

@@ -13,7 +13,7 @@ const DETACHED = "The buffer is detached.";
 const TOO_LARGE = "The datagram is too large.";
 const FAMILY = "The address family does not match the socket.";
 const BUSY = "A receive is already waiting.";
-const BIND = "The socket could not bind.";
+const UNAVAILABLE = "The address is not available.";
 
 type Socket = Yuzuko.Datagram;
 
@@ -262,9 +262,9 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       Yuzuko.listenDatagram({ hostname: "192.0.2.1", port: 0 });
     } catch (error) {
-      refused = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+      refused = error instanceof Yuzuko.errors.AddrNotAvailable ? error.message : "type";
     }
-    assert(refused === BIND, refused);
+    assert(refused === UNAVAILABLE, refused);
 
     const socket = Yuzuko.listenDatagram({ hostname: "127.0.0.1", port: 0 });
     open.push(socket);
@@ -344,7 +344,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       await socket.receive();
     } catch (error) {
-      busy = error instanceof Error ? error.message : "other";
+      busy = error instanceof Yuzuko.errors.Busy ? error.message : "other";
     }
     assert(busy === BUSY, busy);
     const peer = Yuzuko.listenDatagram({ hostname: "127.0.0.1", port: 0 });
@@ -360,7 +360,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       await blocked;
     } catch (error) {
-      closed = error instanceof Error ? error.message : "other";
+      closed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
     }
     assert(closed === CLOSED, closed);
 
@@ -368,7 +368,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       socket.close();
     } catch (error) {
-      second = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+      second = error instanceof Yuzuko.errors.BadResource ? error.message : "type";
     }
     assert(second === CLOSED, second);
 
@@ -376,7 +376,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       await socket.send(new Uint8Array([1]), peer.addr);
     } catch (error) {
-      sendClosed = error instanceof Error ? error.message : "other";
+      sendClosed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
     }
     assert(sendClosed === CLOSED, sendClosed);
 
@@ -384,7 +384,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     try {
       await socket.receive();
     } catch (error) {
-      receiveClosed = error instanceof Error ? error.message : "other";
+      receiveClosed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
     }
     assert(receiveClosed === CLOSED, receiveClosed);
   } finally {

@@ -1,6 +1,13 @@
 const server = Yuzuko.listenHttp({ hostname: "127.0.0.1", port: 0 });
 let request;
 try {
+  if (
+    typeof Yuzuko.errors.Http !== "function" ||
+    typeof Yuzuko.errors.BadResource !== "function" ||
+    typeof Yuzuko.errors.NotCapable !== "function"
+  ) {
+    throw new Error("errors");
+  }
   const pending = server.accept();
   postMessage({ port: server.addr.port });
   request = await pending;

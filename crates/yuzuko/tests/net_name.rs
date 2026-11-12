@@ -531,12 +531,20 @@ fn socket_errors_use_their_classes() {
 const resetPort = Number(Yuzuko.args[1]);
 const names = [
   "AddrInUse",
+  "AddrNotAvailable",
   "ConnectionRefused",
   "ConnectionReset",
+  "ConnectionAborted",
+  "NotConnected",
   "TimedOut",
   "BrokenPipe",
   "UnexpectedEof",
   "NetworkUnreachable",
+  "WriteZero",
+  "BadResource",
+  "Http",
+  "WouldBlock",
+  "NotCapable",
 ];
 const installed = names.every((name) => {
   const ctor = Yuzuko.errors[name];

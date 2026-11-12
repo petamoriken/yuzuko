@@ -8,6 +8,7 @@ mod clone;
 mod color;
 #[cfg(any(feature = "tcp", feature = "udp"))]
 mod dns;
+mod error_codes;
 mod errors;
 mod extensions;
 #[cfg(feature = "ffi")]

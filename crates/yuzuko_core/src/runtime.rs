@@ -2180,8 +2180,8 @@ fn install_process(scope: &mut v8::PinScope<'_, '_>) {
   crate::process::install(scope, yuzuko);
   install_build(scope, yuzuko);
   crate::permissions::install(scope, yuzuko);
-  // After `fs` publishes `Yuzuko.errors`, so `NotCapable` is added to that
-  // object. The captured constructor stays across an HMR module reload.
+  // Creates `Yuzuko.errors`. The captured constructors stay across an HMR
+  // module reload. `teardown_realm` drops them.
   crate::errors::install(scope);
   #[cfg(any(feature = "tcp", feature = "udp"))]
   crate::dns::install(scope);

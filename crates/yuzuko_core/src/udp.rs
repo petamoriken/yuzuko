@@ -106,8 +106,21 @@ enum Fail {
   Closed,
   Send,
   Receive,
-  Class(crate::socket_error::Class),
-  Denied { name: String, message: String },
+  Class {
+    class: crate::socket_error::Class,
+    code: Option<&'static str>,
+  },
+  /// An operating-system failure with no socket class. `InvalidInput` is a
+  /// `TypeError`. `code` is set when Deno would set it.
+  Io {
+    message: &'static str,
+    code: Option<&'static str>,
+    type_error: bool,
+  },
+  Denied {
+    name: String,
+    message: String,
+  },
   Type(&'static str),
   Resolve,
 }
@@ -118,7 +131,8 @@ impl Fail {
       Self::Closed => CLOSED,
       Self::Send => SEND,
       Self::Receive => RECEIVE,
-      Self::Class(class) => class.message(),
+      Self::Class { class, .. } => class.message(),
+      Self::Io { message, .. } => message,
       Self::Denied { .. } => SEND,
       Self::Type(message) => message,
       Self::Resolve => crate::dns::UNRESOLVED,
@@ -127,9 +141,15 @@ impl Fail {
 }
 
 fn io_fail(error: io::Error, generic: Fail) -> Fail {
-  match crate::socket_error::classify(error.kind()) {
-    Some(class) => Fail::Class(class),
-    None => generic,
+  match crate::socket_error::map_io(&error) {
+    crate::socket_error::Mapped::Class { class, code } => {
+      Fail::Class { class, code }
+    }
+    crate::socket_error::Mapped::Generic { code, type_error } => Fail::Io {
+      message: generic.message(),
+      code,
+      type_error,
+    },
   }
 }
 
@@ -294,7 +314,7 @@ impl Datagram {
       return Err(OpError::type_(FAMILY));
     }
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     let shared = Arc::clone(&self.shared);
     let ipv4 = self.shared.bound.is_ipv4();
@@ -306,7 +326,7 @@ impl Datagram {
 
   fn receive(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -329,7 +349,7 @@ impl Datagram {
 
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     if self.shared.mark_closed() {
-      Err(plain_error(scope, CLOSED))
+      Err(crate::errors::exception(scope, "BadResource", CLOSED))
     } else {
       Ok(())
     }
@@ -373,7 +393,7 @@ fn listen_op(
   let shared = match bind_udp(addr) {
     Ok(shared) => shared,
     Err(error) => {
-      return Err(crate::errors::io_exception(scope, error.kind(), BIND));
+      return Err(crate::errors::io_exception(scope, &error, BIND));
     }
   };
   Ok(New(Datagram { shared }))
@@ -568,13 +588,7 @@ fn settle(
 }
 
 fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let error = error_value(scope, message);
-  let _ = resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
-  Ok(Js(v8::Global::new(scope, promise)))
+  crate::errors::reject(scope, "Busy", message, NO_PROMISE)
 }
 
 fn fail_value<'s>(
@@ -582,7 +596,15 @@ fn fail_value<'s>(
   fail: &Fail,
 ) -> v8::Local<'s, v8::Value> {
   match fail {
-    Fail::Class(class) => crate::errors::class_value(scope, *class),
+    Fail::Closed => crate::errors::construct(scope, "BadResource", CLOSED),
+    Fail::Class { class, code } => {
+      crate::errors::class_value(scope, *class, *code)
+    }
+    Fail::Io {
+      message,
+      code,
+      type_error,
+    } => crate::errors::coded_message(scope, message, *code, *type_error),
     Fail::Denied { name, message } => {
       crate::errors::denied_value(scope, name, message)
     }
@@ -604,14 +626,6 @@ fn error_value<'s>(
     return v8::undefined(scope).into();
   };
   v8::Exception::error(scope, text)
-}
-
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
 }
 
 fn move_constructor(scope: &mut v8::PinScope, name: &str) {

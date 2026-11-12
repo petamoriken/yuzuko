@@ -12,7 +12,7 @@ const DATA = "The data must be a BufferSource.";
 const DETACHED = "The buffer is detached.";
 const BUSY_ACCEPT = "An accept is already waiting.";
 const BUSY_READ = "A read is already waiting.";
-const BIND = "The socket could not bind.";
+const UNAVAILABLE = "The address is not available.";
 const CONNECT = "The connection was refused.";
 
 type Listener = Yuzuko.TcpListener;
@@ -309,12 +309,19 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       assert(missing === "Not enough arguments", missing);
 
       let refusedBind = "";
+      let refusedCode = "";
       try {
         Yuzuko.listenTcp({ hostname: "192.0.2.1", port: 0 });
       } catch (error) {
-        refusedBind = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+        if (error instanceof Yuzuko.errors.AddrNotAvailable) {
+          refusedBind = error.message;
+          refusedCode = error.code ?? "";
+        } else {
+          refusedBind = "type";
+        }
       }
-      assert(refusedBind === BIND, refusedBind);
+      assert(refusedBind === UNAVAILABLE, refusedBind);
+      assert(refusedCode === "EADDRNOTAVAIL", refusedCode);
 
       const listener = Yuzuko.listenTcp({ hostname: "127.0.0.1", port: 0 });
       open.push(listener);
@@ -347,7 +354,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       try {
         await live.accept();
       } catch (error) {
-        busy = error instanceof Error ? error.message : "other";
+        busy = error instanceof Yuzuko.errors.Busy ? error.message : "other";
       }
       assert(busy === BUSY_ACCEPT, busy);
       const client = await Yuzuko.connectTcp({ hostname: "127.0.0.1", port: live.addr.port });
@@ -384,15 +391,24 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       try {
         await server.read(new Uint8Array(1));
       } catch (error) {
-        busyRead = error instanceof Error ? error.message : "other";
+        busyRead = error instanceof Yuzuko.errors.Busy ? error.message : "other";
       }
       assert(busyRead === BUSY_READ, busyRead);
+      returned = "unset";
+      let tlsBusy = "";
+      try {
+        returned = Yuzuko.startTls(server, { hostname: "127.0.0.1" });
+      } catch (error) {
+        tlsBusy = error instanceof Yuzuko.errors.Busy ? error.message : "other";
+      }
+      assert(!(returned instanceof Promise), "busy startTls returned a promise");
+      assert(tlsBusy === BUSY_READ, tlsBusy);
       server.close();
       let closedRead = "";
       try {
         await blocked;
       } catch (error) {
-        closedRead = error instanceof Error ? error.message : "other";
+        closedRead = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
       }
       assert(closedRead === CLOSED, closedRead);
 
@@ -400,7 +416,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       try {
         server.close();
       } catch (error) {
-        second = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+        second = error instanceof Yuzuko.errors.BadResource ? error.message : "type";
       }
       assert(second === CLOSED, second);
 
@@ -408,7 +424,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       try {
         await server.write(new Uint8Array([1]));
       } catch (error) {
-        writeClosed = error instanceof Error ? error.message : "other";
+        writeClosed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
       }
       assert(writeClosed === CLOSED, writeClosed);
 
@@ -419,14 +435,14 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       try {
         await waiting;
       } catch (error) {
-        acceptClosed = error instanceof Error ? error.message : "other";
+        acceptClosed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
       }
       assert(acceptClosed === CLOSED, acceptClosed);
       let listenerAgain = "";
       try {
         live.close();
       } catch (error) {
-        listenerAgain = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+        listenerAgain = error instanceof Yuzuko.errors.BadResource ? error.message : "type";
       }
       assert(listenerAgain === CLOSED, listenerAgain);
     })(), "errors");

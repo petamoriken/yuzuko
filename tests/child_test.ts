@@ -47,10 +47,6 @@ function throws(run: () => void): unknown {
   throw new Error("did not throw");
 }
 
-function isError(error: unknown): error is Error {
-  return error instanceof Error && !(error instanceof TypeError);
-}
-
 async function rejects(promise: Promise<unknown>): Promise<unknown> {
   try {
     await promise;
@@ -343,8 +339,8 @@ Yuzuko.test("a bad command does not start a process", () => {
   assert(text(throws(() => spawn("a\0b"))) === NUL, "nul");
 
   const missing = throws(() => spawn("/no/such/yuzuko-child-binary"));
-  assert(missing instanceof Error, "missing type");
-  assert(!(missing instanceof TypeError), "missing is TypeError");
+  assert(missing instanceof Yuzuko.errors.NotFound, "missing type");
+  assert(missing.code === "ENOENT", "missing code");
   assert(text(missing) === SPAWN_FAIL, text(missing));
 });
 
@@ -385,7 +381,11 @@ Yuzuko.test("spawn rejects bad streams, env, and cwd", () => {
   const ignoredError = throws(() =>
     spawn("/no/such/yuzuko-child-binary", ignored),
   );
-  assert(isError(ignoredError), `ignored type ${text(ignoredError)}`);
+  assert(
+    ignoredError instanceof Yuzuko.errors.NotFound,
+    `ignored type ${text(ignoredError)}`,
+  );
+  assert(ignoredError.code === "ENOENT", "ignored code");
   assert(text(ignoredError) === SPAWN_FAIL, text(ignoredError));
   assert(extra === false, "unknown field was read");
 
@@ -441,14 +441,16 @@ Yuzuko.test("spawn rejects bad streams, env, and cwd", () => {
   const looked = throws(() =>
     spawn("sh", { cwd: "https://example.invalid/dir" }),
   );
-  assert(isError(looked), `cwd string url ${text(looked)}`);
+  assert(looked instanceof Yuzuko.errors.NotFound, `cwd string url ${text(looked)}`);
   assert(text(looked) === DIR_MISSING, text(looked));
   const absent = throws(() => spawn("sh", { cwd: "/no/such/yuzuko-child-dir" }));
-  assert(isError(absent), `cwd missing ${text(absent)}`);
+  assert(absent instanceof Yuzuko.errors.NotFound, `cwd missing ${text(absent)}`);
+  assert(absent.code === "ENOENT", "cwd code");
   assert(text(absent) === DIR_MISSING, text(absent));
   const file = Yuzuko.makeTempFileSync({ prefix: "yuzuko-child-" });
   const kind = throws(() => spawn("sh", { cwd: file }));
-  assert(isError(kind), `cwd file ${text(kind)}`);
+  assert(kind instanceof Yuzuko.errors.NotADirectory, `cwd file ${text(kind)}`);
+  assert(!("code" in kind), "cwd file code");
   assert(text(kind) === DIR_KIND, text(kind));
 
   assert(

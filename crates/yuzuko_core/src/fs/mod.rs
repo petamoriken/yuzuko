@@ -39,12 +39,10 @@ pub(super) fn bundle_root() -> Option<PathBuf> {
 }
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
-  error::install(scope);
   publish_class(scope, "FsFile", file::FsFile::install);
   publish_class(scope, "FsWatcher", watch::FsWatcher::install);
   ops::define(scope);
   install_seek_mode(scope);
-  error::publish(scope);
   install_dispose(scope);
   install_async_iterator(scope);
   install_streams(scope);
@@ -53,7 +51,6 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
 
 pub(crate) fn clear() {
   watch::clear();
-  error::clear();
 }
 
 fn ready<T>(

@@ -138,6 +138,20 @@ enum Fail {
   Request,
   TooLarge,
   Write,
+  /// A write that returned zero. The class is `WriteZero`, and the message
+  /// stays the HTTP sentence rather than the socket sentence.
+  Zero,
+  Class {
+    class: crate::socket_error::Class,
+    code: Option<&'static str>,
+  },
+  /// An operating-system failure with no socket class. `InvalidInput` is a
+  /// `TypeError`. A request read that is not `InvalidInput` stays `Request`.
+  Io {
+    message: &'static str,
+    code: Option<&'static str>,
+    type_error: bool,
+  },
 }
 
 impl Fail {
@@ -147,8 +161,26 @@ impl Fail {
       Self::Accept => ACCEPT,
       Self::Request => REQUEST,
       Self::TooLarge => REQUEST_LARGE,
-      Self::Write => WRITE_ERR,
+      Self::Write | Self::Zero => WRITE_ERR,
+      Self::Class { class, .. } => class.message(),
+      Self::Io { message, .. } => message,
     }
+  }
+}
+
+fn io_fail(error: io::Error, generic: Fail) -> Fail {
+  match crate::socket_error::map_io(&error) {
+    crate::socket_error::Mapped::Class { class, code } => {
+      Fail::Class { class, code }
+    }
+    crate::socket_error::Mapped::Generic {
+      type_error: false, ..
+    } if matches!(generic, Fail::Request) => Fail::Request,
+    crate::socket_error::Mapped::Generic { code, type_error } => Fail::Io {
+      message: generic.message(),
+      code,
+      type_error,
+    },
   }
 }
 
@@ -218,8 +250,12 @@ fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
     };
     // Windows does not carry non-blocking mode to a duplicated socket, and a
     // blocking accept would not see `close`.
-    let clone = listener.try_clone().map_err(|_| Fail::Accept)?;
-    clone.set_nonblocking(true).map_err(|_| Fail::Accept)?;
+    let clone = listener
+      .try_clone()
+      .map_err(|error| io_fail(error, Fail::Accept))?;
+    clone
+      .set_nonblocking(true)
+      .map_err(|error| io_fail(error, Fail::Accept))?;
     clone
   };
   let mut stream = loop {
@@ -240,10 +276,10 @@ fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
         std::thread::sleep(IO_WAIT);
       }
       Err(_) if shared.is_closed() => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Accept),
+      Err(error) => return Err(io_fail(error, Fail::Accept)),
     }
   };
-  configure(&stream).map_err(|_| Fail::Accept)?;
+  configure(&stream).map_err(|error| io_fail(error, Fail::Accept))?;
   let parsed = read_request(&mut stream, &shared.closed)?;
   Ok(RequestParts {
     stream,
@@ -333,7 +369,7 @@ fn read_some(
         }
       }
       Err(_) if closed.load(Ordering::Acquire) => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Request),
+      Err(error) => return Err(io_fail(error, Fail::Request)),
     }
   }
 }
@@ -531,7 +567,7 @@ fn write_all(
       return Err(Fail::Closed);
     }
     match stream.write(&bytes[offset..]) {
-      Ok(0) => return Err(Fail::Write),
+      Ok(0) => return Err(Fail::Zero),
       Ok(count) => offset += count,
       Err(error) if is_io_retry(error.kind()) => {
         if closed.load(Ordering::Acquire) {
@@ -542,7 +578,7 @@ fn write_all(
         }
       }
       Err(_) if closed.load(Ordering::Acquire) => return Err(Fail::Closed),
-      Err(_) => return Err(Fail::Write),
+      Err(error) => return Err(io_fail(error, Fail::Write)),
     }
   }
   Ok(())
@@ -562,7 +598,9 @@ fn write_shared(
     let Some(stream) = slot.as_ref() else {
       return Err(Fail::Closed);
     };
-    stream.try_clone().map_err(|_| Fail::Write)?
+    stream
+      .try_clone()
+      .map_err(|error| io_fail(error, Fail::Write))?
   };
   send_response(&mut stream, &shared.closed, status, content_type, body)
 }
@@ -612,7 +650,7 @@ impl Server {
 
   fn accept(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -640,7 +678,7 @@ impl Server {
 
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     if self.shared.mark_closed() {
-      Err(plain_error(scope, CLOSED))
+      Err(crate::errors::exception(scope, "BadResource", CLOSED))
     } else {
       Ok(())
     }
@@ -686,7 +724,7 @@ impl Request {
       return Err(plain_error(scope, ALREADY));
     }
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -743,7 +781,12 @@ fn listen_op(
   } else {
     endpoint(scope, options)?
   };
-  let shared = bind_http(addr).map_err(|_| plain_error(scope, BIND))?;
+  let shared = match bind_http(addr) {
+    Ok(shared) => shared,
+    Err(error) => {
+      return Err(crate::errors::io_exception(scope, &error, BIND));
+    }
+  };
   Ok(New(Server { shared }))
 }
 
@@ -1023,7 +1066,7 @@ fn settle(
         let _ = resolver.resolve(scope, value);
       }
       Err(fail) => {
-        let error = error_value(scope, fail.message());
+        let error = fail_value(scope, &fail);
         let _ = resolver.reject(scope, error);
       }
     }
@@ -1081,7 +1124,7 @@ fn settle_respond(
           if !matches!(fail, Fail::Closed) {
             let _ = flag.mark_closed();
           }
-          let error = error_value(scope, fail.message());
+          let error = fail_value(scope, &fail);
           let _ = resolver.reject(scope, error);
         }
       }
@@ -1091,13 +1134,27 @@ fn settle_respond(
 }
 
 fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let error = error_value(scope, message);
-  let _ = resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
-  Ok(Js(v8::Global::new(scope, promise)))
+  crate::errors::reject(scope, "Busy", message, NO_PROMISE)
+}
+
+fn fail_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  fail: &Fail,
+) -> v8::Local<'s, v8::Value> {
+  match fail {
+    Fail::Closed => crate::errors::construct(scope, "BadResource", CLOSED),
+    Fail::Request => crate::errors::construct(scope, "Http", REQUEST),
+    Fail::Zero => crate::errors::construct(scope, "WriteZero", WRITE_ERR),
+    Fail::Class { class, code } => {
+      crate::errors::class_value(scope, *class, *code)
+    }
+    Fail::Io {
+      message,
+      code,
+      type_error,
+    } => crate::errors::coded_message(scope, message, *code, *type_error),
+    other => error_value(scope, other.message()),
+  }
 }
 
 fn error_value<'s>(

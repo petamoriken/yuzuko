@@ -134,7 +134,7 @@ impl TlsConn {
       return resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
-      return rejected_message(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -170,7 +170,7 @@ impl TlsConn {
       return resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
-      return rejected_message(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -198,7 +198,7 @@ impl TlsConn {
 
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     if self.shared.mark_closed() {
-      Err(plain_error(scope, CLOSED))
+      Err(crate::errors::exception(scope, "BadResource", CLOSED))
     } else {
       Ok(())
     }
@@ -339,13 +339,13 @@ fn start_op(
   let (stream, local, remote) = match taken {
     Ok(parts) => parts,
     Err(crate::tcp::TakeError::BusyRead) => {
-      return Err(OpError::type_(BUSY_READ));
+      return Err(crate::errors::exception(scope, "Busy", BUSY_READ));
     }
     Err(crate::tcp::TakeError::BusyWrite) => {
-      return Err(OpError::type_(BUSY_WRITE));
+      return Err(crate::errors::exception(scope, "Busy", BUSY_WRITE));
     }
     Err(crate::tcp::TakeError::Closed) => {
-      return Err(plain_error(scope, CLOSED));
+      return Err(crate::errors::exception(scope, "BadResource", CLOSED));
     }
   };
   let promise = resolver.get_promise(scope);
@@ -495,9 +495,11 @@ fn handshake_fail(error: io::Error) -> crate::tcp::Fail {
   if error.kind() == ErrorKind::InvalidData {
     return crate::tcp::Fail::Handshake;
   }
-  match crate::socket_error::classify(error.kind()) {
-    Some(class) => crate::tcp::Fail::Class(class),
-    None => crate::tcp::Fail::Handshake,
+  match crate::socket_error::map_io(&error) {
+    crate::socket_error::Mapped::Class { class, code } => {
+      crate::tcp::Fail::Class { class, code }
+    }
+    crate::socket_error::Mapped::Generic { .. } => crate::tcp::Fail::Handshake,
   }
 }
 
@@ -582,7 +584,12 @@ fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
     }
     match stream.write(&bytes[offset..]) {
       Ok(0) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Ok(0) => break Err(crate::tcp::Fail::Write),
+      Ok(0) => {
+        break Err(crate::tcp::Fail::Class {
+          class: crate::socket_error::Class::WriteZero,
+          code: None,
+        });
+      }
       Ok(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
       Ok(count) => offset += count,
       Err(error) if crate::tcp::is_io_retry(error.kind()) => {
@@ -611,9 +618,17 @@ fn restore(shared: &Shared, stream: StreamOwned<ClientConnection, TcpStream>) {
 }
 
 fn io_fail(error: io::Error, generic: crate::tcp::Fail) -> crate::tcp::Fail {
-  match crate::socket_error::classify(error.kind()) {
-    Some(class) => crate::tcp::Fail::Class(class),
-    None => generic,
+  match crate::socket_error::map_io(&error) {
+    crate::socket_error::Mapped::Class { class, code } => {
+      crate::tcp::Fail::Class { class, code }
+    }
+    crate::socket_error::Mapped::Generic { code, type_error } => {
+      crate::tcp::Fail::Io {
+        message: generic.message(),
+        code,
+        type_error,
+      }
+    }
   }
 }
 
@@ -728,31 +743,7 @@ fn rejected_message(
   scope: &mut v8::PinScope,
   message: &str,
 ) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let error = plain_message(scope, message);
-  let _ = resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
-  Ok(Js(v8::Global::new(scope, promise)))
-}
-
-fn plain_message<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-) -> v8::Local<'s, v8::Value> {
-  let Some(text) = v8::String::new(scope, message) else {
-    return v8::undefined(scope).into();
-  };
-  v8::Exception::error(scope, text)
-}
-
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
+  crate::errors::reject(scope, "Busy", message, NO_PROMISE)
 }
 
 fn move_constructor(scope: &mut v8::PinScope, name: &str) {

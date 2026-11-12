@@ -129,14 +129,27 @@ pub(crate) enum Fail {
   Read,
   Write,
   Detached,
-  Class(crate::socket_error::Class),
-  Denied { name: String, message: String },
+  Class {
+    class: crate::socket_error::Class,
+    code: Option<&'static str>,
+  },
+  /// An operating-system failure with no socket class. `InvalidInput` is a
+  /// `TypeError`. `code` is set when Deno would set it.
+  Io {
+    message: &'static str,
+    code: Option<&'static str>,
+    type_error: bool,
+  },
+  Denied {
+    name: String,
+    message: String,
+  },
   Resolve,
   Handshake,
 }
 
 impl Fail {
-  fn message(&self) -> &'static str {
+  pub(crate) fn message(&self) -> &'static str {
     match self {
       Self::Closed => CLOSED,
       Self::Connect => CONNECT,
@@ -144,7 +157,8 @@ impl Fail {
       Self::Read => READ_ERR,
       Self::Write => WRITE_ERR,
       Self::Detached => DETACHED,
-      Self::Class(class) => class.message(),
+      Self::Class { class, .. } => class.message(),
+      Self::Io { message, .. } => message,
       Self::Denied { .. } => CONNECT,
       Self::Resolve => crate::dns::UNRESOLVED,
       Self::Handshake => "The TLS handshake failed.",
@@ -153,9 +167,15 @@ impl Fail {
 }
 
 fn io_fail(error: io::Error, generic: Fail) -> Fail {
-  match crate::socket_error::classify(error.kind()) {
-    Some(class) => Fail::Class(class),
-    None => generic,
+  match crate::socket_error::map_io(&error) {
+    crate::socket_error::Mapped::Class { class, code } => {
+      Fail::Class { class, code }
+    }
+    crate::socket_error::Mapped::Generic { code, type_error } => Fail::Io {
+      message: generic.message(),
+      code,
+      type_error,
+    },
   }
 }
 
@@ -371,7 +391,9 @@ fn write_conn(shared: &ConnShared, bytes: &[u8]) -> Result<usize, Fail> {
     let Some(stream) = slot.as_ref() else {
       return Err(Fail::Closed);
     };
-    stream.try_clone().map_err(|_| Fail::Write)?
+    stream
+      .try_clone()
+      .map_err(|error| io_fail(error, Fail::Write))?
   };
   let mut offset = 0;
   while offset < bytes.len() {
@@ -380,7 +402,12 @@ fn write_conn(shared: &ConnShared, bytes: &[u8]) -> Result<usize, Fail> {
     }
     match stream.write(&bytes[offset..]) {
       Ok(0) if shared.is_closed() => return Err(Fail::Closed),
-      Ok(0) => return Err(Fail::Write),
+      Ok(0) => {
+        return Err(Fail::Class {
+          class: crate::socket_error::Class::WriteZero,
+          code: None,
+        });
+      }
       Ok(count) if shared.is_closed() => {
         let _ = count;
         return Err(Fail::Closed);
@@ -504,7 +531,7 @@ impl Listener {
 
   fn accept(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -532,7 +559,7 @@ impl Listener {
 
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     if self.shared.mark_closed() {
-      Err(plain_error(scope, CLOSED))
+      Err(crate::errors::exception(scope, "BadResource", CLOSED))
     } else {
       Ok(())
     }
@@ -561,7 +588,7 @@ impl Conn {
       return resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -597,7 +624,7 @@ impl Conn {
       return resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
-      return rejected(scope, CLOSED);
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
     }
     if self
       .shared
@@ -625,7 +652,7 @@ impl Conn {
 
   fn close(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
     if self.shared.mark_closed() {
-      Err(plain_error(scope, CLOSED))
+      Err(crate::errors::exception(scope, "BadResource", CLOSED))
     } else {
       Ok(())
     }
@@ -688,7 +715,7 @@ fn listen_op(
   let shared = match bind_tcp(addr) {
     Ok(shared) => shared,
     Err(error) => {
-      return Err(crate::errors::io_exception(scope, error.kind(), BIND));
+      return Err(crate::errors::io_exception(scope, &error, BIND));
     }
   };
   Ok(New(Listener { shared }))
@@ -1045,13 +1072,7 @@ fn resolved_count(
 }
 
 fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let error = error_value(scope, message);
-  let _ = resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
-  Ok(Js(v8::Global::new(scope, promise)))
+  crate::errors::reject(scope, "Busy", message, NO_PROMISE)
 }
 
 pub(crate) fn fail_value<'s>(
@@ -1059,7 +1080,15 @@ pub(crate) fn fail_value<'s>(
   fail: &Fail,
 ) -> v8::Local<'s, v8::Value> {
   match fail {
-    Fail::Class(class) => crate::errors::class_value(scope, *class),
+    Fail::Closed => crate::errors::construct(scope, "BadResource", CLOSED),
+    Fail::Class { class, code } => {
+      crate::errors::class_value(scope, *class, *code)
+    }
+    Fail::Io {
+      message,
+      code,
+      type_error,
+    } => crate::errors::coded_message(scope, message, *code, *type_error),
     Fail::Denied { name, message } => {
       crate::errors::denied_value(scope, name, message)
     }
@@ -1075,14 +1104,6 @@ fn error_value<'s>(
     return v8::undefined(scope).into();
   };
   v8::Exception::error(scope, text)
-}
-
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
 }
 
 fn move_constructor(scope: &mut v8::PinScope, name: &str) {

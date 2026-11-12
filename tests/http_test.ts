@@ -13,7 +13,8 @@ const BUSY_ACCEPT = "An accept is already waiting.";
 const BUSY_RESPOND = "A response is already waiting.";
 const ALREADY = "The response was already sent.";
 const STATUS = "The status must be an integer from 100 through 599.";
-const BIND = "The socket could not bind.";
+const UNAVAILABLE = "The address is not available.";
+const REQUEST = "The request could not be read.";
 
 type Server = Yuzuko.HttpServer;
 
@@ -281,9 +282,9 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       try {
         Yuzuko.listenHttp({ hostname: "192.0.2.1", port: 0 });
       } catch (error) {
-        refusedBind = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+        refusedBind = error instanceof Yuzuko.errors.AddrNotAvailable ? error.message : "type";
       }
-      assert(refusedBind === BIND, refusedBind);
+      assert(refusedBind === UNAVAILABLE, refusedBind);
 
       const live = Yuzuko.listenHttp({ hostname: "127.0.0.1", port: 0 });
       open.push(live);
@@ -301,7 +302,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       try {
         await live.accept();
       } catch (error) {
-        busy = error instanceof Error ? error.message : "other";
+        busy = error instanceof Yuzuko.errors.Busy ? error.message : "other";
       }
       assert(busy === BUSY_ACCEPT, busy);
       const fetching = fetch(`http://127.0.0.1:${live.addr.port}/busy`);
@@ -376,7 +377,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       try {
         await held.respond("other");
       } catch (error) {
-        busyRespond = error instanceof Error ? error.message : "other";
+        busyRespond = error instanceof Yuzuko.errors.Busy ? error.message : "other";
       }
       assert(busyRespond === BUSY_RESPOND, busyRespond);
       await writing;
@@ -389,14 +390,14 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       try {
         await blocked;
       } catch (error) {
-        acceptClosed = error instanceof Error ? error.message : "other";
+        acceptClosed = error instanceof Yuzuko.errors.BadResource ? error.message : "other";
       }
       assert(acceptClosed === CLOSED, acceptClosed);
       let second = "";
       try {
         live.close();
       } catch (error) {
-        second = error instanceof Error && !(error instanceof TypeError) ? error.message : "type";
+        second = error instanceof Yuzuko.errors.BadResource ? error.message : "type";
       }
       assert(second === CLOSED, second);
     })(), "errors");
@@ -405,5 +406,34 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       closeQuiet(server);
     }
     await Promise.all(inflight.map((promise) => promise.then(() => undefined, () => undefined)));
+  }
+});
+
+Yuzuko.test("a malformed request rejects Http", async () => {
+  const server = Yuzuko.listenHttp({ hostname: "127.0.0.1", port: 0 });
+  const pending = server.accept();
+  let conn: Yuzuko.TcpConn | undefined;
+  try {
+    await deadline((async () => {
+      conn = await Yuzuko.connectTcp({
+        hostname: "127.0.0.1",
+        port: server.addr.port,
+      });
+      await conn.write(new TextEncoder().encode("not http\r\n\r\n"));
+      let name = "";
+      let message = "";
+      try {
+        await pending;
+      } catch (error) {
+        name = error instanceof Yuzuko.errors.Http ? error.name : "other";
+        message = error instanceof Yuzuko.errors.Http ? error.message : "other";
+      }
+      assert(name === "Http", name);
+      assert(message === REQUEST, message);
+    })(), "malformed");
+  } finally {
+    closeQuiet(conn);
+    closeQuiet(server);
+    await pending.then(() => undefined, () => undefined);
   }
 });
