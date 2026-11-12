@@ -2690,7 +2690,7 @@ await probe("hidden-exists", async () => text(Yuzuko.spawn("pwd", { cwd: OUTSIDE
     "direct OK INSIDE-TOOL",
     "link-run NotCapable",
     "dir-link NotCapable",
-    "missing-cwd Error The directory was not found.",
+    "missing-cwd NotFound The directory was not found.",
     "hidden-missing NotCapable",
     "hidden-exists NotCapable",
   ] {
