@@ -189,6 +189,9 @@ required-features = ["window"]
 name = "runtime_feature"
 
 [[test]]
+name = "runtime_usage"
+
+[[test]]
 name = "tray"
 required-features = ["window"]
 

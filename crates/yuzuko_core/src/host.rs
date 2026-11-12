@@ -128,6 +128,15 @@ pub struct HostState {
   pub timer_generation: HashMap<i32, u32>,
   pub next_timer_id: i32,
   pub timer_nesting: u32,
+  /// Ids that must not keep the event loop alive.
+  ///
+  /// A timer is referenced unless its id is in this set. `fire` removes the
+  /// timer before the callback, so an `unrefTimer` during that callback is
+  /// recorded here and still applies when an interval is pushed back.
+  pub timer_unref: HashSet<i32>,
+  /// Ids whose callbacks are on the stack. An unref during the callback
+  /// still names a live timer.
+  pub firing_timers: HashSet<i32>,
   pub time_origin: Instant,
   pub time_origin_ms: f64,
   pub rejection_hook: Option<v8::Global<v8::Function>>,
@@ -180,6 +189,8 @@ impl HostState {
       timer_generation: HashMap::new(),
       next_timer_id: 0,
       timer_nesting: 0,
+      timer_unref: HashSet::new(),
+      firing_timers: HashSet::new(),
       time_origin,
       time_origin_ms,
       rejection_hook: None,

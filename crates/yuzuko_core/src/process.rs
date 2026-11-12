@@ -7,12 +7,16 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{
+  Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 
 use crate::op::OpException;
 
 static EXIT: AtomicI32 = AtomicI32::new(-1);
 static ARGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// `NO_COLOR` from process start. A later environment change does not refresh it.
+static NO_COLOR: OnceLock<bool> = OnceLock::new();
 /// Shares environment reads and host lookup, and excludes changes.
 ///
 /// `getaddrinfo` and `getenv` take the read side and may overlap. `setenv`,
@@ -61,6 +65,9 @@ pub fn set_args(args: Vec<String>) {
 }
 
 pub(crate) fn install(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
+  // Capture before the Windows parent-id failure returns. The property is
+  // installed below, after `version`, with the other process facts.
+  let _ = no_color_snapshot();
   install_args(scope, yuzuko);
   let env = v8::Object::new(scope);
   define_fn(scope, env, "get", 1, env_get);
@@ -93,6 +100,12 @@ pub(crate) fn install(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
     }
   }
   install_version(scope, yuzuko);
+  define_fn(scope, yuzuko, "memoryUsage", 0, memory_usage);
+  let no_color = v8::Boolean::new(scope, no_color_snapshot());
+  let no_color_key = v8::String::new(scope, "noColor").expect("noColor");
+  yuzuko.set(scope, no_color_key.into(), no_color.into());
+  define_fn(scope, yuzuko, "refTimer", 1, ref_timer);
+  define_fn(scope, yuzuko, "unrefTimer", 1, unref_timer);
 }
 
 fn install_args(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
@@ -372,6 +385,134 @@ fn exec_path(
   };
   let path = std::fs::canonicalize(&path).unwrap_or(path);
   set_string(scope, &mut ret, &path.to_string_lossy());
+}
+
+fn no_color_snapshot() -> bool {
+  *NO_COLOR.get_or_init(|| {
+    let _guard = io_read();
+    std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty())
+  })
+}
+
+fn memory_usage(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let stats = scope.get_heap_statistics();
+  let usage = v8::Object::new(scope);
+  set_bytes(scope, usage, "rss", resident_set_size());
+  set_bytes(scope, usage, "heapTotal", stats.total_heap_size() as u64);
+  set_bytes(scope, usage, "heapUsed", stats.used_heap_size() as u64);
+  set_bytes(scope, usage, "external", stats.external_memory() as u64);
+  ret.set(usage.into());
+}
+
+fn set_bytes(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  bytes: u64,
+) {
+  let key = v8::String::new(scope, name).expect(name);
+  let value = v8::Number::new(scope, bytes as f64);
+  object.set(scope, key.into(), value.into());
+}
+
+fn ref_timer(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  crate::timers::set_referenced(scope, args.get(0), true);
+}
+
+fn unref_timer(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  crate::timers::set_referenced(scope, args.get(0), false);
+}
+
+/// Current resident set size in bytes. `0` when the operating system cannot
+/// report it. This is not the peak `ru_maxrss`.
+#[cfg(target_os = "macos")]
+fn resident_set_size() -> u64 {
+  use std::mem::MaybeUninit;
+
+  // `libc::mach_task_self` is deprecated in favor of the mach2 crate. The
+  // libsystem function is the current task port and takes no arguments.
+  unsafe extern "C" {
+    fn mach_task_self() -> libc::mach_port_t;
+  }
+
+  let mut info = MaybeUninit::<libc::mach_task_basic_info>::zeroed();
+  let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+  // Safety: `info` is a zeroed `mach_task_basic_info` and `count` is the
+  // Mach field count for that struct. `task_info` writes both.
+  let result = unsafe {
+    libc::task_info(
+      mach_task_self(),
+      libc::MACH_TASK_BASIC_INFO,
+      info.as_mut_ptr().cast(),
+      &mut count,
+    )
+  };
+  if result != libc::KERN_SUCCESS {
+    return 0;
+  }
+  // The struct is packed. A reference to `resident_size` would be unaligned.
+  unsafe { std::ptr::addr_of!((*info.as_ptr()).resident_size).read_unaligned() }
+}
+
+#[cfg(target_os = "linux")]
+fn resident_set_size() -> u64 {
+  let Ok(text) = std::fs::read_to_string("/proc/self/statm") else {
+    return 0;
+  };
+  let Some(pages) = text
+    .split_whitespace()
+    .nth(1)
+    .and_then(|field| field.parse::<u64>().ok())
+  else {
+    return 0;
+  };
+  // Safety: `_SC_PAGESIZE` is a fixed `sysconf` name and does not touch the
+  // environment.
+  let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+  if page <= 0 {
+    return 0;
+  }
+  pages.saturating_mul(page as u64)
+}
+
+#[cfg(windows)]
+fn resident_set_size() -> u64 {
+  use windows_sys::Win32::System::ProcessStatus::{
+    K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+  };
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  let mut counters = PROCESS_MEMORY_COUNTERS {
+    cb: u32::try_from(std::mem::size_of::<PROCESS_MEMORY_COUNTERS>())
+      .unwrap_or(0),
+    ..PROCESS_MEMORY_COUNTERS::default()
+  };
+  // Safety: the process pseudo-handle is this process. `counters` is a
+  // local `PROCESS_MEMORY_COUNTERS` and `cb` is its size.
+  let ok = unsafe {
+    K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb)
+  };
+  if ok == 0 {
+    return 0;
+  }
+  u64::try_from(counters.WorkingSetSize).unwrap_or(0)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn resident_set_size() -> u64 {
+  0
 }
 
 fn install_version(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {

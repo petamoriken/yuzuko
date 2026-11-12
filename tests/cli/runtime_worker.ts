@@ -43,6 +43,10 @@ self.onmessage = () => {
       typeof Yuzuko.connectTls,
       typeof Yuzuko.startTls,
       typeof Yuzuko.TlsConn,
+      typeof Yuzuko.memoryUsage,
+      typeof Yuzuko.noColor,
+      typeof Yuzuko.refTimer,
+      typeof Yuzuko.unrefTimer,
     ].join(" "),
   );
 };

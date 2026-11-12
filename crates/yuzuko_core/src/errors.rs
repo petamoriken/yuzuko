@@ -226,6 +226,10 @@ fn minimal_realm_has_identity_and_not_capable() {
         typeof Yuzuko.stderr,
         typeof Yuzuko.errors.NotCapable,
         typeof Yuzuko.errors.NotFound,
+        typeof Yuzuko.memoryUsage,
+        typeof Yuzuko.noColor,
+        typeof Yuzuko.refTimer,
+        typeof Yuzuko.unrefTimer,
       ].join(" "));
       const version = Yuzuko.version;
       console.log(
@@ -248,16 +252,48 @@ fn minimal_realm_has_identity_and_not_capable() {
           ? "ids"
           : "bad-ids",
       );
+      const before = Yuzuko.memoryUsage();
+      const buffer = new ArrayBuffer(8 * 1024 * 1024);
+      const after = Yuzuko.memoryUsage();
+      const keys = Object.keys(before);
+      const finite = [before, after].every((sample) =>
+        keys.every((key) => Number.isFinite(sample[key]) && sample[key] >= 0)
+      );
+      console.log(
+        keys.join(",") === "rss,heapTotal,heapUsed,external" &&
+          before.rss > 0 &&
+          finite &&
+          (after.heapUsed > before.heapUsed || after.external > before.external) &&
+          before !== Yuzuko.memoryUsage() &&
+          buffer.byteLength === 8 * 1024 * 1024
+          ? "usage"
+          : "bad-usage",
+      );
+      console.log(typeof Yuzuko.noColor === "boolean" ? "color" : "bad-color");
+      Yuzuko.unrefTimer(-1);
+      Yuzuko.unrefTimer(0);
+      Yuzuko.refTimer(123456);
+      console.log(
+        typeof Yuzuko.refTimer === "function" &&
+          typeof Yuzuko.unrefTimer === "function" &&
+          Yuzuko.refTimer.length === 1 &&
+          Yuzuko.unrefTimer.length === 1
+          ? "timers"
+          : "bad-timers",
+      );
     "#])
   .expect("script");
   assert_eq!(
     lines,
     vec![
-      "function number number object undefined undefined undefined function undefined",
+      "function number number object undefined undefined undefined function undefined function boolean function function",
       "version",
       "error",
       "absolute",
       "ids",
+      "usage",
+      "color",
+      "timers",
     ],
     "{lines:?}"
   );

@@ -17,7 +17,7 @@ fn text(enabled: bool) -> &'static str {
   if enabled { "string" } else { "undefined" }
 }
 
-fn identity() -> [&'static str; 11] {
+fn identity() -> [&'static str; 15] {
   [
     "function",
     "number",
@@ -30,6 +30,10 @@ fn identity() -> [&'static str; 11] {
     kind(cfg!(feature = "tcp")),
     kind(cfg!(feature = "tcp")),
     kind(cfg!(feature = "tcp")),
+    "function",
+    "boolean",
+    "function",
+    "function",
   ]
 }
 

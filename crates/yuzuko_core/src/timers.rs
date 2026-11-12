@@ -23,7 +23,47 @@ pub fn count() -> usize {
 }
 
 pub fn has_pending() -> bool {
-  count() > 0
+  host::with(|state| {
+    state
+      .timers
+      .iter()
+      .any(|timer| timer.id <= 0 || !state.timer_unref.contains(&timer.id))
+  })
+}
+
+/// Marks a user timer referenced or unreferenced.
+///
+/// A non-positive id, a missing id, and a value that does not convert with
+/// ToInt32 do nothing. Host timers use negative ids and stay referenced.
+pub fn set_referenced(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  referenced: bool,
+) {
+  // ToInt32 runs user hooks. A throw, including from a symbol, is discarded:
+  // the call does nothing.
+  let id = {
+    v8::tc_scope!(let tc, scope);
+    let Some(id) = value.int32_value(tc) else {
+      return;
+    };
+    id
+  };
+  if id <= 0 {
+    return;
+  }
+  host::with_mut(|state| {
+    let live = state.timers.iter().any(|timer| timer.id == id)
+      || state.firing_timers.contains(&id);
+    if !live {
+      return;
+    }
+    if referenced {
+      state.timer_unref.remove(&id);
+    } else {
+      state.timer_unref.insert(id);
+    }
+  });
 }
 
 pub fn next_wait() -> Option<Duration> {
@@ -73,7 +113,10 @@ fn take_due(allow: impl Fn(i32) -> bool) -> Option<Timer> {
 }
 
 pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
-  host::with_mut(|state| state.timer_nesting += 1);
+  host::with_mut(|state| {
+    state.timer_nesting += 1;
+    state.firing_timers.insert(timer.id);
+  });
   {
     v8::tc_scope!(let tc, scope);
     let host = match &timer.callback {
@@ -137,6 +180,7 @@ pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
   }
   let nesting = host::with(|state| state.timer_nesting);
   host::with_mut(|state| {
+    state.firing_timers.remove(&timer.id);
     state.timer_nesting = state.timer_nesting.saturating_sub(1);
     let current = state.timer_generation.get(&timer.id).copied().unwrap_or(0);
     if let Some(repeat_ms) = timer.repeat_ms
@@ -145,6 +189,8 @@ pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
       let delay = clamp_delay(repeat_ms, nesting);
       timer.when = Instant::now() + duration_from_ms(delay);
       state.timers.push(timer);
+    } else {
+      state.timer_unref.remove(&timer.id);
     }
   });
 }
@@ -191,6 +237,7 @@ fn clear_timer(
   }
   host::with_mut(|state| {
     state.timers.retain(|timer| timer.id != id);
+    state.timer_unref.remove(&id);
     *state.timer_generation.entry(id).or_insert(0) += 1;
   });
 }
@@ -223,6 +270,7 @@ pub fn schedule_host(
 pub fn cancel_host(id: i32) {
   host::with_mut(|state| {
     state.timers.retain(|timer| timer.id != id);
+    state.timer_unref.remove(&id);
   });
 }
 
@@ -237,6 +285,8 @@ pub(crate) fn clear_all() {
       *state.timer_generation.entry(timer.id).or_insert(0) += 1;
     }
     state.timers.clear();
+    state.timer_unref.clear();
+    state.firing_timers.clear();
     state.timer_nesting = 0;
     state.rejection_notify_queued = false;
   });
@@ -270,6 +320,7 @@ pub(crate) fn clear_reloaded() {
       !drop_timer
     });
     for id in removed {
+      state.timer_unref.remove(&id);
       *state.timer_generation.entry(id).or_insert(0) += 1;
     }
   });

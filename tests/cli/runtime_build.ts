@@ -58,6 +58,10 @@ const names = [
   typeof Yuzuko.connectTls,
   typeof Yuzuko.startTls,
   typeof Yuzuko.TlsConn,
+  typeof Yuzuko.memoryUsage,
+  typeof Yuzuko.noColor,
+  typeof Yuzuko.refTimer,
+  typeof Yuzuko.unrefTimer,
 ].join(" ");
 
 const worker = new Worker(new URL("./runtime_worker.ts", import.meta.url), {
