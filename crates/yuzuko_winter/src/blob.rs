@@ -784,6 +784,8 @@ impl File {
 pub fn install(scope: &mut v8::PinScope) {
   Blob::install(scope);
   File::install(scope);
+  // Survives `delete globalThis.Blob`. A worklet context never installs these.
+  yuzuko_core::mark_blob_realm(scope);
 }
 
 /// Host clone tags shared with `DOMException` (`3`).
@@ -864,9 +866,10 @@ fn read_cloned_blob(
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   };
-  // The worklet realm has no `Blob`. Reading the payload first keeps the
-  // deserializer aligned, then the missing constructor rejects the clone.
-  if !global_is_function(scope, "Blob") {
+  // The payload is consumed either way, so a rejected worklet read stays aligned.
+  // The mark is the install, not `globalThis.Blob`: deleting the constructor
+  // must still deserialize.
+  if !yuzuko_core::blob_realm(scope) {
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   }
@@ -893,7 +896,7 @@ fn read_cloned_file(
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   }
-  if !global_is_function(scope, "File") {
+  if !yuzuko_core::blob_realm(scope) {
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   }
@@ -908,16 +911,6 @@ fn read_cloned_file(
     )
   };
   yuzuko_core::ReadResult::Done(v8::Global::new(scope, object))
-}
-
-fn global_is_function(scope: &mut v8::PinScope, name: &str) -> bool {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return false;
-  };
-  global
-    .get(scope, key.into())
-    .is_some_and(|value| value.is_function())
 }
 
 fn read_blob_parts(

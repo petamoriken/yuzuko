@@ -252,12 +252,20 @@ pub fn clone_into_context<'s>(
       Err(ClonePhase::Deserialize(
         tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
       ))
-    } else if let Some(cloned) = deserializer.read_value(context) {
-      Ok(v8::Global::new(tc, cloned))
     } else {
-      Err(ClonePhase::Deserialize(
-        tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
-      ))
+      match clone::read_host_value(tc, |_| deserializer.read_value(context)) {
+        clone::HostRead::Done(cloned) => Ok(v8::Global::new(tc, cloned)),
+        clone::HostRead::Rejected(message) => {
+          tc.reset();
+          clone::throw_data_clone(tc, &message);
+          Err(ClonePhase::Deserialize(
+            tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
+          ))
+        }
+        clone::HostRead::Failed => Err(ClonePhase::Deserialize(
+          tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
+        )),
+      }
     }
   };
   let success = cloned.is_ok();
@@ -290,10 +298,18 @@ pub fn clone_value<'s>(
       let context = tc.get_current_context();
       if deserializer.read_header(context).is_none() {
         Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
-      } else if let Some(cloned) = deserializer.read_value(context) {
-        Ok(v8::Global::new(tc, cloned))
       } else {
-        Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+        match clone::read_host_value(tc, |_| deserializer.read_value(context)) {
+          clone::HostRead::Done(cloned) => Ok(v8::Global::new(tc, cloned)),
+          clone::HostRead::Rejected(message) => {
+            tc.reset();
+            clone::throw_data_clone(tc, &message);
+            Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+          }
+          clone::HostRead::Failed => {
+            Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+          }
+        }
       }
     }
   };

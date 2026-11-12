@@ -118,6 +118,108 @@ thread_local! {
     Vec<Vec<v8::SharedRef<v8::BackingStore>>>,
   > = const { std::cell::RefCell::new(Vec::new()) };
   static SHARE_SAB: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+  /// Depth of `ValueDeserializer::read_value`. `ReadObject` forbids JavaScript.
+  static HOST_READ: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+  /// `DataCloneError` message recorded while `HOST_READ` is non-zero.
+  /// The outermost read throws it after V8 allows JavaScript again.
+  static DEFERRED_CLONE_ERROR: std::cell::RefCell<Option<String>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// Aligned embedder slot for "this context installed `Blob` and `File`".
+///
+/// The public index sits past V8's internal slots. No other embedder data
+/// uses it. `delete globalThis.Blob` leaves the mark in place. A worklet
+/// context never sets it, so a `Blob` there fails the read.
+const BLOB_REALM_SLOT: i32 = 0;
+static BLOB_REALM_MARK: usize = 0;
+
+/// Records that the current context can deserialize `Blob` and `File`.
+pub fn mark_blob_realm(scope: &mut v8::PinScope) {
+  let context = scope.get_current_context();
+  unsafe {
+    context.set_aligned_pointer_in_embedder_data(
+      BLOB_REALM_SLOT,
+      std::ptr::from_ref(&BLOB_REALM_MARK)
+        .cast::<std::ffi::c_void>()
+        .cast_mut(),
+    );
+  }
+}
+
+pub fn blob_realm(scope: &mut v8::PinScope) -> bool {
+  let context = scope.get_current_context();
+  let mark = context.get_aligned_pointer_from_embedder_data(BLOB_REALM_SLOT);
+  mark
+    == std::ptr::from_ref(&BLOB_REALM_MARK)
+      .cast::<std::ffi::c_void>()
+      .cast_mut()
+}
+
+struct HostReadGuard;
+
+impl HostReadGuard {
+  fn enter() -> Self {
+    HOST_READ.with(|cell| {
+      let depth = cell.get();
+      if depth == 0 {
+        DEFERRED_CLONE_ERROR.with(|slot| *slot.borrow_mut() = None);
+      }
+      cell.set(depth.saturating_add(1));
+    });
+    Self
+  }
+}
+
+impl Drop for HostReadGuard {
+  fn drop(&mut self) {
+    HOST_READ.with(|cell| cell.set(cell.get().saturating_sub(1)));
+  }
+}
+
+fn host_read_depth() -> u32 {
+  HOST_READ.with(|cell| cell.get())
+}
+
+fn note_deferred_clone_error(message: &str) {
+  DEFERRED_CLONE_ERROR.with(|slot| {
+    let mut deferred = slot.borrow_mut();
+    if deferred.is_none() {
+      *deferred = Some(message.to_string());
+    }
+  });
+}
+
+fn take_deferred_clone_error() -> Option<String> {
+  if host_read_depth() > 0 {
+    return None;
+  }
+  DEFERRED_CLONE_ERROR.with(|slot| slot.borrow_mut().take())
+}
+
+pub(crate) enum HostRead<'s> {
+  Done(v8::Local<'s, v8::Value>),
+  /// The outermost read should throw `DataCloneError` with this message.
+  Rejected(String),
+  Failed,
+}
+
+/// Runs `read` while host callbacks must not construct `DOMException`.
+pub(crate) fn read_host_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  read: impl FnOnce(&mut v8::PinScope<'s, '_>) -> Option<v8::Local<'s, v8::Value>>,
+) -> HostRead<'s> {
+  let value = {
+    let _guard = HostReadGuard::enter();
+    read(scope)
+  };
+  if let Some(message) = take_deferred_clone_error() {
+    HostRead::Rejected(message)
+  } else if let Some(value) = value {
+    HostRead::Done(value)
+  } else {
+    HostRead::Failed
+  }
 }
 
 pub(crate) fn begin_wasm_transfer() {
@@ -576,6 +678,15 @@ pub fn reject_clone(scope: &mut v8::PinScope) {
 }
 
 pub(crate) fn throw_data_clone(scope: &mut v8::PinScope, message: &str) {
+  if host_read_depth() > 0 {
+    // `ValueDeserializer::ReadObject` opens `DisallowJavascriptExecution`.
+    // `DOMException`'s constructor captures a stack through `Function::Call`
+    // and that aborts the isolate. The caller returns failure; V8 then raises
+    // its own deserialization error without running JavaScript. The outermost
+    // `read_host_value` replaces that error with `DataCloneError`.
+    note_deferred_clone_error(message);
+    return;
+  }
   let global = js::global(scope);
   let key = v8::String::new(scope, "DOMException").unwrap();
   if let Some(ctor) = global.get(scope, key.into())

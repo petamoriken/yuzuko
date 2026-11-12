@@ -214,10 +214,18 @@ pub fn deserialize_parcel<'s>(
     let context = tc.get_current_context();
     if deserializer.read_header(context).is_none() {
       Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
-    } else if let Some(value) = deserializer.read_value(context) {
-      Ok(v8::Global::new(tc, value))
     } else {
-      Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+      match clone::read_host_value(tc, |_| deserializer.read_value(context)) {
+        clone::HostRead::Done(value) => Ok(v8::Global::new(tc, value)),
+        clone::HostRead::Rejected(message) => {
+          tc.reset();
+          clone::throw_data_clone(tc, &message);
+          Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+        }
+        clone::HostRead::Failed => {
+          Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+        }
+      }
     }
   };
   let success = value.is_ok();
