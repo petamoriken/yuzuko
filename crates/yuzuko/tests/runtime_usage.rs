@@ -330,6 +330,53 @@ setTimeout(() => {
 }, 80);
 "#;
 
+const WORKER_DUE: &str = r#"
+const source = [
+  'const id = setTimeout(() => { postMessage("ran"); }, 0);',
+  "Yuzuko.unrefTimer(id);",
+  'postMessage("unrefed");',
+].join("\n");
+const worker = new Worker("data:text/javascript," + encodeURIComponent(source));
+const seen = [];
+const fail = setTimeout(() => {
+  console.log("late " + seen.join(" "));
+  worker.terminate();
+}, 1000);
+worker.onmessage = (event) => {
+  seen.push(event.data);
+  if (seen.includes("unrefed") && seen.includes("ran")) {
+    clearTimeout(fail);
+    console.log(seen.join(" "));
+    worker.terminate();
+  }
+};
+"#;
+
+const WORKER_LATER: &str = r#"
+const source = [
+  'const id = setTimeout(() => { postMessage("ran"); }, 50);',
+  "Yuzuko.unrefTimer(id);",
+  'self.onmessage = () => { postMessage("heard"); };',
+].join("\n");
+const worker = new Worker("data:text/javascript," + encodeURIComponent(source));
+const seen = [];
+const fail = setTimeout(() => {
+  console.log("late " + seen.join(" "));
+  worker.terminate();
+}, 1000);
+setTimeout(() => {
+  worker.postMessage("ping");
+}, 100);
+worker.onmessage = (event) => {
+  seen.push(event.data);
+  if (seen.includes("ran") && seen.includes("heard")) {
+    clearTimeout(fail);
+    console.log(seen.slice().sort().join(" "));
+    worker.terminate();
+  }
+};
+"#;
+
 fn timer_stdout(dir: &Path, script: &str) -> String {
   let child = command(dir, &["run", "--no-prompt", script])
     .spawn()
@@ -350,6 +397,8 @@ fn unreferenced_timers_do_not_keep_the_process_alive() {
   write_script(&dir, "zero-timeout.ts", ZERO_TIMEOUT);
   write_script(&dir, "zero-interval.ts", ZERO_INTERVAL);
   write_script(&dir, "zero-held.ts", ZERO_HELD);
+  write_script(&dir, "worker-due.ts", WORKER_DUE);
+  write_script(&dir, "worker-later.ts", WORKER_LATER);
   for _ in 0..2 {
     assert_eq!(timer_stdout(&dir, "unref.ts").trim(), "");
     assert_eq!(timer_stdout(&dir, "ref.ts").trim(), "timeout");
@@ -358,5 +407,7 @@ fn unreferenced_timers_do_not_keep_the_process_alive() {
     assert_eq!(timer_stdout(&dir, "zero-timeout.ts").trim(), "");
     assert_eq!(timer_stdout(&dir, "zero-interval.ts").trim(), "");
     assert_eq!(timer_stdout(&dir, "zero-held.ts").trim(), "due\nhold");
+    assert_eq!(timer_stdout(&dir, "worker-due.ts").trim(), "unrefed ran");
+    assert_eq!(timer_stdout(&dir, "worker-later.ts").trim(), "heard ran");
   }
 }

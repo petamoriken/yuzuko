@@ -978,7 +978,9 @@ pub(crate) fn run_worker_isolate(
           {
             break;
           }
-          queue.wait(None);
+          // This loop is still alive for messages. An unreferenced timer does
+          // not show up in `has_pending`, so include its deadline here.
+          queue.wait(crate::timers::next_wait());
         }
       }
     }
@@ -1603,10 +1605,20 @@ fn repl_wait() -> Option<std::time::Duration> {
   }
 }
 
+/// A dedicated worker keeps running to receive messages after its script
+/// returns. That wait is a reason for an unreferenced timer to run.
+fn worker_loop_alive() -> bool {
+  if !host::is_dedicated_worker() {
+    return false;
+  }
+  let id = host::agent_id();
+  crate::worker::agent_alive(id) && !crate::worker::worker_closing(id)
+}
+
 /// Referenced timers always run. An unreferenced timer runs only when
 /// something besides that timer is keeping the realm alive.
 fn due_timers_should_run(keep_alive: bool, workers: bool) -> bool {
-  if crate::timers::has_pending() {
+  if crate::timers::has_pending() || worker_loop_alive() {
     return true;
   }
   let queue = host::queue();
@@ -1696,6 +1708,7 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     || interest.keep_alive
     || workers
     || crate::idle::idle_has_pending()
+    || worker_loop_alive()
   {
     realm_wait(earliest_wait(
       earliest_wait(
