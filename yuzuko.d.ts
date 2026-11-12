@@ -18,7 +18,8 @@
  * on the main realm and in a dedicated worker. `Yuzuko.build`, `Yuzuko.args`,
  * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`,
  * `Yuzuko.execPath`, `Yuzuko.pid`, `Yuzuko.ppid`, `Yuzuko.version`,
- * `Yuzuko.errors.NotCapable`, and
+ * `Yuzuko.memoryUsage`, `Yuzuko.noColor`, `Yuzuko.refTimer`,
+ * `Yuzuko.unrefTimer`, `Yuzuko.errors.NotCapable`, and
  * `Yuzuko.permissions` are part of that object in every build. That build
  * omits `fetch`,
  * the file system, datagram sockets, TCP sockets, an HTTP server, signal
@@ -2519,6 +2520,67 @@ declare namespace Yuzuko {
     /** The embedded V8 version. */
     readonly v8: string;
   };
+
+  /**
+   * Byte counts for one call.
+   *
+   * `rss` is the process resident set. `heapTotal`, `heapUsed`, and
+   * `external` are the V8 heap of the isolate running the call. A dedicated
+   * worker reports that worker's heap and the same process `rss`.
+   */
+  interface MemoryUsage {
+    /** Resident set size, in bytes. `0` when the operating system cannot report it. */
+    rss: number;
+    /** V8 total heap size, in bytes. */
+    heapTotal: number;
+    /** V8 used heap size, in bytes. */
+    heapUsed: number;
+    /** V8 external memory, in bytes. */
+    external: number;
+  }
+
+  /**
+   * Current resident set and V8 heap sizes, in bytes.
+   *
+   * Each call returns a new object. The own enumerable names are `rss`,
+   * `heapTotal`, `heapUsed`, and `external`, in that order. Each value is a
+   * finite number and is at least 0. `memoryUsage` has length 0. A dedicated
+   * worker reports that worker's heap. The call does not require a permission.
+   */
+  function memoryUsage(): MemoryUsage;
+
+  /**
+   * Whether `NO_COLOR` was a non-empty value when the process started.
+   *
+   * An absent or empty value is `false`. `FORCE_COLOR` does not change this
+   * boolean. {@link Env.set} and {@link Env.delete} of `NO_COLOR` do not
+   * change a later read. The property is writable. Assigning it replaces the
+   * value in this realm only. A dedicated worker receives the same boolean.
+   * Reading it does not require env access.
+   */
+  let noColor: boolean;
+
+  /**
+   * Marks `id` so that timer keeps the process alive.
+   *
+   * `id` is the number returned by `setTimeout` or `setInterval`. A value
+   * that does not convert with ToInt32, a non-positive id, or an id that is
+   * not a pending timer does nothing and does not throw. A call during that
+   * timer's callback applies to the interval scheduled after the callback
+   * returns. `refTimer` has length 1.
+   */
+  function refTimer(id: number): void;
+
+  /**
+   * Marks `id` so that timer does not keep the process alive.
+   *
+   * The callback still runs when the event loop stays alive for another
+   * reason. When every pending timer is unreferenced and nothing else keeps
+   * the process alive, the process exits without running those callbacks.
+   * `clearTimeout` and `clearInterval` still cancel the timer. `id` follows
+   * {@link refTimer}. `unrefTimer` has length 1.
+   */
+  function unrefTimer(id: number): void;
 
   /**
    * Environment variables of this process.
