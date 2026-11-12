@@ -534,7 +534,8 @@ fn read_file(
 
 pub struct Blob {
   source: BlobSource,
-  /// `Blob.type`: MIME serialization.
+  /// `Blob.type`. A script constructor stores the File API spelling. A
+  /// response blob stores the MIME serialization.
   mime: String,
   /// Content-Type used when this blob is a fetch body.
   wire_type: String,
@@ -564,13 +565,25 @@ impl Blob {
     }
   }
 
-  /// `type` is the MIME serialization. `wire_type` keeps the File API
-  /// spelling, including the space in `a/b; c=d`, for fetch Content-Type.
+  /// Restore a type that was already stored. Structured clone writes the
+  /// current `type` and must not parse it again.
+  fn from_stored(bytes: Vec<u8>, mime: String) -> Self {
+    Self {
+      source: BlobSource::from_vec(bytes),
+      wire_type: mime.clone(),
+      mime,
+    }
+  }
+
+  /// Constructor and `slice` store the File API type: ASCII lowercase when
+  /// every character is U+0020..=U+007E, otherwise empty. The same string is
+  /// the fetch `Content-Type`.
   fn from_input(source: BlobSource, input: &str) -> Self {
+    let mime = crate::text::mime::file_type(input);
     Self {
       source,
-      mime: crate::text::mime::blob_type(input),
-      wire_type: crate::text::mime::file_type(input),
+      mime: mime.clone(),
+      wire_type: mime,
     }
   }
 
@@ -852,7 +865,7 @@ fn read_cloned_blob(
     return yuzuko_core::ReadResult::Failed;
   };
   let object = unsafe {
-    yuzuko_core::op::wrap_instance(scope, Blob::from_parts(bytes, mime))
+    yuzuko_core::op::wrap_instance(scope, Blob::from_stored(bytes, mime))
   };
   yuzuko_core::ReadResult::Done(v8::Global::new(scope, object))
 }
@@ -878,7 +891,7 @@ fn read_cloned_file(
     yuzuko_core::op::wrap_instance(
       scope,
       File {
-        base: Blob::from_parts(bytes, mime),
+        base: Blob::from_stored(bytes, mime),
         name,
         last_modified,
       },
@@ -1169,7 +1182,7 @@ fn finish_read(
   let resolver = v8::Local::new(scope, &job.resolver);
   let value: v8::Local<v8::Value> = match job.kind {
     ReadKind::Text => {
-      let text = String::from_utf8_lossy(&job.bytes).into_owned();
+      let text = decode_utf8(&job.bytes);
       v8::String::new(scope, &text).unwrap().into()
     }
     ReadKind::Buffer => bytes::array_buffer(scope, job.bytes).into(),

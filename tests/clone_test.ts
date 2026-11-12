@@ -14,6 +14,21 @@ Yuzuko.test("structuredClone copies Blob, File, and DOMException", async () => {
     throw new Error("blob text");
   }
 
+  const plain = new Blob(["z"], { type: "A" });
+  const plainCopy = structuredClone(plain);
+  if (plainCopy.type !== "a" || plainCopy.size !== 1) {
+    throw new Error("plain type " + plainCopy.type);
+  }
+  const spaced = new File(["q"], "n", { type: " image/gif " });
+  const spacedCopy = structuredClone(spaced);
+  if (
+    !(spacedCopy instanceof File)
+    || spacedCopy.type !== " image/gif "
+    || spacedCopy.name !== "n"
+  ) {
+    throw new Error("spaced type " + spacedCopy.type);
+  }
+
   const empty = structuredClone(new Blob());
   if (empty.size !== 0 || await empty.text() !== "") {
     throw new Error("empty blob");

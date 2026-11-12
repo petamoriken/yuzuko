@@ -1,7 +1,8 @@
 //! MIME type parsing and `data:` URL processing.
 //!
-//! Parsing and serialization follow the MIME Sniffing Standard. A `Blob` type
-//! is the serialization of a successful parse, or the empty string.
+//! Parsing and serialization follow the MIME Sniffing Standard. A blob read
+//! from a response stores that serialization. A `Blob` or `File` constructed
+//! in script stores the File API type instead.
 
 /// A parsed MIME type. Parameters keep insertion order and the first value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,7 +122,7 @@ pub fn is_javascript_mime(input: &str) -> bool {
   )
 }
 
-/// Serialization used as a `Blob` type and a `Content-Type` header.
+/// Serialization used as a response blob's type and a `Content-Type` header.
 pub(crate) fn serialize(mime: &Mime) -> String {
   let mut out = String::new();
   out.push_str(&mime.type_);
@@ -147,17 +148,15 @@ pub(crate) fn serialize(mime: &Mime) -> String {
   out
 }
 
-/// File API type: serialize a successful parse, otherwise `""`.
+/// Serialized MIME type. A blob read from a response stores this as `type`.
 pub(crate) fn blob_type(input: &str) -> String {
   parse(input)
     .map(|mime| serialize(&mime))
     .unwrap_or_default()
 }
 
-/// File API wire type: ASCII-lowercase when every character is in
-/// U+0020..=U+007E, otherwise empty. Fetch uses this as a blob body's
-/// `Content-Type`. `Blob.type` stays [`blob_type`] so MIME parsing tests
-/// keep the serialized form (`text/html;charset=gbk`, no space).
+/// File API constructor and `slice` type: ASCII lowercase when every
+/// character is in U+0020..=U+007E, otherwise empty.
 pub(crate) fn file_type(input: &str) -> String {
   if input.chars().any(|ch| !('\u{20}'..='\u{7e}').contains(&ch)) {
     String::new()

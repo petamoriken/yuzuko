@@ -7921,6 +7921,12 @@ interface BlobPropertyBag {
 /**
  * A blob of bytes.
  *
+ * `type` from the constructor or `slice` is that string in ASCII lowercase
+ * when every character is U+0020 through U+007E, and `""` when any character
+ * is outside that range. A blob read from a response uses the serialized
+ * MIME type of the `Content-Type`. `structuredClone` copies that stored
+ * `type`. `text()` decodes UTF-8 and omits one leading byte order mark.
+ *
  * The bytes stay shared until `text()`, `arrayBuffer()`, `bytes()`, or a
  * blob URL snapshot reads them.
  *
