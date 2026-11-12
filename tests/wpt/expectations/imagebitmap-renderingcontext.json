@@ -5,11 +5,7 @@
   "imagebitmap-renderingcontext/context-creation-offscreen-with-alpha.html": {
     "ignore": "The file needs a document."
   },
-  "imagebitmap-renderingcontext/context-creation-offscreen.html": {
-    "expectedFailures": [
-      "Test that canvas.getContext('bitmaprenderer') returns an instance of ImageBitmapRenderingContext and ctx.canvas on a ImageBitmapRenderingContext returns the original OffscreenCanvas"
-    ]
-  },
+  "imagebitmap-renderingcontext/context-creation-offscreen.html": true,
   "imagebitmap-renderingcontext/context-creation-with-alpha.html": {
     "ignore": "The file needs a document."
   },

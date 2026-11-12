@@ -39,7 +39,7 @@ impl BitmapContext {
   }
 }
 
-#[op]
+#[op(name = "ImageBitmapRenderingContext")]
 impl BitmapContext {
   #[getter]
   fn canvas(&self, scope: &mut v8::PinScope) -> Js {

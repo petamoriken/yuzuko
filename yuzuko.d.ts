@@ -335,7 +335,7 @@ interface ReadableStreamReadDoneResult<T> {
   value: T | undefined;
 }
 type ReadableStreamType = "bytes" | "owning";
-type RenderingContext = OffscreenCanvasRenderingContext2D | BitmapContext | GPUCanvasContext;
+type RenderingContext = OffscreenCanvasRenderingContext2D | ImageBitmapRenderingContext | GPUCanvasContext;
 type RequestCache = "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload";
 type RequestCredentials = "include" | "omit" | "same-origin";
 type RequestInfo = Request | string;
@@ -2009,7 +2009,7 @@ declare namespace Yuzuko {
     getContext(
       contextType: "bitmaprenderer",
       options?: ImageBitmapRenderingContextSettings,
-    ): BitmapContext | null;
+    ): ImageBitmapRenderingContext | null;
     getContext(
       contextType: "webgl" | "webgl2",
       options?: any,
@@ -10170,7 +10170,7 @@ interface OffscreenCanvas extends EventTarget {
   getContext(
     contextType: "bitmaprenderer",
     options?: ImageBitmapRenderingContextSettings,
-  ): BitmapContext | null;
+  ): ImageBitmapRenderingContext | null;
   getContext(contextType: "webgl" | "webgl2", options?: any): null;
   getContext(contextType: string, options?: any): RenderingContext | null;
 
@@ -10917,12 +10917,12 @@ declare var Path2D: {
 /**
  * Bitmap renderer context.
  *
- * The constructor is installed as `BitmapContext`. `getContext("bitmaprenderer")`
+ * The constructor is installed as `ImageBitmapRenderingContext`. `getContext("bitmaprenderer")`
  * returns this object.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageBitmapRenderingContext)
  */
-declare class BitmapContext {
+declare class ImageBitmapRenderingContext {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageBitmapRenderingContext/canvas) */
   readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
 
