@@ -10,8 +10,8 @@ use yuzuko_macros::op;
 
 use crate::decode::{self, DecodeFailure};
 use crate::engine::{
-  self, AudioSink, DriveResult, EvalError, Fault, Kind, NodeShell, Play,
-  RenderHint, Wave, WorkletParam,
+  self, AudioSink, ConstructError, Constructed, DriveResult, EvalError, Fault,
+  Kind, NodeShell, Play, ProcessorConfig, RenderHint, Wave, WorkletParam,
 };
 use crate::util;
 
@@ -686,6 +686,64 @@ impl AudioParamMap {
   }
 }
 
+fn install_param_map_iterator(scope: &mut v8::PinScope) {
+  let templ = AudioParamMap::template(scope);
+  let Some(ctor) = templ.get_function(scope) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "prototype") else {
+    return;
+  };
+  let Some(prototype) = ctor.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let Some(function) = v8::Function::new(scope, param_map_entries) else {
+    return;
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    function.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn param_map_entries(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let node =
+    unsafe { yuzuko_core::op::host_ref::<AudioParamMap>(scope, args.this()) }
+      .map(|map| map.get().node);
+  let list = v8::Array::new(scope, 0);
+  if let Some(node) = node {
+    for (name, id) in engine::worklet_param_ids(node) {
+      let pair = v8::Array::new(scope, 2);
+      if let Some(key) = v8::String::new(scope, &name) {
+        pair.set_index(scope, 0, key.into());
+      }
+      if let Some(object) = engine::param_object(id) {
+        let object = v8::Local::new(scope, object);
+        pair.set_index(scope, 1, object.into());
+      }
+      let length = list.length();
+      list.set_index(scope, length, pair.into());
+    }
+  }
+  let symbol = v8::Symbol::get_iterator(scope);
+  if let Some(next) = list.get(scope, symbol.into())
+    && let Ok(next) = v8::Local::<v8::Function>::try_from(next)
+    && let Some(iterator) = next.call(scope, list.into(), &[])
+  {
+    ret.set(iterator);
+  }
+}
+
 #[repr(C)]
 pub struct AudioNode {
   pub base: EventTarget,
@@ -807,11 +865,22 @@ impl AudioNode {
       return engine::disconnect_output(self.id, as_u32(scope, value)?)
         .map_err(op_fault);
     }
+    let output = if args.length() > 1 && !args.get(1).is_undefined() {
+      Some(as_u32(scope, args.get(1))?)
+    } else {
+      None
+    };
+    let input = if args.length() > 2 && !args.get(2).is_undefined() {
+      Some(as_u32(scope, args.get(2))?)
+    } else {
+      None
+    };
     if let Some(param) = audio_param_id(scope, value) {
-      return engine::disconnect_param(self.id, param).map_err(op_fault);
+      return engine::disconnect_param(self.id, param, output)
+        .map_err(op_fault);
     }
     let dest = node_id(scope, value)?;
-    engine::disconnect_dest(self.id, dest).map_err(op_fault)
+    engine::disconnect_dest(self.id, dest, output, input).map_err(op_fault)
   }
 }
 
@@ -2535,6 +2604,7 @@ unsafe impl v8::cppgc::GarbageCollected for AudioWorklet {
 struct Job {
   resolver: v8::Global<v8::PromiseResolver>,
   context: u64,
+  url: String,
 }
 
 thread_local! {
@@ -2584,6 +2654,7 @@ impl AudioWorklet {
           Job {
             resolver: v8::Global::new(scope, resolver),
             context,
+            url: url.clone(),
           },
         );
       });
@@ -2678,7 +2749,7 @@ fn module_text(
   };
   let source = util::rust_string(scope, args.get(0));
   let resolver = v8::Local::new(scope, &job.resolver);
-  match engine::eval_module(scope, job.context, &source) {
+  match engine::eval_module(scope, job.context, &source, &job.url) {
     Ok(()) => resolve_undefined(scope, resolver),
     Err(EvalError::Thrown(value)) => {
       let value = v8::Local::new(scope, value);
@@ -2750,7 +2821,7 @@ impl AudioWorkletNode {
     let templates =
       engine::processor_templates(context, &name).map_err(op_fault)?;
     let opts = node_options(scope, options, 2, "max", "speakers")?;
-    let (inputs, outputs, output_channels) =
+    let (inputs, outputs, output_channels, explicit) =
       worklet_counts(scope, options, &opts)?;
     let mut params = Vec::new();
     for template in &templates {
@@ -2784,15 +2855,34 @@ impl AudioWorkletNode {
       }
     }
     let (port, processor_port) = engine::create_port_pair(scope);
-    let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-    let instance = engine::construct_processor(
+    let script = engine::processor_script(context, &name);
+    let parameter_data = supplied_global(scope, options, "parameterData");
+    let processor_options = supplied_global(scope, options, "processorOptions");
+    let constructed = engine::construct_processor(
       scope,
       context,
       &name,
       processor_port,
-      undefined,
+      ProcessorConfig {
+        inputs,
+        outputs,
+        output_channels: if explicit {
+          Some(output_channels.clone())
+        } else {
+          None
+        },
+        parameter_data,
+        processor_options,
+      },
     )
-    .map_err(op_fault)?;
+    .map_err(|error| match error {
+      ConstructError::Fault(fault) => op_fault(fault),
+      ConstructError::Thrown(value) => OpError::Thrown(Box::new(value)),
+    })?;
+    let (instance, failed, fault) = match constructed {
+      Constructed::Ready(instance) => (Some(instance), false, None),
+      Constructed::Failed(fault) => (None, true, Some(fault)),
+    };
     let id = engine::alloc();
     let mut node_shell = shell(context, &opts, inputs, outputs);
     node_shell.outputs = outputs;
@@ -2803,12 +2893,25 @@ impl AudioWorkletNode {
       instance,
       params,
       output_channels,
+      explicit,
+      failed,
+      script,
     );
     engine::set_node_port(id, port);
     let map = unsafe {
       yuzuko_core::op::wrap_instance(scope, AudioParamMap { node: id })
     };
     engine::set_parameters(id, v8::Global::new(scope, map));
+    if let Some(fault) = fault {
+      engine::queue_processor_error(
+        id,
+        fault.message,
+        fault.filename,
+        fault.line,
+        fault.column,
+      );
+    }
+    engine::arm_worklet_clock(scope, context);
     Ok(AudioWorkletNode {
       base: AudioNode {
         base: EventTarget::new(),
@@ -2835,13 +2938,33 @@ impl AudioWorkletNode {
       .map(|map| global_object(scope, map))
       .unwrap_or_else(|| Js::null(scope))
   }
+
+  #[getter]
+  fn onprocessorerror(&self, scope: &mut v8::PinScope) -> Js {
+    engine::handler(scope, self.base.id, "processorerror")
+  }
+
+  #[setter]
+  fn onprocessorerror(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    engine::bind_handler(
+      scope,
+      &self.base.base,
+      self.base.id,
+      "processorerror",
+      value,
+    );
+  }
 }
 
 fn worklet_counts(
   scope: &mut v8::PinScope,
   options: v8::Local<v8::Value>,
   _opts: &NodeOpts,
-) -> Result<(u32, u32, Vec<u32>), OpError> {
+) -> Result<(u32, u32, Vec<u32>, bool), OpError> {
   let mut inputs = 1u32;
   let mut outputs = 1u32;
   if options.is_object() && !options.is_null() {
@@ -2877,16 +3000,31 @@ fn worklet_counts(
         }
         channels.push(count);
       }
-      return Ok((inputs, outputs, channels));
+      return Ok((inputs, outputs, channels, true));
     }
   }
-  Ok((inputs, outputs, vec![1; outputs as usize]))
+  Ok((inputs, outputs, vec![1; outputs as usize], false))
+}
+
+fn supplied_global(
+  scope: &mut v8::PinScope,
+  options: v8::Local<v8::Value>,
+  name: &str,
+) -> Option<v8::Global<v8::Value>> {
+  if !options.is_object() {
+    return None;
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
+    return None;
+  };
+  util::member(scope, object, name).map(|value| v8::Global::new(scope, value))
 }
 
 pub fn install(scope: &mut v8::PinScope) {
   AudioBuffer::install(scope);
   AudioParam::install(scope);
   AudioParamMap::install(scope);
+  install_param_map_iterator(scope);
   AudioNode::install(scope);
   AudioDestinationNode::install(scope);
   AudioScheduledSourceNode::install(scope);

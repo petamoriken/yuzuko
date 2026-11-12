@@ -207,6 +207,68 @@ fn navigator_platform() -> &'static str {
   }
 }
 
+/// Which half of a cross-context structured clone failed.
+pub enum ClonePhase {
+  Serialize(Option<v8::Global<v8::Value>>),
+  Deserialize(Option<v8::Global<v8::Value>>),
+}
+
+/// Serializes `value` in the current context and deserializes it in
+/// `destination`. A serialize failure and a deserialize failure stay distinct
+/// so the caller can reject the constructor or queue `processorerror`.
+pub fn clone_into_context<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+  destination: v8::Local<v8::Context>,
+) -> Result<v8::Local<'s, v8::Value>, ClonePhase> {
+  let session = clone::CloneSession::enter();
+  let bytes = {
+    v8::tc_scope!(let tc, scope);
+    let serializer = v8::ValueSerializer::new(tc, Box::new(CloneHost));
+    serializer.write_header();
+    let context = tc.get_current_context();
+    if serializer.write_value(context, value).is_none() {
+      Err(ClonePhase::Serialize(
+        tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
+      ))
+    } else {
+      Ok(serializer.release())
+    }
+  };
+  let bytes = match bytes {
+    Ok(bytes) => bytes,
+    Err(phase) => {
+      let _ = session.exit(scope, false);
+      return Err(phase);
+    }
+  };
+  let cloned = {
+    let scope = &mut v8::ContextScope::new(scope, destination);
+    v8::tc_scope!(let tc, scope);
+    let deserializer =
+      v8::ValueDeserializer::new(tc, Box::new(CloneHost), &bytes);
+    let context = tc.get_current_context();
+    if deserializer.read_header(context).is_none() {
+      Err(ClonePhase::Deserialize(
+        tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
+      ))
+    } else if let Some(cloned) = deserializer.read_value(context) {
+      Ok(v8::Global::new(tc, cloned))
+    } else {
+      Err(ClonePhase::Deserialize(
+        tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
+      ))
+    }
+  };
+  let success = cloned.is_ok();
+  let exit = session.exit(scope, success);
+  match (cloned, exit) {
+    (Err(phase), _) => Err(phase),
+    (Ok(_), Err(error)) => Err(ClonePhase::Deserialize(error)),
+    (Ok(value), Ok(())) => Ok(v8::Local::new(scope, value)),
+  }
+}
+
 pub fn clone_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<v8::Value>,
@@ -356,6 +418,26 @@ impl v8::ValueSerializerImpl for CloneHost {
   ) -> Option<bool> {
     clone::write_host_object(scope, object, value_serializer)
   }
+
+  fn get_wasm_module_transfer_id(
+    &self,
+    _scope: &mut v8::PinScope<'_, '_>,
+    module: v8::Local<v8::WasmModuleObject>,
+  ) -> Option<u32> {
+    let compiled = module.get_compiled_module();
+    let bytes = compiled.get_wire_bytes_ref().to_vec();
+    drop(compiled);
+    let id = clone::note_wasm_module(bytes);
+    if id == 0 { None } else { Some(id) }
+  }
+
+  fn get_shared_array_buffer_id<'s>(
+    &self,
+    _scope: &mut v8::PinScope<'s, '_>,
+    shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
+  ) -> Option<u32> {
+    clone::note_shared_array_buffer(&shared_array_buffer)
+  }
 }
 
 impl v8::ValueDeserializerImpl for CloneHost {
@@ -365,6 +447,23 @@ impl v8::ValueDeserializerImpl for CloneHost {
     value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
     clone::read_host_object(scope, value_deserializer)
+  }
+
+  fn get_wasm_module_from_id<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    id: u32,
+  ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
+    let bytes = clone::wasm_module_bytes(id)?;
+    v8::WasmModuleObject::compile(scope, &bytes)
+  }
+
+  fn get_shared_array_buffer_from_id<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    id: u32,
+  ) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
+    clone::shared_array_buffer_from_id(scope, id)
   }
 }
 

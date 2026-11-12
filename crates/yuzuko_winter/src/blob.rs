@@ -864,6 +864,12 @@ fn read_cloned_blob(
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   };
+  // The worklet realm has no `Blob`. Reading the payload first keeps the
+  // deserializer aligned, then the missing constructor rejects the clone.
+  if !global_is_function(scope, "Blob") {
+    yuzuko_core::reject_clone(scope);
+    return yuzuko_core::ReadResult::Failed;
+  }
   let object = unsafe {
     yuzuko_core::op::wrap_instance(scope, Blob::from_stored(bytes, mime))
   };
@@ -887,6 +893,10 @@ fn read_cloned_file(
     yuzuko_core::reject_clone(scope);
     return yuzuko_core::ReadResult::Failed;
   }
+  if !global_is_function(scope, "File") {
+    yuzuko_core::reject_clone(scope);
+    return yuzuko_core::ReadResult::Failed;
+  }
   let object = unsafe {
     yuzuko_core::op::wrap_instance(
       scope,
@@ -898,6 +908,16 @@ fn read_cloned_file(
     )
   };
   yuzuko_core::ReadResult::Done(v8::Global::new(scope, object))
+}
+
+fn global_is_function(scope: &mut v8::PinScope, name: &str) -> bool {
+  let global = scope.get_current_context().global(scope);
+  let Some(key) = v8::String::new(scope, name) else {
+    return false;
+  };
+  global
+    .get(scope, key.into())
+    .is_some_and(|value| value.is_function())
 }
 
 fn read_blob_parts(

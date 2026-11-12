@@ -521,8 +521,27 @@ fn call_listener(
   };
   if let Some(error) = thrown {
     let error = v8::Local::new(scope, error);
-    report::report_error(scope, error);
+    if listener_is_foreign(scope, callback) {
+      report::report_foreign_error(scope, error);
+    } else {
+      report::report_error(scope, error);
+    }
   }
+}
+
+/// True when `callback` was created in a context other than the current one.
+fn listener_is_foreign(
+  scope: &mut v8::PinScope,
+  callback: &v8::Global<v8::Value>,
+) -> bool {
+  let callback = v8::Local::new(scope, callback);
+  let Ok(object) = v8::Local::<v8::Object>::try_from(callback) else {
+    return false;
+  };
+  let Some(created) = object.get_creation_context(scope) else {
+    return false;
+  };
+  created != scope.get_current_context()
 }
 
 fn listener_options(

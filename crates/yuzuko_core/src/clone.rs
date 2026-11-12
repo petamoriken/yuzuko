@@ -106,6 +106,120 @@ thread_local! {
   static CROSS_AGENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
   static CROSS_TARGET: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
   static CLONE_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+  /// Wire bytes for `WebAssembly.Module` values cloned in the current session.
+  /// Serializer and deserializer are different host objects, so the bytes live
+  /// here. Each session pushes a frame. Ids are 1-based indexes into that frame.
+  static WASM_TRANSFER: std::cell::RefCell<Vec<Vec<Vec<u8>>>> =
+    const { std::cell::RefCell::new(Vec::new()) };
+  /// Backing stores for `SharedArrayBuffer` values in the current session.
+  /// Ids are 0-based. Recording happens only while [`AllowSharedArrayBufferClone`]
+  /// is entered, so `structuredClone` still rejects a shared buffer.
+  static SAB_TRANSFER: std::cell::RefCell<
+    Vec<Vec<v8::SharedRef<v8::BackingStore>>>,
+  > = const { std::cell::RefCell::new(Vec::new()) };
+  static SHARE_SAB: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn begin_wasm_transfer() {
+  WASM_TRANSFER.with(|slot| slot.borrow_mut().push(Vec::new()));
+}
+
+pub(crate) fn end_wasm_transfer() {
+  WASM_TRANSFER.with(|slot| {
+    slot.borrow_mut().pop();
+  });
+}
+
+/// Stores module wire bytes for this session. `0` means there is no frame.
+pub(crate) fn note_wasm_module(bytes: Vec<u8>) -> u32 {
+  WASM_TRANSFER.with(|slot| {
+    let mut frames = slot.borrow_mut();
+    let Some(frame) = frames.last_mut() else {
+      return 0;
+    };
+    frame.push(bytes);
+    frame.len() as u32
+  })
+}
+
+pub(crate) fn wasm_module_bytes(id: u32) -> Option<Vec<u8>> {
+  if id == 0 {
+    return None;
+  }
+  WASM_TRANSFER.with(|slot| {
+    let frames = slot.borrow();
+    let frame = frames.last()?;
+    frame.get(id as usize - 1).cloned()
+  })
+}
+
+pub(crate) fn begin_sab_transfer() {
+  SAB_TRANSFER.with(|slot| slot.borrow_mut().push(Vec::new()));
+}
+
+pub(crate) fn end_sab_transfer() {
+  SAB_TRANSFER.with(|slot| {
+    slot.borrow_mut().pop();
+  });
+}
+
+/// Lets `MessagePort.postMessage` share a `SharedArrayBuffer` with its peer.
+///
+/// `structuredClone` and `processorOptions` leave this unset, so those paths
+/// still fail the clone. The depth restores on drop, including a nested post.
+pub struct AllowSharedArrayBufferClone {
+  previous: u32,
+}
+
+impl AllowSharedArrayBufferClone {
+  pub fn enter() -> Self {
+    let previous = SHARE_SAB.with(|cell| {
+      let depth = cell.get();
+      cell.set(depth.saturating_add(1));
+      depth
+    });
+    Self { previous }
+  }
+}
+
+impl Drop for AllowSharedArrayBufferClone {
+  fn drop(&mut self) {
+    SHARE_SAB.with(|cell| cell.set(self.previous));
+  }
+}
+
+pub(crate) fn note_shared_array_buffer(
+  buffer: &v8::SharedArrayBuffer,
+) -> Option<u32> {
+  if SHARE_SAB.with(|cell| cell.get()) == 0 {
+    return None;
+  }
+  let store = v8::SharedArrayBuffer::get_backing_store(buffer);
+  let ptr = store.data().map(|data| data.as_ptr() as usize);
+  SAB_TRANSFER.with(|slot| {
+    let mut frames = slot.borrow_mut();
+    let frame = frames.last_mut()?;
+    if let Some(ptr) = ptr
+      && let Some(index) = frame.iter().position(|item| {
+        item.data().map(|data| data.as_ptr() as usize) == Some(ptr)
+      })
+    {
+      return Some(index as u32);
+    }
+    frame.push(store);
+    Some((frame.len() - 1) as u32)
+  })
+}
+
+pub(crate) fn shared_array_buffer_from_id<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u32,
+) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
+  SAB_TRANSFER.with(|slot| {
+    let frames = slot.borrow();
+    let store = frames.last()?.get(id as usize)?;
+    Some(v8::SharedArrayBuffer::with_backing_store(scope, store))
+  })
 }
 
 /// Called when `clone_value` or `deserialize_parcel` begins, including a
@@ -164,6 +278,8 @@ pub(crate) struct CloneSession {
 impl CloneSession {
   pub(crate) fn enter() -> Self {
     CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_add(1)));
+    begin_wasm_transfer();
+    begin_sab_transfer();
     for enter in enter_hooks() {
       enter();
     }
@@ -176,6 +292,8 @@ impl CloneSession {
     success: bool,
   ) -> Result<(), Option<v8::Global<v8::Value>>> {
     self.live = false;
+    end_wasm_transfer();
+    end_sab_transfer();
     let depth = CLONE_DEPTH.with(|cell| {
       let next = cell.get().saturating_sub(1);
       cell.set(next);
@@ -195,6 +313,8 @@ impl Drop for CloneSession {
       return;
     }
     self.live = false;
+    end_wasm_transfer();
+    end_sab_transfer();
     CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_sub(1)));
     for discard in discard_hooks() {
       discard();

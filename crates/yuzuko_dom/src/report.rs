@@ -93,6 +93,20 @@ pub fn report_error(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
   }
 }
 
+/// Logs `error` without dispatching `error` on the main realm.
+///
+/// A listener created in another context, such as an `AudioWorklet` port
+/// handler, reports there. The main realm's listeners are one list, so
+/// dispatching on the worklet global would still fail the page harness.
+pub fn report_foreign_error(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) {
+  v8::tc_scope!(let tc, scope);
+  console_error(tc, error);
+  tc.reset();
+}
+
 fn report_error_callback(
   scope: &mut v8::PinScope,
   args: v8::FunctionCallbackArguments,

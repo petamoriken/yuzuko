@@ -158,10 +158,14 @@ pub enum Kind {
     loop_end: f64,
   },
   Worklet {
-    instance: v8::Global<v8::Object>,
+    instance: Option<v8::Global<v8::Object>>,
     params: Vec<WorkletParam>,
     output_channels: Vec<u32>,
-    active: bool,
+    output_explicit: bool,
+    /// Cleared when `process` returns false. Inputs can still pull the node.
+    source_active: bool,
+    failed: bool,
+    script: String,
   },
   Delay {
     delay: u64,
@@ -336,6 +340,7 @@ pub struct ParamTemplate {
 struct ProcessorRec {
   ctor: v8::Global<v8::Function>,
   params: Vec<ParamTemplate>,
+  url: String,
 }
 
 struct WorkletRec {
@@ -343,6 +348,9 @@ struct WorkletRec {
   processors: HashMap<String, ProcessorRec>,
   pending_port: Option<v8::Global<v8::Object>>,
   port: v8::Global<v8::Object>,
+  /// URLs `addModule` has already evaluated. A second load resolves without
+  /// running the script again, so a class declaration is not repeated.
+  loaded: HashSet<String>,
 }
 
 struct ContextRec {
@@ -363,7 +371,8 @@ struct ContextRec {
   render_called: bool,
   object: Option<v8::Global<v8::Object>>,
   worklet: Option<WorkletRec>,
-  // Realtime `currentTime` stays 0 until a source starts.
+  // Realtime `currentTime` stays 0 until a source starts or a worklet node
+  // is created.
   clock_started: bool,
   // Bumped on suspend and close so a listen dropped with the device cannot
   // schedule another quantum.
@@ -418,6 +427,8 @@ thread_local! {
   /// Nodes on a cycle that has no `DelayNode`. Their output for this quantum
   /// is silence, including the forward path, not only the back edge.
   static MUTED: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+  /// `addModule` URL of the worklet script currently running.
+  static MODULE_URL: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 pub fn clear() {
@@ -433,6 +444,7 @@ pub fn clear() {
   LISTENERS.with(|slot| slot.borrow_mut().clear());
   CONVOLVER_BUFFERS.with(|slot| slot.borrow_mut().clear());
   MUTED.with(|slot| slot.borrow_mut().clear());
+  MODULE_URL.with(|slot| slot.borrow_mut().clear());
   DRIVING.with(|slot| slot.set(0));
 }
 
@@ -582,6 +594,11 @@ pub fn set_node_object(
       node.object = Some(v8::Global::new(scope, object));
     }
   });
+}
+
+pub fn node_object(id: u64) -> Option<v8::Global<v8::Object>> {
+  NODES
+    .with(|nodes| nodes.borrow().get(&id).and_then(|node| node.object.clone()))
 }
 
 pub fn set_node_port(id: u64, port: v8::Global<v8::Object>) {
@@ -1868,18 +1885,62 @@ pub fn disconnect_output(id: u64, output: u32) -> Result<(), Fault> {
   })
 }
 
-pub fn disconnect_dest(id: u64, dest: u64) -> Result<(), Fault> {
+pub fn disconnect_dest(
+  id: u64,
+  dest: u64,
+  output: Option<u32>,
+  input: Option<u32>,
+) -> Result<(), Fault> {
   NODES.with(|nodes| {
     let mut nodes = nodes.borrow_mut();
+    let outputs = {
+      let Some(node) = nodes.get(&id) else {
+        return Err(Fault::type_("Invalid AudioNode"));
+      };
+      node.outputs
+    };
+    // Reject an out-of-range index even when that output is not connected.
+    if let Some(output) = output
+      && output >= outputs
+    {
+      return Err(Fault::dom(
+        "IndexSizeError",
+        "The output index is out of range",
+      ));
+    }
+    if let Some(input) = input {
+      let Some(destination) = nodes.get(&dest) else {
+        return Err(Fault::type_("The destination is not an AudioNode"));
+      };
+      if input >= destination.inputs {
+        return Err(Fault::dom(
+          "IndexSizeError",
+          "The input index is out of range",
+        ));
+      }
+    }
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
     let before = node.connections.len();
     node.connections.retain(|connection| {
-      !matches!(
-        connection.target,
-        ConnTarget::Node { id, .. } if id == dest
-      )
+      let ConnTarget::Node {
+        id: target,
+        input: slot,
+      } = connection.target
+      else {
+        return true;
+      };
+      if target != dest {
+        return true;
+      }
+      if output.is_some_and(|output| connection.output != output) {
+        return true;
+      }
+      if input.is_some_and(|input| slot != input) {
+        return true;
+      }
+      false
     });
     if node.connections.len() == before {
       return Err(Fault::dom(
@@ -1891,15 +1952,36 @@ pub fn disconnect_dest(id: u64, dest: u64) -> Result<(), Fault> {
   })
 }
 
-pub fn disconnect_param(id: u64, param: u64) -> Result<(), Fault> {
+pub fn disconnect_param(
+  id: u64,
+  param: u64,
+  output: Option<u32>,
+) -> Result<(), Fault> {
   NODES.with(|nodes| {
     let mut nodes = nodes.borrow_mut();
     let Some(node) = nodes.get_mut(&id) else {
       return Err(Fault::type_("Invalid AudioNode"));
     };
+    if let Some(output) = output
+      && output >= node.outputs
+    {
+      return Err(Fault::dom(
+        "IndexSizeError",
+        "The output index is out of range",
+      ));
+    }
     let before = node.connections.len();
     node.connections.retain(|connection| {
-      !matches!(connection.target, ConnTarget::Param(found) if found == param)
+      let ConnTarget::Param(found) = connection.target else {
+        return true;
+      };
+      if found != param {
+        return true;
+      }
+      if output.is_some_and(|output| connection.output != output) {
+        return true;
+      }
+      false
     });
     if node.connections.len() == before {
       return Err(Fault::dom(
@@ -3010,25 +3092,32 @@ fn pull_output(
       instance,
       params,
       output_channels,
-      active,
+      output_explicit,
+      source_active,
+      failed,
+      script,
     } => {
-      let block = if !active {
-        silence_outputs(&output_channels, quantum)
-      } else {
+      let run = instance.is_some()
+        && !failed
+        && (source_active || inputs_active(id, origin, quantum));
+      if let (true, Some(instance)) = (run, instance.as_ref()) {
         render_worklet(
           scope,
           id,
-          &instance,
+          instance,
           &params,
           &output_channels,
+          output_explicit,
+          &script,
           origin,
           quantum,
           cache,
           stack,
           ended,
         )
-      };
-      one(block)
+      } else {
+        silent_buses(&output_channels, quantum)
+      }
     }
     Kind::Delay { delay, frames } => one(render_delay(
       scope, id, delay, frames, origin, quantum, cache, stack, ended,
@@ -3177,8 +3266,9 @@ fn param_block(
     timeline_samples(id, origin, quantum);
   let sources = param_sources(id);
   let mut audio = vec![0.0; quantum];
-  for source in sources {
-    let block = pull(scope, source, origin, quantum, cache, stack, ended);
+  for (source, output) in sources {
+    let block =
+      pull_output(scope, source, output, origin, quantum, cache, stack, ended);
     for channel in block {
       for (slot, sample) in audio.iter_mut().zip(channel) {
         *slot += f64::from(sample);
@@ -3226,16 +3316,15 @@ fn timeline_samples(
   })
 }
 
-fn param_sources(param: u64) -> Vec<u64> {
+fn param_sources(param: u64) -> Vec<(u64, u32)> {
   NODES.with(|nodes| {
     let nodes = nodes.borrow();
     let mut sources = Vec::new();
     for (id, node) in nodes.iter() {
       for connection in &node.connections {
-        if connection.output == 0
-          && matches!(connection.target, ConnTarget::Param(id) if id == param)
+        if matches!(connection.target, ConnTarget::Param(found) if found == param)
         {
-          sources.push(*id);
+          sources.push((*id, connection.output));
         }
       }
     }
@@ -3628,17 +3717,11 @@ fn read_buffer(
   Some((view.rate, channels))
 }
 
-fn silence_outputs(channels: &[u32], quantum: usize) -> Vec<Vec<f32>> {
-  let mut output = Vec::new();
-  for count in channels {
-    for _ in 0..*count {
-      output.push(vec![0.0; quantum]);
-    }
-  }
-  if output.is_empty() {
-    output.push(vec![0.0; quantum]);
-  }
-  output
+fn silent_buses(channels: &[u32], quantum: usize) -> Vec<Block> {
+  channels
+    .iter()
+    .map(|count| vec![vec![0.0; quantum]; *count as usize])
+    .collect()
 }
 
 fn mark_pending(id: u64) {
@@ -3720,6 +3803,8 @@ pub fn handler(scope: &mut v8::PinScope, id: u64, name: &'static str) -> Js {
 
 // The rest of this module is the worklet scope, ports, and process().
 
+// No default `process`. A missing or non-callable `process` is reported as
+// `processorerror` by the rendering loop.
 const WORKLET_BOOTSTRAP: &str = r#"
 class AudioWorkletProcessor {
   constructor() {
@@ -3733,9 +3818,6 @@ class AudioWorkletProcessor {
       configurable: true,
       enumerable: true
     });
-  }
-  process() {
-    return true;
   }
 }
 globalThis.AudioWorkletProcessor = AudioWorkletProcessor;
@@ -3782,6 +3864,7 @@ pub fn ensure_worklet(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
         processors: HashMap::new(),
         pending_port: None,
         port: main_port,
+        loaded: HashSet::new(),
       });
     }
   });
@@ -3843,7 +3926,11 @@ fn register_from_js(
   }
   let ctor = v8::Local::<v8::Function>::try_from(args.get(1))
     .map_err(|_| Fault::type_("The processor is not a constructor"))?;
+  if !ctor.cast::<v8::Object>().is_constructor() {
+    return Err(Fault::type_("The processor is not a constructor"));
+  }
   let templates = parse_descriptors(scope, args.get(2))?;
+  let url = MODULE_URL.with(|slot| slot.borrow().clone());
   let duplicate = CONTEXTS.with(|contexts| {
     contexts.borrow().get(&ctx).is_some_and(|context| {
       context
@@ -3869,6 +3956,7 @@ fn register_from_js(
         ProcessorRec {
           ctor: v8::Global::new(scope, ctor),
           params: templates,
+          url,
         },
       );
     }
@@ -3883,14 +3971,10 @@ fn parse_descriptors(
   if value.is_null_or_undefined() {
     return Ok(Vec::new());
   }
-  let array = v8::Local::<v8::Array>::try_from(value)
-    .map_err(|_| Fault::type_("parameterDescriptors is not a sequence"))?;
+  let items = descriptor_items(scope, value)?;
   let mut templates: Vec<ParamTemplate> = Vec::new();
   let (min_default, max_default) = float_limits();
-  for index in 0..array.length() {
-    let item = array
-      .get_index(scope, index)
-      .ok_or_else(|| Fault::type_("parameterDescriptors is not a sequence"))?;
+  for item in items {
     let object = v8::Local::<v8::Object>::try_from(item)
       .map_err(|_| Fault::type_("A parameter descriptor is not an object"))?;
     let name = util::member(scope, object, "name")
@@ -3958,6 +4042,56 @@ fn error_text(error: OpError) -> String {
   }
 }
 
+fn descriptor_items<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<v8::Local<'s, v8::Value>>, Fault> {
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| Fault::type_("parameterDescriptors is not iterable"))?;
+  let symbol = v8::Symbol::get_iterator(scope);
+  let Some(next) = object.get(scope, symbol.into()) else {
+    return Err(Fault::type_("parameterDescriptors is not iterable"));
+  };
+  if next.is_null_or_undefined() {
+    return Err(Fault::type_("parameterDescriptors is not iterable"));
+  }
+  let next = v8::Local::<v8::Function>::try_from(next)
+    .map_err(|_| Fault::type_("parameterDescriptors is not iterable"))?;
+  let Some(iterator) = next
+    .call(scope, object.into(), &[])
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return Err(Fault::type_("parameterDescriptors is not iterable"));
+  };
+  let next_key = v8::String::new(scope, "next").unwrap();
+  let done_key = v8::String::new(scope, "done").unwrap();
+  let value_key = v8::String::new(scope, "value").unwrap();
+  let mut items = Vec::new();
+  loop {
+    if items.len() > 1024 {
+      return Err(Fault::type_("parameterDescriptors is not iterable"));
+    }
+    let Some(step) = iterator
+      .get(scope, next_key.into())
+      .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+      .and_then(|step| step.call(scope, iterator.into(), &[]))
+      .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+    else {
+      return Err(Fault::type_("parameterDescriptors is not iterable"));
+    };
+    let done = step
+      .get(scope, done_key.into())
+      .is_some_and(|value| value.boolean_value(scope));
+    if done {
+      return Ok(items);
+    }
+    let Some(item) = step.get(scope, value_key.into()) else {
+      return Err(Fault::type_("parameterDescriptors is not iterable"));
+    };
+    items.push(item);
+  }
+}
+
 fn host_take_port(
   scope: &mut v8::PinScope,
   args: v8::FunctionCallbackArguments,
@@ -3987,8 +4121,12 @@ pub fn eval_module(
   scope: &mut v8::PinScope,
   id: u64,
   source: &str,
+  url: &str,
 ) -> Result<(), EvalError> {
   ensure_worklet(scope, id).map_err(EvalError::Fault)?;
+  if module_loaded(id, url) {
+    return Ok(());
+  }
   let context = CONTEXTS
     .with(|contexts| {
       contexts.borrow().get(&id).and_then(|context| {
@@ -4008,19 +4146,57 @@ pub fn eval_module(
   let Some(code) = v8::String::new(scope, source) else {
     return Err(EvalError::Fault(Fault::type_("The script is too large")));
   };
-  let Some(script) = v8::Script::compile(scope, code, None) else {
+  let name = v8::String::new(scope, url).unwrap();
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    name.into(),
+    0,
+    0,
+    false,
+    -1,
+    None,
+    false,
+    false,
+    false,
+    None,
+  );
+  let Some(script) = v8::Script::compile(scope, code, Some(&origin)) else {
     let exception = scope
       .exception()
       .unwrap_or_else(|| v8::undefined(scope).into());
     return Err(EvalError::Thrown(v8::Global::new(scope, exception)));
   };
-  if script.run(scope).is_none() {
+  MODULE_URL.with(|slot| slot.borrow_mut().clone_from(&url.to_string()));
+  let ran = script.run(scope);
+  MODULE_URL.with(|slot| slot.borrow_mut().clear());
+  if ran.is_none() {
     let exception = scope
       .exception()
       .unwrap_or_else(|| v8::undefined(scope).into());
     return Err(EvalError::Thrown(v8::Global::new(scope, exception)));
   }
+  mark_module_loaded(id, url);
   Ok(())
+}
+
+fn module_loaded(id: u64, url: &str) -> bool {
+  CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .get(&id)
+      .and_then(|context| context.worklet.as_ref())
+      .is_some_and(|worklet| worklet.loaded.contains(url))
+  })
+}
+
+fn mark_module_loaded(id: u64, url: &str) {
+  CONTEXTS.with(|contexts| {
+    if let Some(context) = contexts.borrow_mut().get_mut(&id)
+      && let Some(worklet) = context.worklet.as_mut()
+    {
+      worklet.loaded.insert(url.to_string());
+    }
+  });
 }
 
 fn eval_classic(scope: &mut v8::PinScope, source: &str) -> Result<(), String> {
@@ -4073,56 +4249,127 @@ pub fn processor_templates(
   })
 }
 
+pub struct ProcessorConfig {
+  pub inputs: u32,
+  pub outputs: u32,
+  pub output_channels: Option<Vec<u32>>,
+  pub parameter_data: Option<v8::Global<v8::Value>>,
+  pub processor_options: Option<v8::Global<v8::Value>>,
+}
+
+pub struct ProcessorFault {
+  pub message: String,
+  pub filename: String,
+  pub line: u32,
+  pub column: u32,
+}
+
+pub enum Constructed {
+  Ready(v8::Global<v8::Object>),
+  Failed(ProcessorFault),
+}
+
+pub enum ConstructError {
+  Fault(Fault),
+  Thrown(v8::Global<v8::Value>),
+}
+
+pub fn processor_script(ctx: u64, name: &str) -> String {
+  CONTEXTS.with(|contexts| {
+    contexts
+      .borrow()
+      .get(&ctx)
+      .and_then(|context| context.worklet.as_ref())
+      .and_then(|worklet| worklet.processors.get(name))
+      .map(|processor| processor.url.clone())
+      .unwrap_or_default()
+  })
+}
+
 pub fn construct_processor(
   scope: &mut v8::PinScope,
   ctx: u64,
   name: &str,
   port: v8::Global<v8::Object>,
-  options: v8::Local<v8::Value>,
-) -> Result<v8::Global<v8::Object>, Fault> {
-  let (context, ctor) = CONTEXTS
+  config: ProcessorConfig,
+) -> Result<Constructed, ConstructError> {
+  let (context, ctor, script) = CONTEXTS
     .with(|contexts| {
       let contexts = contexts.borrow();
       let record = contexts.get(&ctx)?;
       let worklet = record.worklet.as_ref()?;
-      let ctor = worklet.processors.get(name)?.ctor.clone();
-      Some((worklet.context.clone(), ctor))
+      let processor = worklet.processors.get(name)?;
+      Some((
+        worklet.context.clone(),
+        processor.ctor.clone(),
+        processor.url.clone(),
+      ))
     })
     .ok_or_else(|| {
-      Fault::dom("InvalidStateError", "The processor is not registered")
+      ConstructError::Fault(Fault::dom(
+        "InvalidStateError",
+        "The processor is not registered",
+      ))
     })?;
-  CONTEXTS.with(|contexts| {
-    if let Some(record) = contexts.borrow_mut().get_mut(&ctx)
-      && let Some(worklet) = record.worklet.as_mut()
-    {
-      worklet.pending_port = Some(port);
-    }
-  });
-  publish_worklet_time(scope, ctx);
-  let constructed = {
-    let context = v8::Local::new(scope, context);
-    let scope = &mut v8::ContextScope::new(scope, context);
-    v8::tc_scope!(let scope, scope);
-    let ctor = v8::Local::new(scope, ctor);
-    let options = if options.is_null_or_undefined() {
-      v8::Object::new(scope).into()
-    } else {
-      options
-    };
-    match ctor.new_instance(scope, &[options]) {
-      Some(instance) => Ok(v8::Global::new(scope, instance)),
-      None => Err(exception_message(scope, "The processor constructor failed")),
-    }
+  let destination = v8::Local::new(scope, &context);
+  let parameter_data = match clone_supplied(
+    scope,
+    config.parameter_data.as_ref(),
+    destination,
+    &script,
+  )? {
+    Supplied::Absent => None,
+    Supplied::Value(value) => Some(value),
+    Supplied::Failed(fault) => return Ok(Constructed::Failed(fault)),
   };
-  constructed.map_err(|message| Fault::type_(&message))
+  let processor_options = match clone_supplied(
+    scope,
+    config.processor_options.as_ref(),
+    destination,
+    &script,
+  )? {
+    Supplied::Absent => None,
+    Supplied::Value(value) => Some(value),
+    Supplied::Failed(fault) => return Ok(Constructed::Failed(fault)),
+  };
+  publish_worklet_time(scope, ctx);
+  let context = v8::Local::new(scope, context);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let options = processor_options_object(
+    scope,
+    config.inputs,
+    config.outputs,
+    config.output_channels.as_deref(),
+    parameter_data.as_ref(),
+    processor_options.as_ref(),
+  );
+  set_pending_port(ctx, port);
+  v8::tc_scope!(let scope, scope);
+  let ctor = v8::Local::new(scope, ctor);
+  match ctor.new_instance(scope, &[options.into()]) {
+    Some(instance) => {
+      // A constructor that returns another object can leave the port
+      // untaken. Drop it so the next node does not receive it.
+      clear_pending_port(ctx);
+      Ok(Constructed::Ready(v8::Global::new(scope, instance)))
+    }
+    None => {
+      clear_pending_port(ctx);
+      Ok(Constructed::Failed(fault_from_trycatch(scope, &script)))
+    }
+  }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn register_worklet_node(
   id: u64,
   shell: NodeShell,
-  instance: v8::Global<v8::Object>,
+  instance: Option<v8::Global<v8::Object>>,
   params: Vec<WorkletParam>,
   output_channels: Vec<u32>,
+  output_explicit: bool,
+  failed: bool,
+  script: String,
 ) {
   insert_node(
     id,
@@ -4131,9 +4378,58 @@ pub fn register_worklet_node(
       instance,
       params,
       output_channels,
-      active: true,
+      output_explicit,
+      source_active: true,
+      failed,
+      script,
     },
   );
+}
+
+pub fn queue_processor_error(
+  id: u64,
+  message: String,
+  filename: String,
+  line: u32,
+  column: u32,
+) {
+  let message = if message.is_empty() {
+    "The processor failed".to_string()
+  } else {
+    message
+  };
+  yuzuko_core::enqueue(move |scope| {
+    let Some(object) = node_object(id) else {
+      return;
+    };
+    let object = v8::Local::new(scope, object);
+    yuzuko_dom::dispatch_error_event(
+      scope,
+      object,
+      "processorerror",
+      &message,
+      &filename,
+      line,
+      column,
+    );
+  });
+}
+
+pub fn arm_worklet_clock(scope: &mut v8::PinScope, id: u64) {
+  let realtime = CONTEXTS.with(|contexts| {
+    let mut contexts = contexts.borrow_mut();
+    let Some(context) = contexts.get_mut(&id) else {
+      return false;
+    };
+    if !context.realtime {
+      return false;
+    }
+    context.clock_started = true;
+    true
+  });
+  if realtime {
+    kick(scope, id);
+  }
 }
 
 pub fn worklet_param_ids(node: u64) -> Vec<(String, u64)> {
@@ -4161,12 +4457,14 @@ fn render_worklet(
   instance: &v8::Global<v8::Object>,
   params: &[WorkletParam],
   output_channels: &[u32],
+  output_explicit: bool,
+  script: &str,
   origin: u64,
   quantum: usize,
   cache: &mut RenderCache,
   stack: &mut Vec<u64>,
   ended: &mut Vec<u64>,
-) -> Vec<Vec<f32>> {
+) -> Vec<Block> {
   let ctx = context_of(id).unwrap_or(0);
   let context = CONTEXTS.with(|contexts| {
     contexts.borrow().get(&ctx).and_then(|context| {
@@ -4177,7 +4475,7 @@ fn render_worklet(
     })
   });
   let Some(context) = context else {
-    return silence_outputs(output_channels, quantum);
+    return silent_buses(output_channels, quantum);
   };
   let input_count = node_info(id).map(|info| info.inputs).unwrap_or(1);
   let mut inputs = Vec::new();
@@ -4208,6 +4506,7 @@ fn render_worklet(
     }
     inputs.push(mixed);
   }
+  let counts = output_counts(output_explicit, output_channels, &inputs);
   let mut curves = Vec::with_capacity(params.len());
   for param in params {
     curves.push(param_block(
@@ -4219,31 +4518,60 @@ fn render_worklet(
     let context = v8::Local::new(scope, context);
     let scope = &mut v8::ContextScope::new(scope, context);
     v8::tc_scope!(let scope, scope);
-    call_process(
-      scope,
-      instance,
-      &inputs,
-      output_channels,
-      params,
-      &curves,
-      quantum,
-    )
+    match call_process(
+      scope, instance, &inputs, &counts, params, &curves, quantum,
+    ) {
+      Ok(value) => Ok(value),
+      Err(CallFail::NotAFunction) => Err(ProcessorFault {
+        message: "process is not a function".to_string(),
+        filename: script.to_string(),
+        line: 1,
+        column: 1,
+      }),
+      Err(CallFail::Exception) => Err(fault_from_trycatch(scope, script)),
+    }
   };
   match rendered {
     Ok((outputs, keep)) => {
       if !keep {
         NODES.with(|nodes| {
           if let Some(node) = nodes.borrow_mut().get_mut(&id)
-            && let Kind::Worklet { active, .. } = &mut node.kind
+            && let Kind::Worklet { source_active, .. } = &mut node.kind
           {
-            *active = false;
+            *source_active = false;
           }
         });
       }
       outputs
     }
-    Err(()) => silence_outputs(output_channels, quantum),
+    Err(fault) => {
+      NODES.with(|nodes| {
+        if let Some(node) = nodes.borrow_mut().get_mut(&id)
+          && let Kind::Worklet {
+            failed,
+            source_active,
+            ..
+          } = &mut node.kind
+        {
+          *failed = true;
+          *source_active = false;
+        }
+      });
+      queue_processor_error(
+        id,
+        fault.message,
+        fault.filename,
+        fault.line,
+        fault.column,
+      );
+      silent_buses(&counts, quantum)
+    }
   }
+}
+
+enum CallFail {
+  Exception,
+  NotAFunction,
 }
 
 fn call_process(
@@ -4254,7 +4582,7 @@ fn call_process(
   params: &[WorkletParam],
   curves: &[Vec<f64>],
   quantum: usize,
-) -> Result<(Vec<Vec<f32>>, bool), ()> {
+) -> Result<(Vec<Block>, bool), CallFail> {
   let instance = v8::Local::new(scope, instance);
   let input_value = nested_arrays(scope, inputs);
   let mut output_locals = Vec::new();
@@ -4267,47 +4595,47 @@ fn call_process(
       channels.set_index(scope, channel, view.into());
       locals.push(view);
     }
+    freeze_object(scope, channels.into());
     outputs.set_index(scope, index as u32, channels.into());
     output_locals.push(locals);
   }
+  freeze_object(scope, outputs.into());
   let parameters = v8::Object::new(scope);
   for (param, curve) in params.iter().zip(curves) {
-    let length = if param.a_rate { quantum } else { 1 };
+    let length = param_view_len(param.a_rate, curve);
     let samples = curve
       .iter()
       .take(length)
       .map(|value| *value as f32)
       .collect::<Vec<_>>();
     let view = f32_array(scope, &samples);
-    let key = v8::String::new(scope, &param.name).ok_or(())?;
+    let key = v8::String::new(scope, &param.name).ok_or(CallFail::Exception)?;
     parameters.set(scope, key.into(), view.into());
   }
-  let key = v8::String::new(scope, "process").ok_or(())?;
-  let method = instance.get(scope, key.into()).ok_or(())?;
-  let function = v8::Local::<v8::Function>::try_from(method).map_err(|_| ())?;
-  let result = function
-    .call(
-      scope,
-      instance.into(),
-      &[input_value.into(), outputs.into(), parameters.into()],
-    )
-    .ok_or(())?;
+  let key = v8::String::new(scope, "process").ok_or(CallFail::Exception)?;
+  let Some(method) = instance.get(scope, key.into()) else {
+    return Err(CallFail::Exception);
+  };
+  let Ok(function) = v8::Local::<v8::Function>::try_from(method) else {
+    return Err(CallFail::NotAFunction);
+  };
+  let Some(result) = function.call(
+    scope,
+    instance.into(),
+    &[input_value.into(), outputs.into(), parameters.into()],
+  ) else {
+    return Err(CallFail::Exception);
+  };
   let keep = !result.is_false();
   let mut rendered = Vec::new();
   for locals in output_locals {
+    let mut bus = Vec::new();
     for view in locals {
-      rendered.push(util::read_f32_view(scope, view));
+      bus.push(util::read_f32_view(scope, view));
     }
+    rendered.push(bus);
   }
-  // One output bus is the node output. Extra buses are appended; the graph
-  // uses the first `output_channels[0]` channels when there is one output.
-  if output_channels.len() == 1 {
-    let count = output_channels[0] as usize;
-    rendered.truncate(count);
-    Ok((rendered, keep))
-  } else {
-    Ok((rendered, keep))
-  }
+  Ok((rendered, keep))
 }
 
 fn nested_arrays<'s>(
@@ -4321,9 +4649,309 @@ fn nested_arrays<'s>(
       let view = f32_array(scope, samples);
       inner.set_index(scope, channel as u32, view.into());
     }
+    freeze_object(scope, inner.into());
     outer.set_index(scope, index as u32, inner.into());
   }
+  freeze_object(scope, outer.into());
   outer
+}
+
+fn freeze_object(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+  let _ = object.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+}
+
+fn param_view_len(a_rate: bool, curve: &[f64]) -> usize {
+  if !a_rate || curve.len() <= 1 {
+    return 1;
+  }
+  if curve.windows(2).all(|pair| pair[0] == pair[1]) {
+    1
+  } else {
+    curve.len()
+  }
+}
+
+fn output_counts(
+  explicit: bool,
+  stored: &[u32],
+  inputs: &[Vec<Vec<f32>>],
+) -> Vec<u32> {
+  if stored.is_empty() {
+    return Vec::new();
+  }
+  if explicit {
+    return stored.to_vec();
+  }
+  let width = inputs.first().map(|bus| bus.len()).unwrap_or(0);
+  let count = if width == 0 { 1 } else { width as u32 };
+  vec![count; stored.len()]
+}
+
+enum Upstream {
+  Scheduled(Play),
+  Worklet { source_active: bool, failed: bool },
+  Graph,
+  Missing,
+}
+
+fn upstream_kind(id: u64) -> Upstream {
+  NODES.with(|nodes| {
+    let nodes = nodes.borrow();
+    let Some(node) = nodes.get(&id) else {
+      return Upstream::Missing;
+    };
+    match &node.kind {
+      Kind::Constant { play, .. }
+      | Kind::Oscillator { play, .. }
+      | Kind::Buffer { play, .. } => Upstream::Scheduled(play.clone()),
+      Kind::Worklet {
+        source_active,
+        failed,
+        ..
+      } => Upstream::Worklet {
+        source_active: *source_active,
+        failed: *failed,
+      },
+      _ => Upstream::Graph,
+    }
+  })
+}
+
+fn inputs_active(id: u64, origin: u64, quantum: usize) -> bool {
+  let mut seen = HashSet::new();
+  seen.insert(id);
+  input_sources_active(id, origin, quantum, &mut seen)
+}
+
+fn input_sources_active(
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  seen: &mut HashSet<u64>,
+) -> bool {
+  let inputs = node_info(id).map(|info| info.inputs).unwrap_or(0);
+  for input in 0..inputs {
+    for (source, _) in incoming(id, input) {
+      if upstream_active(source, origin, quantum, seen) {
+        return true;
+      }
+    }
+  }
+  false
+}
+
+fn upstream_active(
+  id: u64,
+  origin: u64,
+  quantum: usize,
+  seen: &mut HashSet<u64>,
+) -> bool {
+  if !seen.insert(id) {
+    return false;
+  }
+  let active = match upstream_kind(id) {
+    Upstream::Missing => false,
+    Upstream::Scheduled(play) => {
+      (0..quantum).any(|offset| playing(&play, origin + offset as u64))
+    }
+    Upstream::Worklet { failed: true, .. } => false,
+    Upstream::Worklet {
+      source_active: true,
+      ..
+    } => true,
+    Upstream::Worklet { .. } | Upstream::Graph => {
+      input_sources_active(id, origin, quantum, seen)
+    }
+  };
+  seen.remove(&id);
+  active
+}
+
+enum Supplied {
+  Absent,
+  Value(v8::Global<v8::Value>),
+  Failed(ProcessorFault),
+}
+
+fn clone_supplied(
+  scope: &mut v8::PinScope,
+  value: Option<&v8::Global<v8::Value>>,
+  destination: v8::Local<v8::Context>,
+  script: &str,
+) -> Result<Supplied, ConstructError> {
+  let Some(value) = value else {
+    return Ok(Supplied::Absent);
+  };
+  let local = v8::Local::new(scope, value);
+  match yuzuko_core::clone_into_context(scope, local, destination) {
+    Ok(cloned) => Ok(Supplied::Value(v8::Global::new(scope, cloned))),
+    Err(yuzuko_core::ClonePhase::Serialize(thrown)) => {
+      Err(clone_serialize_error(scope, thrown))
+    }
+    Err(yuzuko_core::ClonePhase::Deserialize(thrown)) => {
+      Ok(Supplied::Failed(fault_from_thrown(scope, thrown, script)))
+    }
+  }
+}
+
+fn clone_serialize_error(
+  scope: &mut v8::PinScope,
+  thrown: Option<v8::Global<v8::Value>>,
+) -> ConstructError {
+  let Some(thrown) = thrown else {
+    return ConstructError::Fault(Fault::dom(
+      "DataCloneError",
+      "The object could not be cloned.",
+    ));
+  };
+  let local = v8::Local::new(scope, &thrown);
+  if exception_name(scope, local) == "DataCloneError" {
+    return ConstructError::Thrown(thrown);
+  }
+  let text = local
+    .to_string(scope)
+    .map(|text| text.to_rust_string_lossy(scope))
+    .unwrap_or_default();
+  if text.contains("SharedArrayBuffer") {
+    return ConstructError::Fault(Fault::dom(
+      "DataCloneError",
+      "The SharedArrayBuffer could not be cloned.",
+    ));
+  }
+  ConstructError::Thrown(thrown)
+}
+
+fn fault_from_thrown(
+  scope: &mut v8::PinScope,
+  thrown: Option<v8::Global<v8::Value>>,
+  script: &str,
+) -> ProcessorFault {
+  let message = thrown
+    .as_ref()
+    .and_then(|value| {
+      let local = v8::Local::new(scope, value);
+      local
+        .to_string(scope)
+        .map(|text| text.to_rust_string_lossy(scope))
+    })
+    .filter(|text| !text.is_empty())
+    .unwrap_or_else(|| "The processor failed".to_string());
+  ProcessorFault {
+    message,
+    filename: script.to_string(),
+    line: 1,
+    column: 1,
+  }
+}
+
+fn exception_name(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> String {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return String::new();
+  };
+  util::member(scope, object, "name")
+    .map(|value| util::rust_string(scope, value))
+    .unwrap_or_default()
+}
+
+fn fault_from_trycatch(
+  scope: &mut v8::PinnedRef<v8::TryCatch<v8::HandleScope>>,
+  script: &str,
+) -> ProcessorFault {
+  let mut message = exception_message(scope, "The processor failed");
+  if message.is_empty() {
+    message = "The processor failed".to_string();
+  }
+  let mut filename = String::new();
+  let mut line = 1u32;
+  let mut column = 1u32;
+  if let Some(site) = scope.message() {
+    if let Some(resource) = site.get_script_resource_name(scope)
+      && let Some(text) = resource.to_string(scope)
+    {
+      filename = text.to_rust_string_lossy(scope);
+    }
+    if let Some(number) = site.get_line_number(scope) {
+      line = u32::try_from(number).unwrap_or(u32::MAX).max(1);
+    }
+    let start = site.get_start_column().saturating_add(1);
+    column = u32::try_from(start).unwrap_or(u32::MAX).max(1);
+  }
+  if filename.is_empty() || filename == "undefined" {
+    filename = script.to_string();
+  }
+  ProcessorFault {
+    message,
+    filename,
+    line,
+    column,
+  }
+}
+
+fn processor_options_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  inputs: u32,
+  outputs: u32,
+  output_channels: Option<&[u32]>,
+  parameter_data: Option<&v8::Global<v8::Value>>,
+  processor_options: Option<&v8::Global<v8::Value>>,
+) -> v8::Local<'s, v8::Object> {
+  let object = v8::Object::new(scope);
+  set_number_prop(scope, object, "numberOfInputs", f64::from(inputs));
+  set_number_prop(scope, object, "numberOfOutputs", f64::from(outputs));
+  if let Some(channels) = output_channels {
+    let list = v8::Array::new(scope, channels.len() as i32);
+    for (index, count) in channels.iter().enumerate() {
+      let number = v8::Integer::new_from_unsigned(scope, *count);
+      list.set_index(scope, index as u32, number.into());
+    }
+    let key = v8::String::new(scope, "outputChannelCount").unwrap();
+    object.set(scope, key.into(), list.into());
+  }
+  if let Some(value) = parameter_data {
+    let value = v8::Local::new(scope, value);
+    let key = v8::String::new(scope, "parameterData").unwrap();
+    object.set(scope, key.into(), value);
+  }
+  if let Some(value) = processor_options {
+    let value = v8::Local::new(scope, value);
+    let key = v8::String::new(scope, "processorOptions").unwrap();
+    object.set(scope, key.into(), value);
+  }
+  object
+}
+
+fn set_number_prop(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: f64,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let number = v8::Number::new(scope, value);
+  object.set(scope, key.into(), number.into());
+}
+
+fn set_pending_port(ctx: u64, port: v8::Global<v8::Object>) {
+  CONTEXTS.with(|contexts| {
+    if let Some(record) = contexts.borrow_mut().get_mut(&ctx)
+      && let Some(worklet) = record.worklet.as_mut()
+    {
+      worklet.pending_port = Some(port);
+    }
+  });
+}
+
+fn clear_pending_port(ctx: u64) {
+  CONTEXTS.with(|contexts| {
+    if let Some(record) = contexts.borrow_mut().get_mut(&ctx)
+      && let Some(worklet) = record.worklet.as_mut()
+    {
+      worklet.pending_port = None;
+    }
+  });
 }
 
 fn publish_worklet_time(scope: &mut v8::PinScope, id: u64) {

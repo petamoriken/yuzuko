@@ -87,6 +87,29 @@ fn install(scope: &mut v8::PinScope) {
   net::webtransport::install(scope);
 }
 
+/// Dispatch a trusted, non-bubbling `ErrorEvent` at `target`.
+pub fn dispatch_error_event(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  type_name: &str,
+  message: &str,
+  filename: &str,
+  line: u32,
+  column: u32,
+) {
+  let event = event::ErrorEvent::at(
+    scope,
+    type_name,
+    message.to_string(),
+    filename.to_string(),
+    f64::from(line),
+    f64::from(column),
+  );
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  event::define_is_trusted(scope, object);
+  let _ = target::dispatch(scope, target, object);
+}
+
 /// Dispatch a trusted, non-bubbling `Event` at `target`.
 pub fn dispatch_trusted_event(
   scope: &mut v8::PinScope,

@@ -202,31 +202,8 @@
   },
   "webaudio/the-audio-api/the-audionode-interface/audionode-connect-order.html": true,
   "webaudio/the-audio-api/the-audionode-interface/audionode-connect-return-value.html": true,
-  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect-audioparam.html": {
-    "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 2 out of 3 tasks were failed.",
-      "< [disconnect(AudioParam, output)] 4 out of 4 assertions were failed.",
-      "< [exceptions] 1 out of 3 assertions were failed.",
-      "X Channel #0 expected to have the value sequence of [3,1.5] but got 1 values, [1.5], instead of 2.",
-      "X Channel #1 expected to have the value sequence of [6,3] but got 1 values, [3], instead of 2.",
-      "X The index of value change in channel #0 is not equal to 11136. Got 0.",
-      "X The index of value change in channel #1 is not equal to 11136. Got 0.",
-      "X splitter.disconnect(gain1.gain, 2) threw \"InvalidAccessError\" instead of IndexSizeError."
-    ]
-  },
-  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect.html": {
-    "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 3 out of 7 tasks were failed.",
-      "< [disconnect(AudioNode, output)] 1 out of 1 assertions were failed.",
-      "< [disconnect(AudioNode, output, input)] 2 out of 3 assertions were failed.",
-      "< [exceptions] 2 out of 8 assertions were failed.",
-      "X Channel #0: Expected 1 for all values but found 128 unexpected values: \n\tIndex\tActual\n\t[0]\t0\n\t[1]\t0\n\t[2]\t0\n\t[3]\t0\n\t...and 124 more errors.",
-      "X Channel #0: Expected 3 for all values but found 128 unexpected values: \n\tIndex\tActual\n\t[0]\t1\n\t[1]\t1\n\t[2]\t1\n\t[3]\t1\n\t...and 124 more errors.",
-      "X Channel #1: Expected 2 for all values but found 128 unexpected values: \n\tIndex\tActual\n\t[0]\t0\n\t[1]\t0\n\t[2]\t0\n\t[3]\t0\n\t...and 124 more errors.",
-      "X splitter.disconnect(gain2, 2) did not throw an exception.",
-      "X splitter.disconnect(merger, 3, 0) did not throw an exception."
-    ]
-  },
+  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect-audioparam.html": true,
+  "webaudio/the-audio-api/the-audionode-interface/audionode-disconnect.html": true,
   "webaudio/the-audio-api/the-audionode-interface/audionode-iframe.window.js": {
     "expectedFailures": [
       "Call a constructor from iframe page and then destroy the iframe"
@@ -429,89 +406,51 @@
   "webaudio/the-audio-api/the-audioparam-interface/setTargetAtTime-after-event-within-block.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/setValueAtTime-within-block.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-addmodule-resolution.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-iterable.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-iterable.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-range.https.html": {
     "ignore": "The file needs a document."
   },
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-size.https.html": {
-    "expectedFailures": [
-      "# AUDIT TASK RUNNER FINISHED: 1 out of 2 tasks were failed.",
-      "< [Verify Size of AudioParam Arrays] 3 out of 4 assertions were failed.",
-      "X Remaining renders: array size: Expected 1 for all values but found 768 unexpected values: \n\tIndex\tActual\n\t[0]\t128\n\t[1]\t128\n\t[2]\t128\n\t[3]\t128\n\t...and 764 more errors.",
-      "X Render quantum 0: array size: Expected 1 for all values but found 128 unexpected values: \n\tIndex\tActual\n\t[0]\t128\n\t[1]\t128\n\t[2]\t128\n\t[3]\t128\n\t...and 124 more errors.",
-      "X Render quantum 1: array size: Expected 1 for all values but found 128 unexpected values: \n\tIndex\tActual\n\t[0]\t128\n\t[1]\t128\n\t[2]\t128\n\t[3]\t128\n\t...and 124 more errors."
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam-size.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-audioparam.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-denormals.https.window.js": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-messageport-wasm.https.html": {
-    "expectedFailures": [
-      "AudioWorkletGlobalScope: global port can exchange a WebAssembly.Module",
-      "AudioWorkletProcessor: processor port can exchange a WebAssembly.Module"
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-denormals.https.window.js": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-messageport-wasm.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-messageport.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-postmessage-sharedarraybuffer.https.html": {
-    "expectedFailures": [
-      "Executing \"Test postMessage from AudioWorkletProcessor to AudioWorkletNode\""
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-postmessage-sharedarraybuffer.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-called-on-globalthis.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-constructor.https.window.js": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-constructor.https.window.js": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-registerprocessor-dynamic.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-rendersizehint.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-suspend.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-throw-onmessage.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-throw-onmessage.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-creation-time.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-sample-rate.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-timing-info.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-automatic-pull.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-channel-count.https.html": {
-    "expectedFailures": [
-      "setup-buffer-and-worklet-verify-rendered-buffer"
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-automatic-pull.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-channel-count.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-construction.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-constructor-no-coop-coep.https.html": false,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-constructor-options.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-disconnected-input.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-lifetime.https.html": {
-    "expectedFailures": [
-      "Test AudioWorkletNode lifetime when process() returns false"
-    ]
-  },
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-onerror.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-output-channel-count.https.html": {
-    "expectedFailures": [
-      "AudioWorkletNode channel count: dynamic propagation and honoring outputChannelCount (single serialized test)."
-    ]
-  },
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-malformed-process.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-options.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-lifetime.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-onerror.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-output-channel-count.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-malformed-process.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-options.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-param-getter-overridden.https.html": {
     "expectedFailures": [
       "Test if AudioWorkletProcessor with invalid parameters array getter"
     ]
   },
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-frozen-array.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-zero-outputs.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-promises.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-unconnected-outputs.https.window.js": {
-    "expectedFailures": [
-      "Test if outputs connected to AudioParam provides a non-zero length array for channels",
-      "Test if unconnected outputs provides a non-zero length array for channels"
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-frozen-array.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-zero-outputs.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-promises.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-unconnected-outputs.https.window.js": true,
   "webaudio/the-audio-api/the-audioworklet-interface/baseaudiocontext-audioworklet.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/extended-audioworkletnode-with-parameters.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/process-getter.https.html": false,
+  "webaudio/the-audio-api/the-audioworklet-interface/process-getter.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/process-parameters.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/processor-construction-port.https.html": false,
-  "webaudio/the-audio-api/the-audioworklet-interface/simple-input-output.https.html": {
-    "expectedFailures": [
-      "Simple AudioWorklet I/O"
-    ]
-  },
+  "webaudio/the-audio-api/the-audioworklet-interface/processor-construction-port.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/simple-input-output.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/suspended-context-messageport.https.html": true,
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-allpass.html": true,
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-automation.html": {

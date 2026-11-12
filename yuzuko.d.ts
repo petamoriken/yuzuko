@@ -12769,6 +12769,13 @@ interface AudioParamMap {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap/has) */
   has(name: string): boolean;
+
+  /**
+   * Yields `[name, param]` pairs in descriptor order.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap)
+   */
+  [Symbol.iterator](): IterableIterator<[string, AudioParam]>;
 }
 declare var AudioParamMap: {
   prototype: AudioParamMap;
@@ -12779,8 +12786,10 @@ declare var AudioParamMap: {
 /**
  * A node in the audio graph.
  *
- * `connect` to an {@link AudioParam} returns `undefined`. Only output 0 of
- * that connection contributes samples, summed into one channel.
+ * `connect` to an {@link AudioParam} returns `undefined`. The output index
+ * passed to `connect` contributes samples, summed into one channel.
+ * `disconnect` with an output index removes only that output. An input index
+ * removes only that input.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -12828,8 +12837,13 @@ interface AudioNode extends EventTarget {
   connect(destinationParam: AudioParam, output?: number): void;
 
   /**
+   * An out-of-range `output` or `input` throws `IndexSizeError` before the
+   * connection is checked.
+   *
+   * @throws {@link DOMException} `IndexSizeError` when `output` or `input` is
+   * out of range.
    * @throws {@link DOMException} `InvalidAccessError` when this node is not
-   * connected to `destinationParam`.
+   * connected to the destination.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioNode/disconnect)
    */
@@ -12839,6 +12853,7 @@ interface AudioNode extends EventTarget {
   disconnect(destinationNode: AudioNode, output: number): void;
   disconnect(destinationNode: AudioNode, output: number, input: number): void;
   disconnect(destinationParam: AudioParam): void;
+  disconnect(destinationParam: AudioParam, output: number): void;
 }
 declare var AudioNode: {
   prototype: AudioNode;
@@ -13032,15 +13047,19 @@ interface PeriodicWaveOptions extends PeriodicWaveConstraints {
 interface AudioWorklet extends EventTarget {
   /**
    * Exchanges the values {@link structuredClone} can carry, including a
-   * transferred {@link AudioData} or {@link VideoFrame}. The processor realm
-   * does not define those constructors. Methods on the received object still
-   * run.
+   * transferred {@link AudioData} or {@link VideoFrame} and a
+   * {@link WebAssembly.Module}. The processor realm does not define
+   * `AudioData` or `VideoFrame`. Methods on the received object still run.
+   * A {@link SharedArrayBuffer} is shared with the peer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/port)
    */
   readonly port: MessagePort;
 
   /**
+   * A URL already evaluated in this context resolves without running the
+   * script again.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/addModule)
    */
   addModule(moduleURL: string, options?: WorkletOptions): Promise<void>;
@@ -13063,10 +13082,18 @@ interface WorkletOptions {
  * An empty processor name throws `NotSupportedError`. A duplicate
  * `registerProcessor` name throws `NotSupportedError`. A parameter descriptor
  * with an empty or duplicate name, or a default outside its range, throws
- * `NotSupportedError`.
+ * `NotSupportedError`. A throw from the processor constructor or from
+ * `process`, a missing or non-callable `process`, or a `processorOptions`
+ * value the worklet realm cannot deserialize dispatches `processorerror`.
  *
  * @throws {@link DOMException} `NotSupportedError` when `name` is empty or
  * `outputChannelCount` contains 0 or a count above 32.
+ * @throws {@link DOMException} `InvalidStateError` when `name` is not
+ * registered.
+ * @throws {@link DOMException} `IndexSizeError` when `outputChannelCount`
+ * length does not match `numberOfOutputs`.
+ * @throws {@link DOMException} `DataCloneError` when `processorOptions` or
+ * `parameterData` contains a `SharedArrayBuffer`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorkletNode)
  */
@@ -13074,6 +13101,11 @@ interface AudioWorkletNode extends AudioNode {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorkletNode/port) */
   readonly port: MessagePort;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorkletNode/processorerror_event)
+   */
+  onprocessorerror: ((this: AudioWorkletNode, ev: ErrorEvent) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorkletNode/parameters) */
   readonly parameters: AudioParamMap;

@@ -630,6 +630,24 @@ impl ErrorEvent {
     }
   }
 
+  pub(crate) fn at(
+    scope: &mut v8::PinScope,
+    type_name: &str,
+    message: String,
+    filename: String,
+    line: f64,
+    column: f64,
+  ) -> Self {
+    Self {
+      base: Event::new(type_name, false, false, false, true),
+      message,
+      filename,
+      lineno: line,
+      colno: column,
+      error: RefCell::new(Some(traced(scope, v8::undefined(scope).into()))),
+    }
+  }
+
   pub(crate) fn trusted(
     scope: &mut v8::PinScope,
     message: String,

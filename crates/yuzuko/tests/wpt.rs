@@ -1180,6 +1180,13 @@ fn meta_scripts(source: &str) -> Vec<String> {
   scripts
 }
 
+struct HtmlScript {
+  external: Option<String>,
+  body: String,
+  id: Option<String>,
+  worklet: bool,
+}
+
 fn push_html_scripts(
   suite: &Path,
   key: &str,
@@ -1187,7 +1194,36 @@ fn push_html_scripts(
   scripts: &mut Vec<String>,
   base: Option<&str>,
 ) -> Result<(), String> {
+  let found = html_scripts(source);
+  let needs_shim = found.iter().any(|script| script.worklet);
+  let mut shim_done = false;
+  for script in &found {
+    if let Some(src) = &script.external {
+      if !src.ends_with("testharness.js")
+        && !src.ends_with("testharnessreport.js")
+      {
+        push_support(suite, key, src, scripts, base)?;
+      }
+      continue;
+    }
+    if script.worklet {
+      continue;
+    }
+    if needs_shim && !shim_done {
+      scripts.push(document_shim(&found));
+      shim_done = true;
+    }
+    scripts.push(script.body.clone());
+  }
+  if needs_shim && !shim_done {
+    scripts.push(document_shim(&found));
+  }
+  Ok(())
+}
+
+fn html_scripts(source: &str) -> Vec<HtmlScript> {
   let lower = source.to_ascii_lowercase();
+  let mut found = Vec::new();
   let mut cursor = 0;
   while let Some(offset) = lower[cursor..].find("<script") {
     let start = cursor + offset;
@@ -1197,12 +1233,16 @@ fn push_html_scripts(
     let header_end = start + header_end;
     let header = &source[start..=header_end];
     let header_lower = &lower[start..=header_end];
+    let id = script_attr(header, "id");
+    let worklet = script_attr(header, "type")
+      .is_some_and(|value| value.eq_ignore_ascii_case("worklet"));
     if let Some(src) = script_src(header) {
-      if !src.ends_with("testharness.js")
-        && !src.ends_with("testharnessreport.js")
-      {
-        push_support(suite, key, &src, scripts, base)?;
-      }
+      found.push(HtmlScript {
+        external: Some(src),
+        body: String::new(),
+        id,
+        worklet,
+      });
       cursor = header_end + 1;
       continue;
     }
@@ -1215,10 +1255,73 @@ fn push_html_scripts(
     };
     let body_start = header_end + 1;
     let body_end = header_end + close;
-    scripts.push(source[body_start..body_end].to_string());
+    found.push(HtmlScript {
+      external: None,
+      body: source[body_start..body_end].to_string(),
+      id,
+      worklet,
+    });
     cursor = body_end;
   }
-  Ok(())
+  found
+}
+
+fn document_shim(scripts: &[HtmlScript]) -> String {
+  let mut entries = String::new();
+  let mut count = 0;
+  for script in scripts {
+    let Some(id) = &script.id else {
+      continue;
+    };
+    if count > 0 {
+      entries.push(',');
+    }
+    count += 1;
+    entries.push_str(&js_string(id));
+    entries.push(':');
+    entries.push_str(&js_string(&script.body));
+  }
+  format!(
+    "var document = {{ querySelector(selector) {{ const scripts = {{ {entries} }}; const match = /^script#(.+)$/.exec(String(selector)); if (!match || !Object.prototype.hasOwnProperty.call(scripts, match[1])) return null; const text = scripts[match[1]]; return {{ innerText: text, textContent: text }}; }} }};"
+  )
+}
+
+fn js_string(text: &str) -> String {
+  let mut out = String::from("\"");
+  for ch in text.chars() {
+    match ch {
+      '\\' => out.push_str("\\\\"),
+      '"' => out.push_str("\\\""),
+      '\n' => out.push_str("\\n"),
+      '\r' => out.push_str("\\r"),
+      '\t' => out.push_str("\\t"),
+      '\u{2028}' => out.push_str("\\u2028"),
+      '\u{2029}' => out.push_str("\\u2029"),
+      ch if ch.is_control() => {
+        out.push_str(&format!("\\u{:04x}", ch as u32));
+      }
+      ch => out.push(ch),
+    }
+  }
+  out.push('"');
+  out
+}
+
+fn script_attr(header: &str, name: &str) -> Option<String> {
+  let lower = header.to_ascii_lowercase();
+  let needle = format!("{name}=");
+  let index = lower.find(&needle)?;
+  let rest = header[index + needle.len()..].trim_start();
+  let quote = rest.chars().next()?;
+  if quote == '"' || quote == '\'' {
+    let rest = &rest[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    return Some(rest[..end].to_string());
+  }
+  let end = rest
+    .find(|ch: char| ch.is_whitespace() || ch == '>' || ch == '/')
+    .unwrap_or(rest.len());
+  Some(rest[..end].to_string())
 }
 
 fn script_src(header: &str) -> Option<String> {

@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -478,6 +479,8 @@ impl MessagePort {
     // and `VideoFrame` close after it succeeds.
     let cloned = {
       let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
+      // Same-agent peers share the buffer. `structuredClone` does not.
+      let _share = yuzuko_core::AllowSharedArrayBufferClone::enter();
       match yuzuko_core::clone_value(scope, message) {
         Ok(cloned) => {
           yuzuko_core::detach_structured_transfers(scope);
@@ -928,9 +931,119 @@ fn deliver(scope: &mut v8::PinScope, id: u64) {
   };
   for data in pending {
     let target = v8::Local::new(scope, &wrapper);
+    adopt_shared_buffers(scope, id, &data);
     let event = message_event(scope, &data, &[], "");
     let _ = target::dispatch(scope, target, event);
   }
+}
+
+/// `instanceof SharedArrayBuffer` walks the receiver realm's prototype.
+///
+/// The clone is built in the sender realm. Point each shared buffer at the
+/// `onmessage` handler's `SharedArrayBuffer.prototype` before delivery.
+fn adopt_shared_buffers(
+  scope: &mut v8::PinScope,
+  id: u64,
+  data: &v8::Global<v8::Value>,
+) {
+  let handler = PORTS.with(|slot| {
+    slot
+      .borrow()
+      .get(&id)
+      .and_then(|state| state.onmessage.clone())
+  });
+  let Some(handler) = handler else {
+    return;
+  };
+  let handler = v8::Local::new(scope, handler);
+  let Ok(handler) = v8::Local::<v8::Object>::try_from(handler) else {
+    return;
+  };
+  let Some(context) = handler.get_creation_context(scope) else {
+    return;
+  };
+  let value = v8::Local::new(scope, data);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let mut seen = HashSet::new();
+  retarget_shared(scope, value, &mut seen, 0);
+}
+
+fn retarget_shared(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  seen: &mut HashSet<i32>,
+  depth: u32,
+) {
+  if depth > 8 {
+    return;
+  }
+  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
+    set_shared_prototype(scope, buffer);
+    return;
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return;
+  };
+  if object.is_api_wrapper() || value.is_function() {
+    return;
+  }
+  let hash = object.get_identity_hash().get();
+  if !seen.insert(hash) {
+    return;
+  }
+  if let Ok(array) = v8::Local::<v8::Array>::try_from(object) {
+    for index in 0..array.length() {
+      let Some(item) = array.get_index(scope, index) else {
+        continue;
+      };
+      retarget_shared(scope, item, seen, depth + 1);
+    }
+    return;
+  }
+  let Some(names) =
+    object.get_own_property_names(scope, v8::GetPropertyNamesArgs::default())
+  else {
+    return;
+  };
+  for index in 0..names.length() {
+    v8::tc_scope!(let tc, scope);
+    let Some(key) = names.get_index(tc, index) else {
+      continue;
+    };
+    let Some(item) = object.get(tc, key) else {
+      if tc.has_caught() {
+        tc.reset();
+      }
+      continue;
+    };
+    retarget_shared(tc, item, seen, depth + 1);
+    if tc.has_caught() {
+      tc.reset();
+    }
+  }
+}
+
+fn set_shared_prototype(
+  scope: &mut v8::PinScope,
+  buffer: v8::Local<v8::SharedArrayBuffer>,
+) {
+  let global = scope.get_current_context().global(scope);
+  let Some(name) = v8::String::new(scope, "SharedArrayBuffer") else {
+    return;
+  };
+  let Some(ctor) = global.get(scope, name.into()) else {
+    return;
+  };
+  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "prototype") else {
+    return;
+  };
+  let Some(prototype) = ctor.get(scope, key.into()) else {
+    return;
+  };
+  let _ = buffer.set_prototype(scope, prototype);
 }
 
 fn message_event<'s>(
