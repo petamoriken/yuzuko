@@ -228,7 +228,8 @@ Yuzuko.test("AudioWorklet process uses the render quantum", async () => {
       source.start();
     });
     assert(processed.length === 256, `process length ${processed.length}`);
-    assert(processed.gainLength === 256, "parameter block");
+    // A constant a-rate parameter is one sample, not the render quantum.
+    assert(processed.gainLength === 1, `parameter block ${processed.gainLength}`);
     assertClose(processed.gain0, 0.25, "parameter sample");
   } finally {
     await context.close();
