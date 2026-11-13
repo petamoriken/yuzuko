@@ -68,7 +68,6 @@ fn install(scope: &mut v8::PinScope) {
   objects::Path2D::install(scope);
   objects::CanvasGradient::install(scope);
   objects::CanvasPattern::install(scope);
-  objects::TextCluster::install(scope);
   objects::TextMetrics::install(scope);
   Context2D::install(scope);
   BitmapContext::install(scope);

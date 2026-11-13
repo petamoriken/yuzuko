@@ -242,69 +242,26 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   assert(pixel(ctx4, 3, 0)[1] === 255, "transform restored");
 });
 
-Yuzuko.test("enhanced text metrics and text clusters", () => {
+Yuzuko.test("text metrics stay the classic getters", () => {
   const canvas = new OffscreenCanvas(80, 64);
   const ctx = canvas.getContext("2d");
   ctx.font = "20px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  const text = "Ab";
-  const metrics = ctx.measureText(text);
+  const metrics = ctx.measureText("Ab");
   assert(metrics.width > 0, "width");
-  const rects = metrics.getSelectionRects(0, 1);
-  assert(rects.length === 1, "one rect");
-  assert(rects[0] instanceof DOMRectReadOnly, "rect type");
-  assert(Math.abs(rects[0].x) < 1, `selection x ${rects[0].x}`);
-  assert(rects[0].width > 0 && rects[0].width < metrics.width, "partial width");
-  assert(rects[0].y < 0, "above baseline");
-  assert(rects[0].height > 0, "line height");
-  assert(metrics.getSelectionRects(0, 0).length === 0, "empty range");
-
-  const box = metrics.getActualBoundingBox(0, 2);
-  assert(box instanceof DOMRectReadOnly, "box type");
-  assert(box.width > 0 && box.height > 0, "ink box");
-  assert(box.y < 0, "ink above baseline");
-
-  const clusters = metrics.getTextClusters();
-  assert(clusters.length === 2, "two clusters");
-  assert(clusters[0] instanceof TextCluster, "cluster type");
-  assert(clusters[0].start === 0 && clusters[0].end === 1, "first span");
-  assert(clusters[1].start === 1 && clusters[1].end === 2, "second span");
-  assert(clusters[0].align === "left" && clusters[0].baseline === "alphabetic", "styles");
-  assert(Math.abs(clusters[0].x) < 1, "first anchor");
-  assert(clusters[1].x > clusters[0].x, "second anchor");
-  const centered = metrics.getTextClusters({ align: "center" });
-  assert(centered[0].align === "center", "option align");
-  assert(centered[0].x > 0 && centered[0].x < metrics.width, "center x");
-  assert(clusters[0].align === "left", "original unchanged");
-  assert(metrics.getTextClusters(1, 2).length === 1, "range");
-  assert(metrics.getTextClusters(1, 2)[0].start === 1, "range start");
-
-  const accent = ctx.measureText("e\u0301").getTextClusters();
-  assert(accent.length === 1 && accent[0].end === 2, "grapheme");
-
-  assert(metrics.getIndexFromOffset(-10) === 0, "left of text");
-  assert(metrics.getIndexFromOffset(metrics.width + 10) === text.length, "right of text");
-  const middle = metrics.getIndexFromOffset(metrics.width / 2);
-  assert(middle === 1 || middle === 2, `middle ${middle}`);
-
-  ctx.textAlign = "start";
-  ctx.direction = "rtl";
-  const rtl = ctx.measureText("Ab");
-  assert(rtl.getIndexFromOffset(8) === 0, `rtl right side ${rtl.getIndexFromOffset(8)}`);
-  assert(
-    rtl.getIndexFromOffset(-rtl.width - 8) === 2,
-    `rtl left side ${rtl.getIndexFromOffset(-rtl.width - 8)}`,
-  );
-  ctx.direction = "ltr";
-  ctx.textAlign = "left";
-
-  ctx.textAlign = "center";
-  const centeredText = ctx.measureText("Ab");
-  const full = centeredText.getSelectionRects(0, 2);
-  assert(full.length === 1 && full[0].x < 0, "centered origin");
-  assert(full[0].x + full[0].width > 0, "centered span");
-  ctx.textAlign = "left";
+  assert(typeof metrics.actualBoundingBoxAscent === "number", "ascent");
+  assert(typeof metrics.fontBoundingBoxAscent === "number", "font ascent");
+  assert(typeof metrics.emHeightAscent === "number", "em ascent");
+  assert(typeof metrics.alphabeticBaseline === "number", "alphabetic");
+  assert(typeof metrics.getSelectionRects === "undefined", "no selection rects");
+  assert(typeof metrics.getActualBoundingBox === "undefined", "no range box");
+  assert(typeof metrics.getTextClusters === "undefined", "no clusters");
+  assert(typeof metrics.getIndexFromOffset === "undefined", "no caret index");
+  assert(typeof ctx.fillTextCluster === "undefined", "no fillTextCluster");
+  assert(typeof ctx.strokeTextCluster === "undefined", "no strokeTextCluster");
+  assert(typeof TextCluster === "undefined", "no TextCluster");
+  assert(typeof CanvasFilter === "undefined", "CanvasFilter absent");
 
   ctx.fillStyle = "#000000";
   ctx.fillText("A", 8, 50);
@@ -325,29 +282,4 @@ Yuzuko.test("enhanced text metrics and text clusters", () => {
   narrowCtx.fillText("A", 4, 40);
   const single = inkColumns(narrow);
   assert(pair.maxX > single.maxX + 2, "letters are not stacked");
-
-  const alone = new OffscreenCanvas(80, 64);
-  const direct = alone.getContext("2d");
-  direct.font = "20px sans-serif";
-  direct.fillStyle = "#000000";
-  const second = metrics.getTextClusters()[1];
-  direct.fillTextCluster(second, 4, 40);
-  const shifted = inkColumns(alone);
-  const exact = new OffscreenCanvas(80, 64);
-  const pinned = exact.getContext("2d");
-  pinned.font = "20px sans-serif";
-  pinned.fillStyle = "#000000";
-  pinned.fillTextCluster(second, 4, 40, { x: 0, y: 0 });
-  const overridden = inkColumns(exact);
-  assert(overridden.minX < shifted.minX - 4, "x override places the cluster");
-  assert(overridden.minX < 12, `pinned near the anchor ${overridden.minX}`);
-
-  let illegal = false;
-  try {
-    new TextCluster();
-  } catch (error) {
-    illegal = error instanceof TypeError;
-  }
-  assert(illegal, "no constructor");
-  assert(typeof CanvasFilter === "undefined", "CanvasFilter absent");
 });

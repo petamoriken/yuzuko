@@ -31,8 +31,6 @@ use parley::GenericFamily;
 use parley::LayoutContext;
 use parley::StyleProperty;
 
-use crate::paint::record::Align;
-use crate::paint::record::Baseline;
 use crate::paint::record::Family;
 use crate::paint::record::FontDesc;
 
@@ -200,7 +198,6 @@ pub struct ShapedCluster {
   /// Visual left edge in unscaled advance space.
   pub left: f32,
   pub advance: f32,
-  pub rtl: bool,
   pub glyphs: Vec<ShapedGlyph>,
   pub ink: Option<Ink>,
 }
@@ -212,7 +209,6 @@ pub struct ShapedText {
   pub descent: f32,
   pub runs: Vec<ShapedRun>,
   pub clusters: Vec<ShapedCluster>,
-  pub utf16_len: u32,
 }
 
 fn shaping_language(lang: &str) -> Option<Language> {
@@ -270,7 +266,6 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
       descent: font.size * 0.2,
       runs: Vec::new(),
       clusters: Vec::new(),
-      utf16_len: text.encode_utf16().count() as u32,
     };
     if let Some(line) = built.get(0) {
       let mut clusters = Vec::new();
@@ -321,7 +316,6 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
               end,
               left: cursor,
               advance,
-              rtl: cluster.is_rtl(),
               glyphs,
               ink,
             });
@@ -494,152 +488,6 @@ fn union_ink(ink: &mut Option<Ink>, bounds: (f32, f32, f32, f32)) {
       ink.y1 = ink.y1.max(y1);
     }
     None => *ink = Some(Ink { x0, y0, x1, y1 }),
-  }
-}
-
-/// Anchor of one cluster in unscaled advance space.
-pub fn cluster_anchor_x(
-  align: Align,
-  rtl: bool,
-  left: f64,
-  advance: f64,
-) -> f64 {
-  match align {
-    Align::Left => left,
-    Align::Right => left + advance,
-    Align::Center => left + advance / 2.0,
-    Align::Start => {
-      if rtl {
-        left + advance
-      } else {
-        left
-      }
-    }
-    Align::End => {
-      if rtl {
-        left
-      } else {
-        left + advance
-      }
-    }
-  }
-}
-
-pub struct PlacedRect {
-  pub x: f64,
-  pub y: f64,
-  pub width: f64,
-  pub height: f64,
-}
-
-impl ShapedText {
-  pub fn selection_rects(
-    &self,
-    start: u32,
-    end: u32,
-    align: Align,
-    baseline: Baseline,
-    rtl: bool,
-  ) -> Vec<PlacedRect> {
-    if start >= end {
-      return Vec::new();
-    }
-    let shift = align.offset(rtl, f64::from(self.width));
-    let base = baseline.offset(f64::from(self.ascent), f64::from(self.descent));
-    let height = f64::from(self.ascent + self.descent);
-    let y = -f64::from(self.ascent) + base;
-    let mut rects = Vec::new();
-    let mut group: Option<(f32, f32)> = None;
-    for cluster in &self.clusters {
-      if cluster.end <= start || cluster.start >= end {
-        if let Some((left, right)) = group.take() {
-          rects.push(span_rect(left, right, shift, y, height));
-        }
-        continue;
-      }
-      let right = cluster.left + cluster.advance;
-      group = Some(match group {
-        Some((left, previous)) => (left.min(cluster.left), previous.max(right)),
-        None => (cluster.left, right),
-      });
-    }
-    if let Some((left, right)) = group {
-      rects.push(span_rect(left, right, shift, y, height));
-    }
-    rects
-  }
-
-  pub fn index_at(&self, offset: f64, align: Align, rtl: bool) -> u32 {
-    let shift = align.offset(rtl, f64::from(self.width));
-    let x = (offset - shift) as f32;
-    let left = self
-      .clusters
-      .iter()
-      .map(|cluster| cluster.left)
-      .fold(0.0_f32, f32::min);
-    let right = self.width;
-    if self.clusters.is_empty() || x < left {
-      return if rtl { self.utf16_len } else { 0 };
-    }
-    if x > right {
-      return if rtl { 0 } else { self.utf16_len };
-    }
-    for cluster in &self.clusters {
-      let edge = cluster.left + cluster.advance;
-      if x > edge && (edge - right).abs() > f32::EPSILON {
-        continue;
-      }
-      let on_left = x <= cluster.left + cluster.advance * 0.5;
-      return if cluster.rtl == on_left {
-        cluster.end
-      } else {
-        cluster.start
-      };
-    }
-    if rtl { 0 } else { self.utf16_len }
-  }
-}
-
-impl ShapedCluster {
-  /// Glyphs relative to this cluster's alignment point.
-  pub fn placed(
-    &self,
-    align: Align,
-    baseline: Baseline,
-    ascent: f32,
-    descent: f32,
-  ) -> Vec<ShapedGlyph> {
-    let rel =
-      cluster_anchor_x(align, self.rtl, 0.0, f64::from(self.advance)) as f32;
-    let base = baseline.offset(f64::from(ascent), f64::from(descent)) as f32;
-    self
-      .glyphs
-      .iter()
-      .map(|glyph| ShapedGlyph {
-        font: glyph.font.clone(),
-        size: glyph.size,
-        id: glyph.id,
-        x: glyph.x - self.left - rel,
-        y: glyph.y + base,
-      })
-      .collect()
-  }
-}
-
-fn span_rect(
-  left: f32,
-  right: f32,
-  shift: f64,
-  y: f64,
-  height: f64,
-) -> PlacedRect {
-  let x0 = f64::from(left.min(right)) + shift;
-  let x1 = f64::from(left.max(right)) + shift;
-  PlacedRect {
-    x: x0,
-    y,
-    width: (x1 - x0).max(0.0),
-    height: height.max(0.0),
   }
 }
 

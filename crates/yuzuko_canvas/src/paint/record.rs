@@ -260,27 +260,6 @@ impl Align {
       }
     }
   }
-
-  pub fn name(self) -> &'static str {
-    match self {
-      Self::Start => "start",
-      Self::End => "end",
-      Self::Left => "left",
-      Self::Right => "right",
-      Self::Center => "center",
-    }
-  }
-
-  pub fn parse(value: &str) -> Option<Self> {
-    Some(match value {
-      "start" => Self::Start,
-      "end" => Self::End,
-      "left" => Self::Left,
-      "right" => Self::Right,
-      "center" => Self::Center,
-      _ => return None,
-    })
-  }
 }
 
 impl Baseline {
@@ -293,29 +272,6 @@ impl Baseline {
       Self::Middle => (ascent - descent) / 2.0,
       Self::Ideographic | Self::Bottom => -descent,
     }
-  }
-
-  pub fn name(self) -> &'static str {
-    match self {
-      Self::Top => "top",
-      Self::Hanging => "hanging",
-      Self::Middle => "middle",
-      Self::Alphabetic => "alphabetic",
-      Self::Ideographic => "ideographic",
-      Self::Bottom => "bottom",
-    }
-  }
-
-  pub fn parse(value: &str) -> Option<Self> {
-    Some(match value {
-      "top" => Self::Top,
-      "hanging" => Self::Hanging,
-      "middle" => Self::Middle,
-      "alphabetic" => Self::Alphabetic,
-      "ideographic" => Self::Ideographic,
-      "bottom" => Self::Bottom,
-      _ => return None,
-    })
   }
 }
 

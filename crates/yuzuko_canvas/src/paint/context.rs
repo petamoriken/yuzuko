@@ -1790,31 +1790,12 @@ impl Context2D {
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );
-      Ok(New(TextMetrics::from_shape(
-        shaped,
-        drawing.state.align,
-        drawing.state.baseline,
-        drawing.state.direction.is_rtl(),
+      Ok(New(TextMetrics::from_layout(
+        f64::from(shaped.width),
+        f64::from(shaped.ascent),
+        f64::from(shaped.descent),
       )))
     })
-  }
-
-  #[length(3)]
-  fn fill_text_cluster(
-    &self,
-    scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-  ) -> Result<(), OpError> {
-    self.draw_cluster(scope, args, false)
-  }
-
-  #[length(3)]
-  fn stroke_text_cluster(
-    &self,
-    scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-  ) -> Result<(), OpError> {
-    self.draw_cluster(scope, args, true)
   }
 
   #[getter]
@@ -2012,119 +1993,6 @@ impl Context2D {
       }
       Ok(())
     })
-  }
-
-  fn draw_cluster(
-    &self,
-    scope: &mut v8::PinScope,
-    args: &v8::FunctionCallbackArguments,
-    stroke: bool,
-  ) -> Result<(), OpError> {
-    if args.length() < 3 {
-      return Err(OpError::type_("The text cluster position is missing"));
-    }
-    let cluster = objects::text_cluster(scope, args.get(0))?;
-    let x = objects::number(scope, args.get(1))?;
-    let y = objects::number(scope, args.get(2))?;
-    let options = if args.length() >= 4 && !args.get(3).is_undefined() {
-      objects::cluster_paint_options(scope, args.get(3))?
-    } else {
-      objects::ClusterPaintOptions::default()
-    };
-    if !finite(&[x, y]) {
-      return Ok(());
-    }
-    let (stored_align, stored_baseline) = cluster.get().paint_style();
-    let align = options.align.unwrap_or(stored_align);
-    let baseline = options.baseline.unwrap_or(stored_baseline);
-    let (stored_x, stored_y) = cluster.get().anchor();
-    let anchor_x = x + options.x.unwrap_or(stored_x);
-    let anchor_y = y + options.y.unwrap_or(stored_y);
-    let glyphs = cluster.get().placed(align, baseline);
-    self.update(|drawing| {
-      let transform =
-        drawing.state.transform * Affine::translate((anchor_x, anchor_y));
-      push_shaped_glyphs(drawing, &glyphs, stroke, transform);
-      Ok(())
-    })
-  }
-}
-
-fn push_shaped_glyphs(
-  drawing: &mut Drawing,
-  glyphs: &[text::ShapedGlyph],
-  stroke: bool,
-  transform: Affine,
-) {
-  let shade = drawing.state.shade();
-  if glyphs.is_empty()
-    || (drawing.state.alpha <= 0.0 && !shade.paints_when_clear())
-  {
-    return;
-  }
-  type GlyphRun = (vello_cpu::peniko::FontData, f32, Vec<(u32, f32, f32)>);
-  let mut groups: Vec<GlyphRun> = Vec::new();
-  for glyph in glyphs {
-    let same = groups.last().is_some_and(|(font, size, _)| {
-      *size == glyph.size
-        && font.index == glyph.font.index
-        && std::ptr::eq(
-          font.data.data().as_ptr(),
-          glyph.font.data.data().as_ptr(),
-        )
-    });
-    if same {
-      if let Some(group) = groups.last_mut() {
-        group.2.push((glyph.id, glyph.x, glyph.y));
-      }
-    } else {
-      groups.push((
-        glyph.font.clone(),
-        glyph.size,
-        vec![(glyph.id, glyph.x, glyph.y)],
-      ));
-    }
-  }
-  for (font, size, glyphs) in groups {
-    let glyphs: Arc<[(u32, f32, f32)]> = Arc::from(glyphs.as_slice());
-    if stroke {
-      let Some(brush) = record::resolve_style(
-        &drawing.state.stroke_style,
-        drawing.state.nearest(),
-      ) else {
-        continue;
-      };
-      drawing.push_command(Command::Glyphs {
-        font,
-        size,
-        glyphs,
-        brush,
-        transform,
-        alpha: drawing.state.alpha,
-        stroke: Some(drawing.state.stroke()),
-        shade,
-        filter: drawing.state.paint_filter(drawing.width, drawing.height),
-        clips: drawing.state.clips(),
-      });
-    } else {
-      let Some(brush) =
-        record::resolve_style(&drawing.state.fill, drawing.state.nearest())
-      else {
-        continue;
-      };
-      drawing.push_command(Command::Glyphs {
-        font,
-        size,
-        glyphs,
-        brush,
-        transform,
-        alpha: drawing.state.alpha,
-        stroke: None,
-        shade,
-        filter: drawing.state.paint_filter(drawing.width, drawing.height),
-        clips: drawing.state.clips(),
-      });
-    }
   }
 }
 

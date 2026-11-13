@@ -3874,11 +3874,19 @@
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-options.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that fillTextCluster() correctly applies the options passed as a dictionary."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.fillTextCluster-range.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that getTextClusters() and fillTextCluster() correctly render different ranges of the input text."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-reduced-ascent.html": {
     "ignore": "The file needs a document."
   },
@@ -3899,20 +3907,81 @@
     "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that TextMetrics::getActualBoundingBox() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that TextMetrics::getActualBoundingBox() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.html": {
+    "expectedFailures": [
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox-full-text.tentative.worker.js": {
+    "expectedFailures": [
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction ltr and no-directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and directional-override",
+      "Test TextMetrics::getActualBoundingBox() for the full length of the string for some edge cases, with direction rtl and no-directional-override"
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.getActualBoundingBox.tentative.worker.js": {
+    "expectedFailures": [
+      "Test TextMetrics::getActualBoundingBox(), with text align center , and 0px letter spacing.",
+      "Test TextMetrics::getActualBoundingBox(), with text align center , and 10px letter spacing.",
+      "Test TextMetrics::getActualBoundingBox(), with text align left , and 0px letter spacing.",
+      "Test TextMetrics::getActualBoundingBox(), with text align left , and 10px letter spacing.",
+      "Test TextMetrics::getActualBoundingBox(), with text align right , and 0px letter spacing.",
+      "Test TextMetrics::getActualBoundingBox(), with text align right , and 10px letter spacing."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edge-cases.tentative.worker.js": {
+    "expectedFailures": [
+      "Test the edge cases for getIndexFromOffset, where the point is at the edge of glyph and at the midpoint."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.html": {
+    "expectedFailures": [
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align center.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align end.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align left.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align right.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align start.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align center.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align end.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align left.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align right.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align start."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.index-from-offset-edges.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align center.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align end.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align left.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align right.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction ltr and text align start.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align center.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align end.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align left.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align right.",
+      "Check that TextMetrics::getIndexFromOffset() gives correct edges when the requested point is outside the range, with direction rtl and text align start."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.index-from-offset.tentative.html": {
     "ignore": "The file needs a document."
   },
@@ -3923,10 +3992,26 @@
     "ignore": "The file needs a document."
   },
   "html/canvas/offscreen/text/2d.text.measure.lang.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.html": {
+    "expectedFailures": [
+      "Check that TextMetrics::getSelectionRects() works correctly with textBaseline."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-baselines.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that TextMetrics::getSelectionRects() works correctly with textBaseline."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that TextMetrics::getSelectionRects() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.selection-rects-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that TextMetrics::getSelectionRects() throws when using invalid indexes."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.selection-rects.tentative.html": {
     "ignore": "The file needs a document."
   },
@@ -3969,19 +4054,47 @@
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-options.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that strokeTextCluster() correctly applies the options passed as a dictionary."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.strokeTextCluster-range.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that getTextClusters() and strokeTextCluster() correctly render different ranges of the input text."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.html": {
+    "expectedFailures": [
+      "Check that TextMetrics::getTextClusters() throws when using invalid indexes."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-exceptions.tentative.worker.js": {
+    "expectedFailures": [
+      "Check that TextMetrics::getTextClusters() throws when using invalid indexes."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.html": true,
-  "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.worker.js": true,
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that TextMetrics::getTextClusters() returns clusters that are positioned according to the target align and baseline passed as options."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.html": {
+    "expectedFailures": [
+      "Test that getTextClusters() splits the input correctly into the minimal clusters, keeping emojis together."
+    ]
+  },
+  "html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.worker.js": {
+    "expectedFailures": [
+      "Test that getTextClusters() splits the input correctly into the minimal clusters, keeping emojis together."
+    ]
+  },
   "html/canvas/offscreen/text/2d.text.measure.width.basic.html": {
     "ignore": "The file needs a document."
   },

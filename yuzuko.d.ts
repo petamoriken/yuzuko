@@ -10603,16 +10603,6 @@ interface OffscreenCanvasRenderingContext2D {
   measureText(text: string): TextMetrics;
 
   /**
-   * Draws one cluster from {@link TextMetrics.getTextClusters}.
-   *
-   * `options` may replace `align`, `baseline`, `x`, and `y` for this call.
-   */
-  fillTextCluster(cluster: TextCluster, options?: TextClusterOptions): void;
-
-  /** Draws one cluster. See {@link OffscreenCanvasRenderingContext2D.fillTextCluster}. */
-  strokeTextCluster(cluster: TextCluster, options?: TextClusterOptions): void;
-
-  /**
    * A CSS filter string. The default is `"none"`.
    *
    * A value that parses is stored. The getter returns that string. `""`,
@@ -10668,20 +10658,10 @@ declare var OffscreenCanvasRenderingContext2D: {
 };
 
 
-/** Options for drawing one {@link TextCluster}. */
-interface TextClusterOptions {
-  align?: CanvasTextAlign;
-  baseline?: CanvasTextBaseline;
-  x?: number;
-  y?: number;
-}
-
 /**
  * Measured text.
  *
- * The classic `actualBoundingBox*` getters are advance approximations.
- * `getActualBoundingBox` returns that same advance box for the whole run.
- * A shaper cluster that covers more than one grapheme stays one cluster.
+ * The `actualBoundingBox*` getters are advance approximations.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10724,81 +10704,11 @@ interface TextMetrics {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextMetrics/ideographicBaseline) */
   readonly ideographicBaseline: number;
-
-  /**
-   * Advance boxes from `start` to `end`, in UTF-16 code units.
-   *
-   * @throws {@link TypeError} when `start` or `end` is non-finite or outside
-   * 0 through 2^32 - 1.
-   * @throws {@link DOMException} `IndexSizeError` when `start` or `end` is
-   * greater than the UTF-16 length.
-   */
-  getSelectionRects(start: number, end: number): DOMRect[];
-
-  /**
-   * Advance box of the whole run.
-   *
-   * `x` is 0, `y` is `-actualBoundingBoxAscent`, `width` is the advance, and
-   * `height` is the ascent plus the descent. The range does not tighten the
-   * rectangle, and `textAlign` and `textBaseline` do not move it.
-   *
-   * @throws {@link TypeError} when `start` or `end` is non-finite or outside
-   * 0 through 2^32 - 1.
-   * @throws {@link DOMException} `IndexSizeError` when `start` is greater
-   * than or equal to the UTF-16 length, or `end` is greater than that length.
-   */
-  getActualBoundingBox(start: number, end: number): DOMRect;
-
-  /**
-   * Clusters for the whole run, or for `start` through `end`.
-   *
-   * `options` changes the returned clusters and does not change this object.
-   * An omitted range is the whole run.
-   *
-   * @throws {@link TypeError} when an explicit `start` or `end` is non-finite
-   * or outside 0 through 2^32 - 1.
-   * @throws {@link DOMException} `IndexSizeError` when an explicit `start` is
-   * greater than or equal to the UTF-16 length, or `end` is greater than
-   * that length.
-   */
-  getTextClusters(
-    start?: number,
-    end?: number,
-    options?: TextClusterOptions,
-  ): TextCluster[];
-
-  /**
-   * UTF-16 index at `offset` in the text origin.
-   *
-   * Values outside the run return `0` or the UTF-16 length according to
-   * `direction`.
-   */
-  getIndexFromOffset(offset: number): number;
 }
 declare var TextMetrics: {
   prototype: TextMetrics;
   new(): TextMetrics;
 };
-
-
-/**
- * One shaped cluster.
- *
- * Indices are UTF-16 code units. Positions are relative to the text origin
- * after `textAlign` and `textBaseline`.
- *
- * @throws {@link TypeError} Illegal constructor.
- */
-declare class TextCluster {
-  constructor();
-
-  readonly x: number;
-  readonly y: number;
-  readonly start: number;
-  readonly end: number;
-  readonly align: CanvasTextAlign;
-  readonly baseline: CanvasTextBaseline;
-}
 
 /**
  * A canvas gradient.
