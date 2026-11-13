@@ -195,8 +195,8 @@ pub fn delay_commit(state: &mut DelayState, input: &[Vec<f32>], frames: usize) {
   }
   for index in 0..quantum {
     let write = state.write % width;
-    for channel in 0..channels {
-      state.lines[channel][write] = channel_sample(input, channel, index);
+    for (channel, line) in state.lines.iter_mut().enumerate() {
+      line[write] = channel_sample(input, channel, index);
     }
     state.write = (write + 1) % width;
   }

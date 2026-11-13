@@ -393,9 +393,9 @@ impl Av1Session {
   }
 
   fn note(&mut self, frame: &crate::av1_obu::Frame, recon: u32) {
-    for index in 0..8 {
+    for (index, slot) in self.refs.iter_mut().enumerate() {
       if frame.refresh_flags & (1 << index) != 0 {
-        self.refs[index] = Some(recon);
+        *slot = Some(recon);
       }
     }
   }

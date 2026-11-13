@@ -1548,10 +1548,7 @@ fn present_fields_ok(
   {
     return false;
   }
-  if name == "RSA-OAEP" && !optional_bytes_ok(scope, algorithm, "label") {
-    return false;
-  }
-  true
+  name != "RSA-OAEP" || optional_bytes_ok(scope, algorithm, "label")
 }
 
 fn hash_ok(
@@ -1824,15 +1821,12 @@ fn derive_key_ok(
   let Some(needed) = derived_length(scope, &derived_name, derived) else {
     return false;
   };
-  if !derive_bits_ok(
+  derive_bits_ok(
     scope,
     name,
     algorithm,
     Some(v8::Number::new(scope, f64::from(needed)).into()),
-  ) {
-    return false;
-  }
-  true
+  )
 }
 
 fn derived_length(

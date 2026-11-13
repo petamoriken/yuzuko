@@ -490,9 +490,9 @@ impl Stream {
     if frame.tiles.len() != frame.tile_count() {
       return Err(DecodeError::Rejected);
     }
-    for index in 0..8 {
+    for (index, slot) in self.slots.iter_mut().enumerate() {
       if frame.refresh_flags & (1 << index) != 0 {
-        self.slots[index] = Some(frame.refresh_slot.clone());
+        *slot = Some(frame.refresh_slot.clone());
       }
     }
     Ok(Picture::Frame(frame))
@@ -1891,14 +1891,14 @@ fn parse_frame(
       let delta_update = if delta_enabled {
         let update = bits.bit()?;
         if update {
-          for index in 0..8 {
+          for delta in &mut deltas.ref_delta {
             if bits.bit()? {
-              deltas.ref_delta[index] = bits.sbits(7)? as i8;
+              *delta = bits.sbits(7)? as i8;
             }
           }
-          for index in 0..2 {
+          for delta in &mut deltas.mode_delta {
             if bits.bit()? {
-              deltas.mode_delta[index] = bits.sbits(7)? as i8;
+              *delta = bits.sbits(7)? as i8;
             }
           }
         }

@@ -1721,10 +1721,7 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   }
   // Same ordering as `pump_until`: a `postMessage` that landed before the
   // worker died is still in this inbox.
-  if crate::worker::inbound_ready() {
-    return true;
-  }
-  false
+  crate::worker::inbound_ready()
 }
 
 #[cfg(feature = "signal")]
