@@ -146,8 +146,14 @@ fn accept_for(
   let deadline = Instant::now() + wait;
   loop {
     match listener.accept() {
-      Ok((stream, _)) => return Ok(stream),
-      Err(error) if error.kind() == ErrorKind::WouldBlock => {
+      Ok((stream, _)) => {
+        // The listener is nonblocking, so the accepted socket is too.
+        // `read_exact` then returns `WouldBlock` and the dropped peer is
+        // `ConnectionAborted` on Windows.
+        stream.set_nonblocking(false)?;
+        return Ok(stream);
+      }
+      Err(error) if accept_retry(error.kind()) => {
         if Instant::now() >= deadline {
           return Err(std::io::Error::new(ErrorKind::TimedOut, "accept"));
         }
@@ -156,6 +162,19 @@ fn accept_for(
       Err(error) => return Err(error),
     }
   }
+}
+
+/// Windows `accept` reports `ConnectionAborted` when the peer resets before
+/// the call. The runtime retries that kind.
+fn accept_retry(kind: ErrorKind) -> bool {
+  matches!(
+    kind,
+    ErrorKind::WouldBlock
+      | ErrorKind::TimedOut
+      | ErrorKind::Interrupted
+      | ErrorKind::ConnectionAborted
+      | ErrorKind::ConnectionReset
+  )
 }
 
 fn family(v6: bool) -> BTreeSet<String> {
