@@ -1042,18 +1042,18 @@ fn command_file_exists(path: &Path) -> bool {
   let Ok(meta) = std::fs::metadata(path) else {
     return false;
   };
-  if !meta.is_file() {
-    return false;
-  }
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    meta.permissions().mode() & 0o111 != 0
-  }
-  #[cfg(not(unix))]
-  {
-    true
-  }
+  meta.is_file() && command_file_executable(&meta)
+}
+
+#[cfg(all(feature = "child", unix))]
+fn command_file_executable(meta: &std::fs::Metadata) -> bool {
+  use std::os::unix::fs::PermissionsExt;
+  meta.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(all(feature = "child", not(unix)))]
+fn command_file_executable(_meta: &std::fs::Metadata) -> bool {
+  true
 }
 
 #[cfg(feature = "child")]
