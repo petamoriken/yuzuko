@@ -41,6 +41,12 @@ const STATUS: &str = "The status must be an integer from 100 through 599.";
 const NO_PROMISE: &str = "The socket operation failed.";
 const TEXT_TYPE: &str = "text/plain;charset=UTF-8";
 const BYTE_TYPE: &str = "application/octet-stream";
+const HEADERS: &str = "The headers must be an object.";
+const TOO_MANY_HEADERS: &str = "There are too many headers.";
+const HEADER_SET: &str = "The header cannot be set.";
+const HEADER_NAME: &str = "The header name is invalid.";
+const HEADER_VALUE: &str = "The header value is invalid.";
+const MAX_HEADERS: usize = 64;
 
 thread_local! {
   static OPEN: RefCell<Vec<Live>> = const { RefCell::new(Vec::new()) };
@@ -218,7 +224,14 @@ pub(crate) fn clear() {
 }
 
 fn bind_http(addr: SocketAddr) -> io::Result<Arc<ServerShared>> {
-  let listener = StdListener::bind(addr)?;
+  finish_http(StdListener::bind(addr)?)
+}
+
+fn bind_http_reuse(addr: SocketAddr) -> io::Result<Arc<ServerShared>> {
+  finish_http(crate::socket_bind::tcp_listener(addr)?)
+}
+
+fn finish_http(listener: StdListener) -> io::Result<Arc<ServerShared>> {
   listener.set_nonblocking(true)?;
   let bound = listener.local_addr()?;
   let shared = Arc::new(ServerShared {
@@ -501,14 +514,184 @@ fn is_io_retry(kind: ErrorKind) -> bool {
   )
 }
 
-fn response_message(status: u16, content_type: &str, body: &[u8]) -> Vec<u8> {
+fn response_headers(
+  scope: &mut v8::PinScope,
+  headers: Option<v8::Local<v8::Value>>,
+  default_type: &str,
+) -> Result<(String, Vec<(String, String)>), OpError> {
+  let Some(value) = headers else {
+    return Ok((default_type.to_owned(), Vec::new()));
+  };
+  if value.is_null_or_undefined() {
+    return Ok((default_type.to_owned(), Vec::new()));
+  }
+  if value.is_array() || !value.is_object() {
+    return Err(OpError::type_(HEADERS));
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(HEADERS));
+  };
+  let names = header_names(scope, object)?;
+  if names.len() > MAX_HEADERS {
+    return Err(OpError::type_(TOO_MANY_HEADERS));
+  }
+  let mut content_type = default_type.to_owned();
+  let mut extra = Vec::new();
+  for name in names {
+    if !is_token(&name) {
+      return Err(OpError::type_(HEADER_NAME));
+    }
+    let field = header_field(scope, object, &name)?;
+    let lower = name.to_ascii_lowercase();
+    if matches!(
+      lower.as_str(),
+      "content-length" | "transfer-encoding" | "connection"
+    ) {
+      return Err(OpError::type_(HEADER_SET));
+    }
+    let text = header_text(scope, field)?;
+    if lower == "content-type" {
+      content_type = text;
+    } else {
+      extra.push((name, text));
+    }
+  }
+  Ok((content_type, extra))
+}
+
+fn header_names(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Vec<String>, OpError> {
+  enum Outcome {
+    Names(v8::Global<v8::Array>),
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let object = v8::Local::new(tc, object);
+    let mut builder = v8::GetPropertyNamesArgsBuilder::new();
+    let listed = builder
+      .mode(v8::KeyCollectionMode::OwnOnly)
+      .property_filter(
+        v8::PropertyFilter::ONLY_ENUMERABLE | v8::PropertyFilter::SKIP_SYMBOLS,
+      )
+      .key_conversion(v8::KeyConversionMode::ConvertToString)
+      .build();
+    match object.get_own_property_names(tc, listed) {
+      Some(names) => Outcome::Names(v8::Global::new(tc, names)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  let names = match outcome {
+    Outcome::Names(names) => v8::Local::new(scope, names),
+    Outcome::Throw(exception) => {
+      return Err(OpError::thrown(scope, v8::Local::new(scope, exception)));
+    }
+    Outcome::Missing => return Err(OpError::type_(OPTIONS_READ)),
+  };
+  let length = names.length();
+  let mut keys = Vec::with_capacity(length as usize);
+  for index in 0..length {
+    let Some(value) = names.get_index(scope, index) else {
+      return Err(OpError::type_(OPTIONS_READ));
+    };
+    if !value.is_string() {
+      return Err(OpError::type_(HEADER_NAME));
+    }
+    let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
+      return Err(OpError::type_(HEADER_NAME));
+    };
+    keys.push(text.to_rust_string_lossy(scope));
+  }
+  Ok(keys)
+}
+
+fn header_field<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let Some(key) = v8::String::new(scope, name) else {
+    return Err(OpError::type_(HEADER_NAME));
+  };
+  enum Outcome {
+    Value(v8::Global<v8::Value>),
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let object = v8::Local::new(tc, object);
+    let key = v8::Local::new(tc, key);
+    match object.get(tc, key.into()) {
+      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  match outcome {
+    Outcome::Value(value) => Ok(v8::Local::new(scope, value)),
+    Outcome::Throw(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+    Outcome::Missing => Err(OpError::type_(OPTIONS_READ)),
+  }
+}
+
+fn header_text(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<String, OpError> {
+  if !value.is_string() {
+    return Err(OpError::type_(HEADER_VALUE));
+  }
+  let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
+    return Err(OpError::type_(HEADER_VALUE));
+  };
+  let text = text.to_rust_string_lossy(scope);
+  if !header_text_ok(&text) {
+    return Err(OpError::type_(HEADER_VALUE));
+  }
+  Ok(text)
+}
+
+fn header_text_ok(value: &str) -> bool {
+  !value
+    .bytes()
+    .any(|byte| byte == b'\r' || byte == b'\n' || byte == 0)
+}
+
+fn response_message(
+  status: u16,
+  content_type: &str,
+  extra: &[(String, String)],
+  body: &[u8],
+) -> Vec<u8> {
   let mut head = format!(
-    "HTTP/1.1 {status} {}\r\nContent-Length: {}\r\nContent-Type: ",
+    "HTTP/1.1 {status} {}\r\nContent-Length: {}\r\nContent-Type: {content_type}\r\n",
     reason(status),
     body.len(),
   );
-  head.push_str(content_type);
-  head.push_str("\r\nConnection: close\r\n\r\n");
+  for (name, value) in extra {
+    head.push_str(name);
+    head.push_str(": ");
+    head.push_str(value);
+    head.push_str("\r\n");
+  }
+  head.push_str("Connection: close\r\n\r\n");
   let mut bytes = head.into_bytes();
   bytes.extend_from_slice(body);
   bytes
@@ -548,9 +731,10 @@ fn send_response(
   closed: &AtomicBool,
   status: u16,
   content_type: &str,
+  extra: &[(String, String)],
   body: &[u8],
 ) -> Result<(), Fail> {
-  let bytes = response_message(status, content_type, body);
+  let bytes = response_message(status, content_type, extra, body);
   write_all(stream, &bytes, closed)?;
   let _ = stream.shutdown(Shutdown::Both);
   Ok(())
@@ -588,6 +772,7 @@ fn write_shared(
   shared: &RequestShared,
   status: u16,
   content_type: &str,
+  extra: &[(String, String)],
   body: &[u8],
 ) -> Result<(), Fail> {
   if shared.is_closed() {
@@ -602,7 +787,14 @@ fn write_shared(
       .try_clone()
       .map_err(|error| io_fail(error, Fail::Write))?
   };
-  send_response(&mut stream, &shared.closed, status, content_type, body)
+  send_response(
+    &mut stream,
+    &shared.closed,
+    status,
+    content_type,
+    extra,
+    body,
+  )
 }
 
 pub struct Server {
@@ -711,12 +903,14 @@ impl Request {
     scope: &mut v8::PinScope,
     body: v8::Local<v8::Value>,
     status: Option<v8::Local<v8::Value>>,
+    headers: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
-    let (bytes, content_type) = payload_bytes(scope, body)?;
+    let (bytes, default_type) = payload_bytes(scope, body)?;
     let status = match status {
       Some(value) => to_status(scope, value)?,
       None => 200,
     };
+    let (content_type, extra) = response_headers(scope, headers, default_type)?;
     if self.shared.responding.load(Ordering::Acquire) {
       return rejected(scope, BUSY_RESPOND);
     }
@@ -735,7 +929,8 @@ impl Request {
       return rejected(scope, BUSY_RESPOND);
     }
     let shared = Arc::clone(&self.shared);
-    let settled = settle_respond(scope, shared, status, content_type, bytes);
+    let settled =
+      settle_respond(scope, shared, status, content_type, extra, bytes);
     if settled.is_err() {
       self.shared.responding.store(false, Ordering::Release);
     }
@@ -781,13 +976,32 @@ fn listen_op(
   } else {
     endpoint(scope, options)?
   };
-  let shared = match bind_http(addr) {
+  let reuse = reuse_flag(scope, options)?;
+  let shared = match if reuse {
+    bind_http_reuse(addr)
+  } else {
+    bind_http(addr)
+  } {
     Ok(shared) => shared,
     Err(error) => {
       return Err(crate::errors::io_exception(scope, &error, BIND));
     }
   };
   Ok(New(Server { shared }))
+}
+
+fn reuse_flag(
+  scope: &mut v8::PinScope,
+  options: v8::Local<v8::Value>,
+) -> Result<bool, OpError> {
+  if options.is_null_or_undefined() {
+    return Ok(false);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
+    return Ok(false);
+  };
+  let value = read_field(scope, object, "reusePort")?;
+  crate::socket_bind::reuse_port(scope, value)
 }
 
 fn endpoint(
@@ -1088,7 +1302,8 @@ fn settle_respond(
   scope: &mut v8::PinScope,
   shared: Arc<RequestShared>,
   status: u16,
-  content_type: &'static str,
+  content_type: String,
+  extra: Vec<(String, String)>,
   body: Vec<u8>,
 ) -> Result<Js, OpError> {
   let Some(resolver) = v8::PromiseResolver::new(scope) else {
@@ -1100,7 +1315,7 @@ fn settle_respond(
   let resolver_global = v8::Global::new(scope, resolver);
   let flag = Arc::clone(&shared);
   crate::jobs::spawn(
-    move || write_shared(&shared, status, content_type, &body),
+    move || write_shared(&shared, status, &content_type, &extra, &body),
     move |scope, result| {
       flag.responding.store(false, Ordering::Release);
       let resolver = v8::Local::new(scope, &resolver_global);
@@ -1279,7 +1494,7 @@ mod tests {
     assert_eq!(parts.url, "/hello?x=1");
     assert!(parts.body.is_empty());
     let shared = request_shared(parts);
-    write_shared(&shared, 200, TEXT_TYPE, b"pong").unwrap();
+    write_shared(&shared, 200, TEXT_TYPE, &[], b"pong").unwrap();
     let (status, head, body) = split_response(&client.join().unwrap());
     assert_eq!(status, 200);
     assert!(head.starts_with("HTTP/1.1 200 OK\r\n"), "{head}");
@@ -1302,7 +1517,8 @@ mod tests {
     assert_eq!(parts.url, "/echo");
     assert_eq!(parts.body, b"hello");
     let shared = request_shared(parts);
-    write_shared(&shared, 201, "application/octet-stream", b"hello").unwrap();
+    write_shared(&shared, 201, "application/octet-stream", &[], b"hello")
+      .unwrap();
     let (status, head, body) = split_response(&client.join().unwrap());
     assert_eq!(status, 201);
     assert!(head.contains("201 Created"), "{head}");
@@ -1405,7 +1621,7 @@ mod tests {
     });
     let parts = accept_request(&server).unwrap();
     let shared = request_shared(parts);
-    write_shared(&shared, 200, TEXT_TYPE, b"ok").unwrap();
+    write_shared(&shared, 200, TEXT_TYPE, &[], b"ok").unwrap();
     let (_status, _head, body) = split_response(&client.join().unwrap());
     assert_eq!(body, b"ok");
     super::clear();

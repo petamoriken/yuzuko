@@ -186,6 +186,10 @@ name = "net_name"
 required-features = ["tcp", "udp"]
 
 [[test]]
+name = "host_services"
+required-features = ["child", "signal", "http", "udp", "tcp"]
+
+[[test]]
 name = "repl"
 required-features = ["window"]
 

@@ -130,19 +130,19 @@ A relative path is joined to the process current directory before the permission
 
 Feature: `udp`.
 
-`Yuzuko.listenDatagram` binds a UDP socket and returns a `Yuzuko.Datagram`. `send` and `receive` each move one datagram. The hostname is an IP address or `localhost`. A DNS name is rejected.
+`Yuzuko.listenDatagram` binds a UDP socket and returns a `Yuzuko.Datagram`. `send` and `receive` each move one datagram. `connect` stores a default peer, `setBroadcast` sets `SO_BROADCAST`, and `joinMulticast` and `leaveMulticast` join or leave a group. `reusePort: true` sets `SO_REUSEPORT` before the bind on macOS and Linux. The bind hostname is an IP address or `localhost`. A DNS name is rejected.
 
 ## TCP
 
 Feature: `tcp`.
 
-`Yuzuko.listenTcp` returns a `Yuzuko.TcpListener`. `accept` resolves a `Yuzuko.TcpConn`. `Yuzuko.connectTcp` opens a connection. `read` and `write` copy bytes. The hostname is an IP address or `localhost`. A DNS name is rejected. The socket does not speak TLS.
+`Yuzuko.listenTcp` returns a `Yuzuko.TcpListener`. `accept` resolves a `Yuzuko.TcpConn`. `Yuzuko.connectTcp` opens a connection. `read` and `write` copy bytes. `reusePort: true` sets `SO_REUSEPORT` before the bind on macOS and Linux. The hostname is an IP address or `localhost`. A DNS name is rejected. The socket does not speak TLS.
 
 ## HTTP server
 
 Feature: `http`.
 
-`Yuzuko.listenHttp` returns a `Yuzuko.HttpServer` for HTTP/1.0 and HTTP/1.1. `accept` resolves a `Yuzuko.HttpRequest` with `method`, `url`, and `body`. `respond` writes one HTTP/1.1 response and closes that connection. This feature does not install the HTTP client or the TCP types.
+`Yuzuko.listenHttp` returns a `Yuzuko.HttpServer` for HTTP/1.0 and HTTP/1.1. `accept` resolves a `Yuzuko.HttpRequest` with `method`, `url`, and `body`. `respond` writes one HTTP/1.1 response, including caller headers, and closes that connection. `reusePort: true` sets `SO_REUSEPORT` before the bind on macOS and Linux. This feature does not install the HTTP client or the TCP types.
 
 ## Signals
 

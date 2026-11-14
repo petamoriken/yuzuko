@@ -48,7 +48,7 @@ Yuzuko.test("local datagrams exchange bytes and the source address", async () =>
     assert(typeof listenDatagram === "undefined", "global listenDatagram");
     assert(typeof Datagram === "undefined", "global Datagram");
     assert(Yuzuko.listenDatagram.length === 0, "listen length");
-    assert(Yuzuko.Datagram.prototype.send.length === 2, "send length");
+    assert(Yuzuko.Datagram.prototype.send.length === 1, "send length");
     assert(Yuzuko.Datagram.prototype.receive.length === 0, "receive length");
     assert(Yuzuko.Datagram.prototype.close.length === 0, "close length");
 

@@ -250,12 +250,20 @@ const sent = await sock.send(enc.encode("udp-ping"), {
 });
 sock.close();
 let mx = "";
-let mxReturned = "unset";
 try {
-  mxReturned = Yuzuko.resolveDns("localhost.", "MX");
-  mx = "returned";
+  const value = await Yuzuko.resolveDns("localhost.", "MX");
+  mx = Array.isArray(value) ? "array" : "other";
 } catch (error) {
-  mx = error instanceof TypeError ? error.message : error.name;
+  mx = error instanceof Error && !(error instanceof TypeError)
+    ? error.message
+    : error.name + " " + error.message;
+}
+let wat = "";
+try {
+  Yuzuko.resolveDns("localhost.", "WAT");
+  wat = "returned";
+} catch (error) {
+  wat = error instanceof TypeError ? error.message : "other";
 }
 let empty = "";
 try {
@@ -294,7 +302,7 @@ const report = {
   tcpText,
   sent,
   mx,
-  mxPromise: mxReturned instanceof Promise,
+  wat,
   empty,
   nonString,
   missing,
@@ -329,11 +337,16 @@ Yuzuko.stdout.writeSync(enc.encode(JSON.stringify(report)));
   let mut datagram = [0u8; 16];
   let (count, _) = udp.recv_from(&mut datagram).expect("udp payload");
   assert_eq!(&datagram[..count], b"udp-ping");
-  assert_eq!(
-    report["mx"], "The record type must be \"A\" or \"AAAA\".",
+  assert!(
+    report["mx"] == "array"
+      || report["mx"] == "The host could not be resolved.",
     "{stdout}"
   );
-  assert_eq!(report["mxPromise"], false, "{stdout}");
+  assert_eq!(
+    report["wat"],
+    "The record type must be \"A\", \"AAAA\", \"CNAME\", \"NS\", \"PTR\", \"MX\", \"TXT\", \"SRV\", \"SOA\", \"CAA\", or \"NAPTR\".",
+    "{stdout}"
+  );
   assert_eq!(report["empty"], "The host must not be empty.", "{stdout}");
   assert_eq!(
     report["nonString"], "The host must be a string.",

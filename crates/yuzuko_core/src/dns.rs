@@ -12,6 +12,8 @@ use crate::op::{OpError, OpException, ToV8};
 
 pub(crate) const UNRESOLVED: &str = "The host could not be resolved.";
 
+const RECORD_TYPE: &str = "The record type must be \"A\", \"AAAA\", \"CNAME\", \"NS\", \"PTR\", \"MX\", \"TXT\", \"SRV\", \"SOA\", \"CAA\", or \"NAPTR\".";
+
 pub(crate) enum LookupError {
   Resolve,
   Denied { name: String, message: String },
@@ -108,39 +110,56 @@ fn resolve_dns(
   }
   let type_value = args.get(1);
   if !type_value.is_string() {
-    crate::js::throw_type(scope, "The record type must be \"A\" or \"AAAA\".");
+    crate::js::throw_type(scope, RECORD_TYPE);
     return;
   }
   let Some(record) = type_value.to_string(scope) else {
-    crate::js::throw_type(scope, "The record type must be \"A\" or \"AAAA\".");
+    crate::js::throw_type(scope, RECORD_TYPE);
     return;
   };
   let record = record.to_rust_string_lossy(scope);
-  let v6 = match record.as_str() {
-    "A" => false,
-    "AAAA" => true,
-    _ => {
-      crate::js::throw_type(
-        scope,
-        "The record type must be \"A\" or \"AAAA\".",
-      );
-      return;
-    }
+  let query = match record.as_str() {
+    "A" => Query::Address(false),
+    "AAAA" => Query::Address(true),
+    other => match crate::dns_query::Kind::parse(other) {
+      Some(kind) => Query::Typed(kind),
+      None => {
+        crate::js::throw_type(scope, RECORD_TYPE);
+        return;
+      }
+    },
   };
   if let Err(error) = crate::permissions::check_net_host(&host) {
     error.throw(scope);
     return;
   }
   let host = host.trim().to_string();
-  match settle(scope, move || records(&host, v6)) {
+  match settle(scope, move || match query {
+    Query::Address(v6) => records(&host, v6).map(Found::Addresses),
+    Query::Typed(kind) => match crate::dns_query::lookup(&host, kind) {
+      Ok(typed) => Ok(Found::Typed(typed)),
+      Err(()) => Err(LookupError::Resolve),
+    },
+  }) {
     Ok(value) => value.to_v8(scope, &mut ret),
     Err(error) => crate::op::OpException::throw(error, scope),
   }
 }
 
+#[derive(Clone, Copy)]
+enum Query {
+  Address(bool),
+  Typed(crate::dns_query::Kind),
+}
+
+enum Found {
+  Addresses(Vec<String>),
+  Typed(crate::dns_query::Typed),
+}
+
 fn settle(
   scope: &mut v8::PinScope,
-  work: impl FnOnce() -> Result<Vec<String>, LookupError> + Send + 'static,
+  work: impl FnOnce() -> Result<Found, LookupError> + Send + 'static,
 ) -> Result<crate::op::Js, OpError> {
   let Some(resolver) = v8::PromiseResolver::new(scope) else {
     return Err(OpError::type_("The socket operation failed."));
@@ -156,8 +175,8 @@ fn settle(
       Err(()) => Err(LookupError::Resolve),
     };
     match outcome {
-      Ok(addrs) => {
-        if let Some(value) = string_array(scope, &addrs) {
+      Ok(found) => {
+        if let Some(value) = found_value(scope, &found) {
           let _ = resolver.resolve(scope, value);
         }
       }
@@ -172,6 +191,127 @@ fn settle(
     }
   });
   Ok(crate::op::Js(promise_global))
+}
+
+fn found_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  found: &Found,
+) -> Option<v8::Local<'s, v8::Value>> {
+  match found {
+    Found::Addresses(addrs) => string_array(scope, addrs),
+    Found::Typed(crate::dns_query::Typed::Names(rows)) => {
+      string_array(scope, rows)
+    }
+    Found::Typed(crate::dns_query::Typed::Mx(rows)) => {
+      object_rows(scope, rows, |scope, row| {
+        let object = v8::Object::new(scope);
+        set_number(scope, object, "preference", f64::from(row.preference))?;
+        set_string(scope, object, "exchange", &row.exchange)?;
+        Some(object.into())
+      })
+    }
+    Found::Typed(crate::dns_query::Typed::Txt(rows)) => {
+      let array = v8::Array::new(scope, rows.len() as i32);
+      for (index, row) in rows.iter().enumerate() {
+        let inner = string_array(scope, row)?;
+        array.set_index(scope, index as u32, inner)?;
+      }
+      Some(array.into())
+    }
+    Found::Typed(crate::dns_query::Typed::Srv(rows)) => {
+      object_rows(scope, rows, |scope, row| {
+        let object = v8::Object::new(scope);
+        set_number(scope, object, "priority", f64::from(row.priority))?;
+        set_number(scope, object, "weight", f64::from(row.weight))?;
+        set_number(scope, object, "port", f64::from(row.port))?;
+        set_string(scope, object, "target", &row.target)?;
+        Some(object.into())
+      })
+    }
+    Found::Typed(crate::dns_query::Typed::Soa(rows)) => {
+      object_rows(scope, rows, |scope, row| {
+        let object = v8::Object::new(scope);
+        set_string(scope, object, "mname", &row.mname)?;
+        set_string(scope, object, "rname", &row.rname)?;
+        set_number(scope, object, "serial", f64::from(row.serial))?;
+        set_number(scope, object, "refresh", f64::from(row.refresh))?;
+        set_number(scope, object, "retry", f64::from(row.retry))?;
+        set_number(scope, object, "expire", f64::from(row.expire))?;
+        set_number(scope, object, "minimum", f64::from(row.minimum))?;
+        Some(object.into())
+      })
+    }
+    Found::Typed(crate::dns_query::Typed::Caa(rows)) => {
+      object_rows(scope, rows, |scope, row| {
+        let object = v8::Object::new(scope);
+        set_bool(scope, object, "critical", row.critical)?;
+        set_string(scope, object, "tag", &row.tag)?;
+        set_string(scope, object, "value", &row.value)?;
+        Some(object.into())
+      })
+    }
+    Found::Typed(crate::dns_query::Typed::Naptr(rows)) => {
+      object_rows(scope, rows, |scope, row| {
+        let object = v8::Object::new(scope);
+        set_number(scope, object, "order", f64::from(row.order))?;
+        set_number(scope, object, "preference", f64::from(row.preference))?;
+        set_string(scope, object, "flags", &row.flags)?;
+        set_string(scope, object, "services", &row.services)?;
+        set_string(scope, object, "regexp", &row.regexp)?;
+        set_string(scope, object, "replacement", &row.replacement)?;
+        Some(object.into())
+      })
+    }
+  }
+}
+
+fn object_rows<'s, T>(
+  scope: &mut v8::PinScope<'s, '_>,
+  rows: &[T],
+  fill: impl Fn(&mut v8::PinScope<'s, '_>, &T) -> Option<v8::Local<'s, v8::Value>>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let array = v8::Array::new(scope, rows.len() as i32);
+  for (index, row) in rows.iter().enumerate() {
+    let value = fill(scope, row)?;
+    array.set_index(scope, index as u32, value)?;
+  }
+  Some(array.into())
+}
+
+fn set_string(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  text: &str,
+) -> Option<()> {
+  let key = v8::String::new(scope, name)?;
+  let value = v8::String::new(scope, text)?;
+  object.set(scope, key.into(), value.into())?;
+  Some(())
+}
+
+fn set_number(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  number: f64,
+) -> Option<()> {
+  let key = v8::String::new(scope, name)?;
+  let value = v8::Number::new(scope, number);
+  object.set(scope, key.into(), value.into())?;
+  Some(())
+}
+
+fn set_bool(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  flag: bool,
+) -> Option<()> {
+  let key = v8::String::new(scope, name)?;
+  let value = v8::Boolean::new(scope, flag);
+  object.set(scope, key.into(), value.into())?;
+  Some(())
 }
 
 fn string_array<'s>(

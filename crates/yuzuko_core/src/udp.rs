@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 use std::io::{self, ErrorKind};
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -36,6 +36,16 @@ const SEND: &str = "The datagram could not be sent.";
 const RECEIVE: &str = "The datagram could not be received.";
 const BUSY: &str = "A receive is already waiting.";
 const NO_PROMISE: &str = "The socket operation failed.";
+const ENABLED: &str = "enabled must be a boolean.";
+const MULTICAST: &str = "The address must be a multicast address.";
+const IFACE_INDEX: &str = "The network interface must be an index.";
+const IFACE_ADDR: &str = "The network interface must be an address.";
+const BROADCAST_FAIL: &str = "The broadcast option could not be set.";
+const JOIN_FAIL: &str = "The multicast group could not be joined.";
+const LEAVE_FAIL: &str = "The multicast group could not be left.";
+const CONNECT_FAIL: &str = "The socket could not be connected.";
+const DISCONNECT_FAIL: &str = "The socket could not be disconnected.";
+const NOT_CONNECTED: &str = "The socket is not connected.";
 
 thread_local! {
   static OPEN: RefCell<Vec<Weak<Shared>>> = const { RefCell::new(Vec::new()) };
@@ -46,6 +56,7 @@ struct Shared {
   bound: SocketAddr,
   closed: AtomicBool,
   receiving: AtomicBool,
+  connected: AtomicBool,
 }
 
 impl Shared {
@@ -123,6 +134,7 @@ enum Fail {
   },
   Type(&'static str),
   Resolve,
+  Connect,
 }
 
 impl Fail {
@@ -136,6 +148,7 @@ impl Fail {
       Self::Denied { .. } => SEND,
       Self::Type(message) => message,
       Self::Resolve => crate::dns::UNRESOLVED,
+      Self::Connect => CONNECT_FAIL,
     }
   }
 }
@@ -171,7 +184,14 @@ pub(crate) fn clear() {
 }
 
 fn bind_udp(addr: SocketAddr) -> io::Result<Arc<Shared>> {
-  let socket = UdpSocket::bind(addr)?;
+  finish_udp(UdpSocket::bind(addr)?)
+}
+
+fn bind_udp_reuse(addr: SocketAddr) -> io::Result<Arc<Shared>> {
+  finish_udp(crate::socket_bind::udp_socket(addr)?)
+}
+
+fn finish_udp(socket: UdpSocket) -> io::Result<Arc<Shared>> {
   socket.set_read_timeout(Some(RECV_WAIT))?;
   let bound = socket.local_addr()?;
   let shared = Arc::new(Shared {
@@ -179,6 +199,7 @@ fn bind_udp(addr: SocketAddr) -> io::Result<Arc<Shared>> {
     bound,
     closed: AtomicBool::new(false),
     receiving: AtomicBool::new(false),
+    connected: AtomicBool::new(false),
   });
   track(&shared);
   Ok(shared)
@@ -196,6 +217,31 @@ fn send_datagram(
     Ok(count) => Ok(count),
     Err(_) if shared.is_closed() => Err(Fail::Closed),
     Err(error) => Err(io_fail(error, Fail::Send)),
+  }
+}
+
+fn send_connected(shared: &Shared, bytes: &[u8]) -> Result<usize, Fail> {
+  if shared.is_closed() {
+    return Err(Fail::Closed);
+  }
+  match shared.socket.send(bytes) {
+    Ok(count) => Ok(count),
+    Err(_) if shared.is_closed() => Err(Fail::Closed),
+    Err(error) => Err(io_fail(error, Fail::Send)),
+  }
+}
+
+fn connect_datagram(shared: &Shared, dest: SocketAddr) -> Result<(), Fail> {
+  if shared.is_closed() {
+    return Err(Fail::Closed);
+  }
+  match shared.socket.connect(dest) {
+    Ok(()) => {
+      shared.connected.store(true, Ordering::Release);
+      Ok(())
+    }
+    Err(_) if shared.is_closed() => Err(Fail::Closed),
+    Err(error) => Err(io_fail(error, Fail::Connect)),
   }
 }
 
@@ -296,9 +342,25 @@ impl Datagram {
     &self,
     scope: &mut v8::PinScope,
     data: v8::Local<v8::Value>,
-    addr: v8::Local<v8::Value>,
+    addr: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
     let bytes = copy_source(scope, data)?;
+    let Some(addr) = addr else {
+      if self.shared.is_closed() {
+        return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
+      }
+      if !self.shared.connected.load(Ordering::Acquire) {
+        return Err(crate::errors::exception(
+          scope,
+          "NotConnected",
+          NOT_CONNECTED,
+        ));
+      }
+      let shared = Arc::clone(&self.shared);
+      return settle(scope, Fail::Send, move || {
+        send_connected(&shared, &bytes).map(Deliver::Count)
+      });
+    };
     let target = crate::socket_endpoint::destination(
       scope,
       addr,
@@ -322,6 +384,85 @@ impl Datagram {
       let dest = send_addr(&target, ipv4)?;
       send_datagram(&shared, &bytes, dest).map(Deliver::Count)
     })
+  }
+
+  fn connect(
+    &self,
+    scope: &mut v8::PinScope,
+    addr: v8::Local<v8::Value>,
+  ) -> Result<Js, OpError> {
+    let target = crate::socket_endpoint::destination(
+      scope,
+      addr,
+      1,
+      None,
+      PORT_DEST,
+      ADDRESS,
+      ADDRESS_READ,
+    )?;
+    if let crate::socket_endpoint::Target::Addr { addr, .. } = &target
+      && self.shared.bound.is_ipv4() != addr.is_ipv4()
+    {
+      return Err(OpError::type_(FAMILY));
+    }
+    if self.shared.is_closed() {
+      return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
+    }
+    let shared = Arc::clone(&self.shared);
+    let ipv4 = self.shared.bound.is_ipv4();
+    settle(scope, Fail::Connect, move || {
+      let dest = send_addr(&target, ipv4)?;
+      connect_datagram(&shared, dest)?;
+      Ok(Deliver::Ready)
+    })
+  }
+
+  fn disconnect(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
+    if self.shared.is_closed() {
+      return Err(crate::errors::exception(scope, "BadResource", CLOSED));
+    }
+    match disconnect_peer(&self.shared.socket) {
+      Ok(()) => {
+        self.shared.connected.store(false, Ordering::Release);
+        Ok(())
+      }
+      Err(_) => Err(plain_error(scope, DISCONNECT_FAIL)),
+    }
+  }
+
+  fn set_broadcast(
+    &self,
+    scope: &mut v8::PinScope,
+    enabled: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    if !enabled.is_boolean() {
+      return Err(OpError::type_(ENABLED));
+    }
+    if self.shared.is_closed() {
+      return Err(crate::errors::exception(scope, "BadResource", CLOSED));
+    }
+    match set_broadcast_opt(&self.shared.socket, enabled.is_true()) {
+      Ok(()) => Ok(()),
+      Err(_) => Err(plain_error(scope, BROADCAST_FAIL)),
+    }
+  }
+
+  fn join_multicast(
+    &self,
+    scope: &mut v8::PinScope,
+    address: v8::Local<v8::Value>,
+    iface: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    multicast(scope, &self.shared, address, iface, true)
+  }
+
+  fn leave_multicast(
+    &self,
+    scope: &mut v8::PinScope,
+    address: v8::Local<v8::Value>,
+    iface: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    multicast(scope, &self.shared, address, iface, false)
   }
 
   fn receive(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
@@ -390,13 +531,37 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let shared = match bind_udp(addr) {
+  let reuse = reuse_flag(scope, options)?;
+  let shared = match if reuse {
+    bind_udp_reuse(addr)
+  } else {
+    bind_udp(addr)
+  } {
     Ok(shared) => shared,
     Err(error) => {
       return Err(crate::errors::io_exception(scope, &error, BIND));
     }
   };
   Ok(New(Datagram { shared }))
+}
+
+fn reuse_flag(
+  scope: &mut v8::PinScope,
+  options: v8::Local<v8::Value>,
+) -> Result<bool, OpError> {
+  if options.is_null_or_undefined() {
+    return Ok(false);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
+    return Ok(false);
+  };
+  let value = crate::socket_endpoint::read_field(
+    scope,
+    object,
+    "reusePort",
+    OPTIONS_READ,
+  )?;
+  crate::socket_bind::reuse_port(scope, value)
 }
 
 fn copy_source(
@@ -549,6 +714,7 @@ fn count_value<'s>(
 enum Deliver {
   Count(usize),
   Packet(Packet),
+  Ready,
 }
 
 fn settle(
@@ -572,6 +738,7 @@ fn settle(
     let mapped = match outcome {
       Ok(Deliver::Count(count)) => count_value(scope, count),
       Ok(Deliver::Packet(packet)) => packet_value(scope, packet),
+      Ok(Deliver::Ready) => Ok(v8::undefined(scope).into()),
       Err(fail) => Err(fail),
     };
     match mapped {
@@ -656,6 +823,376 @@ fn define_fn(
   let key = v8::String::new(scope, name).unwrap();
   function.set_name(key);
   object.set(scope, key.into(), function.into());
+}
+
+fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
+  let Some(text) = v8::String::new(scope, message) else {
+    return OpError::type_(message);
+  };
+  let error = v8::Exception::error(scope, text);
+  OpError::thrown(scope, error)
+}
+
+enum Membership {
+  V4 { group: Ipv4Addr, iface: Ipv4Addr },
+  V6 { group: Ipv6Addr, index: u32 },
+}
+
+fn multicast(
+  scope: &mut v8::PinScope,
+  shared: &Shared,
+  address: v8::Local<v8::Value>,
+  iface: Option<v8::Local<v8::Value>>,
+  join: bool,
+) -> Result<(), OpError> {
+  let group = read_multicast(scope, address)?;
+  if shared.bound.is_ipv4() != group.is_ipv4() {
+    return Err(OpError::type_(FAMILY));
+  }
+  let membership = read_membership(scope, group, iface)?;
+  if shared.is_closed() {
+    return Err(crate::errors::exception(scope, "BadResource", CLOSED));
+  }
+  let failed = if join { JOIN_FAIL } else { LEAVE_FAIL };
+  match set_membership(&shared.socket, &membership, join) {
+    Ok(()) => Ok(()),
+    Err(_) => Err(plain_error(scope, failed)),
+  }
+}
+
+fn read_multicast(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<IpAddr, OpError> {
+  if !value.is_string() {
+    return Err(OpError::type_(MULTICAST));
+  }
+  let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
+    return Err(OpError::type_(MULTICAST));
+  };
+  let text = text.to_rust_string_lossy(scope);
+  let Ok(addr) = text.parse::<IpAddr>() else {
+    return Err(OpError::type_(MULTICAST));
+  };
+  if !addr.is_multicast() {
+    return Err(OpError::type_(MULTICAST));
+  }
+  Ok(addr)
+}
+
+fn read_membership(
+  scope: &mut v8::PinScope,
+  group: IpAddr,
+  iface: Option<v8::Local<v8::Value>>,
+) -> Result<Membership, OpError> {
+  let group_v4 = group.is_ipv4();
+  let value = match iface {
+    Some(value) if !value.is_null_or_undefined() => value,
+    _ => {
+      return Ok(match group {
+        IpAddr::V4(group) => Membership::V4 {
+          group,
+          iface: Ipv4Addr::UNSPECIFIED,
+        },
+        IpAddr::V6(group) => Membership::V6 { group, index: 0 },
+      });
+    }
+  };
+  if value.is_string() {
+    if !group_v4 {
+      return Err(OpError::type_(IFACE_INDEX));
+    }
+    let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
+      return Err(OpError::type_(IFACE_ADDR));
+    };
+    let Ok(addr) = text.to_rust_string_lossy(scope).parse::<Ipv4Addr>() else {
+      return Err(OpError::type_(IFACE_ADDR));
+    };
+    let IpAddr::V4(group) = group else {
+      return Err(OpError::type_(IFACE_INDEX));
+    };
+    return Ok(Membership::V4 { group, iface: addr });
+  }
+  if value.is_number() {
+    if group_v4 {
+      return Err(OpError::type_(IFACE_ADDR));
+    }
+    let Some(number) = value.number_value(scope) else {
+      return Err(OpError::type_(IFACE_INDEX));
+    };
+    if !number.is_finite()
+      || number.fract() != 0.0
+      || !(0.0..=4_294_967_295.0).contains(&number)
+    {
+      return Err(OpError::type_(IFACE_INDEX));
+    }
+    let IpAddr::V6(group) = group else {
+      return Err(OpError::type_(IFACE_ADDR));
+    };
+    return Ok(Membership::V6 {
+      group,
+      index: number as u32,
+    });
+  }
+  Err(OpError::type_(if group_v4 {
+    IFACE_ADDR
+  } else {
+    IFACE_INDEX
+  }))
+}
+
+#[cfg(unix)]
+fn set_broadcast_opt(socket: &UdpSocket, enabled: bool) -> io::Result<()> {
+  set_int_opt(
+    socket,
+    libc::SOL_SOCKET,
+    libc::SO_BROADCAST,
+    if enabled { 1 } else { 0 },
+  )
+}
+
+#[cfg(unix)]
+fn set_membership(
+  socket: &UdpSocket,
+  membership: &Membership,
+  join: bool,
+) -> io::Result<()> {
+  match membership {
+    Membership::V4 { group, iface } => {
+      let mut req: libc::ip_mreq = unsafe { std::mem::zeroed() };
+      req.imr_multiaddr.s_addr = u32::from(*group).to_be();
+      req.imr_interface.s_addr = u32::from(*iface).to_be();
+      let name = if join {
+        libc::IP_ADD_MEMBERSHIP
+      } else {
+        libc::IP_DROP_MEMBERSHIP
+      };
+      set_bytes(socket, libc::IPPROTO_IP, name, &req)
+    }
+    Membership::V6 { group, index } => {
+      let mut req: libc::ipv6_mreq = unsafe { std::mem::zeroed() };
+      req.ipv6mr_multiaddr.s6_addr = group.octets();
+      req.ipv6mr_interface = *index as libc::c_uint;
+      let name = if join {
+        libc::IPV6_JOIN_GROUP
+      } else {
+        libc::IPV6_LEAVE_GROUP
+      };
+      set_bytes(socket, libc::IPPROTO_IPV6, name, &req)
+    }
+  }
+}
+
+#[cfg(unix)]
+fn disconnect_peer(socket: &UdpSocket) -> io::Result<()> {
+  use std::os::fd::AsRawFd;
+  let mut addr: libc::sockaddr = unsafe { std::mem::zeroed() };
+  set_unspec_len(&mut addr);
+  addr.sa_family = libc::AF_UNSPEC as libc::sa_family_t;
+  let rc = unsafe {
+    libc::connect(
+      socket.as_raw_fd(),
+      &addr,
+      std::mem::size_of::<libc::sockaddr>() as libc::socklen_t,
+    )
+  };
+  if rc == 0 {
+    return Ok(());
+  }
+  let error = io::Error::last_os_error();
+  match error.raw_os_error() {
+    Some(code)
+      if code == libc::EAFNOSUPPORT
+        || code == libc::EINVAL
+        || code == libc::ENOTCONN =>
+    {
+      Ok(())
+    }
+    _ => Err(error),
+  }
+}
+
+#[cfg(all(
+  unix,
+  any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+  )
+))]
+fn set_unspec_len(addr: &mut libc::sockaddr) {
+  addr.sa_len = std::mem::size_of::<libc::sockaddr>() as u8;
+}
+
+#[cfg(all(
+  unix,
+  not(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+  ))
+))]
+fn set_unspec_len(_addr: &mut libc::sockaddr) {}
+
+#[cfg(unix)]
+fn set_int_opt(
+  socket: &UdpSocket,
+  level: libc::c_int,
+  name: libc::c_int,
+  value: libc::c_int,
+) -> io::Result<()> {
+  set_bytes(socket, level, name, &value)
+}
+
+#[cfg(unix)]
+fn set_bytes<T>(
+  socket: &UdpSocket,
+  level: libc::c_int,
+  name: libc::c_int,
+  value: &T,
+) -> io::Result<()> {
+  use std::os::fd::AsRawFd;
+  let rc = unsafe {
+    libc::setsockopt(
+      socket.as_raw_fd(),
+      level,
+      name,
+      value as *const T as *const libc::c_void,
+      std::mem::size_of::<T>() as libc::socklen_t,
+    )
+  };
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(io::Error::last_os_error())
+  }
+}
+
+#[cfg(windows)]
+fn set_broadcast_opt(socket: &UdpSocket, enabled: bool) -> io::Result<()> {
+  use windows_sys::Win32::Networking::WinSock::{SO_BROADCAST, SOL_SOCKET};
+  let value: i32 = if enabled { 1 } else { 0 };
+  set_bytes(socket, SOL_SOCKET, SO_BROADCAST, &value)
+}
+
+#[cfg(windows)]
+fn set_membership(
+  socket: &UdpSocket,
+  membership: &Membership,
+  join: bool,
+) -> io::Result<()> {
+  use windows_sys::Win32::Networking::WinSock::{
+    IP_ADD_MEMBERSHIP, IP_DROP_MEMBERSHIP, IP_MREQ, IPPROTO_IP, IPPROTO_IPV6,
+    IPV6_JOIN_GROUP, IPV6_LEAVE_GROUP, IPV6_MREQ,
+  };
+  match membership {
+    Membership::V4 { group, iface } => {
+      let mut req = IP_MREQ::default();
+      unsafe {
+        req.imr_multiaddr.S_un.S_addr = u32::from(*group).to_be();
+        req.imr_interface.S_un.S_addr = u32::from(*iface).to_be();
+      }
+      let name = if join {
+        IP_ADD_MEMBERSHIP
+      } else {
+        IP_DROP_MEMBERSHIP
+      };
+      set_bytes(socket, IPPROTO_IP, name, &req)
+    }
+    Membership::V6 { group, index } => {
+      let mut req = IPV6_MREQ::default();
+      unsafe {
+        req.ipv6mr_multiaddr.u.Byte = group.octets();
+      }
+      req.ipv6mr_interface = *index;
+      let name = if join {
+        IPV6_JOIN_GROUP
+      } else {
+        IPV6_LEAVE_GROUP
+      };
+      set_bytes(socket, IPPROTO_IPV6, name, &req)
+    }
+  }
+}
+
+#[cfg(windows)]
+fn disconnect_peer(socket: &UdpSocket) -> io::Result<()> {
+  use std::os::windows::io::AsRawSocket;
+  use windows_sys::Win32::Networking::WinSock::{
+    SOCKADDR, WSAEAFNOSUPPORT, WSAEINVAL, WSAENOTCONN, connect,
+  };
+  let addr = SOCKADDR::default();
+  let rc = unsafe {
+    connect(
+      socket.as_raw_socket() as _,
+      &addr,
+      std::mem::size_of::<SOCKADDR>() as i32,
+    )
+  };
+  if rc == 0 {
+    return Ok(());
+  }
+  let error = io::Error::last_os_error();
+  match error.raw_os_error() {
+    Some(code)
+      if code == WSAEAFNOSUPPORT
+        || code == WSAEINVAL
+        || code == WSAENOTCONN =>
+    {
+      Ok(())
+    }
+    _ => Err(error),
+  }
+}
+
+#[cfg(windows)]
+fn set_bytes<T>(
+  socket: &UdpSocket,
+  level: i32,
+  name: i32,
+  value: &T,
+) -> io::Result<()> {
+  use std::os::windows::io::AsRawSocket;
+  use windows_sys::Win32::Networking::WinSock::setsockopt;
+  let rc = unsafe {
+    setsockopt(
+      socket.as_raw_socket() as _,
+      level,
+      name,
+      value as *const T as windows_sys::core::PCSTR,
+      std::mem::size_of::<T>() as i32,
+    )
+  };
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(io::Error::last_os_error())
+  }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn set_broadcast_opt(_socket: &UdpSocket, _enabled: bool) -> io::Result<()> {
+  Err(io::Error::new(io::ErrorKind::Unsupported, BROADCAST_FAIL))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn set_membership(
+  _socket: &UdpSocket,
+  _membership: &Membership,
+  _join: bool,
+) -> io::Result<()> {
+  Err(io::Error::new(io::ErrorKind::Unsupported, JOIN_FAIL))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn disconnect_peer(_socket: &UdpSocket) -> io::Result<()> {
+  Err(io::Error::new(io::ErrorKind::Unsupported, DISCONNECT_FAIL))
 }
 
 #[cfg(test)]

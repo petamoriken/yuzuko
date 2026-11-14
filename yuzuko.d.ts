@@ -3008,6 +3008,14 @@ declare namespace Yuzuko {
      * @defaultValue 0
      */
     port?: number;
+
+    /**
+     * Set `SO_REUSEPORT` before the bind.
+     *
+     * Omitted, `null`, `undefined`, and `false` leave the bind unchanged.
+     * `true` is rejected on Windows.
+     */
+    reusePort?: boolean;
   }
 
   /**
@@ -3036,10 +3044,12 @@ declare namespace Yuzuko {
    * and `send` throw {@link errors.NotCapable} when
    * {@link permissions} does not grant the address.
    *
-   * `send` and `receive` run the operating-system call on a background
-   * thread. A bad argument throws {@link TypeError} before a promise is
-   * returned. A closed socket rejects {@link Error}. There is no multicast,
-   * broadcast option, or connected mode.
+   * `send`, `connect`, and `receive` run the operating-system call on a
+   * background thread. A bad argument throws {@link TypeError} before a
+   * promise is returned. A closed socket rejects {@link Error}.
+   * `setBroadcast` sets `SO_BROADCAST`. `joinMulticast` and
+   * `leaveMulticast` join or leave a multicast group. `connect` stores a
+   * default peer so `send` can omit the address.
    */
   class Datagram {
     private constructor();
@@ -3059,13 +3069,17 @@ declare namespace Yuzuko {
      * Sends one datagram to `addr`.
      *
      * @param data - Payload. A view sends only its own bytes.
-     * @param addr - Destination. An omitted hostname is `127.0.0.1`.
+     * @param addr - Destination. Omitted or `undefined` uses the connected
+     * peer. An omitted hostname is `127.0.0.1`.
      * @returns The number of bytes the operating system accepted.
-     * @throws {@link TypeError} `Not enough arguments` when an argument is
+     * @throws {@link errors.NotConnected} `The socket is not connected.`
+     * when `addr` is omitted and the socket has no default peer. This throws
+     * before a promise is returned.
+     * @throws {@link TypeError} `Not enough arguments` when `data` is
      * missing. `The data must be a BufferSource.` when `data` is not a buffer
      * source. `The buffer is detached.` when it is detached.
      * `The datagram is too large.` when it is longer than 65507 bytes.
-     * `The address must be an object.` when `addr` is not an object.
+     * `The address must be an object.` when a present `addr` is not an object.
      * `The address could not be read.` when `addr` cannot be read.
      * `The hostname must be an IP address or "localhost".` when the hostname
      * is empty or bracketed. A DNS name is allowed.
@@ -3075,7 +3089,83 @@ declare namespace Yuzuko {
      * is not a `Datagram`. `The socket operation failed.` when the promise
      * cannot be created.
      */
-    send(data: AllowSharedBufferSource, addr: DatagramAddr): Promise<number>;
+    send(
+      data: AllowSharedBufferSource,
+      addr?: DatagramAddr,
+    ): Promise<number>;
+
+    /**
+     * Stores `addr` as the default peer.
+     *
+     * The promise resolves `undefined`. This is not a handshake. `addr`
+     * uses the same rules as {@link Datagram.send}.
+     *
+     * @throws {@link TypeError} `Not enough arguments` when `addr` is
+     * missing, and the same address errors as {@link Datagram.send}.
+     * `The socket operation failed.` when the promise cannot be created.
+     * @throws {@link Error} `The socket could not be connected.` when the
+     * operating system refuses and the failure has no socket class.
+     */
+    connect(addr: DatagramAddr): Promise<void>;
+
+    /**
+     * Clears the default peer.
+     *
+     * On macOS and Linux, `EAFNOSUPPORT`, `EINVAL`, and `ENOTCONN` still
+     * succeed. On Windows, `WSAEAFNOSUPPORT`, `WSAEINVAL`, and
+     * `WSAENOTCONN` still succeed.
+     *
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * socket is already closed.
+     * @throws {@link Error} `The socket could not be disconnected.` when
+     * the operating system refuses for another reason.
+     * @throws {@link TypeError} `illegal invocation` when the receiver is
+     * not a `Datagram`.
+     */
+    disconnect(): void;
+
+    /**
+     * Sets `SO_BROADCAST`.
+     *
+     * `enabled` must be a boolean primitive. The call does not use
+     * `ToBoolean`.
+     *
+     * @throws {@link TypeError} `enabled must be a boolean.` when it is
+     * not. `illegal invocation` when the receiver is not a `Datagram`.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * socket is already closed.
+     * @throws {@link Error} `The broadcast option could not be set.` when
+     * the operating system refuses.
+     */
+    setBroadcast(enabled: boolean): void;
+
+    /**
+     * Joins `address`.
+     *
+     * `address` is a multicast IP string. An omitted interface uses
+     * `0.0.0.0` for IPv4 and index `0` for IPv6. A string interface is an
+     * IPv4 address. A numeric interface is an IPv6 index.
+     *
+     * @throws {@link TypeError} `The address must be a multicast address.`
+     * when it is not. `The address family does not match the socket.` when
+     * the group family differs. `The network interface must be an address.`
+     * for an IPv4 group. `The network interface must be an index.` for an
+     * IPv6 group.
+     * @throws {@link errors.BadResource} `The socket is closed.` when the
+     * socket is already closed.
+     * @throws {@link Error} `The multicast group could not be joined.` when
+     * the operating system refuses.
+     */
+    joinMulticast(address: string, networkInterface?: string | number): void;
+
+    /**
+     * Leaves `address`. The arguments match {@link Datagram.joinMulticast}.
+     *
+     * @throws {@link Error} `The multicast group could not be left.` when
+     * the operating system refuses. The other failures match
+     * {@link Datagram.joinMulticast}.
+     */
+    leaveMulticast(address: string, networkInterface?: string | number): void;
 
     /**
      * Receives the next datagram.
@@ -3140,7 +3230,10 @@ declare namespace Yuzuko {
    * `The options could not be read.` when the options cannot be read.
    * `The hostname must be an IP address or "localhost".` when the hostname
    * is not. `The port must be an integer from 0 through 65535.` when the
-   * port is not.
+   * port is not. `reusePort must be a boolean.` when `reusePort` is not a
+   * boolean primitive.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot reuse a listening port.` when `reusePort` is `true`.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address and the failure is not a socket class.
    * `InvalidInput` throws {@link TypeError} with that message. The
@@ -3189,6 +3282,14 @@ declare namespace Yuzuko {
      * @defaultValue 0
      */
     port?: number;
+
+    /**
+     * Set `SO_REUSEPORT` before the bind.
+     *
+     * Omitted, `null`, `undefined`, and `false` leave the bind unchanged.
+     * `true` is rejected on Windows.
+     */
+    reusePort?: boolean;
   }
 
   /**
@@ -3346,7 +3447,10 @@ declare namespace Yuzuko {
    * `The options could not be read.` when the options cannot be read.
    * `The hostname must be an IP address or "localhost".` when the hostname
    * is not. `The port must be an integer from 0 through 65535.` when the
-   * port is not.
+   * port is not. `reusePort must be a boolean.` when `reusePort` is not a
+   * boolean primitive.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot reuse a listening port.` when `reusePort` is `true`.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address and the failure is not a socket class.
    * `InvalidInput` throws {@link TypeError} with that message. The
@@ -3392,22 +3496,71 @@ declare namespace Yuzuko {
    */
   function connectTcp(addr: TcpAddr): Promise<TcpConn>;
 
+  /** One MX record from {@link resolveDns}. */
+  interface DnsMxRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** One SRV record from {@link resolveDns}. */
+  interface DnsSrvRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  /** One SOA record from {@link resolveDns}. */
+  interface DnsSoaRecord {
+    mname: string;
+    rname: string;
+    serial: number;
+    refresh: number;
+    retry: number;
+    expire: number;
+    minimum: number;
+  }
+
   /**
-   * Resolves `host` to address strings.
+   * One CAA record from {@link resolveDns}.
+   *
+   * `critical` is bit 0 of the flags octet.
+   */
+  interface DnsCaaRecord {
+    critical: boolean;
+    tag: string;
+    value: string;
+  }
+
+  /** One NAPTR record from {@link resolveDns}. */
+  interface DnsNaptrRecord {
+    order: number;
+    preference: number;
+    flags: string;
+    services: string;
+    regexp: string;
+    replacement: string;
+  }
+
+  /**
+   * Resolves `host`.
    *
    * Installed when `tcp` or `udp` is enabled. `host` and `type` must be
    * string primitives. The call does not use `ToString`. `"A"` keeps IPv4
-   * addresses and `"AAAA"` keeps IPv6. A name that exists and has no records
-   * of that type resolves `[]`. The lookup keeps the trimmed host, including
+   * addresses and `"AAAA"` keeps IPv6. The other types return arrays of
+   * records from the system resolver. A `CNAME` in the answer is not
+   * followed into another type. A name that exists and has no records of
+   * that type resolves `[]`. The lookup keeps the trimmed host, including
    * its case and a trailing DNS root dot, and does not rewrite `localhost`.
    *
    * @param host - Name to resolve.
-   * @param type - `"A"` or `"AAAA"`.
-   * @returns Address strings from the system resolver.
+   * @param type - Record type.
+   * @returns Address strings for `"A"` and `"AAAA"`, or typed records.
    * @throws {@link TypeError} `Not enough arguments` when an argument is
    * missing. `The host must be a string.` when `host` is not a string.
    * `The host must not be empty.` when `host` is empty.
-   * `The record type must be "A" or "AAAA".` when `type` is not.
+   * `The record type must be "A", "AAAA", "CNAME", "NS", "PTR", "MX", "TXT", "SRV", "SOA", "CAA", or "NAPTR".`
+   * when `type` is not.
    * @throws {@link errors.NotCapable} when {@link permissions} does not
    * grant `host` with no port. The check runs before a promise is returned.
    * @throws {@link Error} `The host could not be resolved.` when the name
@@ -3415,6 +3568,19 @@ declare namespace Yuzuko {
    * timed out.
    */
   function resolveDns(host: string, type: "A" | "AAAA"): Promise<string[]>;
+  function resolveDns(
+    host: string,
+    type: "CNAME" | "NS" | "PTR",
+  ): Promise<string[]>;
+  function resolveDns(host: string, type: "MX"): Promise<DnsMxRecord[]>;
+  function resolveDns(host: string, type: "TXT"): Promise<string[][]>;
+  function resolveDns(host: string, type: "SRV"): Promise<DnsSrvRecord[]>;
+  function resolveDns(host: string, type: "SOA"): Promise<DnsSoaRecord[]>;
+  function resolveDns(host: string, type: "CAA"): Promise<DnsCaaRecord[]>;
+  function resolveDns(
+    host: string,
+    type: "NAPTR",
+  ): Promise<DnsNaptrRecord[]>;
 
   /**
    * Options for {@link connectTls}.

@@ -236,7 +236,14 @@ pub(crate) fn clear() {
 }
 
 fn bind_tcp(addr: SocketAddr) -> io::Result<Arc<ListenerShared>> {
-  let listener = StdListener::bind(addr)?;
+  finish_tcp(StdListener::bind(addr)?)
+}
+
+fn bind_tcp_reuse(addr: SocketAddr) -> io::Result<Arc<ListenerShared>> {
+  finish_tcp(crate::socket_bind::tcp_listener(addr)?)
+}
+
+fn finish_tcp(listener: StdListener) -> io::Result<Arc<ListenerShared>> {
   listener.set_nonblocking(true)?;
   let bound = listener.local_addr()?;
   let shared = Arc::new(ListenerShared {
@@ -712,13 +719,37 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let shared = match bind_tcp(addr) {
+  let reuse = reuse_flag(scope, options)?;
+  let shared = match if reuse {
+    bind_tcp_reuse(addr)
+  } else {
+    bind_tcp(addr)
+  } {
     Ok(shared) => shared,
     Err(error) => {
       return Err(crate::errors::io_exception(scope, &error, BIND));
     }
   };
   Ok(New(Listener { shared }))
+}
+
+fn reuse_flag(
+  scope: &mut v8::PinScope,
+  options: v8::Local<v8::Value>,
+) -> Result<bool, OpError> {
+  if options.is_null_or_undefined() {
+    return Ok(false);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
+    return Ok(false);
+  };
+  let value = crate::socket_endpoint::read_field(
+    scope,
+    object,
+    "reusePort",
+    OPTIONS_READ,
+  )?;
+  crate::socket_bind::reuse_port(scope, value)
 }
 
 fn connect_op(

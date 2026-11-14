@@ -8,6 +8,8 @@ mod clone;
 mod color;
 #[cfg(any(feature = "tcp", feature = "udp"))]
 mod dns;
+#[cfg(any(feature = "tcp", feature = "udp"))]
+mod dns_query;
 mod error_codes;
 mod errors;
 mod extensions;
@@ -37,6 +39,8 @@ mod repl;
 mod runtime;
 #[cfg(feature = "signal")]
 mod signal;
+#[cfg(any(feature = "tcp", feature = "udp", feature = "http"))]
+mod socket_bind;
 #[cfg(any(feature = "tcp", feature = "udp", feature = "http"))]
 mod socket_endpoint;
 mod socket_error;
