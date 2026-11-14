@@ -616,7 +616,8 @@ mod tests {
     assert_eq!(space.actual_descent, 0.0);
     assert!(letter.actual_ascent > 0.0);
     assert!(
-      letter.actual_left != 0.0 || (letter.actual_right - letter.width).abs() > 0.5
+      letter.actual_left != 0.0
+        || (letter.actual_right - letter.width).abs() > 0.5
     );
     assert!(descender.actual_descent > letter.actual_descent);
     let centered = metrics("A", Align::Center, Baseline::Alphabetic);

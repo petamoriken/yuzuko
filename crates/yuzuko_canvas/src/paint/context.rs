@@ -205,10 +205,9 @@ fn paint_fill(
   if drawing.state.alpha <= 0.0 && !shade.paints_when_clear() {
     return;
   }
-  let Some(brush) = record::resolve_style(
-    &drawing.state.fill,
-    drawing.state.pattern_quality(),
-  ) else {
+  let Some(brush) =
+    record::resolve_style(&drawing.state.fill, drawing.state.pattern_quality())
+  else {
     return;
   };
   // Shapes and `Path2D` are transformed at paint time. The current path was

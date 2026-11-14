@@ -13,25 +13,45 @@ use crate::paint::color::parse_color;
 
 const KAPPA: f64 = 24389.0 / 27.0;
 const EPSILON: f64 = 216.0 / 24389.0;
-const D50: [f64; 3] = [
-  0.3457 / 0.3585,
-  1.0,
-  (1.0 - 0.3457 - 0.3585) / 0.3585,
-];
+const D50: [f64; 3] = [0.3457 / 0.3585, 1.0, (1.0 - 0.3457 - 0.3585) / 0.3585];
 
 const D50_TO_D65: [[f64; 3]; 3] = [
   [0.955473421488075, -0.02309845494876471, 0.06325924320057072],
-  [-0.0283697093338637, 1.0099953980813041, 0.021041441191917323],
-  [0.012314014864481998, -0.020507649298898964, 1.330365926242124],
+  [
+    -0.0283697093338637,
+    1.0099953980813041,
+    0.021041441191917323,
+  ],
+  [
+    0.012314014864481998,
+    -0.020507649298898964,
+    1.330365926242124,
+  ],
 ];
 const D65_TO_D50: [[f64; 3]; 3] = [
-  [1.0479297925449969, 0.022946870601609652, -0.05019226628920524],
-  [0.02962780877005599, 0.9904344267538799, -0.017073799063418826],
-  [-0.009243040646204504, 0.015055191490298152, 0.7518742814281371],
+  [
+    1.0479297925449969,
+    0.022946870601609652,
+    -0.05019226628920524,
+  ],
+  [
+    0.02962780877005599,
+    0.9904344267538799,
+    -0.017073799063418826,
+  ],
+  [
+    -0.009243040646204504,
+    0.015055191490298152,
+    0.7518742814281371,
+  ],
 ];
 const XYZ_TO_LIN_SRGB: [[f64; 3]; 3] = [
   [12831.0 / 3959.0, -329.0 / 214.0, -1974.0 / 3959.0],
-  [-851781.0 / 878810.0, 1648619.0 / 878810.0, 36519.0 / 878810.0],
+  [
+    -851781.0 / 878810.0,
+    1648619.0 / 878810.0,
+    36519.0 / 878810.0,
+  ],
   [705.0 / 12673.0, -2585.0 / 12673.0, 705.0 / 667.0],
 ];
 const LIN_SRGB_TO_XYZ: [[f64; 3]; 3] = [
@@ -112,10 +132,7 @@ fn eval(text: &str, percent_basis: f64, hue: bool) -> Option<f64> {
   if text.is_empty() || !percent_basis.is_finite() {
     return None;
   }
-  let mut parser = Parser {
-    text,
-    index: 0,
-  };
+  let mut parser = Parser { text, index: 0 };
   let value = parser.expr(percent_basis, hue)?;
   parser.skip();
   if parser.index != text.len() || !value.is_finite() {
@@ -271,7 +288,9 @@ impl<'a> Parser<'a> {
       return false;
     }
     let after = rest[word.len()..].chars().next();
-    if after.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+    if after
+      .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
       return false;
     }
     self.index += word.len();
@@ -446,11 +465,11 @@ fn mix_in(
   let right_srgb = encoded_srgb(right);
   let (left_ch, right_ch) = match space {
     Space::Srgb => (left_srgb, right_srgb),
-    Space::SrgbLinear => (left_srgb.map(decode_channel), right_srgb.map(decode_channel)),
-    Space::DisplayP3 => (
-      to_display_p3(left),
-      to_display_p3(right),
+    Space::SrgbLinear => (
+      left_srgb.map(decode_channel),
+      right_srgb.map(decode_channel),
     ),
+    Space::DisplayP3 => (to_display_p3(left), to_display_p3(right)),
     Space::Lab => (srgb_to_lab(left_srgb), srgb_to_lab(right_srgb)),
     Space::Oklab => (srgb_to_oklab(left_srgb), srgb_to_oklab(right_srgb)),
     Space::Lch => (
@@ -475,7 +494,13 @@ fn mix_in(
       method,
     )
   } else {
-    mix_rectangular(left_ch, left.a as f64, right_ch, right.a as f64, toward_right)
+    mix_rectangular(
+      left_ch,
+      left.a as f64,
+      right_ch,
+      right.a as f64,
+      toward_right,
+    )
   };
   let encoded = match space {
     Space::Srgb => mixed,
@@ -506,7 +531,8 @@ fn mix_rectangular(
   let toward_left = 1.0 - toward_right;
   let alpha = left_alpha * toward_left + right_alpha * toward_right;
   let mixed = [0, 1, 2].map(|index| {
-    left[index] * left_alpha * toward_left + right[index] * right_alpha * toward_right
+    left[index] * left_alpha * toward_left
+      + right[index] * right_alpha * toward_right
   });
   if alpha == 0.0 {
     ([0.0; 3], 0.0)
@@ -791,16 +817,24 @@ fn xyz_to_lab(xyz: [f64; 3]) -> [f64; 3] {
       (KAPPA * value + 16.0) / 116.0
     }
   });
-  [(116.0 * f[1]) - 16.0, 500.0 * (f[0] - f[1]), 200.0 * (f[1] - f[2])]
+  [
+    (116.0 * f[1]) - 16.0,
+    500.0 * (f[0] - f[1]),
+    200.0 * (f[1] - f[2]),
+  ]
 }
 
 fn oklab_to_srgb(lab: [f64; 3]) -> [f64; 3] {
-  let lms = mat_vec(OKLAB_TO_LMS, lab).map(|channel| channel * channel * channel);
+  let lms =
+    mat_vec(OKLAB_TO_LMS, lab).map(|channel| channel * channel * channel);
   encode_srgb(mat_vec(XYZ_TO_LIN_SRGB, mat_vec(LMS_TO_XYZ, lms)))
 }
 
 fn srgb_to_oklab(rgb: [f64; 3]) -> [f64; 3] {
-  let lms = mat_vec(XYZ_TO_LMS, mat_vec(LIN_SRGB_TO_XYZ, rgb.map(decode_channel)));
+  let lms = mat_vec(
+    XYZ_TO_LMS,
+    mat_vec(LIN_SRGB_TO_XYZ, rgb.map(decode_channel)),
+  );
   mat_vec(LMS_TO_OKLAB, lms.map(f64::cbrt))
 }
 
@@ -848,18 +882,31 @@ mod tests {
   fn color_mix_in_srgb_serializes_like_the_canvas_test() {
     let mixed = parse_color("color-mix(in srgb, red, blue)").unwrap();
     assert_eq!(serialize(mixed), "color(srgb 0.5 0 0.5)");
-    let same = parse_color("color-mix(in srgb, red, color(srgb 1 0 0))").unwrap();
+    let same =
+      parse_color("color-mix(in srgb, red, color(srgb 1 0 0))").unwrap();
     assert_eq!(serialize(same), "color(srgb 1 0 0)");
   }
 
   #[test]
   fn hwb_lab_and_oklab_cover_red_and_white() {
-    assert_eq!(serialize(parse_color("hwb(0 0% 0%)").unwrap()), "color(srgb 1 0 0)");
-    assert_eq!(serialize(parse_color("hwb(0 0% 100%)").unwrap()), "color(srgb 0 0 0)");
+    assert_eq!(
+      serialize(parse_color("hwb(0 0% 0%)").unwrap()),
+      "color(srgb 1 0 0)"
+    );
+    assert_eq!(
+      serialize(parse_color("hwb(0 0% 100%)").unwrap()),
+      "color(srgb 0 0 0)"
+    );
     let white = parse_color("lab(100 0 0)").unwrap();
-    assert!(white.r > 0.99 && white.g > 0.99 && white.b > 0.99, "{white:?}");
+    assert!(
+      white.r > 0.99 && white.g > 0.99 && white.b > 0.99,
+      "{white:?}"
+    );
     let oklab = parse_color("oklab(1 0 0)").unwrap();
-    assert!(oklab.r > 0.99 && oklab.g > 0.99 && oklab.b > 0.99, "{oklab:?}");
+    assert!(
+      oklab.r > 0.99 && oklab.g > 0.99 && oklab.b > 0.99,
+      "{oklab:?}"
+    );
     let legacy = parse_color("rgb(255, 0, 0)").unwrap();
     assert_eq!(serialize(legacy), "#ff0000");
     let linear = parse_color("color(srgb-linear 1 0 0)").unwrap();

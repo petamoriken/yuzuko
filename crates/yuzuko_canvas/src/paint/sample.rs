@@ -72,8 +72,17 @@ fn near_one(scale: f64) -> bool {
 
 /// Separable Lanczos-3 on premultiplied RGBA8. Channels are filtered
 /// independently and clamped back to a byte.
-pub fn lanczos3(image: &ImageBuf, dest_w: u32, dest_h: u32) -> Option<ImageBuf> {
-  if image.float16 || dest_w == 0 || dest_h == 0 || image.width == 0 || image.height == 0 {
+pub fn lanczos3(
+  image: &ImageBuf,
+  dest_w: u32,
+  dest_h: u32,
+) -> Option<ImageBuf> {
+  if image.float16
+    || dest_w == 0
+    || dest_h == 0
+    || image.width == 0
+    || image.height == 0
+  {
     return None;
   }
   let src_w = image.width as usize;
@@ -142,7 +151,11 @@ fn write_sample(output: &mut [f32], offset: usize, acc: [f64; 4], sum: f64) {
   }
 }
 
-fn kernel(dest_index: usize, dest_len: usize, src_len: usize) -> Vec<(i32, f64)> {
+fn kernel(
+  dest_index: usize,
+  dest_len: usize,
+  src_len: usize,
+) -> Vec<(i32, f64)> {
   let scale = src_len as f64 / dest_len as f64;
   let stretch = scale.max(1.0);
   let radius = 3.0 * stretch;
@@ -191,6 +204,11 @@ mod tests {
     let scaled = lanczos3(&image, 4, 3).unwrap();
     assert_eq!(scaled.width, 4);
     assert_eq!(scaled.height, 3);
-    assert!(scaled.bytes.chunks(4).all(|pixel| pixel == [10, 20, 30, 255]));
+    assert!(
+      scaled
+        .bytes
+        .chunks(4)
+        .all(|pixel| pixel == [10, 20, 30, 255])
+    );
   }
 }

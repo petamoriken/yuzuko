@@ -9,6 +9,6 @@ pub(crate) mod filter;
 pub(crate) mod modern;
 pub(crate) mod objects;
 pub(crate) mod record;
-pub(crate) mod sample;
 pub(crate) mod replay;
+pub(crate) mod sample;
 pub(crate) mod shade;
