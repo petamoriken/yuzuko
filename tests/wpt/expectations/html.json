@@ -667,16 +667,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-5.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-6.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-6.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-8.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-8.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-9.html": true,
@@ -693,16 +685,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-5.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-6.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-6.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-8.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-8.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-9.html": true,
@@ -3605,28 +3589,12 @@
       "Testing letter spacing with different length units"
     ]
   },
-  "html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.html": {
-    "expectedFailures": [
-      "Measurement should follow text direction"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.worker.js": {
-    "expectedFailures": [
-      "Measurement should follow text direction"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.html": true,
+  "html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.worker.js": true,
   "html/canvas/offscreen/text/2d.text.drawing.style.measure.rtl.text.html": true,
   "html/canvas/offscreen/text/2d.text.drawing.style.measure.rtl.text.worker.js": true,
-  "html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.html": {
-    "expectedFailures": [
-      "Measurement should be related to textAlignment"
-    ]
-  },
-  "html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.worker.js": {
-    "expectedFailures": [
-      "Measurement should be related to textAlignment"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.html": true,
+  "html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.worker.js": true,
   "html/canvas/offscreen/text/2d.text.drawing.style.nonfinite.spacing.html": {
     "expectedFailures": [
       "Testing letter spacing and word spacing with nonfinite inputs"
