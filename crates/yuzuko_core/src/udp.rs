@@ -941,6 +941,29 @@ fn read_membership(
   }))
 }
 
+/// Linux libc names the IPv6 group options `IPV6_ADD_MEMBERSHIP` and
+/// `IPV6_DROP_MEMBERSHIP`. macOS names the same options `IPV6_JOIN_GROUP`
+/// and `IPV6_LEAVE_GROUP`.
+#[cfg(unix)]
+fn ipv6_membership(join: bool) -> libc::c_int {
+  #[cfg(target_os = "linux")]
+  {
+    if join {
+      libc::IPV6_ADD_MEMBERSHIP
+    } else {
+      libc::IPV6_DROP_MEMBERSHIP
+    }
+  }
+  #[cfg(not(target_os = "linux"))]
+  {
+    if join {
+      libc::IPV6_JOIN_GROUP
+    } else {
+      libc::IPV6_LEAVE_GROUP
+    }
+  }
+}
+
 #[cfg(unix)]
 fn set_broadcast_opt(socket: &UdpSocket, enabled: bool) -> io::Result<()> {
   set_int_opt(
@@ -973,12 +996,7 @@ fn set_membership(
       let mut req: libc::ipv6_mreq = unsafe { std::mem::zeroed() };
       req.ipv6mr_multiaddr.s6_addr = group.octets();
       req.ipv6mr_interface = *index as libc::c_uint;
-      let name = if join {
-        libc::IPV6_JOIN_GROUP
-      } else {
-        libc::IPV6_LEAVE_GROUP
-      };
-      set_bytes(socket, libc::IPPROTO_IPV6, name, &req)
+      set_bytes(socket, libc::IPPROTO_IPV6, ipv6_membership(join), &req)
     }
   }
 }
