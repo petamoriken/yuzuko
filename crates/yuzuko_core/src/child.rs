@@ -74,6 +74,7 @@ const GID: &str = "The group id must be an integer from 0 through 4294967295.";
 const SIGNAL_ABORT: &str = "The signal must be an AbortSignal.";
 const ALREADY_ABORTED: &str = "The signal has already been aborted.";
 const KILL_SIGNAL: &str = "The signal must be a string.";
+#[cfg(unix)]
 const KILL_UNKNOWN: &str = "The signal is not supported.";
 #[cfg_attr(not(windows), allow(dead_code))]
 const WINDOWS_CHILD: &str = "Windows cannot signal a child with this signal.";
@@ -166,7 +167,9 @@ struct SpawnRequest {
   env: Vec<EnvChange>,
   cwd: Option<PathBuf>,
   clear_env: bool,
+  #[cfg_attr(windows, allow(dead_code))]
   uid: Option<u32>,
+  #[cfg_attr(windows, allow(dead_code))]
   gid: Option<u32>,
   signal: Option<v8::Global<v8::Object>>,
 }
@@ -1549,8 +1552,7 @@ fn read_id(
   }
   #[cfg(windows)]
   {
-    let _ = number;
-    return Err(crate::errors::exception(scope, "NotSupported", WINDOWS_ID));
+    Err(crate::errors::exception(scope, "NotSupported", WINDOWS_ID))
   }
   #[cfg(not(windows))]
   {

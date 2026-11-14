@@ -4,12 +4,17 @@
 //! system resolver and parses the answer. The wire parser does not follow a
 //! `CNAME` into another type.
 
+#[cfg(unix)]
 use std::sync::Mutex;
 
+#[cfg(any(unix, test))]
 const CLASS_IN: u16 = 1;
+#[cfg(unix)]
 const NO_DATA: i32 = 4;
+#[cfg(any(unix, test))]
 const HOP_LIMIT: u8 = 64;
 
+#[cfg(unix)]
 static RESOLVER: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,6 +148,7 @@ pub(crate) fn lookup(host: &str, kind: Kind) -> Result<Typed, ()> {
   }
 }
 
+#[cfg(any(unix, test))]
 fn parse_message(message: &[u8], kind: Kind) -> Result<Typed, ()> {
   if message.len() < 12 {
     return Err(());
@@ -185,6 +191,7 @@ fn parse_message(message: &[u8], kind: Kind) -> Result<Typed, ()> {
   Ok(found)
 }
 
+#[cfg(any(unix, test))]
 fn push_rdata(
   found: &mut Typed,
   message: &[u8],
@@ -303,18 +310,21 @@ fn push_rdata(
   Ok(())
 }
 
+#[cfg(any(unix, test))]
 fn u16_at(message: &[u8], pos: usize) -> Result<u16, ()> {
   let end = pos.checked_add(2).ok_or(())?;
   let bytes = message.get(pos..end).ok_or(())?;
   Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
+#[cfg(any(unix, test))]
 fn u32_at(message: &[u8], pos: usize) -> Result<u32, ()> {
   let end = pos.checked_add(4).ok_or(())?;
   let bytes = message.get(pos..end).ok_or(())?;
   Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
+#[cfg(any(unix, test))]
 fn read_char_string(
   message: &[u8],
   pos: usize,
@@ -336,6 +346,7 @@ fn read_char_string(
 }
 
 /// A domain name and the position just after it in the uncompressed stream.
+#[cfg(any(unix, test))]
 fn read_name(message: &[u8], mut pos: usize) -> Result<(String, usize), ()> {
   let mut labels = Vec::new();
   let mut hops = 0u8;
@@ -384,6 +395,7 @@ fn read_name(message: &[u8], mut pos: usize) -> Result<(String, usize), ()> {
   Ok((labels.join("."), end.ok_or(())?))
 }
 
+#[cfg(any(unix, test))]
 fn skip_name(message: &[u8], pos: usize) -> Result<usize, ()> {
   let (_, end) = read_name(message, pos)?;
   Ok(end)
@@ -503,11 +515,12 @@ fn windows_query(host: &str, kind: Kind) -> Result<Typed, ()> {
   while !record.is_null() {
     let current = unsafe { &*record };
     let section = unsafe { current.Flags.DW } & 0b11;
-    if section == 1 && current.wType == qtype {
-      if windows_push(&mut found, current).is_err() {
-        unsafe { DnsFree(head.cast(), DnsFreeRecordList) };
-        return Err(());
-      }
+    if section == 1
+      && current.wType == qtype
+      && windows_push(&mut found, current).is_err()
+    {
+      unsafe { DnsFree(head.cast(), DnsFreeRecordList) };
+      return Err(());
     }
     record = current.pNext;
   }

@@ -1112,10 +1112,8 @@ fn set_membership(
   match membership {
     Membership::V4 { group, iface } => {
       let mut req = IP_MREQ::default();
-      unsafe {
-        req.imr_multiaddr.S_un.S_addr = u32::from(*group).to_be();
-        req.imr_interface.S_un.S_addr = u32::from(*iface).to_be();
-      }
+      req.imr_multiaddr.S_un.S_addr = u32::from(*group).to_be();
+      req.imr_interface.S_un.S_addr = u32::from(*iface).to_be();
       let name = if join {
         IP_ADD_MEMBERSHIP
       } else {
@@ -1125,9 +1123,7 @@ fn set_membership(
     }
     Membership::V6 { group, index } => {
       let mut req = IPV6_MREQ::default();
-      unsafe {
-        req.ipv6mr_multiaddr.u.Byte = group.octets();
-      }
+      req.ipv6mr_multiaddr.u.Byte = group.octets();
       req.ipv6mr_interface = *index;
       let name = if join {
         IPV6_JOIN_GROUP
