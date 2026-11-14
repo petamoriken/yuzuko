@@ -14,7 +14,10 @@ use crate::platform::TaskQueue;
 
 const ARITY: &str = "Not enough arguments";
 const SIGNAL_TYPE: &str = "The signal must be a string.";
-const SIGNAL_NAME: &str = "The signal must be \"SIGINT\" or \"SIGTERM\".";
+const CANNOT_CATCH: &str = "The signal cannot be caught.";
+const NOT_SUPPORTED: &str = "The signal is not supported.";
+#[cfg_attr(not(windows), allow(dead_code))]
+const WINDOWS_SIGNAL: &str = "Windows cannot catch this signal.";
 const LISTENER: &str = "The listener must be a function.";
 const CAUGHT_FAIL: &str = "The signal could not be caught.";
 const NOT_CAUGHT: &str = "The signal is not caught.";
@@ -30,59 +33,47 @@ thread_local! {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Sig {
-  Int,
-  Term,
+struct Sig(u8);
+
+impl Sig {
+  fn index(self) -> usize {
+    usize::from(self.0)
+  }
 }
 
 struct RealmSlot {
   pending: Mutex<VecDeque<Sig>>,
   generation: AtomicU64,
-  int_count: AtomicUsize,
-  term_count: AtomicUsize,
+  counts: [AtomicUsize; crate::posix_signal::LISTEN_COUNT],
   queue: Arc<TaskQueue>,
 }
 
 struct LocalRealm {
   slot: Arc<RealmSlot>,
-  int: Vec<v8::Global<v8::Function>>,
-  term: Vec<v8::Global<v8::Function>>,
+  listeners: [Vec<v8::Global<v8::Function>>; crate::posix_signal::LISTEN_COUNT],
 }
 
 impl RealmSlot {
   fn count(&self, sig: Sig) -> usize {
-    self.counter(sig).load(Ordering::Acquire)
+    self.counts[sig.index()].load(Ordering::Acquire)
   }
 
   fn increment(&self, sig: Sig) {
-    self.counter(sig).fetch_add(1, Ordering::Release);
+    self.counts[sig.index()].fetch_add(1, Ordering::Release);
   }
 
   fn decrement(&self, sig: Sig) {
-    self.counter(sig).fetch_sub(1, Ordering::Release);
-  }
-
-  fn counter(&self, sig: Sig) -> &AtomicUsize {
-    match sig {
-      Sig::Int => &self.int_count,
-      Sig::Term => &self.term_count,
-    }
+    self.counts[sig.index()].fetch_sub(1, Ordering::Release);
   }
 }
 
 impl LocalRealm {
   fn listeners(&self, sig: Sig) -> &Vec<v8::Global<v8::Function>> {
-    match sig {
-      Sig::Int => &self.int,
-      Sig::Term => &self.term,
-    }
+    &self.listeners[sig.index()]
   }
 
   fn listeners_mut(&mut self, sig: Sig) -> &mut Vec<v8::Global<v8::Function>> {
-    match sig {
-      Sig::Int => &mut self.int,
-      Sig::Term => &mut self.term,
-    }
+    &mut self.listeners[sig.index()]
   }
 }
 
@@ -94,16 +85,14 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   let slot = Arc::new(RealmSlot {
     pending: Mutex::new(VecDeque::new()),
     generation: AtomicU64::new(0),
-    int_count: AtomicUsize::new(0),
-    term_count: AtomicUsize::new(0),
+    counts: std::array::from_fn(|_| AtomicUsize::new(0)),
     queue: crate::host::queue(),
   });
   register_slot(&slot);
   LOCAL.with(|local| {
     *local.borrow_mut() = Some(LocalRealm {
       slot,
-      int: Vec::new(),
-      term: Vec::new(),
+      listeners: std::array::from_fn(|_| Vec::new()),
     });
   });
   let yuzuko = crate::js::namespace(scope, "Yuzuko");
@@ -133,20 +122,19 @@ pub(crate) fn release_listeners() {
       return;
     };
     release_counts(realm);
-    realm.int.clear();
-    realm.term.clear();
+    for listeners in &mut realm.listeners {
+      listeners.clear();
+    }
     realm.slot.pending.lock().expect("signal queue").clear();
   });
 }
 
 fn release_counts(realm: &LocalRealm) {
-  let int = realm.slot.int_count.swap(0, Ordering::AcqRel);
-  let term = realm.slot.term_count.swap(0, Ordering::AcqRel);
-  if int > 0 {
-    os::release(Sig::Int, int);
-  }
-  if term > 0 {
-    os::release(Sig::Term, term);
+  for (index, count) in realm.slot.counts.iter().enumerate() {
+    let count = count.swap(0, Ordering::AcqRel);
+    if count > 0 {
+      os::release(Sig(index as u8), count);
+    }
   }
 }
 
@@ -426,11 +414,21 @@ fn read_signal(
     crate::js::throw_type(scope, SIGNAL_TYPE);
     return None;
   };
-  match text.to_rust_string_lossy(scope).as_str() {
-    "SIGINT" => Some(Sig::Int),
-    "SIGTERM" => Some(Sig::Term),
-    _ => {
-      crate::js::throw_type(scope, SIGNAL_NAME);
+  match crate::posix_signal::listen(text.to_rust_string_lossy(scope).as_str()) {
+    crate::posix_signal::Listen::Index(index) => Some(Sig(index as u8)),
+    crate::posix_signal::Listen::Uncatchable => {
+      crate::js::throw_type(scope, CANNOT_CATCH);
+      None
+    }
+    #[cfg(windows)]
+    crate::posix_signal::Listen::Platform => {
+      let error =
+        crate::errors::construct(scope, "NotSupported", WINDOWS_SIGNAL);
+      scope.throw_exception(error);
+      None
+    }
+    crate::posix_signal::Listen::Unknown => {
+      crate::js::throw_type(scope, NOT_SUPPORTED);
       None
     }
   }
@@ -487,18 +485,14 @@ mod os {
   use super::{Sig, lock};
 
   struct Hooks {
-    int_count: usize,
-    term_count: usize,
-    int_saved: Option<libc::sigaction>,
-    term_saved: Option<libc::sigaction>,
+    counts: [usize; crate::posix_signal::LISTEN_COUNT],
+    saved: [Option<libc::sigaction>; crate::posix_signal::LISTEN_COUNT],
     started: bool,
   }
 
   static HOOKS: Mutex<Hooks> = Mutex::new(Hooks {
-    int_count: 0,
-    term_count: 0,
-    int_saved: None,
-    term_saved: None,
+    counts: [0; crate::posix_signal::LISTEN_COUNT],
+    saved: [None; crate::posix_signal::LISTEN_COUNT],
     started: false,
   });
   static WRITE_FD: AtomicI32 = AtomicI32::new(-1);
@@ -509,17 +503,19 @@ mod os {
     if !hooks.started {
       start_watcher(&mut hooks)?;
     }
-    if hooks.count(sig) == 0 {
+    let index = sig.index();
+    if hooks.counts[index] == 0 {
       install(sig, &mut hooks)?;
     }
-    hooks.increment(sig);
+    hooks.counts[index] += 1;
     Ok(())
   }
 
   pub(super) fn release(sig: Sig, count: usize) {
     let mut hooks = lock(&HOOKS);
-    hooks.decrement(sig, count);
-    if hooks.count(sig) == 0 {
+    let index = sig.index();
+    hooks.counts[index] = hooks.counts[index].saturating_sub(count);
+    if hooks.counts[index] == 0 {
       restore(sig, &mut hooks);
     }
   }
@@ -545,52 +541,8 @@ mod os {
     }
   }
 
-  impl Hooks {
-    fn count(&self, sig: Sig) -> usize {
-      match sig {
-        Sig::Int => self.int_count,
-        Sig::Term => self.term_count,
-      }
-    }
-
-    fn increment(&mut self, sig: Sig) {
-      let count = self.count_mut(sig);
-      *count += 1;
-    }
-
-    fn decrement(&mut self, sig: Sig, by: usize) {
-      let count = self.count_mut(sig);
-      *count = count.saturating_sub(by);
-    }
-
-    fn count_mut(&mut self, sig: Sig) -> &mut usize {
-      match sig {
-        Sig::Int => &mut self.int_count,
-        Sig::Term => &mut self.term_count,
-      }
-    }
-
-    fn save(&mut self, sig: Sig, action: libc::sigaction) {
-      *self.saved_mut(sig) = Some(action);
-    }
-
-    fn take(&mut self, sig: Sig) -> Option<libc::sigaction> {
-      self.saved_mut(sig).take()
-    }
-
-    fn saved_mut(&mut self, sig: Sig) -> &mut Option<libc::sigaction> {
-      match sig {
-        Sig::Int => &mut self.int_saved,
-        Sig::Term => &mut self.term_saved,
-      }
-    }
-  }
-
   fn raw(sig: Sig) -> libc::c_int {
-    match sig {
-      Sig::Int => libc::SIGINT,
-      Sig::Term => libc::SIGTERM,
-    }
+    crate::posix_signal::raw_number(sig.index())
   }
 
   /// Records one byte and returns. `write` is async-signal-safe; V8 and
@@ -662,13 +614,10 @@ mod os {
   }
 
   fn from_byte(byte: u8) -> Option<Sig> {
-    if i32::from(byte) == libc::SIGINT {
-      Some(Sig::Int)
-    } else if i32::from(byte) == libc::SIGTERM {
-      Some(Sig::Term)
-    } else {
-      None
-    }
+    let number = libc::c_int::from(byte);
+    (0..crate::posix_signal::LISTEN_COUNT)
+      .find(|&index| crate::posix_signal::raw_number(index) == number)
+      .map(|index| Sig(index as u8))
   }
 
   fn install(sig: Sig, hooks: &mut Hooks) -> Result<(), ()> {
@@ -683,13 +632,13 @@ mod os {
       if libc::sigaction(raw(sig), &action, &mut old) != 0 {
         return Err(());
       }
-      hooks.save(sig, old);
+      hooks.saved[sig.index()] = Some(old);
     }
     Ok(())
   }
 
   fn restore(sig: Sig, hooks: &mut Hooks) {
-    let Some(old) = hooks.take(sig) else {
+    let Some(old) = hooks.saved[sig.index()].take() else {
       return;
     };
     unsafe {
@@ -737,12 +686,14 @@ mod os {
 
     impl Drop for Cleanup {
       fn drop(&mut self) {
-        self.first.int_count.store(0, Ordering::Release);
-        self.first.term_count.store(0, Ordering::Release);
-        self.second.int_count.store(0, Ordering::Release);
-        self.second.term_count.store(0, Ordering::Release);
-        release(Sig::Int, usize::MAX);
-        release(Sig::Term, usize::MAX);
+        for slot in [&self.first, &self.second] {
+          for count in &slot.counts {
+            count.store(0, Ordering::Release);
+          }
+        }
+        for index in 0..crate::posix_signal::LISTEN_COUNT {
+          release(Sig(index as u8), usize::MAX);
+        }
         unregister_slot(&self.first);
         unregister_slot(&self.second);
       }
@@ -752,8 +703,7 @@ mod os {
       Arc::new(RealmSlot {
         pending: std::sync::Mutex::new(std::collections::VecDeque::new()),
         generation: std::sync::atomic::AtomicU64::new(0),
-        int_count: std::sync::atomic::AtomicUsize::new(0),
-        term_count: std::sync::atomic::AtomicUsize::new(0),
+        counts: std::array::from_fn(|_| std::sync::atomic::AtomicUsize::new(0)),
         queue: TaskQueue::new(),
       })
     }
@@ -784,37 +734,51 @@ mod os {
       register_slot(&kept.first);
       register_slot(&kept.second);
 
-      retain(Sig::Int).expect("catch SIGINT");
-      retain(Sig::Int).expect("second SIGINT listener");
-      kept.first.int_count.store(1, Ordering::Release);
-      kept.second.int_count.store(1, Ordering::Release);
-      raise(Sig::Int).expect("raise SIGINT");
+      let sigint = Sig(1);
+      let sigterm = Sig(5);
+      retain(sigint).expect("catch SIGINT");
+      retain(sigint).expect("second SIGINT listener");
+      kept.first.counts[sigint.index()].store(1, Ordering::Release);
+      kept.second.counts[sigint.index()].store(1, Ordering::Release);
+      raise(sigint).expect("raise SIGINT");
       wait_past(&kept.first, 0);
       wait_past(&kept.second, 0);
-      assert_eq!(drain(&kept.first), vec![Sig::Int]);
-      assert_eq!(drain(&kept.second), vec![Sig::Int]);
+      assert_eq!(drain(&kept.first), vec![sigint]);
+      assert_eq!(drain(&kept.second), vec![sigint]);
 
-      release(Sig::Int, 1);
-      raise(Sig::Int).expect("raise SIGINT again");
+      release(sigint, 1);
+      raise(sigint).expect("raise SIGINT again");
       wait_past(&kept.second, 1);
-      assert_eq!(drain(&kept.first), vec![Sig::Int]);
-      assert_eq!(drain(&kept.second), vec![Sig::Int]);
+      assert_eq!(drain(&kept.first), vec![sigint]);
+      assert_eq!(drain(&kept.second), vec![sigint]);
 
-      kept.first.int_count.store(0, Ordering::Release);
-      kept.second.int_count.store(0, Ordering::Release);
-      release(Sig::Int, 1);
+      kept.first.counts[sigint.index()].store(0, Ordering::Release);
+      kept.second.counts[sigint.index()].store(0, Ordering::Release);
+      release(sigint, 1);
       assert_eq!(current_handler(libc::SIGINT), before_int);
 
-      retain(Sig::Term).expect("catch SIGTERM");
-      kept.first.term_count.store(1, Ordering::Release);
+      retain(sigterm).expect("catch SIGTERM");
+      kept.first.counts[sigterm.index()].store(1, Ordering::Release);
       let seen = kept.first.generation.load(Ordering::Acquire);
-      raise(Sig::Term).expect("raise SIGTERM");
+      raise(sigterm).expect("raise SIGTERM");
       wait_past(&kept.first, seen);
-      assert_eq!(drain(&kept.first), vec![Sig::Term]);
+      assert_eq!(drain(&kept.first), vec![sigterm]);
       assert!(drain(&kept.second).is_empty());
-      kept.first.term_count.store(0, Ordering::Release);
-      release(Sig::Term, 1);
+      kept.first.counts[sigterm.index()].store(0, Ordering::Release);
+      release(sigterm, 1);
       assert_eq!(current_handler(libc::SIGTERM), before_term);
+
+      let sighup = Sig(0);
+      let before_hup = current_handler(libc::SIGHUP);
+      retain(sighup).expect("catch SIGHUP");
+      kept.first.counts[sighup.index()].store(1, Ordering::Release);
+      let seen = kept.first.generation.load(Ordering::Acquire);
+      raise(sighup).expect("raise SIGHUP");
+      wait_past(&kept.first, seen);
+      assert_eq!(drain(&kept.first), vec![sighup]);
+      kept.first.counts[sighup.index()].store(0, Ordering::Release);
+      release(sighup, 1);
+      assert_eq!(current_handler(libc::SIGHUP), before_hup);
     }
   }
 }
@@ -830,14 +794,12 @@ mod os {
   };
 
   struct Hooks {
-    int_count: usize,
-    term_count: usize,
+    counts: [usize; crate::posix_signal::LISTEN_COUNT],
     installed: bool,
   }
 
   static HOOKS: Mutex<Hooks> = Mutex::new(Hooks {
-    int_count: 0,
-    term_count: 0,
+    counts: [0; crate::posix_signal::LISTEN_COUNT],
     installed: false,
   });
 
@@ -850,14 +812,15 @@ mod os {
       }
       hooks.installed = true;
     }
-    hooks.increment(sig);
+    hooks.counts[sig.index()] += 1;
     Ok(())
   }
 
   pub(super) fn release(sig: Sig, count: usize) {
     let mut hooks = lock(&HOOKS);
-    hooks.decrement(sig, count);
-    if hooks.int_count == 0 && hooks.term_count == 0 && hooks.installed {
+    let index = sig.index();
+    hooks.counts[index] = hooks.counts[index].saturating_sub(count);
+    if hooks.installed && hooks.counts.iter().all(|count| *count == 0) {
       unsafe {
         SetConsoleCtrlHandler(Some(handle), 0);
       }
@@ -866,38 +829,20 @@ mod os {
   }
 
   pub(super) fn raise(sig: Sig) -> Result<(), ()> {
-    let event = match sig {
-      Sig::Int => CTRL_C_EVENT,
-      Sig::Term => CTRL_BREAK_EVENT,
+    let event = match sig.0 {
+      0 => CTRL_C_EVENT,
+      1 => CTRL_BREAK_EVENT,
+      _ => return Err(()),
     };
     let ok = unsafe { GenerateConsoleCtrlEvent(event, 0) };
     if ok == 0 { Err(()) } else { Ok(()) }
   }
 
-  impl Hooks {
-    fn increment(&mut self, sig: Sig) {
-      let count = self.count_mut(sig);
-      *count += 1;
-    }
-
-    fn decrement(&mut self, sig: Sig, by: usize) {
-      let count = self.count_mut(sig);
-      *count = count.saturating_sub(by);
-    }
-
-    fn count_mut(&mut self, sig: Sig) -> &mut usize {
-      match sig {
-        Sig::Int => &mut self.int_count,
-        Sig::Term => &mut self.term_count,
-      }
-    }
-  }
-
   /// Console handlers run on a normal thread, unlike a Unix signal handler.
   unsafe extern "system" fn handle(ctrl: u32) -> i32 {
     let sig = match ctrl {
-      CTRL_C_EVENT => Sig::Int,
-      CTRL_BREAK_EVENT => Sig::Term,
+      CTRL_C_EVENT => Sig(0),
+      CTRL_BREAK_EVENT => Sig(1),
       _ => return 0,
     };
     if !listening(sig) {
@@ -909,10 +854,7 @@ mod os {
 
   fn listening(sig: Sig) -> bool {
     let hooks = lock(&HOOKS);
-    match sig {
-      Sig::Int => hooks.int_count > 0,
-      Sig::Term => hooks.term_count > 0,
-    }
+    hooks.counts[sig.index()] > 0
   }
 }
 

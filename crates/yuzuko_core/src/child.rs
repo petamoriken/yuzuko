@@ -68,6 +68,17 @@ const PATH_FILE: &str = "The file URL is invalid.";
 const PATH_NUL: &str = "The path must not contain NUL.";
 const DIR_MISSING: &str = "The directory was not found.";
 const DIR_KIND: &str = "The path is not a directory.";
+const CLEAR_ENV: &str = "clearEnv must be a boolean.";
+const UID: &str = "The user id must be an integer from 0 through 4294967295.";
+const GID: &str = "The group id must be an integer from 0 through 4294967295.";
+const SIGNAL_ABORT: &str = "The signal must be an AbortSignal.";
+const ALREADY_ABORTED: &str = "The signal has already been aborted.";
+const KILL_SIGNAL: &str = "The signal must be a string.";
+const KILL_UNKNOWN: &str = "The signal is not supported.";
+#[cfg_attr(not(windows), allow(dead_code))]
+const WINDOWS_CHILD: &str = "Windows cannot signal a child with this signal.";
+#[cfg_attr(not(windows), allow(dead_code))]
+const WINDOWS_ID: &str = "Windows cannot set a user or group id.";
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
@@ -75,6 +86,8 @@ thread_local! {
   static PENDING: RefCell<HashMap<u64, Pending>> =
     RefCell::new(HashMap::new());
   static OPEN: RefCell<Vec<Weak<Shared>>> = const { RefCell::new(Vec::new()) };
+  static ABORTS: RefCell<HashMap<u64, Weak<Shared>>> =
+    RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -152,6 +165,10 @@ struct SpawnRequest {
   stderr: StdioMode,
   env: Vec<EnvChange>,
   cwd: Option<PathBuf>,
+  clear_env: bool,
+  uid: Option<u32>,
+  gid: Option<u32>,
+  signal: Option<v8::Global<v8::Object>>,
 }
 
 struct EnvChange {
@@ -318,8 +335,12 @@ impl Child {
     Ok(())
   }
 
-  fn kill(&self) {
-    signal_live(&self.shared);
+  fn kill(
+    &self,
+    scope: &mut v8::PinScope,
+    signal: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    kill_child(scope, &self.shared, signal)
   }
 }
 
@@ -333,6 +354,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
 
 pub(crate) fn clear() {
   PENDING.with(|slots| slots.borrow_mut().clear());
+  ABORTS.with(|table| table.borrow_mut().clear());
   let open = OPEN.with(|open| std::mem::take(&mut *open.borrow_mut()));
   for weak in open {
     if let Some(shared) = weak.upgrade() {
@@ -397,8 +419,11 @@ fn spawn_op<'s>(
   for change in &request.env {
     crate::permissions::check_env(&change.name)?;
   }
-  // The overlay removes or replaces names. Every other variable is inherited.
-  crate::permissions::check_env_all()?;
+  // A cleared environment does not inherit the rest, so the whole-env grant
+  // is not required. Each assigned name was checked above.
+  if !request.clear_env {
+    crate::permissions::check_env_all()?;
+  }
   if let Some(dir) = &request.cwd {
     ensure_directory(scope, dir)?;
   }
@@ -407,9 +432,19 @@ fn spawn_op<'s>(
   command.stdin(request.stdin.as_stdio());
   command.stdout(request.stdout.as_stdio());
   command.stderr(request.stderr.as_stdio());
-  apply_env(&mut command, &request.env);
+  apply_env(&mut command, &request.env, request.clear_env);
   if let Some(dir) = &request.cwd {
     command.current_dir(dir);
+  }
+  #[cfg(unix)]
+  {
+    use std::os::unix::process::CommandExt;
+    if let Some(uid) = request.uid {
+      command.uid(uid);
+    }
+    if let Some(gid) = request.gid {
+      command.gid(gid);
+    }
   }
   let mut child = command.spawn().map_err(|error| {
     crate::errors::io_exception_message(scope, &error, SPAWN_FAIL)
@@ -453,6 +488,18 @@ fn spawn_op<'s>(
       finish_output(scope, id, outcome);
     },
   );
+  if let Some(signal) = request.signal.as_ref() {
+    ABORTS.with(|table| {
+      table.borrow_mut().insert(id, Arc::downgrade(&shared));
+    });
+    if let Err(error) = listen_abort(scope, signal, id) {
+      ABORTS.with(|table| {
+        table.borrow_mut().remove(&id);
+      });
+      signal_live(&shared);
+      return Err(error);
+    }
+  }
   // Safety: `Child::install` cached this realm's `Child` template.
   let object = unsafe {
     wrap_instance(
@@ -558,6 +605,9 @@ fn finish_output(
   id: u64,
   outcome: Result<Collected, OutputError>,
 ) {
+  ABORTS.with(|table| {
+    table.borrow_mut().remove(&id);
+  });
   let delivery = PENDING.with(|slots| {
     let mut slots = slots.borrow_mut();
     let prepared = {
@@ -1239,11 +1289,16 @@ fn signal_live(shared: &Shared) {
 
 #[cfg(unix)]
 fn signal_pid(pid: u32) {
+  signal_pid_with(pid, libc::SIGKILL);
+}
+
+#[cfg(unix)]
+fn signal_pid_with(pid: u32, signal: libc::c_int) {
   if pid == 0 {
     return;
   }
   unsafe {
-    libc::kill(pid as i32, libc::SIGKILL);
+    libc::kill(pid as i32, signal);
   }
 }
 
@@ -1269,6 +1324,126 @@ fn signal_pid(pid: u32) {
 #[cfg(not(any(unix, windows)))]
 fn signal_pid(_pid: u32) {}
 
+fn kill_child(
+  scope: &mut v8::PinScope,
+  shared: &Shared,
+  signal: Option<v8::Local<v8::Value>>,
+) -> Result<(), OpError> {
+  let requested = match signal {
+    Some(value) => Some(string_primitive(scope, value, KILL_SIGNAL)?),
+    None => None,
+  };
+  #[cfg(unix)]
+  let number = match requested.as_deref() {
+    None => libc::SIGKILL,
+    Some(name) => crate::posix_signal::unix_send(name)
+      .ok_or_else(|| OpError::type_(KILL_UNKNOWN))?,
+  };
+  #[cfg(windows)]
+  {
+    match requested.as_deref() {
+      None | Some("SIGKILL") | Some("SIGTERM") => {}
+      Some(_) => {
+        return Err(crate::errors::exception(
+          scope,
+          "NotSupported",
+          WINDOWS_CHILD,
+        ));
+      }
+    }
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (requested, scope);
+  }
+  let pid = *lock(&shared.live);
+  let Some(pid) = pid else {
+    return Ok(());
+  };
+  #[cfg(unix)]
+  signal_pid_with(pid, number);
+  #[cfg(not(unix))]
+  signal_pid(pid);
+  Ok(())
+}
+
+fn listen_abort(
+  scope: &mut v8::PinScope,
+  signal: &v8::Global<v8::Object>,
+  id: u64,
+) -> Result<(), OpError> {
+  let Ok(bits) = usize::try_from(id) else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let object = v8::Local::new(scope, signal);
+  let data = v8::External::new(scope, bits as *mut std::ffi::c_void);
+  let Some(function) = v8::Function::builder(abort_child)
+    .data(data.into())
+    .constructor_behavior(v8::ConstructorBehavior::Throw)
+    .build(scope)
+  else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let Some(key) = v8::String::new(scope, "addEventListener") else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let Some(method) = object.get(scope, key.into()) else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let Ok(method) = v8::Local::<v8::Function>::try_from(method) else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let Some(event) = v8::String::new(scope, "abort") else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  enum Outcome {
+    Called,
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let object = v8::Local::new(tc, object);
+    let method = v8::Local::new(tc, method);
+    let function = v8::Local::new(tc, function);
+    let event = v8::Local::new(tc, event);
+    match method.call(tc, object.into(), &[event.into(), function.into()]) {
+      Some(_) => Outcome::Called,
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  match outcome {
+    Outcome::Called => Ok(()),
+    Outcome::Throw(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+    Outcome::Missing => Err(OpError::type_(SIGNAL_ABORT)),
+  }
+}
+
+fn abort_child(
+  _scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  let data = args.data();
+  let Ok(external) = v8::Local::<v8::External>::try_from(data) else {
+    return;
+  };
+  let id = external.value() as usize as u64;
+  let shared =
+    ABORTS.with(|table| table.borrow().get(&id).and_then(Weak::upgrade));
+  if let Some(shared) = shared {
+    signal_live(&shared);
+  }
+}
+
 fn read_options(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -1281,6 +1456,10 @@ fn read_options(
       stderr: StdioMode::Collect,
       env: Vec::new(),
       cwd: None,
+      clear_env: false,
+      uid: None,
+      gid: None,
+      signal: None,
     });
   }
   if !value.is_object() || value.is_array() {
@@ -1310,6 +1489,10 @@ fn read_options(
   )?;
   let env = read_env(scope, object)?;
   let cwd = read_cwd_field(scope, object)?;
+  let clear_env = read_clear_env(scope, object)?;
+  let uid = read_id(scope, object, "uid", UID)?;
+  let gid = read_id(scope, object, "gid", GID)?;
+  let signal = read_abort(scope, object)?;
   Ok(SpawnRequest {
     args,
     stdin,
@@ -1317,7 +1500,109 @@ fn read_options(
     stderr,
     env,
     cwd,
+    clear_env,
+    uid,
+    gid,
+    signal,
   })
+}
+
+fn read_clear_env(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<bool, OpError> {
+  let Some(field) = read_field(scope, object, "clearEnv")? else {
+    return Ok(false);
+  };
+  if field.is_null_or_undefined() {
+    return Ok(false);
+  }
+  if !field.is_boolean() {
+    return Err(OpError::type_(CLEAR_ENV));
+  }
+  Ok(field.is_true())
+}
+
+fn read_id(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  message: &'static str,
+) -> Result<Option<u32>, OpError> {
+  let Some(field) = read_field(scope, object, name)? else {
+    return Ok(None);
+  };
+  if field.is_null_or_undefined() {
+    return Ok(None);
+  }
+  if !field.is_number() {
+    return Err(OpError::type_(message));
+  }
+  let Some(number) = field.number_value(scope) else {
+    return Err(OpError::type_(message));
+  };
+  if !number.is_finite()
+    || number.fract() != 0.0
+    || !(0.0..=4_294_967_295.0).contains(&number)
+  {
+    return Err(OpError::type_(message));
+  }
+  #[cfg(windows)]
+  {
+    let _ = number;
+    return Err(crate::errors::exception(scope, "NotSupported", WINDOWS_ID));
+  }
+  #[cfg(not(windows))]
+  {
+    Ok(Some(number as u32))
+  }
+}
+
+fn read_abort(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<v8::Global<v8::Object>>, OpError> {
+  let Some(field) = read_field(scope, object, "signal")? else {
+    return Ok(None);
+  };
+  if field.is_null_or_undefined() {
+    return Ok(None);
+  }
+  let ctor = abort_constructor(scope)?;
+  if field.instance_of(scope, ctor) != Some(true) {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  }
+  let Ok(signal) = v8::Local::<v8::Object>::try_from(field) else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  if aborted_flag(scope, signal)? {
+    return Err(OpError::dom("AbortError", ALREADY_ABORTED));
+  }
+  Ok(Some(v8::Global::new(scope, signal)))
+}
+
+fn abort_constructor<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let global = crate::js::global(scope);
+  let Some(key) = v8::String::new(scope, "AbortSignal") else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  let Some(value) = global.get(scope, key.into()) else {
+    return Err(OpError::type_(SIGNAL_ABORT));
+  };
+  v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_(SIGNAL_ABORT))
+}
+
+fn aborted_flag(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<bool, OpError> {
+  let Some(value) = read_field(scope, object, "aborted")? else {
+    return Ok(false);
+  };
+  Ok(value.is_boolean() && value.is_true())
 }
 
 fn read_args_field(
@@ -1420,7 +1705,10 @@ fn read_env(
   Ok(changes)
 }
 
-fn apply_env(command: &mut Command, env: &[EnvChange]) {
+fn apply_env(command: &mut Command, env: &[EnvChange], clear: bool) {
+  if clear {
+    command.env_clear();
+  }
   for change in env {
     if change.value.is_none() {
       command.env_remove(&change.name);

@@ -3577,6 +3577,14 @@ declare namespace Yuzuko {
      * @defaultValue 0
      */
     port?: number;
+
+    /**
+     * Set `SO_REUSEPORT` before the bind.
+     *
+     * Omitted, `null`, `undefined`, and `false` leave the bind unchanged.
+     * `true` is rejected on Windows.
+     */
+    reusePort?: boolean;
   }
 
   /**
@@ -3692,18 +3700,28 @@ declare namespace Yuzuko {
      *
      * @param body - Response payload. A view sends only its own bytes.
      * @param status - HTTP status from 100 through 599.
+     * @param headers - Extra response headers. A caller `content-type`
+     * replaces the default. `content-length`, `transfer-encoding`, and
+     * `connection` are rejected.
      * @throws {@link TypeError} `Not enough arguments` when `body` is
      * missing. `The data must be a string or a BufferSource.` when it is
      * neither. `The buffer is detached.` when it is detached.
      * `The data is too large.` when it is longer than 1048576 bytes.
      * `The status must be an integer from 100 through 599.` when `status`
-     * is present and is not. `illegal invocation` when the receiver is not
+     * is present and is not. `The headers must be an object.` when
+     * `headers` is not an object. `There are too many headers.` when there
+     * are more than 64. `The header name is invalid.` when a name is not a
+     * token. `The header cannot be set.` for `content-length`,
+     * `transfer-encoding`, or `connection`. `The header value is invalid.`
+     * when a value is not a string or contains CR, LF, or NUL.
+     * `illegal invocation` when the receiver is not
      * an `HttpRequest`. `The socket operation failed.` when the promise
      * cannot be created.
      */
     respond(
       body: string | AllowSharedBufferSource,
       status?: number,
+      headers?: Record<string, string> | null,
     ): Promise<void>;
   }
 
@@ -3721,7 +3739,10 @@ declare namespace Yuzuko {
    * `The options could not be read.` when the options cannot be read.
    * `The hostname must be an IP address or "localhost".` when the hostname
    * is not. `The port must be an integer from 0 through 65535.` when the
-   * port is not.
+   * port is not. `reusePort must be a boolean.` when `reusePort` is not a
+   * boolean primitive.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot reuse a listening port.` when `reusePort` is `true`.
    * @throws {@link Error} `The socket could not bind.` when the operating
    * system refuses the address and the failure is not a socket class.
    * `InvalidInput` throws {@link TypeError} with that message. The
@@ -3735,8 +3756,50 @@ declare namespace Yuzuko {
    */
   function listenHttp(options?: ListenHttpOptions | null): HttpServer;
 
-  /** A process signal `addSignalListener` can catch. */
-  type SignalName = "SIGINT" | "SIGTERM";
+  /**
+   * A process signal {@link addSignalListener} can catch.
+   *
+   * On Windows only `"SIGINT"` and `"SIGTERM"` succeed. The other names
+   * throw {@link errors.NotSupported}.
+   */
+  type SignalName =
+    | "SIGHUP"
+    | "SIGINT"
+    | "SIGQUIT"
+    | "SIGPIPE"
+    | "SIGALRM"
+    | "SIGTERM"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGXCPU"
+    | "SIGXFSZ"
+    | "SIGVTALRM"
+    | "SIGPROF"
+    | "SIGWINCH"
+    | "SIGIO"
+    | "SIGPWR"
+    | "SIGSTKFLT"
+    | "SIGINFO"
+    | "SIGEMT";
+
+  /**
+   * A signal {@link Child.kill} can send.
+   *
+   * `"SIGKILL"`, `"SIGSTOP"`, and `"SIGABRT"` can be sent and cannot be
+   * caught. On Windows only an omitted name, `"SIGKILL"`, and `"SIGTERM"`
+   * succeed.
+   */
+  type ChildSignal =
+    | SignalName
+    | "SIGKILL"
+    | "SIGSTOP"
+    | "SIGABRT";
 
   /**
    * Runs `listener` when this process receives `signal`.
@@ -3749,16 +3812,24 @@ declare namespace Yuzuko {
    * The same function object is registered once for a signal. Listeners run
    * on that realm's thread, with no arguments, and do not keep the process
    * alive. While one is registered, that signal does not terminate the
-   * process. On Windows, `"SIGTERM"` is `CTRL_BREAK_EVENT` and `"SIGINT"` is
+   * process. On macOS and Linux the names in {@link SignalName} can be
+   * caught. Linux accepts `"SIGPWR"` and `"SIGSTKFLT"`. macOS accepts
+   * `"SIGINFO"` and `"SIGEMT"`. `"SIGKILL"` and `"SIGSTOP"` cannot be
+   * caught. Fatal signals, including `"SIGABRT"`, are not caught. On
+   * Windows, `"SIGTERM"` is `CTRL_BREAK_EVENT` and `"SIGINT"` is
    * `CTRL_C_EVENT`. A Windows process without a console does not observe
    * those events.
    *
-   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @param signal - A catchable signal name. A string primitive.
    * @param listener - Called once for each delivery, in registration order.
    * @throws {@link TypeError} `Not enough arguments` when an argument is
    * missing. `The signal must be a string.` when `signal` is not a string.
-   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * `The signal cannot be caught.` for `"SIGKILL"` or `"SIGSTOP"`.
+   * `The signal is not supported.` when the name is not catchable.
    * `The listener must be a function.` when `listener` is not a function.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot catch this signal.` when `signal` is a Unix name other
+   * than `"SIGINT"` or `"SIGTERM"`.
    * @throws {@link Error} `The signal could not be caught.` when the
    * operating system refuses the handler.
    */
@@ -3775,12 +3846,16 @@ declare namespace Yuzuko {
    * disposition. Shutting down one realm does not remove another realm's
    * listeners.
    *
-   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @param signal - A catchable signal name. A string primitive.
    * @param listener - The function passed to {@link addSignalListener}.
    * @throws {@link TypeError} `Not enough arguments` when an argument is
    * missing. `The signal must be a string.` when `signal` is not a string.
-   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * `The signal cannot be caught.` for `"SIGKILL"` or `"SIGSTOP"`.
+   * `The signal is not supported.` when the name is not catchable.
    * `The listener must be a function.` when `listener` is not a function.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot catch this signal.` when `signal` is a Unix name other
+   * than `"SIGINT"` or `"SIGTERM"`.
    */
   function removeSignalListener(
     signal: SignalName,
@@ -3796,10 +3871,14 @@ declare namespace Yuzuko {
    * On Unix this is `raise`. On Windows it is `GenerateConsoleCtrlEvent`
    * for the console process group.
    *
-   * @param signal - `"SIGINT"` or `"SIGTERM"`. A string primitive.
+   * @param signal - A catchable signal name. A string primitive.
    * @throws {@link TypeError} `Not enough arguments` when `signal` is
    * missing. `The signal must be a string.` when it is not a string.
-   * `The signal must be "SIGINT" or "SIGTERM".` when it is another string.
+   * `The signal cannot be caught.` for `"SIGKILL"` or `"SIGSTOP"`.
+   * `The signal is not supported.` when the name is not catchable.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot catch this signal.` when `signal` is a Unix name other
+   * than `"SIGINT"` or `"SIGTERM"`.
    * @throws {@link Error} `The signal is not caught.` when this realm has
    * no listener for `signal`. `The signal could not be delivered.` when
    * the operating system does not accept it.
@@ -3810,7 +3889,8 @@ declare namespace Yuzuko {
    * Arguments for {@link spawn}.
    *
    * Omitted `args` passes no arguments. Fields other than `args`, `stdin`,
-   * `stdout`, `stderr`, `env`, and `cwd` are ignored.
+   * `stdout`, `stderr`, `env`, `cwd`, `clearEnv`, `uid`, `gid`, and
+   * `signal` are ignored.
    */
   interface SpawnOptions {
     /** Arguments passed to the program. There is no shell. */
@@ -3843,17 +3923,55 @@ declare namespace Yuzuko {
     stderr?: "null" | "inherit" | "piped" | "collect" | null;
 
     /**
-     * Environment names to set or remove over the inherited environment.
+     * Environment names to set or remove.
      *
-     * A string sets that name. `null` removes it. The child inherits every
-     * variable this object does not replace. `spawn` requires env access
-     * for the whole environment, including when `env` is omitted. The
-     * environment is not cleared. On Windows, names are case-insensitive
-     * and removals are applied before assignments. Unless `run` is granted
-     * as a whole, a variable whose name begins with `LD_` or `DYLD_` is
-     * rejected. `null` removes it.
+     * A string sets that name. `null` removes it. When {@link clearEnv} is
+     * not `true`, the child inherits every variable this object does not
+     * replace, and `spawn` requires env access for the whole environment,
+     * including when `env` is omitted. When {@link clearEnv} is `true`, the
+     * child starts from an empty environment, only these names are
+     * assigned, a removal does nothing, and that whole-environment grant
+     * is not required. On Windows, names are case-insensitive and removals
+     * are applied before assignments. Unless `run` is granted as a whole,
+     * a variable whose name begins with `LD_` or `DYLD_` is rejected.
      */
     env?: { [name: string]: string | null } | null;
+
+    /**
+     * Starts the child from an empty environment before `env` is applied.
+     *
+     * Omitted, `null`, `undefined`, and `false` leave the environment
+     * inherited. The boolean primitive `true` clears it. Any other value
+     * throws. The call does not use `ToBoolean`.
+     */
+    clearEnv?: boolean | null;
+
+    /**
+     * User id for the child.
+     *
+     * Omitted, `null`, and `undefined` leave the id unchanged. A present
+     * value is a number primitive and an integer from 0 through
+     * 4294967295. The call does not use `ToNumber`. On Windows a present
+     * id throws {@link errors.NotSupported}.
+     */
+    uid?: number | null;
+
+    /**
+     * Group id for the child.
+     *
+     * The same rules as {@link uid}.
+     */
+    gid?: number | null;
+
+    /**
+     * Aborts the child when this signal aborts.
+     *
+     * Omitted, `null`, and `undefined` leave the child running until it
+     * exits. A signal that is already aborted throws before the process
+     * is created. A later `abort` terminates the child the same way as
+     * {@link Child.kill} with no argument.
+     */
+    signal?: AbortSignal | null;
 
     /**
      * Working directory for the child.
@@ -4084,15 +4202,26 @@ declare namespace Yuzuko {
     /**
      * Terminates the process if it is still running.
      *
-     * A process that has already exited is left alone. Calling `kill`
-     * again succeeds. On Unix this sends `SIGKILL`. On Windows this calls
+     * An omitted argument or `undefined` sends `SIGKILL` on Unix and calls
+     * `TerminateProcess` with exit code 1 on Windows. A process that has
+     * already exited is left alone. That call still checks a present
+     * signal name. Calling `kill` again with no argument succeeds. On Unix
+     * `signal` is a catchable name, `"SIGKILL"`, `"SIGSTOP"`, or
+     * `"SIGABRT"`. On Windows `"SIGKILL"` and `"SIGTERM"` call
      * `TerminateProcess` with exit code 1. The pipes close, so a blocked
      * read ends.
      *
+     * @param signal - Signal name. A string primitive. Omitted and
+     * `undefined` use the default termination.
      * @throws {@link TypeError} `illegal invocation` when the receiver is
-     * not a `Child`.
+     * not a `Child`. `The signal must be a string.` when `signal` is
+     * `null` or not a string primitive. On Unix,
+     * `The signal is not supported.` when the name cannot be sent.
+     * @throws {@link errors.NotSupported} On Windows,
+     * `Windows cannot signal a child with this signal.` when `signal` is
+     * a string other than `"SIGKILL"` or `"SIGTERM"`.
      */
-    kill(): void;
+    kill(signal?: ChildSignal): void;
   }
 
   /**
@@ -4104,9 +4233,12 @@ declare namespace Yuzuko {
    * `child` leaves this function and {@link Child} absent. The feature does
    * not enable `window`. There is no shell. The call throws
    * {@link errors.NotCapable} when {@link permissions} does not
-   * grant the program, the working directory, a name in `env`, or env
-   * access for the whole environment. The child inherits every variable
-   * `options.env` does not replace. A bare run grant matches a bare
+   * grant the program, the working directory, or a name in `env`. Unless
+   * `clearEnv` is `true`, it also requires env access for the whole
+   * environment. When `clearEnv` is `true`, the child starts from an empty
+   * environment and only the names in `env` are assigned. Otherwise the
+   * child inherits every variable `options.env` does not replace. A bare
+   * run grant matches a bare
    * command name. A command that contains `/` or `\` needs a path grant
    * for the file the operating system would execute. A relative command is
    * resolved from `cwd` when that option is set. When `run` is not granted
@@ -4118,9 +4250,9 @@ declare namespace Yuzuko {
    * operating system creates the process.
    *
    * @param command - Program path or name. A non-empty string primitive.
-   * @param options - Arguments, standard streams, environment, and working
-   * directory. Omitted, `null`, and `undefined` pass no arguments and use
-   * the defaults.
+   * @param options - Arguments, standard streams, environment, user and
+   * group ids, an abort signal, and the working directory. Omitted,
+   * `null`, and `undefined` pass no arguments and use the defaults.
    * @throws {@link TypeError} `Not enough arguments` when `command` is
    * missing. `The command must be a string.` when it is not a string.
    * `The command must not be empty.` when it is empty.
@@ -4141,10 +4273,15 @@ declare namespace Yuzuko {
    * NUL.` for an environment value. `The path must be a string or a file
    * URL.`, `The URL scheme must be file.`, `The URL is invalid.`,
    * `The file URL is invalid.`, and `The path must not contain NUL.` for
-   * `cwd`.
+   * `cwd`. `clearEnv must be a boolean.` when `clearEnv` is not a boolean.
+   * `The user id must be an integer from 0 through 4294967295.` and
+   * `The group id must be an integer from 0 through 4294967295.` when
+   * `uid` or `gid` is not that integer. `The signal must be an
+   * AbortSignal.` when `signal` is not an `AbortSignal`.
    * @throws {@link errors.NotCapable} when {@link permissions}
-   * does not grant the program, read access to `cwd`, a name in `env`, or
-   * env access for the whole environment. A bare run grant matches a bare
+   * does not grant the program, read access to `cwd`, or a name in `env`.
+   * Unless `clearEnv` is `true`, env access for the whole environment is
+   * also required. A bare run grant matches a bare
    * command name only when `PATH` finds the executable recorded for that
    * name. A command with no `/` or `\` does not match a path grant. A
    * command that contains `/` or `\` needs a path grant for the file that
@@ -4152,6 +4289,12 @@ declare namespace Yuzuko {
    * variable in the child environment is rejected with the unscoped run
    * message. A missing grant for `cwd` does not report whether that
    * directory exists.
+   * @throws {@link errors.NotSupported} On Windows,
+   * `Windows cannot set a user or group id.` when `uid` or `gid` is a
+   * valid id.
+   * @throws {@link DOMException} `AbortError` with
+   * `The signal has already been aborted.` when `signal` is already
+   * aborted. The process is not created.
    * @throws {@link errors.NotFound} `The directory was not found.` when a
    * granted `cwd` is missing.
    * @throws {@link errors.NotADirectory} `The path is not a directory.`

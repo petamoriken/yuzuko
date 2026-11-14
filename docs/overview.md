@@ -148,13 +148,13 @@ Feature: `http`.
 
 Feature: `signal`.
 
-`Yuzuko.addSignalListener` and `Yuzuko.removeSignalListener` take `"SIGINT"` or `"SIGTERM"`. The first listener replaces that signal's default terminate action. On Windows, `SIGINT` is console Ctrl+C and `SIGTERM` is Ctrl+Break. A listener does not keep the process alive.
+`Yuzuko.addSignalListener` and `Yuzuko.removeSignalListener` catch the Unix signals in the spec, including `SIGINT` and `SIGTERM`. The first listener replaces that signal's default terminate action. On Windows only `SIGINT` (Ctrl+C) and `SIGTERM` (Ctrl+Break) can be caught. A listener does not keep the process alive.
 
 ## Child processes
 
 Feature: `child`.
 
-`Yuzuko.spawn` starts a program without a shell and returns a `Yuzuko.Child`. Standard input defaults to closed. Standard output and standard error default to collected output, each up to 1048576 bytes. `"piped"` exposes those streams as web streams. `output`, `status`, and `kill` observe the process. On Unix, `kill` sends `SIGKILL`. On Windows, it terminates the process.
+`Yuzuko.spawn` starts a program without a shell and returns a `Yuzuko.Child`. Standard input defaults to closed. Standard output and standard error default to collected output, each up to 1048576 bytes. `"piped"` exposes those streams as web streams. `clearEnv` starts from an empty environment. `uid` and `gid` are Unix ids. An `AbortSignal` can abort the child. `output`, `status`, and `kill` observe the process. On Unix, `kill()` sends `SIGKILL` and `kill(signal)` can send another signal. On Windows, `kill()` terminates the process.
 
 ## Foreign functions
 

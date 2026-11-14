@@ -28,6 +28,8 @@ pub mod op;
 mod parcel;
 mod permissions;
 mod platform;
+#[cfg(any(feature = "signal", feature = "child"))]
+mod posix_signal;
 mod process;
 mod reach;
 mod realm;

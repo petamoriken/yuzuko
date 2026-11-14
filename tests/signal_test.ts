@@ -6,7 +6,8 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const ARITY = "Not enough arguments";
 const SIGNAL = "The signal must be a string.";
-const NAME = 'The signal must be "SIGINT" or "SIGTERM".';
+const NAME = "The signal is not supported.";
+const CANNOT_CATCH = "The signal cannot be caught.";
 const LISTENER = "The listener must be a function.";
 const NOT_CAUGHT = "The signal is not caught.";
 
@@ -178,9 +179,13 @@ Yuzuko.test("a bad signal does not terminate the process", () => {
   assert(boxed instanceof TypeError, "boxed type");
   assert(text(boxed) === SIGNAL, text(boxed));
 
-  const name = throws(() => add("SIGHUP", () => {}));
+  const name = throws(() => add("NO_SUCH_SIGNAL", () => {}));
   assert(name instanceof TypeError, "name type");
   assert(text(name) === NAME, text(name));
+
+  const uncatchable = throws(() => add("SIGKILL", () => {}));
+  assert(uncatchable instanceof TypeError, "kill type");
+  assert(text(uncatchable) === CANNOT_CATCH, text(uncatchable));
 
   const listener = throws(() => add("SIGINT", "no"));
   assert(listener instanceof TypeError, "listener type");
