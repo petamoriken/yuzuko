@@ -128,6 +128,18 @@ Yuzuko.test("clearEnv starts from an empty environment", async () => {
   const output = await child.output();
   const stdout = decode(output.stdout).replaceAll("\r\n", "\n").trim();
   assert(output.code === 0, `code ${String(output.code)} stdout ${stdout}`);
+  if (Yuzuko.build.os === "windows") {
+    // cmd.exe fills COMSPEC, PATHEXT, and PROMPT when they are absent.
+    const lines = stdout.length === 0 ? [] : stdout.split("\n");
+    assert(lines.includes("FOO=1"), `env ${JSON.stringify(stdout)}`);
+    const allowed = new Set(["FOO", "COMSPEC", "PATHEXT", "PROMPT"]);
+    for (const line of lines) {
+      const split = line.indexOf("=");
+      assert(split > 0, `env ${JSON.stringify(stdout)}`);
+      assert(allowed.has(line.slice(0, split)), `env ${JSON.stringify(stdout)}`);
+    }
+    return;
+  }
   assert(stdout === "FOO=1", `env ${JSON.stringify(stdout)}`);
 });
 
