@@ -117,6 +117,17 @@ interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUObjectBase {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/insertDebugMarker)
    */
   insertDebugMarker(markerLabel: string): void;
+  /**
+   * Records a timestamp query. The device needs `timestamp-query` and wgpu's
+   * inside-pass capability.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `timestamp-query`
+   * is not enabled or the adapter cannot write timestamps inside a pass.
+   * @throws {@link TypeError} When `querySet` is not a timestamp query set.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/writeTimestamp)
+   */
+  writeTimestamp(querySet: GPUQuerySet, queryIndex: GPUSize32): void;
   setPipeline(pipeline: GPUComputePipeline): void;
 }
 
@@ -184,8 +195,9 @@ interface GPUQuerySet extends GPUObjectBase {
   /**
    * Marks this set destroyed.
    *
-   * A later `resolveQuerySet` of this set is a validation error.
-   * `writeTimestamp` stays absent.
+   * A later `resolveQuerySet` or `writeTimestamp` of this set is a validation
+   * error. wgpu has no query-set destroy, so that command is recorded out of
+   * range.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQuerySet/destroy)
    */
@@ -10226,7 +10238,10 @@ declare var OffscreenCanvas: {
  * unorm8 ink before the composite operator. A `url()` reference clears
  * that ink. Lengths are canvas pixels and are not scaled by the current
  * transform. A filtered drawing is rasterized on the CPU.
- * There is no `CanvasFilter` class.
+ * HTML removed `CanvasFilter` in August 2022 for lack of
+ * multi-implementer agreement. `filter` stays a CSS string. A filter
+ * dictionary throws `TypeError` because that interface is not in the
+ * specification.
  *
  * A window surface's context exposes that surface as `canvas`.
  *
@@ -10323,7 +10338,13 @@ interface OffscreenCanvasRenderingContext2D {
    */
   globalCompositeOperation: GlobalCompositeOperation;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle) */
+  /**
+   * CSS colors, including `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
+   * and `color-mix()`. Those convert to sRGB. `color(display-p3 ...)`
+   * round-trips. An unrecognized color is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle)
+   */
   fillStyle: string | CanvasGradient | CanvasPattern;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeStyle) */
@@ -10491,14 +10512,18 @@ interface OffscreenCanvasRenderingContext2D {
   ): void;
 
   /**
-   * `false` samples nearest. `true` samples linearly.
+   * `false` samples nearest. `true` uses `imageSmoothingQuality`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingEnabled)
    */
   imageSmoothingEnabled: boolean;
 
   /**
-   * `"low"`, `"medium"`, and `"high"` all sample linearly. The value round-trips.
+   * `"low"` is bilinear. `"medium"` is bicubic. `"high"` prefilters a
+   * scaled `drawImage` with Lanczos-3, then samples bilinearly. An
+   * axis-aligned draw within 2% of 1:1 stays bilinear for every quality.
+   * A pattern uses bicubic for both `"medium"` and `"high"`. The value
+   * round-trips. An unrecognized value is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingQuality)
    */
@@ -10607,8 +10632,10 @@ interface OffscreenCanvasRenderingContext2D {
    *
    * A value that parses is stored. The getter returns that string. `""`,
    * `inherit`, `initial`, `unset`, `revert`, `revert-layer`, `null`, and
-   * `undefined` do not parse, so the current filter stays. `calc()`, `hwb()`,
-   * `lab()`, `lch()`, `oklab()`, `oklch()`, and `color-mix()` do not parse.
+   * `undefined` do not parse, so the current filter stays. A length does
+   * not accept `calc()`. A `drop-shadow()` color accepts `hwb()`, `lab()`,
+   * `lch()`, `oklab()`, `oklch()`, `color-mix()`, and `calc()` in a
+   * component.
    * A stored filter is applied when the drawing is composited. The functions
    * are `blur`, `brightness`, `contrast`, `drop-shadow`, `grayscale`,
    * `hue-rotate`, `invert`, `opacity`, `saturate`, `sepia`, and `url()`.
@@ -10661,7 +10688,10 @@ declare var OffscreenCanvasRenderingContext2D: {
 /**
  * Measured text.
  *
- * The `actualBoundingBox*` getters are advance approximations.
+ * `actualBoundingBox*` is the glyph-outline ink relative to `textAlign`
+ * and `textBaseline`. An empty outline, including a space, reports zeros.
+ * The font and em boxes use the typographic ascent and descent. Positive
+ * baseline distances point down from `textBaseline`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10713,7 +10743,9 @@ declare var TextMetrics: {
 /**
  * A canvas gradient.
  *
- * Stops accept CSS colors, `color(srgb ...)`, and `color(display-p3 ...)`.
+ * Stops accept CSS colors, `color(srgb ...)`, `color(display-p3 ...)`,
+ * `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, and `color-mix()`.
+ * Colors other than `color(display-p3 ...)` serialize as `color(srgb ...)`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10997,7 +11029,9 @@ declare function createImageBitmap(
  * `depth-clip-control`, and `depth32float-stencil8` when the adapter
  * supports them, and wgpu external textures when the adapter supports that
  * feature. `YUZUKO_SKIP_GPU=1` makes {@link GPU.requestAdapter} resolve
- * `null`. `wgslLanguageFeatures` is empty.
+ * `null`. `wgslLanguageFeatures` contains
+ * `readonly_and_readwrite_storage_textures`,
+ * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
  *
  * Blend state and alpha to coverage are applied. `unclippedDepth: true`
  * throws `NotSupportedError` without `depth-clip-control`.
@@ -11012,9 +11046,14 @@ declare function createImageBitmap(
  * `popDebugGroup`, and `insertDebugMarker` are on the command encoder, the
  * render pass, and the compute pass. An empty pop is reported when
  * `finish()` encodes the command buffer. A render bundle encoder does not
- * expose debug markers, viewport, or scissor. `writeTimestamp` stays absent.
- * `GPUQuerySet.destroy`
- * makes a later `resolveQuerySet` a validation error.
+ * expose debug markers, viewport, or scissor. `writeTimestamp` is on the
+ * command encoder, the render pass, and the compute pass. Without
+ * `timestamp-query`, or without the adapter's inside-encoder or inside-pass
+ * capability, it throws `NotSupportedError`. `wgslLanguageFeatures` contains
+ * `readonly_and_readwrite_storage_textures`,
+ * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
+ * `GPUQuerySet.destroy` makes a later `resolveQuerySet` or `writeTimestamp`
+ * a validation error.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
  *
@@ -11035,7 +11074,8 @@ interface GPU {
   getPreferredCanvasFormat(): GPUTextureFormat;
 
   /**
-   * Empty.
+   * `readonly_and_readwrite_storage_textures`,
+   * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPU/wgslLanguageFeatures)
    */
@@ -11110,14 +11150,17 @@ interface GPUDeviceDescriptor {
 /**
  * A JavaScript WebGPU device.
  *
- * `lost` resolves from `destroy`, not from garbage collection. Uncaptured
- * errors are printed and are not dispatched as `uncapturederror`.
+ * `lost` resolves from `destroy`, not from garbage collection. An error that
+ * no error scope captures is dispatched as a trusted `uncapturederror` on
+ * every live device, because those devices share one wgpu device.
+ * `onuncapturederror` is that handler. An out-of-range copy can dispatch one
+ * event from the command encoder and another from `queue.submit`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice)
  */
-interface GPUDevice {
+interface GPUDevice extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/label) */
   label: string;
@@ -11137,6 +11180,17 @@ interface GPUDevice {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/queue) */
   readonly queue: GPUQueue;
+
+  /**
+   * Handler for `uncapturederror`. The event does not bubble and is not
+   * cancelable. `error` is a {@link GPUValidationError}, a
+   * {@link GPUOutOfMemoryError}, or a {@link GPUInternalError}.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/uncapturederror_event)
+   */
+  onuncapturederror:
+    | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
+    | null;
 
   /**
    * Loses this JavaScript device. The shared wgpu device stays.
@@ -11357,9 +11411,38 @@ declare var GPUInternalError: {
 
 
 /**
+ * A trusted host event. A script-constructed event is not trusted.
+ *
+ * @throws {@link TypeError} When `error` is missing or is not a GPU error.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUUncapturedErrorEvent)
+ */
+interface GPUUncapturedErrorEvent extends Event {
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUUncapturedErrorEvent/error)
+   */
+  readonly error: GPUError;
+}
+declare var GPUUncapturedErrorEvent: {
+  prototype: GPUUncapturedErrorEvent;
+  new(type: string, eventInitDict: GPUUncapturedErrorEventInit): GPUUncapturedErrorEvent;
+};
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUUncapturedErrorEvent/GPUUncapturedErrorEvent) */
+interface GPUUncapturedErrorEventInit extends EventInit {
+  error: GPUError;
+}
+
+type GPUError = GPUValidationError | GPUOutOfMemoryError | GPUInternalError;
+
+
+/**
  * The device queue.
  *
- * `getMappedRange` returns a copy, and `unmap` does not detach that `ArrayBuffer`.
+ * `getMappedRange` copies the mapped bytes. `unmap` detaches that
+ * `ArrayBuffer`. A write-only mapping is written back. A mapping that sets
+ * both read and write is written back with `writeBuffer`, so the buffer
+ * also needs `COPY_DST`. `destroy` detaches without writing back.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue)
  */
@@ -11425,19 +11508,47 @@ interface GPUBuffer {
   label: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/size) */
   readonly size: number;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/destroy) */
+  /**
+   * Detaches mapped `ArrayBuffer`s and drops the mapping without writing
+   * the bytes back.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/destroy)
+   */
   destroy(): void;
   /**
+   * `offset` is a multiple of 8. `size` is a non-zero multiple of 4. An
+   * omitted size is the rest of the buffer. `READ` requires `MAP_READ` and
+   * `WRITE` requires `MAP_WRITE`. A mode with neither bit, or with any other
+   * bit, rejects `TypeError`. Alignment, range, and usage failures reject
+   * `OperationError`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the buffer is
+   * already mapped or destroyed. `OperationError` when the range or the
+   * usage does not allow the map. The promise rejects. The mode check
+   * rejects `TypeError`.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/mapAsync)
    */
   mapAsync(mode: GPUMapModeFlags, offset?: number, size?: number): Promise<void>;
   /**
-   * Returns a copy. `unmap` does not detach it.
+   * Copies bytes from the mapping. `offset` is measured from the start of
+   * the mapping. `unmap` and `destroy` detach the returned `ArrayBuffer`.
+   * Overlapping ranges throw `OperationError`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the buffer is not
+   * mapped. `OperationError` when the range is outside the mapping, is not
+   * aligned, or overlaps a range already returned.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/getMappedRange)
    */
   getMappedRange(offset?: number, size?: number): ArrayBuffer;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/unmap) */
+  /**
+   * Writes a `WRITE` mapping back, then detaches every `ArrayBuffer` from
+   * the mapping. A mapping that includes both `READ` and `WRITE` is written
+   * back with {@link GPUQueue.writeBuffer} and needs `COPY_DST`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/unmap)
+   */
   unmap(): void;
 }
 declare var GPUBuffer: {
@@ -11864,6 +11975,20 @@ interface GPUCommandEncoder {
   insertDebugMarker(markerLabel: string): void;
 
   /**
+   * Records a timestamp query. The device needs `timestamp-query` and wgpu's
+   * inside-encoder capability.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `timestamp-query`
+   * is not enabled or the adapter cannot write timestamps inside an encoder.
+   * @throws {@link TypeError} When `querySet` is not a timestamp query set.
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is
+   * finished or a pass is open.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/writeTimestamp)
+   */
+  writeTimestamp(querySet: GPUQuerySet, queryIndex: GPUSize32): void;
+
+  /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/finish)
    */
   finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
@@ -12046,6 +12171,18 @@ interface GPURenderPassEncoder {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/insertDebugMarker)
    */
   insertDebugMarker(markerLabel: string): void;
+
+  /**
+   * Records a timestamp query. The device needs `timestamp-query` and wgpu's
+   * inside-pass capability.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `timestamp-query`
+   * is not enabled or the adapter cannot write timestamps inside a pass.
+   * @throws {@link TypeError} When `querySet` is not a timestamp query set.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/writeTimestamp)
+   */
+  writeTimestamp(querySet: GPUQuerySet, queryIndex: GPUSize32): void;
 }
 declare var GPURenderPassEncoder: {
   prototype: GPURenderPassEncoder;
@@ -14195,19 +14332,34 @@ interface EncodedAudioChunkInit {
 }
 
 /**
- * Decodes AAC and Opus elementary packets.
+ * Decodes AAC, Opus, and Vorbis elementary packets.
  *
  * The accepted AAC strings are `mp4a`, `mp4a.40.2`, `mp4a.40.02`,
  * `mp4a.40.5`, `mp4a.40.05`, `mp4a.40.29`, and `mp4a.67`. Opus is the exact
- * string `opus`. `vorbis`, `flac`, `mp3`, and every other codec string are
- * not supported. An unsupported configuration closes the decoder before
- * `configure` returns and reports `NotSupportedError` to `error`.
- * `configure` does not throw for that case. `AudioEncoder` is absent. AAC
- * and Opus use portable decoders on every target. Opus output is 48000 Hz.
- * One or two channels configure. More than two channels does not, including
- * a valid multichannel OpusHead. An empty Opus description discards no
- * samples. An OpusHead description drops its pre-skip from the start of the
- * stream, and that duration is added to a negative timestamp only.
+ * string `opus`. Vorbis is the exact string `vorbis`. `flac`, `mp3`, and
+ * every other codec string are not supported. An unsupported configuration
+ * closes the decoder before `configure` returns and reports
+ * `NotSupportedError` to `error`. `configure` does not throw for that case.
+ * `AudioEncoder` is absent. AAC, Opus, and Vorbis use portable decoders on
+ * every target. Opus output is 48000 Hz. One or two channels configure.
+ * More than two channels does not, including a valid multichannel OpusHead.
+ * An empty Opus description discards no samples. An OpusHead description
+ * drops its pre-skip from the start of the stream, and that duration is
+ * added to a negative timestamp only. Vorbis `configure` requires a Xiph
+ * `description`: the first byte counts the lace values of every header but
+ * the last, a lace of 255 continues a packet, and the remaining bytes are
+ * the last header. The headers are identification (`0x01`), comment
+ * (`0x03`), and setup (`0x05`). A lace table that already sizes every byte
+ * is those packets.
+ * The identification header's sample rate and channel count replace the
+ * configured values. Output is planar `f32`. The first packet after
+ * `configure` or `flush` produces no audio. The next samples use that
+ * packet's timestamp, and a negative one increases by half of the short
+ * block. Later packets copy their chunk timestamp. `flush` clears the
+ * overlap window. An omitted, empty, or malformed description closes the
+ * decoder with `NotSupportedError`. A packet that does not decode reports
+ * `EncodingError`. `isConfigSupported` is true for `vorbis` with a positive
+ * rate and channel count even when `description` is omitted.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder)
  */
@@ -14294,9 +14446,10 @@ declare var AudioDecoder: {
   new(init: AudioDecoderInit): AudioDecoder;
   /**
    * Resolves `{ supported, config }` without opening a decoder and without
-   * producing samples. `supported` is true for an accepted AAC string and
-   * for `opus`, including more than two channels. It is false for any other
-   * codec string, including `mp4a.FF.9` and `opus.123`. An invalid config
+   * producing samples. `supported` is true for an accepted AAC string, for
+   * `opus`, including more than two channels, and for `vorbis` even when
+   * `description` is omitted. It is false for any other codec string,
+   * including `mp4a.FF.9`, `opus.123`, and `vorbis.123`. An invalid config
    * rejects `TypeError`. Too few arguments reject `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/isConfigSupported)
@@ -14320,42 +14473,53 @@ interface AudioDecoderConfig {
 }
 
 /**
- * Decodes a PNG, JPEG, WebP, JPEG XL, or AVIF image.
+ * Decodes a PNG, JPEG, WebP, JPEG XL, GIF, BMP, or AVIF image.
  *
  * `isTypeSupported` resolves `true` for `image/png`, `image/jpeg`,
- * `image/webp`, `image/jxl`, and `image/avif`. A call with too few arguments
- * rejects `TypeError`. The constructor still returns
- * a decoder for any other type. `completed`, `tracks.ready`, and `decode()`
- * then reject
+ * `image/webp`, `image/jxl`, `image/avif`, `image/gif`, and `image/bmp`.
+ * Parameters after the type are ignored. A call with too few arguments
+ * rejects `TypeError`. The constructor still returns a decoder for any other
+ * type. `completed`, `tracks.ready`, and `decode()` then reject
  * `NotSupportedError`. A still image has one track, `frameCount` 1,
  * `animated` false, and `repetitionCount` 0. An animated PNG, WebP, or JPEG
  * XL reports every frame. `repetitionCount` is the number of extra plays
- * after the first. `0` plays once and `Infinity` loops forever.
+ * after the first. `0` plays once and `Infinity` loops forever. A GIF with
+ * one frame is still, so `duration` is null. Two or more GIF frames are
+ * animated. A delay below 2 centiseconds is 100000 microseconds. Any longer
+ * delay is that many centiseconds times 10000 microseconds. A Netscape loop
+ * count of 0, and a file with no loop block, set `repetitionCount` to
+ * `Infinity`. A count of `n` greater than 0 sets it to `n - 1`. Each frame
+ * is the logical screen after that rectangle is composited. A transparent
+ * sample leaves the pixel. Disposal `background` clears that rectangle to
+ * transparent. Disposal `previous` restores the screen from before the
+ * frame. BMP is one still frame: a 40-, 108-, or 124-byte header, an 8-bit
+ * palette, 24-bit BGR, opaque 32-bit `BI_RGB`, or 32-bit `BI_BITFIELDS`.
  * `frameIndex` past the last frame rejects `RangeError`. `timestamp` is the
  * sum of earlier durations and `duration` is that frame's delay, both in
  * microseconds. A still frame has `timestamp` 0 and `duration` null.
  * `createImageBitmap` uses the first frame. This decoder does not advance
  * frames. An AVIF file is one still frame from the primary item, including
- * when the file is animated. The color item is profiles 0–2 at 8, 10, or 12
- * bits, including 4:2:0, 4:2:2, 4:4:4, and monochrome. `decode()` returns a
- * YUV `VideoFrame`: `I420`, `I422`, and `I444` at 8, 10, and 12 bits.
- * Monochrome is stored as 4:2:0 with neutral chroma. 10-bit and 12-bit
- * samples are little-endian, and the low bits are significant. An `nclx`
- * colour property on the primary item replaces the sequence header color.
- * When that property is absent, the sequence header color is stored.
+ * when the file is animated. A major brand of `avis` is rejected, so an
+ * animated sequence is not walked. The color item is profiles 0–2 at 8, 10,
+ * or 12 bits, including 4:2:0, 4:2:2, 4:4:4, and monochrome. `decode()`
+ * returns a YUV `VideoFrame`: `I420`, `I422`, and `I444` at 8, 10, and 12
+ * bits. Monochrome is stored as 4:2:0 with neutral chroma. 10-bit and
+ * 12-bit samples are little-endian, and the low bits are significant. An
+ * `nclx` colour property on the primary item replaces the sequence header
+ * color. When that property is absent, the sequence header color is stored.
  * `drawImage`, `createPattern`, `createImageBitmap`, and
  * `copyExternalImageToTexture` sample that frame as unorm8 sRGB. Identity
- * reads the Y plane as G, the U plane as B, and the V plane as R. An alpha item is composited into the display image, and the frame
- * format stays the color format. A premultiplied alpha item stays
- * premultiplied. Any other bit depth is rejected. `desiredWidth` or
- * `desiredHeight` scales the display image, and that frame is RGBA.
- * Rotation, clean aperture, and ICC are not applied. PQ and HLG transfers
- * are not applied.
+ * reads the Y plane as G, the U plane as B, and the V plane as R. An alpha
+ * item is composited into the display image, and the frame format stays the
+ * color format. A premultiplied alpha item stays premultiplied. Any other
+ * bit depth is rejected. `desiredWidth` or `desiredHeight` scales the
+ * display image, and that frame is RGBA. Rotation, clean aperture, and ICC
+ * are not applied. PQ and HLG transfers are not applied.
  * `desiredWidth` and `desiredHeight` scale every frame with a
  * triangle filter. One of them preserves aspect ratio by rounding the other
  * edge up. Both set the exact size. A value of 0 throws `TypeError`.
  * `preferAnimation` does not select another track, because a file has one
- * track. GIF is not supported. A decoder panic rejects `EncodingError`.
+ * track. A decoder panic rejects `EncodingError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder)
  */

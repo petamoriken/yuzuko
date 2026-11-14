@@ -37,6 +37,7 @@ use crate::paint::record::Brush as Paint;
 use crate::paint::record::Command;
 use crate::paint::record::Drawing;
 use crate::paint::record::ImageBuf;
+use crate::paint::record::SampleQuality;
 use crate::paint::shade::Shade;
 
 static BACKEND: OnceLock<Backend> = OnceLock::new();
@@ -901,7 +902,13 @@ fn replay_cpu(
       let premul = premul_rgba8(image);
       context.set_blend_mode(BlendMode::new(Mix::Normal, Compose::Copy));
       context.set_transform(Affine::translate((*dx as f64, *dy as f64)));
-      paint_image(context, &premul, image.width, image.height, true);
+      paint_image(
+        context,
+        &premul,
+        image.width,
+        image.height,
+        SampleQuality::Nearest,
+      );
       context.fill_rect(&Rect::new(
         0.0,
         0.0,
@@ -914,7 +921,7 @@ fn replay_cpu(
       image,
       transform,
       alpha,
-      nearest,
+      quality,
       shade: _,
       filter: _,
       clips,
@@ -925,7 +932,7 @@ fn replay_cpu(
       }
       context.set_transform(*transform);
       context.set_blend_mode(source_over());
-      paint_image(context, &image.bytes, image.width, image.height, *nearest);
+      paint_image(context, &image.bytes, image.width, image.height, *quality);
       context.fill_rect(&Rect::new(
         0.0,
         0.0,
@@ -987,19 +994,24 @@ fn paint_image(
   bytes: &[u8],
   width: u32,
   height: u32,
-  nearest: bool,
+  quality: SampleQuality,
 ) {
   let data = image_data(bytes, width, height);
   let source = vello_cpu::ImageSource::from_peniko_image_data(&data);
   context.reset_paint_transform();
   context.set_paint(Brush::Image(ImageBrush {
     image: source,
-    sampler: ImageSampler::default().with_quality(if nearest {
-      ImageQuality::Low
-    } else {
-      ImageQuality::Medium
-    }),
+    sampler: ImageSampler::default().with_quality(peniko_quality(quality)),
   }));
+}
+
+/// Peniko's `Low` is nearest, `Medium` is bilinear, and `High` is bicubic.
+fn peniko_quality(quality: SampleQuality) -> ImageQuality {
+  match quality {
+    SampleQuality::Nearest => ImageQuality::Low,
+    SampleQuality::Low => ImageQuality::Medium,
+    SampleQuality::Medium | SampleQuality::High => ImageQuality::High,
+  }
 }
 
 fn starts_with_move(path: &kurbo::BezPath) -> bool {
@@ -1112,7 +1124,7 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
       image,
       repeat_x,
       repeat_y,
-      nearest,
+      quality,
     } => {
       let premul = premul_rgba8(image);
       let data = image_data(&premul, image.width, image.height);
@@ -1131,11 +1143,7 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
         sampler: ImageSampler::default()
           .with_x_extend(extend_x)
           .with_y_extend(extend_y)
-          .with_quality(if *nearest {
-            ImageQuality::Low
-          } else {
-            ImageQuality::Medium
-          }),
+          .with_quality(peniko_quality(*quality)),
       }))
     }
   }
@@ -1494,7 +1502,13 @@ fn replay_gpu(draw: &mut GpuDraw<'_>, command: &Command) -> bool {
         Affine::translate((f64::from(*dx), f64::from(*dy))),
         Compose::Copy,
       );
-      if !paint_rgba8(draw, &premul, image.width, image.height, true) {
+      if !paint_rgba8(
+        draw,
+        &premul,
+        image.width,
+        image.height,
+        SampleQuality::Nearest,
+      ) {
         draw.scene.pop_layer();
         return false;
       }
@@ -1506,7 +1520,7 @@ fn replay_gpu(draw: &mut GpuDraw<'_>, command: &Command) -> bool {
       image,
       transform,
       alpha,
-      nearest,
+      quality,
       shade: _,
       filter: _,
       clips,
@@ -1515,7 +1529,7 @@ fn replay_gpu(draw: &mut GpuDraw<'_>, command: &Command) -> bool {
       push_gpu_opacity(draw.scene, *alpha);
       draw.scene.set_transform(*transform);
       draw.scene.set_blend_mode(source_over());
-      if !paint_rgba8(draw, &image.bytes, image.width, image.height, *nearest) {
+      if !paint_rgba8(draw, &image.bytes, image.width, image.height, *quality) {
         return false;
       }
       draw.scene.fill_rect(&Rect::new(
@@ -1630,18 +1644,14 @@ fn paint_rgba8(
   bytes: &[u8],
   width: u32,
   height: u32,
-  nearest: bool,
+  quality: SampleQuality,
 ) -> bool {
   draw.scene.reset_paint_transform();
   match upload_rgba8(draw, bytes, width, height) {
     ImageUpload::Texture(source) => {
       draw.scene.set_paint(vello_gpu::Image {
         image: source,
-        sampler: ImageSampler::default().with_quality(if nearest {
-          ImageQuality::Low
-        } else {
-          ImageQuality::Medium
-        }),
+        sampler: ImageSampler::default().with_quality(peniko_quality(quality)),
       });
       true
     }
@@ -1865,6 +1875,7 @@ mod tests {
   use crate::paint::record::Brush;
   use crate::paint::record::Clip;
   use crate::paint::record::Command;
+  use crate::paint::record::SampleQuality;
   use crate::paint::shade::Shade;
 
   fn color(r: f32, g: f32, b: f32) -> CssColor {
@@ -2029,7 +2040,7 @@ mod tests {
       image,
       transform: Affine::IDENTITY,
       alpha: 1.0,
-      nearest: true,
+      quality: SampleQuality::Nearest,
       shade: Shade::source_over(),
       filter: crate::paint::record::empty_filter(),
       clips: Arc::from([]),

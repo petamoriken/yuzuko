@@ -1,9 +1,11 @@
 //! Process WebGPU devices. They share the leaked wgpu device with Canvas 2D.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::thread::ThreadId;
 
 use yuzuko_core::op::OpError;
 
@@ -42,7 +44,7 @@ pub fn insert(id: u64, live: LiveDevice) {
 }
 
 pub fn handle(id: u64) -> Result<Handle, OpError> {
-  DEVICES.with(|devices| {
+  let handle = DEVICES.with(|devices| {
     let devices = devices.borrow();
     let live = devices.get(&id).ok_or_else(lost_error)?;
     if live.lost.load(Ordering::SeqCst) {
@@ -53,7 +55,9 @@ pub fn handle(id: u64) -> Result<Handle, OpError> {
       queue: live.queue.clone(),
       lost: Arc::clone(&live.lost),
     })
-  })
+  })?;
+  note_gpu_entry();
+  Ok(handle)
 }
 
 pub fn with_mut<T>(
@@ -132,6 +136,8 @@ pub fn queue_object(id: u64) -> Result<v8::Global<v8::Object>, OpError> {
 
 pub fn clear() {
   DEVICES.with(|devices| devices.borrow_mut().clear());
+  WRAPPERS.with(|wrappers| wrappers.borrow_mut().clear());
+  pending_errors().clear();
 }
 
 /// Drops devices created by a module this reload evaluates again.
@@ -181,15 +187,134 @@ pub fn ensure_adapter() -> bool {
   let _ = yuzuko_window::with_gpu(|_adapter, device, _queue| {
     install_uncaptured(device);
   });
+  note_gpu_entry();
   true
+}
+
+#[derive(Clone, Copy)]
+pub enum UncapturedKind {
+  Validation,
+  OutOfMemory,
+  Internal,
+}
+
+struct PendingError {
+  kind: UncapturedKind,
+  message: String,
+}
+
+static ISOLATE: Mutex<Option<ThreadId>> = Mutex::new(None);
+static PENDING: Mutex<Vec<PendingError>> = Mutex::new(Vec::new());
+
+thread_local! {
+  static WRAPPERS: RefCell<HashMap<u64, v8::Weak<v8::Object>>> =
+    RefCell::new(HashMap::new());
+  static DRAINING: Cell<bool> = const { Cell::new(false) };
+  static DRAIN_QUEUED: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn register_wrapper(
+  scope: &mut v8::PinScope,
+  id: u64,
+  object: v8::Local<v8::Object>,
+) {
+  let unit: &mut v8::PinScope<'_, '_, ()> = &mut *scope;
+  let isolate: &mut v8::Isolate = &mut *unit;
+  let weak = v8::Weak::with_guaranteed_finalizer(
+    isolate,
+    object,
+    Box::new(move || {
+      WRAPPERS.with(|wrappers| {
+        wrappers.borrow_mut().remove(&id);
+      });
+    }),
+  );
+  WRAPPERS.with(|wrappers| {
+    wrappers.borrow_mut().insert(id, weak);
+  });
+}
+
+pub fn wrapper_ids() -> Vec<u64> {
+  WRAPPERS.with(|wrappers| wrappers.borrow().keys().copied().collect())
+}
+
+pub fn wrapper_local<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u64,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let weak = WRAPPERS.with(|wrappers| wrappers.borrow().get(&id).cloned())?;
+  let view: &v8::PinScope<'s, '_, ()> = scope;
+  weak.to_local(view)
 }
 
 fn install_uncaptured(device: &wgpu::Device) {
   use std::sync::Once;
   static ONCE: Once = Once::new();
   ONCE.call_once(|| {
-    device.on_uncaptured_error(Arc::new(|error| {
-      eprintln!("yuzuko: uncaptured WebGPU error: {error}");
-    }));
+    *isolate_thread() = Some(std::thread::current().id());
+    device.on_uncaptured_error(Arc::new(record_uncaptured));
   });
+}
+
+fn record_uncaptured(error: wgpu::Error) {
+  let message = error.to_string();
+  let kind = match error {
+    wgpu::Error::OutOfMemory { .. } => UncapturedKind::OutOfMemory,
+    wgpu::Error::Internal { .. } => UncapturedKind::Internal,
+    wgpu::Error::Validation { .. } => UncapturedKind::Validation,
+  };
+  pending_errors().push(PendingError { kind, message });
+  if on_isolate_thread() {
+    schedule_drain();
+  }
+}
+
+fn note_gpu_entry() {
+  if on_isolate_thread() && !pending_errors().is_empty() {
+    schedule_drain();
+  }
+}
+
+fn schedule_drain() {
+  if DRAINING.with(Cell::get) {
+    return;
+  }
+  if DRAIN_QUEUED.with(|queued| queued.replace(true)) {
+    return;
+  }
+  yuzuko_core::enqueue(|scope| {
+    DRAIN_QUEUED.with(|queued| queued.set(false));
+    drain_uncaptured(scope);
+  });
+}
+
+fn drain_uncaptured(scope: &mut v8::PinScope) {
+  if DRAINING.with(|draining| draining.replace(true)) {
+    return;
+  }
+  loop {
+    let batch: Vec<PendingError> = pending_errors().drain(..).collect();
+    if batch.is_empty() {
+      break;
+    }
+    for error in batch {
+      crate::device::dispatch_uncaptured(scope, error.kind, error.message);
+    }
+  }
+  DRAINING.with(|draining| draining.set(false));
+  if !pending_errors().is_empty() {
+    schedule_drain();
+  }
+}
+
+fn pending_errors() -> std::sync::MutexGuard<'static, Vec<PendingError>> {
+  PENDING.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+fn isolate_thread() -> std::sync::MutexGuard<'static, Option<ThreadId>> {
+  ISOLATE.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+fn on_isolate_thread() -> bool {
+  *isolate_thread() == Some(std::thread::current().id())
 }

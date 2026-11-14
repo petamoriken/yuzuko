@@ -1309,3 +1309,196 @@ Yuzuko.test("debug markers on the command encoder and on passes", async () => {
   bundle.finish();
   device.destroy();
 });
+
+Yuzuko.test("wgslLanguageFeatures lists the implemented extensions", () => {
+  const names = [...navigator.gpu.wgslLanguageFeatures];
+  assert(
+    names.includes("readonly_and_readwrite_storage_textures"),
+    "storage textures",
+  );
+  assert(names.includes("packed_4x8_integer_dot_product"), "dot product");
+  assert(names.includes("pointer_composite_access"), "pointer composite");
+  assert(
+    !names.includes("unrestricted_pointer_parameters"),
+    "unimplemented extension",
+  );
+});
+
+Yuzuko.test("GPUUncapturedErrorEvent carries a GPU error", () => {
+  const error = new GPUValidationError("nope");
+  const event = new GPUUncapturedErrorEvent("uncapturederror", { error });
+  assert(event instanceof GPUUncapturedErrorEvent, "event");
+  assert(event.error === error, "error");
+  assert(event.isTrusted === false, "script event");
+  let missing = false;
+  try {
+    new GPUUncapturedErrorEvent("uncapturederror", {});
+  } catch (caught) {
+    missing = caught instanceof TypeError;
+  }
+  assert(missing, "required error");
+});
+
+Yuzuko.test("mapAsync writes back and detaches the range", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const buffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+  });
+  await buffer.mapAsync(GPUMapMode.WRITE);
+  const mapped = buffer.getMappedRange();
+  new Uint8Array(mapped).set([
+    9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6,
+  ]);
+  buffer.unmap();
+  assert(mapped.byteLength === 0, "detached");
+  const bytes = await readBytes(device, buffer, 16);
+  assert(bytes[0] === 9 && bytes[15] === 6, `written ${bytes}`);
+
+  await buffer.mapAsync(GPUMapMode.WRITE);
+  buffer.getMappedRange(0, 8);
+  let overlap = false;
+  try {
+    buffer.getMappedRange(4, 8);
+  } catch (caught) {
+    overlap = caught.name === "OperationError";
+  }
+  assert(overlap, "overlap");
+  let align = false;
+  try {
+    buffer.getMappedRange(4, 4);
+  } catch (caught) {
+    align = caught.name === "OperationError";
+  }
+  assert(align, "offset alignment");
+  buffer.unmap();
+
+  let badOffset = false;
+  try {
+    await buffer.mapAsync(GPUMapMode.WRITE, 4, 4);
+  } catch (caught) {
+    badOffset = caught.name === "OperationError";
+  }
+  assert(badOffset, "map offset");
+  device.destroy();
+});
+
+Yuzuko.test("writeTimestamp follows the timestamp feature", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const encoder = device.createCommandEncoder();
+  if (!device.features.has("timestamp-query")) {
+    let unsupported = false;
+    try {
+      encoder.writeTimestamp(
+        device.createQuerySet({ type: "occlusion", count: 1 }),
+        0,
+      );
+    } catch (caught) {
+      unsupported = caught.name === "NotSupportedError";
+    }
+    assert(unsupported, "timestamp write");
+    device.destroy();
+    return;
+  }
+  const queries = device.createQuerySet({ type: "timestamp", count: 4 });
+  let inside = true;
+  try {
+    encoder.writeTimestamp(queries, 0);
+  } catch (caught) {
+    assert(caught.name === "NotSupportedError", "inside encoder");
+    inside = false;
+  }
+  if (inside) {
+    const compute = encoder.beginComputePass();
+    compute.writeTimestamp(queries, 1);
+    compute.end();
+    const color = device.createTexture({
+      size: [1, 1],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: color.createView(),
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+    });
+    pass.writeTimestamp(queries, 2);
+    pass.end();
+    const occlusion = device.createQuerySet({ type: "occlusion", count: 1 });
+    let typed = false;
+    try {
+      encoder.writeTimestamp(occlusion, 0);
+    } catch (caught) {
+      typed = caught instanceof TypeError;
+    }
+    assert(typed, "occlusion query set");
+    device.queue.submit([encoder.finish()]);
+    queries.destroy();
+    const again = device.createCommandEncoder();
+    device.pushErrorScope("validation");
+    again.writeTimestamp(queries, 0);
+    device.queue.submit([again.finish()]);
+    const error = await device.popErrorScope();
+    assert(error instanceof GPUValidationError, "destroyed timestamp");
+  }
+  device.destroy();
+});
+
+Yuzuko.test("an uncaptured validation error is an event", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  assert(device instanceof EventTarget, "event target");
+  const source = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_SRC,
+  });
+  const destination = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_DST,
+  });
+  let uncaptured = 0;
+  device.onuncapturederror = (event) => {
+    if (event instanceof GPUUncapturedErrorEvent
+      && event.error instanceof GPUValidationError
+      && event.isTrusted === true) {
+      uncaptured += 1;
+    }
+  };
+  device.pushErrorScope("validation");
+  const scoped = device.createCommandEncoder();
+  scoped.copyBufferToBuffer(source, 0, destination, 0, 16);
+  device.queue.submit([scoped.finish()]);
+  const captured = await device.popErrorScope();
+  assert(captured instanceof GPUValidationError, "scoped validation");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert(uncaptured === 0, "scope captured the error");
+
+  const seen = new Promise((resolve) => {
+    device.addEventListener("uncapturederror", resolve, { once: true });
+  });
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(source, 0, destination, 0, 16);
+  device.queue.submit([encoder.finish()]);
+  const event = await Promise.race([
+    seen,
+    new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
+  ]);
+  assert(event instanceof GPUUncapturedErrorEvent, "event type");
+  assert(event.error instanceof GPUValidationError, "validation");
+  assert(event.isTrusted === true, "trusted");
+  assert(uncaptured >= 1, "handler");
+  device.destroy();
+});

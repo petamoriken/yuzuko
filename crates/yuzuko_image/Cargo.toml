@@ -20,5 +20,6 @@ yuzuko_core.workspace = true
 yuzuko_macros.workspace = true
 yuzuko_window.workspace = true
 yuzuko_winter.workspace = true
+gif = "0.13"
 zune-core = "0.5"
 zune-jpeg = "0.5"

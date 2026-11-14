@@ -1,6 +1,6 @@
 //! Frame sequences for `ImageDecoder`.
 //!
-//! Still images stay on the single-frame decoders. An animated PNG is
+//! Still images stay on the single-frame decoders. An animated PNG or GIF is
 //! composited here. WebP and JPEG XL render each frame themselves.
 
 use std::io::Cursor;
@@ -35,6 +35,8 @@ pub(super) fn decode_all(
     Some(Kind::Webp) => decode_webp_frames(bytes, to_srgb),
     Some(Kind::Jxl) => decode_jxl_frames(bytes, to_srgb),
     Some(Kind::Avif) => still(super::decode_avif(bytes, to_srgb)),
+    Some(Kind::Gif) => decode_gif_frames(bytes, to_srgb),
+    Some(Kind::Bmp) => still(super::decode_bmp(bytes, to_srgb)),
     None => Err(DecodeError::Unsupported),
   }
 }
@@ -620,6 +622,253 @@ fn extra_plays(plays: u32) -> f64 {
     f64::INFINITY
   } else {
     f64::from(plays - 1)
+  }
+}
+
+pub(super) fn decode_gif(
+  bytes: &[u8],
+  to_srgb: bool,
+) -> Result<Decoded, DecodeError> {
+  let loaded = load_gif(bytes, to_srgb, Some(1))?;
+  let frame = loaded
+    .frames
+    .into_iter()
+    .next()
+    .ok_or(DecodeError::Corrupt)?;
+  Ok(Decoded {
+    raster: frame.raster,
+    orientation: frame.orientation,
+    yuv: None,
+  })
+}
+
+fn decode_gif_frames(
+  bytes: &[u8],
+  to_srgb: bool,
+) -> Result<ImageFrames, DecodeError> {
+  let loaded = load_gif(bytes, to_srgb, None)?;
+  if loaded.frames.len() < 2 {
+    let mut frames = loaded.frames;
+    if let Some(frame) = frames.first_mut() {
+      frame.duration_us = None;
+    }
+    return Ok(ImageFrames {
+      frames,
+      animated: false,
+      repetition_count: 0.0,
+    });
+  }
+  Ok(ImageFrames {
+    frames: loaded.frames,
+    animated: true,
+    repetition_count: gif_repetition(loaded.repeat),
+  })
+}
+
+struct LoadedGif {
+  frames: Vec<ImageFrame>,
+  repeat: gif::Repeat,
+}
+
+struct GifCopied {
+  left: u32,
+  top: u32,
+  width: u32,
+  height: u32,
+  delay: u16,
+  dispose: gif::DisposalMethod,
+  buffer: Vec<u8>,
+}
+
+struct GifPending {
+  dispose: gif::DisposalMethod,
+  left: u32,
+  top: u32,
+  width: u32,
+  height: u32,
+}
+
+fn load_gif(
+  bytes: &[u8],
+  to_srgb: bool,
+  limit: Option<usize>,
+) -> Result<LoadedGif, DecodeError> {
+  let mut options = gif::DecodeOptions::new();
+  options.set_color_output(gif::ColorOutput::RGBA);
+  options.check_frame_consistency(true);
+  let mut decoder = options
+    .read_info(Cursor::new(bytes))
+    .map_err(|_| DecodeError::Corrupt)?;
+  let width = u32::from(decoder.width());
+  let height = u32::from(decoder.height());
+  if width == 0 || height == 0 {
+    return Err(DecodeError::Corrupt);
+  }
+  if !crate::raster::within_limits(width, height) {
+    return Err(DecodeError::TooLarge);
+  }
+  let pixels = (width as usize)
+    .checked_mul(height as usize)
+    .and_then(|count| count.checked_mul(4))
+    .ok_or(DecodeError::TooLarge)?;
+  let mut canvas = vec![0u8; pixels];
+  let mut saved: Option<Vec<u8>> = None;
+  let mut pending: Option<GifPending> = None;
+  let mut frames = Vec::new();
+  loop {
+    if limit.is_some_and(|limit| frames.len() >= limit) {
+      break;
+    }
+    let copied = match decoder.read_next_frame() {
+      Ok(Some(frame)) => {
+        let frame_w = u32::from(frame.width);
+        let frame_h = u32::from(frame.height);
+        let expected = (frame_w as usize)
+          .saturating_mul(frame_h as usize)
+          .saturating_mul(4);
+        let Some(buffer) = frame.buffer.get(..expected) else {
+          return Err(DecodeError::Corrupt);
+        };
+        GifCopied {
+          left: u32::from(frame.left),
+          top: u32::from(frame.top),
+          width: frame_w,
+          height: frame_h,
+          delay: frame.delay,
+          dispose: frame.dispose,
+          buffer: buffer.to_vec(),
+        }
+      }
+      Ok(None) => break,
+      Err(_) => return Err(DecodeError::Corrupt),
+    };
+    if !rect_inside(
+      copied.left,
+      copied.top,
+      copied.width,
+      copied.height,
+      width,
+      height,
+    ) {
+      return Err(DecodeError::Corrupt);
+    }
+    apply_gif_dispose(&mut canvas, width, pending.take(), &mut saved)?;
+    if copied.dispose == gif::DisposalMethod::Previous {
+      saved = Some(canvas.clone());
+    }
+    blit_gif(
+      &mut canvas,
+      width,
+      &copied.buffer,
+      copied.left,
+      copied.top,
+      copied.width,
+      copied.height,
+    );
+    let mut raster = Raster::from_rgba8(
+      width,
+      height,
+      crate::raster::ColorSpace::Srgb,
+      &canvas,
+    )
+    .map_err(super::pixel_error)?;
+    let decoded = super::finish(&mut raster, None, None, to_srgb, 1)?;
+    frames.push(ImageFrame {
+      raster: decoded.raster,
+      yuv: None,
+      orientation: decoded.orientation,
+      duration_us: Some(gif_delay_us(copied.delay)),
+    });
+    pending = Some(GifPending {
+      dispose: copied.dispose,
+      left: copied.left,
+      top: copied.top,
+      width: copied.width,
+      height: copied.height,
+    });
+  }
+  if frames.is_empty() {
+    return Err(DecodeError::Corrupt);
+  }
+  Ok(LoadedGif {
+    frames,
+    repeat: decoder.repeat(),
+  })
+}
+
+fn apply_gif_dispose(
+  canvas: &mut [u8],
+  canvas_w: u32,
+  pending: Option<GifPending>,
+  saved: &mut Option<Vec<u8>>,
+) -> Result<(), DecodeError> {
+  let Some(pending) = pending else {
+    return Ok(());
+  };
+  match pending.dispose {
+    gif::DisposalMethod::Any | gif::DisposalMethod::Keep => Ok(()),
+    gif::DisposalMethod::Background => {
+      clear_rect(
+        canvas,
+        canvas_w,
+        pending.left,
+        pending.top,
+        pending.width,
+        pending.height,
+      );
+      Ok(())
+    }
+    gif::DisposalMethod::Previous => {
+      let Some(previous) = saved.take() else {
+        return Err(DecodeError::Corrupt);
+      };
+      if previous.len() != canvas.len() {
+        return Err(DecodeError::Corrupt);
+      }
+      canvas.copy_from_slice(&previous);
+      Ok(())
+    }
+  }
+}
+
+fn blit_gif(
+  canvas: &mut [u8],
+  canvas_w: u32,
+  src: &[u8],
+  left: u32,
+  top: u32,
+  width: u32,
+  height: u32,
+) {
+  for row in 0..height {
+    for col in 0..width {
+      let src_at = (row * width + col) as usize * 4;
+      if src[src_at + 3] == 0 {
+        continue;
+      }
+      let dst_at = ((top + row) * canvas_w + left + col) as usize * 4;
+      canvas[dst_at..dst_at + 4].copy_from_slice(&src[src_at..src_at + 4]);
+    }
+  }
+}
+
+/// Chrome treats a delay below 2 centiseconds as 100 ms. Otherwise one
+/// centisecond is 10 ms.
+fn gif_delay_us(centiseconds: u16) -> f64 {
+  if centiseconds < 2 {
+    100_000.0
+  } else {
+    f64::from(centiseconds) * 10_000.0
+  }
+}
+
+/// Netscape loop 0 is [`gif::Repeat::Infinite`]. `Finite(0)` is that crate's
+/// default when the loop block is absent; treat it as endless too. `Finite(n)`
+/// is `n - 1` extra plays, matching WebP `LoopCount::Times`.
+fn gif_repetition(repeat: gif::Repeat) -> f64 {
+  match repeat {
+    gif::Repeat::Infinite | gif::Repeat::Finite(0) => f64::INFINITY,
+    gif::Repeat::Finite(count) => f64::from(count - 1),
   }
 }
 

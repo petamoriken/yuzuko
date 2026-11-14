@@ -211,6 +211,20 @@ pub struct ShapedText {
   pub clusters: Vec<ShapedCluster>,
 }
 
+impl ShapedText {
+  /// Union of glyph-outline bounds in advance space. Empty when no glyph
+  /// has an outline, which includes a space.
+  pub fn ink_union(&self) -> Option<Ink> {
+    let mut ink = None;
+    for cluster in &self.clusters {
+      if let Some(part) = cluster.ink {
+        union_ink(&mut ink, (part.x0, part.y0, part.x1, part.y1));
+      }
+    }
+    ink
+  }
+}
+
 fn shaping_language(lang: &str) -> Option<Language> {
   if lang.is_empty() || lang == "inherit" {
     return None;
@@ -534,5 +548,23 @@ mod tests {
       .collect();
     assert_eq!(runs_x.len(), 2);
     assert!(runs_x[1] > runs_x[0]);
+  }
+
+  #[test]
+  fn ink_union_covers_drawn_glyphs() {
+    let font = FontDesc {
+      size: 80.0,
+      ..FontDesc::default()
+    };
+    let letter = shape("A", &font, false, "inherit");
+    let space = shape(" ", &font, false, "inherit");
+    let ink = letter.ink_union().expect("letter ink");
+    assert!(ink.x1 > ink.x0);
+    assert!(ink.y1 > ink.y0);
+    assert!(space.ink_union().is_none());
+    let descender = shape("g", &font, false, "inherit")
+      .ink_union()
+      .expect("descender ink");
+    assert!(descender.y1 > ink.y1);
   }
 }

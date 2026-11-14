@@ -382,8 +382,17 @@ impl CanvasPattern {
 
 pub struct TextMetrics {
   width: f64,
-  ascent: f64,
-  descent: f64,
+  actual_left: f64,
+  actual_right: f64,
+  actual_ascent: f64,
+  actual_descent: f64,
+  font_ascent: f64,
+  font_descent: f64,
+  em_ascent: f64,
+  em_descent: f64,
+  hanging: f64,
+  alphabetic: f64,
+  ideographic: f64,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for TextMetrics {
@@ -395,11 +404,45 @@ unsafe impl v8::cppgc::GarbageCollected for TextMetrics {
 }
 
 impl TextMetrics {
-  pub fn from_layout(width: f64, ascent: f64, descent: f64) -> Self {
+  /// Ink bounds relative to `textAlign` and `textBaseline`.
+  ///
+  /// `actualBoundingBox*` is the glyph-outline box. An empty outline reports
+  /// zeros. Font and em boxes use the typographic ascent and descent, shifted
+  /// onto the selected baseline. Positive baseline distances point down.
+  pub fn from_shaped(
+    shaped: &crate::text::ShapedText,
+    align: crate::paint::record::Align,
+    baseline: crate::paint::record::Baseline,
+    rtl: bool,
+  ) -> Self {
+    let width = f64::from(shaped.width);
+    let ascent = f64::from(shaped.ascent);
+    let descent = f64::from(shaped.descent);
+    let align = align.offset(rtl, width);
+    let baseline = baseline.offset(ascent, descent);
+    let (actual_left, actual_right, actual_ascent, actual_descent) =
+      match shaped.ink_union() {
+        Some(ink) => (
+          -(align + f64::from(ink.x0)),
+          align + f64::from(ink.x1),
+          -(baseline + f64::from(ink.y0)),
+          baseline + f64::from(ink.y1),
+        ),
+        None => (0.0, 0.0, 0.0, 0.0),
+      };
     Self {
       width,
-      ascent,
-      descent,
+      actual_left,
+      actual_right,
+      actual_ascent,
+      actual_descent,
+      font_ascent: ascent - baseline,
+      font_descent: descent + baseline,
+      em_ascent: ascent - baseline,
+      em_descent: descent + baseline,
+      hanging: baseline - 0.8 * ascent,
+      alphabetic: baseline,
+      ideographic: baseline + descent,
     }
   }
 }
@@ -413,57 +456,57 @@ impl TextMetrics {
 
   #[getter]
   fn actual_bounding_box_ascent(&self) -> f64 {
-    self.ascent
+    self.actual_ascent
   }
 
   #[getter]
   fn actual_bounding_box_descent(&self) -> f64 {
-    self.descent
+    self.actual_descent
   }
 
   #[getter]
   fn font_bounding_box_ascent(&self) -> f64 {
-    self.ascent
+    self.font_ascent
   }
 
   #[getter]
   fn font_bounding_box_descent(&self) -> f64 {
-    self.descent
+    self.font_descent
   }
 
   #[getter]
   fn actual_bounding_box_left(&self) -> f64 {
-    0.0
+    self.actual_left
   }
 
   #[getter]
   fn actual_bounding_box_right(&self) -> f64 {
-    self.width
+    self.actual_right
   }
 
   #[getter]
   fn em_height_ascent(&self) -> f64 {
-    self.ascent
+    self.em_ascent
   }
 
   #[getter]
   fn em_height_descent(&self) -> f64 {
-    self.descent
+    self.em_descent
   }
 
   #[getter]
   fn hanging_baseline(&self) -> f64 {
-    self.ascent * 0.2
+    self.hanging
   }
 
   #[getter]
   fn alphabetic_baseline(&self) -> f64 {
-    0.0
+    self.alphabetic
   }
 
   #[getter]
   fn ideographic_baseline(&self) -> f64 {
-    -self.descent
+    self.ideographic
   }
 }
 
@@ -545,4 +588,49 @@ fn expand_radii(values: &[(f64, f64)]) -> [f64; 8] {
     _ => (pair(0), pair(1), pair(2), pair(3)),
   };
   [tl.0, tl.1, tr.0, tr.1, br.0, br.1, bl.0, bl.1]
+}
+
+#[cfg(test)]
+mod tests {
+  use super::TextMetrics;
+  use crate::paint::record::Align;
+  use crate::paint::record::Baseline;
+  use crate::paint::record::FontDesc;
+  use crate::text::shape;
+
+  fn metrics(text: &str, align: Align, baseline: Baseline) -> TextMetrics {
+    let font = FontDesc {
+      size: 80.0,
+      ..FontDesc::default()
+    };
+    let shaped = shape(text, &font, false, "inherit");
+    TextMetrics::from_shaped(&shaped, align, baseline, false)
+  }
+
+  #[test]
+  fn actual_bounds_follow_ink_and_alignment() {
+    let letter = metrics("A", Align::Left, Baseline::Alphabetic);
+    let space = metrics(" ", Align::Left, Baseline::Alphabetic);
+    let descender = metrics("g", Align::Left, Baseline::Alphabetic);
+    assert_eq!(space.actual_ascent, 0.0);
+    assert_eq!(space.actual_descent, 0.0);
+    assert!(letter.actual_ascent > 0.0);
+    assert!(
+      letter.actual_left != 0.0 || (letter.actual_right - letter.width).abs() > 0.5
+    );
+    assert!(descender.actual_descent > letter.actual_descent);
+    let centered = metrics("A", Align::Center, Baseline::Alphabetic);
+    assert!(centered.actual_left > letter.actual_left + letter.width * 0.3);
+    assert_eq!(letter.alphabetic, 0.0);
+    assert!(letter.hanging < 0.0);
+    assert!(letter.ideographic > 0.0);
+    let top = metrics("A", Align::Left, Baseline::Top);
+    assert!(top.alphabetic > 0.0);
+    assert!(top.font_ascent < letter.font_ascent);
+    let empty = metrics("", Align::Left, Baseline::Alphabetic);
+    assert_eq!(empty.actual_left, 0.0);
+    assert_eq!(empty.actual_right, 0.0);
+    assert_eq!(empty.actual_ascent, 0.0);
+    assert_eq!(empty.actual_descent, 0.0);
+  }
 }

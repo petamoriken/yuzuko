@@ -1138,6 +1138,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
 name = "combine"
 version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2384,6 +2390,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eecf2d5dc9b66b732b97707a0210906b1d30523eb773193ab777c0c84b3e8d5"
 dependencies = [
  "polyval",
+]
+
+[[package]]
+name = "gif"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ae047235e33e2829703574b54fdec96bfbad892062d97fed2f76022287de61b"
+dependencies = [
+ "color_quant",
+ "weezl",
 ]
 
 [[package]]
@@ -8953,6 +8969,7 @@ dependencies = [
 name = "yuzuko_codec"
 version = "0.2.0"
 dependencies = [
+ "lewton",
  "libloading 0.9.0",
  "ruopus",
  "symphonia",
@@ -9005,6 +9022,7 @@ name = "yuzuko_image"
 version = "0.2.0"
 dependencies = [
  "avif-parse",
+ "gif",
  "half",
  "image-webp",
  "jxl-oxide",
@@ -9039,6 +9057,7 @@ dependencies = [
  "v8",
  "wgpu",
  "yuzuko_core",
+ "yuzuko_dom",
  "yuzuko_image",
  "yuzuko_macros",
  "yuzuko_window",

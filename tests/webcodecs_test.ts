@@ -491,7 +491,7 @@ Yuzuko.test("unsupported codecs do not decode", async () => {
     assert(seen === "NotSupportedError", `${codec} ${seen}`);
     assert(frames.length === 0, codec);
   }
-  for (const codec of ["flac", "vorbis"]) {
+  for (const codec of ["flac"]) {
     let seen = "";
     const audio = new AudioDecoder({
       output: () => {},
@@ -1461,6 +1461,19 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
     numberOfChannels: 2,
   });
   assert(opusFuture.supported === false, "opus.123");
+  const vorbis = await AudioDecoder.isConfigSupported({
+    codec: "vorbis",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(vorbis.supported === true, "vorbis");
+  assert(vorbis.config?.codec === "vorbis", "vorbis codec");
+  const vorbisFuture = await AudioDecoder.isConfigSupported({
+    codec: "vorbis.123",
+    sampleRate: 48000,
+    numberOfChannels: 2,
+  });
+  assert(vorbisFuture.supported === false, "vorbis.123");
   const aacFuture = await AudioDecoder.isConfigSupported({
     codec: "mp4a.FF.9",
     sampleRate: 48000,

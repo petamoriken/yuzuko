@@ -205,9 +205,10 @@ fn paint_fill(
   if drawing.state.alpha <= 0.0 && !shade.paints_when_clear() {
     return;
   }
-  let Some(brush) =
-    record::resolve_style(&drawing.state.fill, drawing.state.nearest())
-  else {
+  let Some(brush) = record::resolve_style(
+    &drawing.state.fill,
+    drawing.state.pattern_quality(),
+  ) else {
     return;
   };
   // Shapes and `Path2D` are transformed at paint time. The current path was
@@ -247,9 +248,10 @@ fn paint_stroke(
   if drawing.state.alpha <= 0.0 && !shade.paints_when_clear() {
     return;
   }
-  let Some(brush) =
-    record::resolve_style(&drawing.state.stroke_style, drawing.state.nearest())
-  else {
+  let Some(brush) = record::resolve_style(
+    &drawing.state.stroke_style,
+    drawing.state.pattern_quality(),
+  ) else {
     return;
   };
   let matrix = drawing.state.transform;
@@ -659,7 +661,7 @@ impl Context2D {
         image: Arc::new(image),
         transform: Affine::IDENTITY,
         alpha: closed.alpha,
-        nearest: true,
+        quality: record::SampleQuality::Nearest,
         shade,
         filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: Arc::from(closed.clips.as_slice()),
@@ -1471,12 +1473,17 @@ impl Context2D {
       let image = crop_image(&source, sx, sy, sw, sh)?;
       let placement = Affine::translate((dx, dy))
         * Affine::scale_non_uniform(dw / sw, dh / sh);
+      let (image, transform, quality) = crate::paint::sample::prepare_draw(
+        image,
+        drawing.state.transform * placement,
+        drawing.state.sample_quality(),
+      );
       let shade = drawing.state.shade();
       drawing.push_command(Command::Image {
         image: Arc::new(image),
-        transform: drawing.state.transform * placement,
+        transform,
         alpha: drawing.state.alpha,
-        nearest: drawing.state.nearest(),
+        quality,
         shade,
         filter: drawing.state.paint_filter(drawing.width, drawing.height),
         clips: drawing.state.clips(),
@@ -1790,10 +1797,11 @@ impl Context2D {
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
       );
-      Ok(New(TextMetrics::from_layout(
-        f64::from(shaped.width),
-        f64::from(shaped.ascent),
-        f64::from(shaped.descent),
+      Ok(New(TextMetrics::from_shaped(
+        &shaped,
+        drawing.state.align,
+        drawing.state.baseline,
+        drawing.state.direction.is_rtl(),
       )))
     })
   }
@@ -1955,7 +1963,7 @@ impl Context2D {
         if stroke {
           let Some(brush) = record::resolve_style(
             &drawing.state.stroke_style,
-            drawing.state.nearest(),
+            drawing.state.pattern_quality(),
           ) else {
             continue;
           };
@@ -1972,9 +1980,10 @@ impl Context2D {
             clips: drawing.state.clips(),
           });
         } else {
-          let Some(brush) =
-            record::resolve_style(&drawing.state.fill, drawing.state.nearest())
-          else {
+          let Some(brush) = record::resolve_style(
+            &drawing.state.fill,
+            drawing.state.pattern_quality(),
+          ) else {
             continue;
           };
           drawing.push_command(Command::Glyphs {

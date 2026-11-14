@@ -79,7 +79,7 @@ pub enum Brush {
     image: Arc<ImageBuf>,
     repeat_x: bool,
     repeat_y: bool,
-    nearest: bool,
+    quality: SampleQuality,
   },
 }
 
@@ -143,7 +143,7 @@ pub enum Command {
     image: Arc<ImageBuf>,
     transform: Affine,
     alpha: f32,
-    nearest: bool,
+    quality: SampleQuality,
     shade: Shade,
     filter: Arc<[crate::paint::filter::Resolved]>,
     clips: Arc<[Clip]>,
@@ -282,7 +282,10 @@ pub enum Style {
   Pattern(u64),
 }
 
-/// Canvas `imageSmoothingQuality`. All three sample linearly.
+/// Canvas `imageSmoothingQuality`.
+///
+/// `"low"` samples bilinear. `"medium"` samples bicubic. `"high"` prefilters
+/// a scaled `drawImage` with Lanczos-3, then samples that bitmap bilinear.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SmoothingQuality {
   Low,
@@ -307,6 +310,19 @@ impl SmoothingQuality {
       Self::High => "high",
     }
   }
+}
+
+/// Kernel stored on an image command.
+///
+/// `Nearest` is nearest-neighbor. `Low` is bilinear. `Medium` and `High` are
+/// bicubic. `drawImage` at `"high"` resamples before recording and stores
+/// `Low` on the resampled bitmap.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SampleQuality {
+  Nearest,
+  Low,
+  Medium,
+  High,
 }
 
 #[derive(Clone, Debug)]
@@ -410,9 +426,25 @@ impl State {
       .with_dashes(self.dash_offset, dash)
   }
 
-  /// `imageSmoothingEnabled: false` selects nearest. Every quality is linear.
-  pub fn nearest(&self) -> bool {
-    !self.smoothing
+  /// `imageSmoothingEnabled: false` selects nearest-neighbor.
+  pub fn sample_quality(&self) -> SampleQuality {
+    if !self.smoothing {
+      return SampleQuality::Nearest;
+    }
+    match self.quality {
+      SmoothingQuality::Low => SampleQuality::Low,
+      SmoothingQuality::Medium => SampleQuality::Medium,
+      SmoothingQuality::High => SampleQuality::High,
+    }
+  }
+
+  /// Pattern brushes have no destination size at record time, so `"high"`
+  /// uses the same bicubic kernel as `"medium"`.
+  pub fn pattern_quality(&self) -> SampleQuality {
+    match self.sample_quality() {
+      SampleQuality::High => SampleQuality::Medium,
+      quality => quality,
+    }
   }
 
   pub fn clips(&self) -> Arc<[Clip]> {
@@ -814,7 +846,7 @@ pub fn style_object<'s>(
   })
 }
 
-pub fn resolve_style(style: &Style, nearest: bool) -> Option<Brush> {
+pub fn resolve_style(style: &Style, quality: SampleQuality) -> Option<Brush> {
   match style {
     Style::Color(color) => Some(Brush::Solid(*color)),
     Style::Gradient(id) => with_gradient(*id, |gradient| {
@@ -837,7 +869,7 @@ pub fn resolve_style(style: &Style, nearest: bool) -> Option<Brush> {
       image: pattern.image,
       repeat_x: pattern.repeat_x,
       repeat_y: pattern.repeat_y,
-      nearest,
+      quality,
     }),
   }
 }

@@ -170,17 +170,21 @@ fn format_number(value: f32) -> String {
 fn parse_function(text: &str) -> Option<CssColor> {
   let (name, body) = text.split_once('(')?;
   let body = body.strip_suffix(')')?.trim();
-  match name.trim() {
+  let name = name.trim();
+  match name {
     "rgb" | "rgba" => parse_rgb(body, false),
     "hsl" | "hsla" => parse_hsl(body),
     "color" => parse_color_function(body),
+    "hwb" | "lab" | "lch" | "oklab" | "oklch" | "color-mix" => {
+      crate::paint::modern::parse_modern(name, body)
+    }
     _ => None,
   }
 }
 
 fn parse_rgb(body: &str, unit: bool) -> Option<CssColor> {
-  let (channels, alpha) = split_alpha(body)?;
-  let parts = split_channels(channels)?;
+  let (channels, alpha) = crate::paint::modern::split_alpha(body)?;
+  let parts = crate::paint::modern::split_parts(channels)?;
   if parts.len() != 3 {
     return None;
   }
@@ -201,8 +205,8 @@ fn parse_rgb(body: &str, unit: bool) -> Option<CssColor> {
 }
 
 fn parse_hsl(body: &str) -> Option<CssColor> {
-  let (channels, alpha) = split_alpha(body)?;
-  let parts = split_channels(channels)?;
+  let (channels, alpha) = crate::paint::modern::split_alpha(body)?;
+  let parts = crate::paint::modern::split_parts(channels)?;
   if parts.len() != 3 {
     return None;
   }
@@ -221,16 +225,27 @@ fn parse_hsl(body: &str) -> Option<CssColor> {
 }
 
 fn parse_color_function(body: &str) -> Option<CssColor> {
-  let mut parts = body.split_whitespace();
-  let space = parts.next()?;
-  let rest: Vec<&str> = parts.collect();
-  let joined = rest.join(" ");
-  let p3 = match space {
-    "srgb" => false,
-    "display-p3" => true,
+  let body = body.trim();
+  let space_end = body.find(char::is_whitespace)?;
+  let space = &body[..space_end];
+  let rest = body[space_end..].trim();
+  let (p3, linear) = match space {
+    "srgb" => (false, false),
+    "display-p3" => (true, false),
+    "srgb-linear" => (false, true),
     _ => return None,
   };
-  let mut color = parse_rgb(&joined, true)?;
+  let mut color = parse_rgb(rest, true)?;
+  if linear {
+    let encoded = crate::paint::modern::encode_srgb([
+      f64::from(color.r),
+      f64::from(color.g),
+      f64::from(color.b),
+    ]);
+    color.r = encoded[0] as f32;
+    color.g = encoded[1] as f32;
+    color.b = encoded[2] as f32;
+  }
   color.syntax = if p3 {
     ColorSyntax::DisplayP3
   } else {
@@ -239,43 +254,9 @@ fn parse_color_function(body: &str) -> Option<CssColor> {
   Some(color)
 }
 
-fn split_alpha(body: &str) -> Option<(&str, Option<f64>)> {
-  if let Some((channels, alpha)) = body.split_once('/') {
-    return Some((channels.trim(), Some(alpha_component(alpha.trim())?)));
-  }
-  let comma: Vec<&str> = body.split(',').map(str::trim).collect();
-  if comma.len() == 4 {
-    let alpha = alpha_component(comma[3])?;
-    return Some((&body[..body.rfind(',')?], Some(alpha)));
-  }
-  if comma.len() == 3 || !body.contains(',') {
-    return Some((body, None));
-  }
-  None
-}
-
-fn split_channels(body: &str) -> Option<Vec<&str>> {
-  let body = body.trim().trim_end_matches(',').trim();
-  if body.contains(',') {
-    let parts: Vec<&str> = body
-      .split(',')
-      .map(str::trim)
-      .filter(|part| !part.is_empty())
-      .collect();
-    return Some(parts);
-  }
-  Some(body.split_whitespace().collect())
-}
-
 fn component(text: &str, unit: bool) -> Option<f64> {
-  if let Some(percent) = text.strip_suffix('%') {
-    return percent
-      .trim()
-      .parse::<f64>()
-      .ok()
-      .map(|value| value / 100.0);
-  }
-  let value: f64 = text.parse().ok()?;
+  let basis = if unit { 1.0 } else { 255.0 };
+  let value = crate::paint::modern::eval_component(text, basis)?;
   if unit {
     Some(value)
   } else {
@@ -284,36 +265,14 @@ fn component(text: &str, unit: bool) -> Option<f64> {
 }
 
 fn percent(text: &str) -> Option<f64> {
-  let text = text.strip_suffix('%').unwrap_or(text).trim();
-  text.parse::<f64>().ok().map(|value| value / 100.0)
-}
-
-fn alpha_component(text: &str) -> Option<f64> {
-  if let Some(percent) = text.strip_suffix('%') {
-    return percent
-      .trim()
-      .parse::<f64>()
-      .ok()
-      .map(|value| value / 100.0);
-  }
-  text.parse().ok()
+  crate::paint::modern::eval_component(text, 100.0).map(|value| value / 100.0)
 }
 
 fn hue(text: &str) -> Option<f64> {
-  let (number, turn) = if let Some(rest) = text.strip_suffix("deg") {
-    (rest.trim(), 1.0)
-  } else if let Some(rest) = text.strip_suffix("turn") {
-    (rest.trim(), 360.0)
-  } else if let Some(rest) = text.strip_suffix("rad") {
-    (rest.trim(), 180.0 / std::f64::consts::PI)
-  } else {
-    (text, 1.0)
-  };
-  let value: f64 = number.parse().ok()?;
-  Some(value * turn)
+  crate::paint::modern::eval_hue(text)
 }
 
-fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f32, f32, f32) {
+pub(crate) fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f32, f32, f32) {
   let h = h.rem_euclid(360.0);
   let s = s.clamp(0.0, 1.0);
   let l = l.clamp(0.0, 1.0);

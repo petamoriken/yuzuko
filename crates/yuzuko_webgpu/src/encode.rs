@@ -19,6 +19,7 @@ static NEXT_BUNDLE: AtomicU64 = AtomicU64::new(1);
 struct EncoderSlot {
   encoder: Option<wgpu::CommandEncoder>,
   pass: Option<OpenPass>,
+  features: wgpu::Features,
 }
 
 enum OpenPass {
@@ -114,6 +115,10 @@ enum PassCommand {
   PushDebug(String),
   PopDebug,
   Marker(String),
+  WriteTimestamp {
+    query_set: wgpu::QuerySet,
+    index: u32,
+  },
 }
 
 struct ComputeRecord {
@@ -140,6 +145,10 @@ enum ComputeCommand {
   PushDebug(String),
   PopDebug,
   Marker(String),
+  WriteTimestamp {
+    query_set: wgpu::QuerySet,
+    index: u32,
+  },
 }
 
 struct BundleSlot {
@@ -235,6 +244,7 @@ impl GpuCommandEncoder {
         EncoderSlot {
           encoder: Some(encoder),
           pass: None,
+          features: handle.device.features(),
         },
       );
     });
@@ -476,6 +486,23 @@ impl GpuCommandEncoder {
   fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
     with_idle_encoder(self.id, |encoder| {
       encoder.insert_debug_marker(&label);
+      Ok(())
+    })
+  }
+
+  fn write_timestamp(
+    &self,
+    scope: &mut v8::PinScope,
+    query_set: v8::Local<v8::Value>,
+    query_index: u32,
+  ) -> Result<(), OpError> {
+    require_timestamp_write(
+      encoder_features(self.id)?,
+      wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+    )?;
+    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    with_idle_encoder(self.id, |encoder| {
+      encoder.write_timestamp(&set, index);
       Ok(())
     })
   }
@@ -788,6 +815,23 @@ impl GpuRenderPass {
     self.push(PassCommand::Marker(label))
   }
 
+  fn write_timestamp(
+    &self,
+    scope: &mut v8::PinScope,
+    query_set: v8::Local<v8::Value>,
+    query_index: u32,
+  ) -> Result<(), OpError> {
+    require_timestamp_write(
+      encoder_features(self.encoder)?,
+      wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+    )?;
+    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    self.push(PassCommand::WriteTimestamp {
+      query_set: set,
+      index,
+    })
+  }
+
   fn end(&self) -> Result<(), OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
@@ -959,6 +1003,23 @@ impl GpuComputePass {
 
   fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
     self.push(ComputeCommand::Marker(label))
+  }
+
+  fn write_timestamp(
+    &self,
+    scope: &mut v8::PinScope,
+    query_set: v8::Local<v8::Value>,
+    query_index: u32,
+  ) -> Result<(), OpError> {
+    require_timestamp_write(
+      encoder_features(self.encoder)?,
+      wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+    )?;
+    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    self.push(ComputeCommand::WriteTimestamp {
+      query_set: set,
+      index,
+    })
   }
 
   fn end(&self) -> Result<(), OpError> {
@@ -1441,6 +1502,9 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
       PassCommand::PushDebug(label) => pass.push_debug_group(label),
       PassCommand::PopDebug => pass.pop_debug_group(),
       PassCommand::Marker(label) => pass.insert_debug_marker(label),
+      PassCommand::WriteTimestamp { query_set, index } => {
+        pass.write_timestamp(query_set, *index);
+      }
     }
   }
 }
@@ -1476,6 +1540,9 @@ fn replay_compute(encoder: &mut wgpu::CommandEncoder, record: &ComputeRecord) {
       ComputeCommand::PushDebug(label) => pass.push_debug_group(label),
       ComputeCommand::PopDebug => pass.pop_debug_group(),
       ComputeCommand::Marker(label) => pass.insert_debug_marker(label),
+      ComputeCommand::WriteTimestamp { query_set, index } => {
+        pass.write_timestamp(query_set, *index);
+      }
     }
   }
 }
@@ -1554,6 +1621,54 @@ fn buffer_slice(
     Some(size) => buffer.slice(offset..offset + size),
     None => buffer.slice(offset..),
   }
+}
+
+fn encoder_features(id: u64) -> Result<wgpu::Features, OpError> {
+  ENCODERS.with(|encoders| {
+    encoders
+      .borrow()
+      .get(&id)
+      .map(|slot| slot.features)
+      .ok_or_else(|| {
+        OpError::dom("InvalidStateError", "The command encoder is finished")
+      })
+  })
+}
+
+fn require_timestamp_write(
+  features: wgpu::Features,
+  inside: wgpu::Features,
+) -> Result<(), OpError> {
+  if features.contains(wgpu::Features::TIMESTAMP_QUERY | inside) {
+    Ok(())
+  } else {
+    Err(OpError::dom(
+      "NotSupportedError",
+      "timestamp-query is not enabled",
+    ))
+  }
+}
+
+/// A destroyed set has no wgpu destroy. Recording one past the last query
+/// makes the later submit a validation error. `u32::MAX` is still in range.
+fn timestamp_query(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  query_index: u32,
+) -> Result<(wgpu::QuerySet, u32), OpError> {
+  let query = resource::host_query_set(scope, value)
+    .ok_or_else(|| OpError::type_("writeTimestamp requires a GPUQuerySet"))?;
+  if query.kind() != QueryKind::Timestamp {
+    return Err(OpError::type_(
+      "writeTimestamp requires a timestamp query set",
+    ));
+  }
+  let index = if query.is_destroyed() {
+    query.query_count()
+  } else {
+    query_index
+  };
+  Ok((query.query_set(), index))
 }
 
 fn with_idle_encoder(

@@ -639,16 +639,8 @@
       "CSSRGB works as color input"
     ]
   },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.html": {
-    "expectedFailures": [
-      "color-mix works as color input"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.worker.js": {
-    "expectedFailures": [
-      "color-mix works as color input"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.default.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.default.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.get.halftransparent.html": true,
@@ -1382,11 +1374,7 @@
       "2d"
     ]
   },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.colormix.html": {
-    "expectedFailures": [
-      "color-mix works as color input"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.colormix.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.default.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.default.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.html": {
@@ -3789,11 +3777,7 @@
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.worker.js": {
-    "expectedFailures": [
-      "Testing that actualBoundingBox metrics are precise at small font sizes"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.whitespace.html": {
     "ignore": "The file needs a document."
   },
@@ -3802,11 +3786,7 @@
       "Testing actualBoundingBox with leading/trailing whitespace"
     ]
   },
-  "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.worker.js": {
-    "expectedFailures": [
-      "Testing actualBoundingBox"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.baselines.html": {
     "ignore": "The file needs a document."
   },
@@ -3894,11 +3874,7 @@
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.html": {
     "ignore": "The file needs a document."
   },
-  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.worker.js": {
-    "expectedFailures": [
-      "Testing fontBoundingBox for OffscreenCanvas with zero descent metric"
-    ]
-  },
+  "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox-zero-descent.worker.js": true,
   "html/canvas/offscreen/text/2d.text.measure.fontBoundingBox.ahem.html": {
     "ignore": "The file needs a document."
   },

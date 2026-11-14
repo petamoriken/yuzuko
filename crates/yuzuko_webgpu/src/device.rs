@@ -3,10 +3,12 @@
 //! Every JavaScript device clones the process wgpu device. `destroy` loses
 //! that JavaScript device and leaves the process device in place.
 
+use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use yuzuko_core::op::{Js, New, OpError};
+use yuzuko_dom::{Event, EventTarget, define_is_trusted, dispatch};
 use yuzuko_macros::op;
 
 use crate::encode::{self, GpuCommandEncoder};
@@ -56,6 +58,16 @@ impl Gpu {
   #[getter]
   fn wgsl_language_features(&self, scope: &mut v8::PinScope) -> Js {
     let set = v8::Set::new(scope);
+    for name in [
+      "readonly_and_readwrite_storage_textures",
+      "packed_4x8_integer_dot_product",
+      "pointer_composite_access",
+    ] {
+      let Some(text) = v8::String::new(scope, name) else {
+        continue;
+      };
+      set.add(scope, text.into());
+    }
     let value: v8::Local<v8::Value> = set.into();
     Js(v8::Global::new(scope, value))
   }
@@ -97,7 +109,9 @@ impl GpuAdapter {
   ) -> Js {
     match open_device(scope, descriptor) {
       Ok(device) => {
+        let id = device.id;
         let object = unsafe { yuzuko_core::op::wrap_instance(scope, device) };
+        state::register_wrapper(scope, id, object);
         let value: v8::Local<v8::Value> = object.into();
         js::promise(scope, value)
       }
@@ -106,13 +120,21 @@ impl GpuAdapter {
   }
 }
 
+#[repr(C)]
 pub struct GpuDevice {
+  base: EventTarget,
   id: u64,
   label: ObjectLabel,
+  onuncapturederror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuDevice {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    if let Ok(slot) = self.onuncapturederror.try_borrow() {
+      visitor.trace(&*slot);
+    }
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDevice"
@@ -140,11 +162,31 @@ pub fn device_id(
   Some(host.get().id)
 }
 
-#[op(name = "GPUDevice")]
+#[op(name = "GPUDevice", inherit = EventTarget)]
 impl GpuDevice {
   #[getter]
   fn label(&self) -> String {
     self.label.get()
+  }
+
+  #[getter]
+  fn onuncapturederror(&self, scope: &mut v8::PinScope) -> Js {
+    event_handler_value(scope, &self.onuncapturederror)
+  }
+
+  #[setter]
+  fn onuncapturederror(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_event_handler(
+      scope,
+      &self.base,
+      &self.onuncapturederror,
+      "uncapturederror",
+      value,
+    );
   }
 
   #[setter]
@@ -511,6 +553,57 @@ impl GpuInternalError {
   }
 }
 
+#[repr(C)]
+pub struct GpuUncapturedErrorEvent {
+  base: Event,
+  error: v8::TracedReference<v8::Object>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for GpuUncapturedErrorEvent {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    v8::cppgc::GarbageCollected::trace(&self.base, visitor);
+    visitor.trace(&self.error);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUUncapturedErrorEvent"
+  }
+}
+
+#[op(name = "GPUUncapturedErrorEvent", inherit = Event)]
+impl GpuUncapturedErrorEvent {
+  #[constructor]
+  #[length(1)]
+  fn new(
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<Self, OpError> {
+    let base = Event::from_args(scope, args, false)?;
+    let error = gpu_error_argument(scope, args)?;
+    Ok(Self {
+      base,
+      error: yuzuko_core::op::traced(scope, error),
+    })
+  }
+
+  #[construct_hook]
+  fn finish(&self, scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
+    let _ = self;
+    define_is_trusted(scope, object);
+  }
+
+  #[getter]
+  fn error(&self, scope: &mut v8::PinScope) -> Js {
+    match yuzuko_core::op::traced_local(scope, &self.error) {
+      Some(value) => {
+        let value: v8::Local<v8::Value> = value.into();
+        Js(v8::Global::new(scope, value))
+      }
+      None => Js::null(scope),
+    }
+  }
+}
+
 pub fn install(scope: &mut v8::PinScope) {
   Gpu::install(scope);
   GpuAdapter::install(scope);
@@ -519,6 +612,7 @@ pub fn install(scope: &mut v8::PinScope) {
   GpuValidationError::install(scope);
   GpuOutOfMemoryError::install(scope);
   GpuInternalError::install(scope);
+  GpuUncapturedErrorEvent::install(scope);
   GpuBuffer::install(scope);
   GpuTexture::install(scope);
   resource::GpuTextureView::install(scope);
@@ -694,8 +788,10 @@ fn open_device(
     },
   );
   Ok(GpuDevice {
+    base: EventTarget::new(),
     id,
     label: ObjectLabel::new(device_label),
+    onuncapturederror: RefCell::new(None),
   })
 }
 
@@ -1023,4 +1119,133 @@ fn limits_js(scope: &mut v8::PinScope, limits: &wgpu::Limits) -> Js {
   let object = limits_object(scope, limits);
   let value: v8::Local<v8::Value> = object.into();
   Js(v8::Global::new(scope, value))
+}
+
+pub(crate) fn dispatch_uncaptured(
+  scope: &mut v8::PinScope,
+  kind: state::UncapturedKind,
+  message: String,
+) {
+  let ids = state::wrapper_ids();
+  if ids.is_empty() {
+    eprintln!("yuzuko: uncaptured WebGPU error: {message}");
+    return;
+  }
+  let mut delivered = false;
+  for id in ids {
+    let Some(target) = state::wrapper_local(scope, id) else {
+      continue;
+    };
+    let error = gpu_error_object(scope, kind, message.clone());
+    let event = GpuUncapturedErrorEvent {
+      base: Event::new("uncapturederror", false, false, false, true),
+      error: yuzuko_core::op::traced(scope, error),
+    };
+    let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+    define_is_trusted(scope, object);
+    let _ = dispatch(scope, target, object);
+    delivered = true;
+  }
+  if !delivered {
+    eprintln!("yuzuko: uncaptured WebGPU error: {message}");
+  }
+}
+
+fn gpu_error_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  kind: state::UncapturedKind,
+  message: String,
+) -> v8::Local<'s, v8::Object> {
+  unsafe {
+    match kind {
+      state::UncapturedKind::OutOfMemory => {
+        yuzuko_core::op::wrap_instance(scope, GpuOutOfMemoryError { message })
+      }
+      state::UncapturedKind::Internal => {
+        yuzuko_core::op::wrap_instance(scope, GpuInternalError { message })
+      }
+      state::UncapturedKind::Validation => {
+        yuzuko_core::op::wrap_instance(scope, GpuValidationError { message })
+      }
+    }
+  }
+}
+
+fn gpu_error_argument<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  if args.length() < 2 {
+    return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
+  }
+  let init = args.get(1);
+  let Ok(init) = v8::Local::<v8::Object>::try_from(init) else {
+    return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
+  };
+  let Some(error) = js::get(scope, init, "error") else {
+    return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
+  };
+  if error.is_null_or_undefined() {
+    return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
+  }
+  let Ok(error) = v8::Local::<v8::Object>::try_from(error) else {
+    return Err(OpError::type_(
+      "GPUUncapturedErrorEvent requires a GPUError",
+    ));
+  };
+  if !is_gpu_error(scope, error) {
+    return Err(OpError::type_(
+      "GPUUncapturedErrorEvent requires a GPUError",
+    ));
+  }
+  Ok(yuzuko_core::op::root(scope, error))
+}
+
+fn is_gpu_error(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> bool {
+  unsafe {
+    if yuzuko_core::op::host_ref::<GpuValidationError>(scope, object).is_some()
+    {
+      return true;
+    }
+    if yuzuko_core::op::host_ref::<GpuOutOfMemoryError>(scope, object).is_some()
+    {
+      return true;
+    }
+    yuzuko_core::op::host_ref::<GpuInternalError>(scope, object).is_some()
+  }
+}
+
+fn event_handler_value(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+) -> Js {
+  let value = slot
+    .borrow()
+    .as_ref()
+    .and_then(|reference| yuzuko_core::op::traced_local(scope, reference))
+    .unwrap_or_else(|| v8::null(scope).into());
+  Js(v8::Global::new(scope, value))
+}
+
+fn set_event_handler(
+  scope: &mut v8::PinScope,
+  target: &EventTarget,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+  type_name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  if let Some(previous) = slot.borrow().as_ref()
+    && let Some(previous) = yuzuko_core::op::traced_local(scope, previous)
+  {
+    target.remove_callback(scope, type_name, previous, false);
+  }
+  if value.is_function() {
+    target.add_callback(scope, type_name, value, false, false, false);
+    *slot.borrow_mut() = Some(yuzuko_core::op::traced(scope, value));
+  } else {
+    *slot.borrow_mut() = None;
+  }
 }

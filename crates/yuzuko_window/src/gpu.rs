@@ -123,28 +123,38 @@ pub(crate) fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
   }
 }
 
-/// `timestamp-query` when the adapter has it.
+/// `timestamp-query`, plus writes inside encoders and passes, when the
+/// adapter has each capability. The inside-encoder and inside-pass bits are
+/// wgpu features. They are not WebGPU feature names. A failed device request
+/// retries with this set, so a rejected optional feature cannot drop them.
 fn timestamp_feature(adapter: &wgpu::Adapter) -> wgpu::Features {
-  if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-    wgpu::Features::TIMESTAMP_QUERY
-  } else {
-    wgpu::Features::empty()
+  const WANTED: [wgpu::Features; 3] = [
+    wgpu::Features::TIMESTAMP_QUERY,
+    wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+    wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+  ];
+  let available = adapter.features();
+  let mut features = wgpu::Features::empty();
+  for feature in WANTED {
+    if available.contains(feature) {
+      features |= feature;
+    }
   }
+  features
 }
 
 /// Optional features the process device requests when the adapter has them.
-/// A failed request retries with `timestamp-query` alone, then with none,
+/// A failed request retries with the timestamp set alone, then with none,
 /// so a rejected feature cannot drop timestamps.
 fn optional_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-  const WANTED: [wgpu::Features; 4] = [
-    wgpu::Features::TIMESTAMP_QUERY,
+  const REST: [wgpu::Features; 3] = [
     wgpu::Features::DEPTH_CLIP_CONTROL,
     wgpu::Features::DEPTH32FLOAT_STENCIL8,
     wgpu::Features::EXTERNAL_TEXTURE,
   ];
   let available = adapter.features();
-  let mut features = wgpu::Features::empty();
-  for feature in WANTED {
+  let mut features = timestamp_feature(adapter);
+  for feature in REST {
     if available.contains(feature) {
       features |= feature;
     }

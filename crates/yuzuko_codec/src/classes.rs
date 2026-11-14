@@ -1806,6 +1806,11 @@ impl AudioDecoder {
           }
         }
         AudioControl::Flush(id) => {
+          if self.flush_live(id)
+            && let Some(backend) = self.backend.borrow_mut().as_mut()
+          {
+            backend.flush();
+          }
           if !self.finish_flush(scope, id) {
             return;
           }
@@ -2169,6 +2174,8 @@ fn audio_codec(codec: &str) -> Option<AudioCodec> {
     Some(AudioCodec::Aac)
   } else if codec == "opus" {
     Some(AudioCodec::Opus)
+  } else if codec == "vorbis" {
+    Some(AudioCodec::Vorbis)
   } else {
     None
   }

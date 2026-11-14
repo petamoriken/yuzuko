@@ -14,11 +14,26 @@ use crate::js;
 use crate::label::ObjectLabel;
 use crate::state::Handle;
 
+struct MappedView {
+  offset: u64,
+  size: u64,
+  buffer: v8::Global<v8::ArrayBuffer>,
+}
+
+struct Mapped {
+  offset: u64,
+  size: u64,
+  /// `GPUMapMode` bits. Read is 1 and write is 2.
+  mode: u32,
+  bytes: Vec<u8>,
+  views: Vec<MappedView>,
+}
+
 pub struct GpuBuffer {
   buffer: RefCell<Option<wgpu::Buffer>>,
   lost: Arc<AtomicBool>,
   size: u64,
-  mapped: Cell<Option<Vec<u8>>>,
+  mapped: RefCell<Option<Mapped>>,
   label: ObjectLabel,
 }
 
@@ -41,9 +56,46 @@ impl GpuBuffer {
       buffer: RefCell::new(Some(buffer)),
       lost,
       size,
-      mapped: Cell::new(None),
+      mapped: RefCell::new(None),
       label: ObjectLabel::new(label),
     }
+  }
+
+  fn release_mapping(&self, scope: &mut v8::PinScope, writeback: bool) {
+    let Some(mut mapped) = self.mapped.borrow_mut().take() else {
+      return;
+    };
+    if writeback {
+      absorb_views(scope, &mut mapped);
+    }
+    let Some(buffer) = self.buffer.borrow().clone() else {
+      detach_views(scope, &mapped);
+      return;
+    };
+    let end = mapped.offset + mapped.size;
+    let read = (mapped.mode & MAP_READ_BIT) != 0;
+    let write = (mapped.mode & MAP_WRITE_BIT) != 0;
+    if writeback && write && !read {
+      if let Ok(mut view) =
+        buffer.slice(mapped.offset..end).get_mapped_range_mut()
+      {
+        view.copy_from_slice(&mapped.bytes);
+      }
+      buffer.unmap();
+    } else {
+      buffer.unmap();
+      if writeback
+        && read
+        && write
+        && buffer.usage().contains(wgpu::BufferUsages::COPY_DST)
+        && let Ok(handle) = device_of(&self.lost)
+      {
+        handle
+          .queue
+          .write_buffer(&buffer, mapped.offset, &mapped.bytes);
+      }
+    }
+    detach_views(scope, &mapped);
   }
 
   pub(crate) fn alive(&self) -> Result<wgpu::Buffer, OpError> {
@@ -73,30 +125,80 @@ impl GpuBuffer {
     self.size as f64
   }
 
-  fn destroy(&self) {
-    self.mapped.set(None);
+  fn destroy(&self, scope: &mut v8::PinScope) {
+    self.release_mapping(scope, false);
     *self.buffer.borrow_mut() = None;
   }
 
-  fn map_async(&self, scope: &mut v8::PinScope, mode: u32) -> Js {
+  fn map_async(
+    &self,
+    scope: &mut v8::PinScope,
+    mode: u32,
+    offset: Option<u32>,
+    size: Option<u32>,
+  ) -> Js {
     let mapped = (|| {
       let buffer = self.alive()?;
-      let mode = map_mode(mode)?;
+      if self.mapped.borrow().is_some() {
+        return Err(OpError::dom(
+          "InvalidStateError",
+          "The buffer is already mapped",
+        ));
+      }
+      if (mode & !MAP_MODE_MASK) != 0 || (mode & MAP_MODE_MASK) == 0 {
+        return Err(OpError::type_("GPUMapMode is invalid"));
+      }
+      let usage = buffer.usage();
+      if (mode & MAP_READ_BIT) != 0
+        && !usage.contains(wgpu::BufferUsages::MAP_READ)
+      {
+        return Err(OpError::dom(
+          "OperationError",
+          "The buffer is not mappable for reading",
+        ));
+      }
+      if (mode & MAP_WRITE_BIT) != 0
+        && !usage.contains(wgpu::BufferUsages::MAP_WRITE)
+      {
+        return Err(OpError::dom(
+          "OperationError",
+          "The buffer is not mappable for writing",
+        ));
+      }
+      let offset = u64::from(offset.unwrap_or(0));
+      let size = checked_map_size(self.size, offset, size.map(u64::from))?;
+      let end = offset + size;
+      let host_mode = if (mode & MAP_READ_BIT) != 0 {
+        wgpu::MapMode::Read
+      } else {
+        wgpu::MapMode::Write
+      };
       let handle = device_of(&self.lost)?;
       // `writeBuffer` stays in the queue until a submit. Mapping has to see it.
       handle.queue.submit([]);
       let (send, recv) = std::sync::mpsc::channel();
-      buffer.slice(..).map_async(mode, move |result| {
-        let _ = send.send(result);
-      });
+      buffer
+        .slice(offset..end)
+        .map_async(host_mode, move |result| {
+          let _ = send.send(result);
+        });
       poll_device(&handle.device);
       match recv.recv_timeout(std::time::Duration::from_secs(5)) {
         Ok(Ok(())) => {
-          let view = buffer
-            .slice(..)
-            .get_mapped_range()
-            .map_err(|_| OpError::dom("OperationError", "mapAsync failed"))?;
-          self.mapped.set(Some(view.to_vec()));
+          let bytes = match buffer.slice(offset..end).get_mapped_range() {
+            Ok(view) => view.to_vec(),
+            Err(_) => {
+              buffer.unmap();
+              return Err(OpError::dom("OperationError", "mapAsync failed"));
+            }
+          };
+          *self.mapped.borrow_mut() = Some(Mapped {
+            offset,
+            size,
+            mode,
+            bytes,
+            views: Vec::new(),
+          });
           Ok(())
         }
         _ => Err(OpError::dom("OperationError", "mapAsync failed")),
@@ -107,29 +209,82 @@ impl GpuBuffer {
         let value: v8::Local<v8::Value> = v8::undefined(scope).into();
         js::promise(scope, value)
       }
-      Err(error) => js::promise_type_error(scope, &error_text(error)),
+      Err(error) => js::promise_rejected(scope, error),
     }
   }
 
-  fn get_mapped_range(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let Some(bytes) = self.mapped.take() else {
+  fn get_mapped_range(
+    &self,
+    scope: &mut v8::PinScope,
+    offset: Option<u32>,
+    size: Option<u32>,
+  ) -> Result<Js, OpError> {
+    let mut slot = self.mapped.borrow_mut();
+    let Some(mapped) = slot.as_mut() else {
       return Err(OpError::dom(
         "InvalidStateError",
         "The buffer is not mapped",
       ));
     };
-    self.mapped.set(Some(bytes.clone()));
+    let offset = u64::from(offset.unwrap_or(0));
+    if !offset.is_multiple_of(8) {
+      return Err(OpError::dom(
+        "OperationError",
+        "The mapped range offset must be a multiple of 8",
+      ));
+    }
+    if offset > mapped.size {
+      return Err(OpError::dom(
+        "OperationError",
+        "The mapped range is outside the mapping",
+      ));
+    }
+    let size = match size {
+      Some(size) => u64::from(size),
+      None => mapped.size - offset,
+    };
+    let end = offset.saturating_add(size);
+    if size == 0 || !size.is_multiple_of(4) || end > mapped.size {
+      return Err(OpError::dom(
+        "OperationError",
+        "The mapped range is outside the mapping",
+      ));
+    }
+    for view in &mapped.views {
+      let view_end = view.offset + view.size;
+      if offset < view_end && view.offset < end {
+        return Err(OpError::dom(
+          "OperationError",
+          "The mapped ranges overlap",
+        ));
+      }
+    }
+    let start = offset as usize;
+    let bytes = mapped.bytes[start..start + size as usize].to_vec();
     let buffer = yuzuko_winter::array_buffer(scope, bytes);
+    mapped.views.push(MappedView {
+      offset,
+      size,
+      buffer: v8::Global::new(scope, buffer),
+    });
     let value: v8::Local<v8::Value> = buffer.into();
     Ok(Js(v8::Global::new(scope, value)))
   }
 
-  fn unmap(&self) -> Result<(), OpError> {
-    self.mapped.set(None);
-    if let Some(buffer) = self.buffer.borrow().as_ref() {
+  fn unmap(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
+    self.release_mapping(scope, true);
+    Ok(())
+  }
+}
+
+impl Drop for GpuBuffer {
+  fn drop(&mut self) {
+    let mapped = self.mapped.borrow_mut().take();
+    if mapped.is_some()
+      && let Some(buffer) = self.buffer.borrow().as_ref()
+    {
       buffer.unmap();
     }
-    Ok(())
   }
 }
 
@@ -1966,13 +2121,62 @@ fn filter_of(
   }
 }
 
-fn map_mode(bits: u32) -> Result<wgpu::MapMode, OpError> {
-  if bits & 1 != 0 {
-    Ok(wgpu::MapMode::Read)
-  } else if bits & 2 != 0 {
-    Ok(wgpu::MapMode::Write)
-  } else {
-    Err(OpError::type_("GPUMapMode is invalid"))
+const MAP_READ_BIT: u32 = 0x0001;
+const MAP_WRITE_BIT: u32 = 0x0002;
+const MAP_MODE_MASK: u32 = MAP_READ_BIT | MAP_WRITE_BIT;
+
+fn checked_map_size(
+  buffer_size: u64,
+  offset: u64,
+  size: Option<u64>,
+) -> Result<u64, OpError> {
+  if !offset.is_multiple_of(8) || offset > buffer_size {
+    return Err(OpError::dom(
+      "OperationError",
+      "The map offset must be a multiple of 8 inside the buffer",
+    ));
+  }
+  let size = size.unwrap_or(buffer_size - offset);
+  if size == 0 || !size.is_multiple_of(4) || offset + size > buffer_size {
+    return Err(OpError::dom(
+      "OperationError",
+      "The map size must be a non-zero multiple of 4 inside the buffer",
+    ));
+  }
+  Ok(size)
+}
+
+fn absorb_views(scope: &mut v8::PinScope, mapped: &mut Mapped) {
+  for view in &mapped.views {
+    let local = v8::Local::new(scope, &view.buffer);
+    if local.was_detached() {
+      continue;
+    }
+    let length = local.byte_length();
+    let start = view.offset as usize;
+    let end = start.saturating_add(length);
+    if length != view.size as usize || end > mapped.bytes.len() {
+      continue;
+    }
+    let Some(data) = local.data() else {
+      continue;
+    };
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        data.as_ptr().cast::<u8>(),
+        mapped.bytes[start..end].as_mut_ptr(),
+        length,
+      );
+    }
+  }
+}
+
+fn detach_views(scope: &mut v8::PinScope, mapped: &Mapped) {
+  for view in &mapped.views {
+    let local = v8::Local::new(scope, &view.buffer);
+    if !local.was_detached() {
+      let _ = local.detach(None);
+    }
   }
 }
 
@@ -2212,13 +2416,4 @@ fn poll_device(device: &wgpu::Device) {
 
 fn state_lost() -> OpError {
   OpError::dom("InvalidStateError", "The GPU device is lost")
-}
-
-fn error_text(error: OpError) -> String {
-  match error {
-    OpError::Type(message)
-    | OpError::Range(message)
-    | OpError::Dom { message, .. } => message,
-    OpError::Thrown(_) => "The operation failed".to_string(),
-  }
 }

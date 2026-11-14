@@ -29,7 +29,16 @@ Yuzuko.test("isTypeSupported knows the still-image decoders", async () => {
     "parameters",
   );
   assert(await ImageDecoder.isTypeSupported("image/avif"), "avif");
-  assert(!(await ImageDecoder.isTypeSupported("image/gif")), "gif");
+  assert(await ImageDecoder.isTypeSupported("image/gif"), "gif");
+  assert(
+    await ImageDecoder.isTypeSupported("image/gif;charset=utf-8"),
+    "gif parameters",
+  );
+  assert(await ImageDecoder.isTypeSupported("image/bmp"), "bmp");
+  assert(
+    await ImageDecoder.isTypeSupported("image/bmp;charset=utf-8"),
+    "bmp parameters",
+  );
 });
 
 async function rejectionName(value: Promise<unknown>): Promise<string> {
@@ -171,6 +180,59 @@ Yuzuko.test("WebP and JPEG XL decode", async () => {
     result.image.close();
     decoder.close();
   }
+});
+
+function pushU16(out, value) {
+  out.push(value & 0xff, (value >> 8) & 0xff);
+}
+
+function pushU32(out, value) {
+  out.push(
+    value & 0xff,
+    (value >> 8) & 0xff,
+    (value >> 16) & 0xff,
+    (value >>> 24) & 0xff,
+  );
+}
+
+Yuzuko.test("a 24-bit bottom-up BMP is red at the origin", async () => {
+  const file = [];
+  file.push(0x42, 0x4d);
+  const header = 14 + 40;
+  const stride = 8;
+  pushU32(file, header + stride * 2);
+  pushU16(file, 0);
+  pushU16(file, 0);
+  pushU32(file, header);
+  pushU32(file, 40);
+  pushU32(file, 2);
+  pushU32(file, 2);
+  pushU16(file, 1);
+  pushU16(file, 24);
+  pushU32(file, 0);
+  pushU32(file, 0);
+  pushU32(file, 0);
+  pushU32(file, 0);
+  pushU32(file, 0);
+  pushU32(file, 0);
+  // Bottom row is stored first. The origin is the last row: BGR red, then white.
+  file.push(255, 0, 0, 0, 255, 0, 0, 0);
+  file.push(0, 0, 255, 255, 255, 255, 0, 0);
+  const encoded = new Uint8Array(file);
+  const decoder = new ImageDecoder({ type: "image/bmp", data: encoded });
+  const result = await decoder.decode();
+  assert(result.image.displayWidth === 2, "width");
+  assert(result.image.displayHeight === 2, "height");
+  const pixels = await bitmapPixels(result.image);
+  assert(
+    pixels[0] === 255 &&
+      pixels[1] === 0 &&
+      pixels[2] === 0 &&
+      pixels[3] === 255,
+    `origin ${pixels.slice(0, 4)}`,
+  );
+  result.image.close();
+  decoder.close();
 });
 
 Yuzuko.test("AVIF decodes as one still frame", async () => {

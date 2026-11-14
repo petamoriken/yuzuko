@@ -143,6 +143,10 @@ name = "canvas_lang"
 required-features = ["canvas"]
 
 [[test]]
+name = "canvas_draw"
+required-features = ["canvas"]
+
+[[test]]
 name = "font"
 required-features = ["canvas"]
 
