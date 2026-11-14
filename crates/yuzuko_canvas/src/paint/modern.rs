@@ -247,8 +247,11 @@ impl<'a> Parser<'a> {
     }
     let value: f64 = self.text[start..self.index].parse().ok()?;
     if self.eat(b'%') {
-      let scale = if hue { 360.0 } else { basis };
-      return Some(value / 100.0 * scale);
+      // A hue is a number or an angle. A percentage is not a hue.
+      if hue {
+        return None;
+      }
+      return Some(value / 100.0 * basis);
     }
     if hue {
       if self.eat_word("deg") {
@@ -871,6 +874,20 @@ mod tests {
   use super::eval_component;
   use crate::paint::color::parse_color;
   use crate::paint::color::serialize;
+
+  #[test]
+  fn a_percentage_is_not_a_hue() {
+    assert!(parse_color("hsl(0%, 100%, 50%)").is_none());
+    assert!(parse_color("hsla(0%, 100%, 50%, 1)").is_none());
+    assert!(parse_color("hsl(calc(0%), 100%, 50%)").is_none());
+    let green = parse_color("hsl(133.33333333grad, 100%, 50%)").unwrap();
+    assert!(
+      green.g > 0.99 && green.r < 0.01 && green.b < 0.01,
+      "{green:?}"
+    );
+    let degrees = parse_color("hsl(120deg, 100%, 50%)").unwrap();
+    assert!(degrees.g > 0.99 && degrees.r < 0.01, "{degrees:?}");
+  }
 
   #[test]
   fn calc_mixes_a_percent_and_a_number() {
