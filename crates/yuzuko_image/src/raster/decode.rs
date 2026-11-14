@@ -587,7 +587,7 @@ fn read_bmp(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), DecodeError> {
     32 => width as usize * 4,
     _ => return Err(DecodeError::Unsupported),
   };
-  let stride = ((u64::from(width) * u64::from(bit_count) + 31) / 32) * 4;
+  let stride = (u64::from(width) * u64::from(bit_count)).div_ceil(32) * 4;
   let stride = usize::try_from(stride).map_err(|_| DecodeError::TooLarge)?;
   if stride < row_bytes {
     return Err(DecodeError::Corrupt);
@@ -873,15 +873,17 @@ mod tests {
         encoder.set_repeat(repeat).unwrap();
       }
       for frame in frames {
-        let mut part = gif::Frame::default();
-        part.left = frame.left;
-        part.top = frame.top;
-        part.width = frame.width;
-        part.height = frame.height;
-        part.delay = frame.delay;
-        part.dispose = frame.dispose;
-        part.transparent = frame.transparent;
-        part.buffer = std::borrow::Cow::Borrowed(frame.indices);
+        let part = gif::Frame {
+          left: frame.left,
+          top: frame.top,
+          width: frame.width,
+          height: frame.height,
+          delay: frame.delay,
+          dispose: frame.dispose,
+          transparent: frame.transparent,
+          buffer: std::borrow::Cow::Borrowed(frame.indices),
+          ..gif::Frame::default()
+        };
         encoder.write_frame(&part).unwrap();
       }
     }
@@ -1062,10 +1064,12 @@ mod tests {
     {
       let mut encoder =
         gif::Encoder::new(&mut bytes, 16_385, 1, &[255, 0, 0]).unwrap();
-      let mut frame = gif::Frame::default();
-      frame.width = 16_385;
-      frame.height = 1;
-      frame.buffer = std::borrow::Cow::Owned(vec![0; 16_385]);
+      let frame = gif::Frame {
+        width: 16_385,
+        height: 1,
+        buffer: std::borrow::Cow::Owned(vec![0; 16_385]),
+        ..gif::Frame::default()
+      };
       encoder.write_frame(&frame).unwrap();
     }
     assert_eq!(decode(&bytes, true).err(), Some(DecodeError::TooLarge));
@@ -1075,16 +1079,28 @@ mod tests {
     );
   }
 
-  fn bmp_file(
+  struct BmpFile<'a> {
     width: i32,
     height: i32,
     bit_count: u16,
     compression: u32,
     header_size: u32,
-    masks: &[u32],
-    palette: &[[u8; 4]],
-    rows_top_first: &[Vec<u8>],
-  ) -> Vec<u8> {
+    masks: &'a [u32],
+    palette: &'a [[u8; 4]],
+    rows: &'a [Vec<u8>],
+  }
+
+  fn bmp_file(file: BmpFile<'_>) -> Vec<u8> {
+    let BmpFile {
+      width,
+      height,
+      bit_count,
+      compression,
+      header_size,
+      masks,
+      palette,
+      rows,
+    } = file;
     let mut info = Vec::new();
     info.extend_from_slice(&header_size.to_le_bytes());
     info.extend_from_slice(&width.to_le_bytes());
@@ -1105,7 +1121,7 @@ mod tests {
       info.resize(header_size as usize, 0);
     }
     let mut file = vec![b'B', b'M'];
-    let pixel_bytes: usize = rows_top_first.iter().map(Vec::len).sum();
+    let pixel_bytes: usize = rows.iter().map(Vec::len).sum();
     let mask_bytes = if header_size == 40 {
       masks.len() * 4
     } else {
@@ -1127,31 +1143,31 @@ mod tests {
     }
     let top_down = height < 0;
     let order: Vec<usize> = if top_down {
-      (0..rows_top_first.len()).collect()
+      (0..rows.len()).collect()
     } else {
-      (0..rows_top_first.len()).rev().collect()
+      (0..rows.len()).rev().collect()
     };
     for index in order {
-      file.extend_from_slice(&rows_top_first[index]);
+      file.extend_from_slice(&rows[index]);
     }
     file
   }
 
   #[test]
   fn bmp_24_bottom_up_red_origin_and_rejects_truncation() {
-    let bytes = bmp_file(
-      2,
-      2,
-      24,
-      0,
-      40,
-      &[],
-      &[],
-      &[
+    let bytes = bmp_file(BmpFile {
+      width: 2,
+      height: 2,
+      bit_count: 24,
+      compression: 0,
+      header_size: 40,
+      masks: &[],
+      palette: &[],
+      rows: &[
         vec![0, 0, 255, 255, 255, 255, 0, 0],
         vec![255, 0, 0, 0, 255, 0, 0, 0],
       ],
-    );
+    });
     let raster = decode(&bytes, true).unwrap().raster;
     assert_eq!((raster.width, raster.height), (2, 2));
     assert_eq!(raster.pixel_u8(0, 0), [255, 0, 0, 255]);
@@ -1164,19 +1180,19 @@ mod tests {
     assert!(frames.frames[0].duration_us.is_none());
     assert_eq!(frames.frames[0].raster.pixel_u8(0, 0), [255, 0, 0, 255]);
 
-    let top_down = bmp_file(
-      2,
-      -2,
-      24,
-      0,
-      40,
-      &[],
-      &[],
-      &[
+    let top_down = bmp_file(BmpFile {
+      width: 2,
+      height: -2,
+      bit_count: 24,
+      compression: 0,
+      header_size: 40,
+      masks: &[],
+      palette: &[],
+      rows: &[
         vec![0, 0, 255, 255, 255, 255, 0, 0],
         vec![255, 0, 0, 0, 255, 0, 0, 0],
       ],
-    );
+    });
     assert_eq!(
       decode(&top_down, true).unwrap().raster.pixel_u8(0, 0),
       [255, 0, 0, 255]
@@ -1193,21 +1209,21 @@ mod tests {
 
   #[test]
   fn bmp_palette_bitfields_and_unsupported_compression() {
-    let indexed = bmp_file(
-      2,
-      2,
-      8,
-      0,
-      40,
-      &[],
-      &[
+    let indexed = bmp_file(BmpFile {
+      width: 2,
+      height: 2,
+      bit_count: 8,
+      compression: 0,
+      header_size: 40,
+      masks: &[],
+      palette: &[
         [0, 0, 255, 0],
         [255, 255, 255, 0],
         [255, 0, 0, 0],
         [0, 255, 0, 0],
       ],
-      &[vec![0, 1, 0, 0], vec![2, 3, 0, 0]],
-    );
+      rows: &[vec![0, 1, 0, 0], vec![2, 3, 0, 0]],
+    });
     let raster = decode(&indexed, true).unwrap().raster;
     assert_eq!(raster.pixel_u8(0, 0), [255, 0, 0, 255]);
     assert_eq!(raster.pixel_u8(1, 0), [255, 255, 255, 255]);
@@ -1215,33 +1231,59 @@ mod tests {
     assert_eq!(raster.pixel_u8(1, 1), [0, 255, 0, 255]);
 
     let masks = [0x00FF_0000, 0x0000_FF00, 0x0000_00FF, 0xFF00_0000];
-    let fields =
-      bmp_file(1, 1, 32, 3, 40, &masks, &[], &[vec![0, 0, 255, 128]]);
+    let fields = bmp_file(BmpFile {
+      width: 1,
+      height: 1,
+      bit_count: 32,
+      compression: 3,
+      header_size: 40,
+      masks: &masks,
+      palette: &[],
+      rows: &[vec![0, 0, 255, 128]],
+    });
     assert_eq!(
       decode(&fields, true).unwrap().raster.pixel_u8(0, 0),
       [255, 0, 0, 128]
     );
-    let forced = bmp_file(
-      1,
-      1,
-      32,
-      3,
-      40,
-      &[0x00FF_0000, 0x0000_FF00, 0x0000_00FF],
-      &[],
-      &[vec![0, 0, 255, 0]],
-    );
+    let forced = bmp_file(BmpFile {
+      width: 1,
+      height: 1,
+      bit_count: 32,
+      compression: 3,
+      header_size: 40,
+      masks: &[0x00FF_0000, 0x0000_FF00, 0x0000_00FF],
+      palette: &[],
+      rows: &[vec![0, 0, 255, 0]],
+    });
     assert_eq!(
       decode(&forced, true).unwrap().raster.pixel_u8(0, 0),
       [255, 0, 0, 255]
     );
-    let v4 = bmp_file(1, 1, 32, 3, 108, &masks, &[], &[vec![0, 0, 255, 64]]);
+    let v4 = bmp_file(BmpFile {
+      width: 1,
+      height: 1,
+      bit_count: 32,
+      compression: 3,
+      header_size: 108,
+      masks: &masks,
+      palette: &[],
+      rows: &[vec![0, 0, 255, 64]],
+    });
     assert_eq!(
       decode(&v4, true).unwrap().raster.pixel_u8(0, 0),
       [255, 0, 0, 64]
     );
 
-    let rle = bmp_file(1, 1, 8, 1, 40, &[], &[], &[vec![0, 0, 0, 0]]);
+    let rle = bmp_file(BmpFile {
+      width: 1,
+      height: 1,
+      bit_count: 8,
+      compression: 1,
+      header_size: 40,
+      masks: &[],
+      palette: &[],
+      rows: &[vec![0, 0, 0, 0]],
+    });
     assert_eq!(decode(&rle, true).err(), Some(DecodeError::Unsupported));
     let mut core = vec![0u8; 18];
     core[0] = b'B';
