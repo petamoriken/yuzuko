@@ -924,7 +924,7 @@ fn prepare(
     if meta.is_dir() {
       backend.watch_tree(shared, path, true, false)?;
     } else {
-      backend.add_path(shared, path, true, false)?;
+      backend.add_path(shared, path, true, false, true)?;
     }
   }
   Ok(Prepared {
@@ -952,14 +952,18 @@ impl LinuxBackend {
     required: bool,
     later: bool,
   ) -> Result<(), FsError> {
-    let added = self.add_path(shared, path, required, later)?;
-    if !added || !self.recursive || self.cap_announced {
+    // The listing below reads the directory. `IN_ACCESS` is added after that
+    // read so the scan itself is not an event.
+    let added = self.add_path(shared, path, required, later, false)?;
+    if !added {
       return Ok(());
     }
-    for child in child_dirs(path, later)? {
-      self.watch_tree(shared, &child, false, later)?;
+    if self.recursive && !self.cap_announced {
+      for child in child_dirs(path, later)? {
+        self.watch_tree(shared, &child, false, later)?;
+      }
     }
-    Ok(())
+    self.enable_access(path)
   }
 
   fn add_path(
@@ -968,6 +972,7 @@ impl LinuxBackend {
     path: &Path,
     required: bool,
     later: bool,
+    access: bool,
   ) -> Result<bool, FsError> {
     use std::os::fd::AsRawFd;
     if self.cap_announced {
@@ -982,9 +987,13 @@ impl LinuxBackend {
       self.note_cap(shared);
       return Ok(false);
     }
+    let mut mask = linux_mask();
+    if !access {
+      mask &= !libc::IN_ACCESS;
+    }
     let text = super::io::path_cstring(&report)?;
     let wd = unsafe {
-      libc::inotify_add_watch(self.fd.as_raw_fd(), text.as_ptr(), linux_mask())
+      libc::inotify_add_watch(self.fd.as_raw_fd(), text.as_ptr(), mask)
     };
     if wd < 0 {
       let error = std::io::Error::last_os_error();
@@ -996,6 +1005,22 @@ impl LinuxBackend {
     self.seen.insert(key);
     self.wds.insert(wd, report);
     Ok(true)
+  }
+
+  fn enable_access(&self, path: &Path) -> Result<(), FsError> {
+    use std::os::fd::AsRawFd;
+    let text = super::io::path_cstring(&absolute_path(path))?;
+    let wd = unsafe {
+      libc::inotify_add_watch(
+        self.fd.as_raw_fd(),
+        text.as_ptr(),
+        libc::IN_MASK_ADD | libc::IN_ACCESS,
+      )
+    };
+    if wd < 0 {
+      return Err(FsError::io(std::io::Error::last_os_error()));
+    }
+    Ok(())
   }
 
   fn note_cap(&mut self, shared: &WatchShared) {

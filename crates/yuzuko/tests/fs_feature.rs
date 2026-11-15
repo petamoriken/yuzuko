@@ -469,7 +469,10 @@ try {
   const done = await quiet.return();
   check(done.done === true, "return");
   const after = await nextEvent(quiet);
-  check(after.done === true, "next after return");
+  check(
+    after.done === true,
+    "next after return " + JSON.stringify(after && after.value),
+  );
 } finally {
   let watcherClosed = false;
   try {
