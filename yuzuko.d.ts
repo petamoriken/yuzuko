@@ -2031,7 +2031,8 @@ declare namespace Yuzuko {
     /**
      * Moves the bitmap into an {@link ImageBitmap} and clears this surface.
      *
-     * @throws {@link DOMException} `InvalidStateError` when control was transferred.
+     * @throws {@link DOMException} `InvalidStateError` when control was transferred
+     * or a layer is open.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/transferToImageBitmap)
      */
@@ -2046,6 +2047,7 @@ declare namespace Yuzuko {
      * @param options - `type` is `image/png`, `image/jpeg`, or `image/webp`.
      * `quality` is from 0 to 1.
      * @throws {@link DOMException} `InvalidStateError` when control was transferred.
+     * An open layer rejects `InvalidStateError`.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/convertToBlob)
      */
@@ -10502,7 +10504,8 @@ interface OffscreenCanvas extends EventTarget {
   getContext(contextType: string, options?: any): RenderingContext | null;
 
   /**
-   * @throws {@link DOMException} `InvalidStateError` when the canvas is detached.
+   * @throws {@link DOMException} `InvalidStateError` when the canvas is detached
+   * or a layer is open.
    * @throws {@link DOMException} `NotSupportedError` when no canvas hooks are installed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/transferToImageBitmap)
@@ -10511,6 +10514,7 @@ interface OffscreenCanvas extends EventTarget {
 
   /**
    * @throws {@link DOMException} `InvalidStateError` when the canvas is detached.
+   * An open layer rejects `InvalidStateError`.
    * @throws {@link DOMException} `NotSupportedError` when no canvas hooks are installed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/convertToBlob)
@@ -10697,9 +10701,11 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
    * `null` and `""` repeat on both axes. `undefined` and the string `"null"`
-   * throw `SyntaxError`.
+   * throw `SyntaxError`. An {@link OffscreenCanvas} with an open layer throws
+   * `InvalidStateError`.
    *
    * @throws {@link DOMException} `SyntaxError` when `repetition` is not a repeat mode.
+   * @throws {@link DOMException} `InvalidStateError` when the source canvas has an open layer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createPattern)
    */
@@ -10815,6 +10821,9 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
+   * An {@link OffscreenCanvas} with an open layer throws `InvalidStateError`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the source canvas has an open layer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/drawImage)
    */
@@ -10868,7 +10877,9 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * Omitted `colorSpace` is `"srgb"`. Omitted `pixelFormat` is `"rgba-unorm8"`.
-   * May stall on a GPU readback.
+   * May stall on a GPU readback. An open layer throws `InvalidStateError`.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when a layer is open.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/getImageData)
    */
@@ -10882,9 +10893,10 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * A buffer of the other typed-array kind throws `InvalidStateError`.
+   * An open layer throws `InvalidStateError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when `imageData.data` does
-   * not match `pixelFormat`.
+   * not match `pixelFormat`, or when a layer is open.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/putImageData)
    */
@@ -11336,10 +11348,11 @@ interface ImageBitmapOptions {
  * `resizeQuality` `"pixelated"` and `"low"` are nearest-neighbor. `"medium"`
  * and `"high"` use a triangle filter. `premultiplyAlpha: "default"` leaves
  * samples unpremultiplied. Decoding does not block the event loop. A decoder
- * panic rejects `InvalidStateError`.
+ * panic rejects `InvalidStateError`. An {@link OffscreenCanvas} with an
+ * open layer rejects `InvalidStateError`.
  *
  * @throws {@link DOMException} `InvalidStateError` when the input cannot be
- * decoded or a size limit is exceeded.
+ * decoded, a size limit is exceeded, or the source canvas has an open layer.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/createImageBitmap)
  */

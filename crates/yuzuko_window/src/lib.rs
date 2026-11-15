@@ -59,9 +59,9 @@ fn test_inject_enabled() -> bool {
 
 pub use canvas::{
   CanvasHooks, CanvasSnapshot, ContextKind, OffscreenCanvas, WebGpuHooks,
-  install_hooks, install_presented_bitmap, install_webgpu_hooks,
-  offscreen_bitmap, offscreen_canvas, present_canvas, present_webgpu,
-  reset_canvas_bitmap, snapshot_canvas,
+  canvas_layers_open, install_hooks, install_presented_bitmap,
+  install_webgpu_hooks, offscreen_bitmap, offscreen_canvas, present_canvas,
+  present_webgpu, reset_canvas_bitmap, snapshot_canvas,
 };
 pub use fit::{
   ImageRendering, ObjectFit, PresentStyle, composite, composite_pad,

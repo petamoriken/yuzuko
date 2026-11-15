@@ -374,6 +374,13 @@ fn external_source(
   if let Some((id, width, height)) =
     yuzuko_window::offscreen_canvas(scope, value)
   {
+    // The source bitmap is not readable until `endLayer` or `reset`.
+    if record::layers_open(id) {
+      return Err(OpError::dom(
+        "InvalidStateError",
+        "The canvas has an open layer",
+      ));
+    }
     if width == 0.0 || height == 0.0 {
       return Err(OpError::dom(
         "InvalidStateError",
@@ -1582,6 +1589,12 @@ impl Context2D {
         "The source rectangle is empty",
       ));
     }
+    if record::layers_open(self.id) {
+      return Err(OpError::dom(
+        "InvalidStateError",
+        "The canvas has an open layer",
+      ));
+    }
     let settings = if args.length() >= 5 {
       Some(args.get(4))
     } else {
@@ -1620,6 +1633,12 @@ impl Context2D {
     let mut dy = objects::number(scope, args.get(2))?;
     if !dx.is_finite() || !dy.is_finite() {
       return Err(OpError::type_("putImageData destination is not finite"));
+    }
+    if record::layers_open(self.id) {
+      return Err(OpError::dom(
+        "InvalidStateError",
+        "The canvas has an open layer",
+      ));
     }
     if args.length() >= 7 {
       let dirty_x = objects::number(scope, args.get(3))?;

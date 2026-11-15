@@ -117,6 +117,13 @@ fn start<'s>(
   if let Some((id, width, height)) =
     yuzuko_window::offscreen_canvas(scope, source)
   {
+    if yuzuko_window::canvas_layers_open(id) {
+      return reject_dom(
+        scope,
+        "InvalidStateError",
+        "The canvas has an open layer",
+      );
+    }
     return match canvas_raster(id, width, height) {
       Ok(raster) => enqueue_raster(scope, raster, parsed, false),
       Err(message) => reject_dom(scope, "InvalidStateError", &message),

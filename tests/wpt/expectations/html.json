@@ -1772,36 +1772,10 @@
   "html/canvas/offscreen/layers/2d.layer.invalid-calls.save-endLayer.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.html": true,
   "html/canvas/offscreen/layers/2d.layer.layer-rendering-state-reset-in-layer.worker.js": true,
-  "html/canvas/offscreen/layers/2d.layer.malformed-operations-with-promises.html": {
-    "expectedFailures": [
-      "Throws if convertToBlob is called while layers are open.",
-      "Throws if createImageBitmap is called while layers are open."
-    ]
-  },
-  "html/canvas/offscreen/layers/2d.layer.malformed-operations-with-promises.worker.js": {
-    "expectedFailures": [
-      "Throws if convertToBlob is called while layers are open.",
-      "Throws if createImageBitmap is called while layers are open."
-    ]
-  },
-  "html/canvas/offscreen/layers/2d.layer.malformed-operations.html": {
-    "expectedFailures": [
-      "Throws if createPattern is called while layers are open.",
-      "Throws if drawImage is called while layers are open.",
-      "Throws if getImageData is called while layers are open.",
-      "Throws if putImageData is called while layers are open.",
-      "Throws if transferToImageBitmap is called while layers are open."
-    ]
-  },
-  "html/canvas/offscreen/layers/2d.layer.malformed-operations.worker.js": {
-    "expectedFailures": [
-      "Throws if createPattern is called while layers are open.",
-      "Throws if drawImage is called while layers are open.",
-      "Throws if getImageData is called while layers are open.",
-      "Throws if putImageData is called while layers are open.",
-      "Throws if transferToImageBitmap is called while layers are open."
-    ]
-  },
+  "html/canvas/offscreen/layers/2d.layer.malformed-operations-with-promises.html": true,
+  "html/canvas/offscreen/layers/2d.layer.malformed-operations-with-promises.worker.js": true,
+  "html/canvas/offscreen/layers/2d.layer.malformed-operations.html": true,
+  "html/canvas/offscreen/layers/2d.layer.malformed-operations.worker.js": true,
   "html/canvas/offscreen/layers/2d.layer.nested-ctx-filter-expected.html": {
     "ignore": "The file is not a testharness document."
   },

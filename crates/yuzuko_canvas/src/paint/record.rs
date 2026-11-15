@@ -756,6 +756,11 @@ pub fn dispose(id: u64) {
   yuzuko_window::clear_canvas_present(id);
 }
 
+/// `beginLayer` is still open. `endLayer` and `reset` close it.
+pub fn layers_open(id: u64) -> bool {
+  with_drawing(id, |drawing| !drawing.layers.is_empty()).unwrap_or(false)
+}
+
 pub fn with_drawing<T>(
   id: u64,
   body: impl FnOnce(&mut Drawing) -> T,

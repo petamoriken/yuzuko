@@ -58,6 +58,8 @@ pub struct CanvasHooks {
     fn(&mut v8::PinScope, u64) -> Result<Js, OpError>,
   pub resized: fn(u64, f64, f64),
   pub snapshot: fn(u64) -> Option<CanvasSnapshot>,
+  /// A 2D context on this canvas has a `beginLayer` that is still open.
+  pub layers_open: fn(u64) -> bool,
   /// Rasterize before the swapchain texture is acquired. May wait on the GPU.
   pub stage: fn(&wgpu::Device, &wgpu::Queue, u64, u32, u32) -> bool,
   pub present: fn(
@@ -146,6 +148,11 @@ pub(crate) fn webgpu_after_frame(id: u64) {
 
 pub fn snapshot_canvas(id: u64) -> Option<CanvasSnapshot> {
   hooks().and_then(|hooks| (hooks.snapshot)(id))
+}
+
+/// True when this canvas's 2D context has an unmatched `beginLayer`.
+pub fn canvas_layers_open(id: u64) -> bool {
+  hooks().is_some_and(|hooks| (hooks.layers_open)(id))
 }
 
 pub fn install_presented_bitmap(id: u64, snapshot: CanvasSnapshot) {

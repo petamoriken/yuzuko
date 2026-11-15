@@ -32,6 +32,7 @@ pub fn register() {
       transfer_to_image_bitmap,
       resized: record::resized,
       snapshot,
+      layers_open: record::layers_open,
       stage,
       present,
       discard_present: discard_staged,
@@ -229,6 +230,13 @@ fn convert_to_blob(
   id: u64,
   options: Option<v8::Global<v8::Value>>,
 ) -> Result<Js, OpError> {
+  if record::layers_open(id) {
+    return Ok(reject(
+      scope,
+      "InvalidStateError",
+      "The canvas has an open layer",
+    ));
+  }
   let (mime, quality) = blob_options(scope, options)?;
   let Some(raster) = snapshot_raster(id) else {
     return Ok(reject(
@@ -282,6 +290,12 @@ fn transfer_to_image_bitmap(
   scope: &mut v8::PinScope,
   id: u64,
 ) -> Result<Js, OpError> {
+  if record::layers_open(id) {
+    return Err(OpError::dom(
+      "InvalidStateError",
+      "The canvas has an open layer",
+    ));
+  }
   let Some(raster) = snapshot_raster(id) else {
     return Err(OpError::dom(
       "InvalidStateError",
