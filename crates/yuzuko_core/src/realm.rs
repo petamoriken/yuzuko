@@ -62,6 +62,13 @@ pub fn install(scope: &mut v8::PinScope) {
   if !host::is_dedicated_worker() {
     js::set_value(scope, global, "window", global.into());
   }
+  // No document, COOP, or COEP, so the agent is not cross-origin isolated.
+  js::set_value(
+    scope,
+    global,
+    "crossOriginIsolated",
+    v8::Boolean::new(scope, false).into(),
+  );
   js::set_function(scope, global, "queueMicrotask", queue_microtask);
   js::set_function(scope, global, "structuredClone", structured_clone);
   js::set_function(scope, global, "reportError", report_error);
@@ -207,6 +214,24 @@ fn navigator_platform() -> &'static str {
   }
 }
 
+/// Replaces V8's plain `SharedArrayBuffer` clone error with `DataCloneError`.
+///
+/// The check runs after `write_value` returns. Constructing `DOMException`
+/// inside the serializer delegate can run while JavaScript is disallowed.
+macro_rules! promote_shared_array_buffer_error {
+  ($tc:ident) => {
+    if let Some(thrown) = $tc.exception()
+      && clone::unshared_array_buffer_error($tc, thrown)
+    {
+      $tc.reset();
+      clone::throw_data_clone(
+        $tc,
+        "The SharedArrayBuffer could not be cloned.",
+      );
+    }
+  };
+}
+
 /// Which half of a cross-context structured clone failed.
 pub enum ClonePhase {
   Serialize(Option<v8::Global<v8::Value>>),
@@ -228,6 +253,7 @@ pub fn clone_into_context<'s>(
     serializer.write_header();
     let context = tc.get_current_context();
     if serializer.write_value(context, value).is_none() {
+      promote_shared_array_buffer_error!(tc);
       Err(ClonePhase::Serialize(
         tc.exception().map(|thrown| v8::Global::new(tc, thrown)),
       ))
@@ -290,6 +316,7 @@ pub fn clone_value<'s>(
     serializer.write_header();
     let context = tc.get_current_context();
     if serializer.write_value(context, value).is_none() {
+      promote_shared_array_buffer_error!(tc);
       Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
     } else {
       let bytes = serializer.release();

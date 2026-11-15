@@ -113,6 +113,36 @@ Yuzuko.test("structuredClone copies Blob, File, and DOMException", async () => {
   }
 });
 
+Yuzuko.test("structuredClone rejects a SharedArrayBuffer", () => {
+  if (crossOriginIsolated !== false) {
+    throw new Error("crossOriginIsolated " + String(crossOriginIsolated));
+  }
+  const samples = [
+    new SharedArrayBuffer(8),
+    new SharedArrayBuffer(16, { maxByteLength: 1024 }),
+    new Uint8Array(new SharedArrayBuffer(4)),
+    { buffer: new SharedArrayBuffer(4) },
+  ];
+  for (const value of samples) {
+    let caught: DOMException | null = null;
+    try {
+      structuredClone(value);
+    } catch (error) {
+      caught = error as DOMException;
+    }
+    if (
+      !(caught instanceof DOMException)
+      || caught.name !== "DataCloneError"
+      || caught.code !== DOMException.DATA_CLONE_ERR
+      || caught.message !== "The SharedArrayBuffer could not be cloned."
+    ) {
+      throw new Error(
+        (caught && caught.name + " " + caught.message) || "missing",
+      );
+    }
+  }
+});
+
 function cloneError(run: () => unknown): string {
   try {
     run();

@@ -6118,6 +6118,16 @@ declare namespace Yuzuko {
  */
 declare const self: Window & typeof globalThis;
 
+/**
+ * Whether this agent is cross-origin isolated.
+ *
+ * There is no document and no COOP or COEP policy, so this is `false` in
+ * every realm. `structuredClone` of a {@link SharedArrayBuffer} throws
+ * `DataCloneError`.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/crossOriginIsolated)
+ */
+declare const crossOriginIsolated: false;
 
 /**
  * Alias of `globalThis` on the main realm.
@@ -6268,11 +6278,12 @@ declare function reportError(error: any): void;
  * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, a `VideoFrame`, a
  * `ReadableStream`, a `WritableStream`, or a `TransformStream`.
  * @throws {@link DOMException} `DataCloneError` when `value` contains a host
- * object this runtime cannot clone, including a {@link Yuzuko.Window}, a
- * {@link Yuzuko.WindowSurface}, a closed {@link VideoFrame} or
- * {@link AudioData}, a detached {@link ImageBitmap}, a locked stream, a
- * stream left out of `transfer`, or a listed value that cannot be
- * transferred.
+ * object this runtime cannot clone, including a {@link SharedArrayBuffer},
+ * a {@link Yuzuko.Window}, a {@link Yuzuko.WindowSurface}, a closed
+ * {@link VideoFrame} or {@link AudioData}, a detached {@link ImageBitmap},
+ * a locked stream, a stream left out of `transfer`, or a listed value that
+ * cannot be transferred. A `SharedArrayBuffer` is not shared: this agent is
+ * not cross-origin isolated.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/structuredClone)
  */

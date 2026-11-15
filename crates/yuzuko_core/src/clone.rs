@@ -290,6 +290,30 @@ impl Drop for AllowSharedArrayBufferClone {
   }
 }
 
+/// V8's plain `Error` for a `SharedArrayBuffer` the serializer refused to share.
+///
+/// rusty_v8 forwards a missing id to the default delegate, which throws
+/// `#<SharedArrayBuffer> could not be cloned.` instead of calling
+/// [`throw_data_clone`].
+pub(crate) fn unshared_array_buffer_error(
+  scope: &mut v8::PinScope,
+  thrown: v8::Local<v8::Value>,
+) -> bool {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(thrown) else {
+    return false;
+  };
+  let Some(key) = v8::String::new(scope, "message") else {
+    return false;
+  };
+  let Some(message) = object.get_real_named_property(scope, key.into()) else {
+    return false;
+  };
+  message.is_string()
+    && message
+      .to_rust_string_lossy(scope)
+      .contains("#<SharedArrayBuffer> could not be cloned")
+}
+
 pub(crate) fn note_shared_array_buffer(
   buffer: &v8::SharedArrayBuffer,
 ) -> Option<u32> {
