@@ -164,6 +164,7 @@ pub fn parse_font(input: &str) -> Option<FontDesc> {
     size,
     weight,
     italic,
+    small_caps,
     family,
     css,
   })

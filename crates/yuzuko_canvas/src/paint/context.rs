@@ -33,8 +33,12 @@ use crate::paint::record::Baseline;
 use crate::paint::record::Command;
 use crate::paint::record::Direction;
 use crate::paint::record::Drawing;
+use crate::paint::record::FontKerning;
+use crate::paint::record::FontStretch;
+use crate::paint::record::FontVariantCaps;
 use crate::paint::record::ImageBuf;
 use crate::paint::record::Style;
+use crate::paint::record::TextRendering;
 use crate::paint::record::{self};
 use crate::paint::replay;
 use crate::text;
@@ -1812,13 +1816,113 @@ impl Context2D {
     self.draw_text(scope, args, true)
   }
 
+  #[getter]
+  fn letter_spacing(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.letter_spacing.clone()))
+  }
+
+  #[setter]
+  fn letter_spacing(&self, value: String) -> Result<(), OpError> {
+    let Some(spacing) = text::parse_spacing(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.letter_spacing = spacing;
+      Ok(())
+    })
+  }
+
+  #[getter]
+  fn word_spacing(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.word_spacing.clone()))
+  }
+
+  #[setter]
+  fn word_spacing(&self, value: String) -> Result<(), OpError> {
+    let Some(spacing) = text::parse_spacing(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.word_spacing = spacing;
+      Ok(())
+    })
+  }
+
+  #[getter]
+  fn font_kerning(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.font_kerning.as_str().to_string()))
+  }
+
+  #[setter]
+  fn font_kerning(&self, value: String) -> Result<(), OpError> {
+    let Some(kerning) = FontKerning::parse(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.font_kerning = kerning;
+      Ok(())
+    })
+  }
+
+  #[getter]
+  fn font_stretch(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.font_stretch.as_str().to_string()))
+  }
+
+  #[setter]
+  fn font_stretch(&self, value: String) -> Result<(), OpError> {
+    let Some(stretch) = FontStretch::parse(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.font_stretch = stretch;
+      Ok(())
+    })
+  }
+
+  #[getter]
+  fn font_variant_caps(&self) -> Result<String, OpError> {
+    self.update(|drawing| {
+      Ok(drawing.state.font_variant_caps.as_str().to_string())
+    })
+  }
+
+  #[setter]
+  fn font_variant_caps(&self, value: String) -> Result<(), OpError> {
+    let Some(variant) = FontVariantCaps::parse(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.font_variant_caps = variant;
+      Ok(())
+    })
+  }
+
+  #[getter]
+  fn text_rendering(&self) -> Result<String, OpError> {
+    self.update(|drawing| Ok(drawing.state.text_rendering.as_str().to_string()))
+  }
+
+  #[setter]
+  fn text_rendering(&self, value: String) -> Result<(), OpError> {
+    let Some(rendering) = TextRendering::parse(&value) else {
+      return Ok(());
+    };
+    self.update(|drawing| {
+      drawing.state.text_rendering = rendering;
+      Ok(())
+    })
+  }
+
   fn measure_text(&self, text: String) -> Result<New<TextMetrics>, OpError> {
     self.update(|drawing| {
+      let shaping = text_shape(&drawing.state);
       let shaped = text::shape(
         &text,
         &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
+        &shaping,
       );
       Ok(New(TextMetrics::from_shaped(
         &shaped,
@@ -1954,30 +2058,38 @@ impl Context2D {
     }
     self.update(|drawing| {
       let shade = drawing.state.shade();
+      let shaping = text_shape(&drawing.state);
       let shaped = text::shape(
         &text,
         &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
+        &shaping,
       );
-      if shaped.width <= 0.0 {
+      let advance = shaped.advance();
+      if advance <= 0.0 {
         return Ok(());
       }
       let mut scale = 1.0;
       if let Some(max_width) = max_width
         && max_width >= 0.0
-        && f64::from(shaped.width) > max_width
+        && advance > max_width
       {
-        scale = max_width / f64::from(shaped.width);
+        scale = max_width / advance;
       }
       let align = drawing
         .state
         .align
-        .offset(drawing.state.direction.is_rtl(), f64::from(shaped.width))
+        .offset(drawing.state.direction.is_rtl(), advance)
         * scale;
       let ascent = f64::from(shaped.ascent);
       let descent = f64::from(shaped.descent);
-      let baseline = drawing.state.baseline.offset(ascent, descent);
+      let baseline = drawing.state.baseline.offset(
+        ascent,
+        descent,
+        f64::from(shaped.hanging),
+        f64::from(shaped.ideographic),
+      );
       let transform = drawing.state.transform
         * Affine::translate((x + align, y + baseline))
         * Affine::scale_non_uniform(scale, 1.0);
@@ -2026,6 +2138,17 @@ impl Context2D {
       Ok(())
     })
   }
+}
+
+fn text_shape(state: &record::State) -> text::TextShape {
+  text::TextShape::from_canvas(
+    &state.font,
+    state.font_kerning,
+    state.font_stretch,
+    state.font_variant_caps,
+    &state.letter_spacing,
+    &state.word_spacing,
+  )
 }
 
 fn path_and_rule(

@@ -414,26 +414,29 @@ impl TextMetrics {
   /// Ink bounds relative to `textAlign` and `textBaseline`.
   ///
   /// `actualBoundingBox*` is the glyph-outline box. An empty outline reports
-  /// zeros. Font and em boxes use the typographic ascent and descent, shifted
-  /// onto the selected baseline. Positive baseline distances point down.
+  /// zeros. The font box uses the typographic ascent and descent. The em box
+  /// is that pair scaled so the two sides sum to the font size. A positive
+  /// baseline distance means `textBaseline` is below that named baseline.
   pub fn from_shaped(
     shaped: &crate::text::ShapedText,
     align: crate::paint::record::Align,
     baseline: crate::paint::record::Baseline,
     rtl: bool,
   ) -> Self {
-    let width = f64::from(shaped.width);
+    let width = shaped.advance();
     let ascent = f64::from(shaped.ascent);
     let descent = f64::from(shaped.descent);
+    let hanging = f64::from(shaped.hanging);
+    let ideographic = f64::from(shaped.ideographic);
     let align = align.offset(rtl, width);
-    let baseline = baseline.offset(ascent, descent);
+    let anchor = baseline.offset(ascent, descent, hanging, ideographic);
     let (actual_left, actual_right, actual_ascent, actual_descent) =
       match shaped.ink_union() {
         Some(ink) => (
           -(align + f64::from(ink.x0)),
           align + f64::from(ink.x1),
-          -(baseline + f64::from(ink.y0)),
-          baseline + f64::from(ink.y1),
+          -(anchor + f64::from(ink.y0)),
+          anchor + f64::from(ink.y1),
         ),
         None => (0.0, 0.0, 0.0, 0.0),
       };
@@ -443,13 +446,13 @@ impl TextMetrics {
       actual_right,
       actual_ascent,
       actual_descent,
-      font_ascent: ascent - baseline,
-      font_descent: descent + baseline,
-      em_ascent: ascent - baseline,
-      em_descent: descent + baseline,
-      hanging: baseline - 0.8 * ascent,
-      alphabetic: baseline,
-      ideographic: baseline + descent,
+      font_ascent: ascent - anchor,
+      font_descent: descent + anchor,
+      em_ascent: f64::from(shaped.em_ascent) - anchor,
+      em_descent: f64::from(shaped.em_descent) + anchor,
+      hanging: hanging - anchor,
+      alphabetic: -anchor,
+      ideographic: ideographic - anchor,
     }
   }
 }
@@ -610,7 +613,13 @@ mod tests {
       size: 80.0,
       ..FontDesc::default()
     };
-    let shaped = shape(text, &font, false, "inherit");
+    let shaped = shape(
+      text,
+      &font,
+      false,
+      "inherit",
+      &crate::text::TextShape::default(),
+    );
     TextMetrics::from_shaped(&shaped, align, baseline, false)
   }
 
@@ -630,10 +639,10 @@ mod tests {
     let centered = metrics("A", Align::Center, Baseline::Alphabetic);
     assert!(centered.actual_left > letter.actual_left + letter.width * 0.3);
     assert_eq!(letter.alphabetic, 0.0);
-    assert!(letter.hanging < 0.0);
-    assert!(letter.ideographic > 0.0);
+    assert!(letter.hanging > 0.0);
+    assert!(letter.ideographic < 0.0);
     let top = metrics("A", Align::Left, Baseline::Top);
-    assert!(top.alphabetic > 0.0);
+    assert!(top.alphabetic < 0.0);
     assert!(top.font_ascent < letter.font_ascent);
     let empty = metrics("", Align::Left, Baseline::Alphabetic);
     assert_eq!(empty.actual_left, 0.0);

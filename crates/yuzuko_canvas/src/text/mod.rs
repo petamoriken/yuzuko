@@ -27,12 +27,16 @@ use parley::Alignment;
 use parley::AlignmentOptions;
 use parley::FontContext;
 use parley::FontFamily;
+use parley::FontFeatures;
 use parley::GenericFamily;
 use parley::LayoutContext;
 use parley::StyleProperty;
 
 use crate::paint::record::Family;
 use crate::paint::record::FontDesc;
+use crate::paint::record::FontKerning;
+use crate::paint::record::FontStretch;
+use crate::paint::record::FontVariantCaps;
 
 struct Registered {
   family: FamilyId,
@@ -204,14 +208,100 @@ pub struct ShapedCluster {
 
 #[derive(Clone)]
 pub struct ShapedText {
+  /// Unspaced advance from the shaper, in CSS pixels.
   pub width: f32,
+  /// Letter and word spacing added after shaping, in CSS pixels.
+  ///
+  /// Kept in `f64` so a later subtraction of two measured widths is exact.
+  /// The shaper's `f32` advance would round a 20px gap off that equality.
+  pub spacing: f64,
   pub ascent: f32,
   pub descent: f32,
+  /// Em box above the alphabetic baseline. Ascent and descent sum to the
+  /// font size.
+  pub em_ascent: f32,
+  pub em_descent: f32,
+  /// Hanging baseline above the alphabetic baseline.
+  pub hanging: f32,
+  /// Ideographic baseline above the alphabetic baseline. Negative when the
+  /// font has no BASE `ideo` coordinate and the descent is used instead.
+  pub ideographic: f32,
   pub runs: Vec<ShapedRun>,
   pub clusters: Vec<ShapedCluster>,
 }
 
+/// Spacing and OpenType features for one `measureText` or text draw.
+///
+/// Letter and word spacing are not given to parley. Parley would add them
+/// again as `f32`, and the measured width would no longer match the gaps
+/// added here.
+#[derive(Clone, Debug)]
+pub struct TextShape {
+  pub letter_px: f64,
+  pub word_px: f64,
+  pub stretch: FontWidth,
+  /// CSS font-feature list. Empty when no feature is overridden.
+  pub features: String,
+  /// Lowercase letters use 0.7 of the font size. Set when `smcp` does not
+  /// change the glyphs.
+  pub synthetic_small_caps: bool,
+}
+
+impl Default for TextShape {
+  fn default() -> Self {
+    Self {
+      letter_px: 0.0,
+      word_px: 0.0,
+      stretch: FontWidth::NORMAL,
+      features: String::new(),
+      synthetic_small_caps: false,
+    }
+  }
+}
+
+impl TextShape {
+  pub fn from_canvas(
+    font: &FontDesc,
+    kerning: FontKerning,
+    stretch: FontStretch,
+    variant: FontVariantCaps,
+    letter_spacing: &str,
+    word_spacing: &str,
+  ) -> Self {
+    let mut features = String::new();
+    if !kerning.kerns() {
+      features.push_str("\"kern\" off");
+    }
+    let tags = if variant == FontVariantCaps::Normal && font.small_caps {
+      &["smcp"][..]
+    } else {
+      variant.features()
+    };
+    for tag in tags {
+      if !features.is_empty() {
+        features.push_str(", ");
+      }
+      features.push('"');
+      features.push_str(tag);
+      features.push_str("\" on");
+    }
+    Self {
+      letter_px: spacing_px(letter_spacing, font.size),
+      word_px: spacing_px(word_spacing, font.size),
+      stretch: FontWidth::parse_css(stretch.as_str())
+        .unwrap_or(FontWidth::NORMAL),
+      features,
+      synthetic_small_caps: false,
+    }
+  }
+}
+
 impl ShapedText {
+  /// Unspaced advance plus letter and word spacing.
+  pub fn advance(&self) -> f64 {
+    f64::from(self.width) + self.spacing
+  }
+
   /// Union of glyph-outline bounds in advance space. Empty when no glyph
   /// has an outline, which includes a space.
   pub fn ink_union(&self) -> Option<Ink> {
@@ -232,7 +322,42 @@ fn shaping_language(lang: &str) -> Option<Language> {
   Language::parse(lang).ok()
 }
 
-pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
+pub fn shape(
+  text: &str,
+  font: &FontDesc,
+  rtl: bool,
+  lang: &str,
+  shaping: &TextShape,
+) -> ShapedText {
+  // Canvas converts those four controls to U+0020 and does not collapse
+  // them. U+000B stays. U+0000 is dropped before shaping.
+  let text = prepare_text(text);
+  if text.is_empty() {
+    return empty_shaped(font.size);
+  }
+  let shaped = layout(&text, font, rtl, lang, shaping);
+  // `smcp` is a no-op when the face has no small-cap glyphs. Draw lowercase
+  // at 0.7 of the font size instead of applying the feature a second time.
+  if !shaping.features.contains("\"smcp\"") {
+    return shaped;
+  }
+  let mut plain = shaping.clone();
+  plain.features = without_caps(&shaping.features);
+  let plain_shaped = layout(&text, font, rtl, lang, &plain);
+  if glyph_ids(&shaped) != glyph_ids(&plain_shaped) {
+    return shaped;
+  }
+  plain.synthetic_small_caps = true;
+  layout(&text, font, rtl, lang, &plain)
+}
+
+fn layout(
+  text: &str,
+  font: &FontDesc,
+  rtl: bool,
+  lang: &str,
+  shaping: &TextShape,
+) -> ShapedText {
   let wrapped = if rtl {
     format!("\u{2067}{text}\u{2069}")
   } else {
@@ -248,6 +373,9 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
     let TextEnv { fonts, layout, .. } = &mut *env;
     let mut builder = layout.ranged_builder(fonts, &wrapped, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font.size));
+    if shaping.synthetic_small_caps {
+      push_lowercase_size(&mut builder, &wrapped, font.size * 0.7);
+    }
     builder.push_default(StyleProperty::FontWeight(FontWeight::new(
       font.weight as f32,
     )));
@@ -256,6 +384,10 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
     } else {
       FontStyle::Normal
     }));
+    builder.push_default(StyleProperty::FontWidth(shaping.stretch));
+    if !shaping.features.is_empty() {
+      builder.push_default(FontFeatures::from(shaping.features.as_str()));
+    }
     if let Some(name) = named {
       builder.push_default(FontFamily::Source(Cow::Owned(name)));
     } else {
@@ -274,10 +406,19 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
     let mut built = builder.build(&wrapped);
     built.break_all_lines(None);
     built.align(Alignment::Start, AlignmentOptions::default());
+    let placeholder_ascent = font.size * 0.8;
+    let placeholder_descent = font.size * 0.2;
+    let (em_ascent, em_descent) =
+      normalized_em(placeholder_ascent, placeholder_descent, font.size);
     let mut shaped = ShapedText {
       width: built.width(),
-      ascent: font.size * 0.8,
-      descent: font.size * 0.2,
+      spacing: 0.0,
+      ascent: placeholder_ascent,
+      descent: placeholder_descent,
+      em_ascent,
+      em_descent,
+      hanging: placeholder_ascent * 0.8,
+      ideographic: -placeholder_descent,
       runs: Vec::new(),
       clusters: Vec::new(),
     };
@@ -285,6 +426,7 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
       let mut clusters = Vec::new();
       let mut typographic_ascent = None;
       let mut typographic_descent = None;
+      let mut sample_font = None;
       for item in line.items() {
         let parley::PositionedLayoutItem::GlyphRun(run) = item else {
           continue;
@@ -301,6 +443,9 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
             .max(metrics.descent),
         );
         let face = run.run().font().clone();
+        if sample_font.is_none() {
+          sample_font = Some(face.clone());
+        }
         let size = run.run().font_size();
         let mut cursor = run.offset();
         for cluster in run.run().visual_clusters() {
@@ -344,7 +489,27 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
         shaped.ascent = ascent.round();
         shaped.descent = descent.round();
       }
+      let (em_ascent, em_descent) =
+        normalized_em(shaped.ascent, shaped.descent, font.size);
+      shaped.em_ascent = em_ascent;
+      shaped.em_descent = em_descent;
+      if let Some((hanging, ideographic)) = sample_font
+        .as_ref()
+        .and_then(|sample| base_offsets(sample, font.size))
+      {
+        shaped.hanging = hanging;
+        shaped.ideographic = ideographic;
+      } else {
+        shaped.hanging = shaped.ascent * 0.8;
+        shaped.ideographic = -shaped.descent;
+      }
       shaped.clusters = merge_graphemes(text, clusters);
+      shaped.spacing = apply_spacing(
+        text,
+        &mut shaped.clusters,
+        shaping.letter_px,
+        shaping.word_px,
+      );
       for cluster in &shaped.clusters {
         for glyph in &cluster.glyphs {
           let same = shaped.runs.last().is_some_and(|run| {
@@ -371,6 +536,240 @@ pub fn shape(text: &str, font: &FontDesc, rtl: bool, lang: &str) -> ShapedText {
     }
     shaped
   })
+}
+
+fn glyph_ids(shaped: &ShapedText) -> Vec<u32> {
+  shaped
+    .runs
+    .iter()
+    .flat_map(|run| run.glyphs.iter().map(|glyph| glyph.0))
+    .collect()
+}
+
+fn without_caps(features: &str) -> String {
+  features
+    .split(", ")
+    .filter(|part| {
+      !["smcp", "c2sc", "pcap", "c2pc", "unic", "titl"]
+        .iter()
+        .any(|tag| part.contains(tag))
+    })
+    .collect::<Vec<_>>()
+    .join(", ")
+}
+
+fn push_lowercase_size(
+  builder: &mut parley::RangedBuilder<'_, [u8; 4]>,
+  wrapped: &str,
+  size: f32,
+) {
+  let mut byte = 0;
+  let mut run = None;
+  for ch in wrapped.chars() {
+    let next = byte + ch.len_utf8();
+    if ch.is_lowercase() {
+      if run.is_none() {
+        run = Some(byte);
+      }
+    } else if let Some(start) = run.take() {
+      builder.push(StyleProperty::FontSize(size), start..byte);
+    }
+    byte = next;
+  }
+  if let Some(start) = run {
+    builder.push(StyleProperty::FontSize(size), start..byte);
+  }
+}
+
+fn prepare_text(text: &str) -> String {
+  let mut prepared = String::with_capacity(text.len());
+  for ch in text.chars() {
+    match ch {
+      '\u{0000}' => {}
+      '\u{0009}' | '\u{000A}' | '\u{000C}' | '\u{000D}' => prepared.push(' '),
+      other => prepared.push(other),
+    }
+  }
+  prepared
+}
+
+fn empty_shaped(size: f32) -> ShapedText {
+  let ascent = size * 0.8;
+  let descent = size * 0.2;
+  let (em_ascent, em_descent) = normalized_em(ascent, descent, size);
+  ShapedText {
+    width: 0.0,
+    spacing: 0.0,
+    ascent,
+    descent,
+    em_ascent,
+    em_descent,
+    hanging: ascent * 0.8,
+    ideographic: -descent,
+    runs: Vec::new(),
+    clusters: Vec::new(),
+  }
+}
+
+/// Blink normalizes the typographic box so the two sides sum to the font size.
+fn normalized_em(ascent: f32, descent: f32, size: f32) -> (f32, f32) {
+  let sum = ascent + descent;
+  if sum <= 0.0 {
+    return (size, 0.0);
+  }
+  let em_ascent = (ascent * size / sum).round();
+  (em_ascent, size.round() - em_ascent)
+}
+
+/// `hang` and `ideo` from the font's BASE table, in CSS pixels above the
+/// alphabetic baseline. `None` when the default script does not place both.
+fn base_offsets(
+  font: &vello_cpu::peniko::FontData,
+  size: f32,
+) -> Option<(f32, f32)> {
+  use skrifa::raw::TableProvider;
+  use skrifa::raw::tables::base::BaseAxis;
+  use skrifa::raw::tables::base::BaseInstance;
+  use skrifa::raw::tables::base::baseline_tags;
+
+  let face = skrifa::FontRef::from_index(font.data.data(), font.index).ok()?;
+  let upem = f32::from(face.head().ok()?.units_per_em());
+  if upem <= 0.0 {
+    return None;
+  }
+  let instance = BaseInstance::new(face.base().ok()?);
+  let scale = size / upem;
+  let script = skrifa::Tag::new(b"DFLT");
+  let hanging = instance
+    .baseline(baseline_tags::HANGING, BaseAxis::Horizontal, script)?
+    .to_f32()
+    * scale;
+  let ideographic = instance
+    .baseline(
+      baseline_tags::IDEO_EMBOX_BOTTOM_OR_LEFT,
+      BaseAxis::Horizontal,
+      script,
+    )?
+    .to_f32()
+    * scale;
+  Some((hanging, ideographic))
+}
+
+/// Shift clusters by the spacing of every scalar that ends at or before the
+/// cluster. The returned total includes the gap after the last scalar.
+fn apply_spacing(
+  text: &str,
+  clusters: &mut [ShapedCluster],
+  letter_px: f64,
+  word_px: f64,
+) -> f64 {
+  if letter_px == 0.0 && word_px == 0.0 {
+    return 0.0;
+  }
+  let mut ends = Vec::new();
+  let mut acc = 0.0f64;
+  let mut index = 0u32;
+  for ch in text.chars() {
+    index += ch.len_utf16() as u32;
+    acc += letter_px;
+    if ch == ' ' {
+      acc += word_px;
+    }
+    ends.push((index, acc));
+  }
+  for cluster in clusters.iter_mut() {
+    let mut shift = 0.0f64;
+    for (end, extra) in &ends {
+      if *end <= cluster.start {
+        shift = *extra;
+      } else {
+        break;
+      }
+    }
+    let shift = shift as f32;
+    cluster.left += shift;
+    if let Some(ink) = cluster.ink.as_mut() {
+      ink.x0 += shift;
+      ink.x1 += shift;
+    }
+    for glyph in &mut cluster.glyphs {
+      glyph.x += shift;
+    }
+  }
+  acc
+}
+
+/// A canvas spacing length. The number keeps its spelling and the unit is
+/// lowercased. Units are `px`, `em`, `ex`, `ch`, `ic`, `in`, `cm`, and `mm`.
+pub fn parse_spacing(input: &str) -> Option<String> {
+  let input = input.trim();
+  let bytes = input.as_bytes();
+  if bytes.is_empty() {
+    return None;
+  }
+  let mut index = 0;
+  if bytes[0] == b'+' || bytes[0] == b'-' {
+    index = 1;
+  }
+  let digits = index;
+  if index >= bytes.len() || !bytes[index].is_ascii_digit() {
+    return None;
+  }
+  while index < bytes.len() && bytes[index].is_ascii_digit() {
+    index += 1;
+  }
+  if index < bytes.len() && bytes[index] == b'.' {
+    index += 1;
+    let fraction = index;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+      index += 1;
+    }
+    if index == fraction {
+      return None;
+    }
+  }
+  if index == digits {
+    return None;
+  }
+  let unit_at = index;
+  while index < bytes.len() && bytes[index].is_ascii_alphabetic() {
+    index += 1;
+  }
+  if index != bytes.len() || unit_at == bytes.len() {
+    return None;
+  }
+  let unit = input[unit_at..].to_ascii_lowercase();
+  match unit.as_str() {
+    "px" | "em" | "ex" | "ch" | "ic" | "in" | "cm" | "mm" => {}
+    _ => return None,
+  }
+  let mut stored = input[..unit_at].to_string();
+  stored.push_str(&unit);
+  Some(stored)
+}
+
+pub fn spacing_px(css: &str, font_size: f32) -> f64 {
+  let bytes = css.as_bytes();
+  let mut index = 0;
+  while index < bytes.len() && !bytes[index].is_ascii_alphabetic() {
+    index += 1;
+  }
+  if index == 0 || index == bytes.len() {
+    return 0.0;
+  }
+  let Ok(number) = css[..index].parse::<f64>() else {
+    return 0.0;
+  };
+  let font = f64::from(font_size);
+  match &css[index..] {
+    "px" => number,
+    "in" => number * 96.0,
+    "cm" => number * 96.0 / 2.54,
+    "mm" => number * 96.0 / 25.4,
+    "em" | "ic" => number * font,
+    "ex" | "ch" => number * font * 0.5,
+    _ => 0.0,
+  }
 }
 
 /// UTF-16 span of `range` in `original`. The shaped string is wrapped in one
@@ -507,15 +906,23 @@ fn union_ink(ink: &mut Option<Ink>, bounds: (f32, f32, f32, f32)) {
 
 #[cfg(test)]
 mod tests {
+  use super::TextShape;
+  use super::parse_spacing;
   use super::shape;
   use crate::paint::record::FontDesc;
 
   fn glyph_ids(lang: &str) -> Vec<u32> {
-    shape("骨", &FontDesc::default(), false, lang)
-      .runs
-      .into_iter()
-      .flat_map(|run| run.glyphs.into_iter().map(|glyph| glyph.0))
-      .collect()
+    shape(
+      "骨",
+      &FontDesc::default(),
+      false,
+      lang,
+      &TextShape::default(),
+    )
+    .runs
+    .into_iter()
+    .flat_map(|run| run.glyphs.into_iter().map(|glyph| glyph.0))
+    .collect()
   }
 
   #[test]
@@ -529,7 +936,13 @@ mod tests {
 
   #[test]
   fn clusters_follow_graphemes_and_advances() {
-    let shaped = shape("Ab", &FontDesc::default(), false, "inherit");
+    let shaped = shape(
+      "Ab",
+      &FontDesc::default(),
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
     assert_eq!(shaped.clusters.len(), 2);
     assert!(shaped.clusters[1].left > shaped.clusters[0].left);
     assert!(shaped.clusters[0].glyphs.iter().any(|glyph| {
@@ -538,7 +951,13 @@ mod tests {
         .iter()
         .any(|run| run.glyphs.iter().any(|positioned| positioned.0 == glyph.id))
     }));
-    let accent = shape("e\u{0301}", &FontDesc::default(), false, "inherit");
+    let accent = shape(
+      "e\u{0301}",
+      &FontDesc::default(),
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
     assert_eq!(accent.clusters.len(), 1);
     assert_eq!(accent.clusters[0].end, 2);
     let runs_x: Vec<f32> = shaped
@@ -556,15 +975,90 @@ mod tests {
       size: 80.0,
       ..FontDesc::default()
     };
-    let letter = shape("A", &font, false, "inherit");
-    let space = shape(" ", &font, false, "inherit");
+    let letter = shape("A", &font, false, "inherit", &TextShape::default());
+    let space = shape(" ", &font, false, "inherit", &TextShape::default());
     let ink = letter.ink_union().expect("letter ink");
     assert!(ink.x1 > ink.x0);
     assert!(ink.y1 > ink.y0);
     assert!(space.ink_union().is_none());
-    let descender = shape("g", &font, false, "inherit")
+    let descender = shape("g", &font, false, "inherit", &TextShape::default())
       .ink_union()
       .expect("descender ink");
     assert!(descender.y1 > ink.y1);
+  }
+
+  #[test]
+  fn small_caps_changes_width() {
+    use crate::paint::record::FontKerning;
+    use crate::paint::record::FontStretch;
+    use crate::paint::record::FontVariantCaps;
+    use crate::text::parse_font;
+    let small = parse_font("small-caps 32px serif").unwrap();
+    let normal = parse_font("32px serif").unwrap();
+    let shaping = TextShape::from_canvas(
+      &small,
+      FontKerning::Auto,
+      FontStretch::Normal,
+      FontVariantCaps::Normal,
+      "0px",
+      "0px",
+    );
+    let small_caps = shape("Hello World", &small, false, "inherit", &shaping);
+    let plain = shape(
+      "Hello World",
+      &normal,
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
+    assert_ne!(small_caps.advance(), plain.advance());
+  }
+
+  #[test]
+  fn spacing_keeps_spelling_and_adds_exact_gaps() {
+    assert_eq!(parse_spacing("1PX"), Some("1px".to_string()));
+    assert_eq!(parse_spacing("-0.1em"), Some("-0.1em".to_string()));
+    assert_eq!(parse_spacing("1EX"), Some("1ex".to_string()));
+    assert_eq!(parse_spacing("normal"), None);
+    assert_eq!(parse_spacing("NaN"), None);
+    let font = FontDesc::default();
+    let plain = shape(
+      "Hello World",
+      &font,
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
+    let letters = shape(
+      "Hello World",
+      &font,
+      false,
+      "inherit",
+      &TextShape {
+        letter_px: 3.0,
+        ..TextShape::default()
+      },
+    );
+    assert!((letters.advance() - plain.advance() - 33.0).abs() < 1e-9);
+    let words = shape(
+      "Hello World, again",
+      &font,
+      false,
+      "inherit",
+      &TextShape {
+        word_px: 5.0,
+        ..TextShape::default()
+      },
+    );
+    let plain_words = shape(
+      "Hello World, again",
+      &font,
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
+    assert!((words.advance() - plain_words.advance() - 10.0).abs() < 1e-9);
+    let nul = shape("\u{0000}", &font, false, "inherit", &TextShape::default());
+    assert_eq!(nul.advance(), 0.0);
   }
 }

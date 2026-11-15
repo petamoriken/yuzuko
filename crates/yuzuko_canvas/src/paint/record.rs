@@ -202,11 +202,176 @@ impl Direction {
   }
 }
 
+/// Canvas `fontKerning`. `"auto"` and `"normal"` keep the kern feature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FontKerning {
+  #[default]
+  Auto,
+  Normal,
+  None,
+}
+
+impl FontKerning {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "auto" => Some(Self::Auto),
+      "normal" => Some(Self::Normal),
+      "none" => Some(Self::None),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Auto => "auto",
+      Self::Normal => "normal",
+      Self::None => "none",
+    }
+  }
+
+  /// `"none"` is the only value that disables kerning.
+  pub fn kerns(self) -> bool {
+    !matches!(self, Self::None)
+  }
+}
+
+/// Canvas `fontStretch`. Keywords are case-sensitive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FontStretch {
+  UltraCondensed,
+  ExtraCondensed,
+  Condensed,
+  SemiCondensed,
+  #[default]
+  Normal,
+  SemiExpanded,
+  Expanded,
+  ExtraExpanded,
+  UltraExpanded,
+}
+
+impl FontStretch {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "ultra-condensed" => Some(Self::UltraCondensed),
+      "extra-condensed" => Some(Self::ExtraCondensed),
+      "condensed" => Some(Self::Condensed),
+      "semi-condensed" => Some(Self::SemiCondensed),
+      "normal" => Some(Self::Normal),
+      "semi-expanded" => Some(Self::SemiExpanded),
+      "expanded" => Some(Self::Expanded),
+      "extra-expanded" => Some(Self::ExtraExpanded),
+      "ultra-expanded" => Some(Self::UltraExpanded),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::UltraCondensed => "ultra-condensed",
+      Self::ExtraCondensed => "extra-condensed",
+      Self::Condensed => "condensed",
+      Self::SemiCondensed => "semi-condensed",
+      Self::Normal => "normal",
+      Self::SemiExpanded => "semi-expanded",
+      Self::Expanded => "expanded",
+      Self::ExtraExpanded => "extra-expanded",
+      Self::UltraExpanded => "ultra-expanded",
+    }
+  }
+}
+
+/// Canvas `fontVariantCaps`. Keywords are case-sensitive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FontVariantCaps {
+  #[default]
+  Normal,
+  SmallCaps,
+  AllSmallCaps,
+  PetiteCaps,
+  AllPetiteCaps,
+  Unicase,
+  TitlingCaps,
+}
+
+impl FontVariantCaps {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "normal" => Some(Self::Normal),
+      "small-caps" => Some(Self::SmallCaps),
+      "all-small-caps" => Some(Self::AllSmallCaps),
+      "petite-caps" => Some(Self::PetiteCaps),
+      "all-petite-caps" => Some(Self::AllPetiteCaps),
+      "unicase" => Some(Self::Unicase),
+      "titling-caps" => Some(Self::TitlingCaps),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Normal => "normal",
+      Self::SmallCaps => "small-caps",
+      Self::AllSmallCaps => "all-small-caps",
+      Self::PetiteCaps => "petite-caps",
+      Self::AllPetiteCaps => "all-petite-caps",
+      Self::Unicase => "unicase",
+      Self::TitlingCaps => "titling-caps",
+    }
+  }
+
+  /// OpenType features for this keyword. Empty for `"normal"`.
+  pub fn features(self) -> &'static [&'static str] {
+    match self {
+      Self::Normal => &[],
+      Self::SmallCaps => &["smcp"],
+      Self::AllSmallCaps => &["c2sc", "smcp"],
+      Self::PetiteCaps => &["pcap"],
+      Self::AllPetiteCaps => &["c2pc", "pcap"],
+      Self::Unicase => &["unic"],
+      Self::TitlingCaps => &["titl"],
+    }
+  }
+}
+
+/// Canvas `textRendering`. Stored only. It does not change the paint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TextRendering {
+  #[default]
+  Auto,
+  OptimizeSpeed,
+  OptimizeLegibility,
+  GeometricPrecision,
+}
+
+impl TextRendering {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "auto" => Some(Self::Auto),
+      "optimizeSpeed" => Some(Self::OptimizeSpeed),
+      "optimizeLegibility" => Some(Self::OptimizeLegibility),
+      "geometricPrecision" => Some(Self::GeometricPrecision),
+      _ => None,
+    }
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Auto => "auto",
+      Self::OptimizeSpeed => "optimizeSpeed",
+      Self::OptimizeLegibility => "optimizeLegibility",
+      Self::GeometricPrecision => "geometricPrecision",
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct FontDesc {
   pub size: f32,
   pub weight: u16,
   pub italic: bool,
+  /// `small-caps` in the font shorthand. Selects the `smcp` feature.
+  pub small_caps: bool,
   pub family: Family,
   /// Canonical shorthand, including `small-caps` and every family.
   pub css: String,
@@ -230,6 +395,7 @@ impl Default for FontDesc {
       size: 10.0,
       weight: 400,
       italic: false,
+      small_caps: false,
       family: Family::Sans,
       css: "10px sans-serif".to_string(),
     }
@@ -264,13 +430,23 @@ impl Align {
 
 impl Baseline {
   /// Distance from the anchor down to the alphabetic baseline.
-  pub fn offset(self, ascent: f64, descent: f64) -> f64 {
+  ///
+  /// `hanging` and `ideographic` are distances of those baselines above the
+  /// alphabetic baseline. A negative ideographic value sits below it.
+  pub fn offset(
+    self,
+    ascent: f64,
+    descent: f64,
+    hanging: f64,
+    ideographic: f64,
+  ) -> f64 {
     match self {
       Self::Alphabetic => 0.0,
       Self::Top => ascent,
-      Self::Hanging => ascent * 0.8,
+      Self::Hanging => hanging,
       Self::Middle => (ascent - descent) / 2.0,
-      Self::Ideographic | Self::Bottom => -descent,
+      Self::Ideographic => ideographic,
+      Self::Bottom => -descent,
     }
   }
 }
@@ -345,6 +521,14 @@ pub struct State {
   pub direction: Direction,
   /// BCP 47 tag, `""`, or `"inherit"`. Part of the canvas state.
   pub lang: String,
+  /// CSS length, numeric spelling preserved and the unit lowercased.
+  pub letter_spacing: String,
+  /// CSS length, numeric spelling preserved and the unit lowercased.
+  pub word_spacing: String,
+  pub font_kerning: FontKerning,
+  pub font_stretch: FontStretch,
+  pub font_variant_caps: FontVariantCaps,
+  pub text_rendering: TextRendering,
   /// CSS filter string. Painted when the drawing is composited.
   pub filter: String,
   /// Compositing operator used when this state is painted.
@@ -401,6 +585,12 @@ impl Default for State {
       baseline: Baseline::Alphabetic,
       direction: Direction::Inherit,
       lang: "inherit".to_string(),
+      letter_spacing: "0px".to_string(),
+      word_spacing: "0px".to_string(),
+      font_kerning: FontKerning::Auto,
+      font_stretch: FontStretch::Normal,
+      font_variant_caps: FontVariantCaps::Normal,
+      text_rendering: TextRendering::Auto,
       filter: "none".to_string(),
       composite: "source-over".to_string(),
       shadow_blur: 0.0,

@@ -57,8 +57,12 @@ type CanvasFillRule = "evenodd" | "nonzero";
 type CanvasImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
 type CanvasLineCap = "butt" | "round" | "square";
 type CanvasLineJoin = "bevel" | "miter" | "round";
+type CanvasFontKerning = "auto" | "none" | "normal";
+type CanvasFontStretch = "condensed" | "expanded" | "extra-condensed" | "extra-expanded" | "normal" | "semi-condensed" | "semi-expanded" | "ultra-condensed" | "ultra-expanded";
+type CanvasFontVariantCaps = "all-petite-caps" | "all-small-caps" | "normal" | "petite-caps" | "small-caps" | "titling-caps" | "unicase";
 type CanvasTextAlign = "center" | "end" | "left" | "right" | "start";
 type CanvasTextBaseline = "alphabetic" | "bottom" | "hanging" | "ideographic" | "middle" | "top";
+type CanvasTextRendering = "auto" | "geometricPrecision" | "optimizeLegibility" | "optimizeSpeed";
 type BiquadFilterType = "allpass" | "bandpass" | "highpass" | "highshelf" | "lowpass" | "lowshelf" | "notch" | "peaking";
 type ChannelCountMode = "clamped-max" | "explicit" | "max";
 type ChannelInterpretation = "discrete" | "speakers";
@@ -10917,8 +10921,9 @@ interface OffscreenCanvasRenderingContext2D {
    * The shorthand accepts `italic` or `oblique`, `small-caps`, a weight, a
    * `px` or `pt` size, an optional line height, and a family list. The getter
    * omits a weight of 400, a normal style, and the line height. `small-caps`
-   * round-trips and does not change glyphs. `cursive` and `fantasy` stay in
-   * the list.
+   * round-trips and selects the `smcp` feature when that feature changes the
+   * glyphs. Otherwise lowercase letters are shaped at 0.7 of the font size.
+   * `cursive` and `fantasy` stay in the list.
    *
    * A list uses the first loaded family from this realm's `FontFaceSet`, or
    * else the first of `sans-serif`, `serif`, and `monospace`. A size that
@@ -10956,6 +10961,71 @@ interface OffscreenCanvasRenderingContext2D {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/direction)
    */
   direction: CanvasDirection;
+
+  /**
+   * A CSS length. The default is `"0px"`.
+   *
+   * A length keeps its numeric spelling and a lowercased unit of `px`, `em`,
+   * `ex`, `ch`, `ic`, `in`, `cm`, or `mm`. Any other value is ignored. `1em`
+   * and `1ic` are the current font size. `1ex` and `1ch` are half of that
+   * size. The extra advance is added after every character, including a
+   * trailing gap. Assigning `font` does not reset this value.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/letterSpacing)
+   */
+  letterSpacing: string;
+
+  /**
+   * A CSS length. The default is `"0px"`.
+   *
+   * Parsing matches `letterSpacing`. The extra advance is added after each
+   * U+0020. Assigning `font` does not reset this value.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/wordSpacing)
+   */
+  wordSpacing: string;
+
+  /**
+   * `"auto"`, `"normal"`, or `"none"`. The default is `"auto"`.
+   *
+   * The comparison is case-sensitive. `"none"` disables the kern feature.
+   * `"auto"` and `"normal"` leave it on.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontKerning)
+   */
+  fontKerning: CanvasFontKerning;
+
+  /**
+   * One of the nine CSS `font-stretch` keywords. The default is `"normal"`.
+   *
+   * The comparison is case-sensitive. An unrecognized value is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontStretch)
+   */
+  fontStretch: CanvasFontStretch;
+
+  /**
+   * `"normal"`, `"small-caps"`, `"all-small-caps"`, `"petite-caps"`,
+   * `"all-petite-caps"`, `"unicase"`, or `"titling-caps"`. The default is
+   * `"normal"`.
+   *
+   * The comparison is case-sensitive. The keywords select `smcp`, `c2sc`,
+   * `pcap`, `c2pc`, `unic`, and `titl`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontVariantCaps)
+   */
+  fontVariantCaps: CanvasFontVariantCaps;
+
+  /**
+   * `"auto"`, `"optimizeSpeed"`, `"optimizeLegibility"`, or
+   * `"geometricPrecision"`. The default is `"auto"`.
+   *
+   * The comparison is case-sensitive. The value is stored and does not change
+   * the paint. Assigning `font` does not reset it.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/textRendering)
+   */
+  textRendering: CanvasTextRendering;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillText) */
   fillText(text: string, x: number, y: number, maxWidth?: number): void;
@@ -11029,8 +11099,12 @@ declare var OffscreenCanvasRenderingContext2D: {
  *
  * `actualBoundingBox*` is the glyph-outline ink relative to `textAlign`
  * and `textBaseline`. An empty outline, including a space, reports zeros.
- * The font and em boxes use the typographic ascent and descent. Positive
- * baseline distances point down from `textBaseline`.
+ * The font box uses the typographic ascent and descent. The em box scales
+ * that pair so the ascent and descent sum to the font size. A positive
+ * baseline distance means `textBaseline` is below that named baseline.
+ * `hangingBaseline` and `ideographicBaseline` come from the font BASE table
+ * when it places `hang` and `ideo`. U+0009, U+000A, U+000C, and U+000D
+ * become U+0020 and are not collapsed. U+0000 is dropped before shaping.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
