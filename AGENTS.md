@@ -43,7 +43,7 @@ On the main global, `Yuzuko.fonts` is the `FontFaceSet` when the runtime is buil
 
 The codecs are hardware H.264 (`avc1` and `avc3`), AV1 (`av01`, profiles 0–2 at 8, 10, and 12 bits; the platform hardware decoder when it accepts the configuration, otherwise rav1d), AAC (`mp4a`), and Opus (`opus`, one or two channels). Other codecs are not decoded. There is no `HTMLVideoElement`. `Yuzuko.demuxMp4` reads a progressive MP4 file into those chunks and does not advance frames.
 
-A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file is the TSDoc reference for the runtime. ECMAScript types stay in TypeScript's lib; do not declare them here. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`.
+A change to the JavaScript surface updates `yuzuko.d.ts` in the same change. That file provides types for programs that run on this runtime. ECMAScript types stay in TypeScript's lib; do not declare them here. A web-standard comment uses the description from `lib.dom.d.ts`. Where this runtime differs, add that note as a second paragraph. Do not copy a `lib.dom` description onto a member that only has an MDN link, and do not restate the web specification in a custom essay. When a member can throw `NotSupportedError`, the comment includes `@throws`. When an exception depends on the operating system, the comment names the platform and the condition. A web-standard interface, member, or function keeps an MDN link in the form used by [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator): a blank line, then `[MDN Reference](https://developer.mozilla.org/docs/Web/API/...)`. A name that exists only on `Yuzuko` has no `lib.dom` description; that comment is the documentation for the API.
 
 ## Repository
 
@@ -65,6 +65,7 @@ crates/yuzuko_audio/
 crates/yuzuko_codec/
 crates/yuzuko_macros/     #[op] host bindings
 examples/
+tools/web-types/          yuzuko.d.ts follow-up for @types/web
 tests/wpt/suite/          web-platform-tests submodule
 tests/wpt/expectations/
 tests/fixtures/images/

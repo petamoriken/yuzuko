@@ -16,3 +16,8 @@ updates:
     ignore:
       - dependency-name: "v8"
       - dependency-name: "oxc_*"
+
+  - package-ecosystem: npm
+    directory: /tools/web-types
+    schedule:
+      interval: weekly
