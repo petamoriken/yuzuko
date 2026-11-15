@@ -15933,9 +15933,18 @@ declare var MediaQueryListEvent: {
 /**
  * A clipboard item.
  *
- * `text/plain` and `image/png` are the only types. A malformed type string
- * throws `TypeError`. Any other type throws `NotSupportedError`.
- * `ClipboardItem.supports` returns true for those two types.
+ * A key must parse as a MIME type. A key that starts with `web ` is a custom
+ * format, and the suffix must parse as a MIME type. Parameters are kept. A
+ * malformed key throws `TypeError`. `types` lists those keys. `getType` of a
+ * string resolves a `Blob` whose type is that key. `getType` of a `Blob`
+ * keeps that blob's type. A missing type rejects `NotFoundError`.
+ * `ClipboardItem.supports` returns true for `text/plain`, `text/html`,
+ * `image/png`, `text/uri-list`, `image/svg+xml`, and a `web ` custom format
+ * whose suffix is a MIME type without parameters. `Clipboard.write` still
+ * publishes only `text/plain` and `image/png`.
+ *
+ * @throws {@link TypeError} When a key does not parse, the record is empty,
+ * or the same MIME type and custom flag is repeated.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardItem)
  */
@@ -15948,6 +15957,9 @@ interface ClipboardItem {
   readonly types: readonly string[];
 
   /**
+   * @throws {@link DOMException} `NotFoundError` when the type is absent.
+   * @throws {@link TypeError} When the type does not parse.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ClipboardItem/getType)
    */
   getType(type: string): Promise<Blob>;
@@ -16007,8 +16019,8 @@ interface Clipboard extends EventTarget {
   /**
    * @throws {@link DOMException} `NotAllowedError` without a recent pointer or
    * key press on the focused window.
-   * @throws {@link DOMException} `NotSupportedError` when an item type is not
-   * `text/plain` or `image/png`.
+   * @throws {@link DOMException} `NotSupportedError` when the item has neither
+   * `text/plain` nor `image/png`. Other types are not written.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Clipboard/write)
    */

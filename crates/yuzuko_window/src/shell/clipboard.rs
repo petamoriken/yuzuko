@@ -21,12 +21,9 @@ use yuzuko_macros::op;
 use crate::activation;
 
 const TEXT: &str = "text/plain";
-#[cfg_attr(
-  not(any(target_os = "macos", target_os = "windows")),
-  allow(dead_code)
-)]
 const HTML: &str = "text/html";
 const PNG: &str = "image/png";
+const SVG: &str = "image/svg+xml";
 
 struct Contents {
   text: Option<String>,
@@ -245,10 +242,16 @@ fn current_item() -> ClipboardItem {
   });
   let mut parts = Vec::new();
   if let Some(text) = text {
-    parts.push((TEXT.to_string(), Part::Text(text)));
+    parts.push(plain_part(TEXT, Part::Text(text)));
   }
   if let Some(png) = png {
-    parts.push((PNG.to_string(), Part::Bytes(png)));
+    parts.push(plain_part(
+      PNG,
+      Part::Bytes {
+        bytes: png,
+        type_: PNG.to_string(),
+      },
+    ));
   }
   ClipboardItem {
     parts: RefCell::new(parts),
@@ -256,13 +259,30 @@ fn current_item() -> ClipboardItem {
   }
 }
 
+fn plain_part(name: &str, part: Part) -> Representation {
+  Representation {
+    custom: false,
+    serialized: name.to_string(),
+    label: name.to_string(),
+    part,
+  }
+}
+
 enum Part {
   Text(String),
-  Bytes(Vec<u8>),
+  Bytes { bytes: Vec<u8>, type_: String },
+}
+
+/// One constructor entry. `label` is the `types` string, including `web `.
+struct Representation {
+  custom: bool,
+  serialized: String,
+  label: String,
+  part: Part,
 }
 
 struct ClipboardItem {
-  parts: RefCell<Vec<(String, Part)>>,
+  parts: RefCell<Vec<Representation>>,
   style: String,
 }
 
@@ -304,7 +324,7 @@ impl ClipboardItem {
       .parts
       .borrow()
       .iter()
-      .map(|(name, _)| name.clone())
+      .map(|part| part.label.clone())
       .collect::<Vec<_>>();
     let array = v8::Array::new(scope, names.len() as i32);
     for (index, name) in names.iter().enumerate() {
@@ -317,28 +337,28 @@ impl ClipboardItem {
 
   #[promise]
   fn get_type(&self, scope: &mut v8::PinScope, type_name: String) -> Js {
-    if !well_formed_clipboard_type(&type_name) {
+    let Some(parsed) = clipboard_type(&type_name) else {
       return reject_dom(scope, "TypeError", "The clipboard type is not valid");
-    }
-    let found = self
-      .parts
-      .borrow()
-      .iter()
-      .find(|(name, _)| name == &type_name)
-      .map(|(_, part)| match part {
-        Part::Text(text) => text.as_bytes().to_vec(),
-        Part::Bytes(bytes) => bytes.clone(),
-      });
-    let Some(bytes) = found else {
+    };
+    let found = self.parts.borrow().iter().find_map(|part| {
+      if part.custom != parsed.custom || part.serialized != parsed.serialized {
+        return None;
+      }
+      Some(match &part.part {
+        Part::Text(text) => (text.as_bytes().to_vec(), part.label.clone()),
+        Part::Bytes { bytes, type_ } => (bytes.clone(), type_.clone()),
+      })
+    });
+    let Some((bytes, blob_type)) = found else {
       return reject_dom(scope, "NotFoundError", "The type is not available");
     };
-    let blob = yuzuko_winter::new_blob(scope, bytes, &type_name);
+    let blob = yuzuko_winter::new_script_blob(scope, bytes, &blob_type);
     resolve(scope, blob.into())
   }
 
   #[static_method]
   fn supports(type_name: String) -> bool {
-    type_name == TEXT || type_name == PNG
+    supports_clipboard_type(&type_name)
   }
 }
 
@@ -452,16 +472,23 @@ impl Clipboard {
     };
     let mut text = None;
     let mut png = None;
-    for (name, part) in item.get().parts.borrow().iter() {
-      match (name.as_str(), part) {
+    for part in item.get().parts.borrow().iter() {
+      match (part.label.as_str(), &part.part) {
         (TEXT, Part::Text(value)) => text = Some(value.clone()),
-        (TEXT, Part::Bytes(bytes)) => {
+        (TEXT, Part::Bytes { bytes, .. }) => {
           text = Some(String::from_utf8_lossy(bytes).into_owned());
         }
-        (PNG, Part::Bytes(bytes)) => png = Some(bytes.clone()),
+        (PNG, Part::Bytes { bytes, .. }) => png = Some(bytes.clone()),
         (PNG, Part::Text(value)) => png = Some(value.as_bytes().to_vec()),
         _ => {}
       }
+    }
+    if text.is_none() && png.is_none() {
+      return reject_dom(
+        scope,
+        "NotSupportedError",
+        "The clipboard type is not supported",
+      );
     }
     if let Err(message) = store_parts(text, png) {
       return reject_dom(scope, "NotAllowedError", &message);
@@ -794,7 +821,7 @@ fn event_init<'s>(
 fn read_item_record(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<Vec<(String, Part)>, OpError> {
+) -> Result<Vec<Representation>, OpError> {
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("ClipboardItem data must be an object"))?;
   let names = object
@@ -809,19 +836,23 @@ fn read_item_record(
       .to_string(scope)
       .map(|text| text.to_rust_string_lossy(scope))
       .unwrap_or_default();
-    if !well_formed_clipboard_type(&name) {
+    let Some(parsed) = clipboard_type(&name) else {
       return Err(OpError::type_("The clipboard type is not valid"));
-    }
-    if name != TEXT && name != PNG {
-      return Err(OpError::dom(
-        "NotSupportedError",
-        "The clipboard type is not supported",
-      ));
+    };
+    if parts.iter().any(|part: &Representation| {
+      part.custom == parsed.custom && part.serialized == parsed.serialized
+    }) {
+      return Err(OpError::type_("The clipboard type is already present"));
     }
     let item = object
       .get(scope, key)
       .ok_or_else(|| OpError::type_("ClipboardItem data must be an object"))?;
-    parts.push((name, read_part(scope, item)?));
+    parts.push(Representation {
+      custom: parsed.custom,
+      serialized: parsed.serialized,
+      label: parsed.label,
+      part: read_part(scope, item)?,
+    });
   }
   Ok(parts)
 }
@@ -838,7 +869,7 @@ fn read_part(
     return Ok(Part::Text(text));
   }
   match yuzuko_winter::snapshot_blob(scope, value) {
-    Ok((bytes, _)) => Ok(Part::Bytes(bytes)),
+    Ok((bytes, type_)) => Ok(Part::Bytes { bytes, type_ }),
     Err(_) => Err(OpError::type_(
       "ClipboardItem data must be a string or a Blob",
     )),
@@ -905,16 +936,46 @@ fn js_value(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
   Js(v8::Global::new(scope, value))
 }
 
-fn well_formed_clipboard_type(name: &str) -> bool {
-  let mime = if let Some(rest) = name.strip_prefix("web ") {
+struct ClipboardType {
+  custom: bool,
+  serialized: String,
+  label: String,
+}
+
+/// A constructor key. `web ` marks a custom format. The MIME type may include
+/// parameters. The label keeps that prefix because `Blob.type` for a string
+/// value is the key, not the suffix.
+fn clipboard_type(name: &str) -> Option<ClipboardType> {
+  let (custom, body) = if let Some(rest) = name.strip_prefix("web ") {
     if rest.is_empty() {
-      return false;
+      return None;
     }
-    rest
+    (true, rest)
   } else {
-    name
+    (false, name)
   };
-  yuzuko_winter::is_mime_type(mime)
+  let serialized = yuzuko_winter::serialized_mime(body)?;
+  let label = if custom {
+    format!("web {serialized}")
+  } else {
+    serialized.clone()
+  };
+  Some(ClipboardType {
+    custom,
+    serialized,
+    label,
+  })
+}
+
+/// Mandatory types, the optional types this runtime reports, and a `web `
+/// custom format whose suffix is a MIME type without parameters.
+fn supports_clipboard_type(name: &str) -> bool {
+  if let Some(rest) = name.strip_prefix("web ") {
+    return yuzuko_winter::serialized_mime(rest).is_some_and(|serialized| {
+      serialized == rest && !serialized.contains(';')
+    });
+  }
+  matches!(name, TEXT | HTML | PNG | URI_LIST | SVG)
 }
 
 #[derive(Clone, Copy)]

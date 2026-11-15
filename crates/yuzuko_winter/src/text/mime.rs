@@ -96,6 +96,11 @@ pub fn is_mime_type(input: &str) -> bool {
   parse(input).is_some()
 }
 
+/// Serialized MIME type, or `None` when `input` does not parse.
+pub fn serialized_mime(input: &str) -> Option<String> {
+  parse(input).map(|mime| serialize(&mime))
+}
+
 /// MIME sniffing JavaScript MIME type. Parameters are ignored.
 pub fn is_javascript_mime(input: &str) -> bool {
   let Some(mime) = parse(input) else {

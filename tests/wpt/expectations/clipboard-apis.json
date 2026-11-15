@@ -48,23 +48,7 @@
   "clipboard-apis/clipboard-file-manual.html": {
     "ignore": "The file needs a document."
   },
-  "clipboard-apis/clipboard-item.https.html": {
-    "expectedFailures": [
-      "ClipboardItem() succeeds with multiple valid type strings",
-      "ClipboardItem() succeeds with valid type strings",
-      "getType(DOMString unsupported type) converts DOMString to Blob",
-      "getType(DOMString unsupported type) succeeds with correct output",
-      "getType(DOMString valid type) converts DOMString to Blob",
-      "getType(DOMString web custom format type) converts DOMString to Blob",
-      "getType(DOMString web custom format type) succeeds with correct output",
-      "supports(image/svg+xml) returns true",
-      "supports(text/html) returns true",
-      "supports(text/uri-list) returns true",
-      "supports(web foo/bar) returns true",
-      "supports(web text/html) returns true",
-      "types() returns correct values"
-    ]
-  },
+  "clipboard-apis/clipboard-item.https.html": true,
   "clipboard-apis/data-transfer-file-list-change-reference-updates.html": {
     "ignore": "The file needs a layout element."
   },

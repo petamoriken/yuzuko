@@ -45,7 +45,7 @@ Yuzuko.test("clipboard round-trips text and PNG from a focused user action", asy
     assert(navigator.clipboard instanceof Clipboard, "clipboard");
     assert(ClipboardItem.supports("text/plain"), "supports text");
     assert(ClipboardItem.supports("image/png"), "supports png");
-    assert(!ClipboardItem.supports("text/html"), "rejects html");
+    assert(ClipboardItem.supports("text/html"), "supports html");
 
     Yuzuko.__test.inject(window, [{ kind: "focus" }]);
     let name = "";
@@ -548,6 +548,106 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     assert(pngTypes === "", pngTypes);
   } finally {
     navigator.clipboard.removeEventListener("clipboardchange", onChange);
+    window.close();
+  }
+});
+
+Yuzuko.test("ClipboardItem keeps custom types", async () => {
+  const plain = new Blob(["hello"], { type: "text/plain" });
+  const custom = new Blob(["this should work"], { type: "application/abc" });
+  const web = new Blob(["web custom format should work"], {
+    type: "web application/abc",
+  });
+  new ClipboardItem({ "text/plain": plain });
+  new ClipboardItem({ "application/abc": custom });
+  new ClipboardItem({ "web text/plain": plain });
+  new ClipboardItem({ "web application/abc": web });
+  const item = new ClipboardItem({
+    "text/plain": plain,
+    "application/abc": custom,
+    "web application/abc": web,
+  });
+  assert(
+    item.types.join(",") === "text/plain,application/abc,web application/abc",
+    item.types.join(","),
+  );
+  assert((await (await item.getType("text/plain")).text()) === "hello", "plain");
+  const webOut = await item.getType("web application/abc");
+  assert(webOut.type.includes("web application/abc"), webOut.type);
+  assert(
+    (await webOut.text()) === "web custom format should work",
+    "web bytes",
+  );
+
+  const strings = new ClipboardItem({
+    "text/plain": "abc",
+    "application/abc": "xxx",
+    "web application/abc": "yyy",
+  });
+  const stringBlob = await strings.getType("web application/abc");
+  assert(stringBlob.type === "web application/abc", stringBlob.type);
+  assert((await stringBlob.text()) === "yyy", "string web");
+  const plainString = await strings.getType("text/plain");
+  assert(plainString.type === "text/plain", plainString.type);
+  assert((await plainString.text()) === "abc", "string plain");
+  const unsupported = await strings.getType("application/abc");
+  assert(unsupported.type === "application/abc", unsupported.type);
+  assert((await unsupported.text()) === "xxx", "string custom");
+
+  const parameterized = new ClipboardItem({ "text/plain;foo=1": custom });
+  const parameterBlob = await parameterized.getType("text/plain;foo=1");
+  assert(parameterBlob.type.includes("application/abc"), parameterBlob.type);
+  const webParameter = new ClipboardItem({ "web text/plain;foo=1": custom });
+  const webParameterBlob = await webParameter.getType("web text/plain;foo=1");
+  assert(webParameterBlob.type.includes("application/abc"), webParameterBlob.type);
+
+  let invalid = "";
+  try {
+    new ClipboardItem({ "not a/real type": custom });
+  } catch (error) {
+    invalid = error instanceof TypeError ? "TypeError" : "";
+  }
+  assert(invalid === "TypeError", invalid);
+  invalid = "";
+  try {
+    new ClipboardItem({ "web notarealtype": web });
+  } catch (error) {
+    invalid = error instanceof TypeError ? "TypeError" : "";
+  }
+  assert(invalid === "TypeError", "bad web");
+
+  assert(ClipboardItem.supports("text/uri-list"), "uri");
+  assert(ClipboardItem.supports("image/svg+xml"), "svg");
+  assert(ClipboardItem.supports("web foo/bar"), "web");
+  assert(ClipboardItem.supports("web text/html"), "web html");
+  assert(!ClipboardItem.supports("text/plain;foo=1"), "parameters");
+  assert(!ClipboardItem.supports("web foo/bar;foo=1"), "web parameters");
+  assert(!ClipboardItem.supports("foo/bar"), "unknown");
+  assert(!ClipboardItem.supports("web "), "empty web");
+  assert(!ClipboardItem.supports("weB text/html"), "case");
+
+  const window = new Yuzuko.Window({ width: 80, height: 60, title: "item" });
+  try {
+    gesture(window);
+    let name = "";
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "application/abc": custom }),
+      ]);
+    } catch (error) {
+      name = error instanceof DOMException ? error.name : "";
+    }
+    assert(name === "NotSupportedError", `custom write: ${name}`);
+
+    gesture(window);
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/plain": "kept",
+        "application/abc": "ignored",
+      }),
+    ]);
+    assert((await navigator.clipboard.readText()) === "kept", "mixed write");
+  } finally {
     window.close();
   }
 });

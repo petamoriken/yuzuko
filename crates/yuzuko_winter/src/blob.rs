@@ -551,6 +551,17 @@ pub fn new_blob<'s>(
   unsafe { yuzuko_core::op::wrap_instance(scope, blob) }
 }
 
+/// A script `Blob`. `type` follows the File API constructor rule, so a
+/// `web ` custom format is kept instead of being parsed as a MIME type.
+pub fn new_script_blob<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  bytes: Vec<u8>,
+  type_: &str,
+) -> v8::Local<'s, v8::Object> {
+  let blob = Blob::from_input(BlobSource::from_vec(bytes), type_);
+  unsafe { yuzuko_core::op::wrap_instance(scope, blob) }
+}
+
 impl Blob {
   pub(crate) fn from_parts(bytes: Vec<u8>, mime: String) -> Self {
     Self::from_source(BlobSource::from_vec(bytes), mime)

@@ -478,7 +478,11 @@ The web Gamepad API. `navigator.getGamepads()` returns the connected gamepads. `
 
 ## Clipboard
 
-`navigator.clipboard` `writeText`, `readText`, and `ClipboardItem` for `text/plain` and `image/png`. Reads and writes succeed only after a pointer or key press on the focused `Window`. The same calls reject with `NotAllowedError` without that action, and when the window is not focused. There is no permission prompt. `copy`, `cut`, and `paste` are dispatched on that surface.
+`navigator.clipboard` `writeText`, `readText`, and `write` of `text/plain` and `image/png`. Reads and writes succeed only after a pointer or key press on the focused `Window`. The same calls reject with `NotAllowedError` without that action, and when the window is not focused. There is no permission prompt. `copy`, `cut`, and `paste` are dispatched on that surface.
+
+`new ClipboardItem(items)` stores every entry whose key parses as a MIME type. A key that starts with `web ` is a custom format, and the suffix must parse as a MIME type. Parameters are kept. A malformed key throws `TypeError` with `The clipboard type is not valid`. An empty record throws `TypeError` with `ClipboardItem requires data`. The same MIME type and custom flag twice throws `TypeError` with `The clipboard type is already present`. `types` is a frozen array of those keys. A custom format is `web ` plus the serialized MIME type. `getType` resolves a `Blob`. A string value is UTF-8 and the blob type is that key, including the `web ` prefix. A `Blob` value keeps its own type. A missing type rejects `NotFoundError`. A type that does not parse rejects `TypeError`. `ClipboardItem.supports` returns true for `text/plain`, `text/html`, `image/png`, `text/uri-list`, and `image/svg+xml`, and for a `web ` custom format whose suffix is a MIME type without parameters.
+
+`write` publishes `text/plain` and `image/png` from the first item. Any other representation is not written. An item that contains neither rejects `NotSupportedError` with `The clipboard type is not supported`.
 
 `DataTransfer` is on the main global when `window` is enabled. `new DataTransfer()` creates an empty read/write store. `dropEffect` and `effectAllowed` start as `"none"`. A dedicated worker has no `DataTransfer`. `items`, `files`, `setDragImage`, `DataTransferItem`, and `DataTransferItemList` are absent. `DragEvent` is a separate constructor and does not carry this store unless script passes it.
 
