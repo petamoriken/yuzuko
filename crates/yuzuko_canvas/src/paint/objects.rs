@@ -373,10 +373,17 @@ pub fn pattern_id(
 impl CanvasPattern {
   fn set_transform(
     &self,
-    _scope: &mut v8::PinScope,
-    _transform: Option<v8::Local<v8::Value>>,
-  ) {
+    scope: &mut v8::PinScope,
+    transform: Option<v8::Local<v8::Value>>,
+  ) -> Result<(), OpError> {
+    // Validate the dictionary, including a null argument. The pattern is
+    // still painted with the identity transform.
+    let Some(transform) = transform.filter(|value| !value.is_null()) else {
+      return Ok(());
+    };
+    crate::geom::matrix::read_canvas_transform(scope, transform)?;
     let _ = self;
+    Ok(())
   }
 }
 

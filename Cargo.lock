@@ -8942,6 +8942,7 @@ name = "yuzuko_canvas"
 version = "0.2.0"
 dependencies = [
  "brotli",
+ "color",
  "cssparser",
  "flate2",
  "fontique",

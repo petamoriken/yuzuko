@@ -1,5 +1,15 @@
-//! CSS colors accepted by Canvas 2D styles, including `color()`.
+//! CSS colors accepted by Canvas 2D styles.
+//!
+//! Absolute colors go through the [`color`] crate. `calc()`, `color-mix()`,
+//! and relative color syntax are parsed in `modern` and then converted with
+//! the same crate.
 
+use color::ColorSpaceTag;
+use color::DynamicColor;
+use color::Flags;
+use cssparser::ParseError;
+use cssparser::Parser;
+use cssparser::Token;
 use yuzuko_image::ColorSpace;
 use yuzuko_image::convert_encoded;
 
@@ -61,56 +71,306 @@ pub fn parse_color(input: &str) -> Option<CssColor> {
   if text.is_empty() {
     return None;
   }
-  if let Some(hex) = text.strip_prefix('#') {
-    return parse_hex(hex);
+  if text.eq_ignore_ascii_case("currentcolor") {
+    return Some(CssColor::BLACK);
   }
-  let lower = text.to_ascii_lowercase();
-  if let Some(rgb) = named(&lower) {
-    return Some(rgb);
-  }
-  parse_function(&lower)
-}
-
-fn parse_hex(hex: &str) -> Option<CssColor> {
-  let byte = |slice: &str| u8::from_str_radix(slice, 16).ok();
-  let expand = |digit: u8| digit * 17;
-  let (r, g, b, a) = match hex.len() {
-    3 | 4 => {
-      let chars: Vec<char> = hex.chars().collect();
-      let channel = |index: usize| {
-        chars
-          .get(index)?
-          .to_digit(16)
-          .map(|digit| expand(digit as u8))
-      };
-      let alpha = if hex.len() == 4 { channel(3)? } else { 255 };
-      (channel(0)?, channel(1)?, channel(2)?, alpha)
-    }
-    6 | 8 => {
-      let alpha = if hex.len() == 8 {
-        byte(&hex[6..8])?
-      } else {
-        255
-      };
-      (
-        byte(&hex[0..2])?,
-        byte(&hex[2..4])?,
-        byte(&hex[4..6])?,
-        alpha,
-      )
-    }
-    _ => return None,
+  let (color, legacy) = if needs_level5(text) {
+    let lower = text.to_ascii_lowercase();
+    Parser::new(&lower)
+      .parse_entirely(crate::paint::modern::parse_tree)
+      .ok()?
+  } else {
+    crate_color(text)?
   };
-  Some(from_bytes(r, g, b, a))
+  css_color(color, legacy)
 }
 
-fn from_bytes(r: u8, g: u8, b: u8, a: u8) -> CssColor {
-  CssColor {
-    r: f32::from(r) / 255.0,
-    g: f32::from(g) / 255.0,
-    b: f32::from(b) / 255.0,
-    a: f32::from(a) / 255.0,
-    syntax: ColorSyntax::Legacy,
+/// `color-mix()`, relative `from`, or `calc()` need the parser in `modern`.
+fn needs_level5(text: &str) -> bool {
+  let lower = text.to_ascii_lowercase();
+  lower.contains("calc(")
+    || lower.contains("color-mix(")
+    || has_ident(&lower, "from")
+}
+
+fn has_ident(text: &str, word: &str) -> bool {
+  text
+    .split(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+    .any(|part| part == word)
+}
+
+/// Parse one absolute color with the `color` crate.
+///
+/// A function that reaches EOF without `)` still parses. The crate asks for
+/// the closing parenthesis, so a single missing `)` is appended once.
+/// The crate also rejects a space before a legacy comma and the `grey`
+/// spellings, both of which CSS accepts.
+pub(crate) fn crate_color(text: &str) -> Option<(DynamicColor, bool)> {
+  let aliased;
+  let text = if let Some(name) = named_alias(text) {
+    aliased = name;
+    aliased
+  } else {
+    text
+  };
+  // System colors are idents. Resolve them before the absolute parser so a
+  // nested `color-mix()` stop uses the same values.
+  if let Some(color) = system_color(text) {
+    return Some((color, true));
+  }
+  let color = parse_absolute(text)?;
+  // Legacy comma syntax cannot mix numbers and percentages. The crate accepts
+  // that mix, and the space-separated form still can.
+  if legacy_channels_mixed(text) {
+    return None;
+  }
+  let color = supported(color)?;
+  let legacy = color.flags.named()
+    && matches!(color.cs, ColorSpaceTag::Srgb | ColorSpaceTag::Hsl);
+  Some((color, legacy))
+}
+
+fn parse_absolute(text: &str) -> Option<DynamicColor> {
+  if let Some(color) = parse_once(text) {
+    return Some(color);
+  }
+  let tight = tighten_commas(text)?;
+  parse_once(&tight)
+}
+
+fn parse_once(text: &str) -> Option<DynamicColor> {
+  match color::parse_color(text) {
+    Ok(color) => Some(color),
+    Err(color::ParseError::ExpectedClosingParenthesis) => {
+      let mut closed = String::with_capacity(text.len() + 1);
+      closed.push_str(text.trim());
+      closed.push(')');
+      color::parse_color(&closed).ok()
+    }
+    Err(_) => None,
+  }
+}
+
+/// `grey` and its compounds are the same colors as the `gray` spellings.
+fn named_alias(text: &str) -> Option<&'static str> {
+  Some(match text {
+    name if name.eq_ignore_ascii_case("grey") => "gray",
+    name if name.eq_ignore_ascii_case("darkgrey") => "darkgray",
+    name if name.eq_ignore_ascii_case("darkslategrey") => "darkslategray",
+    name if name.eq_ignore_ascii_case("dimgrey") => "dimgray",
+    name if name.eq_ignore_ascii_case("lightgrey") => "lightgray",
+    name if name.eq_ignore_ascii_case("lightslategrey") => "lightslategray",
+    name if name.eq_ignore_ascii_case("slategrey") => "slategray",
+    _ => return None,
+  })
+}
+
+/// CSS system colors as fixed sRGB. There is no document and no OS theme.
+///
+/// Deprecated CSS2 names use the CSS Color 4 system color of the same role.
+/// `ThreeDDarkShadow` and `ThreeDLightShadow` are `ButtonBorder`.
+fn system_color(text: &str) -> Option<DynamicColor> {
+  if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+    return None;
+  }
+  let (r, g, b) = system_rgb(&text.to_ascii_lowercase())?;
+  Some(DynamicColor {
+    cs: ColorSpaceTag::Srgb,
+    flags: Flags::default(),
+    components: [
+      f32::from(r) / 255.0,
+      f32::from(g) / 255.0,
+      f32::from(b) / 255.0,
+      1.0,
+    ],
+  })
+}
+
+fn system_rgb(name: &str) -> Option<(u8, u8, u8)> {
+  const CANVAS: (u8, u8, u8) = (0xff, 0xff, 0xff);
+  const CANVAS_TEXT: (u8, u8, u8) = (0x00, 0x00, 0x00);
+  const BUTTON_FACE: (u8, u8, u8) = (0xef, 0xef, 0xef);
+  const BUTTON_BORDER: (u8, u8, u8) = (0x76, 0x76, 0x76);
+  const GRAY_TEXT: (u8, u8, u8) = (0x6d, 0x6d, 0x6d);
+  const HIGHLIGHT: (u8, u8, u8) = (0x19, 0x67, 0xd2);
+  const ACCENT: (u8, u8, u8) = (0x1a, 0x73, 0xe8);
+  Some(match name {
+    "canvas" | "field" | "activecaption" | "appworkspace" | "background"
+    | "inactivecaption" | "infobackground" | "menu" | "scrollbar"
+    | "window" => CANVAS,
+    "canvastext" | "buttontext" | "fieldtext" | "marktext" | "captiontext"
+    | "infotext" | "menutext" | "windowtext" => CANVAS_TEXT,
+    "buttonface" | "buttonhighlight" | "buttonshadow" | "threedface" => {
+      BUTTON_FACE
+    }
+    "buttonborder" | "activeborder" | "inactiveborder" | "threeddarkshadow"
+    | "threedhighlight" | "threedlightshadow" | "threedshadow"
+    | "windowframe" => BUTTON_BORDER,
+    "graytext" | "inactivecaptiontext" => GRAY_TEXT,
+    "highlight" | "selecteditem" => HIGHLIGHT,
+    "highlighttext" | "selecteditemtext" | "accentcolortext" => CANVAS,
+    "linktext" => (0x00, 0x00, 0xee),
+    "visitedtext" => (0x55, 0x1a, 0x8b),
+    "activetext" => (0xff, 0x00, 0x00),
+    "mark" => (0xff, 0xff, 0x00),
+    "accentcolor" => ACCENT,
+    _ => return None,
+  })
+}
+
+/// Drop whitespace that sits immediately before a comma.
+fn tighten_commas(text: &str) -> Option<String> {
+  let bytes = text.as_bytes();
+  if !bytes.contains(&b',') {
+    return None;
+  }
+  let mut out = String::with_capacity(text.len());
+  let mut changed = false;
+  let mut index = 0;
+  while index < bytes.len() {
+    if bytes[index].is_ascii_whitespace() {
+      let start = index;
+      while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+      }
+      if index < bytes.len() && bytes[index] == b',' {
+        changed = true;
+        continue;
+      }
+      out.push_str(&text[start..index]);
+    } else {
+      let start = index;
+      index += 1;
+      while index < bytes.len() && !bytes[index].is_ascii_whitespace() {
+        index += 1;
+      }
+      out.push_str(&text[start..index]);
+    }
+  }
+  changed.then_some(out)
+}
+
+/// The comma form of `rgb()` / `rgba()` and of `hsl()` / `hsla()` keeps one
+/// component type. Alpha is independent, and the space-separated form may mix.
+fn legacy_channels_mixed(text: &str) -> bool {
+  let mut parser = Parser::new(text);
+  let Ok(token) = parser.next() else {
+    return false;
+  };
+  let Token::Function(name) = token else {
+    return false;
+  };
+  let hsl =
+    name.eq_ignore_ascii_case("hsl") || name.eq_ignore_ascii_case("hsla");
+  let rgb =
+    name.eq_ignore_ascii_case("rgb") || name.eq_ignore_ascii_case("rgba");
+  if !hsl && !rgb {
+    return false;
+  }
+  parser
+    .parse_nested_block(|inner| scan_legacy_mix(inner, hsl))
+    .unwrap_or(false)
+}
+
+fn scan_legacy_mix(
+  parser: &mut Parser<'_>,
+  hsl: bool,
+) -> Result<bool, ParseError<()>> {
+  let mut legacy = false;
+  if hsl {
+    match parser.next()?.clone() {
+      Token::Number { .. } | Token::Dimension { .. } => {}
+      _ => return Err(ParseError::unexpected_token()),
+    }
+    if parser.try_parse(Parser::expect_comma).is_ok() {
+      legacy = true;
+    }
+  }
+  let mut saw_number = false;
+  let mut saw_percent = false;
+  let count = if hsl { 2 } else { 3 };
+  for index in 0..count {
+    if index > 0 {
+      if parser.try_parse(Parser::expect_comma).is_ok() {
+        legacy = true;
+      } else if legacy {
+        return Err(ParseError::unexpected_token());
+      }
+    }
+    match parser.next()?.clone() {
+      Token::Number { .. } => saw_number = true,
+      Token::Percentage { .. } => saw_percent = true,
+      _ => return Err(ParseError::unexpected_token()),
+    }
+  }
+  if !parser.is_exhausted() {
+    let comma = parser.try_parse(Parser::expect_comma).is_ok();
+    if !comma && parser.try_parse(|inner| inner.expect_delim('/')).is_err() {
+      return Err(ParseError::unexpected_token());
+    }
+    match parser.next()?.clone() {
+      Token::Number { .. } | Token::Percentage { .. } => {}
+      _ => return Err(ParseError::unexpected_token()),
+    }
+    parser.expect_exhausted()?;
+  }
+  Ok(legacy && saw_number && saw_percent)
+}
+
+pub(crate) fn css_color(color: DynamicColor, legacy: bool) -> Option<CssColor> {
+  let color = supported(color)?;
+  if color.cs == ColorSpaceTag::DisplayP3 {
+    let [r, g, b, a] = color.components;
+    if ![r, g, b, a].iter().all(|channel| channel.is_finite()) {
+      return None;
+    }
+    return Some(CssColor {
+      r,
+      g,
+      b,
+      a,
+      syntax: ColorSyntax::DisplayP3,
+    });
+  }
+  let [r, g, b, a] = color.to_alpha_color::<color::Srgb>().components;
+  if ![r, g, b, a].iter().all(|channel| channel.is_finite()) {
+    return None;
+  }
+  Some(CssColor {
+    r,
+    g,
+    b,
+    a,
+    syntax: if legacy {
+      ColorSyntax::Legacy
+    } else {
+      ColorSyntax::Srgb
+    },
+  })
+}
+
+/// Spaces this runtime does not accept, including `xyz`.
+fn supported(color: DynamicColor) -> Option<DynamicColor> {
+  match color.cs {
+    ColorSpaceTag::Srgb
+    | ColorSpaceTag::LinearSrgb
+    | ColorSpaceTag::Lab
+    | ColorSpaceTag::Lch
+    | ColorSpaceTag::Hsl
+    | ColorSpaceTag::Hwb
+    | ColorSpaceTag::Oklab
+    | ColorSpaceTag::Oklch
+    | ColorSpaceTag::DisplayP3 => Some(color),
+    _ => None,
+  }
+}
+
+/// An sRGB black used when a relative color or mix names `currentcolor`.
+pub(crate) fn current_color() -> DynamicColor {
+  DynamicColor {
+    cs: ColorSpaceTag::Srgb,
+    flags: Flags::default(),
+    components: [0.0, 0.0, 0.0, 1.0],
   }
 }
 
@@ -165,286 +425,4 @@ fn format_number(value: f32) -> String {
     }
   }
   if text == "-0" { "0".to_string() } else { text }
-}
-
-fn parse_function(text: &str) -> Option<CssColor> {
-  let (name, body) = text.split_once('(')?;
-  let body = body.strip_suffix(')')?.trim();
-  let name = name.trim();
-  match name {
-    "rgb" | "rgba" => parse_rgb(body, false),
-    "hsl" | "hsla" => parse_hsl(body),
-    "color" => parse_color_function(body),
-    "hwb" | "lab" | "lch" | "oklab" | "oklch" | "color-mix" => {
-      crate::paint::modern::parse_modern(name, body)
-    }
-    _ => None,
-  }
-}
-
-fn parse_rgb(body: &str, unit: bool) -> Option<CssColor> {
-  let (channels, alpha) = crate::paint::modern::split_alpha(body)?;
-  let parts = crate::paint::modern::split_parts(channels)?;
-  if parts.len() != 3 {
-    return None;
-  }
-  let r = component(parts[0], unit)?;
-  let g = component(parts[1], unit)?;
-  let b = component(parts[2], unit)?;
-  let a = alpha.unwrap_or(1.0);
-  if ![r, g, b, a].iter().all(|value| value.is_finite()) {
-    return None;
-  }
-  Some(CssColor {
-    r: r as f32,
-    g: g as f32,
-    b: b as f32,
-    a: a as f32,
-    syntax: ColorSyntax::Legacy,
-  })
-}
-
-fn parse_hsl(body: &str) -> Option<CssColor> {
-  let (channels, alpha) = crate::paint::modern::split_alpha(body)?;
-  let parts = crate::paint::modern::split_parts(channels)?;
-  if parts.len() != 3 {
-    return None;
-  }
-  let h = hue(parts[0])?;
-  let s = percent(parts[1])?;
-  let l = percent(parts[2])?;
-  let a = alpha.unwrap_or(1.0);
-  let (r, g, b) = hsl_to_rgb(h, s, l);
-  Some(CssColor {
-    r,
-    g,
-    b,
-    a: a as f32,
-    syntax: ColorSyntax::Legacy,
-  })
-}
-
-fn parse_color_function(body: &str) -> Option<CssColor> {
-  let body = body.trim();
-  let space_end = body.find(char::is_whitespace)?;
-  let space = &body[..space_end];
-  let rest = body[space_end..].trim();
-  let (p3, linear) = match space {
-    "srgb" => (false, false),
-    "display-p3" => (true, false),
-    "srgb-linear" => (false, true),
-    _ => return None,
-  };
-  let mut color = parse_rgb(rest, true)?;
-  if linear {
-    let encoded = crate::paint::modern::encode_srgb([
-      f64::from(color.r),
-      f64::from(color.g),
-      f64::from(color.b),
-    ]);
-    color.r = encoded[0] as f32;
-    color.g = encoded[1] as f32;
-    color.b = encoded[2] as f32;
-  }
-  color.syntax = if p3 {
-    ColorSyntax::DisplayP3
-  } else {
-    ColorSyntax::Srgb
-  };
-  Some(color)
-}
-
-fn component(text: &str, unit: bool) -> Option<f64> {
-  let basis = if unit { 1.0 } else { 255.0 };
-  let value = crate::paint::modern::eval_component(text, basis)?;
-  if unit {
-    Some(value)
-  } else {
-    Some(value / 255.0)
-  }
-}
-
-fn percent(text: &str) -> Option<f64> {
-  crate::paint::modern::eval_component(text, 100.0).map(|value| value / 100.0)
-}
-
-fn hue(text: &str) -> Option<f64> {
-  crate::paint::modern::eval_hue(text)
-}
-
-pub(crate) fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f32, f32, f32) {
-  let h = h.rem_euclid(360.0);
-  let s = s.clamp(0.0, 1.0);
-  let l = l.clamp(0.0, 1.0);
-  let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-  let h = h / 60.0;
-  let x = c * (1.0 - (h.rem_euclid(2.0) - 1.0).abs());
-  let (r, g, b) = match h as i32 {
-    0 => (c, x, 0.0),
-    1 => (x, c, 0.0),
-    2 => (0.0, c, x),
-    3 => (0.0, x, c),
-    4 => (x, 0.0, c),
-    _ => (c, 0.0, x),
-  };
-  let m = l - c / 2.0;
-  ((r + m) as f32, (g + m) as f32, (b + m) as f32)
-}
-
-fn named(name: &str) -> Option<CssColor> {
-  if name == "transparent" {
-    return Some(CssColor {
-      r: 0.0,
-      g: 0.0,
-      b: 0.0,
-      a: 0.0,
-      syntax: ColorSyntax::Legacy,
-    });
-  }
-  if name == "currentcolor" {
-    return Some(CssColor::BLACK);
-  }
-  let (r, g, b) = match name {
-    "black" => (0, 0, 0),
-    "silver" => (192, 192, 192),
-    "gray" | "grey" => (128, 128, 128),
-    "white" => (255, 255, 255),
-    "maroon" => (128, 0, 0),
-    "red" => (255, 0, 0),
-    "purple" => (128, 0, 128),
-    "fuchsia" | "magenta" => (255, 0, 255),
-    "green" => (0, 128, 0),
-    "lime" => (0, 255, 0),
-    "olive" => (128, 128, 0),
-    "yellow" => (255, 255, 0),
-    "navy" => (0, 0, 128),
-    "blue" => (0, 0, 255),
-    "teal" => (0, 128, 128),
-    "aqua" | "cyan" => (0, 255, 255),
-    "aliceblue" => (240, 248, 255),
-    "antiquewhite" => (250, 235, 215),
-    "aquamarine" => (127, 255, 212),
-    "azure" => (240, 255, 255),
-    "beige" => (245, 245, 220),
-    "bisque" => (255, 228, 196),
-    "blanchedalmond" => (255, 235, 205),
-    "blueviolet" => (138, 43, 226),
-    "brown" => (165, 42, 42),
-    "burlywood" => (222, 184, 135),
-    "cadetblue" => (95, 158, 160),
-    "chartreuse" => (127, 255, 0),
-    "chocolate" => (210, 105, 30),
-    "coral" => (255, 127, 80),
-    "cornflowerblue" => (100, 149, 237),
-    "cornsilk" => (255, 248, 220),
-    "crimson" => (220, 20, 60),
-    "darkblue" => (0, 0, 139),
-    "darkcyan" => (0, 139, 139),
-    "darkgoldenrod" => (184, 134, 11),
-    "darkgray" | "darkgrey" => (169, 169, 169),
-    "darkgreen" => (0, 100, 0),
-    "darkkhaki" => (189, 183, 107),
-    "darkmagenta" => (139, 0, 139),
-    "darkolivegreen" => (85, 107, 47),
-    "darkorange" => (255, 140, 0),
-    "darkorchid" => (153, 50, 204),
-    "darkred" => (139, 0, 0),
-    "darksalmon" => (233, 150, 122),
-    "darkseagreen" => (143, 188, 143),
-    "darkslateblue" => (72, 61, 139),
-    "darkslategray" | "darkslategrey" => (47, 79, 79),
-    "darkturquoise" => (0, 206, 209),
-    "darkviolet" => (148, 0, 211),
-    "deeppink" => (255, 20, 147),
-    "deepskyblue" => (0, 191, 255),
-    "dimgray" | "dimgrey" => (105, 105, 105),
-    "dodgerblue" => (30, 144, 255),
-    "firebrick" => (178, 34, 34),
-    "floralwhite" => (255, 250, 240),
-    "forestgreen" => (34, 139, 34),
-    "gainsboro" => (220, 220, 220),
-    "ghostwhite" => (248, 248, 255),
-    "gold" => (255, 215, 0),
-    "goldenrod" => (218, 165, 32),
-    "greenyellow" => (173, 255, 47),
-    "honeydew" => (240, 255, 240),
-    "hotpink" => (255, 105, 180),
-    "indianred" => (205, 92, 92),
-    "indigo" => (75, 0, 130),
-    "ivory" => (255, 255, 240),
-    "khaki" => (240, 230, 140),
-    "lavender" => (230, 230, 250),
-    "lavenderblush" => (255, 240, 245),
-    "lawngreen" => (124, 252, 0),
-    "lemonchiffon" => (255, 250, 205),
-    "lightblue" => (173, 216, 230),
-    "lightcoral" => (240, 128, 128),
-    "lightcyan" => (224, 255, 255),
-    "lightgoldenrodyellow" => (250, 250, 210),
-    "lightgray" | "lightgrey" => (211, 211, 211),
-    "lightgreen" => (144, 238, 144),
-    "lightpink" => (255, 182, 193),
-    "lightsalmon" => (255, 160, 122),
-    "lightseagreen" => (32, 178, 170),
-    "lightskyblue" => (135, 206, 250),
-    "lightslategray" | "lightslategrey" => (119, 136, 153),
-    "lightsteelblue" => (176, 196, 222),
-    "lightyellow" => (255, 255, 224),
-    "limegreen" => (50, 205, 50),
-    "linen" => (250, 240, 230),
-    "mediumaquamarine" => (102, 205, 170),
-    "mediumblue" => (0, 0, 205),
-    "mediumorchid" => (186, 85, 211),
-    "mediumpurple" => (147, 112, 219),
-    "mediumseagreen" => (60, 179, 113),
-    "mediumslateblue" => (123, 104, 238),
-    "mediumspringgreen" => (0, 250, 154),
-    "mediumturquoise" => (72, 209, 204),
-    "mediumvioletred" => (199, 21, 133),
-    "midnightblue" => (25, 25, 112),
-    "mintcream" => (245, 255, 250),
-    "mistyrose" => (255, 228, 225),
-    "moccasin" => (255, 228, 181),
-    "navajowhite" => (255, 222, 173),
-    "oldlace" => (253, 245, 230),
-    "olivedrab" => (107, 142, 35),
-    "orange" => (255, 165, 0),
-    "orangered" => (255, 69, 0),
-    "orchid" => (218, 112, 214),
-    "palegoldenrod" => (238, 232, 170),
-    "palegreen" => (152, 251, 152),
-    "paleturquoise" => (175, 238, 238),
-    "palevioletred" => (219, 112, 147),
-    "papayawhip" => (255, 239, 213),
-    "peachpuff" => (255, 218, 185),
-    "peru" => (205, 133, 63),
-    "pink" => (255, 192, 203),
-    "plum" => (221, 160, 221),
-    "powderblue" => (176, 224, 230),
-    "rebeccapurple" => (102, 51, 153),
-    "rosybrown" => (188, 143, 143),
-    "royalblue" => (65, 105, 225),
-    "saddlebrown" => (139, 69, 19),
-    "salmon" => (250, 128, 114),
-    "sandybrown" => (244, 164, 96),
-    "seagreen" => (46, 139, 87),
-    "seashell" => (255, 245, 238),
-    "sienna" => (160, 82, 45),
-    "skyblue" => (135, 206, 235),
-    "slateblue" => (106, 90, 205),
-    "slategray" | "slategrey" => (112, 128, 144),
-    "snow" => (255, 250, 250),
-    "springgreen" => (0, 255, 127),
-    "steelblue" => (70, 130, 180),
-    "tan" => (210, 180, 140),
-    "thistle" => (216, 191, 216),
-    "tomato" => (255, 99, 71),
-    "turquoise" => (64, 224, 208),
-    "violet" => (238, 130, 238),
-    "wheat" => (245, 222, 179),
-    "whitesmoke" => (245, 245, 245),
-    "yellowgreen" => (154, 205, 50),
-    _ => return None,
-  };
-  Some(from_bytes(r, g, b, 255))
 }

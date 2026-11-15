@@ -10,7 +10,7 @@ use kurbo::Cap;
 use kurbo::Join;
 use kurbo::Rect;
 use vello_cpu::peniko::Fill;
-use yuzuko_core::op::{Js, New, OpError};
+use yuzuko_core::op::{FromV8, Js, New, OpError};
 use yuzuko_image::ImageBitmap;
 use yuzuko_image::ImageData;
 use yuzuko_image::Raster;
@@ -336,24 +336,23 @@ fn is_composite(value: &str) -> bool {
 fn set_style(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Option<Style> {
-  if value.is_string() {
-    let text = value.to_rust_string_lossy(scope);
-    return parse_color(&text).map(Style::Color);
-  }
+) -> Result<Option<Style>, OpError> {
+  // A gradient or a pattern wins. Anything else is read with ToString.
+  // An unrecognized color string leaves the style in place.
   if let Some(id) = objects::gradient_id(scope, value) {
     if let Ok(object) = v8::Local::<v8::Object>::try_from(value) {
       record::remember_style(id, v8::Global::new(scope, object));
     }
-    return Some(Style::Gradient(id));
+    return Ok(Some(Style::Gradient(id)));
   }
   if let Some(id) = objects::pattern_id(scope, value) {
     if let Ok(object) = v8::Local::<v8::Object>::try_from(value) {
       record::remember_style(id, v8::Global::new(scope, object));
     }
-    return Some(Style::Pattern(id));
+    return Ok(Some(Style::Pattern(id)));
   }
-  None
+  let text = String::from_v8(scope, value)?;
+  Ok(parse_color(&text).map(Style::Color))
 }
 
 fn external_source(
@@ -830,7 +829,7 @@ impl Context2D {
     scope: &mut v8::PinScope,
     value: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let Some(style) = set_style(scope, value) else {
+    let Some(style) = set_style(scope, value)? else {
       return Ok(());
     };
     self.update(|drawing| {
@@ -850,7 +849,7 @@ impl Context2D {
     scope: &mut v8::PinScope,
     value: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let Some(style) = set_style(scope, value) else {
+    let Some(style) = set_style(scope, value)? else {
       return Ok(());
     };
     self.update(|drawing| {
@@ -893,8 +892,14 @@ impl Context2D {
     &self,
     scope: &mut v8::PinScope,
     image: v8::Local<v8::Value>,
-    repetition: String,
+    repetition: v8::Local<v8::Value>,
   ) -> Result<Js, OpError> {
+    // HTML treats null as the empty string. The string "null" stays invalid.
+    let repetition = if repetition.is_null() {
+      String::new()
+    } else {
+      String::from_v8(scope, repetition)?
+    };
     let (repeat_x, repeat_y) = match repetition.as_str() {
       "repeat" => (true, true),
       "repeat-x" => (true, false),

@@ -1071,6 +1071,11 @@ fn brush_of(brush: &Paint, _cpu: bool) -> Option<Brush> {
       if stops.is_empty() {
         return None;
       }
+      // Equal endpoints have no direction. HTML paints nothing. An affine
+      // keeps those points equal, so the check is on the gradient itself.
+      if start == end {
+        return None;
+      }
       let stops = peniko_stops(stops);
       let mut gradient =
         Gradient::new_linear(*start, *end).with_stops(&stops[..]);

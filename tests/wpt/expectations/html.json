@@ -769,16 +769,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-negative-saturation.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.html4.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.html4.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-3.html": true,
@@ -791,30 +783,14 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-6.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-7.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-7.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-3.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-3.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-1.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-1.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-1.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-3.html": true,
@@ -827,16 +803,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-6.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-7.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-7.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-3.html": true,
@@ -861,50 +829,18 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-2.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-6.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-6.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-1.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-1.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-3.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-3.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-1.html": true,
@@ -935,40 +871,16 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.random-4.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-1.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-1.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-3.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-3.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-2.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-4.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-4.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-5.html": true,
@@ -981,26 +893,10 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-3.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-4.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-4.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-num.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-num.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-percent.html": true,
@@ -1009,16 +905,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-2.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-1.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-2.html": true,
@@ -1037,40 +925,16 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.svg-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.svg-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.svg-2.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.system.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.system.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.system.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.system.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-1.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-1.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-2.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-2.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.relativecolor.html": {
-    "expectedFailures": [
-      "Relative color works as color input"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.relativecolor.worker.js": {
-    "expectedFailures": [
-      "Relative color works as color input"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.html": {
-    "expectedFailures": [
-      "Passing a function in to ctx.fillStyle or ctx.strokeStyle with a toString callback works as specified"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.worker.js": {
-    "expectedFailures": [
-      "Passing a function in to ctx.fillStyle or ctx.strokeStyle with a toString callback works as specified"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.relativecolor.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.relativecolor.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.colorInterpolationMethod-expected.html": {
     "ignore": "The file is not a testharness document."
   },
@@ -1115,66 +979,18 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.solid.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.vertical.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.vertical.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.worker.js": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.nonfinite.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.nonfinite.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.transform.1.html": true,
@@ -1326,16 +1142,8 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.case.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.empty.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.empty.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.null.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.null.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.null.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.null.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.nullsuffix.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.nullsuffix.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.undefined.html": true,
@@ -1348,29 +1156,13 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.identity.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.infinity.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.infinity.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.invalid.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.invalid.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.invalid.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.invalid.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.colormix.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.default.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.default.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.html": {
-    "expectedFailures": [
-      "Relative color works as color input"
-    ]
-  },
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.worker.js": {
-    "expectedFailures": [
-      "Relative color works as color input"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.html": true,
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.worker.js": true,
   "html/canvas/offscreen/filters/2d.filter.canvasFilterObject.blur.exceptions.tentative.html": {
     "expectedFailures": [
       "Test exceptions on gaussianBlur filter"

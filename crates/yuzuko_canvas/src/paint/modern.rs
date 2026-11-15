@@ -1,877 +1,806 @@
-//! `calc()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, and `color-mix()`.
+//! `calc()`, `color-mix()`, and relative color syntax.
 //!
-//! Matrices and the Lab transfer follow the sample code in CSS Color 4.
-//! A modern color is stored as encoded sRGB and serializes as `color(srgb ...)`.
+//! The `color` crate parses absolute colors and converts between spaces.
+//! It does not parse these three forms, so this module reads them with
+//! cssparser and hands the components to that crate.
 
-use yuzuko_image::ColorSpace;
-use yuzuko_image::convert_encoded;
+use color::ColorSpaceTag;
+use color::DynamicColor;
+use color::Flags;
+use color::HueDirection;
+use color::Missing;
+use cssparser::ParseError;
+use cssparser::Parser;
+use cssparser::Token;
 
-use crate::paint::color::ColorSyntax;
-use crate::paint::color::CssColor;
-use crate::paint::color::hsl_to_rgb;
-use crate::paint::color::parse_color;
+use crate::paint::color::crate_color;
+use crate::paint::color::current_color;
 
-const KAPPA: f64 = 24389.0 / 27.0;
-const EPSILON: f64 = 216.0 / 24389.0;
-const D50: [f64; 3] = [0.3457 / 0.3585, 1.0, (1.0 - 0.3457 - 0.3585) / 0.3585];
-
-const D50_TO_D65: [[f64; 3]; 3] = [
-  [0.955473421488075, -0.02309845494876471, 0.06325924320057072],
-  [
-    -0.0283697093338637,
-    1.0099953980813041,
-    0.021041441191917323,
-  ],
-  [
-    0.012314014864481998,
-    -0.020507649298898964,
-    1.330365926242124,
-  ],
-];
-const D65_TO_D50: [[f64; 3]; 3] = [
-  [
-    1.0479297925449969,
-    0.022946870601609652,
-    -0.05019226628920524,
-  ],
-  [
-    0.02962780877005599,
-    0.9904344267538799,
-    -0.017073799063418826,
-  ],
-  [
-    -0.009243040646204504,
-    0.015055191490298152,
-    0.7518742814281371,
-  ],
-];
-const XYZ_TO_LIN_SRGB: [[f64; 3]; 3] = [
-  [12831.0 / 3959.0, -329.0 / 214.0, -1974.0 / 3959.0],
-  [
-    -851781.0 / 878810.0,
-    1648619.0 / 878810.0,
-    36519.0 / 878810.0,
-  ],
-  [705.0 / 12673.0, -2585.0 / 12673.0, 705.0 / 667.0],
-];
-const LIN_SRGB_TO_XYZ: [[f64; 3]; 3] = [
-  [506752.0 / 1228815.0, 87881.0 / 245763.0, 12673.0 / 70218.0],
-  [87098.0 / 409605.0, 175762.0 / 245763.0, 12673.0 / 175545.0],
-  [7918.0 / 409605.0, 87881.0 / 737289.0, 1001167.0 / 1053270.0],
-];
-const OKLAB_TO_LMS: [[f64; 3]; 3] = [
-  [1.0, 0.3963377773761749, 0.2158037573099136],
-  [1.0, -0.1055613458156586, -0.0638541728258133],
-  [1.0, -0.0894841775298119, -1.2914855480194092],
-];
-const LMS_TO_XYZ: [[f64; 3]; 3] = [
-  [1.2268798758459243, -0.5578149944602171, 0.2813910456659647],
-  [-0.0405757452148008, 1.112286803280317, -0.0717110580655164],
-  [-0.0763729366746601, -0.4214933324022432, 1.5869240198367816],
-];
-const XYZ_TO_LMS: [[f64; 3]; 3] = [
-  [0.819022437996703, 0.3619062600528904, -0.1288737815209879],
-  [0.0329836539323885, 0.9292868615863434, 0.0361446663506424],
-  [0.0481771893596242, 0.2642395317527308, 0.6335478284694309],
-];
-const LMS_TO_OKLAB: [[f64; 3]; 3] = [
-  [0.210454268309314, 0.7936177747023054, -0.0040720430116193],
-  [1.9779985324311684, -2.42859224204858, 0.450593709617411],
-  [0.0259040424655478, 0.7827717124575296, -0.8086757549230774],
-];
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Space {
-  Srgb,
-  SrgbLinear,
-  DisplayP3,
-  Lab,
-  Oklab,
-  Lch,
-  Oklch,
-  Hsl,
-  Hwb,
-}
-
-impl Space {
-  fn polar(self) -> bool {
-    matches!(self, Self::Lch | Self::Oklch | Self::Hsl | Self::Hwb)
-  }
-
-  fn hue_index(self) -> usize {
-    match self {
-      Self::Hsl | Self::Hwb => 0,
-      _ => 2,
+pub(crate) fn parse_tree(
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, bool), ParseError<()>> {
+  let start = parser.position();
+  let token = parser.next()?.clone();
+  match token {
+    Token::Hash(_) | Token::IDHash(_) => {
+      absolute(parser.slice_from(start).trim())
     }
-  }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HueMethod {
-  Shorter,
-  Longer,
-  Increasing,
-  Decreasing,
-}
-
-/// A bare number stays in its unit. `100%` equals `percent_basis`.
-pub fn eval_component(text: &str, percent_basis: f64) -> Option<f64> {
-  eval(text, percent_basis, false)
-}
-
-pub fn eval_hue(text: &str) -> Option<f64> {
-  eval(text, 360.0, true)
-}
-
-pub fn encode_srgb(rgb: [f64; 3]) -> [f64; 3] {
-  rgb.map(encode_channel)
-}
-
-fn eval(text: &str, percent_basis: f64, hue: bool) -> Option<f64> {
-  let text = text.trim();
-  if text.is_empty() || !percent_basis.is_finite() {
-    return None;
-  }
-  let mut parser = Parser { text, index: 0 };
-  let value = parser.expr(percent_basis, hue)?;
-  parser.skip();
-  if parser.index != text.len() || !value.is_finite() {
-    None
-  } else {
-    Some(value)
-  }
-}
-
-struct Parser<'a> {
-  text: &'a str,
-  index: usize,
-}
-
-impl<'a> Parser<'a> {
-  fn expr(&mut self, basis: f64, hue: bool) -> Option<f64> {
-    let mut value = self.term(basis, hue)?;
-    loop {
-      self.skip();
-      if self.eat(b'+') {
-        value += self.term(basis, hue)?;
-      } else if self.eat(b'-') {
-        value -= self.term(basis, hue)?;
+    Token::Ident(name) => {
+      if name.eq_ignore_ascii_case("currentcolor") {
+        Ok((current_color(), true))
       } else {
-        break;
+        absolute(parser.slice_from(start).trim())
       }
     }
-    Some(value)
-  }
-
-  fn term(&mut self, basis: f64, hue: bool) -> Option<f64> {
-    let mut value = self.factor(basis, hue)?;
-    loop {
-      self.skip();
-      if self.eat(b'*') {
-        value *= self.factor(basis, hue)?;
-      } else if self.eat(b'/') {
-        let divisor = self.factor(basis, hue)?;
-        if divisor == 0.0 {
-          return None;
+    Token::Function(name) => {
+      let name = name.to_ascii_lowercase();
+      let mut parsed = None;
+      parser.parse_nested_block(|inner| {
+        if name == "color-mix" || body_is_custom(inner) {
+          parsed = Some(parse_custom(&name, inner)?);
+          Ok(())
+        } else {
+          skip_rest(inner)
         }
-        value /= divisor;
+      })?;
+      if let Some(parsed) = parsed {
+        Ok(parsed)
       } else {
-        break;
+        absolute(parser.slice_from(start).trim())
       }
     }
-    Some(value)
-  }
-
-  fn factor(&mut self, basis: f64, hue: bool) -> Option<f64> {
-    self.skip();
-    if self.eat(b'+') {
-      return self.factor(basis, hue);
-    }
-    if self.eat(b'-') {
-      return Some(-self.factor(basis, hue)?);
-    }
-    if self.eat(b'(') {
-      let value = self.expr(basis, hue)?;
-      self.skip();
-      if !self.eat(b')') {
-        return None;
-      }
-      return Some(value);
-    }
-    if self.eat_word("calc") && self.eat(b'(') {
-      let value = self.expr(basis, hue)?;
-      self.skip();
-      if !self.eat(b')') {
-        return None;
-      }
-      return Some(value);
-    }
-    if self.eat_word("none") {
-      return Some(0.0);
-    }
-    self.number(basis, hue)
-  }
-
-  fn number(&mut self, basis: f64, hue: bool) -> Option<f64> {
-    let start = self.index;
-    let mut saw_digit = false;
-    while self.byte().is_some_and(|byte| byte.is_ascii_digit()) {
-      saw_digit = true;
-      self.index += 1;
-    }
-    if self.byte() == Some(b'.') {
-      self.index += 1;
-      while self.byte().is_some_and(|byte| byte.is_ascii_digit()) {
-        saw_digit = true;
-        self.index += 1;
-      }
-    }
-    if !saw_digit {
-      self.index = start;
-      return None;
-    }
-    if matches!(self.byte(), Some(b'e' | b'E')) {
-      let exponent = self.index;
-      self.index += 1;
-      if matches!(self.byte(), Some(b'+' | b'-')) {
-        self.index += 1;
-      }
-      let mut saw_exp = false;
-      while self.byte().is_some_and(|byte| byte.is_ascii_digit()) {
-        saw_exp = true;
-        self.index += 1;
-      }
-      if !saw_exp {
-        self.index = exponent;
-      }
-    }
-    let value: f64 = self.text[start..self.index].parse().ok()?;
-    if self.eat(b'%') {
-      // A hue is a number or an angle. A percentage is not a hue.
-      if hue {
-        return None;
-      }
-      return Some(value / 100.0 * basis);
-    }
-    if hue {
-      if self.eat_word("deg") {
-        return Some(value);
-      }
-      if self.eat_word("turn") {
-        return Some(value * 360.0);
-      }
-      if self.eat_word("grad") {
-        return Some(value * 0.9);
-      }
-      if self.eat_word("rad") {
-        return Some(value * 180.0 / std::f64::consts::PI);
-      }
-    }
-    Some(value)
-  }
-
-  fn skip(&mut self) {
-    while self.byte().is_some_and(|byte| byte.is_ascii_whitespace()) {
-      self.index += 1;
-    }
-  }
-
-  fn eat(&mut self, byte: u8) -> bool {
-    if self.byte() == Some(byte) {
-      self.index += 1;
-      true
-    } else {
-      false
-    }
-  }
-
-  fn eat_word(&mut self, word: &str) -> bool {
-    let rest = &self.text[self.index..];
-    if !rest.starts_with(word) {
-      return false;
-    }
-    let after = rest[word.len()..].chars().next();
-    if after
-      .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
-      return false;
-    }
-    self.index += word.len();
-    true
-  }
-
-  fn byte(&self) -> Option<u8> {
-    self.text.as_bytes().get(self.index).copied()
+    _ => Err(ParseError::unexpected_token()),
   }
 }
 
-pub fn parse_modern(name: &str, body: &str) -> Option<CssColor> {
+fn absolute(text: &str) -> Result<(DynamicColor, bool), ParseError<()>> {
+  crate_color(text).ok_or(ParseError::unexpected_token())
+}
+
+/// `from` starts a relative color. `calc()` is evaluated here.
+fn body_is_custom(parser: &mut Parser<'_>) -> bool {
+  let mut custom = false;
+  parser
+    .try_parse(|parser| {
+      let from = parser
+        .try_parse(|inner| inner.expect_ident_matching("from"))
+        .is_ok();
+      custom = from || walk_has_calc(parser).unwrap_or(false);
+      Err::<(), ParseError<()>>(ParseError::unexpected_token())
+    })
+    .ok();
+  custom
+}
+
+fn walk_has_calc(parser: &mut Parser<'_>) -> Result<bool, ParseError<()>> {
+  let mut found = false;
+  while let Ok(token) = parser.next() {
+    match token.clone() {
+      Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
+        found = true;
+        parser.parse_nested_block(skip_rest)?;
+      }
+      Token::Function(_) | Token::ParenthesisBlock
+        if parser.parse_nested_block(walk_has_calc)? =>
+      {
+        found = true;
+      }
+      _ => {}
+    }
+  }
+  Ok(found)
+}
+
+fn skip_rest(parser: &mut Parser<'_>) -> Result<(), ParseError<()>> {
+  while parser.next().is_ok() {}
+  Ok(())
+}
+
+fn parse_custom(
+  name: &str,
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, bool), ParseError<()>> {
+  if name == "color-mix" {
+    return parse_mix(parser);
+  }
+  if parser
+    .try_parse(|inner| inner.expect_ident_matching("from"))
+    .is_ok()
+  {
+    return parse_relative(name, parser);
+  }
+  parse_with_calc(name, parser)
+}
+
+#[derive(Clone, Copy)]
+struct Axis {
+  /// Number units of `100%`. A hue rejects a percentage.
+  percent: Option<f64>,
+  /// Multiply a stored component to get a bare number. `rgb()` channels use 255.
+  scale: f64,
+  clamp: Clamp,
+}
+
+#[derive(Clone, Copy)]
+enum Clamp {
+  None,
+  Unit,
+  Min0,
+  ZeroTo(f64),
+}
+
+#[derive(Clone, Copy)]
+struct Model {
+  tag: ColorSpaceTag,
+  legacy: bool,
+  commas: bool,
+  names: [&'static str; 4],
+  axes: [Axis; 4],
+}
+
+fn alpha_axis() -> Axis {
+  Axis {
+    percent: Some(1.0),
+    scale: 1.0,
+    clamp: Clamp::Unit,
+  }
+}
+
+fn hue_axis() -> Axis {
+  Axis {
+    percent: None,
+    scale: 1.0,
+    clamp: Clamp::None,
+  }
+}
+
+fn rgb_model() -> Model {
+  let channel = Axis {
+    percent: Some(255.0),
+    scale: 255.0,
+    clamp: Clamp::Unit,
+  };
+  Model {
+    tag: ColorSpaceTag::Srgb,
+    legacy: true,
+    commas: true,
+    names: ["r", "g", "b", "alpha"],
+    axes: [channel, channel, channel, alpha_axis()],
+  }
+}
+
+fn color_model(tag: ColorSpaceTag) -> Model {
+  let channel = Axis {
+    percent: Some(1.0),
+    scale: 1.0,
+    clamp: Clamp::None,
+  };
+  Model {
+    tag,
+    legacy: false,
+    commas: false,
+    names: ["r", "g", "b", "alpha"],
+    axes: [channel, channel, channel, alpha_axis()],
+  }
+}
+
+fn hsl_model() -> Model {
+  Model {
+    tag: ColorSpaceTag::Hsl,
+    legacy: true,
+    commas: true,
+    names: ["h", "s", "l", "alpha"],
+    axes: [
+      hue_axis(),
+      Axis {
+        percent: Some(100.0),
+        scale: 1.0,
+        clamp: Clamp::Min0,
+      },
+      Axis {
+        percent: Some(100.0),
+        scale: 1.0,
+        clamp: Clamp::None,
+      },
+      alpha_axis(),
+    ],
+  }
+}
+
+fn hwb_model() -> Model {
+  Model {
+    tag: ColorSpaceTag::Hwb,
+    legacy: false,
+    commas: false,
+    names: ["h", "w", "b", "alpha"],
+    axes: [
+      hue_axis(),
+      Axis {
+        percent: Some(100.0),
+        scale: 1.0,
+        clamp: Clamp::None,
+      },
+      Axis {
+        percent: Some(100.0),
+        scale: 1.0,
+        clamp: Clamp::None,
+      },
+      alpha_axis(),
+    ],
+  }
+}
+
+fn lab_model(ok: bool) -> Model {
+  let (tag, lightness, axis) = if ok {
+    (ColorSpaceTag::Oklab, 1.0, 0.4)
+  } else {
+    (ColorSpaceTag::Lab, 100.0, 125.0)
+  };
+  Model {
+    tag,
+    legacy: false,
+    commas: false,
+    names: ["l", "a", "b", "alpha"],
+    axes: [
+      Axis {
+        percent: Some(lightness),
+        scale: 1.0,
+        clamp: Clamp::ZeroTo(lightness),
+      },
+      Axis {
+        percent: Some(axis),
+        scale: 1.0,
+        clamp: Clamp::None,
+      },
+      Axis {
+        percent: Some(axis),
+        scale: 1.0,
+        clamp: Clamp::None,
+      },
+      alpha_axis(),
+    ],
+  }
+}
+
+fn lch_model(ok: bool) -> Model {
+  // `color` maps `100%` LCH chroma to 125. CSS Color 4 uses 150.
+  let (tag, lightness, chroma) = if ok {
+    (ColorSpaceTag::Oklch, 1.0, 0.4)
+  } else {
+    (ColorSpaceTag::Lch, 100.0, 125.0)
+  };
+  Model {
+    tag,
+    legacy: false,
+    commas: false,
+    names: ["l", "c", "h", "alpha"],
+    axes: [
+      Axis {
+        percent: Some(lightness),
+        scale: 1.0,
+        clamp: Clamp::ZeroTo(lightness),
+      },
+      Axis {
+        percent: Some(chroma),
+        scale: 1.0,
+        clamp: Clamp::Min0,
+      },
+      hue_axis(),
+      alpha_axis(),
+    ],
+  }
+}
+
+fn model_for(name: &str) -> Result<Model, ParseError<()>> {
+  Ok(match name {
+    "rgb" | "rgba" => rgb_model(),
+    "hsl" | "hsla" => hsl_model(),
+    "hwb" => hwb_model(),
+    "lab" => lab_model(false),
+    "oklab" => lab_model(true),
+    "lch" => lch_model(false),
+    "oklch" => lch_model(true),
+    _ => return Err(ParseError::unexpected_token()),
+  })
+}
+
+fn color_tag(name: &str) -> Result<ColorSpaceTag, ParseError<()>> {
   match name {
-    "hwb" => parse_hwb(body),
-    "lab" => parse_lab(body, false),
-    "lch" => parse_lch(body, false),
-    "oklab" => parse_lab(body, true),
-    "oklch" => parse_lch(body, true),
-    "color-mix" => parse_mix(body),
-    _ => None,
+    "srgb" => Ok(ColorSpaceTag::Srgb),
+    "srgb-linear" => Ok(ColorSpaceTag::LinearSrgb),
+    "display-p3" => Ok(ColorSpaceTag::DisplayP3),
+    _ => Err(ParseError::unexpected_token()),
   }
 }
 
-fn parse_hwb(body: &str) -> Option<CssColor> {
-  let (channels, alpha) = split_alpha(body)?;
-  let parts = split_parts(channels)?;
-  if parts.len() != 3 {
-    return None;
-  }
-  let hue = eval_hue(parts[0])?;
-  let white = eval_component(parts[1], 100.0)? / 100.0;
-  let black = eval_component(parts[2], 100.0)? / 100.0;
-  srgb_color(hwb_to_rgb(hue, white, black), alpha)
-}
-
-fn parse_lab(body: &str, oklab: bool) -> Option<CssColor> {
-  let (channels, alpha) = split_alpha(body)?;
-  let parts = split_parts(channels)?;
-  if parts.len() != 3 {
-    return None;
-  }
-  let (l_basis, ab_basis) = if oklab { (1.0, 0.4) } else { (100.0, 125.0) };
-  let l = eval_component(parts[0], l_basis)?;
-  let a = eval_component(parts[1], ab_basis)?;
-  let b = eval_component(parts[2], ab_basis)?;
-  let rgb = if oklab {
-    oklab_to_srgb([l, a, b])
+fn parse_with_calc(
+  name: &str,
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, bool), ParseError<()>> {
+  let model = if name == "color" {
+    let ident = parser.expect_ident_cloned()?;
+    color_model(color_tag(&ident)?)
   } else {
-    lab_to_srgb([l, a, b])
+    model_for(name)?
   };
-  srgb_color(rgb, alpha)
+  let (channels, alpha) = read_channels(parser, &model, None)?;
+  Ok((finish(&model, channels, alpha)?, model.legacy))
 }
 
-fn parse_lch(body: &str, oklch: bool) -> Option<CssColor> {
-  let (channels, alpha) = split_alpha(body)?;
-  let parts = split_parts(channels)?;
-  if parts.len() != 3 {
-    return None;
-  }
-  let (l_basis, c_basis) = if oklch { (1.0, 0.4) } else { (100.0, 150.0) };
-  let l = eval_component(parts[0], l_basis)?;
-  let c = eval_component(parts[1], c_basis)?;
-  let h = eval_hue(parts[2])?;
-  let (a, b) = polar_to_cartesian(c, h);
-  let rgb = if oklch {
-    oklab_to_srgb([l, a, b])
+fn parse_relative(
+  name: &str,
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, bool), ParseError<()>> {
+  let (origin, _) = parse_tree(parser)?;
+  let mut model = if name == "color" {
+    let ident = parser.expect_ident_cloned()?;
+    color_model(color_tag(&ident)?)
   } else {
-    lab_to_srgb([l, a, b])
+    model_for(name)?
   };
-  srgb_color(rgb, alpha)
+  // Relative syntax is the modern form. Legacy commas stay on absolute rgb and hsl.
+  model.commas = false;
+  let units = number_units(&model, origin.convert(model.tag));
+  let (channels, alpha) = read_channels(parser, &model, Some(units))?;
+  Ok((finish(&model, channels, alpha)?, false))
 }
 
-fn parse_mix(body: &str) -> Option<CssColor> {
-  let rest = body.trim().strip_prefix("in")?.trim_start();
-  let (preamble, rest) = split_comma(rest)?;
-  let (first, second) = split_comma(rest)?;
-  if split_comma(second).is_some() {
-    return None;
+fn number_units(model: &Model, color: DynamicColor) -> [f64; 4] {
+  let mut units = [0.0; 4];
+  for (index, axis) in model.axes.iter().enumerate() {
+    if !color.flags.missing().contains(index) {
+      units[index] = f64::from(color.components[index]) * axis.scale;
+    }
   }
-  let (space, method) = mix_preamble(preamble.trim())?;
-  let (color_a, percent_a) = mix_color(first.trim())?;
-  let (color_b, percent_b) = mix_color(second.trim())?;
-  let (weight_a, weight_b) = match (percent_a, percent_b) {
+  units
+}
+
+enum ParsedAlpha {
+  Omitted,
+  Missing,
+  Value(f64),
+}
+
+fn read_channels(
+  parser: &mut Parser<'_>,
+  model: &Model,
+  origin: Option<[f64; 4]>,
+) -> Result<([Option<f64>; 3], ParsedAlpha), ParseError<()>> {
+  let origin = origin.as_ref();
+  let mut values = [None, None, None];
+  let mut commas = false;
+  values[0] = component(parser, &model.axes[0], &model.names, origin)?;
+  let mut count = 1;
+  loop {
+    if parser.try_parse(Parser::expect_comma).is_ok() {
+      if !model.commas || (!commas && count > 1) {
+        return Err(ParseError::unexpected_token());
+      }
+      commas = true;
+      if count == 3 {
+        let alpha = read_alpha(parser, model, origin)?;
+        parser.expect_exhausted()?;
+        return Ok((values, alpha));
+      }
+      values[count] =
+        component(parser, &model.axes[count], &model.names, origin)?;
+      count += 1;
+      continue;
+    }
+    if parser.try_parse(|inner| inner.expect_delim('/')).is_ok() {
+      if commas || count != 3 {
+        return Err(ParseError::unexpected_token());
+      }
+      let alpha = read_alpha(parser, model, origin)?;
+      parser.expect_exhausted()?;
+      return Ok((values, alpha));
+    }
+    if parser.is_exhausted() {
+      break;
+    }
+    if commas || count == 3 {
+      return Err(ParseError::unexpected_token());
+    }
+    values[count] =
+      component(parser, &model.axes[count], &model.names, origin)?;
+    count += 1;
+  }
+  if count == 3 {
+    Ok((values, ParsedAlpha::Omitted))
+  } else {
+    Err(ParseError::unexpected_token())
+  }
+}
+
+fn read_alpha(
+  parser: &mut Parser<'_>,
+  model: &Model,
+  origin: Option<&[f64; 4]>,
+) -> Result<ParsedAlpha, ParseError<()>> {
+  match component(parser, &model.axes[3], &model.names, origin)? {
+    None => Ok(ParsedAlpha::Missing),
+    Some(value) => Ok(ParsedAlpha::Value(value)),
+  }
+}
+
+fn component(
+  parser: &mut Parser<'_>,
+  axis: &Axis,
+  names: &[&str; 4],
+  origin: Option<&[f64; 4]>,
+) -> Result<Option<f64>, ParseError<()>> {
+  match factor(parser, axis, names, origin, true)? {
+    Term::Missing => Ok(None),
+    Term::Number(number) => Ok(Some(store_channel(number, axis)?)),
+  }
+}
+
+fn store_channel(number: f64, axis: &Axis) -> Result<f64, ParseError<()>> {
+  if !number.is_finite() {
+    return Err(ParseError::unexpected_token());
+  }
+  let value = number / axis.scale;
+  let value = match axis.clamp {
+    Clamp::None => value,
+    Clamp::Unit => value.clamp(0.0, 1.0),
+    Clamp::Min0 => value.max(0.0),
+    Clamp::ZeroTo(max) => value.clamp(0.0, max),
+  };
+  if value.is_finite() {
+    Ok(value)
+  } else {
+    Err(ParseError::unexpected_token())
+  }
+}
+
+fn finish(
+  model: &Model,
+  channels: [Option<f64>; 3],
+  alpha: ParsedAlpha,
+) -> Result<DynamicColor, ParseError<()>> {
+  let mut missing = Missing::default();
+  let mut components = [0.0; 4];
+  for (index, channel) in channels.iter().enumerate() {
+    match channel {
+      None => missing.insert(index),
+      Some(value) => components[index] = *value as f32,
+    }
+  }
+  match alpha {
+    ParsedAlpha::Omitted => components[3] = 1.0,
+    ParsedAlpha::Missing => missing.insert(3),
+    ParsedAlpha::Value(value) => components[3] = value as f32,
+  }
+  if !components.iter().all(|channel| channel.is_finite()) {
+    return Err(ParseError::unexpected_token());
+  }
+  Ok(DynamicColor {
+    cs: model.tag,
+    flags: Flags::from_missing(missing),
+    components,
+  })
+}
+
+fn parse_mix(
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, bool), ParseError<()>> {
+  parser.expect_ident_matching("in")?;
+  let name = parser.expect_ident_cloned()?;
+  let tag = mix_tag(&name)?;
+  let direction = mix_direction(parser, tag)?;
+  parser.expect_comma()?;
+  let (left, left_weight) = mix_stop(parser)?;
+  parser.expect_comma()?;
+  let (right, right_weight) = mix_stop(parser)?;
+  parser.expect_exhausted()?;
+  let (weight_a, weight_b) = match (left_weight, right_weight) {
     (None, None) => (0.5, 0.5),
     (Some(left), None) => (left, 1.0 - left),
     (None, Some(right)) => (1.0 - right, right),
     (Some(left), Some(right)) => (left, right),
   };
-  if !weight_a.is_finite() || !weight_b.is_finite() {
-    return None;
+  if !weight_a.is_finite()
+    || !weight_b.is_finite()
+    || weight_a + weight_b == 0.0
+  {
+    return Err(ParseError::unexpected_token());
   }
-  let sum = weight_a + weight_b;
-  if sum == 0.0 {
-    return None;
+  let toward_right = (weight_b / (weight_a + weight_b)) as f32;
+  let mixed = left
+    .interpolate(right, tag, direction)
+    .eval(toward_right)
+    .convert(ColorSpaceTag::Srgb);
+  if !mixed.components.iter().all(|channel| channel.is_finite()) {
+    return Err(ParseError::unexpected_token());
   }
-  let toward_b = weight_b / sum;
-  let (channels, alpha) = mix_in(space, method, color_a, color_b, toward_b)?;
-  srgb_color(channels, Some(alpha))
-}
-
-fn mix_preamble(text: &str) -> Option<(Space, HueMethod)> {
-  let words: Vec<&str> = text.split_whitespace().collect();
-  let space = match words.first().copied()? {
-    "srgb" => Space::Srgb,
-    "srgb-linear" => Space::SrgbLinear,
-    "display-p3" => Space::DisplayP3,
-    "lab" => Space::Lab,
-    "oklab" => Space::Oklab,
-    "lch" => Space::Lch,
-    "oklch" => Space::Oklch,
-    "hsl" => Space::Hsl,
-    "hwb" => Space::Hwb,
-    _ => return None,
-  };
-  match words.as_slice() {
-    [_] => Some((space, HueMethod::Shorter)),
-    [_, direction, "hue"] if space.polar() => {
-      let method = match *direction {
-        "shorter" => HueMethod::Shorter,
-        "longer" => HueMethod::Longer,
-        "increasing" => HueMethod::Increasing,
-        "decreasing" => HueMethod::Decreasing,
-        _ => return None,
-      };
-      Some((space, method))
-    }
-    _ => None,
-  }
-}
-
-fn mix_color(text: &str) -> Option<(CssColor, Option<f64>)> {
-  if let Some((color, percent)) = trailing_percent(text) {
-    let color = parse_color(color)?;
-    let percent = eval_component(percent, 1.0)?;
-    return Some((color, Some(percent)));
-  }
-  Some((parse_color(text)?, None))
-}
-
-fn trailing_percent(text: &str) -> Option<(&str, &str)> {
-  let mut depth = 0i32;
-  let mut split = None;
-  for (index, byte) in text.bytes().enumerate() {
-    match byte {
-      b'(' => depth += 1,
-      b')' => depth -= 1,
-      b' ' | b'\t' | b'\n' | b'\r' if depth == 0 => split = Some(index),
-      _ => {}
-    }
-  }
-  let index = split?;
-  let color = text[..index].trim();
-  let percent = text[index..].trim();
-  if color.is_empty() || percent.is_empty() {
-    return None;
-  }
-  if percent.ends_with('%') || percent.starts_with("calc") {
-    Some((color, percent))
-  } else {
-    None
-  }
-}
-
-fn mix_in(
-  space: Space,
-  method: HueMethod,
-  left: CssColor,
-  right: CssColor,
-  toward_right: f64,
-) -> Option<([f64; 3], f64)> {
-  let left_srgb = encoded_srgb(left);
-  let right_srgb = encoded_srgb(right);
-  let (left_ch, right_ch) = match space {
-    Space::Srgb => (left_srgb, right_srgb),
-    Space::SrgbLinear => (
-      left_srgb.map(decode_channel),
-      right_srgb.map(decode_channel),
-    ),
-    Space::DisplayP3 => (to_display_p3(left), to_display_p3(right)),
-    Space::Lab => (srgb_to_lab(left_srgb), srgb_to_lab(right_srgb)),
-    Space::Oklab => (srgb_to_oklab(left_srgb), srgb_to_oklab(right_srgb)),
-    Space::Lch => (
-      lab_to_lch(srgb_to_lab(left_srgb)),
-      lab_to_lch(srgb_to_lab(right_srgb)),
-    ),
-    Space::Oklch => (
-      oklab_to_oklch(srgb_to_oklab(left_srgb)),
-      oklab_to_oklch(srgb_to_oklab(right_srgb)),
-    ),
-    Space::Hsl => (rgb_to_hsl(left_srgb), rgb_to_hsl(right_srgb)),
-    Space::Hwb => (rgb_to_hwb(left_srgb), rgb_to_hwb(right_srgb)),
-  };
-  let (mixed, alpha) = if space.polar() {
-    mix_polar(
-      left_ch,
-      left.a as f64,
-      right_ch,
-      right.a as f64,
-      toward_right,
-      space.hue_index(),
-      method,
-    )
-  } else {
-    mix_rectangular(
-      left_ch,
-      left.a as f64,
-      right_ch,
-      right.a as f64,
-      toward_right,
-    )
-  };
-  let encoded = match space {
-    Space::Srgb => mixed,
-    Space::SrgbLinear => encode_srgb(mixed),
-    Space::DisplayP3 => {
-      convert_encoded(ColorSpace::DisplayP3, ColorSpace::Srgb, mixed)
-    }
-    Space::Lab => lab_to_srgb(mixed),
-    Space::Oklab => oklab_to_srgb(mixed),
-    Space::Lch => lab_to_srgb(lch_to_lab(mixed)),
-    Space::Oklch => oklab_to_srgb(oklch_to_oklab(mixed)),
-    Space::Hsl => {
-      let (r, g, b) = hsl_to_rgb(mixed[0], mixed[1], mixed[2]);
-      [f64::from(r), f64::from(g), f64::from(b)]
-    }
-    Space::Hwb => hwb_to_rgb(mixed[0], mixed[1], mixed[2]),
-  };
-  Some((encoded, alpha))
-}
-
-fn mix_rectangular(
-  left: [f64; 3],
-  left_alpha: f64,
-  right: [f64; 3],
-  right_alpha: f64,
-  toward_right: f64,
-) -> ([f64; 3], f64) {
-  let toward_left = 1.0 - toward_right;
-  let alpha = left_alpha * toward_left + right_alpha * toward_right;
-  let mixed = [0, 1, 2].map(|index| {
-    left[index] * left_alpha * toward_left
-      + right[index] * right_alpha * toward_right
-  });
-  if alpha == 0.0 {
-    ([0.0; 3], 0.0)
-  } else {
-    (mixed.map(|channel| channel / alpha), alpha)
-  }
-}
-
-fn mix_polar(
-  left: [f64; 3],
-  left_alpha: f64,
-  right: [f64; 3],
-  right_alpha: f64,
-  toward_right: f64,
-  hue_index: usize,
-  method: HueMethod,
-) -> ([f64; 3], f64) {
-  let toward_left = 1.0 - toward_right;
-  let alpha = left_alpha * toward_left + right_alpha * toward_right;
-  let mut mixed = [0.0; 3];
-  for index in 0..3 {
-    if index == hue_index {
-      mixed[index] = mix_hue(left[index], right[index], toward_right, method);
-    } else {
-      let value = left[index] * left_alpha * toward_left
-        + right[index] * right_alpha * toward_right;
-      mixed[index] = if alpha == 0.0 { 0.0 } else { value / alpha };
-    }
-  }
-  (mixed, alpha)
-}
-
-fn mix_hue(left: f64, right: f64, toward_right: f64, method: HueMethod) -> f64 {
-  let left = left.rem_euclid(360.0);
-  let right = right.rem_euclid(360.0);
-  let delta = match method {
-    HueMethod::Shorter => {
-      let mut delta = (right - left).rem_euclid(360.0);
-      if delta > 180.0 {
-        delta -= 360.0;
-      }
-      delta
-    }
-    HueMethod::Longer => {
-      let mut delta = (right - left).rem_euclid(360.0);
-      if delta > 0.0 && delta < 180.0 {
-        delta -= 360.0;
-      } else if delta == 0.0 {
-        delta = 360.0;
-      }
-      delta
-    }
-    HueMethod::Increasing => (right - left).rem_euclid(360.0),
-    HueMethod::Decreasing => -(left - right).rem_euclid(360.0),
-  };
-  (left + delta * toward_right).rem_euclid(360.0)
-}
-
-fn srgb_color(rgb: [f64; 3], alpha: Option<f64>) -> Option<CssColor> {
-  let alpha = alpha.unwrap_or(1.0);
-  if !rgb.iter().chain([&alpha]).all(|value| value.is_finite()) {
-    return None;
-  }
-  Some(CssColor {
-    r: rgb[0] as f32,
-    g: rgb[1] as f32,
-    b: rgb[2] as f32,
-    a: alpha as f32,
-    syntax: ColorSyntax::Srgb,
-  })
-}
-
-fn encoded_srgb(color: CssColor) -> [f64; 3] {
-  let rgb = [f64::from(color.r), f64::from(color.g), f64::from(color.b)];
-  if color.syntax == ColorSyntax::DisplayP3 {
-    convert_encoded(ColorSpace::DisplayP3, ColorSpace::Srgb, rgb)
-  } else {
-    rgb
-  }
-}
-
-fn to_display_p3(color: CssColor) -> [f64; 3] {
-  let rgb = [f64::from(color.r), f64::from(color.g), f64::from(color.b)];
-  if color.syntax == ColorSyntax::DisplayP3 {
-    rgb
-  } else {
-    convert_encoded(ColorSpace::Srgb, ColorSpace::DisplayP3, rgb)
-  }
-}
-
-pub fn split_alpha(body: &str) -> Option<(&str, Option<f64>)> {
-  if let Some(index) = top_byte(body, b'/') {
-    let alpha = eval_component(body[index + 1..].trim(), 1.0)?;
-    return Some((body[..index].trim(), Some(alpha)));
-  }
-  let commas = top_bytes(body, b',');
-  if commas.len() == 3 {
-    let alpha = eval_component(body[commas[2] + 1..].trim(), 1.0)?;
-    return Some((body[..commas[2]].trim(), Some(alpha)));
-  }
-  if commas.len() == 2 || commas.is_empty() {
-    Some((body, None))
-  } else {
-    None
-  }
-}
-
-pub fn split_parts(body: &str) -> Option<Vec<&str>> {
-  let parts = split_top(body);
-  if parts.is_empty() { None } else { Some(parts) }
-}
-
-fn split_comma(body: &str) -> Option<(&str, &str)> {
-  let index = top_byte(body, b',')?;
-  Some((&body[..index], &body[index + 1..]))
-}
-
-fn split_top(body: &str) -> Vec<&str> {
-  let mut parts = Vec::new();
-  let mut start = 0;
-  let mut depth = 0i32;
-  for (index, byte) in body.bytes().enumerate() {
-    match byte {
-      b'(' => depth += 1,
-      b')' => depth -= 1,
-      b',' | b' ' | b'\t' | b'\n' | b'\r' if depth == 0 => {
-        let part = body[start..index].trim();
-        if !part.is_empty() {
-          parts.push(part);
-        }
-        start = index + 1;
-      }
-      _ => {}
-    }
-  }
-  let part = body[start..].trim();
-  if !part.is_empty() {
-    parts.push(part);
-  }
-  parts
-}
-
-fn top_byte(body: &str, wanted: u8) -> Option<usize> {
-  top_bytes(body, wanted).into_iter().next()
-}
-
-fn top_bytes(body: &str, wanted: u8) -> Vec<usize> {
-  let mut found = Vec::new();
-  let mut depth = 0i32;
-  for (index, byte) in body.bytes().enumerate() {
-    match byte {
-      b'(' => depth += 1,
-      b')' => depth -= 1,
-      byte if byte == wanted && depth == 0 => found.push(index),
-      _ => {}
-    }
-  }
-  found
-}
-
-fn hwb_to_rgb(hue: f64, white: f64, black: f64) -> [f64; 3] {
-  if white + black >= 1.0 {
-    let gray = if white + black == 0.0 {
-      0.0
-    } else {
-      white / (white + black)
-    };
-    return [gray, gray, gray];
-  }
-  let (r, g, b) = hsl_to_rgb(hue, 1.0, 0.5);
-  let scale = 1.0 - white - black;
-  [
-    f64::from(r) * scale + white,
-    f64::from(g) * scale + white,
-    f64::from(b) * scale + white,
-  ]
-}
-
-fn rgb_to_hsl(rgb: [f64; 3]) -> [f64; 3] {
-  let [r, g, b] = rgb;
-  let max = r.max(g).max(b);
-  let min = r.min(g).min(b);
-  let lightness = (max + min) / 2.0;
-  if (max - min).abs() < 1.0e-12 {
-    return [0.0, 0.0, lightness];
-  }
-  let delta = max - min;
-  let saturation = if lightness > 0.5 {
-    delta / (2.0 - max - min)
-  } else {
-    delta / (max + min)
-  };
-  let hue = if max == r {
-    (g - b) / delta + if g < b { 6.0 } else { 0.0 }
-  } else if max == g {
-    (b - r) / delta + 2.0
-  } else {
-    (r - g) / delta + 4.0
-  };
-  [hue * 60.0, saturation, lightness]
-}
-
-fn rgb_to_hwb(rgb: [f64; 3]) -> [f64; 3] {
-  let hsl = rgb_to_hsl(rgb);
-  [
-    hsl[0],
-    rgb[0].min(rgb[1]).min(rgb[2]),
-    1.0 - rgb[0].max(rgb[1]).max(rgb[2]),
-  ]
-}
-
-fn polar_to_cartesian(chroma: f64, hue: f64) -> (f64, f64) {
-  let radians = hue.to_radians();
-  (chroma * radians.cos(), chroma * radians.sin())
-}
-
-fn lab_to_lch(lab: [f64; 3]) -> [f64; 3] {
-  let chroma = (lab[1] * lab[1] + lab[2] * lab[2]).sqrt();
-  let mut hue = lab[2].atan2(lab[1]).to_degrees();
-  if hue < 0.0 {
-    hue += 360.0;
-  }
-  [lab[0], chroma, hue]
-}
-
-fn lch_to_lab(lch: [f64; 3]) -> [f64; 3] {
-  let (a, b) = polar_to_cartesian(lch[1], lch[2]);
-  [lch[0], a, b]
-}
-
-fn oklab_to_oklch(lab: [f64; 3]) -> [f64; 3] {
-  lab_to_lch(lab)
-}
-
-fn oklch_to_oklab(lch: [f64; 3]) -> [f64; 3] {
-  lch_to_lab(lch)
-}
-
-fn lab_to_srgb(lab: [f64; 3]) -> [f64; 3] {
-  let xyz = mat_vec(D50_TO_D65, lab_to_xyz(lab));
-  encode_srgb(mat_vec(XYZ_TO_LIN_SRGB, xyz))
-}
-
-fn srgb_to_lab(rgb: [f64; 3]) -> [f64; 3] {
-  let xyz = mat_vec(LIN_SRGB_TO_XYZ, rgb.map(decode_channel));
-  xyz_to_lab(mat_vec(D65_TO_D50, xyz))
-}
-
-fn lab_to_xyz(lab: [f64; 3]) -> [f64; 3] {
-  let lightness = lab[0] / 116.0;
-  let a = lab[1] / 500.0;
-  let b = lab[2] / 200.0;
-  let f1 = lightness + 16.0 / 116.0;
-  let f0 = f1 + a;
-  let f2 = f1 - b;
-  let xyz = [
-    if f0.powi(3) > EPSILON {
-      f0.powi(3)
-    } else {
-      (lightness + a) * (116.0 / KAPPA)
+  Ok((
+    DynamicColor {
+      cs: ColorSpaceTag::Srgb,
+      flags: Flags::default(),
+      components: mixed.components,
     },
-    if lab[0] > KAPPA * EPSILON {
-      ((lab[0] + 16.0) / 116.0).powi(3)
-    } else {
-      lab[0] / KAPPA
-    },
-    if f2.powi(3) > EPSILON {
-      f2.powi(3)
-    } else {
-      (lightness - b) * (116.0 / KAPPA)
-    },
-  ];
-  [0, 1, 2].map(|index| xyz[index] * D50[index])
+    false,
+  ))
 }
 
-fn xyz_to_lab(xyz: [f64; 3]) -> [f64; 3] {
-  let scaled = [0, 1, 2].map(|index| xyz[index] / D50[index]);
-  let f = scaled.map(|value| {
-    if value > EPSILON {
-      value.cbrt()
-    } else {
-      (KAPPA * value + 16.0) / 116.0
-    }
-  });
-  [
-    (116.0 * f[1]) - 16.0,
-    500.0 * (f[0] - f[1]),
-    200.0 * (f[1] - f[2]),
-  ]
+fn mix_tag(name: &str) -> Result<ColorSpaceTag, ParseError<()>> {
+  match name {
+    "srgb" => Ok(ColorSpaceTag::Srgb),
+    "srgb-linear" => Ok(ColorSpaceTag::LinearSrgb),
+    "display-p3" => Ok(ColorSpaceTag::DisplayP3),
+    "lab" => Ok(ColorSpaceTag::Lab),
+    "oklab" => Ok(ColorSpaceTag::Oklab),
+    "lch" => Ok(ColorSpaceTag::Lch),
+    "oklch" => Ok(ColorSpaceTag::Oklch),
+    "hsl" => Ok(ColorSpaceTag::Hsl),
+    "hwb" => Ok(ColorSpaceTag::Hwb),
+    _ => Err(ParseError::unexpected_token()),
+  }
 }
 
-fn oklab_to_srgb(lab: [f64; 3]) -> [f64; 3] {
-  let lms =
-    mat_vec(OKLAB_TO_LMS, lab).map(|channel| channel * channel * channel);
-  encode_srgb(mat_vec(XYZ_TO_LIN_SRGB, mat_vec(LMS_TO_XYZ, lms)))
-}
-
-fn srgb_to_oklab(rgb: [f64; 3]) -> [f64; 3] {
-  let lms = mat_vec(
-    XYZ_TO_LMS,
-    mat_vec(LIN_SRGB_TO_XYZ, rgb.map(decode_channel)),
+fn mix_direction(
+  parser: &mut Parser<'_>,
+  tag: ColorSpaceTag,
+) -> Result<HueDirection, ParseError<()>> {
+  let polar = matches!(
+    tag,
+    ColorSpaceTag::Lch
+      | ColorSpaceTag::Oklch
+      | ColorSpaceTag::Hsl
+      | ColorSpaceTag::Hwb
   );
-  mat_vec(LMS_TO_OKLAB, lms.map(f64::cbrt))
-}
-
-fn encode_channel(value: f64) -> f64 {
-  let sign = if value < 0.0 { -1.0 } else { 1.0 };
-  let abs = value.abs();
-  if abs > 0.003_130_8 {
-    sign * (1.055 * abs.powf(1.0 / 2.4) - 0.055)
-  } else {
-    12.92 * value
+  let state = parser.state();
+  let Ok(direction) = parser.try_parse(Parser::expect_ident_cloned) else {
+    return Ok(HueDirection::Shorter);
+  };
+  if parser
+    .try_parse(|inner| inner.expect_ident_matching("hue"))
+    .is_err()
+  {
+    parser.reset(&state);
+    return Ok(HueDirection::Shorter);
+  }
+  if !polar {
+    return Err(ParseError::unexpected_token());
+  }
+  match &*direction {
+    "shorter" => Ok(HueDirection::Shorter),
+    "longer" => Ok(HueDirection::Longer),
+    "increasing" => Ok(HueDirection::Increasing),
+    "decreasing" => Ok(HueDirection::Decreasing),
+    _ => Err(ParseError::unexpected_token()),
   }
 }
 
-fn decode_channel(value: f64) -> f64 {
-  let sign = if value < 0.0 { -1.0 } else { 1.0 };
-  let abs = value.abs();
-  if abs <= 0.04045 {
-    value / 12.92
-  } else {
-    sign * ((abs + 0.055) / 1.055).powf(2.4)
+fn mix_stop(
+  parser: &mut Parser<'_>,
+) -> Result<(DynamicColor, Option<f64>), ParseError<()>> {
+  let (color, _) = parse_tree(parser)?;
+  if parser.is_exhausted() {
+    return Ok((color, None));
+  }
+  let state = parser.state();
+  let token = parser.next()?.clone();
+  match token {
+    Token::Comma => {
+      parser.reset(&state);
+      Ok((color, None))
+    }
+    Token::Percentage { .. } | Token::ParenthesisBlock => {
+      parser.reset(&state);
+      Ok((color, Some(weight(parser)?)))
+    }
+    Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
+      parser.reset(&state);
+      Ok((color, Some(weight(parser)?)))
+    }
+    _ => Err(ParseError::unexpected_token()),
   }
 }
 
-fn mat_vec(matrix: [[f64; 3]; 3], value: [f64; 3]) -> [f64; 3] {
-  [
-    matrix[0][0] * value[0] + matrix[0][1] * value[1] + matrix[0][2] * value[2],
-    matrix[1][0] * value[0] + matrix[1][1] * value[1] + matrix[1][2] * value[2],
-    matrix[2][0] * value[0] + matrix[2][1] * value[1] + matrix[2][2] * value[2],
-  ]
+fn weight(parser: &mut Parser<'_>) -> Result<f64, ParseError<()>> {
+  let axis = Axis {
+    percent: Some(1.0),
+    scale: 1.0,
+    clamp: Clamp::None,
+  };
+  let names = ["", "", "", ""];
+  match factor(parser, &axis, &names, None, false)? {
+    Term::Number(value) if value.is_finite() => Ok(value),
+    _ => Err(ParseError::unexpected_token()),
+  }
+}
+
+enum Term {
+  Missing,
+  Number(f64),
+}
+
+/// `+` and `-` are operators when cssparser emits them as delimiters.
+/// A sign written against a digit is part of that number.
+fn expr(
+  parser: &mut Parser<'_>,
+  axis: &Axis,
+  names: &[&str; 4],
+  origin: Option<&[f64; 4]>,
+) -> Result<f64, ParseError<()>> {
+  let mut value = term(parser, axis, names, origin)?;
+  loop {
+    if parser.try_parse(|inner| inner.expect_delim('+')).is_ok() {
+      value += term(parser, axis, names, origin)?;
+    } else if parser.try_parse(|inner| inner.expect_delim('-')).is_ok() {
+      value -= term(parser, axis, names, origin)?;
+    } else {
+      break;
+    }
+  }
+  Ok(value)
+}
+
+fn term(
+  parser: &mut Parser<'_>,
+  axis: &Axis,
+  names: &[&str; 4],
+  origin: Option<&[f64; 4]>,
+) -> Result<f64, ParseError<()>> {
+  let mut value = signed(parser, axis, names, origin)?;
+  loop {
+    if parser.try_parse(|inner| inner.expect_delim('*')).is_ok() {
+      value *= signed(parser, axis, names, origin)?;
+    } else if parser.try_parse(|inner| inner.expect_delim('/')).is_ok() {
+      let divisor = signed(parser, axis, names, origin)?;
+      if divisor == 0.0 || !divisor.is_finite() {
+        return Err(ParseError::unexpected_token());
+      }
+      value /= divisor;
+    } else {
+      break;
+    }
+  }
+  Ok(value)
+}
+
+/// A sign separated from its number is math, so it applies inside `calc()`
+/// and parentheses. A color component takes the sign only as part of the token.
+fn signed(
+  parser: &mut Parser<'_>,
+  axis: &Axis,
+  names: &[&str; 4],
+  origin: Option<&[f64; 4]>,
+) -> Result<f64, ParseError<()>> {
+  if parser.try_parse(|inner| inner.expect_delim('+')).is_ok() {
+    return signed(parser, axis, names, origin);
+  }
+  if parser.try_parse(|inner| inner.expect_delim('-')).is_ok() {
+    return Ok(-signed(parser, axis, names, origin)?);
+  }
+  match factor(parser, axis, names, origin, false)? {
+    Term::Number(value) => Ok(value),
+    Term::Missing => Err(ParseError::unexpected_token()),
+  }
+}
+
+/// One color component. `/` is the alpha separator here, so division stays
+/// inside `calc()` and parentheses, which call [`expr`].
+fn factor(
+  parser: &mut Parser<'_>,
+  axis: &Axis,
+  names: &[&str; 4],
+  origin: Option<&[f64; 4]>,
+  allow_none: bool,
+) -> Result<Term, ParseError<()>> {
+  let start = parser.position();
+  let token = parser.next()?.clone();
+  match token {
+    Token::Number { value, .. } => Ok(Term::Number(number_literal(
+      parser,
+      start,
+      f64::from(value),
+    ))),
+    Token::Percentage { unit_value, .. } => {
+      let Some(percent) = axis.percent else {
+        return Err(ParseError::unexpected_token());
+      };
+      let number = number_literal(parser, start, f64::from(unit_value) * 100.0);
+      Ok(Term::Number(number / 100.0 * percent))
+    }
+    Token::Dimension { value, unit, .. } => {
+      if axis.percent.is_some() {
+        return Err(ParseError::unexpected_token());
+      }
+      let number = number_literal(parser, start, f64::from(value));
+      angle_degrees(number, &unit)
+        .map(Term::Number)
+        .ok_or(ParseError::unexpected_token())
+    }
+    Token::Ident(name) => {
+      if allow_none && name.eq_ignore_ascii_case("none") {
+        return Ok(Term::Missing);
+      }
+      if let Some(origin) = origin
+        && let Some(index) = names
+          .iter()
+          .position(|channel| name.eq_ignore_ascii_case(channel))
+      {
+        return Ok(Term::Number(origin[index]));
+      }
+      Err(ParseError::unexpected_token())
+    }
+    Token::ParenthesisBlock => parser
+      .parse_nested_block(|inner| expr(inner, axis, names, origin))
+      .map(Term::Number),
+    Token::Function(name) if name.eq_ignore_ascii_case("calc") => parser
+      .parse_nested_block(|inner| expr(inner, axis, names, origin))
+      .map(Term::Number),
+    _ => Err(ParseError::unexpected_token()),
+  }
+}
+
+/// cssparser stores a numeric token as `f32`. The source literal keeps the
+/// `f64` digits the hue tests compare.
+fn number_literal(
+  parser: &Parser<'_>,
+  start: cssparser::SourcePosition,
+  fallback: f64,
+) -> f64 {
+  literal_number(parser.slice_from(start).trim_start()).unwrap_or(fallback)
+}
+
+fn literal_number(text: &str) -> Option<f64> {
+  let bytes = text.as_bytes();
+  let mut end = 0;
+  if matches!(bytes.first(), Some(b'+' | b'-')) {
+    end = 1;
+  }
+  let mut saw_digit = false;
+  while end < bytes.len() && bytes[end].is_ascii_digit() {
+    saw_digit = true;
+    end += 1;
+  }
+  if end < bytes.len() && bytes[end] == b'.' {
+    end += 1;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+      saw_digit = true;
+      end += 1;
+    }
+  }
+  if !saw_digit {
+    return None;
+  }
+  if end < bytes.len() && matches!(bytes[end], b'e' | b'E') {
+    let exponent = end;
+    end += 1;
+    if end < bytes.len() && matches!(bytes[end], b'+' | b'-') {
+      end += 1;
+    }
+    let mut saw_exp = false;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+      saw_exp = true;
+      end += 1;
+    }
+    if !saw_exp {
+      end = exponent;
+    }
+  }
+  text[..end].parse().ok()
+}
+
+fn angle_degrees(value: f64, unit: &str) -> Option<f64> {
+  if unit.eq_ignore_ascii_case("deg") {
+    Some(value)
+  } else if unit.eq_ignore_ascii_case("turn") {
+    Some(value * 360.0)
+  } else if unit.eq_ignore_ascii_case("grad") {
+    Some(value * 0.9)
+  } else if unit.eq_ignore_ascii_case("rad") {
+    Some(value * 180.0 / std::f64::consts::PI)
+  } else {
+    None
+  }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::eval_component;
   use crate::paint::color::parse_color;
   use crate::paint::color::serialize;
 
@@ -891,8 +820,76 @@ mod tests {
 
   #[test]
   fn calc_mixes_a_percent_and_a_number() {
-    let value = eval_component("calc(50% + 10)", 255.0).unwrap();
-    assert!((value - 137.5).abs() < 1.0e-9);
+    let mixed = parse_color("rgb(calc(50% + 10), 0, 0)").unwrap();
+    assert!((f64::from(mixed.r) - 137.5 / 255.0).abs() < 1.0e-6);
+    let folded = parse_color("rgb(CALC(50% + 10), 0, 0)").unwrap();
+    assert!((folded.r - mixed.r).abs() < 1.0e-6);
+    // A sign written against the next digit is part of that number.
+    assert!(parse_color("rgb(calc(50%+10), 0, 0)").is_none());
+  }
+
+  #[test]
+  fn legacy_commas_and_modern_slashes_do_not_mix() {
+    assert!(parse_color("rgb (255, 0, 0)").is_none());
+    assert!(parse_color("rgb(255, 0, 0 / 1)").is_none());
+    assert!(parse_color("rgb(100%, 0, 0)").is_none());
+    assert!(parse_color("rgba(100%, 0, 0, 1)").is_none());
+    assert!(parse_color("hsl(0, 0, 50%)").is_none());
+    assert!(parse_color("hsl(0, 100%, 0)").is_none());
+    assert!(parse_color("hsla(0, 0, 50%, 1)").is_none());
+    assert!(parse_color("rgb(0%, 100%, 0%)").is_some());
+    assert!(parse_color("rgb(100% 0 0)").is_some());
+    assert!(parse_color("rgb(0, 255, 0, 20%)").is_some());
+    assert!(parse_color("rgb(255, 0 0)").is_none());
+    assert!(parse_color("rgb(255 0 0, 1)").is_none());
+    assert!(parse_color("hsl(0, 100%, 50% / 1)").is_none());
+    assert!(parse_color("rgb(255, - 1, 0)").is_none());
+    assert!(parse_color("rgba(255, 0, 0, 1.)").is_none());
+    // A function that reaches EOF without ')' still parses.
+    let open = parse_color("rgb(0, 255, 0").unwrap();
+    assert!(open.g > 0.99 && open.r < 0.01, "{open:?}");
+    let negative = parse_color("rgb(-1000, 1000, -1000)").unwrap();
+    assert!(negative.r < 0.01 && negative.g > 0.99 && negative.b < 0.01);
+    let slash = parse_color("rgb(0 255 0 / 0.2)").unwrap();
+    assert!(
+      slash.g > 0.99 && (slash.a - 0.2).abs() < 1.0e-6,
+      "{slash:?}"
+    );
+    let commas = parse_color("rgba(0, 255, 0, 20%)").unwrap();
+    assert!(
+      commas.g > 0.99 && (commas.a - 0.2).abs() < 1.0e-6,
+      "{commas:?}"
+    );
+    let spaced = parse_color("hsl( -240 , 100% , 50% )").unwrap();
+    assert!(spaced.g > 0.99 && spaced.r < 0.01, "{spaced:?}");
+    let decimal = parse_color("hsla( 120.0 , 100.0% , 50.0% , 1 )").unwrap();
+    assert!(decimal.g > 0.99 && decimal.r < 0.01, "{decimal:?}");
+    assert_eq!(serialize(parse_color("grey").unwrap()), "#808080");
+    assert_eq!(
+      serialize(parse_color("ThreeDDarkShadow").unwrap()),
+      "#767676"
+    );
+    assert_eq!(
+      serialize(parse_color("ThreeDLightShadow").unwrap()),
+      "#767676"
+    );
+    assert_eq!(serialize(parse_color("canvas").unwrap()), "#ffffff");
+    assert_eq!(serialize(parse_color("WindowText").unwrap()), "#000000");
+    assert_eq!(
+      serialize(parse_color("InactiveCaptionText").unwrap()),
+      "#6d6d6d"
+    );
+    assert_eq!(serialize(parse_color("red").unwrap()), "#ff0000");
+    assert!(parse_color("button-face").is_none());
+    assert_eq!(
+      serialize(parse_color("lightgrey").unwrap()),
+      serialize(parse_color("lightgray").unwrap())
+    );
+    assert_eq!(serialize(parse_color("RGB(255, 0, 0)").unwrap()), "#ff0000");
+    assert_eq!(
+      serialize(parse_color("color(srgb 1 0 1/0)").unwrap()),
+      "color(srgb 1 0 1 / 0)"
+    );
   }
 
   #[test]
@@ -902,6 +899,8 @@ mod tests {
     let same =
       parse_color("color-mix(in srgb, red, color(srgb 1 0 0))").unwrap();
     assert_eq!(serialize(same), "color(srgb 1 0 0)");
+    assert!(parse_color("color-mix(in xyz, red, blue)").is_none());
+    assert!(parse_color("color(xyz 0 0 0)").is_none());
   }
 
   #[test]
@@ -928,5 +927,49 @@ mod tests {
     assert_eq!(serialize(legacy), "#ff0000");
     let linear = parse_color("color(srgb-linear 1 0 0)").unwrap();
     assert_eq!(serialize(linear), "color(srgb 1 0 0)");
+  }
+
+  #[test]
+  fn relative_color_uses_destination_channels() {
+    assert_eq!(
+      serialize(parse_color("rgb(from red g r b)").unwrap()),
+      "color(srgb 0 1 0)"
+    );
+    assert_eq!(
+      serialize(
+        parse_color(
+          "color(from color(srgb 0.25 0.5 0.75 / 0.5) srgb r g b / alpha)"
+        )
+        .unwrap()
+      ),
+      "color(srgb 0.25 0.5 0.75 / 0.5)"
+    );
+    assert_eq!(
+      serialize(parse_color("rgb(from red calc(r / 2) g b)").unwrap()),
+      "color(srgb 0.5 0 0)"
+    );
+    assert_eq!(
+      serialize(
+        parse_color("color(from color(display-p3 1 0 0) display-p3 r g b)")
+          .unwrap()
+      ),
+      "color(display-p3 1 0 0)"
+    );
+    assert!(parse_color("rgb(from red x g b)").is_none());
+    assert!(parse_color("rgb(from red, g, r, b)").is_none());
+  }
+
+  #[test]
+  fn lch_percentage_chroma_matches_the_color_crate() {
+    let percent = parse_color("lch(50 100% 40)").unwrap();
+    let number = parse_color("lch(50 125 40)").unwrap();
+    assert!(
+      (percent.r - number.r).abs() < 1.0e-4,
+      "{percent:?} {number:?}"
+    );
+    assert!((percent.g - number.g).abs() < 1.0e-4);
+    assert!((percent.b - number.b).abs() < 1.0e-4);
+    let calc = parse_color("lch(50 calc(100%) 40)").unwrap();
+    assert!((calc.r - percent.r).abs() < 1.0e-4, "{calc:?}");
   }
 }

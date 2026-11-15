@@ -10649,14 +10649,28 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * CSS colors, including `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
-   * and `color-mix()`. Those convert to sRGB. `color(display-p3 ...)`
-   * round-trips. An unrecognized color is ignored.
+   * `color-mix()`, relative color syntax (`rgb(from ...)`,
+   * `color(from ... <space> ...)`, and the same `from` form on `hsl()`,
+   * `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()`), and CSS system
+   * colors. A component may be a number, a percentage, an angle, `none`,
+   * `calc()`, or a channel keyword of the destination space. Those convert
+   * to sRGB. `color(display-p3 ...)` round-trips. System colors compute to
+   * fixed sRGB and serialize as that hex. Deprecated CSS2 names use the
+   * CSS Color 4 color of the same role, so `ThreeDDarkShadow` is `#767676`.
+   * A gradient or a pattern is stored as that object. Anything else is read
+   * with `ToString`. An unrecognized color is ignored. A `toString` that throws
+   * propagates. The getter returns the serialized color, the gradient, or
+   * the pattern.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle)
    */
   fillStyle: string | CanvasGradient | CanvasPattern;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeStyle) */
+  /**
+   * Same assignment rules as `fillStyle`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeStyle)
+   */
   strokeStyle: string | CanvasGradient | CanvasPattern;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createLinearGradient) */
@@ -10682,6 +10696,10 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
+   * `null` and `""` repeat on both axes. `undefined` and the string `"null"`
+   * throw `SyntaxError`.
+   *
+   * @throws {@link DOMException} `SyntaxError` when `repetition` is not a repeat mode.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createPattern)
    */
@@ -10943,8 +10961,8 @@ interface OffscreenCanvasRenderingContext2D {
    * `inherit`, `initial`, `unset`, `revert`, `revert-layer`, `null`, and
    * `undefined` do not parse, so the current filter stays. A length does
    * not accept `calc()`. A `drop-shadow()` color accepts `hwb()`, `lab()`,
-   * `lch()`, `oklab()`, `oklch()`, `color-mix()`, and `calc()` in a
-   * component.
+   * `lch()`, `oklab()`, `oklch()`, `color-mix()`, relative colors, and
+   * `calc()` in a component.
    * A stored filter is applied when the drawing is composited. The functions
    * are `blur`, `brightness`, `contrast`, `drop-shadow`, `grayscale`,
    * `hue-rotate`, `invert`, `opacity`, `saturate`, `sepia`, and `url()`.
@@ -11053,8 +11071,9 @@ declare var TextMetrics: {
  * A canvas gradient.
  *
  * Stops accept CSS colors, `color(srgb ...)`, `color(display-p3 ...)`,
- * `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, and `color-mix()`.
- * Colors other than `color(display-p3 ...)` serialize as `color(srgb ...)`.
+ * `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color-mix()`, and
+ * relative colors. Colors other than `color(display-p3 ...)` serialize as
+ * `color(srgb ...)`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -11092,6 +11111,12 @@ declare var CanvasGradient: {
 interface CanvasPattern {
 
   /**
+   * Throws `TypeError` when a component and its alias disagree. `null` and
+   * `undefined` are the identity and do not throw. The pattern is painted
+   * with the identity transform.
+   *
+   * @throws {@link TypeError} when `a` and `m11`, or another alias pair, disagree.
+   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasPattern/setTransform)
    */
   setTransform(transform?: DOMMatrix2DInit): void;
