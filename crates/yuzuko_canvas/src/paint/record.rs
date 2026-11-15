@@ -743,6 +743,11 @@ impl Drawing {
     }
   }
 
+  /// Draws are recorded into a layer list until `endLayer`.
+  pub fn in_layer(&self) -> bool {
+    !self.layers.is_empty()
+  }
+
   /// Saves the state, resets layer rendering attributes, and records later
   /// draws into a new command list. The transform is left in place.
   pub fn begin_layer(&mut self, layer_filter: Option<String>) {

@@ -6118,6 +6118,7 @@ declare namespace Yuzuko {
  */
 declare const self: Window & typeof globalThis;
 
+
 /**
  * Alias of `globalThis` on the main realm.
  *
@@ -10896,8 +10897,10 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * Omitted `colorSpace` is `"srgb"`. Omitted `pixelFormat` is `"rgba-unorm8"`.
    * May stall on a GPU readback. An open layer throws `InvalidStateError`.
+   * A rectangle that exceeds the bitmap limit throws `TypeError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when a layer is open.
+   * @throws {@link TypeError} When the rectangle exceeds the bitmap limit.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/getImageData)
    */

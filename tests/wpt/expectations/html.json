@@ -2692,26 +2692,10 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.round.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.zero.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.zero.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.html": {
-    "expectedFailures": [
-      "Verify round-trip of 8-bit P3 data ImageData through ImageBitmap"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.worker.js": {
-    "expectedFailures": [
-      "Verify round-trip of 8-bit P3 data ImageData through ImageBitmap"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.html": {
-    "expectedFailures": [
-      "Verify round-trip of 16-bit float sRGB data ImageData through ImageBitmap"
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.worker.js": {
-    "expectedFailures": [
-      "Verify round-trip of 16-bit float sRGB data ImageData through ImageBitmap"
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.worker.js": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.unorm8.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.unorm8.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.basic.html": true,
@@ -2722,16 +2706,8 @@
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.double.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.invalid.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.invalid.worker.js": true,
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.large.crash.html": {
-    "expectedFailures": [
-      "Test that canvas crash when image data cannot be allocated."
-    ]
-  },
-  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.large.crash.worker.js": {
-    "expectedFailures": [
-      "Test that canvas crash when image data cannot be allocated."
-    ]
-  },
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.large.crash.html": true,
+  "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.large.crash.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.length.html": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.length.worker.js": true,
   "html/canvas/offscreen/pixel-manipulation/2d.imageData.get.nonfinite.html": true,

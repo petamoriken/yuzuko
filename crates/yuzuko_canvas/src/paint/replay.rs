@@ -1,5 +1,6 @@
 //! Replay one command list onto the CPU renderer or the GPU renderer.
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
@@ -216,6 +217,25 @@ fn rasterize_backing(drawing: &Drawing) -> Raster {
         batch.clear();
         paint_opaque_solid_rect(&mut image, other);
       }
+      Command::Image { image: source, .. }
+        if image.format == SampleFormat::Float16
+          && (source.float16 || source.display_p3) =>
+      {
+        if let Some((dx, dy)) = wide_blit_offset(command) {
+          paint_batch(&mut image, &batch, drawing);
+          batch.clear();
+          draw_native(&mut image, source, dx, dy);
+        } else {
+          let converted = premul_wide_command(command);
+          if composite::needs_isolated(&converted) {
+            paint_batch(&mut image, &batch, drawing);
+            batch.clear();
+            paint_isolated(&mut image, &converted);
+          } else {
+            batch.push(converted);
+          }
+        }
+      }
       other if composite::needs_isolated(other) => {
         paint_batch(&mut image, &batch, drawing);
         batch.clear();
@@ -309,6 +329,48 @@ fn composite_premul(dest: &mut Raster, src: &Raster) {
 }
 
 fn put_direct(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
+  let raster = converted_image(source, dest);
+  for y in 0..raster.height as i32 {
+    for x in 0..raster.width as i32 {
+      let sample = raster.sample(i64::from(x), i64::from(y));
+      dest.write_sample(i64::from(dx + x), i64::from(dy + y), sample);
+    }
+  }
+}
+
+/// Source-over of one wide bitmap. Opaque samples replace the destination.
+/// A negative channel survives when conversion runs after the samples are
+/// float16, the same order as `putImageData`.
+fn draw_native(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
+  let raster = converted_image(source, dest);
+  for y in 0..raster.height as i32 {
+    for x in 0..raster.width as i32 {
+      let src = raster.sample(i64::from(x), i64::from(y));
+      let px = i64::from(dx + x);
+      let py = i64::from(dy + y);
+      let src_a = src[3];
+      if src_a >= 1.0 - 1.0e-4 {
+        dest.write_sample(px, py, src);
+        continue;
+      }
+      if src_a <= 0.0 {
+        continue;
+      }
+      let dst = dest.sample(px, py);
+      let dst_a = dst[3];
+      let out_a = src_a + dst_a * (1.0 - src_a);
+      if out_a == 0.0 {
+        continue;
+      }
+      let channel = |index: usize| {
+        (src[index] * src_a + dst[index] * dst_a * (1.0 - src_a)) / out_a
+      };
+      dest.write_sample(px, py, [channel(0), channel(1), channel(2), out_a]);
+    }
+  }
+}
+
+fn converted_image(source: &ImageBuf, dest: &Raster) -> Raster {
   let mut raster = image_to_raster(source);
   // A negative channel, such as Display P3 red stored in sRGB, survives only
   // when the color conversion runs after the samples are float16.
@@ -319,11 +381,90 @@ fn put_direct(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
   if raster.format != dest.format {
     raster = convert_format(raster, dest.format);
   }
-  for y in 0..raster.height as i32 {
-    for x in 0..raster.width as i32 {
-      let sample = raster.sample(i64::from(x), i64::from(y));
-      dest.write_sample(i64::from(dx + x), i64::from(dy + y), sample);
-    }
+  raster
+}
+
+/// Integer translation at scale 1. Bilinear and nearest agree on that grid.
+pub(crate) fn unit_translation(transform: Affine) -> Option<(i32, i32)> {
+  let [a, b, c, d, e, f] = transform.as_coeffs();
+  if b.abs() > 1.0e-6 || c.abs() > 1.0e-6 {
+    return None;
+  }
+  if (a - 1.0).abs() > 1.0e-6 || (d - 1.0).abs() > 1.0e-6 {
+    return None;
+  }
+  let ex = e.round();
+  let ey = f.round();
+  if (e - ex).abs() > 1.0e-6 || (f - ey).abs() > 1.0e-6 {
+    return None;
+  }
+  if !(i32::MIN as f64..=i32::MAX as f64).contains(&ex)
+    || !(i32::MIN as f64..=i32::MAX as f64).contains(&ey)
+  {
+    return None;
+  }
+  Some((ex as i32, ey as i32))
+}
+
+fn wide_blit_offset(command: &Command) -> Option<(i32, i32)> {
+  let Command::Image {
+    transform,
+    alpha,
+    shade,
+    filter,
+    clips,
+    ..
+  } = command
+  else {
+    return None;
+  };
+  if *alpha < 1.0 - 1.0e-6
+    || !shade.is_plain()
+    || !filter.is_empty()
+    || !clips.is_empty()
+  {
+    return None;
+  }
+  unit_translation(*transform)
+}
+
+fn premul_wide_command(command: &Command) -> Command {
+  let Command::Image {
+    image,
+    transform,
+    alpha,
+    quality,
+    shade,
+    filter,
+    clips,
+  } = command
+  else {
+    return command.clone();
+  };
+  Command::Image {
+    image: Arc::new(ImageBuf {
+      width: image.width,
+      height: image.height,
+      display_p3: false,
+      float16: false,
+      premultiplied: true,
+      bytes: premul_rgba8(image),
+    }),
+    transform: *transform,
+    alpha: *alpha,
+    quality: *quality,
+    shade: *shade,
+    filter: Arc::clone(filter),
+    clips: Arc::clone(clips),
+  }
+}
+
+/// vello samples premultiplied sRGB unorm8. Wide bytes are quantized first.
+fn vello_bytes(image: &ImageBuf) -> Cow<'_, [u8]> {
+  if image.float16 || image.display_p3 {
+    Cow::Owned(premul_rgba8(image))
+  } else {
+    Cow::Borrowed(image.bytes.as_slice())
   }
 }
 
@@ -932,7 +1073,8 @@ fn replay_cpu(
       }
       context.set_transform(*transform);
       context.set_blend_mode(source_over());
-      paint_image(context, &image.bytes, image.width, image.height, *quality);
+      let bytes = vello_bytes(image);
+      paint_image(context, &bytes, image.width, image.height, *quality);
       context.fill_rect(&Rect::new(
         0.0,
         0.0,
@@ -1534,7 +1676,8 @@ fn replay_gpu(draw: &mut GpuDraw<'_>, command: &Command) -> bool {
       push_gpu_opacity(draw.scene, *alpha);
       draw.scene.set_transform(*transform);
       draw.scene.set_blend_mode(source_over());
-      if !paint_rgba8(draw, &image.bytes, image.width, image.height, *quality) {
+      let bytes = vello_bytes(image);
+      if !paint_rgba8(draw, &bytes, image.width, image.height, *quality) {
         return false;
       }
       draw.scene.fill_rect(&Rect::new(
@@ -2325,5 +2468,96 @@ mod tests {
     assert!(back[1].abs() < 0.01, "{back:?}");
     assert!(back[2].abs() < 0.01, "{back:?}");
     assert!((stored[3] - 1.0).abs() < 1.0e-3);
+  }
+
+  fn float16_pixel(samples: [f64; 4]) -> crate::paint::record::ImageBuf {
+    let raster = yuzuko_image::Raster::from_float16(
+      1,
+      1,
+      yuzuko_image::ColorSpace::Srgb,
+      &samples,
+    )
+    .unwrap();
+    crate::paint::record::ImageBuf {
+      width: 1,
+      height: 1,
+      display_p3: false,
+      float16: true,
+      premultiplied: false,
+      bytes: raster.bytes,
+    }
+  }
+
+  fn drawn_image(image: crate::paint::record::ImageBuf) -> Command {
+    Command::Image {
+      image: Arc::new(image),
+      transform: Affine::IDENTITY,
+      alpha: 1.0,
+      quality: SampleQuality::Low,
+      shade: Shade::source_over(),
+      filter: crate::paint::record::empty_filter(),
+      clips: Arc::from([]),
+    }
+  }
+
+  #[test]
+  fn float16_draw_keeps_out_of_range_samples() {
+    use yuzuko_image::ColorSpace;
+    let drawn = float16_canvas(
+      ColorSpace::Srgb,
+      vec![drawn_image(float16_pixel([1.0, 2.0, -1.0, 1.0]))],
+    );
+    let stored = drawn.sample(0, 0);
+    assert!((stored[0] - 1.0).abs() < 0.01, "{stored:?}");
+    assert!((stored[1] - 2.0).abs() < 0.01, "{stored:?}");
+    assert!((stored[2] + 1.0).abs() < 0.01, "{stored:?}");
+    assert!((stored[3] - 1.0).abs() < 0.01, "{stored:?}");
+  }
+
+  #[test]
+  fn float16_draw_round_trips_display_p3_red() {
+    use yuzuko_image::ColorSpace;
+    let drawn = float16_canvas(
+      ColorSpace::Srgb,
+      vec![drawn_image(crate::paint::record::ImageBuf {
+        width: 1,
+        height: 1,
+        display_p3: true,
+        float16: false,
+        premultiplied: false,
+        bytes: vec![255, 0, 0, 255],
+      })],
+    );
+    let stored = drawn.sample(0, 0);
+    let back = yuzuko_image::convert_encoded(
+      ColorSpace::Srgb,
+      ColorSpace::DisplayP3,
+      [stored[0], stored[1], stored[2]],
+    );
+    let unorm = back.map(|channel| (channel * 255.0).round());
+    assert!((unorm[0] - 255.0).abs() <= 2.0, "{unorm:?} from {stored:?}");
+    assert!(unorm[1].abs() <= 2.0, "{unorm:?}");
+    assert!(unorm[2].abs() <= 2.0, "{unorm:?}");
+  }
+
+  #[test]
+  fn float16_draw_blends_partial_alpha() {
+    use yuzuko_image::ColorSpace;
+    let drawn = float16_canvas(
+      ColorSpace::Srgb,
+      vec![
+        Command::Put {
+          image: Arc::new(float16_pixel([0.0, 0.0, 1.0, 1.0])),
+          dx: 0,
+          dy: 0,
+        },
+        drawn_image(float16_pixel([1.0, 0.0, 0.0, 0.5])),
+      ],
+    );
+    let stored = drawn.sample(0, 0);
+    assert!((stored[0] - 0.5).abs() < 0.01, "{stored:?}");
+    assert!(stored[1].abs() < 0.01, "{stored:?}");
+    assert!((stored[2] - 0.5).abs() < 0.01, "{stored:?}");
+    assert!((stored[3] - 1.0).abs() < 0.01, "{stored:?}");
   }
 }

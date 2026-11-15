@@ -499,7 +499,7 @@ fn crop_image(
   sy: f64,
   sw: f64,
   sh: f64,
-) -> Result<ImageBuf, OpError> {
+) -> Result<Raster, OpError> {
   if sw == 0.0 || sh == 0.0 {
     return Err(OpError::dom(
       "IndexSizeError",
@@ -541,7 +541,47 @@ fn crop_image(
       );
     }
   }
-  Ok(premul_image(cropped))
+  Ok(cropped)
+}
+
+fn native_image(raster: Raster) -> ImageBuf {
+  ImageBuf {
+    width: raster.width,
+    height: raster.height,
+    display_p3: raster.color_space == ColorSpace::DisplayP3,
+    float16: raster.format == SampleFormat::Float16,
+    premultiplied: raster.premultiplied,
+    bytes: raster.bytes,
+  }
+}
+
+/// A float16 canvas can keep wide samples for a 1:1 source-over blit.
+/// A layer list is replayed as sRGB unorm8, so that draw stays premul.
+fn plain_wide_blit(
+  raster: &Raster,
+  drawing: &Drawing,
+  transform: Affine,
+) -> bool {
+  if drawing.attrs.format != SampleFormat::Float16 || drawing.in_layer() {
+    return false;
+  }
+  if raster.format != SampleFormat::Float16
+    && raster.color_space != ColorSpace::DisplayP3
+  {
+    return false;
+  }
+  if drawing.state.alpha < 1.0 - 1.0e-6 || !drawing.state.shade().is_plain() {
+    return false;
+  }
+  if !drawing
+    .state
+    .paint_filter(drawing.width, drawing.height)
+    .is_empty()
+    || !drawing.state.clips.is_empty()
+  {
+    return false;
+  }
+  replay::unit_translation(transform).is_some()
 }
 
 #[op(name = "OffscreenCanvasRenderingContext2D")]
@@ -1514,12 +1554,26 @@ impl Context2D {
       if sw == 0.0 || sh == 0.0 || dw == 0.0 || dh == 0.0 {
         return Ok(());
       }
-      let image = crop_image(&source, sx, sy, sw, sh)?;
+      let cropped = crop_image(&source, sx, sy, sw, sh)?;
       let placement = Affine::translate((dx, dy))
         * Affine::scale_non_uniform(dw / sw, dh / sh);
+      let placed = drawing.state.transform * placement;
+      if plain_wide_blit(&cropped, drawing, placed) {
+        drawing.push_command(Command::Image {
+          image: Arc::new(native_image(cropped)),
+          transform: placed,
+          alpha: drawing.state.alpha,
+          quality: drawing.state.sample_quality(),
+          shade: drawing.state.shade(),
+          filter: drawing.state.paint_filter(drawing.width, drawing.height),
+          clips: drawing.state.clips(),
+        });
+        return Ok(());
+      }
+      let image = premul_image(cropped);
       let (image, transform, quality) = crate::paint::sample::prepare_draw(
         image,
-        drawing.state.transform * placement,
+        placed,
         drawing.state.sample_quality(),
       );
       let shade = drawing.state.shade();
@@ -1646,7 +1700,16 @@ impl Context2D {
       // HTML: an omitted pixelFormat is rgba-unorm8, not the canvas color type.
       let (space, format) =
         image_settings(scope, settings, SampleFormat::Unorm8)?;
-      let image = crop_straight(&source, sx, sy, sw, sh, space, format)?;
+      let image = match crop_straight(&source, sx, sy, sw, sh, space, format) {
+        Ok(image) => image,
+        // The rectangle can ask for more pixels than a bitmap can hold.
+        // HTML defines IndexSizeError for a zero edge. Refusing the
+        // allocation with TypeError matches the historical canvas test.
+        Err(OpError::Range(message)) if message == "ImageData is too large" => {
+          return Err(OpError::type_(message));
+        }
+        Err(error) => return Err(error),
+      };
       Ok(New(ImageData::from_raster(scope, image)?))
     })
   }
