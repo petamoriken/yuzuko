@@ -118,8 +118,8 @@ Yuzuko.test("measureText reports glyph ink", () => {
     "a descender extends below",
   );
   assert(letter.alphabeticBaseline === 0, "alphabetic baseline");
-  assert(letter.hangingBaseline < 0, "hanging is above alphabetic");
-  assert(letter.ideographicBaseline > 0, "ideographic is below alphabetic");
+  assert(letter.hangingBaseline > 0, "hanging is above alphabetic");
+  assert(letter.ideographicBaseline < 0, "ideographic is below alphabetic");
   assert(letter.fontBoundingBoxAscent > letter.actualBoundingBoxAscent, "font box");
 
   ctx.textAlign = "center";
@@ -132,7 +132,7 @@ Yuzuko.test("measureText reports glyph ink", () => {
 
   ctx.textBaseline = "top";
   const top = ctx.measureText("A");
-  assert(top.alphabeticBaseline > 0, "alphabetic is below top");
+  assert(top.alphabeticBaseline < 0, "alphabetic is below top");
   assert(
     top.fontBoundingBoxAscent < letter.fontBoundingBoxAscent,
     "top baseline reduces font ascent",
