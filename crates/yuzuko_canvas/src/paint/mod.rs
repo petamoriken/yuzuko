@@ -12,3 +12,4 @@ pub(crate) mod record;
 pub(crate) mod replay;
 pub(crate) mod sample;
 pub(crate) mod shade;
+pub(crate) mod stroke;

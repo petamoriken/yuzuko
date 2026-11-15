@@ -267,16 +267,34 @@ fn paint_stroke(
     };
     path.apply_affine(inverse);
   }
+  let stroke = drawing.state.stroke();
+  let alpha = drawing.state.alpha;
+  let filter = drawing.state.paint_filter(drawing.width, drawing.height);
+  let clips = drawing.state.clips();
+  if let Some(outline) = super::stroke::crossing_outline(&path, &stroke) {
+    drawing.push_command(Command::Fill {
+      path: outline,
+      fill: Fill::NonZero,
+      brush,
+      transform: matrix,
+      brush_transform: Affine::IDENTITY,
+      alpha,
+      shade,
+      filter,
+      clips,
+    });
+    return;
+  }
   drawing.push_command(Command::Stroke {
     path,
-    stroke: drawing.state.stroke(),
+    stroke,
     brush,
     transform: matrix,
     brush_transform: Affine::IDENTITY,
-    alpha: drawing.state.alpha,
+    alpha,
     shade,
-    filter: drawing.state.paint_filter(drawing.width, drawing.height),
-    clips: drawing.state.clips(),
+    filter,
+    clips,
   });
 }
 

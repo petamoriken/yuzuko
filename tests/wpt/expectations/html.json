@@ -2004,16 +2004,8 @@
   "html/canvas/offscreen/line-styles/2d.line.cap.square.worker.js": true,
   "html/canvas/offscreen/line-styles/2d.line.cap.valid.html": true,
   "html/canvas/offscreen/line-styles/2d.line.cap.valid.worker.js": true,
-  "html/canvas/offscreen/line-styles/2d.line.cross.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
-  "html/canvas/offscreen/line-styles/2d.line.cross.worker.js": {
-    "expectedFailures": [
-      "2d"
-    ]
-  },
+  "html/canvas/offscreen/line-styles/2d.line.cross.html": true,
+  "html/canvas/offscreen/line-styles/2d.line.cross.worker.js": true,
   "html/canvas/offscreen/line-styles/2d.line.defaults.html": true,
   "html/canvas/offscreen/line-styles/2d.line.defaults.worker.js": true,
   "html/canvas/offscreen/line-styles/2d.line.fill.noop.html": true,
