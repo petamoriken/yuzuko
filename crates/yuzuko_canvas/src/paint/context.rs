@@ -39,6 +39,7 @@ use crate::paint::record::FontVariantCaps;
 use crate::paint::record::ImageBuf;
 use crate::paint::record::Style;
 use crate::paint::record::TextRendering;
+use crate::paint::record::ToneMapping;
 use crate::paint::record::{self};
 use crate::paint::replay;
 use crate::text;
@@ -568,6 +569,16 @@ impl Context2D {
       v8::String::new(scope, format).unwrap().into();
     set("colorSpace", space_value);
     set("colorType", format_value);
+    let tone = v8::Object::new(scope);
+    let mode = match attrs.tone_mapping {
+      ToneMapping::Standard => "standard",
+      ToneMapping::Extended => "extended",
+    };
+    let mode_key = v8::String::new(scope, "mode").unwrap();
+    let mode_value: v8::Local<v8::Value> =
+      v8::String::new(scope, mode).unwrap().into();
+    tone.set(scope, mode_key.into(), mode_value);
+    set("toneMapping", tone.into());
     let object_value: v8::Local<v8::Value> = object.into();
     Ok(js_of(scope, object_value))
   }

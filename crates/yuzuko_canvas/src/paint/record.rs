@@ -18,6 +18,15 @@ use yuzuko_image::SampleFormat;
 use crate::paint::color::CssColor;
 use crate::paint::shade::Shade;
 
+/// Output headroom when the bitmap is presented. Painting does not read it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToneMapping {
+  /// Headroom 0. The default.
+  Standard,
+  /// Headroom is not limited. The swapchain stays unorm8.
+  Extended,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Attrs {
   pub alpha: bool,
@@ -25,6 +34,7 @@ pub struct Attrs {
   pub format: SampleFormat,
   pub desynchronized: bool,
   pub will_read_frequently: bool,
+  pub tone_mapping: ToneMapping,
 }
 
 impl Attrs {
@@ -41,6 +51,7 @@ impl Default for Attrs {
       format: SampleFormat::Unorm8,
       desynchronized: false,
       will_read_frequently: false,
+      tone_mapping: ToneMapping::Standard,
     }
   }
 }

@@ -337,6 +337,7 @@ declare var PeriodicWave: {
 };
 
 type PredefinedColorSpace = "display-p3" | "srgb";
+type CanvasToneMappingMode = "extended" | "standard";
 type PresentationStyle = "attachment" | "inline" | "unspecified";
 interface QueuingStrategySize<T = any> {
   (chunk: T): number;
@@ -10453,6 +10454,18 @@ interface CanvasRenderingContext2DSettings {
   colorSpace?: PredefinedColorSpace;
   /** `"unorm8"` or `"float16"`. @defaultValue `"unorm8"` */
   colorType?: "unorm8" | "float16";
+  /**
+   * `"standard"` limits bitmap headroom to 0. `"extended"` does not.
+   * The mode is stored and returned. Presentation stays the unorm8 swapchain.
+   *
+   * An omitted dictionary or an omitted `mode` is `"standard"`.
+   *
+   * @defaultValue `{ mode: "standard" }`
+   * @throws {@link TypeError} When `toneMapping` is not an object, or when `mode` is not `"standard"` or `"extended"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2DSettings/toneMapping)
+   */
+  toneMapping?: { mode?: CanvasToneMappingMode };
   alpha?: boolean;
   desynchronized?: boolean;
   willReadFrequently?: boolean;
@@ -10572,7 +10585,7 @@ interface OffscreenCanvasRenderingContext2D {
   readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
 
   /**
-   * Returns `colorSpace` and `colorType` from the context.
+   * Returns `colorSpace`, `colorType`, and `toneMapping` from the context.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/getContextAttributes)
    */
@@ -10581,6 +10594,7 @@ interface OffscreenCanvasRenderingContext2D {
     colorSpace: PredefinedColorSpace;
     colorType: "unorm8" | "float16";
     desynchronized: boolean;
+    toneMapping: { mode: CanvasToneMappingMode };
     willReadFrequently: boolean;
   };
 

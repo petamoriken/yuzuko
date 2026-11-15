@@ -18,7 +18,7 @@ use crate::paint::bitmap::BitmapContext;
 use crate::paint::context::Context2D;
 use crate::paint::encode;
 use crate::paint::objects;
-use crate::paint::record::{self, Attrs};
+use crate::paint::record::{self, Attrs, ToneMapping};
 use crate::paint::replay;
 use crate::text::fonts;
 
@@ -208,7 +208,31 @@ fn read_attributes(
       }
     };
   }
+  if let Some(tone) = dictionary(scope, object, "toneMapping") {
+    attrs.tone_mapping = tone_mapping(scope, tone)?;
+  }
   Ok(attrs)
+}
+
+fn tone_mapping(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<ToneMapping, OpError> {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(OpError::type_(
+      "The provided value is not of type 'CanvasToneMapping'",
+    ));
+  };
+  let Some(mode) = dictionary(scope, object, "mode") else {
+    return Ok(ToneMapping::Standard);
+  };
+  match mode.to_rust_string_lossy(scope).as_str() {
+    "standard" => Ok(ToneMapping::Standard),
+    "extended" => Ok(ToneMapping::Extended),
+    _ => Err(OpError::type_(
+      "The provided value is not a valid enum value of type CanvasToneMappingMode",
+    )),
+  }
 }
 
 fn dictionary<'s>(

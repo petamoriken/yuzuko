@@ -74,6 +74,39 @@ Yuzuko.test("putImageData round-trips float16 Display P3", () => {
   }
 });
 
+Yuzuko.test("toneMapping is stored and does not change a fill", () => {
+  const plain = new OffscreenCanvas(1, 1).getContext("2d");
+  assert(plain.getContextAttributes().toneMapping.mode === "standard", "default");
+  const empty = new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: {} });
+  assert(empty.getContextAttributes().toneMapping.mode === "standard", "empty");
+  const standard = new OffscreenCanvas(1, 1).getContext("2d", {
+    toneMapping: { mode: "standard" },
+  });
+  assert(standard.getContextAttributes().toneMapping.mode === "standard", "standard");
+  const extended = new OffscreenCanvas(1, 1).getContext("2d", {
+    toneMapping: { mode: "extended" },
+    colorType: "float16",
+  });
+  assert(extended.getContextAttributes().toneMapping.mode === "extended", "extended");
+  extended.fillStyle = "#00ff00";
+  extended.fillRect(0, 0, 1, 1);
+  assert(pixel(extended, 0, 0).join() === "0,255,0,255", "paint unchanged");
+  let bad = false;
+  try {
+    new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: { mode: "hdr" } });
+  } catch (error) {
+    bad = error.name === "TypeError";
+  }
+  assert(bad, "invalid mode");
+  let object = false;
+  try {
+    new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: null });
+  } catch (error) {
+    object = error.name === "TypeError";
+  }
+  assert(object, "null toneMapping");
+});
+
 Yuzuko.test("display-p3 path color is stored as sRGB unorm8", () => {
   const ctx = new OffscreenCanvas(4, 4).getContext("2d");
   ctx.fillStyle = "color(display-p3 1 0 0)";

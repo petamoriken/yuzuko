@@ -2066,12 +2066,8 @@
   "html/canvas/offscreen/line-styles/2d.line.width.valid.worker.js": true,
   "html/canvas/offscreen/manual/context-attributes/getContextAttributes.html": {
     "expectedFailures": [
-      "Test default offscreen context creation attributes",
       "Test offscreen context creation attributes colorSpace: 'display-p3-linear'",
-      "Test offscreen context creation attributes colorSpace: 'srgb-linear'",
-      "Test offscreen context creation attributes toneMapping: {mode: 'extended'}",
-      "Test offscreen context creation attributes toneMapping: {mode: 'standard'}",
-      "Test offscreen context creation attributes toneMapping: {}"
+      "Test offscreen context creation attributes colorSpace: 'srgb-linear'"
     ]
   },
   "html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html": {
