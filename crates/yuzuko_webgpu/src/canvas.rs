@@ -22,6 +22,7 @@ use crate::state::{self, Handle};
 
 struct Config {
   device_id: u64,
+  device: v8::Global<v8::Object>,
   format: wgpu::TextureFormat,
   usage: u32,
   alpha_opaque: bool,
@@ -111,6 +112,11 @@ impl GpuCanvasContext {
     let device_id = crate::device_id(scope, device).ok_or_else(|| {
       OpError::type_("GPUCanvasConfiguration.device is not a GPUDevice")
     })?;
+    let device_object =
+      v8::Local::<v8::Object>::try_from(device).map_err(|_| {
+        OpError::type_("GPUCanvasConfiguration.device is not a GPUDevice")
+      })?;
+    let device_global = v8::Global::new(scope, device_object);
     let features = state::handle(device_id)?.device.features();
     let format_name = js::get(scope, object, "format")
       .and_then(|value| js::string(scope, value))
@@ -143,6 +149,7 @@ impl GpuCanvasContext {
         return Err(OpError::type_("The canvas color space is invalid"));
       }
     };
+    require_tone_mapping(scope, object)?;
     let mut view_formats = Vec::new();
     if let Some(list) = js::get(scope, object, "viewFormats") {
       let array = v8::Local::<v8::Array>::try_from(list)
@@ -163,6 +170,7 @@ impl GpuCanvasContext {
       });
       slot.config = Some(Config {
         device_id,
+        device: device_global,
         format,
         usage,
         alpha_opaque,
@@ -171,6 +179,63 @@ impl GpuCanvasContext {
       });
     });
     Ok(())
+  }
+
+  fn get_configuration(&self, scope: &mut v8::PinScope) -> Js {
+    let configured = CANVASES.with(|canvases| {
+      canvases.borrow().get(&self.id).and_then(|slot| {
+        slot.config.as_ref().map(|config| {
+          (
+            config.device.clone(),
+            config.format,
+            config.usage,
+            config.alpha_opaque,
+            config.color_space,
+            config.view_formats.clone(),
+          )
+        })
+      })
+    });
+    let Some((device, format, usage, alpha_opaque, color_space, view_formats)) =
+      configured
+    else {
+      return Js::null(scope);
+    };
+    let object = v8::Object::new(scope);
+    let set = |name: &str, value: v8::Local<v8::Value>| {
+      let key = v8::String::new(scope, name).unwrap();
+      object.set(scope, key.into(), value);
+    };
+    set("device", v8::Local::new(scope, &device).into());
+    let format_name =
+      v8::String::new(scope, resource::format_name(format)).unwrap();
+    set("format", format_name.into());
+    set("usage", v8::Integer::new_from_unsigned(scope, usage).into());
+    let alpha = if alpha_opaque {
+      "opaque"
+    } else {
+      "premultiplied"
+    };
+    set("alphaMode", v8::String::new(scope, alpha).unwrap().into());
+    let space = match color_space {
+      ColorSpace::Srgb => "srgb",
+      ColorSpace::DisplayP3 => "display-p3",
+    };
+    set("colorSpace", v8::String::new(scope, space).unwrap().into());
+    let formats = v8::Array::new(scope, view_formats.len() as i32);
+    for (index, format) in view_formats.iter().enumerate() {
+      let name =
+        v8::String::new(scope, resource::format_name(*format)).unwrap();
+      formats.set_index(scope, index as u32, name.into());
+    }
+    set("viewFormats", formats.into());
+    let tone = v8::Object::new(scope);
+    let mode_key = v8::String::new(scope, "mode").unwrap();
+    let mode = v8::String::new(scope, "standard").unwrap();
+    tone.set(scope, mode_key.into(), mode.into());
+    set("toneMapping", tone.into());
+    let value: v8::Local<v8::Value> = object.into();
+    Js(v8::Global::new(scope, value))
   }
 
   fn unconfigure(&self) {
@@ -249,6 +314,8 @@ impl GpuCanvasContext {
       height,
       format,
       None,
+      1,
+      usage.bits(),
     );
     let texture_slot = gpu_texture.texture_slot();
     let destroyed = gpu_texture.destroyed_flag();
@@ -266,6 +333,31 @@ impl GpuCanvasContext {
     });
     let value: v8::Local<v8::Value> = object.into();
     Ok(Js(v8::Global::new(scope, value)))
+  }
+}
+
+fn require_tone_mapping(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<(), OpError> {
+  let Some(value) = js::get(scope, object, "toneMapping") else {
+    return Ok(());
+  };
+  let mapping = js::object(scope, value).ok_or_else(|| {
+    OpError::type_("GPUCanvasConfiguration.toneMapping must be an object")
+  })?;
+  let Some(mode) = js::get(scope, mapping, "mode") else {
+    return Ok(());
+  };
+  let Some(mode) = js::string(scope, mode) else {
+    return Err(OpError::type_("The canvas tone mapping mode is invalid"));
+  };
+  match mode.as_str() {
+    "standard" => Ok(()),
+    "extended" => {
+      Err(js::unsupported("GPUCanvasToneMapping mode \"extended\""))
+    }
+    _ => Err(OpError::type_("The canvas tone mapping mode is invalid")),
   }
 }
 

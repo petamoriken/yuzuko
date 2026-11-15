@@ -102,6 +102,11 @@ impl GpuAdapter {
     false
   }
 
+  #[getter]
+  fn info(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    adapter_info_js(scope)
+  }
+
   fn request_device(
     &self,
     scope: &mut v8::PinScope,
@@ -214,6 +219,11 @@ impl GpuDevice {
   fn limits(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     let limits = self.require()?.device.limits();
     Ok(limits_js(scope, &limits))
+  }
+
+  #[getter]
+  fn adapter_info(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    adapter_info_js(scope)
   }
 
   #[getter]
@@ -351,6 +361,19 @@ impl GpuDevice {
     }
   }
 
+  fn create_render_pipeline_async(
+    &self,
+    scope: &mut v8::PinScope,
+    descriptor: v8::Local<v8::Value>,
+  ) -> Result<Js, OpError> {
+    let _ = descriptor;
+    self.require()?;
+    Ok(js::promise_rejected(
+      scope,
+      js::unsupported("GPUDevice.createRenderPipelineAsync"),
+    ))
+  }
+
   fn create_query_set(
     &self,
     scope: &mut v8::PinScope,
@@ -429,7 +452,7 @@ impl GpuQueue {
       .ok_or_else(|| OpError::type_("writeBuffer requires a GPUBuffer"))?;
     let buffer = buffer.alive()?;
     let bytes = yuzuko_winter::buffer_source(scope, data).ok_or_else(|| {
-      OpError::type_("writeBuffer data must be a BufferSource")
+      OpError::type_("writeBuffer data must be an AllowSharedBufferSource")
     })?;
     let start = data_offset.unwrap_or(0) as usize;
     if start > bytes.len() {
@@ -475,6 +498,30 @@ impl GpuQueue {
       destination,
       size,
     )
+  }
+
+  fn write_texture(
+    &self,
+    _scope: &mut v8::PinScope,
+    destination: v8::Local<v8::Value>,
+    data: v8::Local<v8::Value>,
+    data_layout: v8::Local<v8::Value>,
+    size: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    let _ = (destination, data, data_layout, size);
+    let _ = state::handle(self.device_id)?;
+    Err(js::unsupported("GPUQueue.writeTexture"))
+  }
+
+  fn on_submitted_work_done(
+    &self,
+    scope: &mut v8::PinScope,
+  ) -> Result<Js, OpError> {
+    let _ = state::handle(self.device_id)?;
+    Ok(js::promise_rejected(
+      scope,
+      js::unsupported("GPUQueue.onSubmittedWorkDone"),
+    ))
   }
 }
 
@@ -824,6 +871,47 @@ fn pop_scope<'s>(
   Ok(object.into())
 }
 
+fn adapter_info_js(scope: &mut v8::PinScope) -> Result<Js, OpError> {
+  let info = gpu_parts()?.0.get_info();
+  let object = v8::Object::new(scope);
+  let set = |name: &str, value: v8::Local<v8::Value>| {
+    let key = v8::String::new(scope, name).unwrap();
+    object.set(scope, key.into(), value);
+  };
+  let hex = |id: u32| {
+    if id == 0 {
+      String::new()
+    } else {
+      format!("{id:04x}")
+    }
+  };
+  let description = if info.name.is_empty() {
+    info.driver_info
+  } else {
+    info.name
+  };
+  set("architecture", v8::String::new(scope, "").unwrap().into());
+  set(
+    "description",
+    v8::String::new(scope, &description).unwrap().into(),
+  );
+  let device = hex(info.device);
+  set("device", v8::String::new(scope, &device).unwrap().into());
+  set("isFallbackAdapter", v8::Boolean::new(scope, false).into());
+  set(
+    "subgroupMaxSize",
+    v8::Number::new(scope, f64::from(info.subgroup_max_size)).into(),
+  );
+  set(
+    "subgroupMinSize",
+    v8::Number::new(scope, f64::from(info.subgroup_min_size)).into(),
+  );
+  let vendor = hex(info.vendor);
+  set("vendor", v8::String::new(scope, &vendor).unwrap().into());
+  let value: v8::Local<v8::Value> = object.into();
+  Ok(Js(v8::Global::new(scope, value)))
+}
+
 fn gpu_parts() -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), OpError> {
   yuzuko_window::with_gpu(|adapter, device, queue| {
     (adapter.clone(), device.clone(), queue.clone())
@@ -993,7 +1081,27 @@ fn limit_table(limits: &wgpu::Limits) -> Vec<(&'static str, f64, bool)> {
       false,
     ),
     (
+      "maxStorageBuffersInVertexStage",
+      f64::from(limits.max_storage_buffers_per_shader_stage),
+      false,
+    ),
+    (
+      "maxStorageBuffersInFragmentStage",
+      f64::from(limits.max_storage_buffers_per_shader_stage),
+      false,
+    ),
+    (
       "maxStorageTexturesPerShaderStage",
+      f64::from(limits.max_storage_textures_per_shader_stage),
+      false,
+    ),
+    (
+      "maxStorageTexturesInVertexStage",
+      f64::from(limits.max_storage_textures_per_shader_stage),
+      false,
+    ),
+    (
+      "maxStorageTexturesInFragmentStage",
       f64::from(limits.max_storage_textures_per_shader_stage),
       false,
     ),

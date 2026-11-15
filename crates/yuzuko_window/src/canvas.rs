@@ -233,6 +233,8 @@ pub struct OffscreenCanvas {
   kind: Cell<ContextKind>,
   detached: Cell<bool>,
   context: RefCell<Option<v8::TracedReference<v8::Object>>>,
+  on_context_lost: RefCell<Option<v8::TracedReference<v8::Value>>>,
+  on_context_restored: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for OffscreenCanvas {
@@ -242,6 +244,12 @@ unsafe impl v8::cppgc::GarbageCollected for OffscreenCanvas {
       && let Some(context) = context.as_ref()
     {
       visitor.trace(context);
+    }
+    if let Ok(slot) = self.on_context_lost.try_borrow() {
+      visitor.trace(&*slot);
+    }
+    if let Ok(slot) = self.on_context_restored.try_borrow() {
+      visitor.trace(&*slot);
     }
   }
 
@@ -274,6 +282,8 @@ impl OffscreenCanvas {
       kind: Cell::new(ContextKind::None),
       detached: Cell::new(false),
       context: RefCell::new(None),
+      on_context_lost: RefCell::new(None),
+      on_context_restored: RefCell::new(None),
     }
   }
 
@@ -523,6 +533,78 @@ impl OffscreenCanvas {
     options: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
     self.to_blob(scope, options)
+  }
+
+  #[getter]
+  fn oncontextlost(&self, scope: &mut v8::PinScope) -> Js {
+    event_handler_value(scope, &self.on_context_lost)
+  }
+
+  #[setter]
+  fn oncontextlost(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_event_handler(
+      scope,
+      &self.base,
+      &self.on_context_lost,
+      "contextlost",
+      value,
+    );
+  }
+
+  #[getter]
+  fn oncontextrestored(&self, scope: &mut v8::PinScope) -> Js {
+    event_handler_value(scope, &self.on_context_restored)
+  }
+
+  #[setter]
+  fn oncontextrestored(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_event_handler(
+      scope,
+      &self.base,
+      &self.on_context_restored,
+      "contextrestored",
+      value,
+    );
+  }
+}
+
+fn event_handler_value(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+) -> Js {
+  let value = slot
+    .borrow()
+    .as_ref()
+    .and_then(|reference| yuzuko_core::op::traced_local(scope, reference))
+    .unwrap_or_else(|| v8::null(scope).into());
+  Js(v8::Global::new(scope, value))
+}
+
+fn set_event_handler(
+  scope: &mut v8::PinScope,
+  target: &EventTarget,
+  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
+  type_name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  if let Some(previous) = slot.borrow().as_ref()
+    && let Some(previous) = yuzuko_core::op::traced_local(scope, previous)
+  {
+    target.remove_callback(scope, type_name, previous, false);
+  }
+  if value.is_function() {
+    target.add_callback(scope, type_name, value, false, false, false);
+    *slot.borrow_mut() = Some(yuzuko_core::op::traced(scope, value));
+  } else {
+    *slot.borrow_mut() = None;
   }
 }
 

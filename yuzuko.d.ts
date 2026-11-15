@@ -1,47 +1,11 @@
 /// <reference lib="esnext" />
 
 /**
- * API reference for the Yuzuko runtime.
- *
- * Web-standard and WinterTC APIs are declared on the global scope. Runtime
- * APIs are declared on {@link Yuzuko}. This file stands alone. It declares the
- * types this runtime has. A name that `lib.dom.d.ts` also declares is defined
- * here with this runtime's members, so a program that loads both reports
- * duplicate identifiers. The ambient declarations describe the main realm of a
- * runtime built with the default Cargo features. That build enables `fetch`,
- * `fs`, `socket`, `udp`, `tcp`, `http`, `signal`, `child`, `ffi`, `window`,
- * `accessibility`, `image`, `canvas`, `webgpu`, `audio`, and `codec`.
- * `cargo build -p yuzuko --no-default-features` is the JavaScript
- * runtime: {@link AbortController}, {@link EventTarget}, {@link DOMException},
- * {@link URL}, {@link TextEncoder}, {@link Blob}, {@link FormData}, streams,
- * `crypto`, {@link Worker}, and the timers stay. The `Yuzuko` object stays
- * on the main realm and in a dedicated worker. `Yuzuko.build`, `Yuzuko.args`,
- * `Yuzuko.env`, `Yuzuko.cwd`, `Yuzuko.chdir`, `Yuzuko.exit`,
- * `Yuzuko.execPath`, `Yuzuko.pid`, `Yuzuko.ppid`, `Yuzuko.version`,
- * `Yuzuko.memoryUsage`, `Yuzuko.noColor`, `Yuzuko.refTimer`,
- * `Yuzuko.unrefTimer`, `Yuzuko.errors`, and
- * `Yuzuko.permissions` are part of that object in every build. That build
- * omits `fetch`,
- * the file system, datagram sockets, TCP sockets, an HTTP server, signal
- * listeners, a child process, foreign functions, virtual and computed
- * accessibility nodes,
- * {@link WebSocket}, {@link Window},
- * canvas, WebGPU, Web Audio, and WebCodecs.
- * `--no-default-features --features name` selects a
- * subset. `image`, `canvas`, `webgpu`, `codec`, and `accessibility` also
- * enable `window`.
- * {@link DedicatedWorkerGlobalScope} describes a dedicated worker.
- *
- * A web-standard interface or member ends with an MDN link in the form used by
- * [TypeScript-DOM-lib-generator](https://github.com/microsoft/TypeScript-DOM-lib-generator).
- * Members that exist only on Yuzuko have no MDN page.
+ * Types for programs that run on the Yuzuko runtime.
  *
  * @packageDocumentation
  */
 
-/**
- * Web types this runtime uses. `lib.dom.d.ts` declares these names too.
- */
 type AlgorithmIdentifier = Algorithm | string;
 type AllowSharedBufferSource = ArrayBufferLike | ArrayBufferView<ArrayBufferLike>;
 type AudioContextLatencyCategory = "balanced" | "interactive" | "playback";
@@ -112,7 +76,8 @@ interface GPUComputePassEncoder extends GPUBindingCommandsMixin, GPUObjectBase {
    */
   pushDebugGroup(groupLabel: string): void;
   /**
-   * An empty stack is a validation error, reported when `finish()` encodes the command buffer.
+   * An empty stack is a validation error, reported when `finish()` encodes the
+   * command buffer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUComputePassEncoder/popDebugGroup)
    */
@@ -160,7 +125,9 @@ interface GPUPipelineBase {
 type GPUCopyExternalImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
 type GPUCullMode = "back" | "front" | "none";
 type GPUDeviceLostReason = "destroyed" | "unknown";
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError) */
 interface GPUError {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError/message) */
   readonly message: string;
 }
 
@@ -172,12 +139,13 @@ interface GPUExtent3DDict {
   height?: GPUIntegerCoordinate;
   width: GPUIntegerCoordinate;
 }
-type GPUFeatureName = "bgra8unorm-storage" | "clip-distances" | "core-features-and-limits" | "depth-clip-control" | "depth32float-stencil8" | "dual-source-blending" | "float32-blendable" | "float32-filterable" | "indirect-first-instance" | "primitive-index" | "rg11b10ufloat-renderable" | "shader-f16" | "subgroups" | "texture-compression-astc" | "texture-compression-astc-sliced-3d" | "texture-compression-bc" | "texture-compression-bc-sliced-3d" | "texture-compression-etc2" | "texture-formats-tier1" | "timestamp-query";
+type GPUFeatureName = "bgra8unorm-storage" | "clip-distances" | "core-features-and-limits" | "depth-clip-control" | "depth32float-stencil8" | "dual-source-blending" | "float32-blendable" | "float32-filterable" | "indirect-first-instance" | "primitive-index" | "rg11b10ufloat-renderable" | "shader-f16" | "subgroups" | "texture-component-swizzle" | "texture-compression-astc" | "texture-compression-astc-sliced-3d" | "texture-compression-bc" | "texture-compression-bc-sliced-3d" | "texture-compression-etc2" | "texture-formats-tier1" | "texture-formats-tier2" | "timestamp-query";
 type GPUFilterMode = "linear" | "nearest";
 type GPUFrontFace = "ccw" | "cw";
 type GPUIndexFormat = "uint16" | "uint32";
 type GPULoadOp = "clear" | "load";
 type GPUMapModeFlags = number;
+type GPUBufferMapState = "mapped" | "pending" | "unmapped";
 type GPUMipmapFilterMode = "linear" | "nearest";
 type GPUOrigin2D = GPUIntegerCoordinate[] | GPUOrigin2DDict;
 interface GPUOrigin2DDict {
@@ -197,11 +165,9 @@ interface GPUQuerySet extends GPUObjectBase {
   readonly type: GPUQueryType;
 
   /**
-   * Marks this set destroyed.
-   *
-   * A later `resolveQuerySet` or `writeTimestamp` of this set is a validation
-   * error. wgpu has no query-set destroy, so that command is recorded out of
-   * range.
+   * Marks this set destroyed. A later `resolveQuerySet` or `writeTimestamp` of
+   * this set is a validation error. wgpu has no query-set destroy, so that command
+   * is recorded out of range.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQuerySet/destroy)
    */
@@ -211,8 +177,8 @@ interface GPUQuerySet extends GPUObjectBase {
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
 /**
- * Debug markers, `setViewport`, and `setScissorRect` are absent.
- * wgpu 29 `RenderBundleEncoder` does not expose them.
+ * Debug markers, `setViewport`, and `setScissorRect` are absent. wgpu 29
+ * `RenderBundleEncoder` does not expose them.
  */
 interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
@@ -279,7 +245,11 @@ interface GPUSupportedLimits {
   readonly maxSamplersPerShaderStage: number;
   readonly maxStorageBufferBindingSize: number;
   readonly maxStorageBuffersPerShaderStage: number;
+  readonly maxStorageBuffersInVertexStage: number;
+  readonly maxStorageBuffersInFragmentStage: number;
   readonly maxStorageTexturesPerShaderStage: number;
+  readonly maxStorageTexturesInVertexStage: number;
+  readonly maxStorageTexturesInFragmentStage: number;
   readonly maxTextureArrayLayers: number;
   readonly maxTextureDimension1D: number;
   readonly maxTextureDimension2D: number;
@@ -298,7 +268,7 @@ type GPUTextureFormat = "astc-10x10-unorm" | "astc-10x10-unorm-srgb" | "astc-10x
 type GPUTextureSampleType = "depth" | "float" | "sint" | "uint" | "unfilterable-float";
 type GPUTextureUsageFlags = number;
 type GPUTextureViewDimension = "1d" | "2d" | "2d-array" | "3d" | "cube" | "cube-array";
-type GPUVertexFormat = "float16" | "float16x2" | "float16x4" | "float32" | "float32x2" | "float32x3" | "float32x4" | "sint16" | "sint16x2" | "sint16x4" | "sint32" | "sint32x2" | "sint32x3" | "sint32x4" | "sint8" | "sint8x2" | "sint8x4" | "snorm16" | "snorm16x2" | "snorm16x4" | "snorm8" | "snorm8x2" | "snorm8x4" | "uint16" | "uint16x2" | "uint16x4" | "uint32" | "uint32x2" | "uint32x3" | "uint32x4" | "uint8" | "uint8x2" | "uint8x4" | "unorm10-10-10-2" | "unorm16" | "unorm16x2" | "unorm16x4" | "unorm8" | "unorm8x2" | "unorm8x4" | "unorm8x4-bgra";
+type GPUVertexFormat = "float16" | "float16x2" | "float16x4" | "float32" | "float32x2" | "float32x3" | "float32x4" | "sint16" | "sint16x2" | "sint16x4" | "sint32" | "sint32x2" | "sint32x3" | "sint32x4" | "sint8" | "sint8x2" | "sint8x4" | "snorm10-10-10-2" | "snorm16" | "snorm16x2" | "snorm16x4" | "snorm8" | "snorm8x2" | "snorm8x4" | "uint16" | "uint16x2" | "uint16x4" | "uint32" | "uint32x2" | "uint32x3" | "uint32x4" | "uint8" | "uint8x2" | "uint8x4" | "unorm10-10-10-2" | "unorm16" | "unorm16x2" | "unorm16x4" | "unorm8" | "unorm8x2" | "unorm8x4" | "unorm8x4-bgra";
 type GPUVertexStepMode = "instance" | "vertex";
 type GamepadHapticEffectType = "dual-rumble" | "trigger-rumble";
 type GamepadHapticsResult = "complete" | "preempted";
@@ -360,7 +330,6 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
-/** Host values a transfer list can move. */
 type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
@@ -402,7 +371,7 @@ interface UnderlyingDefaultSource<R = any> {
 interface QueuingStrategyInit {
   highWaterMark: number;
 }
-type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+type CompressionFormat = "brotli" | "deflate" | "deflate-raw" | "gzip";
 interface VideoDecoderSupport {
   config?: VideoDecoderConfig;
   supported?: boolean;
@@ -440,28 +409,15 @@ interface EventListenerOptions {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AddEventListenerOptions)
  */
 interface AddEventListenerOptions extends EventListenerOptions {
-  /** When true, the listener is removed after it runs once. */
   once?: boolean;
-
-  /** When true, `preventDefault()` inside the listener has no effect. */
   passive?: boolean;
-
-  /** Removes the listener when this signal aborts. */
   signal?: AbortSignal;
 }
 
-/**
- * Bytes accepted by {@link FontFace}.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/FontFace)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/FontFace) */
 type BinaryData = ArrayBuffer | ArrayBufferView;
 
-/**
- * A JSON Web Key.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/importKey)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/SubtleCrypto/importKey) */
 interface JsonWebKey {
   alg?: string;
   crv?: string;
@@ -486,11 +442,9 @@ interface JsonWebKey {
 }
 
 /**
- * The Yuzuko namespace.
- *
- * `Yuzuko` is one {@link EventTarget} for the process. A menu selection
- * dispatches `menuclick` here. Web-standard objects are not constructed from
- * this namespace.
+ * The Yuzuko namespace. `Yuzuko` is one {@link EventTarget} for the process. A
+ * menu selection dispatches `menuclick` here. Web-standard objects are not
+ * constructed from this namespace.
  */
 declare namespace Yuzuko {
   /**
@@ -6119,60 +6073,46 @@ declare namespace Yuzuko {
 declare const self: Window & typeof globalThis;
 
 /**
- * Whether this agent is cross-origin isolated.
- *
- * There is no document and no COOP or COEP policy, so this is `false` in
- * every realm. `structuredClone` of a {@link SharedArrayBuffer} throws
- * `DataCloneError`.
+ * Whether this agent is cross-origin isolated. There is no document and no COOP
+ * or COEP policy, so this is `false` in every realm. `structuredClone` of a
+ * {@link SharedArrayBuffer} throws `DataCloneError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/crossOriginIsolated)
  */
 declare const crossOriginIsolated: false;
 
 /**
- * Alias of `globalThis` on the main realm.
- *
- * This is the execution realm, not a {@link Yuzuko.Window}. There is no global
- * `Window` constructor. A dedicated worker does not have `window`.
+ * Alias of `globalThis` on the main realm. This is the execution realm, not a
+ * {@link Yuzuko.Window}. There is no global `Window` constructor. A dedicated
+ * worker does not have `window`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/window)
  */
 declare var window: Window & typeof globalThis;
 
 /**
- * Reports an error on `globalThis`.
- *
- * The handler is called as `onerror(message, filename, lineno, colno, error)`.
- * Returning `true` prevents the default report.
+ * Reports an error on `globalThis`. The handler is called as
+ * `onerror(message, filename, lineno, colno, error)`. Returning `true` prevents
+ * the default report.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/error_event)
  */
 declare var onerror: OnErrorEventHandler;
 
-/**
- * Fired when a rejection has no handler.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/unhandledrejection_event)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/unhandledrejection_event) */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
 
-/**
- * Fired when a handler is attached after `unhandledrejection`.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/rejectionhandled_event)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/rejectionhandled_event) */
 declare var onrejectionhandled:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
 
 /**
- * Fired on the main global when a gamepad connects.
- *
- * There is no secure-context gate. An already-connected device is exposed
- * without waiting for a button press. A dedicated worker does not have this
- * handler.
+ * Fired on the main global when a gamepad connects. There is no secure-context
+ * gate. An already-connected device is exposed without waiting for a button
+ * press. A dedicated worker does not have this handler.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/gamepadconnected_event)
  */
@@ -6197,11 +6137,9 @@ declare var ongamepaddisconnected:
 declare var event: Event | undefined;
 
 /**
- * Schedules `handler` after `timeout` milliseconds.
- *
  * Extra arguments are passed to a function handler. A string handler is
- * evaluated as code. A negative or non-finite timeout is clamped to 0.
- * Nested timeouts below 4ms are clamped.
+ * evaluated as code. A negative or non-finite timeout is clamped to 0. Nested
+ * timeouts below 4ms are clamped.
  *
  * @returns A handle for {@link clearTimeout}.
  * @throws {@link TypeError} When the callback is missing.
@@ -6214,16 +6152,10 @@ declare function setTimeout(
   ...arguments: any[]
 ): number;
 
-/**
- * Cancels a timeout.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/clearTimeout)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/clearTimeout) */
 declare function clearTimeout(id?: number): void;
 
 /**
- * Repeats `handler` every `timeout` milliseconds.
- *
  * @returns A handle for {@link clearInterval}.
  * @throws {@link TypeError} When the callback is missing.
  *
@@ -6235,18 +6167,12 @@ declare function setInterval(
   ...arguments: any[]
 ): number;
 
-/**
- * Cancels an interval.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/clearInterval)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/clearInterval) */
 declare function clearInterval(id?: number): void;
 
 /**
- * Queues `callback` as a microtask.
- *
- * A throw is reported with {@link reportError} on this realm. During
- * `yuzuko test` it fails the test.
+ * Queues `callback` as a microtask. A throw is reported with {@link reportError}
+ * on this realm. During `yuzuko test` it fails the test.
  *
  * @throws {@link TypeError} When `callback` is not a function.
  *
@@ -6255,23 +6181,19 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(callback: () => void): void;
 
 /**
- * Reports `error` on `globalThis` as an {@link ErrorEvent}.
- *
- * Returning `true` from `onerror` suppresses the console report.
+ * Reports `error` on `globalThis` as an {@link ErrorEvent}. Returning `true`
+ * from `onerror` suppresses the console report.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/reportError)
  */
 declare function reportError(error: any): void;
 
 /**
- * Clones a value using the structured clone algorithm.
- *
- * Supported values include the WinterTC built-ins in this runtime,
- * `ArrayBuffer`, typed arrays, `Map`, `Set`, `Date`, `RegExp`, and `Error`.
- * It also copies `Blob`, `File`, `DOMException`, `DOMPoint`,
- * `DOMPointReadOnly`, `DOMRect`, `DOMRectReadOnly`, `DOMQuad`, `DOMMatrix`,
- * `DOMMatrixReadOnly`, `CryptoKey`, `ImageData`, `ImageBitmap`, `AudioData`,
- * `VideoFrame`, `EncodedAudioChunk`, and `EncodedVideoChunk`.
+ * Copies the WinterTC built-ins in this runtime, plus `Blob`, `File`, DOM
+ * geometry, `CryptoKey`, `ImageData`, `ImageBitmap`, `AudioData`, `VideoFrame`,
+ * and encoded chunks. `OffscreenCanvas`, `ImageBitmap`, `AudioData`,
+ * `VideoFrame`, and streams can be transferred. A `SharedArrayBuffer` throws
+ * `DataCloneError`. A {@link Yuzuko.Window} cannot be cloned.
  *
  * @param value - The value to clone.
  * @param options - `transfer` moves an `ArrayBuffer`, a `MessagePort`, an
@@ -6287,30 +6209,20 @@ declare function reportError(error: any): void;
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/structuredClone)
  */
-declare function structuredClone(
-  value: any,
+declare function structuredClone<T = any>(
+  value: T,
   options?: StructuredSerializeOptions,
-): any;
+): T;
 
 /**
- * Posts `message` to this realm.
+ * The **`window.postMessage()`** method safely enables cross-origin
+ * communication between Window objects; e.g., between a page and a pop-up that
+ * it spawned, or between a page and an iframe embedded within it.
  *
  * Installed on the main global. A dedicated worker uses
- * {@link DedicatedWorkerGlobalScope.postMessage}, which posts to its owner.
- * `postMessage(message, targetOrigin, transfer)` clones `message` when
- * `targetOrigin` is `"*"` or the entry URL's origin. `"/"` and a value that
- * does not parse as a URL throw `SyntaxError` before the clone. A different
- * origin returns without cloning, so a listed stream stays unlocked.
- * `postMessage(message)` and `postMessage(message, options)` use
- * `options.targetOrigin`, which defaults to `"/"`.
- *
- * A zero-delay timer dispatches a trusted `message` event on `globalThis`.
- * Microtasks from the clone run first, and the event runs before a
- * `setTimeout` scheduled after `postMessage` returns.
- * `source` is null. `ports` is a frozen array of the {@link MessagePort}s
- * that were reachable from `message` and listed in `transfer`. A port created
- * to carry a transferred stream is not included. There is no `onmessage`
- * attribute.
+ * {@link DedicatedWorkerGlobalScope.postMessage}. `targetOrigin` defaults to
+ * `"/"`. `"*"` or the entry origin clones `message`. Any other origin returns
+ * without cloning.
  *
  * @throws {@link DOMException} `SyntaxError` when `targetOrigin` is `"/"` or
  * does not parse as a URL.
@@ -6343,27 +6255,24 @@ interface WindowPostMessageOptions extends StructuredSerializeOptions {
   targetOrigin?: string;
 }
 
-/**
- * Decodes a base64 string.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/atob)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/atob) */
 declare function atob(data: string): string;
 
-/**
- * Encodes a binary string as base64.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/btoa)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/btoa) */
 declare function btoa(data: string): string;
 
 /**
- * Schedules `callback` during a later idle period.
+ * The **`window.requestIdleCallback()`** method queues a function to be called
+ * during a browser's idle periods. This enables developers to perform background
+ * and low priority work on the main thread, without impacting latency-critical
+ * events such as animation and input response. Functions are generally called in
+ * first-in-first-out order; however, callbacks which have a timeout specified
+ * may be called out-of-order if necessary in order to run them before the
+ * timeout elapses.
  *
- * The main global only. A dedicated worker does not have this function.
- * A period is at most 50ms and also ends at the next timer or animation
- * frame. It does not start when less than 5ms remains before that timer or
- * frame. A hidden window does not throttle the period. There is no document.
+ * Main global only. A dedicated worker does not have this function. The idle
+ * period is at most 50 ms and ends at the next timer or animation frame. A
+ * hidden window does not throttle it.
  *
  * @param callback - Receives an {@link IdleDeadline}.
  * @param options - `timeout` still runs the callback when no idle period starts.
@@ -6378,9 +6287,7 @@ declare function requestIdleCallback(
 ): number;
 
 /**
- * Cancels an idle callback.
- *
- * Main global only.
+ * Cancels an idle callback. Main global only.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/cancelIdleCallback)
  */
@@ -6394,7 +6301,12 @@ interface IdleRequestOptions {
 }
 
 /**
- * Time remaining in an idle period.
+ * The **`IdleDeadline`** interface is used as the data type of the input
+ * parameter to idle callbacks established by calling
+ * Window.requestIdleCallback(). It offers a method, timeRemaining(), which lets
+ * you determine how much longer the user agent estimates it will remain idle and
+ * a property, didTimeout, which lets you determine if your callback is executing
+ * because its timeout duration expired.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6403,14 +6315,24 @@ interface IdleRequestOptions {
 interface IdleDeadline {
 
   /**
-   * Milliseconds left in this period, or 0 when `didTimeout` is true.
+   * The **`timeRemaining()`** method on the IdleDeadline interface returns the
+   * estimated number of milliseconds remaining in the current idle period. The
+   * callback can call this method at any time to determine how much time it can
+   * continue to work before it must return. For example, if the callback finishes
+   * a task and has another one to begin, it can call timeRemaining() to see if
+   * there's enough time to complete the next task. If there isn't, the callback
+   * can just return immediately, or look for other work to do with the remaining
+   * time.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IdleDeadline/timeRemaining)
    */
   timeRemaining(): number;
 
   /**
-   * True when the callback ran because `timeout` elapsed.
+   * The read-only **`didTimeout`** property on the IdleDeadline interface is a
+   * Boolean value which indicates whether or not the idle callback is being
+   * invoked because the timeout interval specified when
+   * Window.requestIdleCallback() was called has expired.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IdleDeadline/didTimeout)
    */
@@ -6423,17 +6345,12 @@ declare var IdleDeadline: {
 
 
 /**
- * Logging object.
+ * The **`console`** object provides access to the debugging console (e.g., the
+ * Web console in Firefox).
  *
- * `dirxml` and `table` print like `log`. `table` does not draw a grid.
- * `clear` succeeds and does not erase a surface. `time`, `timeLog`, and
- * `timeEnd` share one table. Objects print their contents, uncolored.
- * A Temporal date, time, instant, or duration prints as `ToString`.
- * A host class instance prints that class's attributes, so
- * `AbortController` includes `signal`. A getter on a user class is
- * printed too. Inherited data properties stay hidden. The printer
- * does not call a user inspection hook. A revoked proxy throws
- * `TypeError`.
+ * `dirxml` and `table` print like `log`, and `table` does not draw a grid.
+ * `clear` does not erase a surface. Objects print their own contents. The
+ * printer does not call a user inspection hook.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/console)
  */
@@ -6502,10 +6419,9 @@ interface Console {
 }
 
 /**
- * Milliseconds since the time origin.
- *
- * `now()` and event `timeStamp` are not coarsened. This process is not a
- * cross-origin browser context. `toJSON()` returns `{ timeOrigin }`.
+ * Milliseconds since the time origin. `now()` and event `timeStamp` are not
+ * coarsened. This process is not a cross-origin browser context. `toJSON()`
+ * returns `{ timeOrigin }`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6542,15 +6458,13 @@ declare var Performance: {
 declare var performance: Performance;
 
 /**
- * Host information for this realm.
+ * The **`Navigator`** interface represents the state and the identity of the
+ * user agent. It allows scripts to query it and to register themselves to carry
+ * on some activities.
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
- * `"Win32"` on Windows, `"MacIntel"` on macOS, and `"Linux"` on Linux.
- * `hardwareConcurrency` is the number of logical processors available to
- * the process, and is at least 1. `clipboard`, `gpu`, `wakeLock`,
- * `keyboard`, `maxTouchPoints`, and `getGamepads` exist on the main
- * global. A worker navigator has `userAgent`, `platform`, and
- * `hardwareConcurrency`.
+ * `"Win32"`, `"MacIntel"`, or `"Linux"`. A worker navigator has `userAgent`,
+ * `platform`, and `hardwareConcurrency`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6571,24 +6485,21 @@ interface Navigator {
   readonly platform: string;
 
   /**
-   * Number of logical processors available to this process.
-   *
-   * The value is an integer and is at least 1. When the operating system
-   * does not report a count, the value is 1. A dedicated worker reports
-   * the same count.
+   * Number of logical processors available to this process. The value is an
+   * integer and is at least 1. When the operating system does not report a count,
+   * the value is 1. A dedicated worker reports the same count.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/hardwareConcurrency)
    */
   readonly hardwareConcurrency: number;
 
   /**
-   * Maximum simultaneous contacts among connected touch screens.
+   * The **`maxTouchPoints`** read-only property of the Navigator interface returns
+   * the maximum number of simultaneous touch contact points that are supported by
+   * the current device.
    *
-   * Each access reads the count from the operating system. A trackpad is
-   * not a touch screen. When no touch screen is connected, the value is
-   * 0. A touch screen that does not report a maximum counts as 1.
-   * Several touch screens use the largest count, not the sum. Main
-   * global only. A dedicated worker does not have this attribute.
+   * Reads the maximum contact count from connected touch screens. A trackpad is
+   * not a touch screen. Main global only.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/maxTouchPoints)
    */
@@ -6602,23 +6513,19 @@ interface Navigator {
   readonly clipboard: Clipboard;
 
   /**
-   * Screen wake lock for this realm. Main global only.
-   *
-   * Absent without the `window` feature, and absent on a dedicated worker.
-   * There is no permission prompt and no document. Hiding a window does not
-   * release a sentinel.
+   * Screen wake lock for this realm. Main global only. Absent without the `window`
+   * feature, and absent on a dedicated worker. There is no permission prompt and
+   * no document. Hiding a window does not release a sentinel.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/wakeLock)
    */
   readonly wakeLock: WakeLock;
 
   /**
-   * Keyboard lock for the focused window. Main global only.
-   *
-   * Absent without the `window` feature, and absent on a dedicated worker.
-   * A headless process records the reservation and does not change
-   * operating-system shortcuts. There is no permission prompt.
-   * `getLayoutMap` is absent.
+   * Keyboard lock for the focused window. Main global only. Absent without the
+   * `window` feature, and absent on a dedicated worker. A headless process records
+   * the reservation and does not change operating-system shortcuts. There is no
+   * permission prompt. `getLayoutMap` is absent.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/keyboard)
    */
@@ -6632,11 +6539,9 @@ interface Navigator {
   readonly gpu: GPU;
 
   /**
-   * Connected gamepads.
-   *
-   * Empty slots are `null`. There is no secure-context gate, permissions
-   * policy, or document. `touches` stays empty, `pose` is null, and `hand`
-   * is `""`.
+   * Connected gamepads. Empty slots are `null`. There is no secure-context gate,
+   * permissions policy, or document. `touches` stays empty, `pose` is null, and
+   * `hand` is `""`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/getGamepads)
    */
@@ -6654,14 +6559,9 @@ declare var Navigator: {
 declare var navigator: Navigator;
 
 /**
- * Keyboard lock for the focused window.
- *
- * `lock` reserves UI Events `code` values. An omitted list or an empty list
- * reserves every key. The promise settles in the same turn. A headless
- * process records the reservation and does not change operating-system
- * shortcuts. macOS, Windows, and Linux inhibit shortcuts only while a
- * window of this process is focused. Closing that window unlocks.
- * `getLayoutMap` and `layoutchange` are absent.
+ * `lock` reserves UI Events `code` values for the focused window. An omitted
+ * list reserves every key. `getLayoutMap` and `layoutchange` are absent. A
+ * headless process does not change operating-system shortcuts.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.keyboard}.
  *
@@ -6701,13 +6601,12 @@ declare var Keyboard: {
 };
 
 /**
- * Screen wake lock for the main realm.
+ * The **`WakeLock`** interface of the Screen Wake Lock API can be used to
+ * request a lock that prevents device screens from dimming or locking when an
+ * application needs to keep running. Available only in secure contexts.
  *
- * `request()` asks the operating system to keep the display awake while a
- * sentinel is held. macOS creates an IOPMAssertion of type
- * `PreventUserIdleDisplaySleep` named `Yuzuko`. Windows calls
- * `SetThreadExecutionState` with `ES_DISPLAY_REQUIRED`. Linux starts
- * `systemd-inhibit` for `idle:sleep`.
+ * Screen wake lock for the main realm. macOS uses an IOPMAssertion, Windows uses
+ * `SetThreadExecutionState`, and Linux uses `systemd-inhibit`.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.wakeLock}.
  *
@@ -6715,10 +6614,8 @@ declare var Keyboard: {
  */
 interface WakeLock {
   /**
-   * Acquires a screen wake lock.
-   *
-   * An omitted type, or `"screen"`, resolves a sentinel. Any other type
-   * rejects `TypeError`.
+   * Acquires a screen wake lock. An omitted type, or `"screen"`, resolves a
+   * sentinel. Any other type rejects `TypeError`.
    *
    * @param type Wake lock type. The only accepted value is `"screen"`.
    * @returns A sentinel while the operating system holds the display awake.
@@ -6733,7 +6630,9 @@ interface WakeLock {
   request(type?: WakeLockType): Promise<WakeLockSentinel>;
 }
 
-/** The only wake lock type is `"screen"`. */
+/**
+ * The only wake lock type is `"screen"`.
+ */
 type WakeLockType = "screen";
 
 declare var WakeLock: {
@@ -6742,11 +6641,14 @@ declare var WakeLock: {
 };
 
 /**
- * One hold on the screen wake lock.
+ * The **`WakeLockSentinel`** interface of the Screen Wake Lock API can be used
+ * to monitor the status of the platform screen wake lock, and manually release
+ * the lock when needed. Available only in secure contexts.
  *
- * `release()` sets `released` and dispatches `release` before the promise
- * resolves. A second call resolves and does not dispatch again. The operating
- * system assertion stays until the last held sentinel releases.
+ * One hold on the screen wake lock. `release()` sets `released` and dispatches
+ * `release` before the promise resolves. A second call resolves and does not
+ * dispatch again. The operating system assertion stays until the last held
+ * sentinel releases.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6781,10 +6683,8 @@ declare var WakeLockSentinel: {
 };
 
 /**
- * Target of events.
- *
- * `globalThis` inherits this prototype. Pointer and key events are delivered
- * to {@link Yuzuko.Window}, not to `globalThis`.
+ * Target of events. `globalThis` inherits this prototype. Pointer and key events
+ * are delivered to {@link Yuzuko.Window}, not to `globalThis`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget)
  */
@@ -6793,11 +6693,9 @@ declare class EventTarget {
 
 
   /**
-   * Registers `callback` for `type`.
-   *
-   * `options` may be a capture boolean or a dictionary with `capture`,
-   * `once`, `passive`, and `signal`. A null `signal` throws. `null` or
-   * `undefined` as `callback` registers nothing.
+   * `options` may be a capture boolean or a dictionary with `capture`, `once`,
+   * `passive`, and `signal`. A null `signal` throws. `null` or `undefined` as
+   * `callback` registers nothing.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/addEventListener)
    */
@@ -6808,7 +6706,12 @@ declare class EventTarget {
   ): void;
 
   /**
-   * Removes a listener registered with the same capture flag.
+   * The **`removeEventListener()`** method of the EventTarget interface removes an
+   * event listener previously registered with EventTarget.addEventListener() from
+   * the target. The event listener to be removed is identified using a combination
+   * of the event type, the event listener function itself, and various optional
+   * options that may affect the matching process; see Matching event listeners for
+   * removal.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/removeEventListener)
    */
@@ -6819,7 +6722,11 @@ declare class EventTarget {
   ): void;
 
   /**
-   * Dispatches `event` at this target.
+   * The **`dispatchEvent()`** method of the EventTarget sends an Event to the
+   * object, (synchronously) invoking the affected event listeners in the
+   * appropriate order. The normal event processing rules (including the capturing
+   * and optional bubbling phase) also apply to events dispatched manually with
+   * dispatchEvent().
    *
    * @returns `false` when `preventDefault()` was called on a cancelable event.
    * @throws {@link TypeError} When `event` is not an {@link Event}.
@@ -6829,11 +6736,7 @@ declare class EventTarget {
   dispatchEvent(event: Event): boolean;
 }
 
-/**
- * Dictionary for `new Event`.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/Event)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/Event) */
 interface EventInit {
   bubbles?: boolean;
   cancelable?: boolean;
@@ -6841,7 +6744,8 @@ interface EventInit {
 }
 
 /**
- * An event moving through a dispatch path.
+ * The **`Event`** interface represents an event which takes place on an
+ * EventTarget.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event)
  */
@@ -6889,7 +6793,11 @@ interface Event {
   returnValue: boolean;
 
   /**
-   * True for events dispatched by the host.
+   * The **`isTrusted`** read-only property of the Event interface is a boolean
+   * value that is true when the event was generated by the user agent (including
+   * via user actions and programmatic methods such as HTMLElement.focus()), and
+   * false when the event was dispatched via EventTarget.dispatchEvent(). The click
+   * event fired through HTMLElement.click() sets the isTrusted property to false.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/isTrusted)
    */
@@ -6945,7 +6853,8 @@ interface CustomEventInit<T = any> extends EventInit {
 }
 
 /**
- * An event with a `detail` value.
+ * The **`CustomEvent`** interface can be used to attach custom data to an event
+ * generated by an application.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CustomEvent)
  */
@@ -7027,11 +6936,9 @@ declare var PromiseRejectionEvent: {
 
 
 /**
- * A DOM exception.
- *
- * `name` selects the legacy `code`. Unknown names use code 0. The prototype
- * inherits from `Error`. An omitted `message` is `""`. An omitted `name` is
- * `"Error"`.
+ * A DOM exception. `name` selects the legacy `code`. Unknown names use code 0.
+ * The prototype inherits from `Error`. An omitted `message` is `""`. An omitted
+ * `name` is `"Error"`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMException)
  */
@@ -7101,9 +7008,7 @@ declare class DOMException extends Error {
 }
 
 /**
- * A quota failure.
- *
- * `quota` and `requested` are null. `code` is 22.
+ * A quota failure. `quota` and `requested` are null. `code` is 22.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/QuotaExceededError)
  */
@@ -7131,9 +7036,7 @@ interface UIEventInit extends EventInit {
 }
 
 /**
- * Base of the input events.
- *
- * `view` is null. There is no browser window.
+ * Base of the input events. `view` is null. There is no browser window.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent)
  */
@@ -7159,9 +7062,8 @@ interface FocusEventInit extends UIEventInit {
 }
 
 /**
- * Focus moving to or from a {@link Yuzuko.Window}.
- *
- * The events do not bubble or cancel, and `relatedTarget` from the host is null.
+ * Focus moving to or from a {@link Yuzuko.Window}. The events do not bubble or
+ * cancel, and `relatedTarget` from the host is null.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FocusEvent)
  */
@@ -7196,12 +7098,13 @@ interface MouseEventInit extends UIEventInit {
 }
 
 /**
- * A mouse event derived from a pointer event, or a constructed mouse event.
+ * The **`MouseEvent`** interface represents events that occur due to the user
+ * interacting with a pointing device (such as a mouse). Common events using this
+ * interface include click, dblclick, mouseup, mousedown.
  *
- * Host pointer events target {@link Yuzuko.Window.surface} and propagate
- * through the window. `clientX`, `pageX`, `offsetX`, and `layerX` are CSS
- * pixels from that window's top-left. There is no stacking context, so
- * `layerX` and `layerY` match `offsetX` and `offsetY`.
+ * Host pointer events target {@link Yuzuko.Window.surface} and propagate through
+ * the window. Coordinates are CSS pixels from that window's top-left. There is
+ * no stacking context, so `layerX` matches `offsetX`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent)
  */
@@ -7278,12 +7181,10 @@ interface MouseEvent extends UIEvent {
   getModifierState(key: string): boolean;
 
   /**
-   * Legacy initializer.
-   *
-   * The tenth argument is `altKey` and the eleventh is `shiftKey`. Omitted
-   * arguments use false, 0, or null. The call does nothing while the event
-   * is dispatching. It does not change `buttons`, `movementX`, `movementY`,
-   * or `isTrusted`. `view` must be this realm's global or null.
+   * Legacy initializer. The tenth argument is `altKey` and the eleventh is
+   * `shiftKey`. Omitted arguments use false, 0, or null. The call does nothing
+   * while the event is dispatching. It does not change `buttons`, `movementX`,
+   * `movementY`, or `isTrusted`. `view` must be this realm's global or null.
    *
    * @throws {@link TypeError} When called with no arguments, when `view` is
    * not this realm's global or null, or when `relatedTarget` is not an
@@ -7323,12 +7224,17 @@ interface DragEventInit extends MouseEventInit {
 }
 
 /**
- * A constructed drag event.
+ * The **`DragEvent`** interface is a DOM event that represents a drag and drop
+ * interaction. The user initiates a drag by placing a pointer device (such as a
+ * mouse) on the touch surface and then dragging the pointer to a new location
+ * (such as another DOM element). Applications are free to interpret a drag and
+ * drop interaction in an application-specific way.
  *
- * The runtime does not run an HTML drag-and-drop session. `dataTransfer`
- * is null unless the dictionary passes a {@link DataTransfer}. Coordinates
- * are floored the same way as a {@link MouseEvent}. A dedicated worker has
- * this constructor and does not have `DataTransfer`.
+ * A constructed drag event. The runtime does not run an HTML drag-and-drop
+ * session. `dataTransfer` is null unless the dictionary passes a
+ * {@link DataTransfer}. Coordinates are floored the same way as a
+ * {@link MouseEvent}. A dedicated worker has this constructor and does not have
+ * `DataTransfer`.
  *
  * @throws {@link TypeError} When `dataTransfer` is not a `DataTransfer`.
  *
@@ -7384,8 +7290,8 @@ interface WheelEvent extends MouseEvent {
   readonly deltaMode: number;
 
   /**
-   * True when the constructor dictionary sets it. A host `wheel` event is
-   * false. The runtime does not synthesize scroll inertia.
+   * True when the constructor dictionary sets it. A host `wheel` event is false.
+   * The runtime does not synthesize scroll inertia.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WheelEvent)
    */
@@ -7423,11 +7329,14 @@ interface TouchInit {
 }
 
 /**
- * One contact point in a {@link TouchEvent}.
+ * The **`Touch`** interface represents a single contact point on a
+ * touch-sensitive device. The contact point is commonly a finger or stylus and
+ * the device may be a touchscreen or trackpad.
  *
- * `identifier` and `target` are required. The coordinate members default to 0.
- * The runtime does not dispatch a trusted touch event. A touch contact is a
- * {@link PointerEvent} with `pointerType` `"touch"`.
+ * One contact point in a {@link TouchEvent}. `identifier` and `target` are
+ * required. The coordinate members default to 0. The runtime does not dispatch a
+ * trusted touch event. A touch contact is a {@link PointerEvent} with
+ * `pointerType` `"touch"`.
  *
  * @throws {@link TypeError} When `identifier` or `target` is missing, or
  * `target` is not an `EventTarget`.
@@ -7479,10 +7388,9 @@ declare var Touch: {
 
 
 /**
- * List of {@link Touch} objects created for a {@link TouchEvent}.
- *
- * An index is that `Touch`. `item` returns `null` when the index is past the
- * end. An index cannot be assigned or deleted.
+ * List of {@link Touch} objects created for a {@link TouchEvent}. An index is
+ * that `Touch`. `item` returns `null` when the index is past the end. An index
+ * cannot be assigned or deleted.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -7518,11 +7426,9 @@ interface TouchEventInit extends UIEventInit {
 }
 
 /**
- * A constructed touch event.
- *
- * `cancelable` defaults to false. `touches`, `targetTouches`, and
- * `changedTouches` default to empty {@link TouchList} objects. The runtime
- * does not dispatch a trusted `TouchEvent`.
+ * A constructed touch event. `cancelable` defaults to false. `touches`,
+ * `targetTouches`, and `changedTouches` default to empty {@link TouchList}
+ * objects. The runtime does not dispatch a trusted `TouchEvent`.
  *
  * @throws {@link TypeError} When a touch list is not a sequence of `Touch`.
  *
@@ -7573,13 +7479,15 @@ interface KeyboardEventInit extends UIEventInit {
 }
 
 /**
- * A key event dispatched on a {@link Yuzuko.Window}.
+ * **`KeyboardEvent`** objects describe a user interaction with the keyboard;
+ * each event describes a single interaction between the user and a key (or
+ * combination of a key with modifier keys) on the keyboard. The event type
+ * (keydown, keypress, or keyup) identifies what kind of keyboard activity
+ * occurred.
  *
- * `key` comes from the winit logical key. `code` maps the physical key to a
- * UI Events code. An unknown key is `"Unidentified"`. `isComposing` is true
- * while the preedit string is non-empty. `preventDefault()` on `keydown`
- * suppresses the following text input. A `Commit` the OS has already produced
- * is still delivered as `compositionend`.
+ * Dispatched on a {@link Yuzuko.Window}. `key` is the winit logical key and
+ * `code` is the UI Events code for the physical key. `preventDefault()` on
+ * `keydown` suppresses the following text input.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/KeyboardEvent)
  */
@@ -7625,6 +7533,11 @@ interface KeyboardEvent extends UIEvent {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState)
    */
   getModifierState(key: string): boolean;
+
+  readonly DOM_KEY_LOCATION_STANDARD: 0x00;
+  readonly DOM_KEY_LOCATION_LEFT: 0x01;
+  readonly DOM_KEY_LOCATION_RIGHT: 0x02;
+  readonly DOM_KEY_LOCATION_NUMPAD: 0x03;
 }
 declare var KeyboardEvent: {
   prototype: KeyboardEvent;
@@ -7644,11 +7557,13 @@ interface CompositionEventInit extends UIEventInit {
 }
 
 /**
- * An IME composition event on a {@link Yuzuko.Window}.
+ * The DOM **`CompositionEvent`** represents events that occur due to the user
+ * indirectly entering text.
  *
- * IME does not run until {@link Yuzuko.Window.setImeAllowed} is true.
- * `compositionstart` has `data === ""`. `compositionupdate` carries the
- * preedit string. `compositionend` carries the committed string.
+ * An IME composition event on a {@link Yuzuko.Window}. IME does not run until
+ * {@link Yuzuko.Window.setImeAllowed} is true. `compositionstart` has
+ * `data === ""`. `compositionupdate` carries the preedit string.
+ * `compositionend` carries the committed string.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompositionEvent)
  */
@@ -7673,10 +7588,9 @@ interface InputEventInit extends UIEventInit {
 }
 
 /**
- * A `beforeinput` event on a {@link Yuzuko.WindowSurface}.
- *
- * After `compositionend`, one event uses `inputType` `"insertText"` and the
- * committed string. Events during composition use `"insertCompositionText"`.
+ * A `beforeinput` event on a {@link Yuzuko.WindowSurface}. After
+ * `compositionend`, one event uses `inputType` `"insertText"` and the committed
+ * string. Events during composition use `"insertCompositionText"`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/InputEvent)
  */
@@ -7714,14 +7628,14 @@ interface PointerEventInit extends MouseEventInit {
 }
 
 /**
- * A pointer event.
+ * The **`PointerEvent`** interface represents the state of a DOM event produced
+ * by a pointer such as the geometry of the contact point, the device type that
+ * generated the event, the amount of pressure that was applied on the contact
+ * surface, etc.
  *
- * The host target is {@link Yuzuko.Window.surface}. The path is the surface,
- * then the window. `pointerId` is per window. `pointerrawupdate` is dispatched
- * for each pointer move, including while the pointer is locked, before
- * `pointermove`. It bubbles and is not cancelable. Missing OS values are 0.
- * A mouse uses `pressure` 0.5 while a button is down and 0 otherwise.
- * `movementX` and `movementY` are relative while the pointer is locked.
+ * The host target is {@link Yuzuko.Window.surface}, then the window. `pointerId`
+ * is per window. `pointerrawupdate` is dispatched before `pointermove`,
+ * including while the pointer is locked.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PointerEvent)
  */
@@ -7767,8 +7681,8 @@ interface PointerEvent extends MouseEvent {
   readonly persistentDeviceId: number;
 
   /**
-   * Moves coalesced into this `pointermove`, or the single move carried by
-   * this `pointerrawupdate`. Other types return an empty list.
+   * Moves coalesced into this `pointermove`, or the single move carried by this
+   * `pointerrawupdate`. Other types return an empty list.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PointerEvent/getCoalescedEvents)
    */
@@ -7795,13 +7709,12 @@ interface AbortSignalEventMap {
 }
 
 /**
- * A signal that can abort an operation.
+ * The **`AbortSignal`** interface represents a signal object that allows you to
+ * communicate with an asynchronous operation (such as a fetch request) and abort
+ * it if required via an AbortController object.
  *
- * An abort event dispatched by {@link AbortController.abort} or
- * {@link AbortSignal.abort} is not trusted. {@link AbortSignal.abort} returns
- * a signal that is already aborted. An omitted reason is an `AbortError`
- * DOMException. {@link AbortSignal.timeout} aborts after `milliseconds`.
- * {@link AbortSignal.any} aborts when any input aborts.
+ * An abort event from {@link AbortController.abort} or {@link AbortSignal.abort}
+ * is not trusted.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AbortSignal)
  */
@@ -7844,7 +7757,8 @@ declare var AbortSignal: {
 
 
 /**
- * Creates an {@link AbortSignal} and aborts it.
+ * The **`AbortController`** interface represents a controller object that allows
+ * you to abort one or more Web requests as and when desired.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AbortController)
  */
@@ -7854,7 +7768,9 @@ interface AbortController {
   readonly signal: AbortSignal;
 
   /**
-   * Aborts {@link AbortController.signal}.
+   * The **`abort()`** method of the AbortController interface aborts an
+   * asynchronous operation before it has completed. This is able to abort fetch
+   * requests, the consumption of any response bodies, or streams.
    *
    * @param reason - Stored as the signal's `reason`.
    *
@@ -7879,7 +7795,8 @@ interface MessageEventInit<T = any> extends EventInit {
 }
 
 /**
- * A message from a worker, a port, an event source, or a WebSocket.
+ * The **`MessageEvent`** interface represents a message received by a target
+ * object.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent)
  */
@@ -7902,8 +7819,8 @@ interface MessageEvent<T = any> extends Event {
   readonly source: null;
 
   /**
-   * Frozen array of transferred {@link MessagePort}s that were reachable
-   * from the message. Each read returns that same array.
+   * Frozen array of transferred {@link MessagePort} s that were reachable from the
+   * message. Each read returns that same array.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports)
    */
@@ -7916,9 +7833,8 @@ declare var MessageEvent: {
 
 
 /**
- * One end of a message channel.
- *
- * `postMessage` carries the values {@link structuredClone} can carry.
+ * One end of a message channel. `postMessage` carries the values
+ * {@link structuredClone} can carry.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link MessageChannel}.
  *
@@ -7933,14 +7849,17 @@ interface MessagePort extends EventTarget {
   postMessage(message: any, options?: StructuredSerializeOptions): void;
 
   /**
-   * Starts delivery of queued messages.
+   * The **`start()`** method of the MessagePort interface starts the sending of
+   * messages queued on the port. This method is only needed when using
+   * EventTarget.addEventListener; it is implied when using onmessage.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/start)
    */
   start(): void;
 
   /**
-   * Disentangles this port.
+   * The **`close()`** method of the MessagePort interface disconnects the port, so
+   * it is no longer active. This stops the flow of messages to that port.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/close)
    */
@@ -7956,7 +7875,9 @@ declare var MessagePort: {
 
 
 /**
- * A pair of entangled {@link MessagePort} objects.
+ * The **`MessageChannel`** interface of the Channel Messaging API allows us to
+ * create a new message channel and send data through it via its two MessagePort
+ * properties.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel)
  */
@@ -7975,10 +7896,8 @@ declare var MessageChannel: {
 
 
 /**
- * A URL.
- *
- * `createObjectURL` accepts a {@link Blob}. `file:` URLs used by `fetch` must
- * stay under the entry module's directory.
+ * A URL. `createObjectURL` accepts a {@link Blob}. `file:` URLs used by `fetch`
+ * must stay under the entry module's directory.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/URL)
  */
@@ -8008,7 +7927,8 @@ declare var URL: {
 
 
 /**
- * Query parameters.
+ * The **`URLSearchParams`** interface defines utility methods to work with the
+ * query string of a URL.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/URLSearchParams)
  */
@@ -8109,7 +8029,9 @@ interface URLPatternComponentResult {
 }
 
 /**
- * A pattern matched against URLs.
+ * The **`URLPattern`** interface of the URL Pattern API matches URLs or parts of
+ * URLs against a pattern. The pattern can contain capturing groups that extract
+ * parts of the matched URL.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/URLPattern)
  */
@@ -8145,14 +8067,14 @@ interface URLPattern {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/URLPattern/test)
    */
-  test(input?: string | URLPatternInit, baseURL?: string): boolean;
+  test(input?: string | URLPatternInit, baseURL?: string | URL): boolean;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/URLPattern/exec)
    */
   exec(
     input?: string | URLPatternInit,
-    baseURL?: string,
+    baseURL?: string | URL,
   ): URLPatternResult | null;
 
   /**
@@ -8169,7 +8091,8 @@ declare var URLPattern: {
 
 
 /**
- * UTF-8 encoder.
+ * The **`TextEncoder`** interface enables you to encode a JavaScript string
+ * using UTF-8.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextEncoder)
  */
@@ -8242,7 +8165,7 @@ interface TextDecoder {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextDecoder/decode)
    */
-  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+  decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string;
 }
 declare var TextDecoder: {
   prototype: TextDecoder;
@@ -8259,16 +8182,13 @@ interface BlobPropertyBag {
 }
 
 /**
- * A blob of bytes.
+ * The **`Blob`** interface represents a blob, which is a file-like object of
+ * immutable, raw data; they can be read as text or binary data, or converted
+ * into a ReadableStream so its methods can be used for processing the data.
  *
- * `type` from the constructor or `slice` is that string in ASCII lowercase
- * when every character is U+0020 through U+007E, and `""` when any character
- * is outside that range. A blob read from a response uses the serialized
- * MIME type of the `Content-Type`. `structuredClone` copies that stored
- * `type`. `text()` decodes UTF-8 and omits one leading byte order mark.
- *
- * The bytes stay shared until `text()`, `arrayBuffer()`, `bytes()`, or a
- * blob URL snapshot reads them.
+ * `type` is kept in ASCII lowercase when every character is in the printable
+ * ASCII range, and `""` otherwise. `text()` decodes UTF-8 and omits one leading
+ * byte order mark.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob)
  */
@@ -8318,7 +8238,8 @@ interface FilePropertyBag extends BlobPropertyBag {
 }
 
 /**
- * A named blob.
+ * The **`File`** interface provides information about files and allows
+ * JavaScript in a web page to access their content.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/File)
  */
@@ -8337,7 +8258,10 @@ declare var File: {
 
 
 /**
- * Progress of an underlying read.
+ * The **`ProgressEvent`** interface represents events that measure the progress
+ * of an underlying process, like an HTTP request (e.g., an XMLHttpRequest, or
+ * the loading of the underlying resource of an <img>, <audio>, <video>, <style>
+ * or <link>).
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ProgressEvent)
  */
@@ -8368,7 +8292,9 @@ declare var ProgressEvent: {
 };
 
 /**
- * Reads a blob asynchronously.
+ * The **`FileReader`** interface lets web applications asynchronously read the
+ * contents of files (or raw data buffers) stored on the user's computer, using
+ * File or Blob objects to specify the file or data to read.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReader)
  */
@@ -8433,9 +8359,8 @@ declare var FileReader: {
 };
 
 /**
- * Reads a blob synchronously.
- *
- * The constructor is on a dedicated worker. It is absent on the main global.
+ * Reads a blob synchronously. The constructor is on a dedicated worker. It is
+ * absent on the main global.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync)
  */
@@ -8448,8 +8373,6 @@ interface FileReaderSync {
   readAsArrayBuffer(blob: Blob): ArrayBuffer;
 
   /**
-   * One code unit per byte.
-   *
    * @throws {@link TypeError} When `blob` is not a {@link Blob}.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileReaderSync/readAsBinaryString)
@@ -8480,9 +8403,7 @@ declare var FileReaderSync: {
 
 
 /**
- * A header list.
- *
- * Forbidden request and response headers are not enforced.
+ * A header list. Forbidden request and response headers are not enforced.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers)
  */
@@ -8527,11 +8448,10 @@ declare var Headers: {
 
 
 /**
- * Fields read by the {@link Request} constructor.
- *
- * `mode`, `credentials`, `referrer`, `referrerPolicy`, `destination`, and
- * `keepalive` are not read and have no getters. `cache` defaults to
- * `"no-store"`. `redirect: "manual"` returns the redirect response.
+ * Fields read by the {@link Request} constructor. `mode`, `credentials`,
+ * `referrer`, `referrerPolicy`, `destination`, and `keepalive` are not read and
+ * have no getters. `cache` defaults to `"no-store"`. `redirect: "manual"`
+ * returns the redirect response.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/Request)
  */
@@ -8545,16 +8465,17 @@ interface RequestInit {
   signal?: AbortSignal | null;
   duplex?: "half";
   priority?: RequestPriority;
-  /** Must be `null` when present. */
+  /**
+   * Must be `null` when present.
+   */
   window?: null;
 }
 
 /**
- * An HTTP request.
- *
- * Getters for `mode`, `credentials`, `referrer`, `referrerPolicy`,
- * `destination`, and `keepalive` are absent. `duplex` reads back as `"half"`.
- * `input` is a URL or another request. `init` overrides fields of `input`.
+ * An HTTP request. Getters for `mode`, `credentials`, `referrer`,
+ * `referrerPolicy`, `destination`, and `keepalive` are absent. `duplex` reads
+ * back as `"half"`. `input` is a URL or another request. `init` overrides fields
+ * of `input`.
  *
  * @throws {@link DOMException} `NotSupportedError` when `integrity` is a
  * non-empty string. Subresource Integrity is not supported.
@@ -8642,10 +8563,9 @@ interface ResponseInit {
 }
 
 /**
- * An HTTP response.
- *
- * `type` for `fetch` and `new Response()` is `"default"`. There is no CORS
- * enforcement, so `Response.type` is not `"cors"` or `"opaque"`.
+ * An HTTP response. `type` for `fetch` and `new Response()` is `"default"`.
+ * There is no CORS enforcement, so `Response.type` is not `"cors"` or
+ * `"opaque"`.
  *
  * @throws {@link RangeError} When {@link Response.redirect} is called with a
  * `status` other than 301, 302, 303, 307, or 308.
@@ -8724,20 +8644,9 @@ declare var Response: {
 
 
 /**
- * Fetches `input`.
- *
- * Present when the runtime is built with the `fetch` Cargo feature, which is
- * enabled by default. A build that does not enable `fetch` omits this
- * function, {@link Headers}, {@link Request}, {@link Response}, `caches`,
- * {@link XMLHttpRequest}, and {@link EventSource}. The `socket` feature,
- * which installs {@link WebSocket}, is separate.
- *
- * Schemes are `file:`, `blob:`, `data:`, `http:`, and `https:`. `http:` and
- * `https:` follow redirects, retry a `421` once on a new connection, and
- * cancel with `AbortSignal`. A blob URL `Range` answers `206` or a network
- * error. A `file:` URL must stay under the entry directory and is not read
- * until the body is pulled. CORS, forbidden headers, and forbidden methods
- * are not enforced.
+ * Present with the `fetch` feature. Schemes are `file:`, `blob:`, `data:`,
+ * `http:`, and `https:`. CORS, forbidden headers, and forbidden methods are not
+ * enforced. A `file:` URL must stay under the entry directory.
  *
  * @throws {@link DOMException} `NotSupportedError` when the URL scheme is not
  * one of those five, or when `init.integrity` is a non-empty string.
@@ -8750,7 +8659,11 @@ declare function fetch(
 ): Promise<Response>;
 
 /**
- * Form fields.
+ * The **`FormData`** interface provides a way to construct a set of key/value
+ * pairs representing form fields and their values, which can be sent using the
+ * fetch(), XMLHttpRequest.send() or navigator.sendBeacon() methods. It uses the
+ * same format a form would use if the encoding type were set to
+ * "multipart/form-data".
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FormData)
  */
@@ -8795,9 +8708,7 @@ declare var FormData: {
 
 
 /**
- * A named cache.
- *
- * `add` and `match` are absent.
+ * A named cache. `add` and `match` are absent.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link caches}.
  *
@@ -8822,9 +8733,7 @@ declare var Cache: {
 
 
 /**
- * The process cache storage.
- *
- * `has`, `keys`, and `match` are absent.
+ * The process cache storage. `has`, `keys`, and `match` are absent.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8854,29 +8763,18 @@ declare var CacheStorage: {
 declare var caches: CacheStorage;
 
 /**
- * A request helper.
- *
- * `send` loads `http:`, `https:`, and `data:`, collects the response, then
- * queues `onload` or `onerror`. The handler receives a trusted
- * {@link ProgressEvent}. This object is not an {@link EventTarget}, so the
- * event is not dispatched: `target` is the request, and `currentTarget` is
- * the request only while the handler runs. `responseText` uses the
- * `Content-Type` charset, unless `overrideMimeType` set one. `responseType`,
- * upload progress, and event handlers other than `onload` and `onerror` are
- * absent.
+ * `send` loads `http:`, `https:`, and `data:`, then queues `onload` or
+ * `onerror`. This object is not an {@link EventTarget}. `responseType`, upload
+ * progress, and handlers other than `onload` and `onerror` are absent.
  */
 interface XMLHttpRequest {
 
   /**
-   * Stores the method and URL.
-   *
    * @throws {@link DOMException} `SyntaxError` when the method is invalid.
    */
-  open(method: string, url: string): void;
+  open(method: string, url: string | URL): void;
 
   /**
-   * Appends a request header.
-   *
    * @throws {@link DOMException} `InvalidStateError` when `open` has not been
    * called or `send` has already been called.
    * @throws {@link DOMException} `SyntaxError` when the name or value is invalid.
@@ -8884,8 +8782,6 @@ interface XMLHttpRequest {
   setRequestHeader(name: string, value: string): void;
 
   /**
-   * Performs the request.
-   *
    * @throws {@link DOMException} `InvalidStateError` when the request is not open.
    * @throws {@link TypeError} When the URL cannot be resolved.
    */
@@ -8894,7 +8790,9 @@ interface XMLHttpRequest {
   /** The response header, or `null` before the request is done. */
   getResponseHeader(name: string): string | null;
 
-  /** All response headers except `Set-Cookie`, or `""` before the request is done. */
+  /**
+   * All response headers except `Set-Cookie`, or `""` before the request is done.
+   */
   getAllResponseHeaders(): string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/status) */
@@ -8904,14 +8802,17 @@ interface XMLHttpRequest {
   readonly statusText: string;
 
   /**
-   * The decoded response, or `""` before the request is done.
+   * The read-only XMLHttpRequest property **`responseText`** returns the text
+   * received from a server following a request being sent.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/responseText)
    */
   readonly responseText: string;
 
   /**
-   * Replaces the charset used by `responseText`.
+   * The XMLHttpRequest method **`overrideMimeType()`** specifies a MIME type other
+   * than the one provided by the server to be used instead when interpreting the
+   * data being transferred in a request.
    *
    * @throws {@link DOMException} `InvalidStateError` when the response is done.
    *
@@ -8978,13 +8879,12 @@ interface ReadableStreamBYOBReaderReadOptions {
 }
 
 /**
- * A readable stream. {@link ReadableStream.from} creates a stream from an
- * iterable.
+ * The **`ReadableStream`** interface of the Streams API represents a readable
+ * stream of byte data. The Fetch API offers a concrete instance of a
+ * ReadableStream through the body property of a Response object.
  *
- * A transfer locks this stream. The destination is a new
- * {@link ReadableStream}. A locked stream, or a stream left out of the
- * transfer list, throws `DataCloneError`. A transferred byte stream arrives
- * as a default stream.
+ * A transfer locks this stream and replaces it with a new one. A transferred
+ * byte stream arrives as a default stream.
  *
  * @throws {@link TypeError} When the argument of {@link ReadableStream.from}
  * is not iterable.
@@ -9087,9 +8987,9 @@ interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
 
   /**
-   * Enqueues `chunk`. On an owning stream the second argument is
-   * `{ transfer }`, and that list moves an `ArrayBuffer`, a `MessagePort`,
-   * an `ImageBitmap`, an `AudioData`, or a `VideoFrame`.
+   * Enqueues `chunk`. On an owning stream the second argument is `{ transfer }`,
+   * and that list moves an `ArrayBuffer`, a `MessagePort`, an `ImageBitmap`, an
+   * `AudioData`, or a `VideoFrame`.
    *
    * @throws {@link DOMException} `DataCloneError` when a listed value cannot
    * be transferred.
@@ -9123,7 +9023,7 @@ interface ReadableStreamBYOBReader {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBReader/read)
    */
-  read<T extends ArrayBufferView>(
+  read<T extends Exclude<BufferSource, ArrayBuffer>>(
     view: T,
     options?: ReadableStreamBYOBReaderReadOptions,
   ): Promise<ReadableStreamReadResult<T>>;
@@ -9151,7 +9051,7 @@ interface ReadableByteStreamController {
   readonly byobRequest: ReadableStreamBYOBRequest | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableByteStreamController/enqueue) */
-  enqueue(chunk: ArrayBufferView): void;
+  enqueue(chunk: ArrayBufferView<ArrayBuffer>): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableByteStreamController/close) */
   close(): void;
@@ -9170,13 +9070,13 @@ declare var ReadableByteStreamController: {
  */
 interface ReadableStreamBYOBRequest {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBRequest/view) */
-  readonly view: ArrayBufferView<ArrayBuffer> | null;
+  readonly view: Uint8Array<ArrayBuffer> | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBRequest/respond) */
   respond(bytesWritten: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBRequest/respondWithNewView) */
-  respondWithNewView(view: ArrayBufferView): void;
+  respondWithNewView(view: ArrayBufferView<ArrayBuffer>): void;
 }
 declare var ReadableStreamBYOBRequest: {
   prototype: ReadableStreamBYOBRequest;
@@ -9198,9 +9098,9 @@ interface UnderlyingSink<W = any> {
 }
 
 /**
- * A transfer locks this stream. The destination is a new
- * {@link WritableStream}. A locked stream, or a stream left out of the
- * transfer list, throws `DataCloneError`.
+ * A transfer locks this stream. The destination is a new {@link WritableStream}.
+ * A locked stream, or a stream left out of the transfer list, throws
+ * `DataCloneError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStream)
  */
@@ -9285,9 +9185,9 @@ interface Transformer<I = any, O = any> {
 }
 
 /**
- * A transfer locks both sides. The destination is a new
- * {@link TransformStream}. A locked side, or a stream left out of the
- * transfer list, throws `DataCloneError`.
+ * A transfer locks both sides. The destination is a new {@link TransformStream}.
+ * A locked side, or a stream left out of the transfer list, throws
+ * `DataCloneError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStream)
  */
@@ -9328,7 +9228,9 @@ declare var TransformStreamDefaultController: {
 
 
 /**
- * A strategy that counts chunks.
+ * The **`CountQueuingStrategy`** interface of the Streams API provides a
+ * built-in chunk counting queuing strategy that can be used when constructing
+ * streams.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CountQueuingStrategy)
  */
@@ -9347,7 +9249,9 @@ declare var CountQueuingStrategy: {
 
 
 /**
- * A strategy that uses `byteLength`.
+ * The **`ByteLengthQueuingStrategy`** interface of the Streams API provides a
+ * built-in byte length queuing strategy that can be used when constructing
+ * streams.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ByteLengthQueuingStrategy)
  */
@@ -9412,7 +9316,10 @@ declare var TextDecoderStream: {
 
 
 /**
- * Compresses bytes.
+ * The **`CompressionStream`** interface of the Compression Streams API
+ * compresses a stream of data. It implements the same shape as a
+ * TransformStream, allowing it to be used in ReadableStream.pipeThrough() and
+ * similar methods.
  *
  * @throws {@link TypeError} When `format` is not `gzip`, `deflate`, or `deflate-raw`.
  *
@@ -9433,7 +9340,10 @@ declare var CompressionStream: {
 
 
 /**
- * Decompresses bytes.
+ * The **`DecompressionStream`** interface of the Compression Streams API
+ * decompresses a stream of data. It implements the same shape as a
+ * TransformStream, allowing it to be used in ReadableStream.pipeThrough() and
+ * similar methods.
  *
  * @throws {@link TypeError} When `format` is not `gzip`, `deflate`, or `deflate-raw`.
  *
@@ -9454,7 +9364,9 @@ declare var DecompressionStream: {
 
 
 /**
- * A cryptographic key.
+ * The **`CryptoKey`** interface of the Web Crypto API represents a cryptographic
+ * key obtained from one of the SubtleCrypto methods generateKey(), deriveKey(),
+ * importKey(), or unwrapKey(). Available only in secure contexts.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -9507,14 +9419,12 @@ interface EncapsulatedKey {
 }
 
 /**
- * SubtleCrypto.
+ * The **`SubtleCrypto`** interface of the Web Crypto API provides a number of
+ * low-level cryptographic functions. Available only in secure contexts.
  *
- * Each operation rejects `NotSupportedError` when the algorithm name, hash,
- * curve, or key format is not implemented. `generateKey` also rejects
- * `NotSupportedError` for HKDF, PBKDF2, and Argon2. An unrecognized hash is
- * `NotSupportedError` before key usages are checked. cSHAKE, TurboSHAKE,
- * KangarooTwelve, and SLH-DSA parameter sets other than SLH-DSA-SHA2-128f
- * reject `NotSupportedError`.
+ * An operation rejects `NotSupportedError` when the algorithm, hash, curve, or
+ * key format is not implemented. HKDF, PBKDF2, Argon2, cSHAKE, TurboSHAKE, and
+ * KangarooTwelve are not implemented.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -9728,8 +9638,8 @@ declare var SubtleCrypto: {
   new(): SubtleCrypto;
 
   /**
-   * Returns whether `operation` can run for `algorithm`. An unknown algorithm
-   * or operation returns false.
+   * Returns whether `operation` can run for `algorithm`. An unknown algorithm or
+   * operation returns false.
    *
    * @throws {@link TypeError} When fewer than two arguments are passed.
    */
@@ -9762,7 +9672,7 @@ interface Crypto {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Crypto/getRandomValues)
    */
-  getRandomValues<T extends ArrayBufferView>(array: T): T;
+  getRandomValues<T extends Exclude<BufferSource, ArrayBuffer>>(array: T): T;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Crypto/randomUUID)
@@ -9816,11 +9726,10 @@ interface DOMMatrixInit extends DOMMatrix2DInit {
 }
 
 /**
- * A read-only matrix.
- *
- * On the main global, `String(matrix)` uses the CSS matrix form. In a
- * dedicated worker there is no stringifier, no CSS-string constructor, and
- * no `setMatrixValue` on {@link DOMMatrix}. `WebKitCSSMatrix` is absent.
+ * A read-only matrix. On the main global, `String(matrix)` uses the CSS matrix
+ * form. In a dedicated worker there is no stringifier, no CSS-string
+ * constructor, and no `setMatrixValue` on {@link DOMMatrix}. `WebKitCSSMatrix`
+ * is absent.
  *
  * @throws {@link TypeError} In a worker, when the argument is a string.
  *
@@ -9927,9 +9836,7 @@ declare var DOMMatrixReadOnly: {
 
 
 /**
- * A mutable matrix.
- *
- * `setMatrixValue` is absent in a dedicated worker.
+ * A mutable matrix. `setMatrixValue` is absent in a dedicated worker.
  *
  * @throws {@link TypeError} In a worker, when `init` is a string.
  *
@@ -10142,7 +10049,11 @@ interface DOMQuadInit {
 }
 
 /**
- * A list of rectangles.
+ * The **`DOMRectList`** interface represents a collection of DOMRect objects,
+ * typically used to hold the rectangles associated with a particular element,
+ * like bounding boxes returned by methods such as getClientRects(). It provides
+ * access to each rectangle in the list via its index, along with a length
+ * property that indicates the total number of rectangles in the list.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10179,22 +10090,13 @@ interface FontFaceDescriptors {
 }
 
 /**
- * A font face.
+ * The **`FontFace`** interface of the CSS Font Loading API represents a single
+ * usable font face.
  *
- * A source is an `ArrayBuffer` or a string. A string that contains `url(` or
- * `local(` is a CSS `src` list, tried in order. Each item is `url()` with an
- * optional `format()` and an optional `tech()`, or `local()`. `format()`
- * accepts `woff2`, `woff`, `truetype`, and `opentype`, without regard to
- * case, including a `-variations` suffix. Any other keyword skips that source
- * and does not fetch it. A comma list is usable when any keyword is accepted.
- * `tech()` is parsed and ignored. A string with neither function, and with no
- * space, tab, newline, or comma, is one URL. Formats are TTF, OTF, WOFF, and
- * WOFF2. A WOFF2 `glyf` or `loca` preprocessing transform is rejected.
- * `local()` matches an installed font by PostScript name, full name, family
- * name, or typographic family name. An unparsable list rejects `SyntaxError`
- * from {@link FontFace.load}. The constructor still accepts the string.
- * CSS `@font-face` is not implemented. `style` and `weight` are read-only
- * after construction. `stretch` and `width` can be assigned.
+ * A string source is a CSS `src` list or one URL. `format()` accepts `woff2`,
+ * `woff`, `truetype`, and `opentype`. `local()` matches an installed font by
+ * PostScript, full, family, or typographic family name. CSS `@font-face` is not
+ * implemented.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace)
  */
@@ -10234,11 +10136,9 @@ interface FontFace {
   readonly loaded: Promise<FontFace>;
 
   /**
-   * Starts loading this face.
-   *
-   * An unparsable `src` list rejects `SyntaxError`. A source that cannot be
-   * fetched rejects `NetworkError`. Bytes that are not a font reject
-   * `SyntaxError` when nothing remains to try.
+   * Starts loading this face. An unparsable `src` list rejects `SyntaxError`. A
+   * source that cannot be fetched rejects `NetworkError`. Bytes that are not a
+   * font reject `SyntaxError` when nothing remains to try.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/load)
    */
@@ -10251,16 +10151,12 @@ declare var FontFace: {
 
 
 /**
- * The set of font faces for one realm.
+ * The **`FontFaceSet`** interface of the CSS Font Loading API manages the
+ * loading of font-faces and querying of their download status.
  *
  * On the main global this object is `Yuzuko.fonts`. In a worker it is
- * `self.fonts`. `add` returns the set. `forEach`, `keys`, `values`,
- * `entries`, and `@@iterator` walk the faces in insertion order.
- * `check` throws `SyntaxError` when `font` is not a CSS font shorthand.
- * `load` rejects that same error. `ready` fulfills while the set is idle.
- * `loading`, `loadingdone`, and `loadingerror` fire in the turn the status
- * changes. A family that has finished `load()` and is in the set
- * can be named from the Canvas 2D `font` property.
+ * `self.fonts` and `globalThis.fonts`. A loaded family in the set can be named
+ * from the Canvas 2D `font` property.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10302,9 +10198,8 @@ interface FontFaceSet extends EventTarget {
 
   /**
    * `true` when `font` can draw `text` without waiting on a face in this set.
-   *
-   * `text` defaults to `" "`. An unknown family, or a `unicode-range` that
-   * misses `text`, returns `true`. An unparsable shorthand throws `SyntaxError`.
+   * `text` defaults to `" "`. An unknown family, or a `unicode-range` that misses
+   * `text`, returns `true`. An unparsable shorthand throws `SyntaxError`.
    *
    * @throws {@link DOMException} `SyntaxError` when `font` does not parse.
    *
@@ -10313,19 +10208,17 @@ interface FontFaceSet extends EventTarget {
   check(font: string, text?: string): boolean;
 
   /**
-   * Loads the faces in this set that `font` would use for `text`.
-   *
-   * Resolves to those faces in family order. `text` defaults to `" "`.
-   * An unparsable shorthand rejects `SyntaxError`.
+   * Loads the faces in this set that `font` would use for `text`. Resolves to
+   * those faces in family order. `text` defaults to `" "`. An unparsable shorthand
+   * rejects `SyntaxError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/load)
    */
   load(font: string, text?: string): Promise<FontFace[]>;
 
   /**
-   * Fulfills with this set when {@link FontFaceSet.status} is `"loaded"`.
-   *
-   * The same promise is returned until a load starts.
+   * Fulfills with this set when {@link FontFaceSet.status} is `"loaded"`. The same
+   * promise is returned until a load starts.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFaceSet/ready)
    */
@@ -10366,14 +10259,8 @@ interface FontFaceSetLoadEventInit extends EventInit {
 }
 
 /**
- * One installed font.
- *
- * `postscriptName`, `fullName`, `family`, and `style` prefer the `en-US`
- * name, then `en`, then the first localization. `family` is name ID 1, or
- * name ID 16 when that is missing. `style` is name ID 2, or name ID 17 when
- * that is missing, then `"Regular"`. `blob()` resolves to the font file with
- * an empty type. There is no permission prompt. This interface is on
- * `globalThis` in the main realm and in a dedicated worker.
+ * Names prefer `en-US`, then `en`, then the first localization. There is no
+ * permission prompt. Present on the main global and in a dedicated worker.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -10394,10 +10281,8 @@ interface FontData {
   readonly style: string;
 
   /**
-   * The font file.
-   *
-   * Resolves to a {@link Blob} with an empty type. Rejects `NotReadableError`
-   * when the file cannot be read.
+   * The font file. Resolves to a {@link Blob} with an empty type. Rejects
+   * `NotReadableError` when the file cannot be read.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontData/blob)
    */
@@ -10408,11 +10293,7 @@ declare var FontData: {
   new(): FontData;
 };
 
-/**
- * Options for {@link queryLocalFonts}.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts) */
 interface QueryOptions {
   /**
    * Exact PostScript names to keep. An empty array matches nothing.
@@ -10423,13 +10304,9 @@ interface QueryOptions {
 }
 
 /**
- * The installed fonts this runtime can read, sorted by PostScript name.
- *
  * Present with the `canvas` feature, on the main global and in a dedicated
- * worker. An omitted options object, `undefined`, `null`, or an omitted
- * `postscriptNames` property returns every face that has a valid PostScript
- * name. An empty `postscriptNames` list resolves to an empty array. There is
- * no permission prompt.
+ * worker. An omitted `postscriptNames` returns every face with a valid
+ * PostScript name. There is no permission prompt.
  *
  * @throws {@link TypeError} When `options` is not an object, or when
  * `postscriptNames` is present and is not an array.
@@ -10443,12 +10320,13 @@ declare function queryLocalFonts(options?: QueryOptions): Promise<FontData[]>;
  */
 interface ImageEncodeOptions {
   /**
-   * `image/png`, `image/jpeg`, or `image/webp`.
-   *
-   * WebP is lossless, so `quality` does not change those bytes.
+   * `image/png`, `image/jpeg`, or `image/webp`. WebP is lossless, so `quality`
+   * does not change those bytes.
    */
   type?: string;
-  /** From 0 to 1. Used by JPEG. */
+  /**
+   * From 0 to 1. Used by JPEG.
+   */
   quality?: number;
 }
 
@@ -10457,20 +10335,21 @@ interface ImageEncodeOptions {
  */
 interface CanvasRenderingContext2DSettings {
   /**
-   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"`
-   * throw `TypeError`.
+   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"` throw
+   * `TypeError`.
    *
    * @defaultValue `"srgb"`
    * @throws {@link TypeError} When `colorSpace` is not `"srgb"` or `"display-p3"`.
    */
   colorSpace?: PredefinedColorSpace;
-  /** `"unorm8"` or `"float16"`. @defaultValue `"unorm8"` */
+  /**
+   * `"unorm8"` or `"float16"`. @defaultValue `"unorm8"`
+   */
   colorType?: "unorm8" | "float16";
   /**
-   * `"standard"` limits bitmap headroom to 0. `"extended"` does not.
-   * The mode is stored and returned. Presentation stays the unorm8 swapchain.
-   *
-   * An omitted dictionary or an omitted `mode` is `"standard"`.
+   * `"standard"` limits bitmap headroom to 0. `"extended"` does not. The mode is
+   * stored and returned. Presentation stays the unorm8 swapchain. An omitted
+   * dictionary or an omitted `mode` is `"standard"`.
    *
    * @defaultValue `{ mode: "standard" }`
    * @throws {@link TypeError} When `toneMapping` is not an object, or when `mode` is not `"standard"` or `"extended"`.
@@ -10484,11 +10363,15 @@ interface CanvasRenderingContext2DSettings {
 }
 
 /**
- * A canvas that is not on screen.
+ * When using the <canvas> element or the Canvas API, rendering, animation, and
+ * user interaction usually happen on the main execution thread of a web
+ * application. The computation relating to canvas animations and rendering can
+ * have a significant impact on application performance.
  *
- * `new OffscreenCanvas(w, h)` has no window. `width` and `height` are
- * `[EnforceRange] unsigned long long`: truncated toward zero. Assigning
- * either reallocates the buffer. A window bitmap is {@link Yuzuko.WindowSurface}.
+ * A canvas that is not on screen. `new OffscreenCanvas(w, h)` has no window.
+ * `width` and `height` are `[EnforceRange] unsigned long long`: truncated toward
+ * zero. Assigning either reallocates the buffer. A window bitmap is
+ * {@link Yuzuko.WindowSurface}.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas)
  */
@@ -10511,6 +10394,20 @@ interface OffscreenCanvas extends EventTarget {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/height)
    */
   height: number;
+
+  /**
+   * The context is not lost, so this event is not dispatched.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/contextlost_event)
+   */
+  oncontextlost: ((this: OffscreenCanvas, ev: Event) => any) | null;
+
+  /**
+   * The context is not restored, so this event is not dispatched.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OffscreenCanvas/contextrestored_event)
+   */
+  oncontextrestored: ((this: OffscreenCanvas, ev: Event) => any) | null;
 
   /**
    * `"webgl"` and `"webgl2"` return `null`.
@@ -10557,35 +10454,14 @@ declare var OffscreenCanvas: {
 
 
 /**
- * Level A Canvas 2D context.
+ * The **`OffscreenCanvasRenderingContext2D`** interface is a
+ * CanvasRenderingContext2D rendering context for drawing to the bitmap of an
+ * OffscreenCanvas object.
  *
- * The constructor name is `OffscreenCanvasRenderingContext2D`. The GPU
- * rasterizer is vello_gpu and the CPU rasterizer is vello_cpu. Path, text,
- * and gradient paints are sRGB unorm8. `display-p3`
- * and `float16` stores keep `putImageData` and a matching `drawImage`.
- * `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`.
- *
- * `shadowBlur`, `shadowColor`, `shadowOffsetX`, and `shadowOffsetY` are
- * stored with the canvas state. Invalid values are ignored. A shadow is
- * painted when the color alpha is nonzero and the blur or an offset is
- * nonzero. It is an offset Gaussian of the shape alpha, including parts
- * outside the canvas, drawn before the shape and inside the clip. Offsets
- * are canvas pixels and are not transformed.
- * `globalCompositeOperation` stores a recognized operator, including
- * `"clear"` and the blend modes, and painting uses it. Any other value is
- * ignored. `clearRect` and `putImageData` ignore the operator and the
- * shadow. A list that is not `source-over`, or that paints a shadow, is
- * rasterized on the CPU. `createConicGradient` paints one clockwise turn.
- * `filter` and a layer `filter` run on the shape's premultiplied sRGB
- * unorm8 ink before the composite operator. A `url()` reference clears
- * that ink. Lengths are canvas pixels and are not scaled by the current
- * transform. A filtered drawing is rasterized on the CPU.
- * HTML removed `CanvasFilter` in August 2022 for lack of
- * multi-implementer agreement. `filter` stays a CSS string. A filter
- * dictionary throws `TypeError` because that interface is not in the
- * specification.
- *
- * A window surface's context exposes that surface as `canvas`.
+ * The GPU rasterizer is vello_gpu and the CPU rasterizer is vello_cpu.
+ * `Yuzuko.canvasRenderer` is `"gpu"` or `"cpu"`. A shadow, a filter, or a
+ * composite operator other than `source-over` is rasterized on the CPU. A window
+ * surface's context exposes that surface as `canvas`.
  *
  * @throws {@link TypeError} Illegal constructor. Use `getContext("2d")`.
  *
@@ -10595,6 +10471,13 @@ interface OffscreenCanvasRenderingContext2D {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/canvas) */
   readonly canvas: OffscreenCanvas | Yuzuko.WindowSurface;
+
+  /**
+   * A context is not lost.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/isContextLost)
+   */
+  isContextLost(): boolean;
 
   /**
    * Returns `colorSpace`, `colorType`, and `toneMapping` from the context.
@@ -10621,15 +10504,9 @@ interface OffscreenCanvasRenderingContext2D {
   restore(): void;
 
   /**
-   * Opens a layer.
-   *
-   * `null`, `undefined`, and `""` omit the filter. Any other unparsable
-   * value, including a filter dictionary, throws `TypeError` and does not
-   * open a layer. The filter is applied to the layer bitmap when the layer
-   * ends. Entering a layer sets
-   * `globalAlpha` to `1`, `globalCompositeOperation` to `"source-over"`,
-   * the shadow attributes to their defaults, `filter` to `"none"`, and the
-   * clip list to empty.
+   * `null`, `undefined`, and `""` omit the filter. Any other unparsable value
+   * throws `TypeError` and does not open a layer. Entering a layer resets alpha,
+   * composite operation, shadow, filter, and the clip.
    *
    * @throws {@link TypeError} When `filter` does not parse.
    */
@@ -10672,39 +10549,18 @@ interface OffscreenCanvasRenderingContext2D {
   globalAlpha: number;
 
   /**
-   * A compositing or blend operator.
-   *
-   * A recognized value is stored and used, including `"clear"`. Any other
-   * value is ignored. `clearRect` and `putImageData` ignore it.
+   * A compositing or blend operator. A recognized value is stored and used,
+   * including `"clear"`. Any other value is ignored. `clearRect` and
+   * `putImageData` ignore it.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation)
    */
   globalCompositeOperation: GlobalCompositeOperation;
 
-  /**
-   * CSS colors, including `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
-   * `color-mix()`, relative color syntax (`rgb(from ...)`,
-   * `color(from ... <space> ...)`, and the same `from` form on `hsl()`,
-   * `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()`), and CSS system
-   * colors. A component may be a number, a percentage, an angle, `none`,
-   * `calc()`, or a channel keyword of the destination space. Those convert
-   * to sRGB. `color(display-p3 ...)` round-trips. System colors compute to
-   * fixed sRGB and serialize as that hex. Deprecated CSS2 names use the
-   * CSS Color 4 color of the same role, so `ThreeDDarkShadow` is `#767676`.
-   * A gradient or a pattern is stored as that object. Anything else is read
-   * with `ToString`. An unrecognized color is ignored. A `toString` that throws
-   * propagates. The getter returns the serialized color, the gradient, or
-   * the pattern.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillStyle) */
   fillStyle: string | CanvasGradient | CanvasPattern;
 
-  /**
-   * Same assignment rules as `fillStyle`.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeStyle)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeStyle) */
   strokeStyle: string | CanvasGradient | CanvasPattern;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createLinearGradient) */
@@ -10721,18 +10577,18 @@ interface OffscreenCanvasRenderingContext2D {
   ): CanvasGradient;
 
   /**
-   * Paints one clockwise turn. Offset 0 is `startAngle` radians from the positive x-axis.
-   * A non-finite argument throws `TypeError`.
+   * Paints one clockwise turn. Offset 0 is `startAngle` radians from the positive
+   * x-axis. A non-finite argument throws `TypeError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createConicGradient)
    */
   createConicGradient(startAngle: number, x: number, y: number): CanvasGradient;
 
   /**
-   * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
-   * `null` and `""` repeat on both axes. `undefined` and the string `"null"`
-   * throw `SyntaxError`. An {@link OffscreenCanvas} with an open layer throws
-   * `InvalidStateError`.
+   * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and
+   * {@link VideoFrame}. `null` and `""` repeat on both axes. `undefined` and the
+   * string `"null"` throw `SyntaxError`. An {@link OffscreenCanvas} with an open
+   * layer throws `InvalidStateError`.
    *
    * @throws {@link DOMException} `SyntaxError` when `repetition` is not a repeat mode.
    * @throws {@link DOMException} `InvalidStateError` when the source canvas has an open layer.
@@ -10850,8 +10706,9 @@ interface OffscreenCanvasRenderingContext2D {
   isPointInStroke(path: Path2D, x: number, y: number): boolean;
 
   /**
-   * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and {@link VideoFrame}.
-   * An {@link OffscreenCanvas} with an open layer throws `InvalidStateError`.
+   * Sources are {@link ImageBitmap}, {@link OffscreenCanvas}, and
+   * {@link VideoFrame}. An {@link OffscreenCanvas} with an open layer throws
+   * `InvalidStateError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the source canvas has an open layer.
    *
@@ -10885,11 +10742,8 @@ interface OffscreenCanvasRenderingContext2D {
   imageSmoothingEnabled: boolean;
 
   /**
-   * `"low"` is bilinear. `"medium"` is bicubic. `"high"` prefilters a
-   * scaled `drawImage` with Lanczos-3, then samples bilinearly. An
-   * axis-aligned draw within 2% of 1:1 stays bilinear for every quality.
-   * A pattern uses bicubic for both `"medium"` and `"high"`. The value
-   * round-trips. An unrecognized value is ignored.
+   * `"low"` is bilinear, `"medium"` is bicubic, and `"high"` prefilters with
+   * Lanczos-3. An unrecognized value is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/imageSmoothingQuality)
    */
@@ -10897,8 +10751,8 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * `createImageData(sw, sh)` defaults to `"srgb"` and `"rgba-unorm8"`.
-   * `createImageData(imageData)` copies that object's color space and
-   * pixel format.
+   * `createImageData(imageData)` copies that object's color space and pixel
+   * format.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/createImageData)
    */
@@ -10907,8 +10761,8 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * Omitted `colorSpace` is `"srgb"`. Omitted `pixelFormat` is `"rgba-unorm8"`.
-   * May stall on a GPU readback. An open layer throws `InvalidStateError`.
-   * A rectangle that exceeds the bitmap limit throws `TypeError`.
+   * May stall on a GPU readback. An open layer throws `InvalidStateError`. A
+   * rectangle that exceeds the bitmap limit throws `TypeError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when a layer is open.
    * @throws {@link TypeError} When the rectangle exceeds the bitmap limit.
@@ -10924,8 +10778,8 @@ interface OffscreenCanvasRenderingContext2D {
   ): ImageData;
 
   /**
-   * A buffer of the other typed-array kind throws `InvalidStateError`.
-   * An open layer throws `InvalidStateError`.
+   * A buffer of the other typed-array kind throws `InvalidStateError`. An open
+   * layer throws `InvalidStateError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when `imageData.data` does
    * not match `pixelFormat`, or when a layer is open.
@@ -10944,20 +10798,9 @@ interface OffscreenCanvasRenderingContext2D {
   ): void;
 
   /**
-   * A CSS font shorthand.
-   *
-   * The shorthand accepts `italic` or `oblique`, `small-caps`, a weight, a
-   * `px` or `pt` size, an optional line height, and a family list. The getter
-   * omits a weight of 400, a normal style, and the line height. `small-caps`
-   * round-trips and selects the `smcp` feature when that feature changes the
-   * glyphs. Otherwise lowercase letters are shaped at 0.7 of the font size.
-   * `cursive` and `fantasy` stay in the list.
-   *
-   * A list uses the first loaded family from this realm's `FontFaceSet`, or
-   * else the first of `sans-serif`, `serif`, and `monospace`. A size that
-   * names only an unregistered family, or only `cursive` or `fantasy`, is
-   * stored. Shaping uses `sans-serif` for that family. A value that does
-   * not parse is ignored.
+   * The shorthand accepts style, `small-caps`, weight, a `px` or `pt` size, an
+   * optional line height, and a family list. An unregistered family is stored and
+   * shaped as `sans-serif`. A value that does not parse is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/font)
    */
@@ -10970,63 +10813,53 @@ interface OffscreenCanvasRenderingContext2D {
   textBaseline: CanvasTextBaseline;
 
   /**
-   * A BCP 47 tag, `""`, or `"inherit"`.
-   *
-   * The default is `"inherit"`. There is no document, so `"inherit"` and `""`
-   * shape with an unknown language. A tag it cannot parse is stored and
-   * shaped as unknown. A parsed tag keeps its language, script, and region.
+   * A BCP 47 tag, `""`, or `"inherit"`. The default is `"inherit"`. There is no
+   * document, so `"inherit"` and `""` shape with an unknown language. A tag it
+   * cannot parse is stored and shaped as unknown. A parsed tag keeps its language,
+   * script, and region.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/lang)
    */
   lang: string;
 
   /**
-   * `"ltr"`, `"rtl"`, or `"inherit"`.
-   *
-   * The default is `"inherit"`. An unrecognized value is ignored. There is
-   * no document, so `"inherit"` is shaped left to right.
+   * `"ltr"`, `"rtl"`, or `"inherit"`. The default is `"inherit"`. An unrecognized
+   * value is ignored. There is no document, so `"inherit"` is shaped left to
+   * right.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/direction)
    */
   direction: CanvasDirection;
 
   /**
-   * A CSS length. The default is `"0px"`.
-   *
-   * A length keeps its numeric spelling and a lowercased unit of `px`, `em`,
-   * `ex`, `ch`, `ic`, `in`, `cm`, or `mm`. Any other value is ignored. `1em`
-   * and `1ic` are the current font size. `1ex` and `1ch` are half of that
-   * size. The extra advance is added after every character, including a
-   * trailing gap. Assigning `font` does not reset this value.
+   * A CSS length. The default is `"0px"`. The extra advance is added after every
+   * character, including a trailing gap.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/letterSpacing)
    */
   letterSpacing: string;
 
   /**
-   * A CSS length. The default is `"0px"`.
-   *
-   * Parsing matches `letterSpacing`. The extra advance is added after each
-   * U+0020. Assigning `font` does not reset this value.
+   * A CSS length. The default is `"0px"`. Parsing matches `letterSpacing`. The
+   * extra advance is added after each U+0020. Assigning `font` does not reset this
+   * value.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/wordSpacing)
    */
   wordSpacing: string;
 
   /**
-   * `"auto"`, `"normal"`, or `"none"`. The default is `"auto"`.
-   *
-   * The comparison is case-sensitive. `"none"` disables the kern feature.
-   * `"auto"` and `"normal"` leave it on.
+   * `"auto"`, `"normal"`, or `"none"`. The default is `"auto"`. The comparison is
+   * case-sensitive. `"none"` disables the kern feature. `"auto"` and `"normal"`
+   * leave it on.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontKerning)
    */
   fontKerning: CanvasFontKerning;
 
   /**
-   * One of the nine CSS `font-stretch` keywords. The default is `"normal"`.
-   *
-   * The comparison is case-sensitive. An unrecognized value is ignored.
+   * One of the nine CSS `font-stretch` keywords. The default is `"normal"`. The
+   * comparison is case-sensitive. An unrecognized value is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontStretch)
    */
@@ -11035,10 +10868,8 @@ interface OffscreenCanvasRenderingContext2D {
   /**
    * `"normal"`, `"small-caps"`, `"all-small-caps"`, `"petite-caps"`,
    * `"all-petite-caps"`, `"unicase"`, or `"titling-caps"`. The default is
-   * `"normal"`.
-   *
-   * The comparison is case-sensitive. The keywords select `smcp`, `c2sc`,
-   * `pcap`, `c2pc`, `unic`, and `titl`.
+   * `"normal"`. The comparison is case-sensitive. The keywords select `smcp`,
+   * `c2sc`, `pcap`, `c2pc`, `unic`, and `titl`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontVariantCaps)
    */
@@ -11046,10 +10877,9 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * `"auto"`, `"optimizeSpeed"`, `"optimizeLegibility"`, or
-   * `"geometricPrecision"`. The default is `"auto"`.
-   *
-   * The comparison is case-sensitive. The value is stored and does not change
-   * the paint. Assigning `font` does not reset it.
+   * `"geometricPrecision"`. The default is `"auto"`. The comparison is
+   * case-sensitive. The value is stored and does not change the paint. Assigning
+   * `font` does not reset it.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/textRendering)
    */
@@ -11065,28 +10895,16 @@ interface OffscreenCanvasRenderingContext2D {
   measureText(text: string): TextMetrics;
 
   /**
-   * A CSS filter string. The default is `"none"`.
-   *
-   * A value that parses is stored. The getter returns that string. `""`,
-   * `inherit`, `initial`, `unset`, `revert`, `revert-layer`, `null`, and
-   * `undefined` do not parse, so the current filter stays. A length does
-   * not accept `calc()`. A `drop-shadow()` color accepts `hwb()`, `lab()`,
-   * `lch()`, `oklab()`, `oklch()`, `color-mix()`, relative colors, and
-   * `calc()` in a component.
-   * A stored filter is applied when the drawing is composited. The functions
-   * are `blur`, `brightness`, `contrast`, `drop-shadow`, `grayscale`,
-   * `hue-rotate`, `invert`, `opacity`, `saturate`, `sepia`, and `url()`.
-   * They run left to right. A `url()` reference clears the ink. Lengths are
-   * canvas pixels and are not scaled by the current transform. When a filter
-   * is set, the shadow is included in that bitmap.
+   * A CSS filter list. A `url()` reference clears the ink. Lengths are canvas
+   * pixels and are not scaled by the current transform.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/filter)
    */
   filter: string;
 
   /**
-   * A non-negative finite value is stored. Any other value is ignored.
-   * The blur is a Gaussian with σ capped at 128.
+   * A non-negative finite value is stored. Any other value is ignored. The blur is
+   * a Gaussian with σ capped at 128.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowBlur)
    */
@@ -11101,16 +10919,16 @@ interface OffscreenCanvasRenderingContext2D {
   shadowColor: string;
 
   /**
-   * A finite value is stored, including a negative offset. A non-finite
-   * value is ignored. The offset is in canvas pixels and is not transformed.
+   * A finite value is stored, including a negative offset. A non-finite value is
+   * ignored. The offset is in canvas pixels and is not transformed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetX)
    */
   shadowOffsetX: number;
 
   /**
-   * A finite value is stored, including a negative offset. A non-finite
-   * value is ignored. The offset is in canvas pixels and is not transformed.
+   * A finite value is stored, including a negative offset. A non-finite value is
+   * ignored. The offset is in canvas pixels and is not transformed.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowOffsetY)
    */
@@ -11123,16 +10941,13 @@ declare var OffscreenCanvasRenderingContext2D: {
 
 
 /**
- * Measured text.
+ * The **`TextMetrics`** interface represents the dimensions of a piece of text
+ * in the canvas; a TextMetrics instance can be retrieved using the
+ * CanvasRenderingContext2D.measureText() method.
  *
- * `actualBoundingBox*` is the glyph-outline ink relative to `textAlign`
- * and `textBaseline`. An empty outline, including a space, reports zeros.
- * The font box uses the typographic ascent and descent. The em box scales
- * that pair so the ascent and descent sum to the font size. A positive
- * baseline distance means `textBaseline` is below that named baseline.
- * `hangingBaseline` and `ideographicBaseline` come from the font BASE table
- * when it places `hang` and `ideo`. U+0009, U+000A, U+000C, and U+000D
- * become U+0020 and are not collapsed. U+0000 is dropped before shaping.
+ * `actualBoundingBox*` is the glyph-outline ink. An empty outline reports zeros.
+ * U+0009, U+000A, U+000C, and U+000D become U+0020. U+0000 is dropped before
+ * shaping.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -11182,12 +10997,16 @@ declare var TextMetrics: {
 };
 
 /**
- * A canvas gradient.
+ * The **`CanvasGradient`** interface represents an opaque object describing a
+ * gradient. It is returned by the methods
+ * CanvasRenderingContext2D.createLinearGradient(),
+ * CanvasRenderingContext2D.createConicGradient() or
+ * CanvasRenderingContext2D.createRadialGradient().
  *
- * Stops accept CSS colors, `color(srgb ...)`, `color(display-p3 ...)`,
- * `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color-mix()`, and
- * relative colors. Colors other than `color(display-p3 ...)` serialize as
- * `color(srgb ...)`.
+ * A canvas gradient. Stops accept CSS colors, `color(srgb ...)`,
+ * `color(display-p3 ...)`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
+ * `color-mix()`, and relative colors. Colors other than `color(display-p3 ...)`
+ * serialize as `color(srgb ...)`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -11214,9 +11033,8 @@ declare var CanvasGradient: {
 
 
 /**
- * A canvas pattern.
- *
- * Repeat modes are `repeat`, `repeat-x`, `repeat-y`, and `no-repeat`.
+ * A canvas pattern. Repeat modes are `repeat`, `repeat-x`, `repeat-y`, and
+ * `no-repeat`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -11226,8 +11044,8 @@ interface CanvasPattern {
 
   /**
    * Throws `TypeError` when a component and its alias disagree. `null` and
-   * `undefined` are the identity and do not throw. The pattern is painted
-   * with the identity transform.
+   * `undefined` are the identity and do not throw. The pattern is painted with the
+   * identity transform.
    *
    * @throws {@link TypeError} when `a` and `m11`, or another alias pair, disagree.
    *
@@ -11311,10 +11129,9 @@ declare var Path2D: {
 
 
 /**
- * Bitmap renderer context.
- *
- * The constructor is installed as `ImageBitmapRenderingContext`. `getContext("bitmaprenderer")`
- * returns this object.
+ * Bitmap renderer context. The constructor is installed as
+ * `ImageBitmapRenderingContext`. `getContext("bitmaprenderer")` returns this
+ * object.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageBitmapRenderingContext)
  */
@@ -11345,8 +11162,8 @@ interface ImageBitmapRenderingContextSettings {
  */
 interface ImageDataSettings {
   /**
-   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"`
-   * throw `TypeError`.
+   * `"srgb"` or `"display-p3"`. `"srgb-linear"` and `"display-p3-linear"` throw
+   * `TypeError`.
    *
    * @throws {@link TypeError} When the value is not `"srgb"` or `"display-p3"`.
    */
@@ -11355,14 +11172,11 @@ interface ImageDataSettings {
 }
 
 /**
- * Pixel data.
+ * The **`ImageData`** interface represents the underlying pixel data of an area
+ * of a <canvas> element.
  *
- * `rgba-unorm8` is stored in a `Uint8ClampedArray`. `rgba-float16` is stored
- * in a `Float16Array`. Alpha is unpremultiplied. Float16 components are the
- * encoded values of the stored color space and are not clamped to 0..1.
- * `structuredClone` copies the pixels, color space, and pixel format into a
- * new typed array. `ImageData` is not transferable. Transferring `data`'s
- * buffer detaches that buffer, and the clone keeps the pixels.
+ * `rgba-unorm8` is a `Uint8ClampedArray` and `rgba-float16` is a `Float16Array`.
+ * `ImageData` is not transferable.
  *
  * @throws {@link DOMException} `InvalidStateError` when the typed array does
  * not match `pixelFormat`.
@@ -11396,13 +11210,16 @@ declare var ImageData: {
 
 
 /**
- * A decoded bitmap.
+ * The **`ImageBitmap`** interface represents a bitmap image which can be drawn
+ * to a <canvas> without undue latency. It can be created from a variety of
+ * source objects using the Window.createImageBitmap() or
+ * WorkerGlobalScope.createImageBitmap() factory method. ImageBitmap provides an
+ * asynchronous and resource efficient pathway to prepare textures for rendering
+ * in WebGL.
  *
- * Color space and sample format are not exposed. Animated images contribute
- * the first frame. The longer edge is at most 16384 pixels and the bitmap is
- * at most 100 million pixels. `structuredClone` copies the bitmap and leaves
- * this one open. Listing it in a transfer list detaches it: `width` and
- * `height` become 0. `close()` does the same.
+ * Animated images contribute the first frame. The longer edge is at most 16384
+ * pixels and the bitmap is at most 100 million pixels. Listing it in a transfer
+ * list detaches it.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link createImageBitmap}.
  * @throws {@link DOMException} `DataCloneError` when a detached bitmap is cloned.
@@ -11439,19 +11256,9 @@ interface ImageBitmapOptions {
 }
 
 /**
- * Decodes or copies `image`.
- *
- * A `Blob` is identified by its signature: JPEG, PNG, WebP, JPEG XL, or AVIF.
- * An AVIF blob is one still frame at profiles 0–2 and 8, 10, or 12 bits.
- * The bitmap stores the unorm8 sRGB display image. `drawImage`,
- * `createPattern`, and `copyExternalImageToTexture` sample that image.
- * `colorSpaceConversion: "none"` keeps an sRGB or Display P3 source.
- * `"default"` stores sRGB. Any other source profile is converted to sRGB.
- * `resizeQuality` `"pixelated"` and `"low"` are nearest-neighbor. `"medium"`
- * and `"high"` use a triangle filter. `premultiplyAlpha: "default"` leaves
- * samples unpremultiplied. Decoding does not block the event loop. A decoder
- * panic rejects `InvalidStateError`. An {@link OffscreenCanvas} with an
- * open layer rejects `InvalidStateError`.
+ * A `Blob` is identified by its signature: JPEG, PNG, WebP, JPEG XL, or AVIF. An
+ * AVIF blob is one still frame at profiles 0–2 and 8, 10, or 12 bits. A decoder
+ * panic rejects `InvalidStateError`.
  *
  * @throws {@link DOMException} `InvalidStateError` when the input cannot be
  * decoded, a size limit is exceeded, or the source canvas has an open layer.
@@ -11472,37 +11279,14 @@ declare function createImageBitmap(
 ): Promise<ImageBitmap>;
 
 /**
- * WebGPU entry point.
+ * The **`GPU`** interface of the WebGPU API is the starting point for using
+ * WebGPU. It can be used to return a GPUAdapter from which you can request
+ * devices, configure features and limits, and more. Available only in secure
+ * contexts.
  *
- * One process device is shared with Canvas 2D. It enables `timestamp-query`,
- * `depth-clip-control`, and `depth32float-stencil8` when the adapter
- * supports them, and wgpu external textures when the adapter supports that
- * feature. `YUZUKO_SKIP_GPU=1` makes {@link GPU.requestAdapter} resolve
- * `null`. `wgslLanguageFeatures` contains
- * `readonly_and_readwrite_storage_textures`,
- * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
- *
- * Blend state and alpha to coverage are applied. `unclippedDepth: true`
- * throws `NotSupportedError` without `depth-clip-control`.
- * `depth32float-stencil8` throws `NotSupportedError` without that feature.
- * `externalTexture` and `importExternalTexture` throw `NotSupportedError`
- * without wgpu external textures. A `src1` blend factor throws
- * `NotSupportedError` without `dual-source-blending`. Multisample `count`
- * is 1 or 4, and a color attachment may set `resolveTarget`. Storage texture
- * `access` may be `"read-only"`, `"read-write"`, or `"atomic"`. An access
- * the format does not allow is a validation error. `setViewport` and
- * `setScissorRect` are on the render pass. `pushDebugGroup`,
- * `popDebugGroup`, and `insertDebugMarker` are on the command encoder, the
- * render pass, and the compute pass. An empty pop is reported when
- * `finish()` encodes the command buffer. A render bundle encoder does not
- * expose debug markers, viewport, or scissor. `writeTimestamp` is on the
- * command encoder, the render pass, and the compute pass. Without
- * `timestamp-query`, or without the adapter's inside-encoder or inside-pass
- * capability, it throws `NotSupportedError`. `wgslLanguageFeatures` contains
- * `readonly_and_readwrite_storage_textures`,
- * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
- * `GPUQuerySet.destroy` makes a later `resolveQuerySet` or `writeTimestamp`
- * a validation error.
+ * One process device is shared with Canvas 2D. `requestAdapter` resolves `null`
+ * when `YUZUKO_SKIP_GPU=1`. `timestamp-query`, `depth-clip-control`, and
+ * `depth32float-stencil8` are enabled when the adapter supports them.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.gpu}.
  *
@@ -11523,8 +11307,8 @@ interface GPU {
   getPreferredCanvasFormat(): GPUTextureFormat;
 
   /**
-   * `readonly_and_readwrite_storage_textures`,
-   * `packed_4x8_integer_dot_product`, and `pointer_composite_access`.
+   * `readonly_and_readwrite_storage_textures`, `packed_4x8_integer_dot_product`,
+   * and `pointer_composite_access`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPU/wgslLanguageFeatures)
    */
@@ -11542,6 +11326,30 @@ interface GPURequestAdapterOptions {
   forceFallbackAdapter?: boolean;
 }
 
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo) */
+interface GPUAdapterInfo {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/architecture) */
+  readonly architecture: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/description) */
+  readonly description: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/device) */
+  readonly device: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/isFallbackAdapter) */
+  readonly isFallbackAdapter: boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/subgroupMaxSize) */
+  readonly subgroupMaxSize: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/subgroupMinSize) */
+  readonly subgroupMinSize: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo/vendor) */
+  readonly vendor: string;
+}
+
 /**
  * The shared adapter.
  *
@@ -11556,9 +11364,9 @@ interface GPUAdapter {
 
   /**
    * The shared device's wgpu defaults, or the adapter's own limits when a
-   * downlevel adapter cannot meet those defaults.
-   *
-   * `maxBindGroupsPlusVertexBuffers` can be below the WebGPU minimum.
+   * downlevel adapter cannot meet those defaults. `maxBindGroupsPlusVertexBuffers`
+   * can be below the WebGPU minimum. Vertex and fragment storage limits equal
+   * the per-shader-stage limits.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/limits)
    */
@@ -11568,12 +11376,22 @@ interface GPUAdapter {
   readonly isFallbackAdapter: boolean;
 
   /**
-   * Requests a JavaScript device on the shared wgpu device.
+   * `vendor` and `device` are lowercase hexadecimal ids, or `""` when the id
+   * is 0. `architecture` is `""`. `description` is the adapter name.
+   * `isFallbackAdapter` is false.
    *
-   * A feature the shared device does not have rejects. `timestamp-query`,
-   * `depth-clip-control`, and `depth32float-stencil8` are already enabled
-   * when the adapter supports them. `requiredLimits` the shared device
-   * cannot satisfy also reject. `destroy` loses that JavaScript device only.
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/info)
+   */
+  readonly info: GPUAdapterInfo;
+
+  /**
+   * The **`requestDevice()`** method of the GPUAdapter interface returns a Promise
+   * that fulfills with a GPUDevice object, which is the primary interface for
+   * communicating with the GPU.
+   *
+   * Returns a JavaScript device on the shared wgpu device. A feature or limit the
+   * shared device does not have rejects. `destroy` loses that JavaScript device
+   * only.
    *
    * @throws {@link TypeError} When a required feature is not enabled on the
    * shared device, the feature name is invalid, or a required limit is
@@ -11597,13 +11415,13 @@ interface GPUDeviceDescriptor {
 }
 
 /**
- * A JavaScript WebGPU device.
+ * The **`GPUDevice`** interface of the WebGPU API represents a logical GPU
+ * device. This is the main interface through which the majority of WebGPU
+ * functionality is accessed. Available only in secure contexts.
  *
- * `lost` resolves from `destroy`, not from garbage collection. An error that
- * no error scope captures is dispatched as a trusted `uncapturederror` on
- * every live device, because those devices share one wgpu device.
- * `onuncapturederror` is that handler. An out-of-range copy can dispatch one
- * event from the command encoder and another from `queue.submit`.
+ * `lost` resolves from `destroy`, not from garbage collection. An error outside
+ * an error scope is dispatched on every live device, because those devices share
+ * one wgpu device.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -11626,6 +11444,15 @@ interface GPUDevice extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/limits) */
   readonly limits: GPUSupportedLimits;
+
+  /**
+   * `vendor` and `device` are lowercase hexadecimal ids, or `""` when the id
+   * is 0. `architecture` is `""`. `description` is the adapter name.
+   * `isFallbackAdapter` is false.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/adapterInfo)
+   */
+  readonly adapterInfo: GPUAdapterInfo;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/queue) */
   readonly queue: GPUQueue;
@@ -11652,8 +11479,9 @@ interface GPUDevice extends EventTarget {
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
 
   /**
-   * `sampleCount` is 1 or 4. `depth32float-stencil8` throws
-   * `NotSupportedError` when that feature is not enabled.
+   * `sampleCount` is 1 or 4. The texture is 2D, with one mip level and one
+   * array layer. `depth32float-stencil8` throws `NotSupportedError` when that
+   * feature is not enabled.
    *
    * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
    * @throws {@link DOMException} `NotSupportedError` when the format needs a
@@ -11663,17 +11491,25 @@ interface GPUDevice extends EventTarget {
    */
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createSampler) */
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `compare` is set.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createSampler)
+   */
   createSampler(descriptor?: GPUSamplerDescriptor): GPUSampler;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createShaderModule) */
   createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
 
   /**
-   * Storage texture `access` is `"write-only"`, `"read-only"`, `"read-write"`,
-   * or `"atomic"`. An access the format does not allow is a validation error.
-   * `externalTexture` is a layout entry when the process device supports wgpu
-   * external textures.
+   * The **`createBindGroupLayout()`** method of the GPUDevice interface creates a
+   * GPUBindGroupLayout that defines the structure and purpose of related GPU
+   * resources such as buffers that will be used in a pipeline, and is used as a
+   * template when creating GPUBindGroups.
+   *
+   * Storage texture `access` may be `"write-only"`, `"read-only"`, `"read-write"`,
+   * or `"atomic"`. `externalTexture` requires wgpu external textures on the
+   * process device.
    *
    * @throws {@link DOMException} `NotSupportedError` when `externalTexture` is
    * set and the process device has no wgpu external textures.
@@ -11689,11 +11525,11 @@ interface GPUDevice extends EventTarget {
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
 
   /**
-   * Blend state and `alphaToCoverageEnabled` are applied. `unclippedDepth:
-   * true` throws `NotSupportedError` without `depth-clip-control`.
-   * `depth32float-stencil8` throws `NotSupportedError` without that feature.
-   * A `src1` blend factor throws `NotSupportedError` without
-   * `dual-source-blending`. Multisample `count` is 1 or 4.
+   * The **`createRenderPipeline()`** method of the GPUDevice interface creates a
+   * GPURenderPipeline that can control the vertex and fragment shader stages and
+   * be used in a GPURenderPassEncoder or GPURenderBundleEncoder.
+   *
+   * Blend state and alpha to coverage are applied. Multisample `count` is 1 or 4.
    *
    * @throws {@link DOMException} `NotSupportedError` for `unclippedDepth`
    * without `depth-clip-control`, for `depth32float-stencil8` without that
@@ -11703,6 +11539,13 @@ interface GPUDevice extends EventTarget {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipeline)
    */
   createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipelineAsync)
+   */
+  createRenderPipelineAsync(descriptor: GPURenderPipelineDescriptor): Promise<GPURenderPipeline>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createCommandEncoder) */
   createCommandEncoder(descriptor?: GPUCommandEncoderDescriptor): GPUCommandEncoder;
@@ -11723,16 +11566,16 @@ interface GPUDevice extends EventTarget {
   createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline;
 
   /**
-   * The promise is already settled. Compilation runs on the calling thread.
-   * A pipeline error rejects `OperationError`.
+   * The promise is already settled. Compilation runs on the calling thread. A
+   * pipeline error rejects `OperationError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipelineAsync)
    */
   createComputePipelineAsync(descriptor: GPUComputePipelineDescriptor): Promise<GPUComputePipeline>;
 
   /**
-   * A `"timestamp"` query set throws `NotSupportedError` when `timestamp-query`
-   * is not enabled.
+   * A `"timestamp"` query set throws `NotSupportedError` when `timestamp-query` is
+   * not enabled.
    *
    * @throws {@link DOMException} `NotSupportedError` when `timestamp-query` is
    * not enabled.
@@ -11742,12 +11585,13 @@ interface GPUDevice extends EventTarget {
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
 
   /**
-   * Copies a `VideoFrame` into an RGBA external texture.
+   * The **`importExternalTexture()`** method of the GPUDevice interface takes an
+   * HTMLVideoElement or a VideoFrame object as an input and returns a
+   * GPUExternalTexture wrapper object containing a snapshot of the video that can
+   * be used as a frame in GPU rendering operations.
    *
-   * A fragment shader samples it with `textureSampleBaseClampToEdge`.
-   * `colorSpace` is `"srgb"` or `"display-p3"`. A closed frame throws
-   * `InvalidStateError`. There is no `HTMLVideoElement`. Without wgpu
-   * external-texture support this throws `NotSupportedError`.
+   * Copies a `VideoFrame` into an RGBA texture. There is no `HTMLVideoElement`.
+   * Without wgpu external textures this throws `NotSupportedError`.
    *
    * @throws {@link DOMException} `NotSupportedError` when the process device
    * has no wgpu external textures.
@@ -11820,7 +11664,7 @@ interface GPUQuerySetDescriptor {
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUValidationError)
  */
-interface GPUValidationError {
+interface GPUValidationError extends GPUError {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUValidationError/message) */
   readonly message: string;
@@ -11834,7 +11678,7 @@ declare var GPUValidationError: {
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUOutOfMemoryError)
  */
-interface GPUOutOfMemoryError {
+interface GPUOutOfMemoryError extends GPUError {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUOutOfMemoryError/message) */
   readonly message: string;
@@ -11848,7 +11692,7 @@ declare var GPUOutOfMemoryError: {
 /**
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUInternalError)
  */
-interface GPUInternalError {
+interface GPUInternalError extends GPUError {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUInternalError/message) */
   readonly message: string;
@@ -11882,16 +11726,12 @@ interface GPUUncapturedErrorEventInit extends EventInit {
   error: GPUError;
 }
 
-type GPUError = GPUValidationError | GPUOutOfMemoryError | GPUInternalError;
-
-
 /**
- * The device queue.
+ * The **`GPUQueue`** interface of the WebGPU API controls execution of encoded
+ * commands on the GPU. Available only in secure contexts.
  *
- * `getMappedRange` copies the mapped bytes. `unmap` detaches that
- * `ArrayBuffer`. A write-only mapping is written back. A mapping that sets
- * both read and write is written back with `writeBuffer`, so the buffer
- * also needs `COPY_DST`. `destroy` detaches without writing back.
+ * A mapping that sets both read and write is written back on `unmap`, so the
+ * buffer also needs `COPY_DST`. `destroy` detaches without writing back.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue)
  */
@@ -11903,20 +11743,42 @@ interface GPUQueue {
   writeBuffer(
     buffer: GPUBuffer,
     bufferOffset: number,
-    data: BufferSource,
+    data: AllowSharedBufferSource,
     dataOffset?: number,
     size?: number,
   ): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/onSubmittedWorkDone)
+   */
+  onSubmittedWorkDone(): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/submit) */
   submit(commandBuffers: Iterable<GPUCommandBuffer>): void;
 
   /**
-   * Copies an {@link ImageBitmap}, {@link OffscreenCanvas}, or {@link VideoFrame}.
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
    *
-   * Matching unorm8 bytes upload directly. A float16 source, a color-space
-   * change, a sub-rectangle, or a `bgra8unorm` destination is converted on
-   * the CPU. `colorSpace` is `"srgb"` or `"display-p3"`.
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/writeTexture)
+   */
+  writeTexture(
+    destination: GPUTexelCopyTextureInfo,
+    data: AllowSharedBufferSource,
+    dataLayout: GPUTexelCopyBufferLayout,
+    size: GPUExtent3D,
+  ): void;
+
+  /**
+   * The **`copyExternalImageToTexture()`** method of the GPUQueue interface copies
+   * a snapshot taken from a source image, video, or canvas into a given
+   * GPUTexture.
+   *
+   * Copies an {@link ImageBitmap}, {@link OffscreenCanvas}, or {@link VideoFrame}.
+   * Matching unorm8 bytes upload directly. A float16 source, a color-space change,
+   * a sub-rectangle, or a `bgra8unorm` destination is converted on the CPU.
+   * `colorSpace` is `"srgb"` or `"display-p3"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/copyExternalImageToTexture)
    */
@@ -11957,19 +11819,37 @@ interface GPUBuffer {
   label: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/size) */
   readonly size: number;
+
   /**
-   * Detaches mapped `ArrayBuffer`s and drops the mapping without writing
-   * the bytes back.
+   * `"mapped"` while a mapping is held, and `"unmapped"` otherwise.
+   * `mapAsync` finishes on the calling stack, so `"pending"` is not observed.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/mapState)
+   */
+  readonly mapState: GPUBufferMapState;
+
+  /**
+   * The usage bits from `createBuffer`. They stay after `destroy`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/usage)
+   */
+  readonly usage: number;
+
+  /**
+   * Detaches mapped `ArrayBuffer` s and drops the mapping without writing the
+   * bytes back.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/destroy)
    */
   destroy(): void;
   /**
-   * `offset` is a multiple of 8. `size` is a non-zero multiple of 4. An
-   * omitted size is the rest of the buffer. `READ` requires `MAP_READ` and
-   * `WRITE` requires `MAP_WRITE`. A mode with neither bit, or with any other
-   * bit, rejects `TypeError`. Alignment, range, and usage failures reject
-   * `OperationError`.
+   * The **`mapAsync()`** method of the GPUBuffer interface maps the specified
+   * range of the GPUBuffer. It returns a Promise that resolves when the
+   * GPUBuffer's content is ready to be accessed. While the GPUBuffer is mapped it
+   * cannot be used in any GPU commands.
+   *
+   * `offset` is a multiple of 8 and `size` is a non-zero multiple of 4. A mode
+   * other than `READ` or `WRITE` rejects `TypeError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the buffer is
    * already mapped or destroyed. `OperationError` when the range or the
@@ -11980,9 +11860,8 @@ interface GPUBuffer {
    */
   mapAsync(mode: GPUMapModeFlags, offset?: number, size?: number): Promise<void>;
   /**
-   * Copies bytes from the mapping. `offset` is measured from the start of
-   * the mapping. `unmap` and `destroy` detach the returned `ArrayBuffer`.
-   * Overlapping ranges throw `OperationError`.
+   * Copies bytes from the mapping. `unmap` and `destroy` detach the returned
+   * `ArrayBuffer`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the buffer is not
    * mapped. `OperationError` when the range is outside the mapping, is not
@@ -11992,9 +11871,9 @@ interface GPUBuffer {
    */
   getMappedRange(offset?: number, size?: number): ArrayBuffer;
   /**
-   * Writes a `WRITE` mapping back, then detaches every `ArrayBuffer` from
-   * the mapping. A mapping that includes both `READ` and `WRITE` is written
-   * back with {@link GPUQueue.writeBuffer} and needs `COPY_DST`.
+   * Writes a `WRITE` mapping back, then detaches every `ArrayBuffer` from the
+   * mapping. A mapping that includes both `READ` and `WRITE` is written back with
+   * {@link GPUQueue.writeBuffer} and needs `COPY_DST`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/unmap)
    */
@@ -12025,7 +11904,53 @@ interface GPUTexture {
   readonly width: number;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/height) */
   readonly height: number;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/createView) */
+
+  /**
+   * `createTexture` creates one array layer.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/depthOrArrayLayers)
+   */
+  readonly depthOrArrayLayers: number;
+
+  /**
+   * `createTexture` creates a 2D texture.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/dimension)
+   */
+  readonly dimension: GPUTextureDimension;
+
+  /**
+   * `createTexture` creates one mip level.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/mipLevelCount)
+   */
+  readonly mipLevelCount: number;
+
+  /**
+   * The `sampleCount` from `createTexture`, or 1 for a canvas texture.
+   * It stays after `destroy`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/sampleCount)
+   */
+  readonly sampleCount: number;
+
+  /**
+   * The usage bits from `createTexture`. A canvas texture also includes
+   * `TEXTURE_BINDING`, `COPY_SRC`, and `RENDER_ATTACHMENT`. The bits stay
+   * after `destroy`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/usage)
+   */
+  readonly usage: number;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` when `usage` is set, or
+   * when `swizzle` is not `"rgba"`.
+   * @throws {@link DOMException} `InvalidStateError` when the texture is
+   * destroyed.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/createView)
+   */
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTexture/destroy) */
   destroy(): void;
@@ -12066,6 +11991,8 @@ interface GPUTextureViewDescriptor {
   mipLevelCount?: number;
   baseArrayLayer?: number;
   arrayLayerCount?: number;
+  swizzle?: string;
+  usage?: GPUTextureUsageFlags;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUSampler) */
@@ -12088,10 +12015,18 @@ interface GPUSamplerDescriptor {
   lodMinClamp?: number;
   lodMaxClamp?: number;
   maxAnisotropy?: number;
+  compare?: GPUCompareFunction;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule) */
-interface GPUShaderModule extends GPUObjectBase {}
+interface GPUShaderModule extends GPUObjectBase {
+  /**
+   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule/getCompilationInfo)
+   */
+  getCompilationInfo(): Promise<GPUCompilationInfo>;
+}
 declare var GPUShaderModule: {
   prototype: GPUShaderModule;
   new(): GPUShaderModule;
@@ -12103,6 +12038,35 @@ interface GPUShaderModuleDescriptor {
   label?: string;
   code: string;
 }
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationInfo) */
+interface GPUCompilationInfo {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationInfo/messages) */
+  readonly messages: readonly GPUCompilationMessage[];
+}
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage) */
+interface GPUCompilationMessage {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/length) */
+  readonly length: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/lineNum) */
+  readonly lineNum: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/linePos) */
+  readonly linePos: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/message) */
+  readonly message: string;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/offset) */
+  readonly offset: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/type) */
+  readonly type: GPUCompilationMessageType;
+}
+
+type GPUCompilationMessageType = "error" | "info" | "warning";
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBindGroupLayout) */
 interface GPUBindGroupLayout extends GPUObjectBase {}
@@ -12133,9 +12097,8 @@ interface GPUBindGroupLayoutEntry {
 interface GPUExternalTextureBindingLayout {}
 
 /**
- * A `VideoFrame` imported as an external texture.
- *
- * The host keeps the sampled plane until this object is collected.
+ * A `VideoFrame` imported as an external texture. The host keeps the sampled
+ * plane until this object is collected.
  *
  * @throws {@link TypeError} Illegal constructor. Use
  * {@link GPUDevice.importExternalTexture}.
@@ -12356,10 +12319,13 @@ interface GPUCommandEncoder {
   label: string;
 
   /**
-   * A color attachment may set `resolveTarget`.
+   * A color attachment may set `resolveTarget`. `depthSlice` throws
+   * `NotSupportedError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
    * or a pass is already open.
+   * @throws {@link DOMException} `NotSupportedError` when a color attachment
+   * sets `depthSlice`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginRenderPass)
    */
@@ -12396,6 +12362,42 @@ interface GPUCommandEncoder {
   ): void;
 
   /**
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
+   * or a pass is already open.
+   * @throws {@link TypeError} When `buffer` is not a `GPUBuffer`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/clearBuffer)
+   */
+  clearBuffer(buffer: GPUBuffer, offset?: number, size?: number): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
+   * or a pass is already open.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyBufferToTexture)
+   */
+  copyBufferToTexture(
+    source: GPUTexelCopyBufferInfo,
+    destination: GPUTexelCopyTextureInfo,
+    copySize: GPUExtent3D,
+  ): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
+   * or a pass is already open.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyTextureToTexture)
+   */
+  copyTextureToTexture(
+    source: GPUTexelCopyTextureInfo,
+    destination: GPUTexelCopyTextureInfo,
+    copySize: GPUExtent3D,
+  ): void;
+
+  /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/resolveQuerySet)
    */
   resolveQuerySet(
@@ -12412,7 +12414,8 @@ interface GPUCommandEncoder {
   pushDebugGroup(groupLabel: string): void;
 
   /**
-   * An empty stack is a validation error, reported when `finish()` encodes this encoder.
+   * An empty stack is a validation error, reported when `finish()` encodes this
+   * encoder.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/popDebugGroup)
    */
@@ -12469,6 +12472,7 @@ interface GPURenderPassColorAttachment {
   clearValue?: GPUColor;
   loadOp: GPULoadOp;
   storeOp: GPUStoreOp;
+  depthSlice?: number;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginComputePass) */
@@ -12498,12 +12502,13 @@ interface GPUCommandBufferDescriptor {
 }
 
 /**
- * A render pass.
+ * The **`GPURenderPassEncoder`** interface of the WebGPU API encodes commands
+ * related to controlling the vertex and fragment shader stages, as issued by a
+ * GPURenderPipeline. It forms part of the overall encoding activity of a
+ * GPUCommandEncoder. Available only in secure contexts.
  *
- * `setViewport` and `setScissorRect` restrict later draws.
- * `pushDebugGroup`, `popDebugGroup`, and `insertDebugMarker` are recorded
- * and replayed when the pass ends. An empty pop is a validation error
- * reported when the command encoder's `finish()` encodes that pass.
+ * `setViewport` and `setScissorRect` restrict later draws. An empty
+ * `popDebugGroup` is reported when `finish()` encodes the pass.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder)
  */
@@ -12610,7 +12615,8 @@ interface GPURenderPassEncoder {
   pushDebugGroup(groupLabel: string): void;
 
   /**
-   * An empty stack is a validation error, reported when `finish()` encodes the command buffer.
+   * An empty stack is a validation error, reported when `finish()` encodes the
+   * command buffer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/popDebugGroup)
    */
@@ -12632,6 +12638,22 @@ interface GPURenderPassEncoder {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/writeTimestamp)
    */
   writeTimestamp(querySet: GPUQuerySet, queryIndex: GPUSize32): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the pass has ended.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setBlendConstant)
+   */
+  setBlendConstant(color: GPUColor): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * @throws {@link DOMException} `InvalidStateError` when the pass has ended.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setStencilReference)
+   */
+  setStencilReference(reference: number): void;
 }
 declare var GPURenderPassEncoder: {
   prototype: GPURenderPassEncoder;
@@ -12640,17 +12662,15 @@ declare var GPURenderPassEncoder: {
 
 
 /**
- * A canvas WebGPU context.
+ * The **`GPUCanvasContext`** interface of the WebGPU API represents the WebGPU
+ * rendering context of a <canvas> element, returned via an
+ * HTMLCanvasElement.getContext() call with a contextType of "webgpu". Available
+ * only in secure contexts.
  *
  * `getCurrentTexture` returns the same texture until that surface's rendering
- * update. An {@link OffscreenCanvas} that is not a window surface has no
- * frame, so the texture stays until `unconfigure`, resize, or disposal.
- * Canvas textures also get `TEXTURE_BINDING`, `COPY_SRC`, and
- * `RENDER_ATTACHMENT`. `alphaMode` `"opaque"` and `"premultiplied"` are
- * stored. Presentation blits stored texels and does not composite.
- * `display-p3` is accepted. The swapchain present is still unorm8 sRGB.
- *
- * A window surface's context exposes that surface as `canvas`.
+ * update. An {@link OffscreenCanvas} that is not a window surface has no frame.
+ * Presentation blits stored texels. A window surface's context exposes that
+ * surface as `canvas`.
  *
  * @throws {@link TypeError} Illegal constructor. Use `getContext("webgpu")`.
  *
@@ -12658,7 +12678,9 @@ declare var GPURenderPassEncoder: {
  */
 interface GPUCanvasContext {
 
-  /** Always `""`. */
+  /**
+   * Always `""`.
+   */
   readonly label: string;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/canvas) */
@@ -12668,11 +12690,20 @@ interface GPUCanvasContext {
    * `depth32float-stencil8` throws `NotSupportedError` without that feature.
    *
    * @throws {@link DOMException} `NotSupportedError` when a format needs a
-   * feature the process device does not have.
+   * feature the process device does not have, or when `toneMapping.mode` is
+   * `"extended"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/configure)
    */
   configure(configuration: GPUCanvasConfiguration): void;
+
+  /**
+   * `null` before `configure` and after `unconfigure`. Otherwise the stored
+   * configuration, with `toneMapping.mode` `"standard"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/getConfiguration)
+   */
+  getConfiguration(): GPUCanvasConfiguration | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasContext/unconfigure) */
   unconfigure(): void;
@@ -12696,7 +12727,15 @@ interface GPUCanvasConfiguration {
   viewFormats?: GPUTextureFormat[];
   colorSpace?: PredefinedColorSpace;
   alphaMode?: GPUCanvasAlphaMode;
+  toneMapping?: GPUCanvasToneMapping;
 }
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCanvasToneMapping) */
+interface GPUCanvasToneMapping {
+  mode?: GPUCanvasToneMappingMode;
+}
+
+type GPUCanvasToneMappingMode = "extended" | "standard";
 
 type GPUImageCopyTexture = {
   texture: GPUTexture;
@@ -12710,6 +12749,13 @@ type GPUImageCopyBuffer = {
   bytesPerRow?: number;
   rowsPerImage?: number;
 };
+type GPUTexelCopyBufferLayout = {
+  offset?: number;
+  bytesPerRow?: number;
+  rowsPerImage?: number;
+};
+type GPUTexelCopyBufferInfo = GPUImageCopyBuffer;
+type GPUTexelCopyTextureInfo = GPUImageCopyTexture;
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBufferUsage) */
 declare const GPUBufferUsage: {
@@ -12757,13 +12803,8 @@ declare const GPUMapMode: {
 };
 
 /**
- * Block length for an audio context.
- *
- * Omitted and `"default"` are 128. An integer from 1 through
- * `floor(6 * sampleRate)` is that exact length. Offline `"hardware"` is 128.
- * Realtime `"hardware"` is the default output device's current buffer size
- * when that size is in range, and 128 otherwise. On macOS the query is Core
- * Audio. Windows and Linux use 128. No playback stream is opened.
+ * Omitted and `"default"` are 128 frames. Realtime `"hardware"` uses the output
+ * device's buffer size on macOS, and 128 on Windows and Linux.
  */
 type AudioRenderSizeHint = "default" | "hardware" | number;
 
@@ -12777,8 +12818,8 @@ interface AudioSinkOptions {
 }
 
 /**
- * Returned by {@link AudioContext.sinkId} when no device is selected.
- * Each read allocates a new object.
+ * Returned by {@link AudioContext.sinkId} when no device is selected. Each read
+ * allocates a new object.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioSinkInfo)
  */
@@ -12807,12 +12848,14 @@ interface OfflineAudioContextOptions {
 }
 
 /**
- * A base audio context.
+ * The **`BaseAudioContext`** interface of the Web Audio API acts as a base
+ * definition for online and offline audio-processing graphs, as represented by
+ * AudioContext and OfflineAudioContext respectively. You wouldn't use
+ * BaseAudioContext directly — you'd use its features via one of these two
+ * inheriting interfaces.
  *
- * There is no audio output device. The rendered {@link AudioBuffer} is the
- * signal. A new {@link AudioContext} starts `"running"`. There is no
- * secure-context gate, so `audioWorklet` is available. Media-element
- * sources, media-stream nodes, and `ScriptProcessorNode` stay absent.
+ * There is no secure-context gate. Media-element sources, media-stream nodes,
+ * and `ScriptProcessorNode` are absent.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -12830,9 +12873,8 @@ interface BaseAudioContext extends EventTarget {
   readonly currentTime: number;
 
   /**
-   * The block length chosen by `renderSizeHint`.
-   *
-   * `baseLatency` is this value divided by `sampleRate`.
+   * The block length chosen by `renderSizeHint`. `baseLatency` is this value
+   * divided by `sampleRate`.
    */
   readonly renderQuantumSize: number;
 
@@ -12849,12 +12891,9 @@ interface BaseAudioContext extends EventTarget {
   readonly listener: AudioListener;
 
   /**
-   * Decodes WAV, FLAC, MP3, Ogg Vorbis, or Ogg Opus.
-   *
-   * Ogg Opus becomes an `AudioBuffer` at 48000 Hz. The channel count
-   * comes from the Opus header.
-   *
-   * The `ArrayBuffer` is detached. A panic rejects `InvalidStateError`.
+   * Decodes WAV, FLAC, MP3, Ogg Vorbis, or Ogg Opus. Ogg Opus becomes an
+   * `AudioBuffer` at 48000 Hz. The channel count comes from the Opus header. The
+   * `ArrayBuffer` is detached. A panic rejects `InvalidStateError`.
    *
    * @throws {@link TypeError} When `audioData` is not an `ArrayBuffer`.
    *
@@ -12862,8 +12901,8 @@ interface BaseAudioContext extends EventTarget {
    */
   decodeAudioData(
     audioData: ArrayBuffer,
-    successCallback?: DecodeSuccessCallback,
-    errorCallback?: DecodeErrorCallback,
+    successCallback?: DecodeSuccessCallback | null,
+    errorCallback?: DecodeErrorCallback | null,
   ): Promise<AudioBuffer>;
 
   /**
@@ -12971,17 +13010,12 @@ interface PeriodicWaveConstraints {
 }
 
 /**
- * A realtime context.
+ * The **`AudioContext`** interface represents an audio-processing graph built
+ * from audio modules linked together, each represented by an AudioNode.
  *
- * `currentTime` stays 0 until a source starts. Playback then opens the output
- * device named by a string `sinkId`, including the default device when it is
- * `""`, and keeps rendering until `suspend` or `close`, which keeps the
- * process alive. `{ type: "none" }` does not open a device. The device
- * callback only copies a buffer. When no device is open, a timer advances
- * the clock. `baseLatency` is `renderQuantumSize / sampleRate`. With a
- * device, `outputLatency` is the 100 ms playback buffer. On the timer it is
- * 0. `setSinkId` stores the next sink. A device that is already open stays
- * open.
+ * `currentTime` stays 0 until a source starts. Playback opens the device named
+ * by `sinkId`. `{ type: "none" }` does not open a device. When no device is
+ * open, a timer advances the clock.
  *
  * @throws {@link DOMException} `NotSupportedError` when `sampleRate` is outside
  * 3000 through 768000, or when `renderSizeHint` is an integer outside 1 through
@@ -13002,17 +13036,16 @@ interface AudioContext extends BaseAudioContext {
   readonly outputLatency: number;
 
   /**
-   * The requested output. `""` is the default device. `{ type: "none" }`
-   * does not open a device. Each read of that object allocates a new one.
+   * The requested output. `""` is the default device. `{ type: "none" }` does not
+   * open a device. Each read of that object allocates a new one.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/sinkId)
    */
   readonly sinkId: string | AudioSinkInfo;
 
   /**
-   * Selects the output named by `sinkId`. `""` is the default device.
-   * `{ type: "none" }` selects no device. The same value again resolves.
-   * A device that is already open stays open.
+   * `""` is the default device and `{ type: "none" }` selects no device. A device
+   * that is already open stays open until the next start.
    *
    * @throws {@link DOMException} `NotFoundError` when the device name is
    * unknown. The promise rejects and the previous sink stays.
@@ -13041,11 +13074,9 @@ declare var AudioContext: {
 
 
 /**
- * Fired when an {@link OfflineAudioContext} finishes rendering.
- *
- * `renderedBuffer` is the same `AudioBuffer` the `startRendering` promise
- * receives. A zero-delay task dispatches the event before that promise
- * resolves.
+ * Fired when an {@link OfflineAudioContext} finishes rendering. `renderedBuffer`
+ * is the same `AudioBuffer` the `startRendering` promise receives. A zero-delay
+ * task dispatches the event before that promise resolves.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/OfflineAudioCompletionEvent)
  */
@@ -13065,11 +13096,8 @@ interface OfflineAudioCompletionEventInit extends EventInit {
 }
 
 /**
- * An offline context.
- *
- * The three-argument constructor uses a quantum of 128. `"hardware"` is 128.
- * `startRendering` renders on the calling stack, then a zero-delay task
- * dispatches `complete` and resolves the promise with the same buffer.
+ * `startRendering` renders on the calling stack. A zero-delay task then
+ * dispatches `complete` and resolves with the same buffer.
  *
  * @throws {@link DOMException} `NotSupportedError` for the same channel,
  * length, rate, and `renderSizeHint` limits as {@link BaseAudioContext.createBuffer}.
@@ -13150,17 +13178,12 @@ interface AudioBufferOptions {
 }
 
 /**
- * An audio parameter.
+ * The Web Audio API's **`AudioParam`** interface represents an audio-related
+ * parameter, usually a parameter of an AudioNode (such as GainNode.gain).
  *
- * Reading `value` returns the timeline at `currentTime`, clamped to `minValue`
- * and `maxValue`. That read does not include samples connected to the
- * parameter. `value`, `defaultValue`, `minValue`, and `maxValue` are
- * single-precision floats. Assigning `value` sets the intrinsic value and inserts
- * `setValueAtTime` at `currentTime`. `NaN` is ignored. An event replaces an
- * existing event only when both have the same time and the same kind. A
- * different kind at that time stays, in call order. A ramp with no earlier
- * event throws
- * `InvalidStateError`. Each method returns this parameter.
+ * Reading `value` returns the timeline at `currentTime` and does not include
+ * samples connected to the parameter. `NaN` is ignored. A ramp with no earlier
+ * event throws `InvalidStateError`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -13206,8 +13229,8 @@ interface AudioParam {
   linearRampToValueAtTime(value: number, endTime: number): AudioParam;
 
   /**
-   * Throws `RangeError` when `value` is not positive or the previous value is
-   * not positive, and `InvalidStateError` when no event is strictly earlier.
+   * Throws `RangeError` when `value` is not positive or the previous value is not
+   * positive, and `InvalidStateError` when no event is strictly earlier.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParam/exponentialRampToValueAtTime)
    */
@@ -13280,12 +13303,13 @@ declare var AudioParamMap: {
 
 
 /**
- * A node in the audio graph.
+ * The **`AudioNode`** interface is a generic interface for representing an audio
+ * processing module.
  *
- * `connect` to an {@link AudioParam} returns `undefined`. The output index
- * passed to `connect` contributes samples, summed into one channel.
- * `disconnect` with an output index removes only that output. An input index
- * removes only that input.
+ * A node in the audio graph. `connect` to an {@link AudioParam} returns
+ * `undefined`. The output index passed to `connect` contributes samples, summed
+ * into one channel. `disconnect` with an output index removes only that output.
+ * An input index removes only that input.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -13381,8 +13405,8 @@ interface AudioScheduledSourceNode extends AudioNode {
   stop(when?: number): void;
 
   /**
-   * A null `AudioBufferSourceNode` buffer fires this during `start()`. Any
-   * other stop dispatches the event as a zero-delay task.
+   * A null `AudioBufferSourceNode` buffer fires this during `start()`. Any other
+   * stop dispatches the event as a zero-delay task.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioScheduledSourceNode/ended_event)
    */
@@ -13476,12 +13500,12 @@ interface OscillatorOptions extends AudioNodeOptions {
 interface AudioBufferSourceNode extends AudioScheduledSourceNode {
 
   /**
-   * One non-null assignment. Another non-null value throws
-   * `InvalidStateError`. `null` clears the attribute. `start()` acquires the
-   * samples. The first non-null assignment is still accepted after `start()`
-   * and acquires those samples. A null buffer at `start()` dispatches
-   * `ended` immediately. While no frame of a quantum is playing, the output
-   * is one silent channel.
+   * The **`buffer`** property of the AudioBufferSourceNode interface provides the
+   * ability to play back audio using an AudioBuffer as the source of the sound
+   * data.
+   *
+   * Only one non-null assignment is kept. The first non-null assignment is still
+   * accepted after `start()`.
    *
    * @throws {@link DOMException} `InvalidStateError` when a non-null buffer
    * is assigned after one has already been set.
@@ -13542,23 +13566,20 @@ interface PeriodicWaveOptions extends PeriodicWaveConstraints {
  */
 interface AudioWorklet extends EventTarget {
   /**
-   * Exchanges the values {@link structuredClone} can carry, including a
-   * transferred {@link AudioData} or {@link VideoFrame} and a
-   * {@link WebAssembly.Module}. The processor realm does not define
-   * `AudioData` or `VideoFrame`. Methods on the received object still run.
-   * A {@link SharedArrayBuffer} is shared with the peer.
+   * The processor realm does not define `AudioData` or `VideoFrame`. A
+   * {@link SharedArrayBuffer} is shared with the peer.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/port)
    */
   readonly port: MessagePort;
 
   /**
-   * A URL already evaluated in this context resolves without running the
-   * script again.
+   * A URL already evaluated in this context resolves without running the script
+   * again.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet/addModule)
    */
-  addModule(moduleURL: string, options?: WorkletOptions): Promise<void>;
+  addModule(moduleURL: string | URL, options?: WorkletOptions): Promise<void>;
 }
 declare var AudioWorklet: {
   prototype: AudioWorklet;
@@ -13572,15 +13593,15 @@ interface WorkletOptions {
 }
 
 /**
- * A node implemented by `registerProcessor`.
+ * The **`AudioWorkletNode`** interface of the Web Audio API represents a base
+ * class for a user-defined AudioNode, which can be connected to an audio routing
+ * graph along with other nodes. It has an associated AudioWorkletProcessor,
+ * which does the actual audio processing in a Web Audio rendering thread.
+ * Available only in secure contexts.
  *
- * `process` sees `Float32Array` channels of length `renderQuantumSize`.
- * An empty processor name throws `NotSupportedError`. A duplicate
- * `registerProcessor` name throws `NotSupportedError`. A parameter descriptor
- * with an empty or duplicate name, or a default outside its range, throws
- * `NotSupportedError`. A throw from the processor constructor or from
- * `process`, a missing or non-callable `process`, or a `processorOptions`
- * value the worklet realm cannot deserialize dispatches `processorerror`.
+ * `process` sees `Float32Array` channels of length `renderQuantumSize`. An empty
+ * or duplicate processor name throws `NotSupportedError`. A throw from the
+ * processor dispatches `processorerror`.
  *
  * @throws {@link DOMException} `NotSupportedError` when `name` is empty or
  * `outputChannelCount` contains 0 or a count above 32.
@@ -13839,9 +13860,8 @@ interface StereoPannerOptions extends AudioNodeOptions {
 }
 
 /**
- * Stereo panner. `"equalpower"` uses equal-power gains. `"HRTF"` delays the
- * far ear and makes it quieter. The output is stereo. The cone points from
- * the source toward the listener.
+ * `"equalpower"` uses equal-power gains. `"HRTF"` delays the far ear. The output
+ * is stereo.
  *
  * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
  * above 2 or `channelCountMode` is `"max"`.
@@ -13947,9 +13967,8 @@ interface PannerOptions extends AudioNodeOptions {
 }
 
 /**
- * Convolution. A buffer whose sample rate differs from the context is
- * linearly resampled. Changing `normalize` does not rescale until `buffer`
- * is set again. `buffer` returns the same object that was assigned.
+ * A buffer whose sample rate differs from the context is linearly resampled.
+ * Changing `normalize` does not rescale until `buffer` is set again.
  *
  * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
  * above 2, `channelCountMode` is `"max"`, or the impulse response has a
@@ -13977,10 +13996,8 @@ interface ConvolverOptions extends AudioNodeOptions {
 }
 
 /**
- * Dynamics compression without look-ahead. `threshold`, `knee`, `ratio`,
- * `attack`, `release`, and `makeupGain` are k-rate. `"automatic"` locks
- * `makeupGain`. `reduction` is the last sample of the quantum, in decibels,
- * and includes makeup gain.
+ * Compression has no look-ahead. `"automatic"` locks `makeupGain`. `reduction`
+ * is the last sample of the quantum, in decibels.
  *
  * @throws {@link DOMException} `NotSupportedError` when `channelCount` is
  * above 2 or `channelCountMode` is `"max"`.
@@ -14033,8 +14050,8 @@ interface DynamicsCompressorOptions extends AudioNodeOptions {
 }
 
 /**
- * Pass-through analysis. Time-domain data is a speakers down-mix to mono.
- * An analyser that is not upstream of the destination is still rendered.
+ * Pass-through analysis. Time-domain data is a speakers down-mix to mono. An
+ * analyser that is not upstream of the destination is still rendered.
  *
  * @throws {@link DOMException} `IndexSizeError` when `fftSize` is not a power
  * of two from 32 through 32768, `minDecibels` is not below `maxDecibels`, or
@@ -14108,9 +14125,8 @@ interface ChannelMergerOptions extends AudioNodeOptions {
 }
 
 /**
- * Splits each input channel into its own mono output. `channelCount` stays
- * equal to `numberOfOutputs`, `channelCountMode` stays `"explicit"`, and
- * `channelInterpretation` stays `"discrete"`.
+ * `channelCount` stays equal to `numberOfOutputs`, `channelCountMode` stays
+ * `"explicit"`, and `channelInterpretation` stays `"discrete"`.
  *
  * @throws {@link DOMException} `IndexSizeError` when `numberOfOutputs` is
  * outside 1 through 32.
@@ -14176,9 +14192,9 @@ interface VideoFrameInit {
   displayWidth?: number;
   displayHeight?: number;
   /**
-   * Clockwise degrees. The exact value is reduced modulo 360, then rounded
-   * to the nearest multiple of 90. A tie rounds toward positive infinity.
-   * A non-finite value throws `TypeError`.
+   * Clockwise degrees. The exact value is reduced modulo 360, then rounded to the
+   * nearest multiple of 90. A tie rounds toward positive infinity. A non-finite
+   * value throws `TypeError`.
    */
   rotation?: number;
   /**
@@ -14210,9 +14226,9 @@ interface VideoFrameBufferInit {
   displayHeight?: number;
   colorSpace?: VideoColorSpaceInit;
   /**
-   * Clockwise degrees. The exact value is reduced modulo 360, then rounded
-   * to the nearest multiple of 90. A tie rounds toward positive infinity.
-   * A non-finite value throws `TypeError`.
+   * Clockwise degrees. The exact value is reduced modulo 360, then rounded to the
+   * nearest multiple of 90. A tie rounds toward positive infinity. A non-finite
+   * value throws `TypeError`.
    */
   rotation?: number;
   /**
@@ -14222,12 +14238,11 @@ interface VideoFrameBufferInit {
 }
 
 /**
- * Options for {@link VideoFrame.copyTo}.
+ * The **`copyTo()`** method of the VideoFrame interface copies the contents of
+ * the VideoFrame to an ArrayBuffer.
  *
  * `format` may be the source format or `RGBA`, `BGRA`, `RGBX`, or `BGRX`.
- * Another format rejects `NotSupportedError`. An RGB `format` is written in
- * `colorSpace`, which defaults to `srgb`. `display-p3` converts from the
- * frame's sRGB or Display P3 samples. `colorSpace` is ignored otherwise.
+ * Another format rejects `NotSupportedError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/copyTo)
  */
@@ -14239,41 +14254,21 @@ interface VideoFrameCopyToOptions {
 }
 
 /**
- * Members of a {@link VideoFrame} from the VideoFrame Metadata Registry.
- *
- * This runtime records none, so {@link VideoFrame.metadata} returns an empty
- * object.
+ * Members of a {@link VideoFrame} from the VideoFrame Metadata Registry. This
+ * runtime records none, so {@link VideoFrame.metadata} returns an empty object.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame/metadata)
  */
 interface VideoFrameMetadata {}
 
 /**
- * A video frame.
+ * The **`VideoFrame`** interface of the Web Codecs API represents a frame of a
+ * video.
  *
- * `new VideoFrame(image, init)` copies an `ImageBitmap`, an `OffscreenCanvas`,
- * or another `VideoFrame`. `new VideoFrame(buffer, init)` copies an 8-bit
- * buffer. `timestamp` is required unless the source is a `VideoFrame`.
- * `rotation` is clockwise degrees. The exact value is reduced modulo 360,
- * then rounded to the nearest multiple of 90. A tie rounds toward positive
- * infinity. `flip` mirrors horizontally after that rotation. `visibleRect`
- * stays in coded pixels. `copyTo` returns those coded samples. When display
- * size is omitted, a source rotation of 90 or 270 is removed so the display
- * size lines up with the visible rectangle, that size is scaled by the new
- * visible rectangle, and a composed rotation of 90 or 270 swaps it again.
- * Copying a `VideoFrame` composes the new rotation and flip with the source.
- * `drawImage`, `createImageBitmap`, and `copyExternalImageToTexture` sample
- * the oriented visible pixels at that oriented size. An explicit display
- * size does not scale the draw further. `close()` releases the frame. A
- * second `close()` does nothing. After `close()`, `format` is null, the
- * sizes are 0, `rotation` is 0, `flip` is false, `visibleRect` and
- * `codedRect` are null, and `colorSpace` members are null. `timestamp` and
- * `duration` stay. `clone`, `allocationSize`, `copyTo`, `drawImage`, and
- * `createImageBitmap` then throw `InvalidStateError`.
- * `metadata()` still returns a new empty object. No VideoFrame Metadata
- * Registry member is recorded, and constructor `metadata` is not stored.
- * `structuredClone` and `postMessage` copy the frame and leave it open.
- * Listing it in a transfer list closes it, and the receiver gets the pixels.
+ * `new VideoFrame(image)` copies an `ImageBitmap`, an `OffscreenCanvas`, or
+ * another `VideoFrame`. `rotation` snaps to a multiple of 90. `metadata()`
+ * returns an empty object. Stored 10-bit and 12-bit formats are `I420P10`,
+ * `I420P12`, `I422P10`, `I422P12`, `I444P10`, and `I444P12`.
  *
  * @throws {@link TypeError} when an argument is missing or invalid, including
  * a non-finite `rotation`.
@@ -14349,8 +14344,8 @@ interface VideoFrame {
   metadata(): VideoFrameMetadata;
 
   /**
-   * A missing destination rejects `TypeError`. A call on a value that is not
-   * this frame rejects `TypeError`.
+   * A missing destination rejects `TypeError`. A call on a value that is not this
+   * frame rejects `TypeError`.
    *
    * @throws {@link DOMException} `NotSupportedError` when `options.format` is
    * not the source format and not an RGB format. The rejection is from this
@@ -14378,10 +14373,8 @@ declare var VideoFrame: {
 
 
 /**
- * An encoded video chunk.
- *
- * `structuredClone` and `postMessage` copy `type`, `timestamp`, `duration`,
- * and the bytes. The chunk is not transferable.
+ * An encoded video chunk. `structuredClone` and `postMessage` copy `type`,
+ * `timestamp`, `duration`, and the bytes. The chunk is not transferable.
  *
  * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
  * transfer.
@@ -14432,32 +14425,13 @@ interface EncodedVideoChunkInit {
 }
 
 /**
- * Decodes H.264 and AV1 elementary chunks.
+ * The **`VideoDecoder`** interface of the WebCodecs API decodes chunks of video.
+ * Available only in secure contexts.
  *
- * `avc1` and `avc3` use the platform hardware decoder: VideoToolbox on
- * Darwin, the Media Foundation transform decoding through DXVA on Windows,
- * and VA-API on Linux. There is no software H.264 decoder.
- * `hardwareAcceleration: "prefer-software"` does not select one. `av01`
- * accepts profiles 0, 1, and 2 at 8, 10, and 12 bits, including monochrome,
- * 4:2:2, and 4:4:4. Hardware decode stays profile 0, 8-bit, 4:2:0. Any other
- * accepted configuration uses rav1d. When `hardwareAcceleration` is
- * `"no-preference"` or `"prefer-hardware"`, `configure` uses VideoToolbox on
- * Darwin or the Media Foundation AV1 transform on Windows if that hardware
- * decoder accepts the `av1C`, the coded size, and the session.
- * `"prefer-software"`, a missing decoder, a rejected session, an omitted
- * description, a missing coded size, or a configuration outside that
- * hardware subset uses rav1d. On Linux, `configure` uses VA-API when
- * `VAProfileAV1Profile0` is present and the configuration is that hardware
- * subset. A missing library or profile uses rav1d. A rejected frame does
- * not switch decoders. A rav1d picture keeps `I420`, `I420P10`, `I420P12`,
- * `I422`, `I422P10`, `I422P12`, `I444`, `I444P10`, or `I444P12`. Monochrome
- * is stored as 4:2:0 with neutral chroma.
- * An unsupported codec string, including `vp8` and `vp09`, closes the
- * decoder before `configure` returns and reports `NotSupportedError` to
- * `error`. `configure` does not throw for that case. `rotation` is 0, 90,
- * 180, or 270, and `flip` is a boolean. Each output frame uses that pair.
- * A rotation of 90 or 270 swaps `displayWidth` and `displayHeight`.
- * `VideoEncoder` is absent.
+ * Decodes H.264 (`avc1`, `avc3`) on the platform hardware decoder and AV1
+ * (`av01`, profiles 0–2 at 8, 10, and 12 bits) with that hardware decoder or
+ * rav1d. There is no software H.264 decoder. `vp8`, `vp09`, and `VideoEncoder`
+ * are absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder)
  */
@@ -14467,8 +14441,8 @@ interface VideoDecoder extends EventTarget {
   readonly state: CodecState;
 
   /**
-   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched
-   * when this decreases.
+   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched when
+   * this decreases.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/decodeQueueSize)
    */
@@ -14477,40 +14451,20 @@ interface VideoDecoder extends EventTarget {
   /**
    * Handler for the `dequeue` event. The event is dispatched when
    * `decodeQueueSize` decreases. It does not bubble and is not cancelable.
-   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch
-   * one event after the size becomes 0.
+   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch one
+   * event after the size becomes 0.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/ondequeue)
    */
   ondequeue: ((this: VideoDecoder, ev: Event) => any) | null;
 
   /**
-   * An omitted or empty `description` is Annex B for H.264 and a raw OBU
-   * sequence for AV1. For H.264, `configure` leaves the decoder configured
-   * even when the platform has no H.264 decoder, and the hardware session
-   * opens when `decode` processes an access unit that contains an SPS and a
-   * PPS. That `decode` then fails with `EncodingError` when the decoder is
-   * missing. A present H.264 `description` is a length-prefixed `avcC` and
-   * is not scanned for start codes. A present AV1 `description` is an
-   * `av1C`. Its config OBUs are given to the decoder before the first chunk.
-   * A hardware AV1 session that does not open leaves this decoder configured
-   * on rav1d.
+   * The **`configure()`** method of the VideoDecoder interface enqueues a control
+   * message to configure the video decoder for decoding chunks.
    *
-   * An unsupported codec string, a present `av1C` outside profiles 0–2 at
-   * 8, 10, or 12 bits, or a present `avcC` the hardware decoder rejects
-   * does not throw. `state` becomes `"closed"` before this method returns,
-   * and `error` receives `NotSupportedError` as a microtask. `flush` in
-   * that turn rejects with the same error. On Darwin, an MBAFF interlaced
-   * `avcC` is rejected while creating the decompression session, and the
-   * message includes VideoToolbox status -12911
-   * (`kVTVideoDecoderMalfunctionErr`). On Windows the decoder is missing
-   * when no Direct3D 11 device offers the H.264 decoder profile. On Linux
-   * it is missing when VA-API has no H.264 profile. No frame is produced.
-   * A dotted H.264 string is `avc1` or `avc3`, a dot, and six hexadecimal
-   * digits whose profile is Baseline, Main, Extended, High, High 10,
-   * High 4:2:2, or High 4:4:4 Predictive and whose level is a real
-   * `level_idc`. A bare `avc1` or `avc3` is accepted. `avc1.FF000b` and
-   * `avc1.4D401D` are not.
+   * An omitted H.264 `description` is Annex B and an omitted AV1 `description` is
+   * a raw OBU sequence. An unsupported codec closes the decoder and reports
+   * `NotSupportedError` to `error`. `configure` does not throw for that case.
    *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, a present dimension is 0,
@@ -14522,14 +14476,12 @@ interface VideoDecoder extends EventTarget {
   configure(config: VideoDecoderConfig): void;
 
   /**
-   * Enqueues `chunk` and returns before the decoder runs. `output`
-   * runs from the microtask that decodes the chunk. A sample the decoder
-   * rejects closes the decoder, calls `error` with `EncodingError`, and
-   * rejects an in-flight `flush` with that error. After construction,
-   * `configure`, `reset`, or `flush`, a key chunk is required. `flush`
-   * sets that requirement synchronously, before its promise settles.
-   * Chunks already queued stay queued. The check uses `chunk.type` and
-   * does not inspect the bitstream.
+   * The **`decode()`** method of the VideoDecoder interface enqueues a control
+   * message to decode a given chunk of video.
+   *
+   * Returns before the decoder runs. After `configure`, `reset`, or `flush`, a key
+   * chunk is required. The check uses `chunk.type` and does not inspect the
+   * bitstream.
    *
    * @throws {@link DOMException} `InvalidStateError` when the decoder is not
    * configured or is closed.
@@ -14541,14 +14493,12 @@ interface VideoDecoder extends EventTarget {
   decode(chunk: EncodedVideoChunk): void;
 
   /**
-   * Sets the key-chunk requirement synchronously, before this promise
-   * settles. A later delta `decode` throws `DataError`. Chunks already
-   * queued stay queued. Settles after the queued chunks are processed.
-   * `output` for those chunks runs before the promise resolves. A rejected
-   * sample rejects `EncodingError` after `error` has run. `reset` or
-   * `close` rejects an in-flight promise with `AbortError`. When the
-   * decoder is not configured, the returned promise rejects
-   * `InvalidStateError` and this method does not throw.
+   * The **`flush()`** method of the VideoDecoder interface returns a Promise that
+   * resolves once all pending messages in the queue have been completed.
+   *
+   * Sets the key-chunk requirement before the promise settles. A rejected sample
+   * rejects `EncodingError`. When the decoder is not configured, the promise
+   * rejects `InvalidStateError` and this method does not throw.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/flush)
    */
@@ -14564,18 +14514,9 @@ declare var VideoDecoder: {
   prototype: VideoDecoder;
   new(init: VideoDecoderInit): VideoDecoder;
   /**
-   * Resolves `{ supported, config }` without opening a decoder and without
-   * producing a frame. `supported` is true for a bare `avc1` or `avc3`, a
-   * dotted H.264 string with a known profile and level, and an `av01`
-   * string at profile 0, 1, or 2 and bit depth 8, 10, or 12 whose
-   * `description` `configure` would accept. It is false for any other codec
-   * string, including `avc1.FF000b`, `avc1.4D401D`, a malformed `av01`
-   * string, or an `av1C` `configure` would reject. The returned
-   * `config` copies `rotation`, `flip`, and `colorSpace`. An omitted
-   * `rotation` is 0 and an omitted `flip` is false. An omitted `colorSpace`
-   * member is null. An unrecognized member is omitted. An invalid config,
-   * including a `rotation` that is not 0, 90, 180, or 270, rejects
-   * `TypeError`. Too few arguments reject `TypeError`.
+   * `supported` is true for a bare or known-profile `avc1` or `avc3`, and for
+   * `av01` at profile 0–2 and 8, 10, or 12 bits. It is false for every other codec
+   * string.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoDecoder/isConfigSupported)
    */
@@ -14598,37 +14539,30 @@ interface VideoDecoderConfig {
   hardwareAcceleration?: HardwareAcceleration;
   optimizeForLatency?: boolean;
   /**
-   * Clockwise degrees: 0, 90, 180, or 270. The default is 0. Each decoded
-   * frame uses this value, and 90 or 270 swaps `displayWidth` and
-   * `displayHeight`. Any other number throws `TypeError`.
+   * Clockwise degrees: 0, 90, 180, or 270. The default is 0. Each decoded frame
+   * uses this value, and 90 or 270 swaps `displayWidth` and `displayHeight`. Any
+   * other number throws `TypeError`.
    */
   rotation?: number;
   /**
-   * Mirrors each decoded frame horizontally after `rotation`. The default
-   * is false.
+   * Mirrors each decoded frame horizontally after `rotation`. The default is
+   * false.
    */
   flip?: boolean;
   /**
    * Copied by `isConfigSupported`. An omitted member is null.
    */
   colorSpace?: VideoColorSpaceInit;
+  displayAspectWidth?: number;
+  displayAspectHeight?: number;
 }
 
 /**
- * Decoded or constructed audio samples.
+ * The **`AudioData`** interface of the WebCodecs API represents an audio sample.
  *
- * `new AudioData(init)` copies `u8`, `s16`, `s32`, or `f32` samples,
- * interleaved or planar. `sampleRate`, `numberOfFrames`, and
- * `numberOfChannels` must be greater than 0. At most 32 channels and
- * 16,777,216 frames are stored. `timestamp` is a microsecond count and may
- * be negative. `duration` is `numberOfFrames / sampleRate * 1_000_000`,
- * truncated toward 0. `close()` may be called more than once. After
- * `close()`, `format` is null, and `sampleRate`, `numberOfFrames`,
- * `numberOfChannels`, and `duration` are 0. `timestamp` stays. `clone`,
- * `allocationSize`, and `copyTo` then throw `InvalidStateError`.
- * `structuredClone` and `postMessage` copy the samples and leave this object
- * open. Listing it in a transfer list closes it. `transfer` in `init` does
- * not detach the listed buffers.
+ * Copies `u8`, `s16`, `s32`, or `f32` samples, at most 32 channels and
+ * 16,777,216 frames. `duration` is `numberOfFrames / sampleRate * 1_000_000`,
+ * truncated toward 0.
  *
  * @throws {@link TypeError} when an argument is missing or invalid.
  * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned.
@@ -14665,10 +14599,8 @@ interface AudioData {
   allocationSize(options: AudioDataCopyToOptions): number;
 
   /**
-   * Writes one channel when `format` is planar, or every channel when it is
-   * interleaved. `format` defaults to the stored format. A same-format copy
-   * keeps the stored bytes. A different format converts through the unit
-   * interval.
+   * A same-format copy keeps the stored bytes. A different format converts through
+   * the unit interval.
    *
    * @throws {@link DOMException} `InvalidStateError` when the audio data is closed.
    * @throws {@link TypeError} when `destination` or `options` is invalid.
@@ -14702,16 +14634,17 @@ interface AudioDataInit {
   numberOfFrames: number;
   numberOfChannels: number;
   timestamp: number;
-  data: BufferSource;
+  data: AllowSharedBufferSource;
   /**
-   * Listed buffers stay attached. The constructor copies `data` and ignores
-   * this list.
+   * Listed buffers stay attached. The constructor copies `data` and ignores this
+   * list.
    */
   transfer?: ArrayBuffer[];
 }
 
 /**
- * Options for {@link AudioData.allocationSize} and {@link AudioData.copyTo}.
+ * The **`copyTo()`** method of the AudioData interface copies a plane of an
+ * AudioData object to a destination buffer.
  *
  * `planeIndex` is required. An interleaved destination accepts only `0`. A
  * planar destination selects one channel. `frameOffset` defaults to 0.
@@ -14727,10 +14660,8 @@ interface AudioDataCopyToOptions {
 }
 
 /**
- * An encoded audio chunk.
- *
- * `structuredClone` and `postMessage` copy `type`, `timestamp`, `duration`,
- * and the bytes. The chunk is not transferable.
+ * An encoded audio chunk. `structuredClone` and `postMessage` copy `type`,
+ * `timestamp`, `duration`, and the bytes. The chunk is not transferable.
  *
  * @throws {@link DOMException} `DataCloneError` when the chunk is listed for
  * transfer.
@@ -14781,34 +14712,12 @@ interface EncodedAudioChunkInit {
 }
 
 /**
- * Decodes AAC, Opus, and Vorbis elementary packets.
+ * The **`AudioDecoder`** interface of the WebCodecs API decodes chunks of audio.
+ * Available only in secure contexts.
  *
- * The accepted AAC strings are `mp4a`, `mp4a.40.2`, `mp4a.40.02`,
- * `mp4a.40.5`, `mp4a.40.05`, `mp4a.40.29`, and `mp4a.67`. Opus is the exact
- * string `opus`. Vorbis is the exact string `vorbis`. `flac`, `mp3`, and
- * every other codec string are not supported. An unsupported configuration
- * closes the decoder before `configure` returns and reports
- * `NotSupportedError` to `error`. `configure` does not throw for that case.
- * `AudioEncoder` is absent. AAC, Opus, and Vorbis use portable decoders on
- * every target. Opus output is 48000 Hz. One or two channels configure.
- * More than two channels does not, including a valid multichannel OpusHead.
- * An empty Opus description discards no samples. An OpusHead description
- * drops its pre-skip from the start of the stream, and that duration is
- * added to a negative timestamp only. Vorbis `configure` requires a Xiph
- * `description`: the first byte counts the lace values of every header but
- * the last, a lace of 255 continues a packet, and the remaining bytes are
- * the last header. The headers are identification (`0x01`), comment
- * (`0x03`), and setup (`0x05`). A lace table that already sizes every byte
- * is those packets.
- * The identification header's sample rate and channel count replace the
- * configured values. Output is planar `f32`. The first packet after
- * `configure` or `flush` produces no audio. The next samples use that
- * packet's timestamp, and a negative one increases by half of the short
- * block. Later packets copy their chunk timestamp. `flush` clears the
- * overlap window. An omitted, empty, or malformed description closes the
- * decoder with `NotSupportedError`. A packet that does not decode reports
- * `EncodingError`. `isConfigSupported` is true for `vorbis` with a positive
- * rate and channel count even when `description` is omitted.
+ * Decodes AAC (`mp4a.40.2`, `mp4a.40.5`, `mp4a.40.29`, `mp4a.67`, and a bare
+ * `mp4a`), Opus (`opus`, one or two channels), and Vorbis (`vorbis`). Other
+ * codecs, including `flac` and `mp3`, are not decoded. `AudioEncoder` is absent.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder)
  */
@@ -14818,8 +14727,8 @@ interface AudioDecoder extends EventTarget {
   readonly state: CodecState;
 
   /**
-   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched
-   * when this decreases.
+   * Number of chunks waiting to be decoded. A `dequeue` event is dispatched when
+   * this decreases.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/decodeQueueSize)
    */
@@ -14828,25 +14737,20 @@ interface AudioDecoder extends EventTarget {
   /**
    * Handler for the `dequeue` event. The event is dispatched when
    * `decodeQueueSize` decreases. It does not bubble and is not cancelable.
-   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch
-   * one event after the size becomes 0.
+   * `reset`, `close`, and `configure` that drop a non-empty queue dispatch one
+   * event after the size becomes 0.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/ondequeue)
    */
   ondequeue: ((this: AudioDecoder, ev: Event) => any) | null;
 
   /**
-   * An omitted or empty AAC `description` is ADTS. The first frame header
-   * supplies the AudioSpecificConfig, and each chunk's header is removed
-   * before the frame is decoded. A present `description` is an
-   * AudioSpecificConfig, and the chunks are raw frames. An omitted Opus
-   * `description` is a raw packet. A present one is an OpusHead, and its
-   * channel count must match `numberOfChannels`.
+   * The **`configure()`** method of the AudioDecoder interface enqueues a control
+   * message to configure the audio decoder for decoding chunks.
    *
-   * An unsupported codec, or Opus with more than two channels, does not
-   * throw. `state` becomes `"closed"` before this method returns, and
-   * `error` receives `NotSupportedError` as a microtask. `flush` in that
-   * turn rejects with the same error.
+   * An omitted AAC `description` is ADTS. An omitted Opus `description` is a raw
+   * packet. An unsupported codec closes the decoder and reports
+   * `NotSupportedError` to `error` without throwing.
    *
    * @throws {@link TypeError} when `config` is missing a required member,
    * `codec` is empty, `description` is detached, or `sampleRate` or
@@ -14858,11 +14762,10 @@ interface AudioDecoder extends EventTarget {
   configure(config: AudioDecoderConfig): void;
 
   /**
-   * Enqueues `chunk` and returns before the decoder runs. `output` runs
-   * from the microtask that decodes the chunk. A packet the decoder rejects
-   * closes the decoder, calls `error` with `EncodingError`, and rejects an
-   * in-flight `flush` with that error. This method does not throw
-   * `DataError`.
+   * The **`decode()`** method of the AudioDecoder interface enqueues a control
+   * message to decode a given chunk of audio.
+   *
+   * Returns before the decoder runs. This method does not throw `DataError`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the decoder is not
    * configured or is closed.
@@ -14872,13 +14775,12 @@ interface AudioDecoder extends EventTarget {
   decode(chunk: EncodedAudioChunk): void;
 
   /**
-   * Settles after the queued chunks are processed. `output` for those chunks
-   * runs before the promise resolves. A rejected sample rejects
-   * `EncodingError` after `error` has run. `reset` or `close` rejects an
-   * in-flight promise with `AbortError`. When the decoder is not configured,
-   * the returned promise rejects `InvalidStateError` and this method does
-   * not throw. After an unsupported `configure`, it rejects
-   * `NotSupportedError`.
+   * The **`flush()`** method of the AudioDecoder interface returns a Promise that
+   * resolves once all pending messages in the queue have been completed.
+   *
+   * Settles after the queued chunks are processed. When the decoder is not
+   * configured, the promise rejects `InvalidStateError` and this method does not
+   * throw.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/flush)
    */
@@ -14894,12 +14796,8 @@ declare var AudioDecoder: {
   prototype: AudioDecoder;
   new(init: AudioDecoderInit): AudioDecoder;
   /**
-   * Resolves `{ supported, config }` without opening a decoder and without
-   * producing samples. `supported` is true for an accepted AAC string, for
-   * `opus`, including more than two channels, and for `vorbis` even when
-   * `description` is omitted. It is false for any other codec string,
-   * including `mp4a.FF.9`, `opus.123`, and `vorbis.123`. An invalid config
-   * rejects `TypeError`. Too few arguments reject `TypeError`.
+   * `supported` is true for an accepted AAC string, for `opus` (including more
+   * than two channels), and for `vorbis` even when `description` is omitted.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioDecoder/isConfigSupported)
    */
@@ -14922,53 +14820,13 @@ interface AudioDecoderConfig {
 }
 
 /**
- * Decodes a PNG, JPEG, WebP, JPEG XL, GIF, BMP, or AVIF image.
+ * The **`ImageDecoder`** interface of the WebCodecs API provides a way to unpack
+ * and decode encoded image data. Available only in secure contexts.
  *
- * `isTypeSupported` resolves `true` for `image/png`, `image/jpeg`,
- * `image/webp`, `image/jxl`, `image/avif`, `image/gif`, and `image/bmp`.
- * Parameters after the type are ignored. A call with too few arguments
- * rejects `TypeError`. The constructor still returns a decoder for any other
- * type. `completed`, `tracks.ready`, and `decode()` then reject
- * `NotSupportedError`. A still image has one track, `frameCount` 1,
- * `animated` false, and `repetitionCount` 0. An animated PNG, WebP, or JPEG
- * XL reports every frame. `repetitionCount` is the number of extra plays
- * after the first. `0` plays once and `Infinity` loops forever. A GIF with
- * one frame is still, so `duration` is null. Two or more GIF frames are
- * animated. A delay below 2 centiseconds is 100000 microseconds. Any longer
- * delay is that many centiseconds times 10000 microseconds. A Netscape loop
- * count of 0, and a file with no loop block, set `repetitionCount` to
- * `Infinity`. A count of `n` greater than 0 sets it to `n - 1`. Each frame
- * is the logical screen after that rectangle is composited. A transparent
- * sample leaves the pixel. Disposal `background` clears that rectangle to
- * transparent. Disposal `previous` restores the screen from before the
- * frame. BMP is one still frame: a 40-, 108-, or 124-byte header, an 8-bit
- * palette, 24-bit BGR, opaque 32-bit `BI_RGB`, or 32-bit `BI_BITFIELDS`.
- * `frameIndex` past the last frame rejects `RangeError`. `timestamp` is the
- * sum of earlier durations and `duration` is that frame's delay, both in
- * microseconds. A still frame has `timestamp` 0 and `duration` null.
- * `createImageBitmap` uses the first frame. This decoder does not advance
- * frames. An AVIF file is one still frame from the primary item, including
- * when the file is animated. A major brand of `avis` is rejected, so an
- * animated sequence is not walked. The color item is profiles 0–2 at 8, 10,
- * or 12 bits, including 4:2:0, 4:2:2, 4:4:4, and monochrome. `decode()`
- * returns a YUV `VideoFrame`: `I420`, `I422`, and `I444` at 8, 10, and 12
- * bits. Monochrome is stored as 4:2:0 with neutral chroma. 10-bit and
- * 12-bit samples are little-endian, and the low bits are significant. An
- * `nclx` colour property on the primary item replaces the sequence header
- * color. When that property is absent, the sequence header color is stored.
- * `drawImage`, `createPattern`, `createImageBitmap`, and
- * `copyExternalImageToTexture` sample that frame as unorm8 sRGB. Identity
- * reads the Y plane as G, the U plane as B, and the V plane as R. An alpha
- * item is composited into the display image, and the frame format stays the
- * color format. A premultiplied alpha item stays premultiplied. Any other
- * bit depth is rejected. `desiredWidth` or `desiredHeight` scales the
- * display image, and that frame is RGBA. Rotation, clean aperture, and ICC
- * are not applied. PQ and HLG transfers are not applied.
- * `desiredWidth` and `desiredHeight` scale every frame with a
- * triangle filter. One of them preserves aspect ratio by rounding the other
- * edge up. Both set the exact size. A value of 0 throws `TypeError`.
- * `preferAnimation` does not select another track, because a file has one
- * track. A decoder panic rejects `EncodingError`.
+ * Decodes PNG, JPEG, WebP, JPEG XL, GIF, BMP, and one still AVIF frame (profiles
+ * 0–2 at 8, 10, or 12 bits). An animated AVIF (`avis`) is rejected. GIF delays
+ * below 2 centiseconds become 100 ms. This decoder does not advance frames by
+ * itself.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder)
  */
@@ -14981,8 +14839,8 @@ interface ImageDecoder {
   readonly complete: boolean;
 
   /**
-   * Rejects `NotSupportedError` for an unsupported type, and `EncodingError`
-   * when the bytes cannot be decoded.
+   * Rejects `NotSupportedError` for an unsupported type, and `EncodingError` when
+   * the bytes cannot be decoded.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder/completed)
    */
@@ -15041,9 +14899,8 @@ interface ImageDecodeResult {
 }
 
 /**
- * Tracks of an {@link ImageDecoder}.
- *
- * `ready` rejects `NotSupportedError` for an unsupported type.
+ * Tracks of an {@link ImageDecoder}. `ready` rejects `NotSupportedError` for an
+ * unsupported type.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrackList)
  */
@@ -15067,19 +14924,20 @@ declare var ImageTrackList: {
 
 
 /**
- * One image track.
+ * The **`ImageTrack`** interface of the WebCodecs API represents an individual
+ * image track. Available only in secure contexts.
  *
- * A still image reports `animated` false, `frameCount` 1, and
- * `repetitionCount` 0. An animated PNG, WebP, or JPEG XL reports the frame
- * count and the extra plays after the first. Forever is `Infinity`. An AVIF
- * file stays a still image.
+ * One image track. A still image reports `animated` false, `frameCount` 1, and
+ * `repetitionCount` 0. An animated PNG, WebP, or JPEG XL reports the frame count
+ * and the extra plays after the first. Forever is `Infinity`. An AVIF file stays
+ * a still image.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack)
  */
 interface ImageTrack {
   /**
-   * True when the track is an animated PNG, WebP, or JPEG XL. An AVIF file
-   * stays false.
+   * True when the track is an animated PNG, WebP, or JPEG XL. An AVIF file stays
+   * false.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrack/animated)
    */
@@ -15109,13 +14967,11 @@ declare var ImageTrack: {
 
 
 /**
- * A server-sent event client.
+ * The **`EventSource`** interface is web content's interface to server-sent
+ * events.
  *
- * The URL scheme must be `http:` or `https:`. `withCredentials` is stored and
- * does not change the request. There is no cookie jar and no CORS check.
- * The default reconnection time is 3000ms. Each connection, including a
- * reconnect, checks the net permission again. A denial does not open a
- * socket.
+ * The URL must be `http:` or `https:`. There is no cookie jar and no CORS check.
+ * A denied net permission does not open a socket.
  *
  * @throws {@link DOMException} `SyntaxError` when the scheme is not `http` or `https`.
  *
@@ -15163,35 +15019,24 @@ interface EventSourceInit {
 }
 
 /**
- * Address space required by a WebSocket connection.
- *
- * The connected address must match exactly. `"private"` is not accepted.
+ * Address space required by a WebSocket connection. The connected address must
+ * match exactly. `"private"` is not accepted.
  */
 type TargetAddressSpace = "loopback" | "local" | "public";
 
-/**
- * Second argument of {@link WebSocket}.
- */
 interface WebSocketInit {
   protocols?: string | string[];
   targetAddressSpace?: TargetAddressSpace;
 }
 
 /**
- * A WebSocket.
+ * The **`WebSocket`** object provides the API for creating and managing a
+ * WebSocket connection to a server, as well as for sending and receiving data on
+ * the connection.
  *
- * `extensions` stays `""`. There is no permessage-deflate. `wss:` trusts the
- * webpki root set. Binary messages follow `binaryType`.
- *
- * The constructor takes a `ws:` or `wss:` URL. `protocols` is a protocol
- * string, a sequence of protocol strings, or a {@link WebSocketInit}. A
- * further argument is ignored. A resolved loopback, private, link-local,
- * unique-local, site-local, NAT64 (`64:ff9b::/96`), shared, multicast,
- * broadcast, or unspecified address is checked again before the socket
- * connects. The connection uses only an
- * address that check allows. When every address is denied, the constructor
- * still returns, and the socket dispatches `error` and closes with code
- * 1006.
+ * `extensions` stays `""`. There is no permessage-deflate. `protocols` may be a
+ * string, a sequence, or a {@link WebSocketInit}. When every resolved address is
+ * denied, the constructor still returns and the socket closes with code 1006.
  *
  * @throws {@link TypeError} When `targetAddressSpace` is not `loopback`,
  * `local`, or `public`, including the legacy alias `"private"`.
@@ -15288,21 +15133,15 @@ interface CloseEventInit extends EventInit {
   reason?: string;
 }
 
-/**
- * Options for {@link WebSocketStream}.
- */
 interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
 }
 
 /**
- * A WebSocket exposed as streams.
- *
  * `signal` aborts only the handshake. Text messages are strings and binary
- * messages are `Uint8Array` values. A handshake failure rejects both `opened`
- * and `closed`, and those rejections are marked handled. `extensions` in the
- * opened result stays `""`.
+ * messages are `Uint8Array` values. `extensions` in the opened result stays
+ * `""`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketStream)
  */
@@ -15315,11 +15154,7 @@ declare class WebSocketStream {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketStream/url) */
   readonly url: string;
 
-  /**
-   * Resolves when the handshake finishes.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketStream/opened)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketStream/opened) */
   readonly opened: Promise<WebSocketConnection>;
 
   /**
@@ -15336,7 +15171,6 @@ declare class WebSocketStream {
   close(options?: WebSocketCloseInfo): void;
 }
 
-/** The value {@link WebSocketStream.opened} resolves. */
 interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
   writable: WritableStream<string | BufferSource>;
@@ -15344,17 +15178,12 @@ interface WebSocketConnection {
   extensions: string;
 }
 
-/** Close information for {@link WebSocketStream}. */
 interface WebSocketCloseInfo {
   closeCode?: number;
   reason?: string;
 }
 
-/**
- * A WebSocket stream failure.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketError)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketError) */
 declare class WebSocketError extends DOMException {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocketError/WebSocketError)
@@ -15368,15 +15197,11 @@ declare class WebSocketError extends DOMException {
   readonly reason: string;
 }
 
-/**
- * Requested congestion control for a {@link WebTransport} session.
- */
 type WebTransportCongestionControl = "default" | "throughput" | "low-latency";
 
 /**
- * Datagram support reported by a {@link WebTransport} session.
- *
- * `"pending"` is the value until `ready` resolves.
+ * Datagram support reported by a {@link WebTransport} session. `"pending"` is
+ * the value until `ready` resolves.
  */
 type WebTransportReliabilityMode =
   | "pending"
@@ -15384,29 +15209,9 @@ type WebTransportReliabilityMode =
   | "reliable-only";
 
 /**
- * Options for {@link WebTransport}.
- *
  * `serverCertificateHashes` replaces the webpki roots when the list is
- * non-empty, including when every algorithm is unknown. Unknown algorithms
- * are ignored. `allowPooling: true` with that non-empty list throws
- * `NotSupportedError`. Pooling is otherwise ignored.
- * Omitted `datagramsReadableType` uses a default readable stream, and
- * `getReader({ mode: "byob" })` on it throws `TypeError`. `"bytes"` uses a
- * readable byte stream. A BYOB view shorter than the datagram rejects the
- * read with `RangeError`. A view whose element size is not 1, including a
- * `DataView`, rejects the read with `TypeError`. An empty datagram in that
- * mode rejects the read with `TypeError`. Any other string throws
- * `TypeError`. A non-empty `protocols` list throws
- * `NotSupportedError`. An empty list is accepted. A `Headers` object throws
- * `NotSupportedError`, including an empty one. A non-empty header sequence
- * or record throws `NotSupportedError`. An empty sequence or record is
- * accepted. A value that is not a `HeadersInit` throws `TypeError`.
- * `anticipatedConcurrentIncomingUnidirectionalStreams` and
- * `anticipatedConcurrentIncomingBidirectionalStreams` must be `null` or an
- * integer from 0 through 65535. Any other number throws `TypeError`.
- * In-range values are ignored, and those attributes are absent.
- * `requireUnreliable` rejects `ready` and `closed` when the session cannot
- * carry datagrams.
+ * non-empty. `protocols` and `headers` must be empty. `requireUnreliable`
+ * rejects `ready` and `closed` when datagrams are unavailable.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/WebTransport)
  */
@@ -15423,32 +15228,21 @@ interface WebTransportOptions {
 }
 
 /**
- * One certificate hash in {@link WebTransportOptions.serverCertificateHashes}.
- *
  * `algorithm` other than `"sha-256"` is ignored. A `"sha-256"` `value` is 32
- * bytes. A missing `algorithm` or `value`, a `value` that is not a
- * `BufferSource`, a `SharedArrayBuffer`, a view of one, or a resizable
- * buffer throws `TypeError`.
+ * bytes.
  */
 interface WebTransportHash {
   algorithm: string;
   value: BufferSource;
 }
 
-/**
- * Close information for {@link WebTransport}.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportCloseInfo)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportCloseInfo) */
 interface WebTransportCloseInfo {
   closeCode?: number;
   reason?: string;
 }
 
 /**
- * Options for {@link WebTransport.createBidirectionalStream} and
- * {@link WebTransport.createUnidirectionalStream}.
- *
  * `sendOrder` and `waitUntilAvailable` are ignored. A non-null `sendGroup`
  * throws `NotSupportedError`.
  */
@@ -15459,10 +15253,8 @@ interface WebTransportSendStreamOptions {
 }
 
 /**
- * A bidirectional WebTransport stream.
- *
- * `readable` is a readable byte stream. Chunks on both sides are `Uint8Array`
- * values.
+ * A bidirectional WebTransport stream. `readable` is a readable byte stream.
+ * Chunks on both sides are `Uint8Array` values.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
  */
@@ -15472,48 +15264,29 @@ interface WebTransportBidirectionalStream {
 }
 
 /**
- * Datagram duplex exposed by {@link WebTransport.datagrams}.
- *
- * This is a plain object. Chunks are `Uint8Array` values. Omitted
- * `datagramsReadableType` makes `readable` a default readable stream, and
- * `getReader({ mode: "byob" })` throws `TypeError`. `"bytes"` makes
- * `readable` a readable byte stream. Both modes use a high-water mark of 0.
- * In bytes mode one read returns one datagram. A BYOB view shorter than the
- * datagram rejects the read with `RangeError`. A view whose element size is
- * not 1, including a `DataView`, rejects the read with `TypeError`.
+ * A plain `{ readable, writable }`. Chunks are `Uint8Array` values. `"bytes"`
+ * makes `readable` a readable byte stream with one datagram per read.
  */
 interface WebTransportDatagrams {
   readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   writable: WritableStream<Uint8Array<ArrayBuffer>>;
 }
 
-/**
- * Options for {@link WebTransportError}.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/WebTransportError)
- */
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/WebTransportError) */
 interface WebTransportErrorOptions {
   source?: "stream" | "session";
   streamErrorCode?: number | null;
 }
 
 /**
- * An HTTP/3 WebTransport session.
+ * The **`WebTransport`** interface of the WebTransport API provides
+ * functionality to enable a user agent to connect to an HTTP/3 server, initiate
+ * reliable and unreliable transport in either or both directions, and close the
+ * connection once it is no longer needed. Available only in secure contexts.
  *
- * The URL must be `https` and must not contain a fragment. A relative URL
- * is resolved against the entry URL. The constructor is on `globalThis` in
- * the main realm and in a dedicated worker. This is not an `EventTarget`.
- * `ready` and `closed` reject when the handshake fails, and those
- * rejections are marked handled. A resolved loopback, private, link-local,
- * unique-local, site-local, NAT64 (`64:ff9b::/96`), shared, multicast,
- * broadcast, or unspecified address is checked again before the QUIC
- * connection. `ready` rejects with the net
- * denial when every resolved address is denied, and that address is not
- * contacted. `datagrams` is a plain
- * `{ readable, writable }`. Chunks are `Uint8Array` values. The readable
- * side of a bidirectional stream, and each incoming unidirectional stream,
- * is a readable byte stream. `reliability` is `"pending"` until `ready`
- * resolves.
+ * An HTTP/3 session. The URL must be `https` and must not contain a fragment.
+ * This is not an `EventTarget`. `ready` rejects when every resolved address is
+ * denied.
  *
  * @throws {@link DOMException} `SyntaxError` when the URL is invalid, the
  * scheme is not `https`, or the URL has a fragment.
@@ -15542,7 +15315,8 @@ declare class WebTransport {
   readonly url: string;
 
   /**
-   * Resolves when the handshake finishes.
+   * The **`ready`** read-only property of the WebTransport interface returns a
+   * promise that resolves when the transport is ready to use.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/ready)
    */
@@ -15620,10 +15394,9 @@ declare class WebTransport {
 }
 
 /**
- * A WebTransport stream or session failure.
- *
- * `name` is `"WebTransportError"` and `code` is `0`. `source` defaults to
- * `"stream"`. `streamErrorCode` defaults to `null`.
+ * A WebTransport stream or session failure. `name` is `"WebTransportError"` and
+ * `code` is `0`. `source` defaults to `"stream"`. `streamErrorCode` defaults to
+ * `null`.
  *
  * @throws {@link TypeError} When `options` is not an object or `source` is
  * not `"stream"` or `"session"`.
@@ -15648,27 +15421,13 @@ declare class WebTransportError extends DOMException {
 }
 
 /**
- * A dedicated worker.
+ * The **`Worker`** interface of the Web Workers API represents a background task
+ * that can be created via script, which can send messages back to its creator.
  *
- * `new Worker(url)` runs a classic script. `{ type: "module" }` runs an ES
- * module. The object from `import source` of JavaScript or TypeScript also
- * starts a module worker. `{ type: "classic" }` with that object throws
- * `TypeError`. There is no `SharedWorker`. `postMessage` carries values
- * `structuredClone` can carry, including a transferred `ArrayBuffer`,
- * `MessagePort`, `OffscreenCanvas`, `ImageBitmap`, `AudioData`,
- * `VideoFrame`, `ReadableStream`, `WritableStream`, or `TransformStream`,
- * and a cloned `ImageData`, `EncodedAudioChunk`, or `EncodedVideoChunk`.
- * A {@link Yuzuko.Window} cannot be transferred.
- * A WebGPU device stays on the thread that created it.
- * The script may be `file:`, a sandboxed `http:` or `https:` path, `data:`
- * including a base64 payload, or `blob:`. A blob URL created on another
- * thread can be loaded. A `file:` script requires read access. A URL whose
- * host is `127.0.0.1`, `localhost`, or `web-platform.test` is the
- * entry-directory file for that path, on any port, and requires the same
- * read. A symlink is denied unless its canonical target is allowed too.
- * A missing grant does not run the script. The constructor does not throw
- * `NotCapable`. The worker's error event message is
- * `NotCapable: Requires read access to "<path>", run again with the --allow-read flag`.
+ * `{ type: "module" }` runs an ES module. A source-phase import of JavaScript or
+ * TypeScript also starts a module worker. There is no `SharedWorker`. A
+ * {@link Yuzuko.Window} cannot be transferred. A WebGPU device stays on the
+ * thread that created it.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid, or when
  * `type` is `"classic"` with a source-phase import.
@@ -15702,13 +15461,16 @@ declare var Worker: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/Worker) */
 interface WorkerOptions {
-  /** `"classic"` or `"module"`. */
   type?: WorkerType;
   name?: string;
 }
 
 /**
- * Prototype of a worker global.
+ * The **`WorkerGlobalScope`** interface of the Web Workers API is an interface
+ * representing the scope of any worker. Workers have no browsing context; this
+ * scope contains the information usually conveyed by Window objects — in this
+ * case event handlers, the console or the associated WorkerNavigator object.
+ * Each WorkerGlobalScope has its own event loop.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -15718,13 +15480,12 @@ declare class WorkerGlobalScope extends EventTarget {
   constructor();
 
   /**
-   * Imports classic scripts.
+   * The **`importScripts()`** method of the WorkerGlobalScope interface
+   * synchronously imports one or more scripts into the scope of a classic worker
+   * (a worker constructed from a classic script).
    *
-   * Parses every URL before running any script. A blob URL is captured
-   * then, so revoking it inside an earlier script of the same call does
-   * not fail a later URL. `data:` accepts a base64 payload. A `file:` URL
-   * requires read access and throws `NotCapable`. An `http:` or
-   * `https:` URL requires net access, including each followed redirect.
+   * A `file:` URL requires read access and an `http:` or `https:` URL requires net
+   * access. A missing grant throws `NotCapable`.
    *
    * @throws {@link errors.NotCapable} when a `file:` URL is
    * not granted, or when an `http:` or `https:` URL or a followed redirect
@@ -15739,21 +15500,15 @@ declare class WorkerGlobalScope extends EventTarget {
 }
 
 /**
- * The global scope inside `new Worker`.
+ * The **`DedicatedWorkerGlobalScope`** object (the Worker global scope) is
+ * accessible through the self keyword. Some additional global functions,
+ * namespaces objects, and constructors, not typically associated with the worker
+ * global scope, but available on it, are listed in the JavaScript Reference. See
+ * also: Functions available to workers.
  *
- * The worker has the web globals in this file except `requestIdleCallback`,
- * `cancelIdleCallback`, `Yuzuko.Window`, `Yuzuko.Menu`, `Yuzuko.setMenu`,
- * `Yuzuko.setDialogLabels`,
- * `Yuzuko.Tray`, `Yuzuko.dock`, `Yuzuko.appVersion`, `Yuzuko.autoUpdate`,
- * `navigator.clipboard`, and
- * `navigator.getGamepads`. The worker has `Yuzuko.build`. `FileReaderSync`
- * is on this global. `self.fonts`
- * and `globalThis.fonts` are that worker's {@link FontFaceSet}.
- * `requestAnimationFrame` runs the callback at
- * the slowest refresh rate among the open windows whose canvas this worker
- * holds, or at 60 Hz when it holds none, and then copies each transferred
- * window canvas into the window that owns it. That window presents the copy
- * on the next turn of the main event loop.
+ * The worker does not have `requestIdleCallback`, `Yuzuko.Window`,
+ * `Yuzuko.Menu`, `navigator.clipboard`, or `navigator.getGamepads`. It has
+ * `requestAnimationFrame`, `FileReaderSync`, and `self.fonts`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -15777,15 +15532,9 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   close(): void;
 
   /**
-   * Schedules `callback`, then copies each transferred window canvas.
-   *
-   * The period is the slowest refresh rate among the open windows whose
-   * OffscreenCanvas this worker holds. A window that has not transferred its
-   * canvas does not count. With none, the period is 60 Hz. A transfer, a
-   * close, or a move to another monitor applies on the next frame.
-   *
-   * Browsers throw `NotSupportedError` when the worker has no owner window.
-   * This runtime does not. It schedules the callback on the worker event loop.
+   * After the callback, each transferred window canvas is copied back. The period
+   * is the slowest refresh rate among those windows, or 60 Hz when the worker
+   * holds none.
    *
    * @throws {@link TypeError} When `callback` is not a function.
    *
@@ -15862,10 +15611,9 @@ declare class WorkerNavigator {
   readonly platform: string;
 
   /**
-   * Number of logical processors available to this process.
-   *
-   * The value is an integer and is at least 1. When the operating system
-   * does not report a count, the value is 1.
+   * Number of logical processors available to this process. The value is an
+   * integer and is at least 1. When the operating system does not report a count,
+   * the value is 1.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/hardwareConcurrency)
    */
@@ -15873,10 +15621,9 @@ declare class WorkerNavigator {
 }
 
 /**
- * A media query list for one {@link Yuzuko.Window}.
- *
- * `new MediaQueryList()` throws. Obtain one from {@link Yuzuko.Window.matchMedia}.
- * `change` fires when the result changes.
+ * A media query list for one {@link Yuzuko.Window}. `new MediaQueryList()`
+ * throws. Obtain one from {@link Yuzuko.Window.matchMedia}. `change` fires when
+ * the result changes.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -15910,7 +15657,9 @@ declare var MediaQueryList: {
 
 
 /**
- * A change to a {@link MediaQueryList}.
+ * The **`MediaQueryListEvent`** object stores information on the changes that
+ * have happened to a MediaQueryList object — instances are available as the
+ * event object on a function referenced by a change event.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -15931,17 +15680,14 @@ declare var MediaQueryListEvent: {
 
 
 /**
- * A clipboard item.
+ * The **`ClipboardItem`** interface of the Clipboard API represents a single
+ * item format, used when reading or writing clipboard data using
+ * Clipboard.read() and Clipboard.write() respectively. Available only in secure
+ * contexts.
  *
- * A key must parse as a MIME type. A key that starts with `web ` is a custom
- * format, and the suffix must parse as a MIME type. Parameters are kept. A
- * malformed key throws `TypeError`. `types` lists those keys. `getType` of a
- * string resolves a `Blob` whose type is that key. `getType` of a `Blob`
- * keeps that blob's type. A missing type rejects `NotFoundError`.
- * `ClipboardItem.supports` returns true for `text/plain`, `text/html`,
- * `image/png`, `text/uri-list`, `image/svg+xml`, and a `web ` custom format
- * whose suffix is a MIME type without parameters. `Clipboard.write` still
- * publishes only `text/plain` and `image/png`.
+ * `ClipboardItem.supports` accepts `text/plain`, `text/html`, `image/png`,
+ * `text/uri-list`, `image/svg+xml`, and a `web ` custom format.
+ * `Clipboard.write` still publishes only `text/plain` and `image/png`.
  *
  * @throws {@link TypeError} When a key does not parse, the record is empty,
  * or the same MIME type and custom flag is repeated.
@@ -15978,13 +15724,13 @@ interface ClipboardItemOptions {
 }
 
 /**
- * The system clipboard.
+ * The **`Clipboard`** interface of the Clipboard API provides read and write
+ * access to the contents of the system clipboard. This allows a web application
+ * to implement cut, copy, and paste features. Available only in secure contexts.
  *
  * Reads and writes require a pointer or key press on the focused
- * {@link Yuzuko.Window} within five seconds. There is no permission prompt
- * and no secure-context gate. Text is published to the OS pasteboard.
- * `image/png` is stored as the written bytes and also published as an image
- * when the PNG decodes.
+ * {@link Yuzuko.Window} within five seconds. There is no permission prompt.
+ * `image/png` is published as an image when the PNG decodes.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link Navigator.clipboard}.
  *
@@ -16040,15 +15786,13 @@ declare var Clipboard: {
 
 
 /**
- * String store for a clipboard `copy`, `cut`, or `paste`.
+ * The **`DataTransfer`** object is used to hold any data transferred between
+ * contexts, such as a drag and drop operation, or clipboard read/write. It may
+ * hold one or more data items, each of one or more data types.
  *
- * `new DataTransfer()` is empty, read/write, with `dropEffect` and
- * `effectAllowed` of `"none"`. A host `paste` is read-only and exposes
- * `text/plain` from the same cache as {@link Clipboard.readText}. A cancelled
- * host `copy` or `cut` publishes `text/plain` only. `items`, `files`, and
- * `setDragImage` are absent. A dedicated worker has no `DataTransfer`.
- * A {@link DragEvent} stores this object only when script passes it.
- * File drops do not carry one.
+ * A string store for clipboard `copy`, `cut`, and `paste`. `items`, `files`, and
+ * `setDragImage` are absent. A dedicated worker has no `DataTransfer`. File
+ * drops do not carry one.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer)
  */
@@ -16095,17 +15839,17 @@ interface DataTransfer {
   getData(format: string): string;
 
   /**
-   * Stores `data` under `format`. `"text"` writes `text/plain` and `"url"`
-   * writes `text/uri-list`. Replacing a format moves it to the end. A
-   * read-only store ignores the call.
+   * Stores `data` under `format`. `"text"` writes `text/plain` and `"url"` writes
+   * `text/uri-list`. Replacing a format moves it to the end. A read-only store
+   * ignores the call.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/setData)
    */
   setData(format: string, data: string): void;
 
   /**
-   * Removes every string entry when `format` is omitted. Otherwise removes
-   * that format. A read-only store ignores the call.
+   * Removes every string entry when `format` is omitted. Otherwise removes that
+   * format. A read-only store ignores the call.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/clearData)
    */
@@ -16117,13 +15861,13 @@ declare var DataTransfer: {
 };
 
 /**
- * `copy`, `cut`, and `paste` on the focused {@link Yuzuko.WindowSurface}.
+ * The **`ClipboardEvent`** interface of the Clipboard API represents events
+ * providing information related to modification of the clipboard, that is cut,
+ * copy, and paste events.
  *
- * The host sends these for Ctrl/Cmd+C, X, and V. Host `copy` and `cut` carry
- * an empty read/write {@link DataTransfer}. Host `paste` carries a read-only
- * one. A constructed event stores `clipboardData` and does not write the
- * system clipboard. {@link ClipboardChangeEvent} is a separate event on
- * {@link Clipboard}.
+ * Host `copy`, `cut`, and `paste` are sent for Ctrl or Cmd with C, X, and V on
+ * the focused {@link Yuzuko.WindowSurface}. A constructed event does not write
+ * the system clipboard.
  *
  * @throws {@link TypeError} When `clipboardData` is present and is not a
  * {@link DataTransfer} or null.
@@ -16155,12 +15899,9 @@ interface ClipboardEventInit extends EventInit {
 }
 
 /**
- * A change to the system clipboard.
- *
- * The host event is `clipboardchange` on {@link Clipboard}. It does not
- * bubble and cannot be cancelled. `types` lists `text/plain`, `text/html`,
- * and `image/png` when those are present. A constructed event keeps the
- * `types` it was given. A dedicated worker has no `ClipboardChangeEvent`.
+ * The host event is `clipboardchange` on {@link Clipboard}. `types` lists
+ * `text/plain`, `text/html`, and `image/png` when those are present. A dedicated
+ * worker does not have this event.
  *
  * @throws {@link TypeError} When `types` is present and is not an array, or
  * when `changeId` is present and does not convert with `ToBigInt`, or when
@@ -16193,10 +15934,8 @@ interface ClipboardChangeEventInit extends EventInit {
 }
 
 /**
- * A connected gamepad.
- *
- * `touches` stays empty, `pose` is null, and `hand` is `""`. There is no
- * secure-context gate.
+ * A connected gamepad. `touches` stays empty, `pose` is null, and `hand` is
+ * `""`. There is no secure-context gate.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -16282,9 +16021,8 @@ declare var GamepadButton: {
 
 
 /**
- * Haptic actuator for one gamepad.
- *
- * `effects` contains `"dual-rumble"` when the device can play that effect.
+ * Haptic actuator for one gamepad. `effects` contains `"dual-rumble"` when the
+ * device can play that effect.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -16293,18 +16031,17 @@ declare var GamepadButton: {
 interface GamepadHapticActuator {
 
   /**
-   * `"dual-rumble"` when the device can play it. Otherwise empty.
-   * The same frozen array is returned for the life of the actuator.
+   * `"dual-rumble"` when the device can play it. Otherwise empty. The same frozen
+   * array is returned for the life of the actuator.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadHapticActuator/effects)
    */
   readonly effects: readonly GamepadHapticEffectType[];
 
   /**
-   * Plays `"dual-rumble"` when that type is listed in `effects`.
-   * `trigger-rumble` rejects `NotSupportedError`.
-   * The sum of `duration` and `startDelay` is capped at 5000 ms.
-   * The promise resolves `"complete"` or `"preempted"`.
+   * Plays `"dual-rumble"` when that type is listed in `effects`. `trigger-rumble`
+   * rejects `NotSupportedError`. The sum of `duration` and `startDelay` is capped
+   * at 5000 ms. The promise resolves `"complete"` or `"preempted"`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
    * @throws {@link DOMException} `NotSupportedError` when `type` is not in `effects`.
@@ -16316,8 +16053,8 @@ interface GamepadHapticActuator {
   playEffect(type: GamepadHapticEffectType, params?: GamepadEffectParameters): Promise<GamepadHapticsResult>;
 
   /**
-   * Resolves `"complete"` while the gamepad is connected.
-   * A playing effect resolves `"preempted"`.
+   * Resolves `"complete"` while the gamepad is connected. A playing effect
+   * resolves `"preempted"`.
    *
    * @throws {@link DOMException} `InvalidStateError` when the gamepad is disconnected.
    *
@@ -16342,9 +16079,7 @@ interface GamepadEffectParameters {
 }
 
 /**
- * A pose that reports nothing.
- *
- * Every vector is null and both flags are false.
+ * A pose that reports nothing. Every vector is null and both flags are false.
  *
  * @throws {@link TypeError} Illegal constructor.
  *

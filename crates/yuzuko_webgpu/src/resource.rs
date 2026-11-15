@@ -33,6 +33,8 @@ pub struct GpuBuffer {
   buffer: RefCell<Option<wgpu::Buffer>>,
   lost: Arc<AtomicBool>,
   size: u64,
+  /// Usage bits passed to `createBuffer`, kept after `destroy`.
+  usage: u32,
   mapped: RefCell<Option<Mapped>>,
   label: ObjectLabel,
 }
@@ -51,11 +53,13 @@ impl GpuBuffer {
     lost: Arc<AtomicBool>,
     size: u64,
     label: Option<String>,
+    usage: u32,
   ) -> Self {
     Self {
       buffer: RefCell::new(Some(buffer)),
       lost,
       size,
+      usage,
       mapped: RefCell::new(None),
       label: ObjectLabel::new(label),
     }
@@ -123,6 +127,20 @@ impl GpuBuffer {
   #[getter]
   fn size(&self) -> f64 {
     self.size as f64
+  }
+
+  #[getter]
+  fn map_state(&self) -> String {
+    if self.mapped.borrow().is_some() {
+      "mapped".to_string()
+    } else {
+      "unmapped".to_string()
+    }
+  }
+
+  #[getter]
+  fn usage(&self) -> u32 {
+    self.usage
   }
 
   fn destroy(&self, scope: &mut v8::PinScope) {
@@ -295,6 +313,9 @@ pub struct GpuTexture {
   width: u32,
   height: u32,
   format: wgpu::TextureFormat,
+  sample_count: u32,
+  /// Usage bits of the texture that was created, kept after `destroy`.
+  usage: u32,
   label: ObjectLabel,
 }
 
@@ -315,6 +336,8 @@ impl GpuTexture {
     height: u32,
     format: wgpu::TextureFormat,
     label: Option<String>,
+    sample_count: u32,
+    usage: u32,
   ) -> Self {
     Self {
       texture: Rc::new(RefCell::new(Some(texture))),
@@ -323,6 +346,8 @@ impl GpuTexture {
       width,
       height,
       format,
+      sample_count,
+      usage,
       label: ObjectLabel::new(label),
     }
   }
@@ -376,12 +401,52 @@ impl GpuTexture {
     self.height
   }
 
+  #[getter]
+  fn depth_or_array_layers(&self) -> u32 {
+    1
+  }
+
+  #[getter]
+  fn dimension(&self) -> String {
+    "2d".to_string()
+  }
+
+  #[getter]
+  fn mip_level_count(&self) -> u32 {
+    1
+  }
+
+  #[getter]
+  fn sample_count(&self) -> u32 {
+    self.sample_count
+  }
+
+  #[getter]
+  fn usage(&self) -> u32 {
+    self.usage
+  }
+
   fn create_view(
     &self,
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuTextureView>, OpError> {
     let texture = self.texture()?;
+    if let Some(value) = descriptor
+      && let Some(object) = js::object(scope, value)
+    {
+      if let Some(swizzle) = js::get(scope, object, "swizzle")
+        && !swizzle.is_null()
+      {
+        let text = js::string(scope, swizzle).unwrap_or_default();
+        if text != "rgba" {
+          return Err(js::unsupported("GPUTextureViewDescriptor.swizzle"));
+        }
+      }
+      if js::get(scope, object, "usage").is_some() {
+        return Err(js::unsupported("GPUTextureViewDescriptor.usage"));
+      }
+    }
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let label = descriptor.and_then(|value| {
       js::object(scope, value).and_then(|object| optional_label(scope, object))
@@ -499,6 +564,13 @@ impl GpuShaderModule {
   #[setter]
   fn label(&self, value: String) {
     self.label.set(value);
+  }
+
+  fn get_compilation_info(&self, scope: &mut v8::PinScope) -> Js {
+    js::promise_rejected(
+      scope,
+      js::unsupported("GPUShaderModule.getCompilationInfo"),
+    )
   }
 }
 
@@ -809,7 +881,9 @@ pub fn create_buffer(
   let object = js::object(scope, descriptor)
     .ok_or_else(|| OpError::type_("createBuffer requires a descriptor"))?;
   let size = u64::from(js::required_u32(scope, object, "size")?);
-  let usage = js::required_u32(scope, object, "usage")?;
+  let usage = wgpu::BufferUsages::from_bits_truncate(js::required_u32(
+    scope, object, "usage",
+  )?);
   if size == 0 {
     return Err(OpError::range("GPUBuffer size must be non-zero"));
   }
@@ -817,7 +891,7 @@ pub fn create_buffer(
   let buffer = handle.device.create_buffer(&wgpu::BufferDescriptor {
     label: label.as_deref(),
     size,
-    usage: wgpu::BufferUsages::from_bits_truncate(usage),
+    usage,
     mapped_at_creation: false,
   });
   Ok(New(GpuBuffer::new(
@@ -825,6 +899,7 @@ pub fn create_buffer(
     Arc::clone(&handle.lost),
     size,
     label,
+    usage.bits(),
   )))
 }
 
@@ -838,7 +913,9 @@ pub fn create_texture(
   let (width, height) = texture_size(scope, object)?;
   let format = texture_format(&required_string(scope, object, "format")?)?;
   let format = require_texture_format(handle.device.features(), format)?;
-  let usage = js::required_u32(scope, object, "usage")?;
+  let usage = wgpu::TextureUsages::from_bits_truncate(js::required_u32(
+    scope, object, "usage",
+  )?);
   let sample_count = allowed_sample_count(
     js::field_u32(scope, object, "sampleCount")?.unwrap_or(1),
   )?;
@@ -854,7 +931,7 @@ pub fn create_texture(
     sample_count,
     dimension: wgpu::TextureDimension::D2,
     format,
-    usage: wgpu::TextureUsages::from_bits_truncate(usage),
+    usage,
     view_formats: &[],
   });
   Ok(New(GpuTexture::from_parts(
@@ -865,6 +942,8 @@ pub fn create_texture(
     height,
     format,
     label,
+    sample_count,
+    usage.bits(),
   )))
 }
 
@@ -874,6 +953,11 @@ pub fn create_sampler(
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuSampler>, OpError> {
   let object = js::object(scope, descriptor);
+  if let Some(object) = object
+    && js::get(scope, object, "compare").is_some_and(|value| !value.is_null())
+  {
+    return Err(js::unsupported("GPUSamplerDescriptor.compare"));
+  }
   let mag = filter_of(scope, object, "magFilter")?;
   let min = filter_of(scope, object, "minFilter")?;
   let label = object.and_then(|object| optional_label(scope, object));
@@ -2049,7 +2133,7 @@ pub fn require_texture_format(
   Ok(format)
 }
 
-fn format_name(format: wgpu::TextureFormat) -> &'static str {
+pub(crate) fn format_name(format: wgpu::TextureFormat) -> &'static str {
   match format {
     wgpu::TextureFormat::Bgra8Unorm => "bgra8unorm",
     wgpu::TextureFormat::Rgba8Unorm => "rgba8unorm",

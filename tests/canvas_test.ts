@@ -243,6 +243,27 @@ Yuzuko.test("convertToBlob encodes png, jpeg, and webp", async () => {
   );
 });
 
+Yuzuko.test("a 2d context is not lost", () => {
+  const canvas = new OffscreenCanvas(4, 4);
+  assert(canvas.oncontextlost === null, "lost handler");
+  assert(canvas.oncontextrestored === null, "restored handler");
+  let lost = 0;
+  let restored = 0;
+  canvas.oncontextlost = () => {
+    lost += 1;
+  };
+  canvas.oncontextrestored = () => {
+    restored += 1;
+  };
+  assert(typeof canvas.oncontextlost === "function", "lost assigned");
+  assert(typeof canvas.oncontextrestored === "function", "restored assigned");
+  const ctx = canvas.getContext("2d");
+  assert(ctx !== null, "context");
+  assert(ctx.isContextLost() === false, "not lost");
+  ctx.fillRect(0, 0, 4, 4);
+  assert(lost === 0 && restored === 0, "no context loss event");
+});
+
 Yuzuko.test("bitmaprenderer transfers and detaches", async () => {
   const painted = new OffscreenCanvas(3, 1);
   const pixels = painted.getContext("2d");

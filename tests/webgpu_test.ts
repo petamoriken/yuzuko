@@ -1502,3 +1502,206 @@ Yuzuko.test("an uncaptured validation error is an event", async () => {
   assert(uncaptured >= 1, "handler");
   device.destroy();
 });
+
+function throwName(fn) {
+  try {
+    fn();
+    return "";
+  } catch (error) {
+    return error.name;
+  }
+}
+
+async function rejectionName(promise) {
+  try {
+    await promise;
+    return "";
+  } catch (error) {
+    return error.name;
+  }
+}
+
+Yuzuko.test("published WebGPU members match the created objects", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  for (const value of [adapter.info, device.adapterInfo]) {
+    assert(typeof value.vendor === "string", "vendor");
+    assert(typeof value.device === "string", "device");
+    assert(value.architecture === "", "architecture");
+    assert(typeof value.description === "string", "description");
+    assert(typeof value.subgroupMinSize === "number", "subgroup min");
+    assert(typeof value.subgroupMaxSize === "number", "subgroup max");
+    assert(value.isFallbackAdapter === false, "fallback");
+  }
+  const limits = adapter.limits;
+  assert(
+    limits.maxStorageBuffersInVertexStage === limits.maxStorageBuffersPerShaderStage,
+    "vertex buffers",
+  );
+  assert(
+    limits.maxStorageBuffersInFragmentStage === limits.maxStorageBuffersPerShaderStage,
+    "fragment buffers",
+  );
+  assert(
+    limits.maxStorageTexturesInVertexStage === limits.maxStorageTexturesPerShaderStage,
+    "vertex textures",
+  );
+  assert(
+    limits.maxStorageTexturesInFragmentStage === limits.maxStorageTexturesPerShaderStage,
+    "fragment textures",
+  );
+  assert(
+    device.limits.maxStorageBuffersInVertexStage
+      === device.limits.maxStorageBuffersPerShaderStage,
+    "device vertex buffers",
+  );
+  assert(
+    device.limits.maxStorageTexturesInFragmentStage
+      === device.limits.maxStorageTexturesPerShaderStage,
+    "device fragment textures",
+  );
+
+  const usage = GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST;
+  const buffer = device.createBuffer({ size: 16, usage });
+  assert(buffer.usage === usage, "buffer usage");
+  assert(buffer.mapState === "unmapped", "unmapped");
+  const mapping = buffer.mapAsync(GPUMapMode.READ);
+  assert(buffer.mapState === "mapped", "mapped on the calling stack");
+  await mapping;
+  buffer.unmap();
+  assert(buffer.mapState === "unmapped", "unmapped after unmap");
+
+  const textureUsage = GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING;
+  const texture = device.createTexture({
+    size: [4, 4],
+    format: "rgba8unorm",
+    usage: textureUsage,
+  });
+  assert(texture.dimension === "2d", "dimension");
+  assert(texture.depthOrArrayLayers === 1, "layers");
+  assert(texture.mipLevelCount === 1, "mips");
+  assert(texture.sampleCount === 1, "samples");
+  assert(texture.usage === textureUsage, "texture usage");
+  texture.createView();
+  texture.createView({ swizzle: "rgba" });
+  assert(
+    throwName(() => texture.createView({ swizzle: "bgra" })) === "NotSupportedError",
+    "swizzle",
+  );
+  assert(
+    throwName(() => texture.createView({ usage: 0 })) === "NotSupportedError",
+    "view usage",
+  );
+  assert(throwName(() => device.createSampler({ compare: "less" })) === "NotSupportedError", "compare");
+  device.createSampler();
+
+  const attachment = texture.createView();
+  const passEncoder = device.createCommandEncoder();
+  assert(
+    throwName(() => {
+      passEncoder.beginRenderPass({
+        colorAttachments: [{
+          view: attachment,
+          loadOp: "clear",
+          storeOp: "store",
+          depthSlice: 0,
+        }],
+      });
+    }) === "NotSupportedError",
+    "depth slice",
+  );
+
+  const encoder = device.createCommandEncoder();
+  assert(throwName(() => encoder.clearBuffer(buffer)) === "NotSupportedError", "clearBuffer");
+  assert(
+    throwName(() => encoder.copyBufferToTexture({}, {}, [1, 1])) === "NotSupportedError",
+    "copyBufferToTexture",
+  );
+  assert(
+    throwName(() => encoder.copyTextureToTexture({}, {}, [1, 1])) === "NotSupportedError",
+    "copyTextureToTexture",
+  );
+  assert(
+    throwName(() => {
+      device.queue.writeTexture({}, new Uint8Array(4), {}, [1, 1]);
+    }) === "NotSupportedError",
+    "writeTexture",
+  );
+
+  const drawing = device.createCommandEncoder();
+  const pass = drawing.beginRenderPass({
+    colorAttachments: [{
+      view: texture.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  assert(throwName(() => pass.setBlendConstant([0, 0, 0, 0])) === "NotSupportedError", "blend");
+  assert(throwName(() => pass.setStencilReference(0)) === "NotSupportedError", "stencil");
+
+  const shader = device.createShaderModule({ code: triangleShader });
+  assert(
+    await rejectionName(shader.getCompilationInfo()) === "NotSupportedError",
+    "compilation info",
+  );
+  assert(
+    await rejectionName(device.createRenderPipelineAsync({})) === "NotSupportedError",
+    "render pipeline async",
+  );
+  assert(
+    await rejectionName(device.queue.onSubmittedWorkDone()) === "NotSupportedError",
+    "submitted work",
+  );
+
+  const canvas = new OffscreenCanvas(4, 4);
+  const context = canvas.getContext("webgpu");
+  assert(context !== null, "webgpu context");
+  assert(context.getConfiguration() === null, "unconfigured");
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({ device, format });
+  const configuration = context.getConfiguration();
+  assert(configuration !== null, "configured");
+  assert(configuration.device === device, "config device");
+  assert(configuration.format === format, "config format");
+  assert(configuration.alphaMode === "opaque", "alpha");
+  assert(configuration.colorSpace === "srgb", "color space");
+  assert(configuration.toneMapping.mode === "standard", "tone mapping");
+  assert(Array.isArray(configuration.viewFormats), "view formats");
+  assert(configuration.usage === GPUTextureUsage.RENDER_ATTACHMENT, "config usage");
+  const current = context.getCurrentTexture();
+  const canvasUsage = GPUTextureUsage.RENDER_ATTACHMENT
+    | GPUTextureUsage.TEXTURE_BINDING
+    | GPUTextureUsage.COPY_SRC;
+  assert((current.usage & canvasUsage) === canvasUsage, "canvas usage");
+  assert(current.dimension === "2d", "canvas dimension");
+  assert(current.mipLevelCount === 1, "canvas mips");
+  assert(current.depthOrArrayLayers === 1, "canvas layers");
+  assert(current.sampleCount === 1, "canvas samples");
+  context.configure({
+    device,
+    format,
+    toneMapping: { mode: "standard" },
+  });
+  assert(context.getConfiguration().toneMapping.mode === "standard", "standard tone mapping");
+  assert(
+    throwName(() => {
+      context.configure({
+        device,
+        format,
+        toneMapping: { mode: "extended" },
+      });
+    }) === "NotSupportedError",
+    "extended tone mapping",
+  );
+
+  buffer.destroy();
+  assert(buffer.usage === usage, "usage after destroy");
+  assert(buffer.mapState === "unmapped", "unmapped after destroy");
+  texture.destroy();
+  assert(texture.usage === textureUsage, "texture usage after destroy");
+  assert(texture.sampleCount === 1, "samples after destroy");
+  device.destroy();
+});

@@ -426,6 +426,44 @@ impl GpuCommandEncoder {
     })
   }
 
+  fn clear_buffer(
+    &self,
+    scope: &mut v8::PinScope,
+    buffer: v8::Local<v8::Value>,
+    offset: Option<u32>,
+    size: Option<u32>,
+  ) -> Result<(), OpError> {
+    let _ = (offset, size);
+    let _ = alive_buffer(scope, buffer, "clearBuffer requires a GPUBuffer")?;
+    with_idle_encoder(self.id, |_| {
+      Err(js::unsupported("GPUCommandEncoder.clearBuffer"))
+    })
+  }
+
+  fn copy_buffer_to_texture(
+    &self,
+    source: v8::Local<v8::Value>,
+    destination: v8::Local<v8::Value>,
+    copy_size: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    let _ = (source, destination, copy_size);
+    with_idle_encoder(self.id, |_| {
+      Err(js::unsupported("GPUCommandEncoder.copyBufferToTexture"))
+    })
+  }
+
+  fn copy_texture_to_texture(
+    &self,
+    source: v8::Local<v8::Value>,
+    destination: v8::Local<v8::Value>,
+    copy_size: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    let _ = (source, destination, copy_size);
+    with_idle_encoder(self.id, |_| {
+      Err(js::unsupported("GPUCommandEncoder.copyTextureToTexture"))
+    })
+  }
+
   fn resolve_query_set(
     &self,
     scope: &mut v8::PinScope,
@@ -830,6 +868,21 @@ impl GpuRenderPass {
       query_set: set,
       index,
     })
+  }
+
+  fn set_blend_constant(
+    &self,
+    color: v8::Local<v8::Value>,
+  ) -> Result<(), OpError> {
+    let _ = color;
+    self.with_render(|_| Ok(()))?;
+    Err(js::unsupported("GPURenderPassEncoder.setBlendConstant"))
+  }
+
+  fn set_stencil_reference(&self, reference: u32) -> Result<(), OpError> {
+    let _ = reference;
+    self.with_render(|_| Ok(()))?;
+    Err(js::unsupported("GPURenderPassEncoder.setStencilReference"))
   }
 
   fn end(&self) -> Result<(), OpError> {
@@ -1741,6 +1794,11 @@ fn color_targets(
     }
     let attachment = js::object(scope, value)
       .ok_or_else(|| OpError::type_("A color attachment must be an object"))?;
+    if js::get(scope, attachment, "depthSlice")
+      .is_some_and(|value| !value.is_null())
+    {
+      return Err(js::unsupported("GPURenderPassColorAttachment.depthSlice"));
+    }
     let resolve = match js::get(scope, attachment, "resolveTarget") {
       Some(value) if !value.is_null_or_undefined() => {
         Some(resource::attachment_view(scope, value)?.0)

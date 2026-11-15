@@ -594,6 +594,10 @@ impl Context2D {
     Js(v8::Global::new(scope, value))
   }
 
+  fn is_context_lost(&self) -> bool {
+    false
+  }
+
   fn get_context_attributes(
     &self,
     scope: &mut v8::PinScope,
