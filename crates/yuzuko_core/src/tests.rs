@@ -261,7 +261,15 @@ fn realm_globals_cover_phase_one_basics() {
   .expect("realm");
   assert_eq!(
     logs,
-    vec!["1", "true", "string", "function", "true", "undefined", "false"]
+    vec![
+      "1",
+      "true",
+      "string",
+      "function",
+      "true",
+      "undefined",
+      "false"
+    ]
   );
 }
 
