@@ -82,6 +82,24 @@ fn input_sequences_pass_under_yuzuko_test() {
 }
 
 #[test]
+fn trusted_touch_events_are_dispatched() {
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "-A", "tests/touch_dispatch_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .env("YUZUKO_TEST_INPUT", "1")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains("ok | 2 passed | 0 failed | 0 ignored"),
+    "{stdout}\n{}",
+    text(&output.stderr)
+  );
+}
+
+#[test]
 fn touch_events_follow_the_constructor() {
   let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())

@@ -1773,6 +1773,18 @@ pub(crate) fn dispatch_pointer_on_window(
   }
 }
 
+pub(crate) fn dispatch_touch_on_window(
+  scope: &mut v8::PinScope,
+  window: v8::Local<v8::Object>,
+  fired: &yuzuko_dom::FiredTouch,
+) -> bool {
+  if let Some(surface) = surface_object(scope, window) {
+    yuzuko_dom::dispatch_touch_through(scope, surface, &[window], fired)
+  } else {
+    yuzuko_dom::dispatch_touch(scope, window, fired)
+  }
+}
+
 fn path_list(
   scope: &mut v8::PinScope,
   picked: Option<Vec<String>>,

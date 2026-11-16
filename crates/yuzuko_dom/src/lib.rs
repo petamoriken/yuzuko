@@ -26,9 +26,10 @@ pub use target::EventTarget;
 pub use target::dispatch;
 pub use target::drop_reloaded_listeners;
 pub use ui::{
-  FiredComposition, FiredInput, FiredKey, FiredPointer, FiredWheel,
-  dispatch_composition, dispatch_focus, dispatch_input, dispatch_key,
-  dispatch_pointer, dispatch_pointer_through, dispatch_simple, dispatch_wheel,
+  FiredComposition, FiredInput, FiredKey, FiredPointer, FiredTouch, FiredWheel,
+  TouchPoint, dispatch_composition, dispatch_focus, dispatch_input,
+  dispatch_key, dispatch_pointer, dispatch_pointer_through, dispatch_simple,
+  dispatch_touch, dispatch_touch_through, dispatch_wheel,
 };
 
 use std::sync::Once;

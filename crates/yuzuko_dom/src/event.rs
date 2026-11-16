@@ -175,6 +175,21 @@ impl Event {
   }
 
   #[getter]
+  #[rename("cancelBubble")]
+  fn cancel_bubble(&self) -> bool {
+    self.stopped.get()
+  }
+
+  /// `true` stops later targets. `false` does not clear a stop.
+  #[setter]
+  #[rename("cancelBubble")]
+  fn cancel_bubble(&self, value: bool) {
+    if value {
+      self.stopped.set(true);
+    }
+  }
+
+  #[getter]
   fn cancelable(&self) -> bool {
     self.cancelable.get()
   }
@@ -575,6 +590,53 @@ impl CustomEvent {
       None => Js::null(scope),
     }
   }
+
+  /// An omitted `detail` is null. The value is stored by identity.
+  #[length(1)]
+  fn init_custom_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = init_flag(scope, args, 1);
+    let cancelable = init_flag(scope, args, 2);
+    let detail = match init_present(args, 3) {
+      None => None,
+      Some(value) => {
+        let value = yuzuko_core::op::root(scope, value);
+        Some(traced(scope, value))
+      }
+    };
+    if !self.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    *self.detail.borrow_mut() = detail;
+    Ok(())
+  }
+}
+
+fn init_present<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+  index: i32,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if index < 0 || index >= args.length() {
+    return None;
+  }
+  let value = args.get(index);
+  if value.is_undefined() {
+    None
+  } else {
+    Some(value)
+  }
+}
+
+fn init_flag(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> bool {
+  init_present(args, index).is_some_and(|value| value.boolean_value(scope))
 }
 
 fn custom_detail(

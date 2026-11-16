@@ -330,6 +330,7 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
+type TouchType = "direct" | "stylus";
 type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
@@ -6764,6 +6765,17 @@ interface Event {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/bubbles) */
   readonly bubbles: boolean;
 
+  /**
+   * The **`cancelBubble`** property of the Event interface is deprecated. Use Event.stopPropagation() instead. Setting its value to true before returning from an event handler prevents propagation of the event. In later implementations, setting this to false does nothing. See Browser compatibility for details.
+   *
+   * A true value does not skip another listener on the same target.
+   *
+   * @deprecated
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/cancelBubble)
+   */
+  cancelBubble: boolean;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/cancelable) */
   readonly cancelable: boolean;
 
@@ -6869,6 +6881,21 @@ interface CustomEvent<T = any> extends Event {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CustomEvent/detail) */
   readonly detail: T;
+
+  /**
+   * Legacy initializer. An omitted `detail` is null. The call does nothing
+   * while the event is dispatching.
+   *
+   * @throws {@link TypeError} When called with no arguments.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CustomEvent/initCustomEvent)
+   */
+  initCustomEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    detail?: T,
+  ): void;
 }
 declare var CustomEvent: {
   prototype: CustomEvent;
@@ -7040,6 +7067,8 @@ declare class QuotaExceededError extends DOMException {
 interface UIEventInit extends EventInit {
   view?: Window | null;
   detail?: number;
+  /** @deprecated */
+  which?: number;
 }
 
 /**
@@ -7054,6 +7083,35 @@ interface UIEvent extends Event {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/detail) */
   readonly detail: number;
+
+  /**
+   * The **`UIEvent.which`** read-only property of the UIEvent interface returns a number that indicates which button was pressed on the mouse, or the numeric keyCode or the character code (charCode) of the key pressed on the keyboard.
+   *
+   * A constructed `UIEvent` uses {@link UIEventInit.which}. The default is 0.
+   *
+   * @deprecated
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/which)
+   */
+  readonly which: number;
+
+  /**
+   * Legacy initializer. Omitted arguments use false, null, or 0. The call
+   * does nothing while the event is dispatching. It does not change `which`,
+   * `composed`, or `isTrusted`. `view` must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/initUIEvent)
+   */
+  initUIEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    detail?: number,
+  ): void;
 }
 declare var UIEvent: {
   prototype: UIEvent;
@@ -7099,6 +7157,16 @@ interface MouseEventInit extends UIEventInit {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
   relatedTarget?: EventTarget | null;
   movementX?: number;
   movementY?: number;
@@ -7128,6 +7196,20 @@ interface MouseEvent extends UIEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY) */
   readonly clientY: number;
+
+  /**
+   * The **`MouseEvent.x`** property is an alias for the MouseEvent.clientX property.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/x)
+   */
+  readonly x: number;
+
+  /**
+   * The **`MouseEvent.y`** property is an alias for the MouseEvent.clientY property.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/y)
+   */
+  readonly y: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/pageX) */
   readonly pageX: number;
@@ -7215,6 +7297,23 @@ interface MouseEvent extends UIEvent {
     metaKey?: boolean,
     button?: number,
     relatedTarget?: EventTarget | null,
+  ): void;
+  initMouseEvent(
+    typeArg: string,
+    canBubbleArg: boolean,
+    cancelableArg: boolean,
+    viewArg: Window,
+    detailArg: number,
+    screenXArg: number,
+    screenYArg: number,
+    clientXArg: number,
+    clientYArg: number,
+    ctrlKeyArg: boolean,
+    altKeyArg: boolean,
+    shiftKeyArg: boolean,
+    metaKeyArg: boolean,
+    buttonArg: number,
+    relatedTargetArg: EventTarget | null,
   ): void;
 }
 declare var MouseEvent: {
@@ -7333,6 +7432,9 @@ interface TouchInit {
   radiusY?: number;
   rotationAngle?: number;
   force?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
+  touchType?: TouchType | "";
 }
 
 /**
@@ -7341,9 +7443,14 @@ interface TouchInit {
  * the device may be a touchscreen or trackpad.
  *
  * One contact point in a {@link TouchEvent}. `identifier` and `target` are
- * required. The coordinate members default to 0. The runtime does not dispatch a
- * trusted touch event. A touch contact is a {@link PointerEvent} with
- * `pointerType` `"touch"`.
+ * required. `clientX`, `clientY`, `screenX`, `screenY`, `pageX`, `pageY`,
+ * `radiusX`, `radiusY`, `rotationAngle`, and `force` default to 0. An omitted
+ * `altitudeAngle` is `Math.PI / 2`, an omitted `azimuthAngle` is 0, and an
+ * omitted `touchType` is `""`. A host touch uses the surface as `target`,
+ * keeps the pointer's CSS coordinates, and sets `pageX` and `pageY` to
+ * `clientX` and `clientY`. `radiusX`, `radiusY`, and `rotationAngle` are 0.
+ * `altitudeAngle`, `azimuthAngle`, and `touchType` use those omitted defaults.
+ * `identifier` is the contact's `pointerId`.
  *
  * @throws {@link TypeError} When `identifier` or `target` is missing, or
  * `target` is not an `EventTarget`.
@@ -7387,6 +7494,15 @@ interface Touch {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/force) */
   readonly force: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/altitudeAngle) */
+  readonly altitudeAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/azimuthAngle) */
+  readonly azimuthAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/touchType) */
+  readonly touchType: string;
 }
 declare var Touch: {
   prototype: Touch;
@@ -7412,6 +7528,7 @@ interface TouchList {
   item(index: number): Touch | null;
 
   [index: number]: Touch;
+  [Symbol.iterator](): ArrayIterator<Touch>;
 }
 declare var TouchList: {
   prototype: TouchList;
@@ -7430,12 +7547,31 @@ interface TouchEventInit extends UIEventInit {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
 }
 
 /**
- * A constructed touch event. `cancelable` defaults to false. `touches`,
- * `targetTouches`, and `changedTouches` default to empty {@link TouchList}
- * objects. The runtime does not dispatch a trusted `TouchEvent`.
+ * The **`TouchEvent`** interface represents an UIEvent which is sent when the
+ * state of contacts with a touch-sensitive surface changes. This surface can
+ * be a touch screen or trackpad, for example. The event can describe one or
+ * more points of contact with the screen and includes support for detecting
+ * movement, addition and removal of contact points, and so forth.
+ *
+ * A constructed event is not cancelable unless `cancelable` is true.
+ * `touches`, `targetTouches`, and `changedTouches` default to empty
+ * {@link TouchList} objects. A host touch dispatches a trusted `touchstart`,
+ * `touchmove`, `touchend`, or `touchcancel` on the window surface.
+ * `touchcancel` is not cancelable. Cancelling `touchstart`, `touchmove`, or
+ * `touchend` skips the mouse compatibility events that follow it.
  *
  * @throws {@link TypeError} When a touch list is not a sequence of `Touch`.
  *
@@ -7479,10 +7615,24 @@ interface KeyboardEventInit extends UIEventInit {
   location?: number;
   repeat?: boolean;
   isComposing?: boolean;
+  /** @deprecated `charCode` is inconsistent across environments, consider using `key` instead. */
+  charCode?: number;
+  /** @deprecated `keyCode` is inconsistent across environments, consider using `key` instead. */
+  keyCode?: number;
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
 }
 
 /**
@@ -7541,6 +7691,30 @@ interface KeyboardEvent extends UIEvent {
    */
   getModifierState(key: string): boolean;
 
+  /**
+   * Legacy initializer. Omitted arguments use false, null, `""`, or 0. The
+   * call does nothing while the event is dispatching. It does not change
+   * `detail`, `code`, `repeat`, `isComposing`, `charCode`, `keyCode`,
+   * `which`, or a lock modifier. `view` must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/initKeyboardEvent)
+   */
+  initKeyboardEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    key?: string,
+    location?: number,
+    ctrlKey?: boolean,
+    altKey?: boolean,
+    shiftKey?: boolean,
+    metaKey?: boolean,
+  ): void;
+
   readonly DOM_KEY_LOCATION_STANDARD: 0x00;
   readonly DOM_KEY_LOCATION_LEFT: 0x01;
   readonly DOM_KEY_LOCATION_RIGHT: 0x02;
@@ -7578,6 +7752,24 @@ interface CompositionEvent extends UIEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompositionEvent/data) */
   readonly data: string;
+
+  /**
+   * Legacy initializer. An omitted `data` is `""`. The call does nothing
+   * while the event is dispatching. It does not change `detail`. `view`
+   * must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompositionEvent/initCompositionEvent)
+   */
+  initCompositionEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    data?: string,
+  ): void;
 }
 declare var CompositionEvent: {
   prototype: CompositionEvent;
@@ -7630,8 +7822,12 @@ interface PointerEventInit extends MouseEventInit {
   tiltX?: number;
   tiltY?: number;
   twist?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
   pointerType?: string;
   isPrimary?: boolean;
+  coalescedEvents?: PointerEvent[];
+  predictedEvents?: PointerEvent[];
 }
 
 /**
@@ -8258,6 +8454,15 @@ interface File extends Blob {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/lastModified) */
   readonly lastModified: number;
+
+  /**
+   * The **`webkitRelativePath`** read-only property of the File interface contains a string which specifies the file's path relative to the directory selected by the user in an <input> element with its webkitdirectory attribute set.
+   *
+   * Always `""`. There is no directory picker.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/webkitRelativePath)
+   */
+  readonly webkitRelativePath: string;
 }
 declare var File: {
   prototype: File;
