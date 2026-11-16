@@ -10063,6 +10063,8 @@ interface DOMQuadInit {
  * access to each rectangle in the list via its index, along with a length
  * property that indicates the total number of rectangles in the list.
  *
+ * This list is always empty.
+ *
  * @throws {@link TypeError} Illegal constructor.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectList)
@@ -10073,6 +10075,9 @@ interface DOMRectList {
   readonly length: number;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectList/item) */
   item(index: number): DOMRect | null;
+
+  [index: number]: DOMRect;
+  [Symbol.iterator](): ArrayIterator<DOMRect>;
 }
 declare var DOMRectList: {
   prototype: DOMRectList;
@@ -10692,14 +10697,21 @@ interface OffscreenCanvasRenderingContext2D {
   arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/roundRect) */
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | number[]): void;
+  roundRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii?: number | DOMPointInit | (number | DOMPointInit)[],
+  ): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fill) */
   fill(fillRule?: CanvasFillRule): void;
   fill(path: Path2D, fillRule?: CanvasFillRule): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/stroke) */
-  stroke(path?: Path2D): void;
+  stroke(): void;
+  stroke(path: Path2D): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/clip) */
   clip(fillRule?: CanvasFillRule): void;
@@ -11128,7 +11140,13 @@ interface Path2D {
   arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/roundRect) */
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | number[]): void;
+  roundRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii?: number | DOMPointInit | (number | DOMPointInit)[],
+  ): void;
 }
 declare var Path2D: {
   prototype: Path2D;

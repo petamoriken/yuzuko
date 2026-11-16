@@ -66,6 +66,7 @@ fn install(scope: &mut v8::PinScope) {
   geom::geometry::DomRect::install(scope);
   geom::geometry::DomQuad::install(scope);
   geom::geometry::DomRectList::install(scope);
+  geom::geometry::install_dom_rect_list_iterator(scope);
   objects::Path2D::install(scope);
   objects::CanvasGradient::install(scope);
   objects::CanvasPattern::install(scope);

@@ -1362,24 +1362,14 @@ impl Context2D {
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
   ) -> Result<(), OpError> {
-    if args.length() < 4 {
-      return Err(OpError::type_("roundRect requires a rectangle"));
-    }
-    let x = objects::number(scope, args.get(0))?;
-    let y = objects::number(scope, args.get(1))?;
-    let w = objects::number(scope, args.get(2))?;
-    let h = objects::number(scope, args.get(3))?;
-    let radii = if args.length() >= 5 {
-      objects::radii_of(scope, args.get(4))?
-    } else {
-      [0.0; 8]
-    };
-    if !finite(&[x, y, w, h]) || !finite(&radii) {
+    let Some(rect) = objects::round_rect_args(scope, args)? else {
       return Ok(());
-    }
+    };
     self.update(|drawing| {
       record_segment(drawing, false, |segment| {
-        path::add_round_rect(segment, x, y, w, h, radii);
+        path::add_round_rect(
+          segment, rect.x, rect.y, rect.w, rect.h, rect.radii,
+        );
       });
       Ok(())
     })

@@ -147,6 +147,10 @@ name = "canvas_draw"
 required-features = ["canvas"]
 
 [[test]]
+name = "canvas_roundrect"
+required-features = ["canvas"]
+
+[[test]]
 name = "font"
 required-features = ["canvas"]
 

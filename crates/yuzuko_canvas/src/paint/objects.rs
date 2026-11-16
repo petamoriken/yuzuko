@@ -54,10 +54,6 @@ pub fn path_of(
   Some(host.get().borrow_path())
 }
 
-fn finite(values: &[f64]) -> bool {
-  values.iter().all(|value| value.is_finite())
-}
-
 #[op]
 impl Path2D {
   #[constructor]
@@ -196,21 +192,17 @@ impl Path2D {
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
   ) -> Result<(), OpError> {
-    if args.length() < 4 {
-      return Err(OpError::type_("roundRect requires a rectangle"));
-    }
-    let x = number(scope, args.get(0))?;
-    let y = number(scope, args.get(1))?;
-    let w = number(scope, args.get(2))?;
-    let h = number(scope, args.get(3))?;
-    let radii = if args.length() >= 5 {
-      radii_of(scope, args.get(4))?
-    } else {
-      [0.0; 8]
+    let Some(rect) = round_rect_args(scope, args)? else {
+      return Ok(());
     };
-    if finite(&[x, y, w, h]) && finite(&radii) {
-      path::add_round_rect(&mut self.path.borrow_mut(), x, y, w, h, radii);
-    }
+    path::add_round_rect(
+      &mut self.path.borrow_mut(),
+      rect.x,
+      rect.y,
+      rect.w,
+      rect.h,
+      rect.radii,
+    );
     Ok(())
   }
 }
@@ -527,65 +519,225 @@ pub fn number(
   <f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)
 }
 
-pub fn radii_of(
+pub struct RoundRect {
+  pub x: f64,
+  pub y: f64,
+  pub w: f64,
+  pub h: f64,
+  pub radii: [f64; 8],
+}
+
+/// Rectangle and radii for `roundRect`. `None` means a non-finite component,
+/// which does not draw. Web IDL converts the radii before those steps, so a
+/// `bigint` still throws when `x` is `NaN`.
+///
+/// `undefined` is the optional default `0`. `null` is a default `DOMPointInit`.
+/// An object with `@@iterator` is a sequence. Any other object, including an
+/// array used as one element, is a `DOMPointInit` (`x` and `y` default to 0).
+/// Reading stops after five values so an infinite iterator cannot hang.
+pub fn round_rect_args(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> Result<Option<RoundRect>, OpError> {
+  if args.length() < 4 {
+    return Err(OpError::type_("roundRect requires a rectangle"));
+  }
+  let x = number(scope, args.get(0))?;
+  let y = number(scope, args.get(1))?;
+  let w = number(scope, args.get(2))?;
+  let h = number(scope, args.get(3))?;
+  let values = if args.length() >= 5 {
+    radius_values(scope, args.get(4))?
+  } else {
+    vec![(0.0, 0.0)]
+  };
+  if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+    return Ok(None);
+  }
+  let Some(radii) = normalize_radii(&values)? else {
+    return Ok(None);
+  };
+  Ok(Some(RoundRect { x, y, w, h, radii }))
+}
+
+fn radius_values(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<[f64; 8], OpError> {
-  let values = if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
-    let length = array.length();
-    if length == 0 || length > 4 {
-      return Err(OpError::range(
-        "roundRect radii must contain one to four values",
-      ));
-    }
-    let mut values = Vec::new();
-    for index in 0..length {
-      let item = array
-        .get_index(scope, index)
-        .ok_or_else(|| OpError::type_("roundRect radius is invalid"))?;
-      values.push(radius_pair(scope, item)?);
-    }
-    values
-  } else {
-    vec![radius_pair(scope, value)?]
-  };
-  for (x, y) in &values {
-    if (x.is_finite() && *x < 0.0) || (y.is_finite() && *y < 0.0) {
-      return Err(OpError::range("The radius is negative"));
-    }
+) -> Result<Vec<(f64, f64)>, OpError> {
+  if let Some(values) = radius_sequence(scope, value)? {
+    return Ok(values);
   }
-  Ok(expand_radii(&values))
+  Ok(vec![radius_pair(scope, value)?])
+}
+
+fn radius_sequence(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Option<Vec<(f64, f64)>>, OpError> {
+  let Some(iterate) = iterator_method(scope, value)? else {
+    return Ok(None);
+  };
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_("roundRect radius is invalid"))?;
+  let produced = js_call(scope, iterate, object.into(), &[])?;
+  let iterator = v8::Local::<v8::Object>::try_from(produced)
+    .map_err(|_| OpError::type_("The iterator is not an object"))?;
+  let next_key = v8::String::new(scope, "next").unwrap();
+  let done_key = v8::String::new(scope, "done").unwrap();
+  let value_key = v8::String::new(scope, "value").unwrap();
+  let mut values = Vec::new();
+  // A fifth value is already out of range. Do not pull an infinite iterator.
+  for _ in 0..5 {
+    let next_value = js_get(scope, iterator, next_key.into())?;
+    let next =
+      v8::Local::<v8::Function>::try_from(next_value).map_err(|_| {
+        OpError::type_("The iterator next method is not callable")
+      })?;
+    let step_value = js_call(scope, next, iterator.into(), &[])?;
+    let step = v8::Local::<v8::Object>::try_from(step_value)
+      .map_err(|_| OpError::type_("The iterator result is not an object"))?;
+    let done = js_get(scope, step, done_key.into())?;
+    if done.boolean_value(scope) {
+      return Ok(Some(values));
+    }
+    let item = js_get(scope, step, value_key.into())?;
+    values.push(radius_pair(scope, item)?);
+  }
+  Ok(Some(values))
 }
 
 fn radius_pair(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<(f64, f64), OpError> {
-  if value.is_object() && !value.is_array() {
+  // The inner union has no sequence. `undefined` is the dictionary default.
+  if value.is_undefined() {
+    return Ok((0.0, 0.0));
+  }
+  if value.is_object() {
     let object = v8::Local::<v8::Object>::try_from(value)
       .map_err(|_| OpError::type_("roundRect radius is invalid"))?;
-    let x = member(scope, object, "x")?.unwrap_or(0.0);
-    let y = member(scope, object, "y")?.unwrap_or(0.0);
+    // DOMPointInit members are read in lexicographical order.
+    let _ = dictionary_component(scope, object, "w")?;
+    let x = dictionary_component(scope, object, "x")?;
+    let y = dictionary_component(scope, object, "y")?;
+    let _ = dictionary_component(scope, object, "z")?;
     return Ok((x, y));
   }
   let radius = number(scope, value)?;
   Ok((radius, radius))
 }
 
-fn member(
+fn dictionary_component(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Result<Option<f64>, OpError> {
+) -> Result<f64, OpError> {
   let key = v8::String::new(scope, name).unwrap();
-  let value = object
-    .get(scope, key.into())
-    .ok_or_else(|| OpError::type_("failed to read a radius"))?;
+  let value = js_get(scope, object, key.into())?;
   if value.is_undefined() {
-    Ok(None)
+    Ok(0.0)
   } else {
-    Ok(Some(number(scope, value)?))
+    number(scope, value)
   }
+}
+
+fn normalize_radii(values: &[(f64, f64)]) -> Result<Option<[f64; 8]>, OpError> {
+  if values.is_empty() || values.len() > 4 {
+    return Err(OpError::range(
+      "roundRect radii must contain one to four values",
+    ));
+  }
+  for &(x, y) in values {
+    if !x.is_finite() || !y.is_finite() {
+      return Ok(None);
+    }
+    if x < 0.0 || y < 0.0 {
+      return Err(OpError::range("The radius is negative"));
+    }
+  }
+  Ok(Some(expand_radii(values)))
+}
+
+fn iterator_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<Option<v8::Local<'s, v8::Function>>, OpError> {
+  if !value.is_object() {
+    return Ok(None);
+  }
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_("roundRect radius is invalid"))?;
+  let symbol = v8::Symbol::get_iterator(scope);
+  let method = js_get(scope, object, symbol.into())?;
+  if method.is_null() || method.is_undefined() {
+    return Ok(None);
+  }
+  v8::Local::<v8::Function>::try_from(method)
+    .map(Some)
+    .map_err(|_| OpError::type_("@@iterator is not callable"))
+}
+
+fn js_get<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<v8::Object>,
+  key: v8::Local<v8::Value>,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let object = v8::Global::new(scope, object);
+  let key = v8::Global::new(scope, key);
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let object = v8::Local::new(tc, &object);
+    let key = v8::Local::new(tc, &key);
+    match object.get(tc, key) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => Err(caught(tc)),
+    }
+  };
+  match captured {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(exception) => Err(OpError::Thrown(Box::new(exception))),
+  }
+}
+
+fn js_call<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  function: v8::Local<v8::Function>,
+  receiver: v8::Local<v8::Value>,
+  args: &[v8::Local<v8::Value>],
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let function = v8::Global::new(scope, function);
+  let receiver = v8::Global::new(scope, receiver);
+  let args = args
+    .iter()
+    .map(|value| v8::Global::new(scope, *value))
+    .collect::<Vec<_>>();
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let function = v8::Local::new(tc, &function);
+    let receiver = v8::Local::new(tc, &receiver);
+    let args = args
+      .iter()
+      .map(|value| v8::Local::new(tc, value))
+      .collect::<Vec<_>>();
+    match function.call(tc, receiver, &args) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => Err(caught(tc)),
+    }
+  };
+  match captured {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(exception) => Err(OpError::Thrown(Box::new(exception))),
+  }
+}
+
+fn caught(
+  scope: &mut v8::PinnedRef<v8::TryCatch<v8::HandleScope>>,
+) -> v8::Global<v8::Value> {
+  let exception = scope
+    .exception()
+    .unwrap_or_else(|| v8::undefined(scope).into());
+  v8::Global::new(scope, exception)
 }
 
 fn expand_radii(values: &[(f64, f64)]) -> [f64; 8] {
