@@ -1304,8 +1304,14 @@ Yuzuko.test("debug markers on the command encoder and on passes", async () => {
   const bundle = device.createRenderBundleEncoder({
     colorFormats: ["rgba8unorm"],
   });
-  assert(typeof bundle.pushDebugGroup !== "function", "bundle markers");
-  assert(typeof bundle.setViewport !== "function", "bundle viewport");
+  assert(
+    throwName(() => bundle.pushDebugGroup("group")) === "NotSupportedError",
+    "bundle markers",
+  );
+  assert(
+    throwName(() => bundle.setViewport(0, 0, 1, 1, 0, 1)) === "NotSupportedError",
+    "bundle viewport",
+  );
   bundle.finish();
   device.destroy();
 });
@@ -1703,5 +1709,308 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   texture.destroy();
   assert(texture.usage === textureUsage, "texture usage after destroy");
   assert(texture.sampleCount === 1, "samples after destroy");
+  device.destroy();
+});
+
+Yuzuko.test("ImageData copies into a texture", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const data = new ImageData(new Uint8ClampedArray([0, 255, 0, 255]), 1, 1);
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  device.queue.copyExternalImageToTexture(
+    { source: data },
+    { texture },
+    [1, 1],
+  );
+  const pixel = channels(await readPixel(device, texture, 0, 0), "rgba8unorm");
+  assert(pixel.g === 255 && pixel.r === 0 && pixel.b === 0 && pixel.a === 255, "green");
+
+  const bytes = new Uint8ClampedArray([0, 255, 0, 255]);
+  const detached = new ImageData(bytes, 1, 1);
+  structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+  assert(
+    throwName(() => {
+      device.queue.copyExternalImageToTexture(
+        { source: detached },
+        { texture },
+        [1, 1],
+      );
+    }) === "InvalidStateError",
+    "detached ImageData",
+  );
+  device.destroy();
+});
+
+Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
+  assert(GPUTextureUsage.TRANSIENT_ATTACHMENT === 0x20, "transient bit");
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  assert(await navigator.gpu.requestAdapter({ featureLevel: "core" }) !== null, "core");
+  assert(await navigator.gpu.requestAdapter({ featureLevel: "compatibility" }) === null, "compatibility");
+  assert(await navigator.gpu.requestAdapter({ xrCompatible: true }) === null, "xr");
+  assert(await navigator.gpu.requestAdapter({ xrCompatible: false }) !== null, "xr false");
+  assert(
+    await rejectionName(navigator.gpu.requestAdapter({ featureLevel: "extended" })) === "TypeError",
+    "feature level",
+  );
+  const level = {
+    toString() {
+      throw new RangeError("level");
+    },
+  };
+  assert(
+    await rejectionName(navigator.gpu.requestAdapter({ featureLevel: level })) === "RangeError",
+    "feature level throw",
+  );
+
+  const plain = await adapter.requestDevice();
+  assert(plain.queue.label === "", "omitted queue label");
+  plain.destroy();
+  assert(
+    await rejectionName(adapter.requestDevice({ defaultQueue: null })) === "TypeError",
+    "null queue",
+  );
+  const device = await adapter.requestDevice({ defaultQueue: { label: "frames" } });
+  assert(device.queue.label === "frames", "queue label");
+
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert(await device.popErrorScope() === null, "transient texture");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "bad transient");
+
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
+  device.createShaderModule({
+    code: triangleShader,
+    compilationHints: [
+      { entryPoint: "vs", layout: "auto" },
+      { entryPoint: "fs", layout },
+    ],
+  });
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        compilationHints: [{ entryPoint: "vs", layout: {} }],
+      });
+    }) === "TypeError",
+    "hint layout",
+  );
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        compilationHints: [{}],
+      });
+    }) === "TypeError",
+    "hint entry",
+  );
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        compilationHints: null,
+      });
+    }) === "TypeError",
+    "hint null",
+  );
+  device.createPipelineLayout({ bindGroupLayouts: [], immediateSize: 0 });
+  assert(
+    throwName(() => device.createPipelineLayout({
+      bindGroupLayouts: [],
+      immediateSize: 4,
+    })) === "NotSupportedError",
+    "immediateSize",
+  );
+
+  const vertexModule = device.createShaderModule({
+    code: `
+      override bias: f32 = 1.0;
+      @vertex
+      fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+        const positions = array<vec2f, 3>(
+          vec2f(-1.0, -1.0),
+          vec2f(3.0, -1.0),
+          vec2f(-1.0, 3.0),
+        );
+        return vec4f(positions[vertexIndex] + vec2f(bias, 0.0), 0.0, 1.0);
+      }
+    `,
+  });
+  const fragmentModule = device.createShaderModule({
+    code: `
+      override amount: f32 = 0.0;
+      @fragment
+      fn fs() -> @location(0) vec4f {
+        return vec4f(0.0, amount, 0.0, 1.0);
+      }
+    `,
+  });
+  const painted = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: vertexModule, entryPoint: "vs", constants: { bias: 0 } },
+    fragment: {
+      module: fragmentModule,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+      constants: { amount: 1 },
+    },
+  });
+  const drawing = device.createCommandEncoder();
+  const drawPass = drawing.beginRenderPass({
+    colorAttachments: [{
+      view: painted.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  drawPass.setPipeline(pipeline);
+  drawPass.draw(3);
+  drawPass.end();
+  device.queue.submit([drawing.finish()]);
+  const paintedPixel = channels(await readPixel(device, painted, 0, 0), "rgba8unorm");
+  assert(paintedPixel.g === 255 && paintedPixel.r === 0, "override green");
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: {
+          module: vertexModule,
+          entryPoint: "vs",
+          constants: { bias: "nope" },
+        },
+        fragment: {
+          module: fragmentModule,
+          entryPoint: "fs",
+          targets: [{ format: "rgba8unorm" }],
+        },
+      });
+    }) === "TypeError",
+    "constant",
+  );
+
+  const computeModule = device.createShaderModule({
+    code: `
+      override factor: f32 = 1.0;
+      @group(0) @binding(0) var<storage, read_write> values: array<f32>;
+      @compute @workgroup_size(1)
+      fn main() {
+        values[0] = factor;
+      }
+    `,
+  });
+  const compute = device.createComputePipeline({
+    layout: "auto",
+    compute: { module: computeModule, entryPoint: "main", constants: { factor: 0.5 } },
+  });
+  const storage = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const readback = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const bind = device.createBindGroup({
+    layout: compute.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: storage } }],
+  });
+  const computeEncoder = device.createCommandEncoder();
+  const computePass = computeEncoder.beginComputePass();
+  computePass.setPipeline(compute);
+  computePass.setBindGroup(0, bind);
+  computePass.dispatchWorkgroups(1);
+  computePass.end();
+  computeEncoder.copyBufferToBuffer(storage, 0, readback, 0, 4);
+  device.queue.submit([computeEncoder.finish()]);
+  await readback.mapAsync(GPUMapMode.READ);
+  const factor = new Float32Array(readback.getMappedRange())[0];
+  readback.unmap();
+  assert(factor === 0.5, "compute factor");
+
+  const attachment = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const passPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: device.createShaderModule({ code: triangleShader }), entryPoint: "vs" },
+    fragment: {
+      module: device.createShaderModule({ code: triangleShader }),
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  async function drawCount(draws, bundles) {
+    device.pushErrorScope("validation");
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: attachment.createView(),
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+      maxDrawCount: 1,
+    });
+    pass.setPipeline(passPipeline);
+    for (let index = 0; index < draws; index += 1) {
+      pass.draw(3);
+    }
+    if (bundles) {
+      pass.executeBundles(bundles);
+    }
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    return device.popErrorScope();
+  }
+  assert(await drawCount(1) === null, "one draw");
+  assert((await drawCount(2)) instanceof GPUValidationError, "two draws");
+  const bundleEncoder = device.createRenderBundleEncoder({
+    colorFormats: ["rgba8unorm"],
+  });
+  assert(throwName(() => bundleEncoder.pushDebugGroup("group")) === "NotSupportedError", "push");
+  assert(throwName(() => bundleEncoder.popDebugGroup()) === "NotSupportedError", "pop");
+  assert(throwName(() => bundleEncoder.insertDebugMarker("mark")) === "NotSupportedError", "marker");
+  assert(
+    throwName(() => bundleEncoder.setViewport(0, 0, 1, 1, 0, 1)) === "NotSupportedError",
+    "viewport",
+  );
+  assert(throwName(() => bundleEncoder.setScissorRect(0, 0, 1, 1)) === "NotSupportedError", "scissor");
+  assert(throwName(() => bundleEncoder.setViewport(NaN, 0, 1, 1, 0, 1)) === "TypeError", "viewport nan");
+  bundleEncoder.setPipeline(passPipeline);
+  bundleEncoder.draw(3);
+  const bundle = bundleEncoder.finish();
+  assert(throwName(() => bundleEncoder.pushDebugGroup("group")) === "InvalidStateError", "finished");
+  assert(throwName(() => bundleEncoder.setViewport(NaN, 0, 1, 1, 0, 1)) === "TypeError", "finished nan");
+  assert(
+    throwName(() => bundleEncoder.setViewport(0, 0, 1, 1, 0, 1)) === "InvalidStateError",
+    "finished viewport",
+  );
+  assert(await drawCount(0, [bundle]) === null, "one bundle");
+  assert((await drawCount(0, [bundle, bundle])) instanceof GPUValidationError, "two bundles");
   device.destroy();
 });

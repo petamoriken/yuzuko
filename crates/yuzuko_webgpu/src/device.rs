@@ -43,12 +43,16 @@ impl Gpu {
         ),
       );
     }
-    if force_fallback(scope, options) || !state::ensure_adapter() {
-      return js::promise_null(scope);
+    match adapter_choice(scope, options) {
+      Ok(true) => {
+        let adapter =
+          unsafe { yuzuko_core::op::wrap_instance(scope, GpuAdapter) };
+        let value: v8::Local<v8::Value> = adapter.into();
+        js::promise(scope, value)
+      }
+      Ok(false) => js::promise_null(scope),
+      Err(error) => js::promise_rejected(scope, error),
     }
-    let adapter = unsafe { yuzuko_core::op::wrap_instance(scope, GpuAdapter) };
-    let value: v8::Local<v8::Value> = adapter.into();
-    js::promise(scope, value)
   }
 
   fn get_preferred_canvas_format(&self) -> Result<String, OpError> {
@@ -735,6 +739,10 @@ fn install_flags(scope: &mut v8::PinScope) {
         "RENDER_ATTACHMENT",
         wgpu::TextureUsages::RENDER_ATTACHMENT.bits(),
       ),
+      (
+        "TRANSIENT_ATTACHMENT",
+        wgpu::TextureUsages::TRANSIENT_ATTACHMENT.bits(),
+      ),
     ],
   );
   define_flags(
@@ -802,11 +810,13 @@ fn open_device(
       (device, queue, limits, features)
     })?;
   let mut device_label = None;
+  let mut queue_label = None;
   if let Some(object) = dictionary(scope, descriptor) {
     reject_features(scope, object, features)?;
     check_required_limits(scope, object, &limits)?;
     device_label = js::get(scope, object, "label")
       .and_then(|value| js::string(scope, value));
+    queue_label = queue_label_of(scope, object)?;
   }
   let id = state::alloc_id();
   let lost = Arc::new(AtomicBool::new(false));
@@ -817,7 +827,7 @@ fn open_device(
       scope,
       GpuQueue {
         device_id: id,
-        label: ObjectLabel::new(None),
+        label: ObjectLabel::new(queue_label),
       },
     )
   };
@@ -937,15 +947,55 @@ fn preferred_format() -> Result<&'static str, OpError> {
   })
 }
 
-fn force_fallback(
+/// `Ok(true)` is the process adapter. `Ok(false)` resolves `null`.
+fn adapter_choice(
   scope: &mut v8::PinScope,
   options: Option<v8::Local<v8::Value>>,
-) -> bool {
+) -> Result<bool, OpError> {
   let Some(object) = dictionary(scope, options) else {
-    return false;
+    return Ok(state::ensure_adapter());
   };
-  js::get(scope, object, "forceFallbackAdapter")
-    .is_some_and(|value| value.boolean_value(scope))
+  if let Some(value) = js::try_get(scope, object, "featureLevel")? {
+    let value = v8::Local::new(scope, value);
+    match js::try_string(scope, value)?.as_str() {
+      "core" => {}
+      "compatibility" => return Ok(false),
+      _ => return Err(OpError::type_("The feature level is invalid")),
+    }
+  }
+  if let Some(value) = js::try_get(scope, object, "xrCompatible")? {
+    let value = v8::Local::new(scope, value);
+    if value.boolean_value(scope) {
+      return Ok(false);
+    }
+  }
+  if let Some(value) = js::try_get(scope, object, "forceFallbackAdapter")? {
+    let value = v8::Local::new(scope, value);
+    if value.boolean_value(scope) {
+      return Ok(false);
+    }
+  }
+  Ok(state::ensure_adapter())
+}
+
+fn queue_label_of(
+  scope: &mut v8::PinScope,
+  descriptor: v8::Local<v8::Object>,
+) -> Result<Option<String>, OpError> {
+  let Some(value) = js::try_get(scope, descriptor, "defaultQueue")? else {
+    return Ok(None);
+  };
+  let value = v8::Local::new(scope, value);
+  if value.is_null() || !value.is_object() {
+    return Err(OpError::type_("defaultQueue must be an object"));
+  }
+  let queue = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_("defaultQueue must be an object"))?;
+  let Some(label) = js::try_get(scope, queue, "label")? else {
+    return Ok(None);
+  };
+  let label = v8::Local::new(scope, label);
+  Ok(Some(js::try_string(scope, label)?))
 }
 
 fn dictionary<'a>(

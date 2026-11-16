@@ -122,7 +122,7 @@ interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
 interface GPUPipelineBase {
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
-type GPUCopyExternalImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
+type GPUCopyExternalImageSource = ImageBitmap | ImageData | OffscreenCanvas | VideoFrame;
 type GPUCullMode = "back" | "front" | "none";
 type GPUDeviceLostReason = "destroyed" | "unknown";
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError) */
@@ -177,11 +177,73 @@ interface GPUQuerySet extends GPUObjectBase {
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
 /**
- * Debug markers, `setViewport`, and `setScissorRect` are absent. wgpu 29
- * `RenderBundleEncoder` does not expose them.
+ * The **`GPURenderBundleEncoder`** interface of the WebGPU API is used to pre-record bundles of commands.
+ * Available only in secure contexts.
+ *
+ * `pushDebugGroup`, `popDebugGroup`, `insertDebugMarker`, `setViewport`, and
+ * `setScissorRect` throw `NotSupportedError`. wgpu's `RenderBundleEncoder` does
+ * not record them. A finished encoder throws `InvalidStateError` before that.
+ * `setViewport` uses the render pass argument checks.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderBundleEncoder)
  */
 interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/pushDebugGroup)
+   */
+  pushDebugGroup(groupLabel: string): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/popDebugGroup)
+   */
+  popDebugGroup(): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/insertDebugMarker)
+   */
+  insertDebugMarker(markerLabel: string): void;
+
+  /**
+   * @throws {@link TypeError} When an argument is not finite.
+   * @throws {@link RangeError} When `width` or `height` is negative, a depth
+   * is outside 0 through 1, or `minDepth` is greater than `maxDepth`.
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setViewport)
+   */
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number,
+  ): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setScissorRect)
+   */
+  setScissorRect(
+    x: GPUIntegerCoordinate,
+    y: GPUIntegerCoordinate,
+    width: GPUIntegerCoordinate,
+    height: GPUIntegerCoordinate,
+  ): void;
 }
 
 interface GPURenderCommandsMixin {
@@ -11729,8 +11791,10 @@ declare var GPU: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPU/requestAdapter) */
 interface GPURequestAdapterOptions {
-  powerPreference?: GPUPowerPreference;
+  featureLevel?: string;
   forceFallbackAdapter?: boolean;
+  powerPreference?: GPUPowerPreference;
+  xrCompatible?: boolean;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo) */
@@ -11814,9 +11878,14 @@ declare var GPUAdapter: {
 };
 
 
+interface GPUQueueDescriptor {
+  label?: string;
+}
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/GPUDevice) */
 interface GPUDeviceDescriptor {
   label?: string;
+  defaultQueue?: GPUQueueDescriptor;
   requiredFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number | undefined>;
 }
@@ -12055,10 +12124,13 @@ interface GPUComputePipelineDescriptor {
   compute: GPUProgrammableStage;
 }
 
+type GPUPipelineConstantValue = number;
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline) */
 interface GPUProgrammableStage {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createQuerySet) */
@@ -12182,7 +12254,7 @@ interface GPUQueue {
    * a snapshot taken from a source image, video, or canvas into a given
    * GPUTexture.
    *
-   * Copies an {@link ImageBitmap}, {@link OffscreenCanvas}, or {@link VideoFrame}.
+   * Copies an {@link ImageBitmap}, an {@link ImageData}, an {@link OffscreenCanvas}, or a {@link VideoFrame}.
    * Matching unorm8 bytes upload directly. A float16 source, a color-space change,
    * a sub-rectangle, or a `bgra8unorm` destination is converted on the CPU.
    * `colorSpace` is `"srgb"` or `"display-p3"`.
@@ -12440,10 +12512,18 @@ declare var GPUShaderModule: {
 };
 
 
+type GPUAutoLayoutMode = "auto";
+
+interface GPUShaderModuleCompilationHint {
+  entryPoint: string;
+  layout?: GPUPipelineLayout | GPUAutoLayoutMode;
+}
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createShaderModule) */
 interface GPUShaderModuleDescriptor {
   label?: string;
   code: string;
+  compilationHints?: GPUShaderModuleCompilationHint[];
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationInfo) */
@@ -12593,6 +12673,7 @@ declare var GPUPipelineLayout: {
 interface GPUPipelineLayoutDescriptor {
   label?: string;
   bindGroupLayouts: (GPUBindGroupLayout | null)[];
+  immediateSize?: GPUSize32;
 }
 
 /**
@@ -12650,6 +12731,7 @@ type GPUStencilOperation = "decrement-clamp" | "decrement-wrap" | "increment-cla
 interface GPUVertexState {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
   buffers?: (GPUVertexBufferLayout | null)[];
 }
 
@@ -12671,6 +12753,7 @@ interface GPUVertexAttribute {
 interface GPUFragmentState {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
   targets: (GPUColorTargetState | null)[];
 }
 
@@ -12870,6 +12953,7 @@ interface GPURenderPassDescriptor {
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
   occlusionQuerySet?: GPUQuerySet;
   timestampWrites?: GPURenderPassTimestampWrites;
+  maxDrawCount?: GPUSize64;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginRenderPass) */
@@ -13185,6 +13269,7 @@ declare const GPUTextureUsage: {
   readonly TEXTURE_BINDING: 0x04;
   readonly STORAGE_BINDING: 0x08;
   readonly RENDER_ATTACHMENT: 0x10;
+  readonly TRANSIENT_ATTACHMENT: 0x20;
 };
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderStage) */
