@@ -8955,8 +8955,21 @@ declare var FormData: {
 };
 
 
+interface CacheQueryOptions {
+  ignoreMethod?: boolean;
+  ignoreSearch?: boolean;
+  ignoreVary?: boolean;
+}
+
+interface MultiCacheQueryOptions extends CacheQueryOptions {
+  cacheName?: string;
+}
+
 /**
- * A named cache. `add` and `match` are absent.
+ * A named in-memory cache. One GET `http:` or `https:` URL is one entry, and a
+ * later `put` replaces it. A `Vary` header other than `*` is stored and does
+ * not select a variant. `ignoreVary` does not change matching. `match` resolves
+ * `undefined` when nothing matches.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link caches}.
  *
@@ -8964,15 +8977,26 @@ declare var FormData: {
  */
 interface Cache {
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
-   */
-  put(request: RequestInfo | URL, response: Response): Promise<void>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+  add(request: RequestInfo | URL): Promise<void>;
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys)
-   */
-  keys(): Promise<readonly Request[]>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+  addAll(requests: RequestInfo[]): Promise<void>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete) */
+  delete(request: RequestInfo | URL, options?: CacheQueryOptions): Promise<boolean>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+  keys(request?: RequestInfo | URL, options?: CacheQueryOptions): Promise<ReadonlyArray<Request>>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match) */
+  match(request: RequestInfo | URL, options?: CacheQueryOptions): Promise<Response | undefined>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll) */
+  matchAll(request?: RequestInfo | URL, options?: CacheQueryOptions): Promise<ReadonlyArray<Response>>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put) */
+  put(request: RequestInfo | URL, response: Response): Promise<void>;
 }
 declare var Cache: {
   prototype: Cache;
@@ -8981,7 +9005,8 @@ declare var Cache: {
 
 
 /**
- * The process cache storage. `has`, `keys`, and `match` are absent.
+ * In-memory cache storage for this realm. Names keep insertion order. The
+ * storage is cleared when the realm drops.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8989,14 +9014,19 @@ declare var Cache: {
  */
 interface CacheStorage {
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open) */
   open(cacheName: string): Promise<Cache>;
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/has) */
+  has(cacheName: string): Promise<boolean>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
+  match(request: RequestInfo | URL, options?: MultiCacheQueryOptions): Promise<Response | undefined>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+  keys(): Promise<string[]>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete) */
   delete(cacheName: string): Promise<boolean>;
 }
 declare var CacheStorage: {
