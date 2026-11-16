@@ -547,19 +547,98 @@ Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
   twice.decoder.close();
 });
 
+Yuzuko.test("transfer detaches listed ArrayBuffers", async () => {
+  const encoded = await bytes("corners.png");
+  const pixels = await bitmapPixels(
+    new Blob([encoded], { type: "image/png" }),
+  );
+  const source = encoded.slice();
+  const buffer = source.buffer;
+  const decoder = new ImageDecoder({
+    type: "image/png",
+    data: source,
+    transfer: [buffer],
+  });
+  assert(buffer.byteLength === 0, "detached");
+  const result = await decoder.decode();
+  const frame = await bitmapPixels(result.image);
+  assert(frame.join() === pixels.join(), "decoded after transfer");
+  result.image.close();
+  decoder.close();
+
+  const twice = (await bytes("corners.png")).buffer;
+  let duplicate = false;
+  try {
+    new ImageDecoder({
+      type: "image/png",
+      data: new Uint8Array(twice),
+      transfer: [twice, twice],
+    });
+  } catch (error) {
+    duplicate = error.name === "DataCloneError";
+  }
+  assert(duplicate, "duplicate");
+  assert(twice.byteLength > 0, "duplicate stays attached");
+
+  const kept = new ArrayBuffer(8);
+  const detached = new ArrayBuffer(4);
+  structuredClone(detached, { transfer: [detached] });
+  let detachedError = false;
+  try {
+    new ImageDecoder({
+      type: "image/png",
+      data: encoded,
+      transfer: [kept, detached],
+    });
+  } catch (error) {
+    detachedError = error.name === "DataCloneError";
+  }
+  assert(detachedError, "already detached");
+  assert(kept.byteLength === 8, "earlier buffer stays attached");
+
+  let typeError = false;
+  try {
+    new ImageDecoder({
+      type: "image/png",
+      data: encoded,
+      transfer: [kept, 1],
+    });
+  } catch (error) {
+    typeError = error instanceof TypeError;
+  }
+  assert(typeError, "not an ArrayBuffer");
+  assert(kept.byteLength === 8, "type error detaches nothing");
+
+  let notArray = false;
+  try {
+    new ImageDecoder({
+      type: "image/png",
+      data: encoded,
+      transfer: kept,
+    });
+  } catch (error) {
+    notArray = error instanceof TypeError;
+  }
+  assert(notArray, "not an array");
+  assert(kept.byteLength === 8, "not an array detaches nothing");
+});
+
 Yuzuko.test("a non-detachable transfer throws DataCloneError", () => {
   const memory = new WebAssembly.Memory({ initial: 1 });
+  const kept = new ArrayBuffer(8);
   let clone = false;
   try {
     new ImageDecoder({
       type: "image/png",
       data: new Uint8Array(memory.buffer),
-      transfer: [memory.buffer],
+      transfer: [kept, memory.buffer],
     });
   } catch (error) {
     clone = error.name === "DataCloneError";
   }
   assert(clone, "cannot detach wasm memory");
+  assert(kept.byteLength === 8, "earlier buffer stays attached");
+  assert(memory.buffer.byteLength > 0, "wasm memory stays attached");
 });
 
 Yuzuko.test("ImageDecoder desired size scales every frame", async () => {

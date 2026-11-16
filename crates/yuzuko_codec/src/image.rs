@@ -6,7 +6,9 @@
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{Js, OpError, host_ref, new_dom_exception, traced};
+use yuzuko_core::op::{
+  Js, OpError, OpException, host_ref, new_dom_exception, traced,
+};
 use yuzuko_core::rust_string;
 use yuzuko_image::av1::Av1Picture;
 use yuzuko_image::{
@@ -592,6 +594,20 @@ impl ImageTrackList {
       stored_object(scope, &decoder.track)
     }
   }
+
+  /// The single track when the decoder is ready, including a deselected track.
+  fn item(&self, scope: &mut v8::PinScope, index: u32) -> Js {
+    if index != 0 {
+      return Js::null(scope);
+    }
+    match ready_track(scope, &self.decoder) {
+      Some(track) => {
+        let value: v8::Local<v8::Value> = track.into();
+        Js(v8::Global::new(scope, value))
+      }
+      None => Js::null(scope),
+    }
+  }
 }
 
 impl ImageTrackList {
@@ -600,6 +616,186 @@ impl ImageTrackList {
       decoder: traced(scope, decoder),
     }
   }
+}
+
+pub(crate) fn install_image_track_list(scope: &mut v8::PinScope) {
+  install_image_track_list_indices(scope);
+  ImageTrackList::install(scope);
+  install_image_track_list_iterator(scope);
+}
+
+fn install_image_track_list_indices(scope: &mut v8::PinScope) {
+  // `GetFunction` instantiates the template. `SetHandler` after that is a V8
+  // fatal, and later realms reuse the isolate-cached template.
+  if yuzuko_core::op::cached_template::<ImageTrackList>(scope).is_some() {
+    return;
+  }
+  let templ = ImageTrackList::template(scope);
+  templ.instance_template(scope).set_indexed_property_handler(
+    v8::IndexedPropertyHandlerConfiguration::new()
+      .getter(image_track_list_get_index)
+      .query(image_track_list_query_index)
+      .setter(image_track_list_set_index)
+      .deleter(image_track_list_delete_index)
+      .enumerator(image_track_list_enumerate)
+      .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT),
+  );
+}
+
+fn install_image_track_list_iterator(scope: &mut v8::PinScope) {
+  let templ = ImageTrackList::template(scope);
+  let Some(ctor) = templ.get_function(scope) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "prototype") else {
+    return;
+  };
+  let Some(prototype) = ctor.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let Some(function) = v8::Function::new(scope, image_track_list_iterator)
+  else {
+    return;
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    function.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn image_track_list_iterator(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let Some(host) = (unsafe { host_ref::<ImageTrackList>(scope, args.this()) })
+  else {
+    OpException::throw(OpError::type_("illegal invocation"), scope);
+    return;
+  };
+  let track = ready_track(scope, &host.get().decoder);
+  let array = v8::Array::new(scope, i32::from(track.is_some()));
+  if let Some(track) = track {
+    array.set_index(scope, 0, track.into());
+  }
+  let symbol = v8::Symbol::get_iterator(scope);
+  if let Some(next) = array.get(scope, symbol.into())
+    && let Ok(next) = v8::Local::<v8::Function>::try_from(next)
+    && let Some(iterator) = next.call(scope, array.into(), &[])
+  {
+    ret.set(iterator);
+  }
+}
+
+/// The track when decoding succeeded. A deselected track still counts.
+fn ready_track<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  decoder: &v8::TracedReference<v8::Object>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let decoder = open_decoder(scope, decoder)?;
+  let decoder = decoder.get();
+  let failed = decoder.error_name.borrow().is_some();
+  if !decoder.ready.get() || failed {
+    return None;
+  }
+  let slot = decoder.track.borrow();
+  let reference = slot.as_ref()?;
+  yuzuko_core::op::traced_local(scope, reference)
+}
+
+fn image_track_list_count(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> u32 {
+  unsafe { host_ref::<ImageTrackList>(scope, object) }
+    .and_then(|host| ready_track(scope, &host.get().decoder))
+    .map(|_| 1)
+    .unwrap_or(0)
+}
+
+fn image_track_list_get_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Value>,
+) -> v8::Intercepted {
+  if index != 0 {
+    return v8::Intercepted::kNo;
+  }
+  let Some(host) =
+    (unsafe { host_ref::<ImageTrackList>(scope, args.holder()) })
+  else {
+    return v8::Intercepted::kNo;
+  };
+  let Some(track) = ready_track(scope, &host.get().decoder) else {
+    return v8::Intercepted::kNo;
+  };
+  ret.set(track.into());
+  v8::Intercepted::kYes
+}
+
+fn image_track_list_query_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Integer>,
+) -> v8::Intercepted {
+  if index >= image_track_list_count(scope, args.holder()) {
+    return v8::Intercepted::kNo;
+  }
+  // `PropertyAttribute::READ_ONLY`: enumerable and configurable, not writable.
+  ret.set_int32(1);
+  v8::Intercepted::kYes
+}
+
+fn image_track_list_reject_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  if index >= image_track_list_count(scope, args.holder()) {
+    return v8::Intercepted::kNo;
+  }
+  ret.set_bool(false);
+  v8::Intercepted::kYes
+}
+
+fn image_track_list_set_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  _value: v8::Local<v8::Value>,
+  args: v8::PropertyCallbackArguments,
+  ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  image_track_list_reject_index(scope, index, args, ret)
+}
+
+fn image_track_list_delete_index(
+  scope: &mut v8::PinScope,
+  index: u32,
+  args: v8::PropertyCallbackArguments,
+  ret: v8::ReturnValue<v8::Boolean>,
+) -> v8::Intercepted {
+  image_track_list_reject_index(scope, index, args, ret)
+}
+
+fn image_track_list_enumerate(
+  scope: &mut v8::PinScope,
+  args: v8::PropertyCallbackArguments,
+  mut ret: v8::ReturnValue<v8::Array>,
+) {
+  let count = image_track_list_count(scope, args.holder());
+  let indices: Vec<v8::Local<v8::Value>> = (0..count)
+    .map(|index| v8::Integer::new_from_unsigned(scope, index).into())
+    .collect();
+  ret.set(v8::Array::new_with_elements(scope, &indices));
 }
 
 #[op]
@@ -1192,6 +1388,8 @@ fn transfer_buffers(
   };
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("transfer is not a sequence"))?;
+  // Reject a repeated ArrayBuffer before any detach. A later failure also
+  // leaves every listed buffer attached.
   let mut buffers = Vec::new();
   for index in 0..array.length() {
     let Some(item) = array.get_index(scope, index) else {
@@ -1201,6 +1399,20 @@ fn transfer_buffers(
       v8::Local::<v8::ArrayBuffer>::try_from(item).map_err(|_| {
         OpError::type_("A transfer list entry is not an ArrayBuffer")
       })?;
+    if buffers.iter().any(|existing| {
+      let existing: v8::Local<v8::ArrayBuffer> =
+        v8::Local::new(scope, existing);
+      existing.strict_equals(buffer.into())
+    }) {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The ArrayBuffer is already in the transfer list",
+      ));
+    }
+    buffers.push(v8::Global::new(scope, buffer));
+  }
+  for buffer in &buffers {
+    let buffer = v8::Local::new(scope, buffer);
     if buffer.was_detached() {
       return Err(OpError::dom(
         "DataCloneError",
@@ -1213,7 +1425,6 @@ fn transfer_buffers(
         "The ArrayBuffer cannot be detached",
       ));
     }
-    buffers.push(v8::Global::new(scope, buffer));
   }
   for buffer in buffers {
     let buffer = v8::Local::new(scope, buffer);

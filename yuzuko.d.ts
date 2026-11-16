@@ -15150,6 +15150,7 @@ interface ImageDecoderInit {
   desiredWidth?: number;
   desiredHeight?: number;
   preferAnimation?: boolean;
+  transfer?: ArrayBuffer[];
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder/decode) */
@@ -15166,7 +15167,8 @@ interface ImageDecodeResult {
 
 /**
  * Tracks of an {@link ImageDecoder}. `ready` rejects `NotSupportedError` for an
- * unsupported type.
+ * unsupported type. Index 0 is the track when the decoder is ready, including a
+ * deselected track. `item` returns `null` past the end.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrackList)
  */
@@ -15182,6 +15184,12 @@ interface ImageTrackList {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrackList/selectedTrack) */
   readonly selectedTrack: ImageTrack | null;
+
+  /** `null` when `index` is not 0 or the decoder is not ready. */
+  item(index: number): ImageTrack | null;
+
+  [index: number]: ImageTrack;
+  [Symbol.iterator](): ArrayIterator<ImageTrack>;
 }
 declare var ImageTrackList: {
   prototype: ImageTrackList;
