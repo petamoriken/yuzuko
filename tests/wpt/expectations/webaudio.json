@@ -151,9 +151,7 @@
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp-cross-realm.html": {
     "ignore": "The file needs a document."
   },
-  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp.html": {
-    "ignore": "The file needs a document."
-  },
+  "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-getoutputtimestamp.html": true,
   "webaudio/the-audio-api/the-audiocontext-interface/audiocontext-not-fully-active.html": {
     "ignore": "The file needs a document."
   },

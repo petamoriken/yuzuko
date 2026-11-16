@@ -445,11 +445,11 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
 }
 
 /// The file needs a media element, a `MediaStream`, `ScriptProcessorNode`,
-/// or a permissions policy. `getOutputTimestamp` and `playbackStats` are
-/// absent. Sink-id pages stay skipped because they need `enumerateDevices`.
-/// The main global has no `requestAnimationFrame`.
-/// Processing nodes, `AudioParam` automation, and `AudioListener` are part
-/// of the runtime and are not skipped here.
+/// or a permissions policy. `playbackStats` is absent. Sink-id pages stay
+/// skipped because they need `enumerateDevices`. The main global has no
+/// `requestAnimationFrame`. Processing nodes, `AudioParam` automation,
+/// `AudioListener`, and `getOutputTimestamp` are part of the runtime and
+/// are not skipped here.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
   webaudio_skip_reason(path, key, name).is_some()
 }
@@ -489,9 +489,6 @@ fn webaudio_skip_reason(
   if lower.contains("playbackstats") {
     return Some("The runner has no playbackStats.");
   }
-  if lower.contains("getoutputtimestamp") {
-    return Some("The runner has no getOutputTimestamp.");
-  }
   if key.ends_with("/historical.html") {
     return Some("The runner does not implement historical Web Audio names.");
   }
@@ -511,7 +508,6 @@ fn webaudio_skip_reason(
     "createMediaStreamDestination",
     "createMediaStreamSource",
     "createScriptProcessor",
-    "getOutputTimestamp",
     "playbackStats",
     "setSinkId",
   ];
