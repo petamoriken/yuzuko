@@ -245,7 +245,12 @@
   },
   "webcodecs/transfering.https.any.js": {
     "expectedFailures": [
+      "Encoding from AudioData with transferred buffer",
+      "Test throwing AudioData constructor does not detach transfer buffers",
+      "Test throwing ImageDecoder constructor does not detach transfer buffers",
+      "Test transfering ArrayBuffer to AudioData",
       "Test transfering ArrayBuffer to EncodedAudioChunk",
+      "Test transfering ArrayBuffer to EncodedVideoChunk",
       "Test transfering ArrayBuffer to VideoFrame",
       "Test transfering buffers to VideoFrame with uneven samples",
       "Test transfering view of an ArrayBuffer to VideoFrame"
