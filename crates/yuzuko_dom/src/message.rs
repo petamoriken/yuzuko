@@ -24,6 +24,9 @@ struct PortState {
   closed: bool,
   wrapper: Option<v8::Global<v8::Object>>,
   onmessage: Option<v8::Global<v8::Value>>,
+  onmessageerror: Option<v8::Global<v8::Value>>,
+  /// Deserialization failures waiting for `deliver`.
+  failures: u32,
   queue: VecDeque<v8::Global<v8::Value>>,
 }
 
@@ -41,6 +44,7 @@ struct PortMove {
   id: u64,
   peer: Option<u64>,
   started: bool,
+  failures: u32,
   queue: Vec<yuzuko_core::Parcel>,
 }
 
@@ -52,6 +56,8 @@ thread_local! {
   static READ_PORTS: RefCell<Vec<v8::Global<v8::Object>>> =
     const { RefCell::new(Vec::new()) };
   static EARLY_PORTS: RefCell<HashMap<u64, Vec<v8::Global<v8::Value>>>> =
+    RefCell::new(HashMap::new());
+  static EARLY_FAILURES: RefCell<HashMap<u64, u32>> =
     RefCell::new(HashMap::new());
 }
 
@@ -99,6 +105,7 @@ pub(crate) fn clear() {
   PORTS.with(|slot| slot.borrow_mut().clear());
   MOVED_PORTS.with(|slot| slot.borrow_mut().clear());
   EARLY_PORTS.with(|slot| slot.borrow_mut().clear());
+  EARLY_FAILURES.with(|slot| slot.borrow_mut().clear());
   READ_PORTS.with(|slot| slot.borrow_mut().clear());
   CAPTURE_PORTS.with(|cell| cell.set(false));
 }
@@ -108,7 +115,7 @@ pub(crate) fn message_event_for<'s>(
   data: v8::Local<v8::Value>,
 ) -> v8::Local<'s, v8::Object> {
   let data = v8::Global::new(scope, data);
-  message_event(scope, &data, &[], "")
+  message_event(scope, "message", &data, &[], "")
 }
 
 const TAG_PORT: u32 = 12;
@@ -218,9 +225,9 @@ fn move_port_cross(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
       .borrow()
       .get(&old_id)
       .filter(|state| !state.closed)
-      .map(|state| state.queue.clone())
+      .map(|state| (state.queue.clone(), state.failures))
   });
-  let Some(queued) = queued else {
+  let Some((queued, failures)) = queued else {
     return Err(());
   };
   let target = yuzuko_core::cross_target();
@@ -249,6 +256,7 @@ fn move_port_cross(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
       id: old_id,
       peer,
       started,
+      failures,
       queue: parcels,
     },
   );
@@ -289,14 +297,20 @@ fn install_moved_port(
   ticket: PortMove,
 ) -> v8::Global<v8::Object> {
   let mut queue = VecDeque::new();
+  let mut failures = ticket.failures;
   for parcel in ticket.queue {
     if let Ok(value) = yuzuko_core::deserialize_parcel(scope, parcel) {
       queue.push_back(v8::Global::new(scope, value));
+    } else {
+      failures = failures.saturating_add(1);
     }
   }
   let early = EARLY_PORTS
     .with(|slot| slot.borrow_mut().remove(&ticket.id).unwrap_or_default());
   queue.extend(early);
+  let early_failures = EARLY_FAILURES
+    .with(|slot| slot.borrow_mut().remove(&ticket.id).unwrap_or(0));
+  failures = failures.saturating_add(early_failures);
   PORTS.with(|slot| {
     slot.borrow_mut().insert(
       ticket.id,
@@ -306,6 +320,8 @@ fn install_moved_port(
         closed: false,
         wrapper: None,
         onmessage: None,
+        onmessageerror: None,
+        failures,
         queue,
       },
     );
@@ -362,13 +378,37 @@ pub(crate) fn receive_port_message(
   }
 }
 
+pub(crate) fn fail_port_message(id: u64) {
+  let started = PORTS.with(|slot| {
+    let mut ports = slot.borrow_mut();
+    let state = ports.get_mut(&id)?;
+    if state.closed {
+      return Some(false);
+    }
+    state.failures = state.failures.saturating_add(1);
+    Some(state.started)
+  });
+  match started {
+    None => {
+      EARLY_FAILURES.with(|slot| {
+        let mut failures = slot.borrow_mut();
+        let count = failures.entry(id).or_default();
+        let next = count.saturating_add(1);
+        *count = next;
+      });
+    }
+    Some(true) => schedule(id),
+    Some(false) => {}
+  }
+}
+
 fn moved_port(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
   if let Some(new_id) =
     MOVED_PORTS.with(|slot| slot.borrow().get(&old_id).copied())
   {
     return Ok(new_id);
   }
-  let (peer, queue) = PORTS.with(|slot| {
+  let (peer, queue, failures) = PORTS.with(|slot| {
     let mut ports = slot.borrow_mut();
     let state = ports.get_mut(&old_id).ok_or(())?;
     if state.closed {
@@ -377,7 +417,9 @@ fn moved_port(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
     let peer = state.peer.take().ok_or(())?;
     state.closed = true;
     let queue = std::mem::take(&mut state.queue);
-    Ok((peer, queue))
+    let failures = state.failures;
+    state.failures = 0;
+    Ok((peer, queue, failures))
   })?;
   let new_id = alloc();
   PORTS.with(|slot| {
@@ -395,6 +437,8 @@ fn moved_port(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
         closed: false,
         wrapper: None,
         onmessage: None,
+        onmessageerror: None,
+        failures,
         queue,
       },
     );
@@ -583,6 +627,62 @@ impl MessagePort {
     }
     start_port(self.id);
   }
+
+  #[getter]
+  fn onmessageerror(&self, scope: &mut v8::PinScope) -> Js {
+    let value = PORTS.with(|slot| {
+      slot
+        .borrow()
+        .get(&self.id)
+        .and_then(|state| state.onmessageerror.clone())
+    });
+    match value {
+      Some(value) => {
+        let local = v8::Local::new(scope, &value);
+        Js(v8::Global::new(scope, local))
+      }
+      None => {
+        let value: v8::Local<v8::Value> = v8::null(scope).into();
+        Js(v8::Global::new(scope, value))
+      }
+    }
+  }
+
+  #[setter]
+  fn onmessageerror(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    let previous = PORTS.with(|slot| {
+      slot
+        .borrow()
+        .get(&self.id)
+        .and_then(|state| state.onmessageerror.clone())
+    });
+    if let Some(previous) = previous {
+      let previous = v8::Local::new(scope, &previous);
+      self
+        .base
+        .remove_callback(scope, "messageerror", previous, false);
+    }
+    if value.is_function() {
+      self
+        .base
+        .add_callback(scope, "messageerror", value, false, false, false);
+      PORTS.with(|slot| {
+        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
+          state.onmessageerror = Some(v8::Global::new(scope, value));
+        }
+      });
+    } else {
+      PORTS.with(|slot| {
+        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
+          state.onmessageerror = None;
+        }
+      });
+    }
+  }
 }
 
 pub struct MessageChannel {
@@ -627,18 +727,26 @@ impl MessageChannel {
 pub struct MessageEvent {
   base: Event,
   data: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  /// Frozen array of caller-transferred `MessagePort`s. Stream ports are absent.
-  ports: v8::TracedReference<v8::Object>,
-  origin: String,
-  last_event_id: String,
+  /// Frozen array. A posted message lists only ports reached from the value.
+  ports: RefCell<v8::TracedReference<v8::Object>>,
+  origin: RefCell<String>,
+  last_event_id: RefCell<String>,
+  /// `MessagePort` or the main realm from `initMessageEvent`.
+  /// Constructed and posted events stay null.
+  source: RefCell<Option<v8::TracedReference<v8::Object>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for MessageEvent {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    visitor.trace(&self.ports);
+    if let Ok(ports) = self.ports.try_borrow() {
+      visitor.trace(&*ports);
+    }
     if let Ok(data) = self.data.try_borrow() {
       visitor.trace(&*data);
+    }
+    if let Ok(source) = self.source.try_borrow() {
+      visitor.trace(&*source);
     }
   }
 
@@ -673,9 +781,10 @@ impl MessageEvent {
     Ok(Self {
       base,
       data: RefCell::new(Some(traced(scope, data))),
-      ports,
-      origin,
-      last_event_id,
+      ports: RefCell::new(ports),
+      origin: RefCell::new(origin),
+      last_event_id: RefCell::new(last_event_id),
+      source: RefCell::new(None),
     })
   }
 
@@ -698,26 +807,64 @@ impl MessageEvent {
 
   #[getter]
   fn origin(&self) -> String {
-    self.origin.clone()
+    self.origin.borrow().clone()
   }
 
   #[getter]
   fn last_event_id(&self) -> String {
-    self.last_event_id.clone()
+    self.last_event_id.borrow().clone()
   }
 
   #[getter]
   fn source(&self, scope: &mut v8::PinScope) -> Js {
-    let value: v8::Local<v8::Value> = v8::null(scope).into();
-    Js(v8::Global::new(scope, value))
+    let object = self
+      .source
+      .borrow()
+      .as_ref()
+      .and_then(|reference| traced_local(scope, reference));
+    match object {
+      Some(object) => {
+        let value: v8::Local<v8::Value> = object.into();
+        Js(v8::Global::new(scope, value))
+      }
+      None => Js::null(scope),
+    }
   }
 
   #[getter]
   fn ports(&self, scope: &mut v8::PinScope) -> Js {
-    let value = traced_local(scope, &self.ports)
+    let ports = self.ports.borrow();
+    let value = traced_local(scope, &ports)
       .map(v8::Local::<v8::Value>::from)
       .unwrap_or_else(|| v8::Array::new(scope, 0).into());
     Js(v8::Global::new(scope, value))
+  }
+
+  /// `source` is a `MessagePort`, the main realm, or null.
+  /// `ports` replaces the frozen array.
+  #[length(1)]
+  fn init_message_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = crate::util::try_string(scope, args.get(0))?;
+    let bubbles = message_flag(scope, args, 1);
+    let cancelable = message_flag(scope, args, 2);
+    let data = message_data(scope, args, 3)?;
+    let origin = message_text(scope, args, 4)?;
+    let last_event_id = message_text(scope, args, 5)?;
+    let source = message_source(scope, args, 6)?;
+    let ports = port_sequence(scope, args, 7)?;
+    if !self.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    *self.data.borrow_mut() = Some(traced(scope, data));
+    *self.origin.borrow_mut() = origin;
+    *self.last_event_id.borrow_mut() = last_event_id;
+    *self.source.borrow_mut() = source.map(|object| traced(scope, object));
+    *self.ports.borrow_mut() = port_array(scope, &ports);
+    Ok(())
   }
 }
 
@@ -732,9 +879,10 @@ pub(crate) fn trusted_message<'s>(
   let event = MessageEvent {
     base: Event::new(type_name, false, false, false, true),
     data: RefCell::new(Some(traced(scope, data))),
-    ports: empty_port_array(scope),
-    origin,
-    last_event_id,
+    ports: RefCell::new(empty_port_array(scope)),
+    origin: RefCell::new(origin),
+    last_event_id: RefCell::new(last_event_id),
+    source: RefCell::new(None),
   };
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, object);
@@ -829,7 +977,7 @@ fn start_port(id: u64) {
       return false;
     }
     state.started = true;
-    !state.queue.is_empty()
+    !state.queue.is_empty() || state.failures > 0
   });
   if started {
     schedule(id);
@@ -858,6 +1006,8 @@ fn entangled<'s>(
         closed: false,
         wrapper: None,
         onmessage: None,
+        onmessageerror: None,
+        failures: 0,
         queue: VecDeque::new(),
       },
     );
@@ -869,6 +1019,8 @@ fn entangled<'s>(
         closed: false,
         wrapper: None,
         onmessage: None,
+        onmessageerror: None,
+        failures: 0,
         queue: VecDeque::new(),
       },
     );
@@ -910,15 +1062,18 @@ fn schedule(id: u64) {
 }
 
 fn deliver(scope: &mut v8::PinScope, id: u64) {
-  let pending = PORTS.with(|slot| {
+  let (pending, failures) = PORTS.with(|slot| {
     let mut ports = slot.borrow_mut();
     let Some(state) = ports.get_mut(&id) else {
-      return Vec::new();
+      return (Vec::new(), 0);
     };
     if !state.started || state.closed {
-      return Vec::new();
+      return (Vec::new(), 0);
     }
-    state.queue.drain(..).collect()
+    let pending = state.queue.drain(..).collect::<Vec<_>>();
+    let failures = state.failures;
+    state.failures = 0;
+    (pending, failures)
   });
   let wrapper = PORTS.with(|slot| {
     slot
@@ -932,7 +1087,12 @@ fn deliver(scope: &mut v8::PinScope, id: u64) {
   for data in pending {
     let target = v8::Local::new(scope, &wrapper);
     adopt_shared_buffers(scope, id, &data);
-    let event = message_event(scope, &data, &[], "");
+    let event = message_event(scope, "message", &data, &[], "");
+    let _ = target::dispatch(scope, target, event);
+  }
+  for _ in 0..failures {
+    let target = v8::Local::new(scope, &wrapper);
+    let event = message_error_event(scope);
     let _ = target::dispatch(scope, target, event);
   }
 }
@@ -1046,8 +1206,17 @@ fn set_shared_prototype(
   let _ = buffer.set_prototype(scope, prototype);
 }
 
+pub(crate) fn message_error_event<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let data: v8::Local<v8::Value> = v8::null(scope).into();
+  let data = v8::Global::new(scope, data);
+  message_event(scope, "messageerror", &data, &[], "")
+}
+
 fn message_event<'s>(
   scope: &mut v8::PinScope<'s, '_>,
+  type_name: &str,
   data: &v8::Global<v8::Value>,
   ports: &[v8::Global<v8::Object>],
   origin: &str,
@@ -1062,11 +1231,12 @@ fn message_event<'s>(
     yuzuko_core::op::wrap_instance(
       scope,
       MessageEvent {
-        base: Event::new("message", false, false, false, true),
+        base: Event::new(type_name, false, false, false, true),
         data: RefCell::new(Some(data)),
-        ports,
-        origin,
-        last_event_id: String::new(),
+        ports: RefCell::new(ports),
+        origin: RefCell::new(origin),
+        last_event_id: RefCell::new(String::new()),
+        source: RefCell::new(None),
       },
     )
   };
@@ -1096,6 +1266,224 @@ fn port_array(
   let object: v8::Local<v8::Object> = array.into();
   let _ = object.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   traced(scope, object)
+}
+
+fn message_present<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+  index: i32,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if index < 0 || index >= args.length() {
+    return None;
+  }
+  let value = args.get(index);
+  if value.is_undefined() {
+    None
+  } else {
+    Some(value)
+  }
+}
+
+fn message_flag(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> bool {
+  message_present(args, index).is_some_and(|value| value.boolean_value(scope))
+}
+
+fn message_data<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'_>,
+  index: i32,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  match message_present(args, index) {
+    None => Ok(v8::null(scope).into()),
+    Some(value) => Ok(yuzuko_core::op::root(scope, value)),
+  }
+}
+
+fn message_text(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<String, OpError> {
+  let Some(value) = message_present(args, index) else {
+    return Ok(String::new());
+  };
+  usv_string(scope, value)
+}
+
+fn message_source<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'_>,
+  index: i32,
+) -> Result<Option<v8::Local<'s, v8::Object>>, OpError> {
+  let Some(value) = message_present(args, index) else {
+    return Ok(None);
+  };
+  if value.is_null() {
+    return Ok(None);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Err(source_type());
+  };
+  let is_port =
+    unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) }
+      .is_some();
+  // The main realm is the WindowProxy. A dedicated worker global is not.
+  if is_port || realm_window(scope, object) {
+    return Ok(Some(yuzuko_core::op::root(scope, object)));
+  }
+  Err(source_type())
+}
+
+fn realm_window(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> bool {
+  !yuzuko_core::is_dedicated_worker() && crate::util::is_global(scope, object)
+}
+
+fn source_type() -> OpError {
+  OpError::type_("The provided value is not of type 'MessagePort or Window'.")
+}
+
+fn port_sequence(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<Vec<v8::Global<v8::Object>>, OpError> {
+  let Some(value) = message_present(args, index) else {
+    return Ok(Vec::new());
+  };
+  let object = port_to_object(scope, value)?;
+  let symbol = v8::Symbol::get_iterator(scope);
+  let method = port_get(scope, object, symbol.into())?;
+  if method.is_null_or_undefined() {
+    return Err(OpError::type_("The ports list is not iterable"));
+  }
+  let Ok(method) = v8::Local::<v8::Function>::try_from(method) else {
+    return Err(OpError::type_("@@iterator is not callable"));
+  };
+  let iterator = port_call(scope, method, object.into(), &[])?;
+  let Ok(iterator) = v8::Local::<v8::Object>::try_from(iterator) else {
+    return Err(OpError::type_("The ports list is not iterable"));
+  };
+  let mut ports = Vec::new();
+  loop {
+    let next = port_get_name(scope, iterator, "next")?;
+    let Ok(next) = v8::Local::<v8::Function>::try_from(next) else {
+      return Err(OpError::type_("The ports list is not iterable"));
+    };
+    let step = port_call(scope, next, iterator.into(), &[])?;
+    let Ok(step) = v8::Local::<v8::Object>::try_from(step) else {
+      return Err(OpError::type_("The ports list is not iterable"));
+    };
+    let done = port_get_name(scope, step, "done")?;
+    if done.boolean_value(scope) {
+      return Ok(ports);
+    }
+    let item = port_get_name(scope, step, "value")?;
+    let Ok(item) = v8::Local::<v8::Object>::try_from(item) else {
+      return Err(OpError::type_("A message port is required"));
+    };
+    let is_port =
+      unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, item) }
+        .is_some();
+    if !is_port {
+      return Err(OpError::type_("A message port is required"));
+    }
+    ports.push(v8::Global::new(scope, item));
+  }
+}
+
+enum PortGrab<T> {
+  Value(T),
+  Thrown(v8::Global<v8::Value>),
+  Missing,
+}
+
+fn port_to_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match value.to_object(tc) {
+      Some(object) => PortGrab::Value(v8::Global::new(tc, object)),
+      None => match tc.exception() {
+        Some(exception) => PortGrab::Thrown(v8::Global::new(tc, exception)),
+        None => PortGrab::Missing,
+      },
+    }
+  };
+  match captured {
+    PortGrab::Value(object) => Ok(v8::Local::new(scope, object)),
+    PortGrab::Thrown(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+    PortGrab::Missing => Err(OpError::type_("The ports list is not iterable")),
+  }
+}
+
+fn port_get_name<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let Some(key) = v8::String::new(scope, name) else {
+    return Err(OpError::type_("The ports list is not iterable"));
+  };
+  port_get(scope, object, key.into())
+}
+
+fn port_get<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<v8::Object>,
+  key: v8::Local<v8::Value>,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match object.get(tc, key) {
+      Some(value) => PortGrab::Value(v8::Global::new(tc, value)),
+      None => match tc.exception() {
+        Some(exception) => PortGrab::Thrown(v8::Global::new(tc, exception)),
+        None => PortGrab::Missing,
+      },
+    }
+  };
+  match captured {
+    PortGrab::Value(value) => Ok(v8::Local::new(scope, value)),
+    PortGrab::Thrown(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+    PortGrab::Missing => Err(OpError::type_("The ports list is not iterable")),
+  }
+}
+
+fn port_call<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  function: v8::Local<v8::Function>,
+  receiver: v8::Local<v8::Value>,
+  call_args: &[v8::Local<v8::Value>],
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match function.call(tc, receiver, call_args) {
+      Some(value) => PortGrab::Value(v8::Global::new(tc, value)),
+      None => match tc.exception() {
+        Some(exception) => PortGrab::Thrown(v8::Global::new(tc, exception)),
+        None => PortGrab::Missing,
+      },
+    }
+  };
+  match captured {
+    PortGrab::Value(value) => Ok(v8::Local::new(scope, value)),
+    PortGrab::Thrown(exception) => {
+      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
+    }
+    PortGrab::Missing => Err(OpError::type_("The ports list is not iterable")),
+  }
 }
 
 fn port_array_from_init(
@@ -1214,7 +1602,7 @@ fn queue_self_message(
   // call returns. A macrotask queued behind timers would leave the message
   // for the next test's listener.
   yuzuko_core::schedule_host(std::time::Duration::ZERO, move |scope| {
-    let event = message_event(scope, &data, &ports, &origin);
+    let event = message_event(scope, "message", &data, &ports, &origin);
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
   });

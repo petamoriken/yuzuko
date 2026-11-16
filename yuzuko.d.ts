@@ -8015,11 +8015,17 @@ interface MessageEvent<T = any> extends Event {
   readonly lastEventId: string;
 
   /**
-   * Always `null`. There is no document and no service worker.
+   * The **`source`** read-only property of the MessageEvent interface is a
+   * MessageEventSource (which can be a WindowProxy, MessagePort, or
+   * ServiceWorker object) representing the message emitter.
+   *
+   * A constructed event and a posted message stay null. `initMessageEvent`
+   * stores a `MessagePort` or, on the main realm, this realm. A dedicated
+   * worker rejects its global. There is no `ServiceWorker`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/source)
    */
-  readonly source: null;
+  readonly source: Window | MessagePort | null;
 
   /**
    * Frozen array of transferred {@link MessagePort} s that were reachable from the
@@ -8028,6 +8034,30 @@ interface MessageEvent<T = any> extends Event {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports)
    */
   readonly ports: readonly MessagePort[];
+
+  /**
+   * Legacy initializer. An omitted `data` is null. `source` is a
+   * {@link MessagePort}, this realm on the main global, or null. A dedicated
+   * worker rejects its global. There is no `ServiceWorker`. `ports` is
+   * replaced with a new frozen array. The call does nothing while the event
+   * is dispatching. It does not change `isTrusted`.
+   *
+   * @throws {@link TypeError} When called with no arguments, when `source` is
+   * not a `MessagePort`, the main realm, or null, or when `ports` is not a
+   * sequence of `MessagePort` objects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/initMessageEvent)
+   */
+  initMessageEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    data?: T,
+    origin?: string,
+    lastEventId?: string,
+    source?: Window | MessagePort | null,
+    ports?: MessagePort[],
+  ): void;
 }
 declare var MessageEvent: {
   prototype: MessageEvent;
@@ -8037,7 +8067,9 @@ declare var MessageEvent: {
 
 /**
  * One end of a message channel. `postMessage` carries the values
- * {@link structuredClone} can carry.
+ * {@link structuredClone} can carry. `onmessage` starts the port.
+ * `onmessageerror` does not. A `WebAssembly.Module` sent to a peer in
+ * another agent dispatches `messageerror` there.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link MessageChannel}.
  *
@@ -8070,6 +8102,9 @@ interface MessagePort extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/message_event) */
   onmessage: ((this: MessagePort, ev: MessageEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/messageerror_event) */
+  onmessageerror: ((this: MessagePort, ev: MessageEvent) => any) | null;
 }
 declare var MessagePort: {
   prototype: MessagePort;
@@ -15658,7 +15693,9 @@ declare class WebTransportError extends DOMException {
  * `{ type: "module" }` runs an ES module. A source-phase import of JavaScript or
  * TypeScript also starts a module worker. There is no `SharedWorker`. A
  * {@link Yuzuko.Window} cannot be transferred. A WebGPU device stays on the
- * thread that created it.
+ * thread that created it. A `WebAssembly.Module` posted to another agent
+ * does not throw. That agent dispatches `messageerror` and does not dispatch
+ * `error`.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid, or when
  * `type` is `"classic"` with a source-phase import.
@@ -15680,6 +15717,9 @@ interface Worker extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/message_event) */
   onmessage: ((this: Worker, ev: MessageEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/messageerror_event) */
+  onmessageerror: ((this: Worker, ev: MessageEvent) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/error_event) */
   onerror: ((this: Worker, ev: ErrorEvent) => any) | null;
@@ -15793,6 +15833,7 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope/message_event) */
   onmessage: ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any) | null;
 
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope/messageerror_event) */
   onmessageerror: ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any) | null;
 }
 

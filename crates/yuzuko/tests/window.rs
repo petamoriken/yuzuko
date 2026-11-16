@@ -134,6 +134,40 @@ fn pointer_event_idl_matches() {
 }
 
 #[test]
+fn legacy_event_initializers_match() {
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "-A", "tests/legacy_init_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains("ok | 7 passed | 0 failed | 0 ignored"),
+    "{stdout}\n{}",
+    text(&output.stderr)
+  );
+}
+
+#[test]
+fn pointer_and_touch_init_match() {
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(workspace())
+    .args(["test", "-A", "tests/pointer_touch_init_test.ts"])
+    .env_remove("YUZUKO_HEADLESS")
+    .output()
+    .expect("spawn yuzuko");
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let stdout = text(&output.stdout);
+  assert!(
+    stdout.contains("ok | 3 passed | 0 failed | 0 ignored"),
+    "{stdout}\n{}",
+    text(&output.stderr)
+  );
+}
+
+#[test]
 fn opens_an_os_window() {
   let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
     .current_dir(workspace())

@@ -308,3 +308,140 @@ Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () =
   assert(kept.width === 1 && keptSummary.width === 1, "bitmap copy");
   worker.terminate();
 });
+
+function workerMessages(worker: Worker): { next(): Promise<Record<string, unknown>> } {
+  const queue: Record<string, unknown>[] = [];
+  let wait: ((value: Record<string, unknown>) => void) | null = null;
+  worker.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as Record<string, unknown>;
+    if (wait) {
+      const resolve = wait;
+      wait = null;
+      resolve(data);
+    } else {
+      queue.push(data);
+    }
+  });
+  return {
+    next() {
+      const queued = queue.shift();
+      if (queued) return Promise.resolve(queued);
+      return new Promise((resolve) => {
+        wait = resolve;
+      });
+    },
+  };
+}
+
+function wasmModule(): WebAssembly.Module {
+  return new WebAssembly.Module(
+    new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
+  );
+}
+
+function assertMessageError(event: Record<string, unknown>, label: string) {
+  assert(event.data === null, `${label} data`);
+  assert(event.type === "messageerror", `${label} type`);
+  assert(event.trusted === true, `${label} trust`);
+  assert(event.bubbles === false && event.cancelable === false, `${label} flags`);
+  assert(event.messageEvent === true, `${label} event`);
+}
+
+Yuzuko.test("messageerror for a module posted across agents", async () => {
+  const module = wasmModule();
+  assert(structuredClone(module) instanceof WebAssembly.Module, "structuredClone");
+
+  const local = new MessageChannel();
+  const localResult = new Promise<unknown>((resolve) => {
+    local.port2.onmessage = (event: MessageEvent) => resolve(event.data);
+    local.port2.onmessageerror = () => resolve("messageerror");
+  });
+  local.port1.postMessage(module);
+  assert(await localResult instanceof WebAssembly.Module, "same agent");
+  local.port2.onmessageerror = () => {};
+  local.port2.onmessageerror = 1;
+  assert(local.port2.onmessageerror === null, "port handler cleared");
+
+  const worker = new Worker(script("message_error.js"));
+  const incoming = workerMessages(worker);
+  worker.postMessage({ kind: "ping" });
+  assert((await incoming.next()).kind === "pong", "ready");
+
+  let parentError = false;
+  let parentMessageError = false;
+  worker.onerror = () => {
+    parentError = true;
+  };
+  worker.onmessageerror = () => {
+    parentMessageError = true;
+  };
+  worker.postMessage(module);
+  const globalError = await incoming.next();
+  assert(globalError.kind === "global-messageerror", String(globalError.kind));
+  assertMessageError(globalError, "worker global");
+  assert(parentError === false, "parent error");
+  assert(parentMessageError === false, "parent messageerror");
+
+  const echoed = new Promise<Record<string, unknown>>((resolve) => {
+    worker.onmessageerror = (event: MessageEvent) => {
+      parentMessageError = true;
+      resolve({
+        data: event.data,
+        type: event.type,
+        trusted: event.isTrusted,
+        bubbles: event.bubbles,
+        cancelable: event.cancelable,
+        messageEvent: event instanceof MessageEvent,
+      });
+    };
+  });
+  worker.postMessage({ kind: "echo-module" });
+  assertMessageError(await echoed, "owner");
+  assert(parentError === false, "owner error");
+
+  worker.onmessageerror = () => {};
+  worker.onmessageerror = 1;
+  assert(worker.onmessageerror === null, "worker handler cleared");
+
+  const channel = new MessageChannel();
+  worker.postMessage({ kind: "hold-port", port: channel.port1 }, [channel.port1]);
+  const holding = await incoming.next();
+  assert(holding.kind === "holding" && holding.handler === true, "holding");
+  channel.port2.postMessage(module);
+  worker.postMessage({ kind: "release-port" });
+  const before = await incoming.next();
+  assert(before.kind === "before-start" && before.seen === false, "not started");
+  const portError = await incoming.next();
+  assert(portError.kind === "port-messageerror", String(portError.kind));
+  assertMessageError(portError, "port");
+
+  const queued = new MessageChannel();
+  queued.port2.postMessage(wasmModule());
+  worker.postMessage(queued.port1, [queued.port1]);
+  const queuedBefore = await incoming.next();
+  assert(
+    queuedBefore.kind === "queued-before-start" && queuedBefore.seen === false,
+    "queued quiet",
+  );
+  const queuedError = await incoming.next();
+  assert(queuedError.kind === "queued-messageerror", String(queuedError.kind));
+  assertMessageError(queuedError, "queued");
+
+  parentMessageError = false;
+  worker.onmessageerror = () => {
+    parentMessageError = true;
+  };
+  let cloneName = "";
+  try {
+    worker.postMessage(() => {});
+  } catch (error) {
+    cloneName = error instanceof DOMException ? error.name : "";
+  }
+  assert(cloneName === "DataCloneError", cloneName);
+  worker.postMessage({ kind: "ping" });
+  const pong = await incoming.next();
+  assert(pong.kind === "pong", String(pong.kind));
+  assert(parentMessageError === false, "function messageerror");
+  assert(parentError === false, "function error");
+  worker.terminate();
+});
