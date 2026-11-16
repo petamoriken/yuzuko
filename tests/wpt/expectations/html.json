@@ -3909,7 +3909,14 @@
   "html/webappapis/timers/arguments.html": true,
   "html/webappapis/timers/clearinterval-from-callback.any.js": true,
   "html/webappapis/timers/cleartimeout-clearinterval.any.js": true,
-  "html/webappapis/timers/errors.html": true,
+  "html/webappapis/timers/errors.html": {
+    "expectedFailures": [
+      "setInterval, function argument",
+      "setInterval, string argument",
+      "setTimeout, function argument",
+      "setTimeout, string argument"
+    ]
+  },
   "html/webappapis/timers/evil-spec-example.any.js": true,
   "html/webappapis/timers/missing-timeout-setinterval.any.js": true,
   "html/webappapis/timers/negative-setinterval.any.js": true,

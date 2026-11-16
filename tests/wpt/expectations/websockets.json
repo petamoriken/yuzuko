@@ -420,11 +420,7 @@
       "macos": "The cross-origin cookie handshake does not finish."
     }
   },
-  "websockets/cookies/third-party-cookie-accepted.https.html": {
-    "expectedFailures": [
-      "Test that third-party cookies are accepted for WebSockets."
-    ]
-  },
+  "websockets/cookies/third-party-cookie-accepted.https.html": false,
   "websockets/eventhandlers.any.js": true,
   "websockets/extended-payload-length.html": true,
   "websockets/idlharness.any.js": true,

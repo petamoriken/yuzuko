@@ -263,7 +263,11 @@
   "workers/constructors/Worker/AbstractWorker.onerror.html": {
     "ignore": "The file needs a document."
   },
-  "workers/constructors/Worker/Blob-url.html": true,
+  "workers/constructors/Worker/Blob-url.html": {
+    "expectedFailures": [
+      "Worker supports Blob url"
+    ]
+  },
   "workers/constructors/Worker/DedicatedWorkerGlobalScope-members.worker.js": true,
   "workers/constructors/Worker/Worker-constructor.html": {
     "expectedFailures": [

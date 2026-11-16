@@ -130,12 +130,7 @@
       "Window interface: window must inherit property \"onpointerup\" with the proper type"
     ]
   },
-  "pointerevents/inheritance.html": {
-    "expectedFailures": [
-      "Property touch-action does not inherit",
-      "Property touch-action has initial value auto"
-    ]
-  },
+  "pointerevents/inheritance.html": false,
   "pointerevents/mouse-pointer-boundary-events-for-shadowdom.html": {
     "ignore": "The file needs a document."
   },
