@@ -204,6 +204,9 @@ name = "runtime_feature"
 name = "runtime_usage"
 
 [[test]]
+name = "surface_gaps"
+
+[[test]]
 name = "tray"
 required-features = ["window"]
 
