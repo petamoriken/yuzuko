@@ -9321,6 +9321,12 @@ declare var ReadableStream: {
   new(underlyingSource: UnderlyingByteSource, strategy?: { highWaterMark?: number }): ReadableStream<Uint8Array<ArrayBuffer>>;
   new<R = any>(underlyingSource: UnderlyingDefaultSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
   new<R = any>(underlyingSource?: UnderlyingSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
+  /**
+   * The **`ReadableStream.from()`** static method returns a ReadableStream from a provided iterable or async iterable object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStream/from_static)
+   */
+  from(asyncIterable: AsyncIterable<any> | Iterable<any>): ReadableStream;
 };
 
 
@@ -9467,6 +9473,7 @@ declare var ReadableStreamBYOBRequest: {
  */
 interface UnderlyingSink<W = any> {
   start?: UnderlyingSinkStartCallback;
+  type?: undefined;
   write?: (
     chunk: W,
     controller: WritableStreamDefaultController,
@@ -9518,6 +9525,7 @@ interface WritableStreamDefaultWriter<W = any> {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStreamDefaultWriter/write) */
   write(chunk?: W): Promise<void>;
+  write(chunk: W): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStreamDefaultWriter/close) */
   close(): Promise<void>;
@@ -9554,11 +9562,13 @@ declare var WritableStreamDefaultController: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStream/TransformStream)
  */
 interface Transformer<I = any, O = any> {
+  readableType?: undefined;
   start?: TransformerStartCallback<O>;
   transform?: (
     chunk: I,
     controller: TransformStreamDefaultController<O>,
   ) => void | PromiseLike<void>;
+  writableType?: undefined;
   flush?: (controller: TransformStreamDefaultController<O>) => void | PromiseLike<void>;
 }
 
@@ -9592,6 +9602,7 @@ interface TransformStreamDefaultController<O = any> {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStreamDefaultController/enqueue) */
   enqueue(chunk?: O): void;
+  enqueue(chunk: O): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStreamDefaultController/error) */
   error(reason?: any): void;
