@@ -704,7 +704,7 @@ The baseline is the common API index at <https://min-common-api.proposal.wintert
 The realm includes:
 
 - `Event`, `EventTarget`, `CustomEvent`, `ErrorEvent`, `PromiseRejectionEvent`, `DOMException`
-- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `postMessage`, `performance`, `self`, `crossOriginIsolated`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, `navigator.hardwareConcurrency`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
+- `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `postMessage`, `performance`, `self`, `crossOriginIsolated`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, `navigator.hardwareConcurrency`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `timeStamp` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
 - `AbortController`, `AbortSignal`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
 - V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`. `import source` of JavaScript or TypeScript. A deferred `.wasm` import instantiates on the first observation of its namespace
@@ -1108,7 +1108,7 @@ Image decoders are pure Rust. TLS uses rustls. HTTP/1.1 and HTTP/2 use hyper. HT
 
 ## Console
 
-`console` prints with one inspector. `log`, `info`, `debug`, `warn`, `error`, `trace`, `assert`, `dir`, `dirxml`, `table`, `group`, `groupCollapsed`, and the values after a `timeLog` label use it. `time`, `timeEnd`, `count`, `countReset`, and the `timeLog` label still use `ToString`. A throwing label conversion is rethrown. `console.group()` with no arguments prints `console.group`.
+`console` prints with one inspector. `log`, `info`, `debug`, `warn`, `error`, `trace`, `assert`, `dir`, `dirxml`, `table`, `group`, `groupCollapsed`, and the values after a `timeLog` label use it. `time`, `timeEnd`, `count`, `countReset`, and the `timeLog` label still use `ToString`. A throwing label conversion is rethrown. `console.group()` with no arguments prints `console.group`. `console.timeStamp(label)` prints `timeStamp @ {milliseconds} ms` when the label is omitted, and `timeStamp: {label} @ {milliseconds} ms` when it is present. The milliseconds are `performance.now()`, printed with three digits after the decimal point. Further arguments are ignored. The label uses `ToString`, and a throw is rethrown.
 
 The inspector prints the contents of an object as text. `console` writes that text with no color. It does not call a user inspection hook. A non-enumerable symbol property is omitted, including `Symbol.iterator`, `Symbol.toStringTag`, and `Symbol.species` when they are methods or accessors. An enumerable symbol key is printed. In a value position a symbol description that is not an identifier is quoted, as `Symbol("a b")`. As a property key the same description stays unquoted, as `Symbol(a b)`.
 

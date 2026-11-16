@@ -6390,6 +6390,13 @@ interface Console {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/timeEnd_static) */
   timeEnd(label?: string): void;
 
+  /**
+   * The **`console.timeStamp()`** static method adds a marker to a performance recording in developer tools that support it, such as the Chrome Performance panel and Firefox Profiler. This lets you correlate a point in your code with recorded events such as layout and painting.
+   *
+   * There is no performance panel, so the call prints a stdout marker.
+   */
+  timeStamp(label?: string): void;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/count_static) */
   count(label?: string): void;
 
