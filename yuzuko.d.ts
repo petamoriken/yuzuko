@@ -13405,6 +13405,11 @@ interface PeriodicWaveConstraints {
   disableNormalization?: boolean;
 }
 
+interface AudioTimestamp {
+  contextTime?: number;
+  performanceTime?: DOMHighResTimeStamp;
+}
+
 /**
  * The **`AudioContext`** interface represents an audio-processing graph built
  * from audio modules linked together, each represented by an AudioNode.
@@ -13459,6 +13464,16 @@ interface AudioContext extends BaseAudioContext {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/resume) */
   resume(): Promise<void>;
+
+  /**
+   * The **`getOutputTimestamp()`** method of the AudioContext interface returns a new AudioTimestamp object containing two audio timestamp values relating to the current audio context.
+   *
+   * `contextTime` is `currentTime`. `performanceTime` is `performance.now()`.
+   * `outputLatency` is not subtracted. The call does not open a device.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/getOutputTimestamp)
+   */
+  getOutputTimestamp(): AudioTimestamp;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/close) */
   close(): Promise<void>;
@@ -13668,7 +13683,8 @@ declare var AudioParam: {
 
 
 /**
- * Named parameters on an {@link AudioWorkletNode}.
+ * Named parameters on an {@link AudioWorkletNode}. `forEach` walks descriptor
+ * order. A throw from the callback propagates.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -13684,6 +13700,9 @@ interface AudioParamMap {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap/has) */
   has(name: string): boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap/forEach) */
+  forEach(callbackfn: (value: AudioParam, key: string, parent: AudioParamMap) => void, thisArg?: any): void;
 
   /**
    * Yields `[name, param]` pairs in descriptor order.
@@ -13923,6 +13942,19 @@ interface AudioBufferSourceNode extends AudioScheduledSourceNode {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/detune)
    */
   readonly detune: AudioParam;
+
+  /**
+   * The **`start()`** method of the AudioBufferSourceNode Interface is used to schedule playback of the audio data contained in the buffer, or to begin playback immediately.
+   *
+   * `offset` and `duration` are seconds. An omitted `offset` is 0. An omitted
+   * `duration` plays through. A negative `when`, `offset`, or `duration` throws
+   * `RangeError`.
+   *
+   * @throws {@link RangeError} When `when`, `offset`, or `duration` is negative.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/start)
+   */
+  start(when?: number, offset?: number, duration?: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/loop) */
   loop: boolean;
