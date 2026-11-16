@@ -9041,16 +9041,44 @@ declare var CacheStorage: {
 declare var caches: CacheStorage;
 
 /**
- * `send` loads `http:`, `https:`, and `data:`, then queues `onload` or
- * `onerror`. This object is not an {@link EventTarget}. `responseType`, upload
- * progress, and handlers other than `onload` and `onerror` are absent.
+ * **`XMLHttpRequest`** (XHR) objects are used to interact with servers. You can
+ * retrieve data from a URL without having to do a full page refresh. This
+ * enables a Web page to update just part of a page without disrupting what the
+ * user is doing.
+ *
+ * `send` loads `http:`, `https:`, and `data:`. An asynchronous completion
+ * task sets `readyState` to `DONE` and dispatches `readystatechange`,
+ * `loadstart`, `progress` when the body is not empty, `load`, `error`, or
+ * `timeout`, and `loadend`. A listener assigned after `send()` returns still
+ * runs. `send(body)` accepts `null`, a string, a `Blob`, a `BufferSource`,
+ * `FormData`, or `URLSearchParams`. A synchronous `send` finishes inside the
+ * call and does not dispatch `loadstart` or `progress`.
+ * `response`, `responseType`, `responseURL`, `responseXML`, `upload`, and
+ * `withCredentials` are absent.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest)
  */
-interface XMLHttpRequest {
+interface XMLHttpRequest extends EventTarget {
 
   /**
-   * @throws {@link DOMException} `SyntaxError` when the method is invalid.
+   * The XMLHttpRequest method **`open()`** initializes a newly-created request,
+   * or re-initializes an existing one.
+   *
+   * `open(method, url)` is asynchronous. An explicit `undefined` third
+   * argument is synchronous. `CONNECT`, `TRACE`, and `TRACK` throw
+   * `SecurityError`. A non-null username or password is stored when the URL
+   * has a host. `data:` and `file:` ignore them. An empty password is not
+   * stored.
+   *
+   * @throws {@link DOMException} `SyntaxError` when the method or URL is invalid.
+   * @throws {@link DOMException} `SecurityError` when the method is `CONNECT`,
+   * `TRACE`, or `TRACK`.
+   * @throws {@link TypeError} When the method is not a ByteString.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/open)
    */
   open(method: string, url: string | URL): void;
+  open(method: string, url: string | URL, async: boolean, username?: string | null, password?: string | null): void;
 
   /**
    * @throws {@link DOMException} `InvalidStateError` when `open` has not been
@@ -9060,10 +9088,39 @@ interface XMLHttpRequest {
   setRequestHeader(name: string, value: string): void;
 
   /**
+   * The XMLHttpRequest method **`send()`** sends the request to the server.
+   *
+   * `GET` and `HEAD` ignore `body`. There is no `Document`. A platform object
+   * other than `Blob`, `File`, `BufferSource`, `FormData`, or
+   * `URLSearchParams` throws `TypeError` and does not send. An asynchronous
+   * request stays `OPENED` until the completion task. `open(..., false)` sets
+   * `DONE` and dispatches `readystatechange`, `load`, and `loadend` before
+   * `send` returns, and does not dispatch `loadstart` or `progress`. A
+   * synchronous network error throws `NetworkError`. A synchronous timeout
+   * throws `TimeoutError`. Neither dispatches an event.
+   *
    * @throws {@link DOMException} `InvalidStateError` when the request is not open.
-   * @throws {@link TypeError} When the URL cannot be resolved.
+   * @throws {@link TypeError} When `body` is not an `XMLHttpRequestBodyInit`.
+   * @throws {@link DOMException} `TimeoutError` when a synchronous request
+   * misses its deadline.
+   * @throws {@link DOMException} `NetworkError` when a synchronous request fails.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/send)
    */
-  send(): void;
+  send(body?: XMLHttpRequestBodyInit | null): void;
+
+  /**
+   * The **`XMLHttpRequest.abort()`** method aborts the request if it has already
+   * been sent. When a request is aborted, its readyState is changed to
+   * XMLHttpRequest.UNSENT (0) and the request's status code is set to 0.
+   *
+   * After `send()` returns and before the completion task, this dispatches
+   * `readystatechange`, `abort`, and `loadend`, then sets `readyState` to
+   * `UNSENT`. It does not dispatch `loadstart`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/abort)
+   */
+  abort(): void;
 
   /** The response header, or `null` before the request is done. */
   getResponseHeader(name: string): string | null;
@@ -9088,6 +9145,38 @@ interface XMLHttpRequest {
   readonly responseText: string;
 
   /**
+   * The **`readyState`** read-only property of the XMLHttpRequest interface
+   * returns the state an XMLHttpRequest client is in. An XHR client exists in
+   * one of the following states:
+   *
+   * This runtime reports `UNSENT`, `OPENED`, or `DONE`. It does not enter
+   * `HEADERS_RECEIVED` or `LOADING`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/readyState)
+   */
+  readonly readyState: number;
+
+  /**
+   * The **`XMLHttpRequest.timeout`** property is an unsigned long representing
+   * the number of milliseconds a request can take before automatically being
+   * terminated. The default value is 0, which means there is no timeout.
+   * Timeout shouldn't be used for synchronous XMLHttpRequests requests used in
+   * a document environment or it will throw an InvalidAccessError exception.
+   * When a timeout happens, a timeout event is fired.
+   *
+   * `0` does not time out. A non-zero value is measured from the start of
+   * `send`. Assigning one after `send()` returns, once that many milliseconds
+   * have already passed and the completion task has not run, dispatches
+   * `timeout`. A fetch that finishes inside the timeout still loads. A
+   * synchronous request does not throw `InvalidAccessError`. A missed
+   * deadline throws `TimeoutError` from `send` and does not dispatch
+   * `timeout`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/timeout)
+   */
+  timeout: number;
+
+  /**
    * The XMLHttpRequest method **`overrideMimeType()`** specifies a MIME type other
    * than the one provided by the server to be used instead when interpreting the
    * data being transferred in a request.
@@ -9098,8 +9187,19 @@ interface XMLHttpRequest {
    */
   overrideMimeType(mime: string): void;
 
+  onloadstart: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onprogress: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
   onload: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
   onerror: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onloadend: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onabort: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  ontimeout: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onreadystatechange: ((this: XMLHttpRequest, ev: Event) => any) | null;
+  readonly UNSENT: 0;
+  readonly OPENED: 1;
+  readonly HEADERS_RECEIVED: 2;
+  readonly LOADING: 3;
+  readonly DONE: 4;
 }
 declare var XMLHttpRequest: {
   prototype: XMLHttpRequest;

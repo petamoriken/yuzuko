@@ -51,8 +51,6 @@ pub fn register() {
       poll_timeout: idle::poll_timeout,
       poll_idle: idle::poll_idle,
     });
-    #[cfg(feature = "fetch")]
-    yuzuko_winter::set_xhr_progress_hook(event::deliver_xhr_progress);
   });
 }
 
@@ -80,6 +78,8 @@ fn install(scope: &mut v8::PinScope) {
   idle::install(scope);
   #[cfg(feature = "fetch")]
   net::event_source::install(scope);
+  #[cfg(feature = "fetch")]
+  net::xhr::install(scope);
   #[cfg(feature = "socket")]
   net::websocket::install(scope);
   #[cfg(feature = "socket")]

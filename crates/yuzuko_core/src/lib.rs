@@ -73,7 +73,7 @@ pub use host::{
   agent_id, entry_dir, entry_url, is_dedicated_worker, module_generation,
   module_reloaded, note_test_error, on_dedicated_worker, reload_keeps_module,
   reload_targets_modules, set_dom_exception, set_file_root, set_rejection_hook,
-  try_agent_id,
+  try_agent_id, try_entry_url,
 };
 pub use idle::{
   IdleHooks, idle_frame_delay, idle_has_pending, idle_next_wait,

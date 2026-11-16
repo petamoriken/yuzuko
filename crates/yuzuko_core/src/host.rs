@@ -396,6 +396,17 @@ pub fn entry_url() -> Option<String> {
   with(|state| state.entry_url.clone())
 }
 
+/// `None` when this thread has not entered a realm. A unit test can parse an
+/// absolute URL without one. A relative URL then fails.
+pub fn try_entry_url() -> Option<String> {
+  STATE.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .and_then(|state| state.entry_url.clone())
+  })
+}
+
 /// Resolves relative `fetch` and `Request` URLs against `url`.
 ///
 /// The WPT runner points network tests at `http://web-platform.test` while

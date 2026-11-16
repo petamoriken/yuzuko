@@ -31,7 +31,9 @@ pub use http::webtransport::{
   next_stream_id as next_web_transport_stream_id,
 };
 #[cfg(feature = "fetch")]
-pub use http::xhr::set_xhr_progress_hook;
+pub use http::xhr::{
+  XhrBody, XhrProgress, XhrSend, XhrState, extract_xhr_body,
+};
 #[cfg(feature = "fetch")]
 pub use http::{BodyNote, HttpBody, HttpFailure, perform, read_get};
 pub use stream::{
@@ -67,8 +69,6 @@ fn install(scope: &mut v8::PinScope) {
   http::fetch::install(scope);
   #[cfg(feature = "fetch")]
   http::cache::install(scope);
-  #[cfg(feature = "fetch")]
-  http::xhr::XMLHttpRequest::install(scope);
   http::form::install(scope);
   stream::install(scope);
   url::pattern::install(scope);
