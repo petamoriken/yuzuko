@@ -7903,6 +7903,7 @@ declare var MessageChannel: {
  */
 interface URL {
   href: string;
+  toString(): string;
   readonly origin: string;
   protocol: string;
   username: string;

@@ -151,6 +151,15 @@ Yuzuko.test("url parser", () => {
   if (url.href !== "https://example.com/a") {
     throw new Error(url.href);
   }
+  if (url.toString() !== url.href || String(url) !== url.href) {
+    throw new Error(url.toString());
+  }
+  if (`${url}` !== url.href) {
+    throw new Error("template");
+  }
+  if (Object.prototype.toString.call(url) !== "[object URL]") {
+    throw new Error(Object.prototype.toString.call(url));
+  }
   url.searchParams.append("q", "1");
   if (url.search !== "?q=1") {
     throw new Error(url.search);
