@@ -102,8 +102,11 @@
   },
   "streams/transferable/transfer-with-messageport.window.js": {
     "expectedFailures": [
+      "Transferring a MessagePort with a ReadableStream should set `.ports`",
       "Transferring a MessagePort with a ReadableStream should set `.ports`, advanced",
+      "Transferring a MessagePort with a TransformStream should set `.ports`",
       "Transferring a MessagePort with a TransformStream should set `.ports`, advanced",
+      "Transferring a MessagePort with a WritableStream should set `.ports`",
       "Transferring a MessagePort with a WritableStream should set `.ports`, advanced",
       "Transferring a MessagePort with multiple streams should set `.ports`"
     ]

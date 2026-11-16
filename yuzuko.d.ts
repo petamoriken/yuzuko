@@ -421,7 +421,23 @@ interface WGSLLanguageFeatures {
 interface WGSLLanguageFeatures extends ReadonlySet<string> {
 
 }
-interface Window extends EventTarget {}
+interface Window extends EventTarget {
+  /**
+   * The **`Window.self`** read-only property returns the window itself, as a
+   * WindowProxy. It can be used with dot notation on a window object (that is,
+   * window.self) or standalone (self). The advantage of the standalone notation
+   * is that a similar notation exists for non-window contexts, such as in Web
+   * Workers. By using self, you can refer to the global scope in a way that will
+   * work not only in a window context (self will resolve to window.self) but also
+   * in a worker context (self will then resolve to WorkerGlobalScope.self).
+   *
+   * This realm's `self` is the same object as `globalThis`. Assignment does not
+   * replace it. There is no `window` binding.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
+   */
+  readonly self: Window & typeof globalThis;
+}
 type WorkerType = "classic" | "module";
 type URLPatternInput = string | URLPatternInit;
 type BlobPart = BufferSource | Blob | string;
@@ -6129,7 +6145,16 @@ declare namespace Yuzuko {
 }
 
 /**
- * Alias of `globalThis` in every realm. Assignment does not replace it.
+ * The **`Window.self`** read-only property returns the window itself, as a
+ * WindowProxy. It can be used with dot notation on a window object (that is,
+ * window.self) or standalone (self). The advantage of the standalone notation
+ * is that a similar notation exists for non-window contexts, such as in Web
+ * Workers. By using self, you can refer to the global scope in a way that will
+ * work not only in a window context (self will resolve to window.self) but also
+ * in a worker context (self will then resolve to WorkerGlobalScope.self).
+ *
+ * This realm's `self` is the same object as `globalThis`. Assignment does not
+ * replace it. There is no `window` binding.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
  */
@@ -6143,15 +6168,6 @@ declare const self: Window & typeof globalThis;
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/crossOriginIsolated)
  */
 declare const crossOriginIsolated: false;
-
-/**
- * Alias of `globalThis` on the main realm. This is the execution realm, not a
- * {@link Yuzuko.Window}. There is no global `Window` constructor. A dedicated
- * worker does not have `window`.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/window)
- */
-declare var window: Window & typeof globalThis;
 
 /**
  * Reports an error on `globalThis`. The handler is called as

@@ -101,7 +101,7 @@ The default Cargo features include every surface below. Build features lists the
 
 `yuzuko run game.ts` or `yuzuko run game.js` evaluates an ES module in V8. TypeScript is erased by oxc before V8 parses it. Startup does not open a window. Each `new Yuzuko.Window()` opens one native window.
 
-Standard APIs live on `globalThis`. APIs that are in neither the web platform nor WinterTC live on `Yuzuko`. There is no global `Window` constructor.
+Standard APIs live on `globalThis`. APIs that are in neither the web platform nor WinterTC live on `Yuzuko`. There is no global `Window` constructor and no `window` binding.
 
 The runtime provides:
 
@@ -193,7 +193,7 @@ These names are compiled into every build. They are not Cargo features. `AbortCo
 
 `Yuzuko.errors` is an object of classes: `NotFound`, `PermissionDenied`, `ConnectionRefused`, `ConnectionReset`, `ConnectionAborted`, `NotConnected`, `AddrInUse`, `AddrNotAvailable`, `BrokenPipe`, `AlreadyExists`, `InvalidData`, `TimedOut`, `Interrupted`, `WriteZero`, `WouldBlock`, `UnexpectedEof`, `BadResource`, `Http`, `Busy`, `NotSupported`, `FilesystemLoop`, `IsADirectory`, `NetworkUnreachable`, `NotADirectory`, and `NotCapable`. Each extends `Error`. `name` is the class name. The constructor passes the message and the optional options object to `Error`, which uses that object for `cause`. An omitted or `undefined` message is `""`. The thrown value is the constructor captured when the realm started. Replacing a property later does not change it. `instanceof` that class and `instanceof Error` are both true. An operating-system failure may set `code` to the errno name Deno uses for that error, such as `ENOENT`. A value constructed with `new` does not set `code`. `NotCapable` is described in Permissions. File-system failures use these classes as described in File system. Socket and HTTP failures use them as described in Socket errors.
 
-`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `onerror` and `onunhandledrejection` are delivered here. A throw inside `queueMicrotask` is reported with `reportError` on that realm: the `error` event's `error` is the thrown value. During `yuzuko test` that throw fails the test. Pointer and key events are not.
+`globalThis` is the execution realm and inherits from `EventTarget`. `self === globalThis`, and assigning to `self` leaves that binding unchanged. `window` is absent in every realm. `onerror` and `onunhandledrejection` are delivered here. A throw inside `queueMicrotask` is reported with `reportError` on that realm: the `error` event's `error` is the thrown value. During `yuzuko test` that throw fails the test. Pointer and key events are not.
 
 `navigator.hardwareConcurrency` is present on the main global and in a dedicated worker in every build. It is the number of logical processors available to the process, and it is at least 1. When the operating system does not report a count, the value is 1.
 

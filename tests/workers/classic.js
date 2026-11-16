@@ -43,6 +43,7 @@ self.onmessage = (event) => {
     dedicated: self instanceof DedicatedWorkerGlobalScope,
     workerScope: self instanceof WorkerGlobalScope,
     hasWindow: typeof Yuzuko !== "undefined" && typeof Yuzuko.Window === "function",
+    hasGlobalWindow: typeof window !== "undefined",
     hasDocument: typeof document !== "undefined",
     hasSharedWorker: typeof SharedWorker !== "undefined",
     fontsSame: self.fonts === globalThis.fonts,

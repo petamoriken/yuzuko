@@ -255,9 +255,14 @@ fn realm_globals_cover_phase_one_basics() {
     console.log(typeof navigator.userAgent);
     console.log(typeof performance.now);
     console.log(self === globalThis);
+    console.log(typeof window);
+    console.log("window" in globalThis);
     "#])
   .expect("realm");
-  assert_eq!(logs, vec!["1", "true", "string", "function", "true"]);
+  assert_eq!(
+    logs,
+    vec!["1", "true", "string", "function", "true", "undefined", "false"]
+  );
 }
 
 #[test]

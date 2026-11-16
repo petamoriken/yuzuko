@@ -1,5 +1,12 @@
 {
-  "requestidlecallback/basic.html": true,
+  "requestidlecallback/basic.html": {
+    "expectedFailures": [
+      "window.cancelIdleCallback is defined",
+      "window.cancelIdleCallback() returns undefined",
+      "window.requestIdleCallback is defined",
+      "window.requestIdleCallback() returns a number"
+    ]
+  },
   "requestidlecallback/callback-after-removed-frame-with-pending-timeout.html": {
     "ignore": "The file needs a document."
   },

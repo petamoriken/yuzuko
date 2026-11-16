@@ -31,6 +31,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
     dedicated: boolean;
     workerScope: boolean;
     hasWindow: boolean;
+    hasGlobalWindow: boolean;
     hasDocument: boolean;
     hasSharedWorker: boolean;
     fontsSame: boolean;
@@ -50,6 +51,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
   assert(reply.selfIsGlobal, "self");
   assert(reply.dedicated && reply.workerScope, "scope");
   assert(reply.hasWindow === false, "no Yuzuko.Window");
+  assert(reply.hasGlobalWindow === false, "no global window");
   assert(reply.hasDocument === false, "no document");
   assert(reply.hasSharedWorker === false, "no SharedWorker");
   assert(reply.fontsSame && reply.fontsSet, "self.fonts");

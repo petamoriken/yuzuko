@@ -302,7 +302,7 @@
       "X value setter did not throw an exception."
     ]
   },
-  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurveAtTime.html": true,
+  "webaudio/the-audio-api/the-audioparam-interface/audioparam-setValueCurveAtTime.html": false,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-summingjunction.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/audioparam-zero-duration-ramp.html": {
     "expectedFailures": [
@@ -316,7 +316,19 @@
       "Zero-duration linearRampToValueAtTime at frame 546.75 renders finite values"
     ]
   },
-  "webaudio/the-audio-api/the-audioparam-interface/automation-rate.html": true,
+  "webaudio/the-audio-api/the-audioparam-interface/automation-rate.html": {
+    "expectedFailures": [
+      "AudioBufferSourceNode",
+      "BiquadFilterNode",
+      "ConstantSourceNode",
+      "DelayNode",
+      "DynamicsCompressorNode",
+      "GainNode",
+      "OscillatorNode",
+      "PannerNode",
+      "StereoPannerNode"
+    ]
+  },
   "webaudio/the-audio-api/the-audioparam-interface/cancel-scheduled-values.html": {
     "expectedFailures": [
       "cancel-time: handle cancelTime values",
@@ -357,7 +369,8 @@
   "webaudio/the-audio-api/the-audioparam-interface/k-rate-biquad.html": true,
   "webaudio/the-audio-api/the-audioparam-interface/k-rate-connections.html": {
     "expectedFailures": [
-      "Gain - k-rate GainNode.gain"
+      "Gain - k-rate GainNode.gain",
+      "StereoPanner - k-rate StereoPannerNode.pan"
     ]
   },
   "webaudio/the-audio-api/the-audioparam-interface/k-rate-constant-source.html": {
@@ -442,7 +455,12 @@
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-frozen-array.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-process-zero-outputs.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-promises.https.html": true,
-  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-unconnected-outputs.https.window.js": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletprocessor-unconnected-outputs.https.window.js": {
+    "expectedFailures": [
+      "Test if outputs connected to AudioParam provides a non-zero length array for channels",
+      "Test if unconnected outputs provides a non-zero length array for channels"
+    ]
+  },
   "webaudio/the-audio-api/the-audioworklet-interface/baseaudiocontext-audioworklet.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/extended-audioworkletnode-with-parameters.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/process-getter.https.html": true,
@@ -478,7 +496,7 @@
     ]
   },
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-notch.html": true,
-  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-peaking.html": true,
+  "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-peaking.html": false,
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquad-tail.html": true,
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquadfilter-rendersizehint.https.html": true,
   "webaudio/the-audio-api/the-biquadfilternode-interface/biquadfilternode-basic.html": true,
@@ -554,9 +572,9 @@
   "webaudio/the-audio-api/the-delaynode-interface/delaynode-max-default-delay.html": true,
   "webaudio/the-audio-api/the-delaynode-interface/delaynode-max-nondefault-delay.html": true,
   "webaudio/the-audio-api/the-delaynode-interface/delaynode-maxdelay.html": true,
-  "webaudio/the-audio-api/the-delaynode-interface/delaynode-maxdelaylimit.html": true,
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode-maxdelaylimit.html": false,
   "webaudio/the-audio-api/the-delaynode-interface/delaynode-scheduling.html": true,
-  "webaudio/the-audio-api/the-delaynode-interface/delaynode.html": true,
+  "webaudio/the-audio-api/the-delaynode-interface/delaynode.html": false,
   "webaudio/the-audio-api/the-delaynode-interface/maxdelay-rounding.html": true,
   "webaudio/the-audio-api/the-delaynode-interface/no-dezippering.html": {
     "expectedFailures": [

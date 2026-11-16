@@ -2017,7 +2017,11 @@
       "A same-origin window[target='_blank'][features='popup'] can trigger fetchLater."
     ]
   },
-  "fetch/fetch-later/non-secure.window.js": true,
+  "fetch/fetch-later/non-secure.window.js": {
+    "expectedFailures": [
+      "fetchLater() is not supported in non-secure context."
+    ]
+  },
   "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy-attribute-redirect.https.window.js": {
     "expectedFailures": [
       "Permissions policy allow=\"deferred-fetch\" allows fetchLater() from a redirected same-origin iframe.",

@@ -4,6 +4,18 @@ function assert(condition, message) {
   }
 }
 
+Yuzuko.test("the realm has no window binding", () => {
+  assert(!("window" in globalThis), "no window");
+  assert(self === globalThis, "self");
+  let replaced = false;
+  try {
+    self = globalThis;
+  } catch (error) {
+    replaced = error instanceof TypeError;
+  }
+  assert(replaced && self === globalThis, "self is read-only");
+});
+
 Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
   assert(typeof requestAnimationFrame === "undefined", "global rAF");
   assert(typeof Window === "undefined", "global Window");

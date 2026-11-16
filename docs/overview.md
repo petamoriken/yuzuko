@@ -2,7 +2,7 @@
 
 Yuzuko is a desktop JavaScript and TypeScript runtime built on rusty_v8. A script draws its own pixels and presents them in native windows. There is no WebView and no HTML document.
 
-Web-standard and WinterTC APIs are properties of `globalThis`. APIs that belong to this runtime are properties of `Yuzuko`. `Yuzuko` is present on the main realm and in a dedicated worker in every build. There is no global `Window` constructor.
+Web-standard and WinterTC APIs are properties of `globalThis`. APIs that belong to this runtime are properties of `Yuzuko`. `Yuzuko` is present on the main realm and in a dedicated worker in every build. There is no global `Window` constructor and no `window` binding.
 
 The default build enables every feature on this page. `cargo build -p yuzuko --no-default-features` is the JavaScript runtime alone. `yuzuko package` copies the executable that invoked it, so a packaged application keeps that build's features. Supported targets are macOS arm64 and Intel, Windows x86_64, and Linux arm64 and x86_64.
 
@@ -10,7 +10,7 @@ This page introduces the surfaces. Normative behavior is [spec.md](spec.md). Int
 
 ## Where a name lives
 
-`globalThis` is the execution realm. It inherits from `EventTarget`. `self` is that same object. `onerror` and `onunhandledrejection` are delivered there. Pointer and key events go to the window that received them.
+`globalThis` is the execution realm. It inherits from `EventTarget`. `self` is that same object. `window` is absent. `onerror` and `onunhandledrejection` are delivered there. Pointer and key events go to the window that received them.
 
 A dedicated worker runs on its own thread, in its own isolate. It receives the JavaScript runtime and the feature surfaces that are not tied to an OS window: fetch, sockets, files, datagrams, TCP, the HTTP server, signals, child processes, foreign functions, Web Audio, WebCodecs, images, Canvas 2D on an `OffscreenCanvas`, fonts, and WebGPU. It has `requestAnimationFrame` and `cancelAnimationFrame`. It does not have `requestIdleCallback`, `Yuzuko.Window`, the application menu, tray, dock, dialog labels, clipboard, gamepad, screen Wake Lock, or the accessibility nodes.
 

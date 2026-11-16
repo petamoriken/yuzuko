@@ -47,7 +47,11 @@
   "workers/Worker-base64.any.js": true,
   "workers/Worker-call.worker.js": true,
   "workers/Worker-constructor-proto.any.js": true,
-  "workers/Worker-creation-happens-in-parallel.https.html": true,
+  "workers/Worker-creation-happens-in-parallel.https.html": {
+    "expectedFailures": [
+      "Tests that creation of a \"new Worker()\" will occur in parallel"
+    ]
+  },
   "workers/Worker-custom-event.any.js": false,
   "workers/Worker-formdata.any.js": true,
   "workers/Worker-location.sub.any.js": {
@@ -98,7 +102,11 @@
       "Test that userAgentData is available in workers in secure contexts"
     ]
   },
-  "workers/WorkerPerformanceNow.html": true,
+  "workers/WorkerPerformanceNow.html": {
+    "expectedFailures": [
+      "performance.now() exists in dedicated workers and reports reasonable times"
+    ]
+  },
   "workers/abrupt-completion.html": false,
   "workers/baseurl/alpha/import-in-moduleworker.html": {
     "expectedFailures": [
@@ -318,18 +326,8 @@
       "Creating a dedicated worker from a blob URL works immediately before revoking."
     ]
   },
-  "workers/dedicated-worker-in-data-url-context.window.js": {
-    "expectedFailures": [
-      "Create a data url dedicated worker in a data url frame",
-      "Create a dedicated worker in a data url frame"
-    ]
-  },
-  "workers/dedicated-worker-parse-error-failure.html": {
-    "expectedFailures": [
-      "Classic worker construction for script with syntax error should dispatch an event named error.",
-      "Static import on classic worker should dispatch an event named error."
-    ]
-  },
+  "workers/dedicated-worker-in-data-url-context.window.js": false,
+  "workers/dedicated-worker-parse-error-failure.html": false,
   "workers/dedicated-worker-runtime-error-is-not-parse-error.html": {
     "expectedFailures": [
       "Script parse error dispatches plain Event at Worker"
@@ -608,12 +606,7 @@
   },
   "workers/modules/dedicated-worker-options-credentials.html": false,
   "workers/modules/dedicated-worker-options-type.html": true,
-  "workers/modules/dedicated-worker-parse-error-failure.html": {
-    "expectedFailures": [
-      "Module worker construction for script with syntax error should dispatch an event named error.",
-      "Static import on module worker for script with syntax error should dispatch an event named error."
-    ]
-  },
+  "workers/modules/dedicated-worker-parse-error-failure.html": false,
   "workers/modules/shared-worker-import-blob-url.window.js": {
     "expectedFailures": [
       "Dynamic import and then static import.",
@@ -989,12 +982,7 @@
       "Connecting to shared worker with different options should be blocked: true to false in module"
     ]
   },
-  "workers/shared-worker-parse-error-failure.html": {
-    "expectedFailures": [
-      "Classic shared worker construction for script with syntax error should dispatch an event named error.",
-      "Static import on classic shared worker should dispatch an event named error."
-    ]
-  },
+  "workers/shared-worker-parse-error-failure.html": false,
   "workers/shared-worker-partitioned-cookies.tentative.https.html": {
     "ignore": "The file needs a document."
   },

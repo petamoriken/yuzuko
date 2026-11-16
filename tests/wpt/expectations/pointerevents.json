@@ -310,7 +310,7 @@
   "pointerevents/pointerevent_fractional_coordinates.html": {
     "ignore": "The file needs a document."
   },
-  "pointerevents/pointerevent_fractional_coordinates_untrusted.html": true,
+  "pointerevents/pointerevent_fractional_coordinates_untrusted.html": false,
   "pointerevents/pointerevent_hit_test_scroll.html": {
     "ignore": "The file needs a document."
   },
@@ -518,7 +518,7 @@
   "pointerevents/pointerevent_target_at_clicking_link_in_image_map.html": {
     "ignore": "The file needs a document."
   },
-  "pointerevents/pointerevent_tiltX_tiltY_to_azimuth_altitude.html": true,
+  "pointerevents/pointerevent_tiltX_tiltY_to_azimuth_altitude.html": false,
   "pointerevents/pointerevent_to_slotted_target.html": {
     "ignore": "The file needs a document."
   },

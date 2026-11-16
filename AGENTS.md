@@ -13,7 +13,7 @@ Implementation contract for Yuzuko. The product spec is `docs/spec.md`. Intentio
 
 ## Where APIs live
 
-Web-standard and WinterTC APIs go on `globalThis`. Everything else goes on `Yuzuko`. The `Yuzuko` object is present on the main realm and in a dedicated worker in every build. Do not add a global `Window` constructor.
+Web-standard and WinterTC APIs go on `globalThis`. Everything else goes on `Yuzuko`. The `Yuzuko` object is present on the main realm and in a dedicated worker in every build. Do not add a global `Window` constructor. Do not install `window` as an alias of `globalThis`.
 
 The main global has no `requestAnimationFrame`. Every build has `requestIdleCallback`, `cancelIdleCallback`, and `AbortController`. A dedicated worker has `requestAnimationFrame` and `cancelAnimationFrame`, and does not have `requestIdleCallback`.
 

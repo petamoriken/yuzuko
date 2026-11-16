@@ -112,7 +112,11 @@
     "ignore": "The file needs a document."
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": true,
-  "webcodecs/chunk-serialization.any.js": true,
+  "webcodecs/chunk-serialization.any.js": {
+    "expectedFailures": [
+      "Verify EncodedVideoChunk cannot be stored"
+    ]
+  },
   "webcodecs/encoded-audio-chunk.any.js": true,
   "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": true,
   "webcodecs/encoded-video-chunk.any.js": true,
