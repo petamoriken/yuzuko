@@ -359,11 +359,11 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
 
   constructed.initMessageEvent("x", false, false, 1, "", "", globalThis);
   assert(constructed.source === globalThis, "global source");
-  assert(constructed.source === window && constructed.source === self, "aliases");
+  assert(constructed.source === self && !("window" in globalThis), "self");
   assert(constructed.type === "x", "global type");
   assert(constructed.data === 1, "global data");
-  constructed.initMessageEvent("message", false, false, 1, "", "", window);
-  assert(constructed.source === window, "window source");
+  constructed.initMessageEvent("message", false, false, 1, "", "", self);
+  assert(constructed.source === self, "self source");
   assert(
     throwsTypeError(() =>
       constructed.initMessageEvent(
@@ -378,7 +378,7 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
     ),
     "proxy source",
   );
-  assert(constructed.source === window, "proxy kept");
+  assert(constructed.source === self, "proxy kept");
   assert(
     throwsTypeError(() =>
       constructed.initMessageEvent(
