@@ -242,10 +242,9 @@ Yuzuko.test("roundRect rejects an unusable radius list", () => {
     TypeError,
     "w getter",
   );
-  const roundRect = ctx.roundRect;
   throws(
     // @ts-expect-error roundRect requires a rectangle.
-    () => roundRect(0, 0),
+    () => ctx.roundRect(0, 0),
     TypeError,
     "roundRect requires a rectangle",
   );
