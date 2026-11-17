@@ -115,31 +115,63 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
-          # puts librusty_v8.a in target/<profile>/gn_out, so a saved cache
-          # does not contain it. Relinking v8 from that cache fails with
-          # "could not find native static library `rusty_v8`" unless the
-          # build script runs again and downloads the archive.
+          # Cargo 1.100 puts each unit at target/<profile>/build/<package>/<hash>.
+          # rusty_v8 walks three parents from OUT_DIR and writes the static
+          # library to target/<profile>/build/gn_out. Older cargo used
+          # target/<profile>/{.fingerprint,deps,build} and
+          # target/<profile>/gn_out. rust-cache keeps build, .fingerprint, and
+          # deps, then drops gn_out because that directory is not a package. A
+          # restored v8 rlib fails to link with "could not find native static
+          # library rusty_v8" unless those outputs are removed so the build
+          # script downloads the archive again.
           shopt -s nullglob
-          for profile in target/*/; do
-            if [ ! -d "${profile}.fingerprint" ]; then
-              continue
+
+          archive_present() {
+            [ -e "$1/librusty_v8.a" ] || [ -e "$1/rusty_v8.lib" ]
+          }
+
+          consider() {
+            local profile="$1"
+            local path
+            local found
+
+            if [ ! -d "${profile}build" ] && [ ! -d "${profile}.fingerprint" ]; then
+              return 0
             fi
-            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
-              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
-              continue
+
+            if [ -d "${profile}build/v8" ] && ! archive_present "${profile}build/gn_out/obj"; then
+              echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+              echo "  ${profile}build/v8"
+              rm -rf "${profile}build/v8"
             fi
-            to_remove=(
-              "${profile}.fingerprint"/v8-*
-              "${profile}build"/v8-*
-              "${profile}deps"/libv8-*
+
+            if archive_present "${profile}gn_out/obj"; then
+              return 0
+            fi
+
+            found=0
+            for path in \
+              "${profile}.fingerprint"/v8-* \
+              "${profile}build"/v8-* \
+              "${profile}deps"/libv8-* \
               "${profile}deps"/v8-*
-            )
-            if [ "${#to_remove[@]}" -eq 0 ]; then
-              continue
-            fi
-            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
-            rm -rf "${to_remove[@]}"
+            do
+              if [ -e "$path" ]; then
+                if [ "$found" -eq 0 ]; then
+                  echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+                  found=1
+                fi
+                echo "  $path"
+                rm -rf "$path"
+              fi
+            done
+          }
+
+          for profile in target/*/; do
+            consider "$profile"
+            for nested in "${profile}"*/; do
+              consider "$nested"
+            done
           done
 
       # Linux WPT uses the container's Python 3.9. setup-python would
@@ -319,31 +351,63 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # rust-cache keeps only build, .fingerprint, and deps. rusty_v8
-          # puts librusty_v8.a in target/<profile>/gn_out, so a saved cache
-          # does not contain it. Relinking v8 from that cache fails with
-          # "could not find native static library `rusty_v8`" unless the
-          # build script runs again and downloads the archive.
+          # Cargo 1.100 puts each unit at target/<profile>/build/<package>/<hash>.
+          # rusty_v8 walks three parents from OUT_DIR and writes the static
+          # library to target/<profile>/build/gn_out. Older cargo used
+          # target/<profile>/{.fingerprint,deps,build} and
+          # target/<profile>/gn_out. rust-cache keeps build, .fingerprint, and
+          # deps, then drops gn_out because that directory is not a package. A
+          # restored v8 rlib fails to link with "could not find native static
+          # library rusty_v8" unless those outputs are removed so the build
+          # script downloads the archive again.
           shopt -s nullglob
-          for profile in target/*/; do
-            if [ ! -d "${profile}.fingerprint" ]; then
-              continue
+
+          archive_present() {
+            [ -e "$1/librusty_v8.a" ] || [ -e "$1/rusty_v8.lib" ]
+          }
+
+          consider() {
+            local profile="$1"
+            local path
+            local found
+
+            if [ ! -d "${profile}build" ] && [ ! -d "${profile}.fingerprint" ]; then
+              return 0
             fi
-            if [ -e "${profile}gn_out/obj/librusty_v8.a" ] || \
-              [ -e "${profile}gn_out/obj/rusty_v8.lib" ]; then
-              continue
+
+            if [ -d "${profile}build/v8" ] && ! archive_present "${profile}build/gn_out/obj"; then
+              echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+              echo "  ${profile}build/v8"
+              rm -rf "${profile}build/v8"
             fi
-            to_remove=(
-              "${profile}.fingerprint"/v8-*
-              "${profile}build"/v8-*
-              "${profile}deps"/libv8-*
+
+            if archive_present "${profile}gn_out/obj"; then
+              return 0
+            fi
+
+            found=0
+            for path in \
+              "${profile}.fingerprint"/v8-* \
+              "${profile}build"/v8-* \
+              "${profile}deps"/libv8-* \
               "${profile}deps"/v8-*
-            )
-            if [ "${#to_remove[@]}" -eq 0 ]; then
-              continue
-            fi
-            echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
-            rm -rf "${to_remove[@]}"
+            do
+              if [ -e "$path" ]; then
+                if [ "$found" -eq 0 ]; then
+                  echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
+                  found=1
+                fi
+                echo "  $path"
+                rm -rf "$path"
+              fi
+            done
+          }
+
+          for profile in target/*/; do
+            consider "$profile"
+            for nested in "${profile}"*/; do
+              consider "$nested"
+            done
           done
 
       - name: Clippy
