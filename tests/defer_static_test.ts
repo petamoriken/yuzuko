@@ -12,6 +12,12 @@ import defer * as bad from "./defer/invalid.json" with { type: "json" };
 import defer * as wasm from "./wasm/add.wasm";
 import defer * as side from "./defer/calls_side.wasm";
 
+type DeferredNamespace = {
+  readonly [Symbol.toStringTag]: string;
+  readonly then: unknown;
+  readonly default: { readonly ok: boolean };
+};
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
@@ -23,10 +29,7 @@ function count(name: string): number {
 }
 
 function namespaceInstance(namespace: object): unknown {
-  const webAssembly = WebAssembly as unknown as {
-    namespaceInstance(value: object): unknown;
-  };
-  return webAssembly.namespaceInstance(namespace);
+  return WebAssembly.namespaceInstance(namespace);
 }
 
 function throws(fn: () => unknown): unknown {
@@ -49,17 +52,19 @@ Yuzuko.test("deferred modules stay unevaluated until observation", () => {
   assert(!events.includes("plain"), "javascript deferred");
   assert(!events.includes("uses_tla"), "sync importer deferred");
 
-  assert(valueNs[Symbol.toStringTag] === "Deferred Module", "tag");
+  // @ts-expect-error The deferred namespace is not a DeferredNamespace.
+  const valueView: DeferredNamespace = valueNs;
+  assert(valueView[Symbol.toStringTag] === "Deferred Module", "tag");
   assert(
     Object.prototype.toString.call(valueNs) === "[object Deferred Module]",
     "toString",
   );
-  assert(valueNs.then === undefined, "missing then");
+  assert(valueView.then === undefined, "missing then");
   assert(!events.includes("value"), "tag and then did not evaluate");
 
   assert(valueNs.value === 1, "value");
   assert(count("value") === 1, "value once");
-  assert(valueNs[Symbol.toStringTag] === "Deferred Module", "tag after evaluation");
+  assert(valueView[Symbol.toStringTag] === "Deferred Module", "tag after evaluation");
   assert(
     Object.prototype.toString.call(valueNs) === "[object Deferred Module]",
     "toString after evaluation",
@@ -131,14 +136,18 @@ Yuzuko.test("import.defer rejects when top-level await throws", async () => {
 });
 
 Yuzuko.test("deferred JSON is parsed on observation", async () => {
-  assert(data[Symbol.toStringTag] === "Deferred Module", "json tag");
-  assert(data.default.ok === true, "json value");
+  // @ts-expect-error The deferred namespace is not a DeferredNamespace.
+  const dataView: DeferredNamespace = data;
+  assert(dataView[Symbol.toStringTag] === "Deferred Module", "json tag");
+  assert(dataView.default.ok === true, "json value");
   const dynamic = await import.defer("./defer/data.json", {
     with: { type: "json" },
   });
   assert(dynamic === data, "same json namespace");
-  const first = throws(() => bad.default);
-  const second = throws(() => bad.default);
+  // @ts-expect-error The deferred namespace is not a DeferredNamespace.
+  const badView: DeferredNamespace = bad;
+  const first = throws(() => badView.default);
+  const second = throws(() => badView.default);
   assert(first instanceof SyntaxError, String(first));
   assert(first === second, "json error cached");
 });

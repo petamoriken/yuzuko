@@ -1,3 +1,5 @@
+declare const document: unknown;
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
@@ -26,7 +28,11 @@ Yuzuko.test({
   ignore: Yuzuko.build.os === "linux",
   fn() {
     assert(Yuzuko instanceof EventTarget, "Yuzuko is an EventTarget");
-    assert(globalThis.Menu === undefined, "Menu stays off globalThis");
+    assert(
+      // @ts-expect-error Menu is absent on the main global.
+      globalThis.Menu === undefined,
+      "Menu stays off globalThis",
+    );
     assert(typeof Yuzuko.setMenu === "function", "setMenu");
     assert(typeof document === "undefined", "document stays absent");
 
@@ -47,15 +53,17 @@ Yuzuko.test({
     let action = "";
     let trusted = false;
     const onClick = (event: Event) => {
-      const record = event as Event & { action?: string };
-      action = record.action ?? "";
+      // @ts-expect-error The host event carries action.
+      let chosen: string | undefined = event.action;
+      action = chosen ?? "";
       trusted = event.isTrusted;
     };
     Yuzuko.addEventListener("menuclick", onClick);
     const window = new Yuzuko.Window({ width: 80, height: 60, title: "menu" });
     try {
       Yuzuko.__test.inject(window, [{ kind: "menu", action: "file.save" }]);
-      assert(action === "file.save", action);
+      let saved: string = action;
+      assert(saved === "file.save", action);
       assert(trusted, "menuclick is trusted");
       Yuzuko.__test.inject(window, [
         { kind: "menu", action: "file.export.png" },

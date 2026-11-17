@@ -51,7 +51,7 @@ Yuzuko.test("full ICU Intl", async () => {
   assert(calendars.includes("japanese"), "japanese calendar");
   assert(calendars.includes("islamic"), "islamic calendar");
   const region = new Intl.DisplayNames(["zh-Hans"], { type: "region" }).of("JP");
-  assert(region === "日本", region);
+  assert(region === "日本", region ?? "");
 
   const host = Intl.DateTimeFormat().resolvedOptions();
   assert(host.timeZone.length > 0, "time zone");
@@ -59,7 +59,7 @@ Yuzuko.test("full ICU Intl", async () => {
 
   const worker = new Worker(new URL("./workers/intl.js", import.meta.url).href);
   const workerProbe = await new Promise<IntlProbe>((resolve, reject) => {
-    worker.onmessage = (event: MessageEvent) => resolve(event.data as IntlProbe);
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
     worker.onerror = (event: ErrorEvent) => {
       reject(new Error(event.message || "worker error"));
     };
@@ -75,7 +75,7 @@ Yuzuko.test("full ICU Intl", async () => {
     await context.audioWorklet.addModule(script.href);
     const workletProbe = await new Promise<IntlProbe>((resolve) => {
       const node = new AudioWorkletNode(context, "intl");
-      node.port.onmessage = (event) => resolve(event.data as IntlProbe);
+      node.port.onmessage = (event) => resolve(event.data);
     });
     assertProbe(workletProbe, "worklet", host);
   } finally {

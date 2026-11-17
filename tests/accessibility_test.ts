@@ -4,6 +4,11 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+// A `let` binding is narrowed to the literal just written. The type argument keeps the wider type.
+function read<T>(value: T): T {
+  return value;
+}
+
 function assertThrows(
   run: () => unknown,
   kind: "type" | "dom",
@@ -21,17 +26,19 @@ function assertThrows(
   }
   if (kind === "dom") {
     assert(thrown instanceof DOMException, `not DOMException: ${message}`);
-    const exception = thrown as DOMException;
-    assert(exception.name === name, `${exception.name} !== ${name}`);
+    assert(thrown.name === name, `${thrown.name} !== ${name}`);
   } else {
     assert(thrown instanceof TypeError, `not TypeError: ${message}`);
   }
-  const error = thrown as Error;
-  assert(error.message === message, error.message);
+  assert(thrown.message === message, thrown.message);
 }
 
 Yuzuko.test("an accessible root is one authored tree", () => {
-  assert(globalThis.AccessibleNode === undefined, "global constructor");
+  assert(
+    // @ts-expect-error AccessibleNode is absent on the main global.
+    globalThis.AccessibleNode === undefined,
+    "global constructor",
+  );
   assert(typeof Yuzuko.AccessibleNode === "function", "constructor");
   assert(Yuzuko.AccessibleNode.name === "AccessibleNode", "name");
   assert(Yuzuko.AccessibleNode.length === 0, "constructor length");
@@ -91,7 +98,9 @@ Yuzuko.test("an accessible root is one authored tree", () => {
       "The window is closed.",
     );
 
-    assert(window.surface.accessibleRoot === null, "no root yet");
+    let accessibleRoot: Yuzuko.AccessibleNode | null =
+      window.surface.accessibleRoot;
+    assert(accessibleRoot === null, "no root yet");
     const root = window.surface.attachAccessibleRoot();
     assert(window.surface.accessibleRoot === root, "getter returns the root");
     assert(root.parent === null, "root parent");
@@ -165,13 +174,19 @@ Yuzuko.test("an accessible root is one authored tree", () => {
       "The node is not a child.",
     );
     assertThrows(
-      () => root.appendChild(1 as unknown as Yuzuko.AccessibleNode),
+      () => {
+        // @ts-expect-error A number is not an AccessibleNode.
+        return root.appendChild(1);
+      },
       "type",
       "",
       "The node must be an AccessibleNode.",
     );
     assertThrows(
-      () => (root.appendChild as () => unknown)(),
+      () => {
+        // @ts-expect-error The node argument is required.
+        return root.appendChild();
+      },
       "type",
       "",
       "Not enough arguments",
@@ -261,14 +276,17 @@ Yuzuko.test("accessible properties and offsets round-trip", () => {
     assert(node.name === null, "name cleared");
 
     node.checked = true;
-    assert(node.checked === "true", "checked true");
+    let checked: string | boolean | null = read<string | boolean | null>(node.checked);
+    assert(checked === "true", "checked true");
     node.checked = false;
-    assert(node.checked === "false", "checked false");
+    checked = read<string | boolean | null>(node.checked);
+    assert(checked === "false", "checked false");
     node.checked = "mixed";
     assert(node.checked === "mixed", "checked mixed");
     assertThrows(
       () => {
-        node.checked = "nope" as unknown as Yuzuko.AccessibleTriState;
+        // @ts-expect-error An invalid checked token is rejected.
+        node.checked = "nope";
       },
       "type",
       "",
@@ -304,7 +322,8 @@ Yuzuko.test("accessible properties and offsets round-trip", () => {
     assert(node.live === "polite", "live");
     assertThrows(
       () => {
-        node.live = "nope" as unknown as Yuzuko.AccessibleLive;
+        // @ts-expect-error An invalid live token is rejected.
+        node.live = "nope";
       },
       "type",
       "",
@@ -328,7 +347,8 @@ Yuzuko.test("accessible properties and offsets round-trip", () => {
     assert(node.focusable === true, "focusable");
 
     node.offsetLeft = 30;
-    assert(node.offsetLeft === "30px", "numeric offset");
+    let offsetLeft: string | number | null = read<string | number | null>(node.offsetLeft);
+    assert(offsetLeft === "30px", "numeric offset");
     node.offsetLeft = "30px";
     assert(node.offsetLeft === "30px", "px offset");
     node.offsetLeft = "30";
@@ -375,7 +395,8 @@ Yuzuko.test("accessible properties and offsets round-trip", () => {
     );
     assertThrows(
       () => {
-        child.offsetParent = {} as Yuzuko.AccessibleNode;
+        // @ts-expect-error An empty object is not an AccessibleNode.
+        child.offsetParent = {};
       },
       "type",
       "",

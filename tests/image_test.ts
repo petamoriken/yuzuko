@@ -1,4 +1,4 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
@@ -25,7 +25,9 @@ Yuzuko.test("createImageBitmap decodes a blob on a later task", async () => {
   try {
     await createImageBitmap(bitmap);
   } catch (error) {
-    closed = error.name === "InvalidStateError";
+    // @ts-expect-error the rejection is a DOMException.
+    const rejected: DOMException = error;
+    closed = rejected.name === "InvalidStateError";
   }
   assert(closed, "closed source");
 });
@@ -43,7 +45,9 @@ Yuzuko.test("crop, resize, and bad bytes follow the bitmap rules", async () => {
   try {
     await createImageBitmap(blob, { resizeWidth: 0, resizeHeight: 4 });
   } catch (error) {
-    resize = error.name === "InvalidStateError";
+    // @ts-expect-error the rejection is a DOMException.
+    const rejected: DOMException = error;
+    resize = rejected.name === "InvalidStateError";
   }
   assert(resize, "zero resize");
   const cropped = await createImageBitmap(blob, 0, 0, 1, 1, {
@@ -56,7 +60,9 @@ Yuzuko.test("crop, resize, and bad bytes follow the bitmap rules", async () => {
   try {
     await createImageBitmap(new Blob([new Uint8Array([1, 2, 3])]));
   } catch (error) {
-    corrupt = error.name === "InvalidStateError";
+    // @ts-expect-error the rejection is a DOMException.
+    const rejected: DOMException = error;
+    corrupt = rejected.name === "InvalidStateError";
   }
   assert(corrupt, "corrupt");
 });
@@ -80,7 +86,9 @@ Yuzuko.test("ImageData keeps its color space and a blank canvas is transparent",
   try {
     await createImageBitmap(new OffscreenCanvas(20000, 10));
   } catch (error) {
-    huge = error.name === "InvalidStateError";
+    // @ts-expect-error the rejection is a DOMException.
+    const rejected: DOMException = error;
+    huge = rejected.name === "InvalidStateError";
   }
   assert(huge, "limit");
 });
@@ -103,7 +111,9 @@ Yuzuko.test("fetch reads file, blob, and data URLs", async () => {
   try {
     await fetch("https://example.test/hero.png");
   } catch (error) {
-    http = error.name === "NotSupportedError";
+    // @ts-expect-error the rejection is a DOMException.
+    const rejected: DOMException = error;
+    http = rejected.name === "NotSupportedError";
   }
   assert(http, "https");
 

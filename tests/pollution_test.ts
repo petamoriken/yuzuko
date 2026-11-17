@@ -18,7 +18,7 @@ Yuzuko.test("events survive prototype pollution", () => {
 
 Yuzuko.test("abort timeout uses the original setTimeout", async () => {
   const realSetTimeout = setTimeout;
-  setTimeout = () => {
+  globalThis.setTimeout = () => {
     throw new Error("polluted setTimeout");
   };
   const signal = AbortSignal.timeout(20);
@@ -84,12 +84,15 @@ Yuzuko.test("event assignment ignores a later defineProperty", () => {
     throw new Error("polluted defineProperty");
   };
   try {
+    // @ts-expect-error event is not a number.
     globalThis.event = 1;
+    // @ts-expect-error event is not a number.
     if (globalThis.event !== 1) {
       throw new Error("event");
     }
   } finally {
     Object.defineProperty = defineProperty;
+    // @ts-expect-error event is not an optional property.
     delete globalThis.event;
   }
 });
@@ -139,6 +142,7 @@ Yuzuko.test("base64 ops", () => {
   try {
     btoa("h€");
   } catch (error) {
+    // @ts-expect-error A thrown value is unknown.
     name = error.name;
   }
   if (name !== "InvalidCharacterError") {
@@ -181,10 +185,10 @@ Yuzuko.test("url parser", () => {
 
 Yuzuko.test("globalThis dispatches events", () => {
   let seen = false;
-  globalThis.addEventListener("yz-global", () => {
+  self.addEventListener("yz-global", () => {
     seen = true;
   });
-  if (!globalThis.dispatchEvent(new Event("yz-global"))) {
+  if (!self.dispatchEvent(new Event("yz-global"))) {
     throw new Error("dispatch");
   }
   if (!seen) {

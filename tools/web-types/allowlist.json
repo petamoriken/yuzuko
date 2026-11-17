@@ -158,6 +158,12 @@
       ]
     },
     {
+      "reason": "The host sets import.meta.url and import.meta.wasmInstances. import.meta.resolve is absent.",
+      "members": [
+        "ImportMeta.resolve"
+      ]
+    },
+    {
       "reason": "XMLHttpRequest does not expose response, responseType, responseURL, responseXML, upload, or withCredentials.",
       "members": [
         "XMLHttpRequest.response",

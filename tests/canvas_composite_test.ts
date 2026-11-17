@@ -1,23 +1,34 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function pixel(ctx, x, y) {
+function pixel(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const data = ctx.getImageData(x, y, 1, 1).data;
-  return [data[0], data[1], data[2], data[3]];
+  return [data[0]!, data[1]!, data[2]!, data[3]!];
 }
 
-function same(actual, expected, message) {
+function same(
+  actual: readonly number[],
+  expected: readonly number[],
+  message: string,
+): void {
   assert(
     actual.join() === expected.join(),
     `${message}: ${actual} vs ${expected}`,
   );
 }
 
-function context(width, height) {
-  const ctx = new OffscreenCanvas(width, height).getContext("2d");
+function context(
+  width: number,
+  height: number,
+): OffscreenCanvasRenderingContext2D {
+  const ctx = new OffscreenCanvas(width, height).getContext("2d")!;
   assert(ctx !== null, "context");
   return ctx;
 }

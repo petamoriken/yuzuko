@@ -54,6 +54,10 @@ function deadline<T>(work: Promise<T>, label: string): Promise<T> {
   });
 }
 
+declare const listenHttp: unknown;
+declare const HttpServer: unknown;
+declare const HttpRequest: unknown;
+
 Yuzuko.test("an HTTP server answers one request with a body", async () => {
   const open: Server[] = [];
   const inflight: Promise<unknown>[] = [];
@@ -71,7 +75,7 @@ Yuzuko.test("an HTTP server answers one request with a body", async () => {
       const secondAddr = server.addr;
       assert(firstAddr !== secondAddr, "addr is a new object");
       assert(firstAddr.hostname === "127.0.0.1", `host ${firstAddr.hostname}`);
-      assert(firstAddr.port > 0, `port ${firstAddr.port}`);
+      assert(firstAddr.port! > 0, `port ${firstAddr.port}`);
 
       const pending = server.accept();
       inflight.push(pending);
@@ -134,21 +138,22 @@ Yuzuko.test("an HTTP server answers one request with a body", async () => {
 
       const local = Yuzuko.listenHttp({ hostname: "LOCALHOST" });
       open.push(local);
-      assert(local.addr.hostname === "127.0.0.1" && local.addr.port > 0, "localhost");
+      assert(local.addr.hostname === "127.0.0.1" && local.addr.port! > 0, "localhost");
       const omitted = Yuzuko.listenHttp();
       const absent = Yuzuko.listenHttp(null);
+      // @ts-expect-error An explicit undefined port uses the default.
       const explicit = Yuzuko.listenHttp({ port: undefined });
       open.push(omitted, absent, explicit);
-      assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port > 0, "omitted");
-      assert(absent.addr.port > 0, "null options");
-      assert(explicit.addr.port > 0, "undefined port");
+      assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port! > 0, "omitted");
+      assert(absent.addr.port! > 0, "null options");
+      assert(explicit.addr.port! > 0, "undefined port");
 
       worker = new Worker(new URL("./workers/http.js", import.meta.url), { type: "module" });
       const inbox: Array<{ port?: number; ok?: boolean; error?: string }> = [];
       let waitingMessage: ((value: (typeof inbox)[number]) => void) | undefined;
       let failMessage: ((error: Error) => void) | undefined;
       worker.onmessage = (event) => {
-        const value = event.data as (typeof inbox)[number];
+        const value = event.data;
         if (waitingMessage) {
           const resolve = waitingMessage;
           waitingMessage = undefined;
@@ -210,6 +215,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
     await deadline((async () => {
       let constructed = "";
       try {
+        // @ts-expect-error HttpServer has no public constructor.
         new Yuzuko.HttpServer();
       } catch (error) {
         constructed = error instanceof TypeError ? error.message : "other";
@@ -217,6 +223,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       assert(constructed === "Illegal constructor", constructed);
       constructed = "";
       try {
+        // @ts-expect-error HttpRequest has no public constructor.
         new Yuzuko.HttpRequest();
       } catch (error) {
         constructed = error instanceof TypeError ? error.message : "other";
@@ -225,7 +232,8 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
 
       let options = "";
       try {
-        Yuzuko.listenHttp(1 as unknown as Yuzuko.ListenHttpOptions);
+        // @ts-expect-error A number is not listen options.
+        Yuzuko.listenHttp(1);
       } catch (error) {
         options = error instanceof TypeError ? error.message : "other";
       }
@@ -249,24 +257,21 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
 
       let boom = "";
       try {
-        Yuzuko.listenHttp({
-          hostname: {
-            toString() {
-              throw new Error("boom");
-            },
-          },
-        } as unknown as Yuzuko.ListenHttpOptions);
+        // @ts-expect-error Hostname is read with ToString.
+        let hostname: string = { toString() { throw new Error("boom"); } };
+        Yuzuko.listenHttp({ hostname });
       } catch (error) {
         boom = error instanceof Error ? error.message : "other";
       }
       assert(boom === "boom", boom);
 
-      const converted = Yuzuko.listenHttp({
-        hostname: { toString: () => "127.0.0.1" } as unknown as string,
-        port: { valueOf: () => 0 } as unknown as number,
-      });
+      // @ts-expect-error Hostname is read with ToString.
+      let hostname: string = { toString: () => "127.0.0.1" };
+      // @ts-expect-error Port is read with valueOf.
+      let port: number = { valueOf: () => 0 };
+      const converted = Yuzuko.listenHttp({ hostname, port });
       open.push(converted);
-      assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port > 0, "converted");
+      assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port! > 0, "converted");
 
       for (const port of [-1, 1.5, 65536, Number.NaN, Number.POSITIVE_INFINITY]) {
         let message = "";
@@ -314,6 +319,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       let returned: unknown = "unset";
       let missing = "";
       try {
+        // @ts-expect-error respond requires a body.
         returned = request.respond();
       } catch (error) {
         missing = error instanceof TypeError ? error.message : "other";
@@ -324,7 +330,8 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       returned = "unset";
       let data = "";
       try {
-        returned = request.respond(1 as unknown as string);
+        // @ts-expect-error A number is not a response body.
+        returned = request.respond(1);
       } catch (error) {
         data = error instanceof TypeError ? error.message : "other";
       }
@@ -417,7 +424,7 @@ Yuzuko.test("a malformed request rejects Http", async () => {
     await deadline((async () => {
       conn = await Yuzuko.connectTcp({
         hostname: "127.0.0.1",
-        port: server.addr.port,
+        port: server.addr.port!,
       });
       await conn.write(new TextEncoder().encode("not http\r\n\r\n"));
       let name = "";

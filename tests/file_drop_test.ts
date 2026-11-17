@@ -43,10 +43,12 @@ Yuzuko.test("file drop events target the window", () => {
     cancelable: boolean;
   }> = [];
   const take = (event: Event) => {
-    const record = event as Event & { paths?: readonly string[] };
+    // @ts-expect-error File events carry paths.
+    let paths: readonly string[] | undefined = event.paths;
+    const copied = paths?.slice();
     events.push({
       type: event.type,
-      paths: record.paths?.slice(),
+      ...(copied === undefined ? {} : { paths: copied }),
       trusted: event.isTrusted,
       target: event.target === window,
       bubbles: event.bubbles,
@@ -96,27 +98,33 @@ Yuzuko.test("file drop events target the window", () => {
       { kind: "filedrop", paths: ["b.txt"] },
     ]);
     assert(events.length === 3, `count ${events.length}`);
-    assert(events[0].type === "filehover", events[0].type);
-    assert(events[0].paths?.length === 2, "hover paths");
-    assert(events[0].paths?.[0] === absolute, "hover absolute");
+    const hover = events[0];
+    const cancel = events[1];
+    const drop = events[2];
+    if (hover === undefined || cancel === undefined || drop === undefined) {
+      throw new Error(`count ${events.length}`);
+    }
+    assert(hover.type === "filehover", hover.type);
+    assert(hover.paths?.length === 2, "hover paths");
+    assert(hover.paths?.[0] === absolute, "hover absolute");
     assert(
-      events[0].paths?.[1]?.endsWith(`${separator}rel.txt`) === true,
-      events[0].paths?.[1] ?? "",
+      hover.paths?.[1]?.endsWith(`${separator}rel.txt`) === true,
+      hover.paths?.[1] ?? "",
     );
-    assert(events[0].trusted && events[0].target, "hover target");
-    assert(!events[0].bubbles && !events[0].cancelable, "hover flags");
-    assert(events[1].type === "filehovercancel", events[1].type);
-    assert(events[1].paths === undefined, "cancel paths");
-    assert(events[1].trusted && events[1].target, "cancel target");
-    assert(events[2].type === "filedrop", events[2].type);
-    assert(events[2].paths?.length === 2, "drop paths");
-    assert(events[2].paths?.[0] === absolute, "drop absolute");
+    assert(hover.trusted && hover.target, "hover target");
+    assert(!hover.bubbles && !hover.cancelable, "hover flags");
+    assert(cancel.type === "filehovercancel", cancel.type);
+    assert(cancel.paths === undefined, "cancel paths");
+    assert(cancel.trusted && cancel.target, "cancel target");
+    assert(drop.type === "filedrop", drop.type);
+    assert(drop.paths?.length === 2, "drop paths");
+    assert(drop.paths?.[0] === absolute, "drop absolute");
     assert(
-      events[2].paths?.[1]?.endsWith(`${separator}b.txt`) === true,
-      events[2].paths?.[1] ?? "",
+      drop.paths?.[1]?.endsWith(`${separator}b.txt`) === true,
+      drop.paths?.[1] ?? "",
     );
-    assert(events[2].trusted && events[2].target, "drop target");
-    assert(!events[2].bubbles && !events[2].cancelable, "drop flags");
+    assert(drop.trusted && drop.target, "drop target");
+    assert(!drop.bubbles && !drop.cancelable, "drop flags");
     assert(!yuzukoSaw, "filedrop stays off Yuzuko");
     assert(!surfaceSaw, "filedrop stays off the surface");
 

@@ -11,4 +11,11 @@ const names = [
   "WebSocketStream",
   "WebTransport",
 ];
-console.log(names.map((name) => typeof globalThis[name]).join(" "));
+console.log(
+  names
+    .map((name) => {
+      // @ts-expect-error The global object has no string index.
+      return typeof globalThis[name];
+    })
+    .join(" "),
+);

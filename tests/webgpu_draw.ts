@@ -35,14 +35,33 @@ fn fs() -> @location(0) vec4f {
 }
 `;
 
-export function channels(pixel, format) {
-  if (format === "bgra8unorm" || format === "bgra8unorm-srgb") {
-    return { r: pixel[2], g: pixel[1], b: pixel[0], a: pixel[3] };
-  }
-  return { r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] };
+function channel(pixel: ArrayLike<number>, index: number): number {
+  return pixel[index] ?? 0;
 }
 
-export async function readPixel(device, texture, x, y) {
+export function channels(pixel: ArrayLike<number>, format: GPUTextureFormat) {
+  if (format === "bgra8unorm" || format === "bgra8unorm-srgb") {
+    return {
+      r: channel(pixel, 2),
+      g: channel(pixel, 1),
+      b: channel(pixel, 0),
+      a: channel(pixel, 3),
+    };
+  }
+  return {
+    r: channel(pixel, 0),
+    g: channel(pixel, 1),
+    b: channel(pixel, 2),
+    a: channel(pixel, 3),
+  };
+}
+
+export async function readPixel(
+  device: GPUDevice,
+  texture: GPUTexture,
+  x: number,
+  y: number,
+) {
   const bytesPerRow = 256;
   const buffer = device.createBuffer({
     size: bytesPerRow * texture.height,
@@ -59,16 +78,20 @@ export async function readPixel(device, texture, x, y) {
   const bytes = new Uint8Array(buffer.getMappedRange());
   const offset = y * bytesPerRow + x * 4;
   const pixel = [
-    bytes[offset],
-    bytes[offset + 1],
-    bytes[offset + 2],
-    bytes[offset + 3],
+    bytes[offset] ?? 0,
+    bytes[offset + 1] ?? 0,
+    bytes[offset + 2] ?? 0,
+    bytes[offset + 3] ?? 0,
   ];
   buffer.unmap();
   return pixel;
 }
 
-export function drawTriangle(device, texture, format) {
+export function drawTriangle(
+  device: GPUDevice,
+  texture: GPUTexture,
+  format: GPUTextureFormat,
+) {
   const module = device.createShaderModule({ code: triangleShader });
   const pipeline = device.createRenderPipeline({
     layout: "auto",
@@ -94,7 +117,12 @@ export function drawTriangle(device, texture, format) {
   device.queue.submit([encoder.finish()]);
 }
 
-export function drawBitmap(device, texture, format, bitmap) {
+export function drawBitmap(
+  device: GPUDevice,
+  texture: GPUTexture,
+  format: GPUTextureFormat,
+  bitmap: ImageBitmap,
+) {
   const image = device.createTexture({
     size: [bitmap.width, bitmap.height],
     format: "rgba8unorm",

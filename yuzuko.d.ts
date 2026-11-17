@@ -16699,3 +16699,360 @@ declare var GamepadEvent: {
 interface GamepadEventInit extends EventInit {
   gamepad?: Gamepad | null;
 }
+
+interface ImportMeta {
+  /**
+   * Absolute `file:` URL of this module, including a `.ts` or `.mts` URL.
+   */
+  url: string;
+
+  /**
+   * Instances created when this module graph evaluated a WebAssembly module.
+   * The key is that module's `file:` URL.
+   */
+  wasmInstances: Map<string, WebAssembly.Instance>;
+}
+
+declare namespace WebAssembly {
+  /** The **`WebAssembly.CompileError`** object indicates an error during WebAssembly decoding or validation. */
+  interface CompileError extends Error {
+  }
+
+  var CompileError: {
+    prototype: CompileError;
+    new(message?: string): CompileError;
+    (message?: string): CompileError;
+  };
+
+  /**
+   * The **`WebAssembly.Exception`** object represents a runtime exception thrown in a Wasm module.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception)
+   */
+  interface Exception {
+    /**
+     * The **`stack`** read-only property of the WebAssembly.Exception object may contain a stack trace.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/stack)
+     */
+    readonly stack: string | undefined;
+    /**
+     * The **`getArg()`** method of the Exception object can be used to get the value of a specified item in the exception's data arguments.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/getArg)
+     */
+    getArg(exceptionTag: Tag, index: number): any;
+    /**
+     * The **`is()`** method of the Exception object can be used to test if the Exception matches a given tag.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/is)
+     */
+    is(exceptionTag: Tag): boolean;
+  }
+
+  var Exception: {
+    prototype: Exception;
+    new(exceptionTag: Tag, payload: any[], options?: ExceptionOptions): Exception;
+  };
+
+  /**
+   * A **`WebAssembly.Global`** object represents a global variable instance, accessible from both JavaScript and importable/exportable across one or more WebAssembly.Module instances. This allows dynamic linking of multiple modules.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global)
+   */
+  interface Global<T extends ValueType = ValueType> {
+    /**
+     * The **`value`** property of the WebAssembly.Global object prototype returns the value contained inside the global variable.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global/value)
+     */
+    value: ValueTypeMap[T];
+    /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global/valueOf) */
+    valueOf(): ValueTypeMap[T];
+  }
+
+  var Global: {
+    prototype: Global;
+    new<T extends ValueType = ValueType>(descriptor: GlobalDescriptor<T>, v?: ValueTypeMap[T]): Global<T>;
+  };
+
+  /**
+   * A **`WebAssembly.Instance`** object is a stateful, executable instance of a WebAssembly.Module. Instance objects contain all the Exported WebAssembly functions that allow calling into WebAssembly code from JavaScript.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Instance)
+   */
+  interface Instance {
+    /**
+     * The **`exports`** read-only property of the WebAssembly.Instance object prototype returns an object containing as its members all the functions exported from the WebAssembly module instance, to allow them to be accessed and used by JavaScript.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Instance/exports)
+     */
+    readonly exports: Exports;
+  }
+
+  var Instance: {
+    prototype: Instance;
+    new(module: Module, importObject?: Imports): Instance;
+  };
+
+  /** The **`WebAssembly.LinkError`** object indicates an error during module instantiation (besides traps from the start function). */
+  interface LinkError extends Error {
+  }
+
+  var LinkError: {
+    prototype: LinkError;
+    new(message?: string): LinkError;
+    (message?: string): LinkError;
+  };
+
+  /**
+   * The **`WebAssembly.Memory`** object is a resizable ArrayBuffer or SharedArrayBuffer that holds raw bytes of memory accessed by a WebAssembly.Instance.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory)
+   */
+  interface Memory {
+    /**
+     * The read-only **`buffer`** prototype property of the WebAssembly.Memory object returns the buffer contained in the memory. Depending on whether or not the memory was constructed with shared: true, the buffer is either an ArrayBuffer or a SharedArrayBuffer.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory/buffer)
+     */
+    readonly buffer: ArrayBuffer;
+    /**
+     * The **`grow()`** prototype method of the WebAssembly.Memory object increases the size of the memory instance by a specified number of WebAssembly pages.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory/grow)
+     */
+    grow(delta: AddressValue): AddressValue;
+    toFixedLengthBuffer(): ArrayBuffer;
+    toResizableBuffer(): ArrayBuffer;
+  }
+
+  var Memory: {
+    prototype: Memory;
+    new(descriptor: MemoryDescriptor): Memory;
+  };
+
+  /**
+   * A **`WebAssembly.Module`** object contains stateless WebAssembly code that has already been compiled by the browser — this can be efficiently shared with Workers, and instantiated multiple times.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module)
+   */
+  interface Module {
+  }
+
+  var Module: {
+    prototype: Module;
+    new(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): Module;
+    /**
+     * The WebAssembly.**`Module.customSections()`** static method returns a copy of the contents of all custom sections in the given module with the given string name.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/customSections_static)
+     */
+    customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
+    /**
+     * The WebAssembly.**`Module.exports()`** static method returns an array containing descriptions of all the declared exports of the given Module.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/exports_static)
+     */
+    exports(moduleObject: Module): ModuleExportDescriptor[];
+    /**
+     * The WebAssembly.**`Module.imports()`** static method returns an array containing descriptions of all the declared imports of the given Module.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/imports_static)
+     */
+    imports(moduleObject: Module): ModuleImportDescriptor[];
+  };
+
+  /** The **`WebAssembly.RuntimeError`** object is the error type that is thrown whenever WebAssembly specifies a trap. */
+  interface RuntimeError extends Error {
+  }
+
+  var RuntimeError: {
+    prototype: RuntimeError;
+    new(message?: string): RuntimeError;
+    (message?: string): RuntimeError;
+  };
+
+  /**
+   * The **`WebAssembly.Table`** object is a JavaScript wrapper object — an array-like structure representing a WebAssembly table, which stores homogeneous references. A table created by JavaScript or in WebAssembly code will be accessible and mutable from both JavaScript and WebAssembly.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table)
+   */
+  interface Table {
+    /**
+     * The read-only **`length`** prototype property of the WebAssembly.Table object returns the length of the table, i.e., the number of elements in the table.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/length)
+     */
+    readonly length: AddressValue;
+    /**
+     * The **`get()`** prototype method of the WebAssembly.Table() object retrieves the element stored at a given index.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/get)
+     */
+    get(index: AddressValue): any;
+    /**
+     * The **`grow()`** prototype method of the WebAssembly.Table object increases the size of the Table instance by a specified number of elements, filled with the provided value.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/grow)
+     */
+    grow(delta: AddressValue, value?: any): AddressValue;
+    /**
+     * The **`set()`** prototype method of the WebAssembly.Table object mutates a reference stored at a given index to a different value.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/set)
+     */
+    set(index: AddressValue, value?: any): void;
+  }
+
+  var Table: {
+    prototype: Table;
+    new(descriptor: TableDescriptor, value?: any): Table;
+  };
+
+  /**
+   * The **`WebAssembly.Tag`** object represents a WebAssembly exception type that can be thrown in a Wasm module.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Tag)
+   */
+  interface Tag {
+  }
+
+  var Tag: {
+    prototype: Tag;
+    new(type: TagType): Tag;
+  };
+
+  interface ExceptionOptions {
+    traceStack?: boolean;
+  }
+
+  interface GlobalDescriptor<T extends ValueType = ValueType> {
+    mutable?: boolean;
+    value: T;
+  }
+
+  interface MemoryDescriptor {
+    address?: AddressType;
+    initial: AddressValue;
+    maximum?: AddressValue;
+    shared?: boolean;
+  }
+
+  interface ModuleExportDescriptor {
+    kind: ImportExportKind;
+    name: string;
+  }
+
+  interface ModuleImportDescriptor {
+    kind: ImportExportKind;
+    module: string;
+    name: string;
+  }
+
+  interface TableDescriptor {
+    address?: AddressType;
+    element: TableKind;
+    initial: AddressValue;
+    maximum?: AddressValue;
+  }
+
+  interface TagType {
+    parameters: ValueType[];
+  }
+
+  interface ValueTypeMap {
+    anyfunc: Function;
+    externref: any;
+    f32: number;
+    f64: number;
+    i32: number;
+    i64: bigint;
+    v128: never;
+  }
+
+  interface WebAssemblyCompileOptions {
+    builtins?: string[];
+    importedStringConstants?: string | null;
+  }
+
+  interface WebAssemblyInstantiatedSource {
+    instance: Instance;
+    module: Module;
+  }
+
+  type AddressType = "i32" | "i64";
+  type ImportExportKind = "function" | "global" | "memory" | "table" | "tag";
+  type TableKind = "anyfunc" | "externref";
+  type AddressValue = number;
+  type ExportValue = Function | Global | Memory | Table;
+  type Exports = Record<string, ExportValue>;
+  type ImportValue = ExportValue | Suspending | number;
+  type Imports = Record<string, ModuleImports>;
+  type ModuleImports = Record<string, ImportValue>;
+  type ValueType = keyof ValueTypeMap;
+  var JSTag: Tag;
+  /**
+   * The **`WebAssembly.Suspending`** object represents a suspending function — an asynchronous (`Promise`-based) JavaScript function that, when imported into a Wasm module and called from inside, will result in execution being suspended until the promise resolves.
+   *
+   * The argument is a JavaScript function. A WebAssembly exported function throws `TypeError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Suspending)
+   */
+  interface Suspending {
+  }
+
+  var Suspending: {
+    prototype: Suspending;
+    new(fn: Function): Suspending;
+  };
+
+  /**
+   * The **`WebAssembly.SuspendError`** object indicates an error during WebAssembly function suspension.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/SuspendError)
+   */
+  interface SuspendError extends Error {
+  }
+
+  var SuspendError: {
+    prototype: SuspendError;
+    new(message?: string): SuspendError;
+    (message?: string): SuspendError;
+  };
+
+  /**
+   * The **`WebAssembly.promising()`** static method wraps an exported Wasm function that relies on an asynchronous operation, turning the call into a `Promise`.
+   *
+   * The argument must be a WebAssembly exported function.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/promising_static)
+   */
+  function promising(fn: Function): (...args: any[]) => Promise<any>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/compile_static) */
+  function compile(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): Promise<Module>;
+  /**
+   * A compile-options argument is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/compileStreaming_static)
+   */
+  function compileStreaming(source: Response | PromiseLike<Response>, options?: WebAssemblyCompileOptions): Promise<Module>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/instantiate_static) */
+  function instantiate(bytes: AllowSharedBufferSource, importObject?: Imports, options?: WebAssemblyCompileOptions): Promise<WebAssemblyInstantiatedSource>;
+  function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
+  /**
+   * A compile-options argument is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/instantiateStreaming_static)
+   */
+  function instantiateStreaming(source: Response | PromiseLike<Response>, importObject?: Imports, options?: WebAssemblyCompileOptions): Promise<WebAssemblyInstantiatedSource>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/validate_static) */
+  function validate(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): boolean;
+  /**
+   * Returns the instance behind a WebAssembly module namespace.
+   *
+   * @throws {@link TypeError} When `namespace` is not a WebAssembly module namespace.
+   */
+  function namespaceInstance(namespace: object): Instance;
+}

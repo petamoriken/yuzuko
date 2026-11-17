@@ -1,15 +1,20 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
 }
+
+declare const requestAnimationFrame: unknown;
+declare const Window: unknown;
+declare const WindowSurface: unknown;
 
 Yuzuko.test("the realm has no window binding", () => {
   assert(!("window" in globalThis), "no window");
   assert(self === globalThis, "self");
   let replaced = false;
   try {
-    self = globalThis;
+    // @ts-expect-error self is not an assignable property of globalThis.
+    globalThis.self = globalThis;
   } catch (error) {
     replaced = error instanceof TypeError;
   }
@@ -47,7 +52,11 @@ Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
   });
   try {
     assert(!(window instanceof OffscreenCanvas), "window is not a canvas");
-    assert(typeof window.getContext === "undefined", "no window context");
+    assert(
+      // @ts-expect-error getContext is absent on Window.
+      typeof window.getContext === "undefined",
+      "no window context",
+    );
     assert(window.surface instanceof Yuzuko.WindowSurface, "surface class");
     assert(!(window.surface instanceof OffscreenCanvas), "surface is not OffscreenCanvas");
     assert(window.resizable === false, "resizable default");
@@ -56,21 +65,30 @@ Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
     window.surface.imageRendering = "pixelated";
     assert(window.surface.imageRendering === "pixelated", "pixelated");
     window.surface.imageRendering = "optimizeSpeed";
-    assert(window.surface.imageRendering === "pixelated", "optimizeSpeed");
+    let rendering: string = window.surface.imageRendering;
+    assert(rendering === "pixelated", "optimizeSpeed");
     window.surface.imageRendering = "crisp-edges";
     assert(window.surface.imageRendering === "crisp-edges", "crisp-edges");
+    // @ts-expect-error An unknown imageRendering value is ignored.
     window.surface.imageRendering = "high-quality";
     assert(window.surface.imageRendering === "crisp-edges", "imageRendering ignored");
+    // @ts-expect-error imageRendering matching is case-insensitive.
     window.surface.imageRendering = "Pixelated";
     assert(window.surface.imageRendering === "pixelated", "imageRendering case");
     window.surface.objectFit = "contain";
     assert(window.surface.objectFit === "contain", "objectFit contain");
+    // @ts-expect-error An unknown objectFit value is ignored.
     window.surface.objectFit = "stretch";
     assert(window.surface.objectFit === "contain", "objectFit ignored");
+    // @ts-expect-error objectFit matching is case-insensitive.
     window.surface.objectFit = "Cover";
     assert(window.surface.objectFit === "cover", "objectFit case");
     assert(window.surface.title === "tools", "title");
-    assert(typeof window.title === "undefined", "no window title");
+    assert(
+      // @ts-expect-error title is absent on Window.
+      typeof window.title === "undefined",
+      "no window title",
+    );
     assert(window.clientWidth === 200 && window.clientHeight === 100, "client");
     assert(
       window.surface.width === Math.round(window.clientWidth * window.devicePixelRatio)
@@ -112,8 +130,8 @@ Yuzuko.test("OffscreenCanvas is a buffer and Window has a surface", () => {
 Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () => {
   const left = new Yuzuko.Window({ width: 200, height: 100, title: "left" });
   const right = new Yuzuko.Window({ width: 220, height: 120, title: "right" });
-  const leftEvents = [];
-  const rightEvents = [];
+  const leftEvents: Event[] = [];
+  const rightEvents: Event[] = [];
   record(left, leftEvents);
   record(right, rightEvents);
   try {
@@ -159,20 +177,25 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
       "compositionend:か",
       "beforeinput:insertText:か:false",
     ].join("\n"), describe(leftEvents));
-    const move = leftEvents[2];
+    // @ts-expect-error The recorded move is a PointerEvent.
+    const move: PointerEvent = leftEvents[2];
     assert(move.type === "pointermove", "coalesced host");
     assert(move.clientX === 8 && move.clientY === 9, "client origin");
     assert(move.offsetX === 8 && move.offsetY === 9, "offset origin");
     assert(move.pageX === 8 && move.pageY === 9, "page origin");
     assert(move.getCoalescedEvents().length === 2, "coalesced");
-    assert(move.getCoalescedEvents()[1].clientX === 8, "last coalesced");
-    assert(move.getCoalescedEvents()[1].clientY === 9, "last coalesced y");
-    assert(leftEvents[0].getCoalescedEvents().length === 1, "raw coalesced");
+    assert(move.getCoalescedEvents()[1]!.clientX === 8, "last coalesced");
+    assert(move.getCoalescedEvents()[1]!.clientY === 9, "last coalesced y");
+    // @ts-expect-error The recorded raw update is a PointerEvent.
+    const rawMove: PointerEvent = leftEvents[0];
+    assert(rawMove.getCoalescedEvents().length === 1, "raw coalesced");
     assert(
-      leftEvents[0].getCoalescedEvents()[0].type === "pointerrawupdate",
+      rawMove.getCoalescedEvents()[0]!.type === "pointerrawupdate",
       "raw coalesced type",
     );
+    // @ts-expect-error The recorded click is a UIEvent.
     assert(leftEvents[8].detail === 1, "click detail");
+    // @ts-expect-error The recorded double-click is a UIEvent.
     assert(leftEvents[14].detail === 2, "dblclick detail");
 
     left.close();
@@ -180,7 +203,7 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
     try {
       Yuzuko.__test.inject(left, [{ kind: "pointer", type: "pointermove", x: 1, y: 1 }]);
     } catch (error) {
-      closed = error.name === "InvalidStateError";
+      closed = error instanceof DOMException && error.name === "InvalidStateError";
     }
     assert(closed, "closed inject");
     Yuzuko.__test.inject(right, [
@@ -204,9 +227,9 @@ Yuzuko.test("two surfaces keep independent pointer, key, and IME sequences", () 
 
 Yuzuko.test("pointerrawupdate fires for each move, including while locked", async () => {
   const window = new Yuzuko.Window({ width: 80, height: 60 });
-  const order = [];
-  const raw = [];
-  const moves = [];
+  const order: string[] = [];
+  const raw: PointerEvent[] = [];
+  const moves: PointerEvent[] = [];
   window.addEventListener("pointerrawupdate", (event) => {
     order.push("capture");
     assert(event.eventPhase === Event.CAPTURING_PHASE, "capture phase");
@@ -250,25 +273,25 @@ Yuzuko.test("pointerrawupdate fires for each move, including while locked", asyn
       order.join(","),
     );
     assert(raw.length === 2, "two raw updates");
-    assert(raw[0].clientX === 4 && raw[0].clientY === 6, "first point");
-    assert(raw[0].movementX === 0 && raw[0].movementY === 0, "first movement");
-    assert(raw[0].pointerId === 3, "pointer id");
-    const first = raw[0].getCoalescedEvents();
+    assert(raw[0]!.clientX === 4 && raw[0]!.clientY === 6, "first point");
+    assert(raw[0]!.movementX === 0 && raw[0]!.movementY === 0, "first movement");
+    assert(raw[0]!.pointerId === 3, "pointer id");
+    const first = raw[0]!.getCoalescedEvents();
     assert(first.length === 1, "one coalesced raw");
-    assert(first[0].type === "pointerrawupdate", "coalesced type");
-    assert(first[0].isTrusted === true, "coalesced trusted");
-    assert(first[0].bubbles === false, "coalesced bubbles");
-    assert(first[0].cancelable === false, "coalesced cancelable");
-    assert(first[0].composed === false, "coalesced composed");
-    assert(first[0].clientX === 4 && first[0].clientY === 6, "coalesced point");
-    assert(first[0].pointerId === 3, "coalesced id");
-    assert(raw[1].clientX === 11 && raw[1].clientY === 8, "second point");
-    assert(raw[1].movementX === 7 && raw[1].movementY === 2, "second movement");
+    assert(first[0]!.type === "pointerrawupdate", "coalesced type");
+    assert(first[0]!.isTrusted === true, "coalesced trusted");
+    assert(first[0]!.bubbles === false, "coalesced bubbles");
+    assert(first[0]!.cancelable === false, "coalesced cancelable");
+    assert(first[0]!.composed === false, "coalesced composed");
+    assert(first[0]!.clientX === 4 && first[0]!.clientY === 6, "coalesced point");
+    assert(first[0]!.pointerId === 3, "coalesced id");
+    assert(raw[1]!.clientX === 11 && raw[1]!.clientY === 8, "second point");
+    assert(raw[1]!.movementX === 7 && raw[1]!.movementY === 2, "second movement");
     assert(moves.length === 1, "one coalesced move");
-    assert(moves[0].movementX === 7 && moves[0].movementY === 2, "summed movement");
-    assert(moves[0].getCoalescedEvents().length === 2, "move coalesced");
-    assert(moves[0].getCoalescedEvents()[0].clientX === 4, "move matches first raw");
-    assert(moves[0].getCoalescedEvents()[0].type === "pointermove", "move child type");
+    assert(moves[0]!.movementX === 7 && moves[0]!.movementY === 2, "summed movement");
+    assert(moves[0]!.getCoalescedEvents().length === 2, "move coalesced");
+    assert(moves[0]!.getCoalescedEvents()[0]!.clientX === 4, "move matches first raw");
+    assert(moves[0]!.getCoalescedEvents()[0]!.type === "pointermove", "move child type");
 
     await window.requestPointerLock();
     order.length = 0;
@@ -287,18 +310,18 @@ Yuzuko.test("pointerrawupdate fires for each move, including while locked", asyn
     ]);
     assert(order.join(",") === "capture,surface,bubble", order.join(","));
     assert(raw.length === 1, "locked raw");
-    assert(raw[0].target === window.surface, "locked target");
-    assert(raw[0].movementX === 2 && raw[0].movementY === -5, "locked movement");
-    assert(raw[0].clientX === 11 && raw[0].clientY === 8, "locked position");
-    const lockedChild = raw[0].getCoalescedEvents();
+    assert(raw[0]!.target === window.surface, "locked target");
+    assert(raw[0]!.movementX === 2 && raw[0]!.movementY === -5, "locked movement");
+    assert(raw[0]!.clientX === 11 && raw[0]!.clientY === 8, "locked position");
+    const lockedChild = raw[0]!.getCoalescedEvents();
     assert(lockedChild.length === 1, "locked coalesced");
-    assert(lockedChild[0].type === "pointerrawupdate", "locked coalesced type");
+    assert(lockedChild[0]!.type === "pointerrawupdate", "locked coalesced type");
     assert(
-      lockedChild[0].movementX === 2 && lockedChild[0].movementY === -5,
+      lockedChild[0]!.movementX === 2 && lockedChild[0]!.movementY === -5,
       "locked child movement",
     );
     assert(moves.length === 1, "locked move");
-    assert(moves[0].movementX === 2 && moves[0].movementY === -5, "locked move movement");
+    assert(moves[0]!.movementX === 2 && moves[0]!.movementY === -5, "locked move movement");
   } finally {
     await window.exitPointerLock();
     window.close();
@@ -307,7 +330,7 @@ Yuzuko.test("pointerrawupdate fires for each move, including while locked", asyn
 
 Yuzuko.test("preventDefault on keydown skips text and close is cancelable", () => {
   const window = new Yuzuko.Window({ width: 40, height: 40 });
-  const events = [];
+  const events: Event[] = [];
   record(window, events);
   window.addEventListener("keydown", (event) => {
     if (event.key === "b") {
@@ -329,7 +352,7 @@ Yuzuko.test("preventDefault on keydown skips text and close is cancelable", () =
     Yuzuko.__test.inject(window, [
       { kind: "focus" },
     ]);
-    assert(events[events.length - 1].type === "focus", "still open");
+    assert(events[events.length - 1]!.type === "focus", "still open");
   } finally {
     window.close();
   }
@@ -349,7 +372,7 @@ Yuzuko.test("animation frames run once per frame and pointer lock resolves", asy
     assert(locked === 2, "unlocked");
     await window.requestFullscreen();
     await window.exitFullscreen();
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       window.requestAnimationFrame(() => {
         assert(phase === 0, "first frame");
         phase = 1;
@@ -371,8 +394,8 @@ Yuzuko.test("animation frames run once per frame and pointer lock resolves", asy
 Yuzuko.test("animation frames keep a display cadence", async () => {
   const window = new Yuzuko.Window({ width: 32, height: 32 });
   try {
-    const gaps = await new Promise((resolve) => {
-      const samples = [];
+    const gaps = await new Promise<number[]>((resolve) => {
+      const samples: number[] = [];
       let last = 0;
       let left = 8;
       window.requestAnimationFrame(function frame(now) {
@@ -432,7 +455,7 @@ Yuzuko.test("a closed window requestAnimationFrame returns 0", async () => {
         dropped += 1;
       });
     }, { once: true });
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       window.requestAnimationFrame(() => {
         window.close();
         after = window.requestAnimationFrame(() => {
@@ -452,6 +475,7 @@ Yuzuko.test("a closed window requestAnimationFrame returns 0", async () => {
     window.cancelAnimationFrame(1);
     let bad = false;
     try {
+      // @ts-expect-error A number is not a frame callback.
       window.requestAnimationFrame(1);
     } catch (error) {
       bad = error instanceof TypeError;
@@ -562,6 +586,9 @@ Yuzuko.test("matchMedia tracks size, pixel ratio, and preferences", () => {
     wide.addEventListener("change", (event) => {
       changes += 1;
       assert(event instanceof MediaQueryListEvent, "change event");
+      if (!(event instanceof MediaQueryListEvent)) {
+        throw new Error("change event");
+      }
       assert(event.matches === false, "now narrow");
       assert(event.media === "(min-width: 300px)", "event media");
     });
@@ -581,8 +608,12 @@ Yuzuko.test("visibilityState tracks occlusion, not focus", () => {
   try {
     const surface = window.surface;
     assert(surface.visibilityState === "visible", "starts visible");
-    assert(new OffscreenCanvas(1, 1).visibilityState === undefined, "buffer");
-    const states = [];
+    assert(
+      // @ts-expect-error visibilityState is absent on OffscreenCanvas.
+      new OffscreenCanvas(1, 1).visibilityState === undefined,
+      "buffer",
+    );
+    const states: string[] = [];
     surface.addEventListener("visibilitychange", (event) => {
       assert(event.target === surface, "target");
       assert(event.isTrusted === true, "trusted");
@@ -617,8 +648,8 @@ Yuzuko.test("visibilityState tracks occlusion, not focus", () => {
 Yuzuko.test("focus and blur are FocusEvents on the window", () => {
   const window = new Yuzuko.Window({ width: 80, height: 40 });
   try {
-    const seen = [];
-    const onSurface = [];
+    const seen: string[] = [];
+    const onSurface: string[] = [];
     window.surface.addEventListener("focus", () => {
       onSurface.push("focus");
     });
@@ -653,8 +684,8 @@ Yuzuko.test("focus and blur are FocusEvents on the window", () => {
 Yuzuko.test("pointer events propagate from the window to its surface", () => {
   const window = new Yuzuko.Window({ width: 80, height: 40 });
   try {
-    const order = [];
-    const capture = (event) => {
+    const order: string[] = [];
+    const capture = (event: PointerEvent) => {
       order.push("capture");
       assert(event.eventPhase === Event.CAPTURING_PHASE, "capture phase");
       assert(event.currentTarget === window, "capture current");
@@ -662,12 +693,12 @@ Yuzuko.test("pointer events propagate from the window to its surface", () => {
       const path = event.composedPath();
       assert(path[0] === window.surface && path[1] === window, "path");
     };
-    const atSurface = (event) => {
+    const atSurface = (event: PointerEvent) => {
       order.push("surface");
       assert(event.eventPhase === Event.AT_TARGET, "target phase");
       assert(event.currentTarget === window.surface, "surface current");
     };
-    const bubble = (event) => {
+    const bubble = (event: PointerEvent) => {
       order.push("bubble");
       assert(event.eventPhase === Event.BUBBLING_PHASE, "bubble phase");
       assert(event.currentTarget === window, "bubble current");
@@ -684,8 +715,8 @@ Yuzuko.test("pointer events propagate from the window to its surface", () => {
     window.surface.removeEventListener("pointerdown", atSurface);
     window.removeEventListener("pointerdown", bubble);
 
-    const stopped = [];
-    const stopCapture = (event) => {
+    const stopped: string[] = [];
+    const stopCapture = (event: PointerEvent) => {
       stopped.push("capture");
       event.stopPropagation();
     };
@@ -702,8 +733,8 @@ Yuzuko.test("pointer events propagate from the window to its surface", () => {
     window.surface.removeEventListener("pointerdown", missed);
     window.removeEventListener("pointerdown", missed);
 
-    const immediate = [];
-    const stopNow = (event) => {
+    const immediate: string[] = [];
+    const stopNow = (event: PointerEvent) => {
       immediate.push("first");
       event.stopImmediatePropagation();
     };
@@ -720,8 +751,8 @@ Yuzuko.test("pointer events propagate from the window to its surface", () => {
     window.removeEventListener("pointerdown", second, true);
     window.surface.removeEventListener("pointerdown", second);
 
-    const fromSurface = [];
-    const stopAtSurface = (event) => {
+    const fromSurface: string[] = [];
+    const stopAtSurface = (event: PointerEvent) => {
       fromSurface.push("surface");
       event.stopPropagation();
     };
@@ -740,7 +771,7 @@ Yuzuko.test("pointer events propagate from the window to its surface", () => {
       fromSurface.join(","),
     );
 
-    const mouse = [];
+    const mouse: string[] = [];
     window.surface.addEventListener("mousedown", () => mouse.push("mousedown"));
     window.surface.addEventListener("mouseup", () => mouse.push("mouseup"));
     window.surface.addEventListener("click", (event) => {
@@ -795,7 +826,11 @@ Yuzuko.test("window geometry follows the frame and the client", () => {
     assert(plain.maximized === false, "maximized default");
     assert(plain.transparent === false, "opaque default");
     assert(plain.minWidth === undefined && plain.maxHeight === undefined, "no limits");
-    assert(typeof plain.reload === "undefined", "no reload");
+    assert(
+      // @ts-expect-error reload is absent on Window.
+      typeof plain.reload === "undefined",
+      "no reload",
+    );
   } finally {
     plain.close();
   }
@@ -832,7 +867,7 @@ Yuzuko.test("window geometry follows the frame and the client", () => {
     assert(window.surface.visibilityState === "visible", "occlusion stays");
     window.show();
     assert(window.visible === true, "show");
-    const seen = [];
+    const seen: string[] = [];
     other.addEventListener("focus", () => seen.push("other-focus"));
     other.addEventListener("blur", () => seen.push("other-blur"));
     window.addEventListener("focus", () => seen.push("focus"));
@@ -910,13 +945,13 @@ Yuzuko.test("window geometry follows the frame and the client", () => {
   assert(window.visible === false, "closed visible");
 });
 
-function nextFrame(window) {
+function nextFrame(window: Yuzuko.Window): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve());
   });
 }
 
-function nextFrames(window, count) {
+function nextFrames(window: Yuzuko.Window, count: number): Promise<void> {
   return new Promise((resolve) => {
     const step = () => {
       count -= 1;
@@ -930,7 +965,7 @@ function nextFrames(window, count) {
   });
 }
 
-function record(window, into) {
+function record(window: Yuzuko.Window, into: Event[]): void {
   const types = [
     "pointerrawupdate",
     "pointermove",
@@ -955,33 +990,41 @@ function record(window, into) {
     "wheel",
   ];
   for (const type of types) {
-    window.addEventListener(type, (event) => {
+    window.addEventListener(type, (event: Event) => {
       into.push(event);
     });
   }
 }
 
-function describe(events) {
-  const lines = [];
+function describe(events: readonly Event[]): string {
+  const lines: string[] = [];
   for (const event of events) {
     if (event.type.startsWith("pointer") || event.type.startsWith("mouse") ||
       event.type === "click" || event.type === "dblclick" ||
       event.type === "auxclick" || event.type === "contextmenu") {
+      // @ts-expect-error Pointer and mouse events are PointerEvents.
+      const point: PointerEvent = event;
       lines.push([
-        event.type,
-        event.pointerId,
-        event.pointerType,
-        event.clientX + "," + event.clientY,
-        event.button,
-        event.movementX + "," + event.movementY,
-        event.pressure,
+        point.type,
+        point.pointerId,
+        point.pointerType,
+        point.clientX + "," + point.clientY,
+        point.button,
+        point.movementX + "," + point.movementY,
+        point.pressure,
       ].join(":"));
     } else if (event.type === "keydown" || event.type === "keyup") {
-      lines.push([event.type, event.key, event.code, event.isComposing].join(":"));
+      // @ts-expect-error Key events are KeyboardEvents.
+      const key: KeyboardEvent = event;
+      lines.push([key.type, key.key, key.code, key.isComposing].join(":"));
     } else if (event.type.startsWith("composition")) {
-      lines.push(event.type + ":" + event.data);
+      // @ts-expect-error Composition events are CompositionEvents.
+      const composition: CompositionEvent = event;
+      lines.push(composition.type + ":" + composition.data);
     } else if (event.type === "beforeinput") {
-      lines.push([event.type, event.inputType, event.data, event.isComposing].join(":"));
+      // @ts-expect-error beforeinput is an InputEvent.
+      const input: InputEvent = event;
+      lines.push([input.type, input.inputType, input.data, input.isComposing].join(":"));
     } else {
       lines.push(event.type);
     }

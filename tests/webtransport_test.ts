@@ -9,7 +9,7 @@ function assertThrows(run: () => unknown, name: string): void {
     run();
   } catch (error) {
     assert(error instanceof Error, String(error));
-    assert((error as Error).name === name, (error as Error).name);
+    assert(error.name === name, error.name);
     return;
   }
   throw new Error(`${name} was not thrown`);

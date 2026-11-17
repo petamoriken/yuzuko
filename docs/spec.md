@@ -713,7 +713,7 @@ The realm includes:
 - `atob`, `btoa`, `setTimeout`, `clearTimeout`, `setInterval`, `clearInterval`, `queueMicrotask`, `reportError`, `structuredClone`, `postMessage`, `performance`, `self`, `crossOriginIsolated`, `onerror`, `onunhandledrejection`, `onrejectionhandled`, `navigator.userAgent`, `navigator.hardwareConcurrency`, and `console` `log` / `info` / `warn` / `error` / `debug` / `trace` / `assert` / `time` / `timeLog` / `timeEnd` / `timeStamp` / `count` / `countReset` / `group` / `groupCollapsed` / `groupEnd` / `dir`
 - `AbortController`, `AbortSignal`
 - `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `Blob`, `File`
-- V8's built-in `WebAssembly`, including `compileStreaming` and `instantiateStreaming`. Direct `.wasm` imports and `import source` of `.wasm`. `import source` of JavaScript or TypeScript. A deferred `.wasm` import instantiates on the first observation of its namespace
+- V8's built-in `WebAssembly`, including `compileStreaming`, `instantiateStreaming`, `Suspending`, `promising`, and `SuspendError`. Direct `.wasm` imports and `import source` of `.wasm`. `import source` of JavaScript or TypeScript. A deferred `.wasm` import instantiates on the first observation of its namespace
 - `fetch`, `Headers`, `Request`, and `Response` for `file:`, `blob:`, `data:`, `http:`, and `https:`, when the runtime is built with the `fetch` feature
 - `createImageBitmap`, `ImageBitmap`, `ImageData`, when the runtime is built with the `image` feature
 - `OffscreenCanvas`, when the runtime is built with the `window` feature. `CanvasRenderingContext2D`, `ImageBitmapRenderingContext`, `Path2D`, and `DOMMatrix`, when it is built with the `canvas` feature
@@ -1026,7 +1026,7 @@ There is no `libffi`. An `"f64"` call uses one homogeneous `extern "C"` function
 
 ## Modules
 
-Every static import, dynamic `import()`, `import defer`, `import.defer()`, `import.source()`, and entry path goes through `oxc_resolver`, then, for TypeScript, through `oxc_transformer`. The loader does not invoke `tsc` or the oxc CLI. `import.meta.url` is the absolute `file:` URL of the source file that was resolved, including a `.ts` or `.mts` URL.
+Every static import, dynamic `import()`, `import defer`, `import.defer()`, `import.source()`, and entry path goes through `oxc_resolver`, then, for TypeScript, through `oxc_transformer`. The loader does not invoke `tsc` or the oxc CLI. `import.meta.url` is the absolute `file:` URL of the source file that was resolved, including a `.ts` or `.mts` URL. `import.meta.wasmInstances` is a `Map` from a module `file:` URL to the `WebAssembly.Instance` created when that module graph evaluated a Wasm module.
 
 Resolution options:
 
@@ -1061,7 +1061,7 @@ import source mod from "./add.wasm";
 // mod instanceof WebAssembly.Module
 ```
 
-The Wasm module's own imports are not evaluated for a source-phase import. `WebAssembly.instantiate` is how that `Module` is instantiated later. oxc parses `import source` and leaves it in the graph.
+The Wasm module's own imports are not evaluated for a source-phase import. `WebAssembly.instantiate` is how that `Module` is instantiated later. `WebAssembly.namespaceInstance(namespace)` returns the `WebAssembly.Instance` for a WebAssembly module namespace. Any other value throws `TypeError`. oxc parses `import source` and leaves it in the graph.
 
 A source-phase import of JavaScript or TypeScript returns a `ModuleSource`. That constructor is not a global. The object's prototype chain includes `%AbstractModuleSource%.prototype`, the same prototype `WebAssembly.Module` uses. The file is fetched and parsed. Its imports are not loaded or evaluated.
 

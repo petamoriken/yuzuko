@@ -1,4 +1,4 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
@@ -45,6 +45,7 @@ Yuzuko.test("an omitted Touch altitude, azimuth, and touchType use the defaults"
   assert(omitted.altitudeAngle === Math.PI / 2, "altitude");
   assert(omitted.azimuthAngle === 0, "azimuth");
   assert(omitted.touchType === "", "type");
+  // @ts-expect-error Explicit undefined uses the omitted defaults.
   const explicit = new Touch({
     identifier: 2,
     target,

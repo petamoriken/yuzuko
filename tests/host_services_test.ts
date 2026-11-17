@@ -103,10 +103,8 @@ Yuzuko.test("SIGHUP is caught on Unix and rejected on Windows", async () => {
 });
 
 Yuzuko.test("SIGKILL and an unknown name cannot be caught", () => {
-  const add = Yuzuko.addSignalListener as (
-    signal: string,
-    listener: () => void,
-  ) => void;
+  // @ts-expect-error The listener only accepts a catchable signal name.
+  const add: (signal: string, listener: () => void) => void = Yuzuko.addSignalListener;
   const kill = throws(() => add("SIGKILL", () => {}));
   assert(kill instanceof TypeError, `kill type ${text(kill)}`);
   assert(text(kill) === "The signal cannot be caught.", text(kill));
@@ -144,10 +142,8 @@ Yuzuko.test("clearEnv starts from an empty environment", async () => {
 });
 
 Yuzuko.test("clearEnv, ids, and an aborted signal are rejected before spawn", () => {
-  const spawn = Yuzuko.spawn as (
-    command: string,
-    options?: unknown,
-  ) => Yuzuko.Child;
+  // @ts-expect-error Callers pass rejected spawn options.
+  const spawn: (command: string, options?: unknown) => Yuzuko.Child = Yuzuko.spawn;
   const clear = throws(() =>
     spawn("yuzuko-not-a-program", { clearEnv: "yes" }),
   );
@@ -259,7 +255,7 @@ Yuzuko.test("respond sends caller headers and rejects content-length", async () 
     const pending = server.accept();
     client = await Yuzuko.connectTcp({
       hostname: "127.0.0.1",
-      port: server.addr.port,
+      port: server.addr.port!,
     });
     const requestBytes = new TextEncoder().encode(
       "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
@@ -318,7 +314,7 @@ Yuzuko.test("a connected datagram sends without an address", async () => {
       assert(error instanceof Error, text(error));
     }
 
-    await left.connect({ hostname: "127.0.0.1", port: right.addr.port });
+    await left.connect({ hostname: "127.0.0.1", port: right.addr.port! });
     const waiting = right.receive();
     const payload = new Uint8Array([7, 8, 9]);
     assert(await left.send(payload) === 3, "sent");
@@ -340,9 +336,10 @@ Yuzuko.test("a connected datagram sends without an address", async () => {
 });
 
 Yuzuko.test("reusePort shares a UDP port on Unix", () => {
-  const bad = throws(() =>
-    Yuzuko.listenDatagram({ reusePort: "yes" as unknown as boolean }),
-  );
+  const bad = throws(() => {
+    // @ts-expect-error reusePort must be a boolean.
+    Yuzuko.listenDatagram({ reusePort: "yes" });
+  });
   assert(bad instanceof TypeError, `reuse type ${text(bad)}`);
   assert(text(bad) === "reusePort must be a boolean.", text(bad));
   if (Yuzuko.build.os === "windows") {
@@ -371,7 +368,7 @@ Yuzuko.test("reusePort shares a UDP port on Unix", () => {
   try {
     const second = Yuzuko.listenDatagram({
       hostname: "127.0.0.1",
-      port: first.addr.port,
+      port: first.addr.port!,
       reusePort: true,
     });
     try {
@@ -395,7 +392,10 @@ Yuzuko.test("resolveDns returns typed records or a resolver error", async () => 
     assert(!(error instanceof TypeError), text(error));
     assert(text(error) === "The host could not be resolved.", text(error));
   }
-  const wat = throws(() => Yuzuko.resolveDns("localhost.", "WAT"));
+  const wat = throws(() => {
+    // @ts-expect-error WAT is not a DNS record type.
+    Yuzuko.resolveDns("localhost.", "WAT");
+  });
   assert(wat instanceof TypeError, `wat type ${text(wat)}`);
   assert(text(wat) === RECORD_TYPE, text(wat));
 });

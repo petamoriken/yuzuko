@@ -41,27 +41,37 @@ Yuzuko.test("assistive actions bubble through the authored tree", () => {
     Yuzuko.__test.inject(window, [
       { kind: "accessible", type: "click", node: child },
     ]);
-    assert(seen.length === 2, `click events ${seen.length}`);
-    assert(seen[0].at === "child", "target first");
-    assert(seen[0].phase === Event.AT_TARGET, "target phase");
-    assert(seen[1].at === "root", "then the root");
-    assert(seen[1].phase === Event.BUBBLING_PHASE, "bubble phase");
-    assert(seen[0].trusted === true, "trusted");
-    assert(seen[0].target === child, "event target");
-    assert(seen[0].bubbles === true, "bubbles");
-    assert(seen[0].cancelable === false, "not cancelable");
+    let count: number = seen.length;
+    assert(count === 2, `click events ${seen.length}`);
+    const targetEvent = seen[0];
+    const rootEvent = seen[1];
+    if (targetEvent === undefined || rootEvent === undefined) {
+      throw new Error(`click events ${seen.length}`);
+    }
+    assert(targetEvent.at === "child", "target first");
+    assert(targetEvent.phase === Event.AT_TARGET, "target phase");
+    assert(rootEvent.at === "root", "then the root");
+    assert(rootEvent.phase === Event.BUBBLING_PHASE, "bubble phase");
+    assert(targetEvent.trusted === true, "trusted");
+    assert(targetEvent.target === child, "event target");
+    assert(targetEvent.bubbles === true, "bubbles");
+    assert(targetEvent.cancelable === false, "not cancelable");
 
     child.dispatchEvent(new Event("accessibleclick", { bubbles: true }));
     assert(seen.length === 3, "dispatchEvent reaches the target");
-    assert(seen[2].at === "child", "user event stays on the target");
-    assert(seen[2].trusted === false, "user event is not trusted");
+    const userEvent = seen[2];
+    if (userEvent === undefined) {
+      throw new Error("dispatchEvent reaches the target");
+    }
+    assert(userEvent.at === "child", "user event stays on the target");
+    assert(userEvent.trusted === false, "user event is not trusted");
 
     const kinds = [
       "contextmenu",
       "decrement",
       "increment",
       "scrollintoview",
-    ] as const;
+    ];
     for (const kind of kinds) {
       let hit = false;
       const name = `accessible${kind}`;
@@ -125,8 +135,8 @@ Yuzuko.test("assistive actions bubble through the authored tree", () => {
     }
     assert(thrown instanceof TypeError, "unknown type");
     assert(
-      (thrown as Error).message === "The value is not a valid token.",
-      (thrown as Error).message,
+      thrown.message === "The value is not a valid token.",
+      thrown.message,
     );
     thrown = undefined;
     try {
@@ -138,8 +148,8 @@ Yuzuko.test("assistive actions bubble through the authored tree", () => {
     }
     assert(thrown instanceof TypeError, "missing node");
     assert(
-      (thrown as Error).message === "The node must be an AccessibleNode.",
-      (thrown as Error).message,
+      thrown.message === "The node must be an AccessibleNode.",
+      thrown.message,
     );
   } finally {
     window.close();

@@ -4,6 +4,10 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+declare const VideoEncoder: unknown;
+declare const AudioEncoder: unknown;
+declare const HTMLVideoElement: unknown;
+
 async function assertThrows(
   run: () => unknown,
   name: string,
@@ -95,10 +99,11 @@ async function probeHardwareAvc(): Promise<boolean> {
 const hardwareAvc = await probeHardwareAvc();
 
 async function golden(): Promise<ImageData> {
+  // @ts-expect-error file bytes are a BlobPart.
   const blob = new Blob([await bytes("pattern.png")], { type: "image/png" });
   const bitmap = await createImageBitmap(blob);
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d")!;
   assert(context, "golden context");
   context.drawImage(bitmap, 0, 0);
   return context.getImageData(0, 0, bitmap.width, bitmap.height);
@@ -111,7 +116,7 @@ function sample(
   width: number,
 ): number[] {
   const index = (y * width + x) * 4;
-  return [data[index], data[index + 1], data[index + 2], data[index + 3]];
+  return [data[index]!, data[index + 1]!, data[index + 2]!, data[index + 3]!];
 }
 
 function near(
@@ -121,7 +126,7 @@ function near(
   label: string,
 ): void {
   for (let channel = 0; channel < 4; channel += 1) {
-    const delta = Math.abs(actual[channel] - expected[channel]);
+    const delta = Math.abs(actual[channel]! - expected[channel]!);
     assert(delta <= tolerance, `${label} channel ${channel} delta ${delta}`);
   }
 }
@@ -133,7 +138,7 @@ function comparePicture(
 ): void {
   assert(actual.width === expected.width, `width ${actual.width}`);
   assert(actual.height === expected.height, `height ${actual.height}`);
-  const points = [
+  const points: Array<[number, number]> = [
     [8, 16],
     [16, 32],
     [24, 48],
@@ -153,7 +158,7 @@ function comparePicture(
 
 async function drawFrame(frame: VideoFrame): Promise<ImageData> {
   const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d")!;
   assert(context, "2d");
   context.drawImage(frame, 0, 0);
   return context.getImageData(0, 0, canvas.width, canvas.height);
@@ -198,7 +203,7 @@ function correlate(samples: Float32Array, rate: number): number {
     let cosine = 0;
     let energy = 0;
     for (let index = 0; index < window; index += 1) {
-      const sample = samples[lag + index];
+      const sample = samples[lag + index]!;
       const angle = (2 * Math.PI * frequency * (lag + index)) / rate;
       sine += sample * Math.sin(angle);
       cosine += sample * Math.cos(angle);
@@ -270,7 +275,7 @@ async function decodeAudio(
     const played = rendered.getChannelData(0);
     assert(played.length === copy.length, `rendered ${played.length}`);
     for (let index = 0; index < copy.length; index += 1) {
-      const delta = Math.abs(played[index] - copy[index]);
+      const delta = Math.abs(played[index]! - copy[index]!);
       assert(delta < 1e-5, `played ${index} ${played[index]} vs ${copy[index]}`);
     }
     for (const sample of copy) {
@@ -311,7 +316,7 @@ async function takeAudioData(): Promise<AudioData> {
   assert(failed === "", failed);
   decoder.close();
   assert(parts.length > 0, "no audio");
-  const first = parts[0];
+  const first = parts[0]!;
   assert(first.numberOfFrames > 0, "empty audio");
   for (const extra of parts.slice(1)) {
     extra.close();
@@ -354,6 +359,7 @@ Yuzuko.test("WebCodecs constructors exist and encoders do not", () => {
   assert(typeof HTMLVideoElement === "undefined", "HTMLVideoElement");
   let name = "";
   try {
+    // @ts-expect-error VideoFrame requires an image or a buffer.
     new VideoFrame();
   } catch (error) {
     name = error instanceof TypeError ? error.name : "";
@@ -361,6 +367,7 @@ Yuzuko.test("WebCodecs constructors exist and encoders do not", () => {
   assert(name === "TypeError", name);
   name = "";
   try {
+    // @ts-expect-error AudioData requires an init dictionary.
     new AudioData();
   } catch (error) {
     name = error instanceof TypeError ? error.name : "";
@@ -401,7 +408,8 @@ Yuzuko.test("VideoDecoder dispatches a dequeue event", () => {
   decoder.decode(chunk);
   assert(decoder.decodeQueueSize === 1, "queued");
   decoder.reset();
-  assert(decoder.decodeQueueSize === 0, "cleared");
+  let queueSize: number = decoder.decodeQueueSize;
+  assert(queueSize === 0, "cleared");
   assert(handled.length === 1, "one handler call");
   assert(listened.length === 1 && listened[0] === handled[0], "same event");
   decoder.ondequeue = null;
@@ -413,7 +421,8 @@ Yuzuko.test("VideoDecoder dispatches a dequeue event", () => {
   decoder.decode(chunk);
   decoder.reset();
   assert(handled.length === 1, "removed handler stays quiet");
-  assert(listened.length === 2, "listener still runs");
+  let listenedCount: number = listened.length;
+  assert(listenedCount === 2, "listener still runs");
   decoder.close();
 });
 
@@ -575,10 +584,11 @@ Yuzuko.test({
       received.push(frame);
     };
     await decoder.flush();
-    assert(received.length === 1, `frames ${received.length}`);
-    assert(received[0].timestamp === 5, `timestamp ${received[0].timestamp}`);
-    assert(received[0].duration === 8, `duration ${received[0].duration}`);
-    received[0].close();
+    let receivedCount: number = received.length;
+    assert(receivedCount === 1, `frames ${received.length}`);
+    assert(received[0]!.timestamp === 5, `timestamp ${received[0]!.timestamp}`);
+    assert(received[0]!.duration === 8, `duration ${received[0]!.duration}`);
+    received[0]!.close();
     decoder.close();
   },
 });
@@ -614,9 +624,11 @@ Yuzuko.test({
     assert(errors === 0, "error during decode");
     assert(decoder.state === "configured", decoder.state);
     await Promise.resolve();
-    assert(errors === 1, `errors ${errors}`);
+    let errorCount: number = errors;
+    assert(errorCount === 1, `errors ${errors}`);
     assert(name === "EncodingError", name);
-    assert(decoder.state === "closed", decoder.state);
+    let state: string = decoder.state;
+    assert(state === "closed", decoder.state);
   },
 });
 
@@ -631,13 +643,13 @@ Yuzuko.test({
       await bytes("avc1.idr"),
     );
     assert(frames.length === 1, `frames ${frames.length}`);
-    const frame = frames[0];
-    assert(frame.format === "RGBA", frame.format);
+    const frame = frames[0]!;
+    assert(frame.format === "RGBA", frame.format ?? "null");
     comparePicture(await drawFrame(frame), expected, 16);
     const bitmap = await createImageBitmap(frame);
     assert(bitmap.width === 64 && bitmap.height === 64, "bitmap");
     const canvas = new OffscreenCanvas(64, 64);
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d")!;
     assert(context, "bitmap context");
     context.drawImage(bitmap, 0, 0);
     comparePicture(context.getImageData(0, 0, 64, 64), expected, 16);
@@ -657,7 +669,7 @@ Yuzuko.test({
       await bytes("avc1.avcC"),
       await bytes("avc1.idr"),
     );
-    const frame = frames[0];
+    const frame = frames[0]!;
     const adapter = await navigator.gpu.requestAdapter();
     assert(adapter, "adapter");
     const device = await adapter.requestDevice();
@@ -688,7 +700,7 @@ Yuzuko.test({
     comparePicture(image, expected, 16);
     buffer.unmap();
     frame.close();
-    const later = new OffscreenCanvas(64, 64).getContext("2d");
+    const later = new OffscreenCanvas(64, 64).getContext("2d")!;
     assert(later, "later");
     await assertThrows(() => later.drawImage(frame, 0, 0), "InvalidStateError");
     device.destroy();
@@ -721,8 +733,10 @@ Yuzuko.test("AudioDecoder error runs after decode returns", async () => {
   assert(errors === 0, "error during decode");
   assert(decoder.state === "configured", decoder.state);
   await Promise.resolve();
-  assert(decoder.state === "closed", decoder.state);
-  assert(errors === 1, `errors ${errors}`);
+  let state: string = decoder.state;
+  assert(state === "closed", decoder.state);
+  let errorCount: number = errors;
+  assert(errorCount === 1, `errors ${errors}`);
   assert(name === "EncodingError", name);
 });
 
@@ -748,18 +762,18 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   copy.close();
 
   const worker = new Worker(new URL("./workers/clone.js", import.meta.url));
-  const copied = new Promise<unknown>((resolve, reject) => {
-    worker.onmessage = (event: MessageEvent) => resolve(event.data);
-    worker.onerror = () => reject(new Error("worker error"));
-  });
-  worker.postMessage(frame);
-  const copiedSummary = await copied as {
+  const copied = new Promise<{
     kind: string;
     width: number;
     height: number;
     timestamp: number;
     pixel: number[];
-  };
+  }>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(frame);
+  const copiedSummary = await copied;
   assert(copiedSummary.kind === "frame", copiedSummary.kind);
   assert(copiedSummary.width === 2 && copiedSummary.height === 2, "posted frame");
   assert(copiedSummary.pixel.join() === String([
@@ -770,16 +784,17 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   ]), copiedSummary.pixel.join());
   assert(frame.displayWidth === 2, "post leaves the frame open");
 
-  const transferred = new Promise<unknown>((resolve, reject) => {
+  const transferred = new Promise<{ kind: string; width: number }>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent) => resolve(event.data);
     worker.onerror = () => reject(new Error("worker error"));
   });
   worker.postMessage(frame, [frame]);
-  const transferredSummary = await transferred as { kind: string; width: number };
+  const transferredSummary = await transferred;
   assert(transferredSummary.kind === "frame", transferredSummary.kind);
   assert(transferredSummary.width === 2, "transferred frame");
   assert(frame.format === null, "closed format");
-  assert(frame.displayWidth === 0, "closed display");
+  let displayWidth: number = frame.displayWidth;
+  assert(displayWidth === 0, "closed display");
   assert(frame.codedWidth === 0, "closed coded");
   assert(frame.visibleRect === null, "closed visible");
   assert(frame.timestamp === copiedSummary.timestamp, "closed timestamp");
@@ -801,18 +816,18 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
   assert(audio.numberOfFrames > 0, "audio stays open");
   audioCopy.close();
 
-  const audioReply = new Promise<unknown>((resolve, reject) => {
-    worker.onmessage = (event: MessageEvent) => resolve(event.data);
-    worker.onerror = () => reject(new Error("worker error"));
-  });
-  worker.postMessage(audio, [audio]);
-  const audioSummary = await audioReply as {
+  const audioReply = new Promise<{
     kind: string;
     frames: number;
     channels: number;
     rate: number;
     sample: number;
-  };
+  }>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(audio, [audio]);
+  const audioSummary = await audioReply;
   assert(audioSummary.kind === "audio", audioSummary.kind);
   assert(audioSummary.frames === frames, "worker frames");
   assert(audioSummary.channels === channels, "worker channels");
@@ -831,22 +846,23 @@ Yuzuko.test("VideoFrame and AudioData clone and transfer", async () => {
     timestamp: 20,
     data: new Uint8Array([1, 2, 3]),
   });
-  const chunkReply = new Promise<unknown>((resolve, reject) => {
-    worker.onmessage = (event: MessageEvent) => resolve(event.data);
-    worker.onerror = () => reject(new Error("worker error"));
-  });
-  worker.postMessage(chunk);
-  const chunkSummary = await chunkReply as {
+  const chunkReply = new Promise<{
     kind: string;
     type: string;
     timestamp: number;
     byteLength: number;
-  };
+  }>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent) => resolve(event.data);
+    worker.onerror = () => reject(new Error("worker error"));
+  });
+  worker.postMessage(chunk);
+  const chunkSummary = await chunkReply;
   assert(chunkSummary.kind === "audio-chunk", chunkSummary.kind);
   assert(chunkSummary.type === "key", chunkSummary.type);
   assert(chunkSummary.timestamp === 20, String(chunkSummary.timestamp));
   assert(chunkSummary.byteLength === 3, String(chunkSummary.byteLength));
   await assertThrows(
+    // @ts-expect-error an encoded chunk is not transferable.
     () => worker.postMessage(chunk, [chunk]),
     "DataCloneError",
   );
@@ -866,22 +882,22 @@ Yuzuko.test({
       { hardwareAcceleration: "prefer-software" },
     );
     assert(frames.length === 1, "prefer-software frame");
-    comparePicture(await drawFrame(frames[0]), expected, 16);
-    frames[0].close();
+    comparePicture(await drawFrame(frames[0]!), expected, 16);
+    frames[0]!.close();
   },
 });
 
 function solidBitmap(pixels: number[]): ImageBitmap {
   const canvas = new OffscreenCanvas(2, 2);
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d")!;
   const data = new ImageData(new Uint8ClampedArray(pixels), 2, 2);
   context.putImageData(data, 0, 0);
   return canvas.transferToImageBitmap();
 }
 
 Yuzuko.test("VideoFrame metadata is empty and copyTo checks its receiver", async () => {
-  const init = {
-    format: "RGBA" as const,
+  const init: VideoFrameBufferInit & { metadata: { rtpTimestamp: number } } = {
+    format: "RGBA",
     codedWidth: 1,
     codedHeight: 1,
     timestamp: 0,
@@ -899,6 +915,7 @@ Yuzuko.test("VideoFrame metadata is empty and copyTo checks its receiver", async
   assert(VideoFrame.prototype.copyTo.length === 1, "copyTo length");
   const foreign = VideoFrame.prototype.copyTo.call({}, new Uint8Array(4));
   assert(foreign instanceof Promise, "foreign copyTo returns a promise");
+  // @ts-expect-error copyTo requires a destination.
   const missing = frame.copyTo();
   assert(missing instanceof Promise, "missing destination returns a promise");
   let foreignName = "";
@@ -945,7 +962,7 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   assert(frame.allocationSize() === 16, "allocation");
   const pixels = new Uint8Array(16);
   const layout = await frame.copyTo(pixels);
-  assert(layout.length === 1 && layout[0].offset === 0 && layout[0].stride === 8, "layout");
+  assert(layout.length === 1 && layout[0]!.offset === 0 && layout[0]!.stride === 8, "layout");
   assert(pixels[0] === 10 && pixels[1] === 20 && pixels[2] === 30 && pixels[3] === 255, "pixel");
   const cloned = frame.clone();
   const clonedPixels = new Uint8Array(16);
@@ -955,7 +972,9 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   frame.close();
   frame.close();
   assert(frame.format === null, "closed format");
-  assert(frame.codedWidth === 0 && frame.displayWidth === 0, "closed size");
+  let codedWidth: number = frame.codedWidth;
+  let displayWidth: number = frame.displayWidth;
+  assert(codedWidth === 0 && displayWidth === 0, "closed size");
   assert(frame.visibleRect === null && frame.codedRect === null, "closed rect");
   assert(frame.colorSpace.primaries === null, "closed primaries");
   assert(frame.colorSpace.matrix === null && frame.colorSpace.fullRange === null, "closed color");
@@ -971,7 +990,7 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   );
 
   const canvas = new OffscreenCanvas(2, 2);
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d")!;
   context.putImageData(new ImageData(new Uint8ClampedArray([
     1, 2, 3, 255,
     5, 6, 7, 255,
@@ -1022,7 +1041,7 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   await managed.copyTo(srgb, { format: "RGBA", colorSpace: "srgb" });
   assert(srgb[0] === 50 && srgb[1] === 100 && srgb[2] === 150 && srgb[3] === 255, "srgb");
   managed.close();
-  const drawn = new OffscreenCanvas(2, 1).getContext("2d");
+  const drawn = new OffscreenCanvas(2, 1).getContext("2d")!;
   drawn.drawImage(bufferFrame, 0, 0);
   const sample = drawn.getImageData(1, 0, 1, 1).data;
   assert(sample[0] === 5 && sample[1] === 6 && sample[2] === 7 && sample[3] === 255, "draw");
@@ -1115,18 +1134,21 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
     9, 0, 10, 0,
     11, 0, 12, 0,
   ]);
+  // @ts-expect-error I420P10 is stored but not in VideoPixelFormat.
   const tenBit = new VideoFrame(p10, {
     format: "I420P10",
     codedWidth: 4,
     codedHeight: 2,
     timestamp: 0,
   });
-  assert(tenBit.format === "I420P10", tenBit.format ?? "null");
+  let tenBitFormat: string | null = tenBit.format;
+  assert(tenBitFormat === "I420P10", tenBit.format ?? "null");
   assert(tenBit.allocationSize() === 24, "p10 size");
   const tenOut = new Uint8Array(24);
   await tenBit.copyTo(tenOut);
   assert(tenOut[0] === 1 && tenOut[1] === 0 && tenOut[16] === 9, "p10 bytes");
   tenBit.close();
+  // @ts-expect-error I420AP10 is not a stored VideoPixelFormat.
   await assertThrows(() => new VideoFrame(new Uint8Array(16), {
     format: "I420AP10",
     timestamp: 0,
@@ -1232,8 +1254,8 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
     frameCount: 2,
     format: "f32-planar",
   });
-  assertNear(converted[0], 2000 / 32767, "positive s16");
-  assertNear(converted[1], -2000 / 32768, "negative s16");
+  assertNear(converted[0]!, 2000 / 32767, "positive s16");
+  assertNear(converted[1]!, -2000 / 32768, "negative s16");
   const channel = new Int16Array(2);
   pcm.copyTo(channel, {
     planeIndex: 1,
@@ -1269,7 +1291,8 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
     "frameOffset",
   );
   assertTypeError(
-    () => data.copyTo(new Float32Array(4), {} as AudioDataCopyToOptions),
+    // @ts-expect-error planeIndex is required.
+    () => data.copyTo(new Float32Array(4), {}),
     "planeIndex",
   );
 
@@ -1277,10 +1300,14 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
   data.close();
   data.close();
   assert(data.format === null, "closed format");
-  assert(data.sampleRate === 0, "closed rate");
-  assert(data.numberOfFrames === 0, "closed frames");
-  assert(data.numberOfChannels === 0, "closed channels");
-  assert(data.duration === 0, "closed duration");
+  let sampleRate: number = data.sampleRate;
+  let frameCount: number = data.numberOfFrames;
+  let channelCount: number = data.numberOfChannels;
+  let duration: number = data.duration;
+  assert(sampleRate === 0, "closed rate");
+  assert(frameCount === 0, "closed frames");
+  assert(channelCount === 0, "closed channels");
+  assert(duration === 0, "closed duration");
   assert(data.timestamp === -10, "closed timestamp");
   assert(cloned.format === "f32-planar", "clone stays");
   assert(cloned.numberOfFrames === 4, "clone frames");
@@ -1296,8 +1323,8 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
   cloned.close();
   pcm.close();
 
-  const init = {
-    format: "f32-planar" as AudioSampleFormat,
+  const init: AudioDataInit = {
+    format: "f32-planar",
     sampleRate: 8000,
     numberOfFrames: 1,
     numberOfChannels: 1,
@@ -1306,7 +1333,8 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
   };
   assertTypeError(() => {
     const { format: _format, ...rest } = init;
-    new AudioData(rest as AudioDataInit);
+    // @ts-expect-error format is required.
+    new AudioData(rest);
   }, "format");
   assertTypeError(
     () => new AudioData({ ...init, numberOfFrames: 0 }),
@@ -1393,7 +1421,8 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   assert(av1Bad.supported === false, "bad av1C");
 
   await assertRejectsType(
-    () => VideoDecoder.isConfigSupported({} as VideoDecoderConfig),
+    // @ts-expect-error codec is required.
+    () => VideoDecoder.isConfigSupported({}),
     "missing codec",
   );
   await assertRejectsType(
@@ -1404,7 +1433,8 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
     () =>
       VideoDecoder.isConfigSupported({
         codec: "avc1.42001E",
-        hardwareAcceleration: "maybe" as HardwareAcceleration,
+        // @ts-expect-error maybe is not a HardwareAcceleration value.
+        hardwareAcceleration: "maybe",
       }),
     "hardwareAcceleration",
   );
@@ -1423,7 +1453,8 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   );
   await assertRejectsType(
     () =>
-      (VideoDecoder.isConfigSupported as () => Promise<unknown>)(),
+      // @ts-expect-error isConfigSupported requires a config.
+      VideoDecoder.isConfigSupported(),
     "video arity",
   );
 
@@ -1497,7 +1528,8 @@ Yuzuko.test("isConfigSupported and encoded chunks", async () => {
   );
   await assertRejectsType(
     () =>
-      (AudioDecoder.isConfigSupported as () => Promise<unknown>)(),
+      // @ts-expect-error isConfigSupported requires a config.
+      AudioDecoder.isConfigSupported(),
     "audio arity",
   );
 
@@ -1552,7 +1584,7 @@ Yuzuko.test("AV1 decodes an 8-bit 4:2:0 MP4", async () => {
   const file = new Uint8Array(await response.arrayBuffer());
   const movie = Yuzuko.demuxMp4(file);
   assert(movie.video.length === 1, "one video track");
-  const track = movie.video[0];
+  const track = movie.video[0]!;
   assert(track.codec.startsWith("av01.0."), track.codec);
   assert(track.codec.endsWith("M.08"), track.codec);
   assert(track.codedWidth === 16, "width");
@@ -1591,12 +1623,12 @@ Yuzuko.test("AV1 decodes an 8-bit 4:2:0 MP4", async () => {
   await decoder.flush();
   assert(failed === "", failed);
   assert(frames.length >= 1, "frames");
-  const image = await drawFrame(frames[0]);
+  const image = await drawFrame(frames[0]!);
   const index = (8 * image.width + 8) * 4;
-  const red = image.data[index];
-  const green = image.data[index + 1];
-  const blue = image.data[index + 2];
-  const alpha = image.data[index + 3];
+  const red = image.data[index]!;
+  const green = image.data[index + 1]!;
+  const blue = image.data[index + 2]!;
+  const alpha = image.data[index + 3]!;
   assert(
     red > 180 && green < 80 && blue < 80 && alpha === 255,
     `pixel ${red},${green},${blue},${alpha}`,
@@ -1644,7 +1676,7 @@ Yuzuko.test("AV1 software output matches Chrome pixel formats", async () => {
       new URL(`./fixtures/media/${name}`, import.meta.url),
     );
     const file = new Uint8Array(await response.arrayBuffer());
-    const track = Yuzuko.demuxMp4(file).video[0];
+    const track = Yuzuko.demuxMp4(file).video[0]!;
     const supported = await VideoDecoder.isConfigSupported({
       codec: track.codec,
       description: track.description,
@@ -1676,13 +1708,13 @@ Yuzuko.test("AV1 software output matches Chrome pixel formats", async () => {
     await decoder.flush();
     assert(failed === "", `${name} ${failed}`);
     assert(frames.length >= 1, name);
-    assert(frames[0].format === format, `${name} ${frames[0].format}`);
+    assert(frames[0]!.format === format, `${name} ${frames[0]!.format}`);
     if (name === "av1-mono.mp4") {
-      const bytes = new Uint8Array(frames[0].allocationSize());
-      await frames[0].copyTo(bytes);
+      const bytes = new Uint8Array(frames[0]!.allocationSize());
+      await frames[0]!.copyTo(bytes);
       assert(bytes[256] === 128 && bytes[bytes.length - 1] === 128, "neutral");
     }
-    const image = await drawFrame(frames[0]);
+    const image = await drawFrame(frames[0]!);
     assert(image.data[3] === 255, `${name} alpha`);
     for (const frame of frames) {
       frame.close();
@@ -1697,9 +1729,14 @@ Yuzuko.test("AV1 prefers the hardware decoder when it accepts the frame", async 
   );
   const file = new Uint8Array(await response.arrayBuffer());
   const movie = Yuzuko.demuxMp4(file);
-  const track = movie.video[0];
+  const track = movie.video[0]!;
   assert(track.codedWidth === 256 && track.codedHeight === 256, "size");
-  for (const hint of ["prefer-hardware", "prefer-software", "no-preference"]) {
+  const hints: readonly ["prefer-hardware", "prefer-software", "no-preference"] = [
+    "prefer-hardware",
+    "prefer-software",
+    "no-preference",
+  ];
+  for (const hint of hints) {
     const frames: VideoFrame[] = [];
     let failed = "";
     const decoder = new VideoDecoder({
@@ -1723,12 +1760,12 @@ Yuzuko.test("AV1 prefers the hardware decoder when it accepts the frame", async 
     await decoder.flush();
     assert(failed === "", `${hint} ${failed}`);
     assert(frames.length >= 1, hint);
-    const image = await drawFrame(frames[0]);
+    const image = await drawFrame(frames[0]!);
     const index = (128 * image.width + 128) * 4;
-    const red = image.data[index];
-    const green = image.data[index + 1];
-    const blue = image.data[index + 2];
-    const alpha = image.data[index + 3];
+    const red = image.data[index]!;
+    const green = image.data[index + 1]!;
+    const blue = image.data[index + 2]!;
+    const alpha = image.data[index + 3]!;
     assert(
       red > 180 && green < 80 && blue < 80 && alpha === 255,
       `${hint} pixel ${red},${green},${blue},${alpha}`,
@@ -1756,7 +1793,8 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
     flip: true,
   });
   assert(frame.rotation === 90, "rotation");
-  assert(frame.flip === true, "flip");
+  let openedFlip: boolean = frame.flip;
+  assert(openedFlip === true, "flip");
   assert(frame.visibleRect?.width === 4 && frame.visibleRect.height === 2, "visible");
   assert(frame.codedWidth === 4 && frame.codedHeight === 2, "coded");
   assert(frame.displayWidth === 2 && frame.displayHeight === 4, "display");
@@ -1781,7 +1819,7 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
     const index = 4 * (canvas.width * y + x);
     for (let channel = 0; channel < 3; channel += 1) {
       const actual = data[index + channel] ?? 0;
-      assert(Math.abs(actual - expected[channel]) <= 2, `${message} ${actual}`);
+      assert(Math.abs(actual - expected[channel]!) <= 2, `${message} ${actual}`);
     }
   }
   near(0, 0, [255, 255, 0], "yellow");
@@ -1845,7 +1883,8 @@ Yuzuko.test("VideoFrame rotation and flip orient the draw", async () => {
   wide.close();
   quarter.close();
   frame.close();
-  assert(frame.rotation === 0 && frame.flip === false, "closed");
+  let rotation: number = frame.rotation;
+  assert(rotation === 0 && frame.flip === false, "closed");
 
   const shown = new VideoFrame(bytes, {
     format: "RGBX",
@@ -1880,13 +1919,19 @@ Yuzuko.test("VideoDecoder copies rotation and flip onto output frames", async ()
     new URL("./fixtures/media/av1-mono.mp4", import.meta.url),
   );
   const file = new Uint8Array(await response.arrayBuffer());
-  const track = Yuzuko.demuxMp4(file).video[0];
-  const base = {
+  const track = Yuzuko.demuxMp4(file).video[0]!;
+  const base: {
+    codec: string;
+    description: AllowSharedBufferSource;
+    codedWidth: number;
+    codedHeight: number;
+    hardwareAcceleration: HardwareAcceleration;
+  } = {
     codec: track.codec,
     description: track.description,
     codedWidth: track.codedWidth,
     codedHeight: track.codedHeight,
-    hardwareAcceleration: "prefer-software" as const,
+    hardwareAcceleration: "prefer-software",
   };
   const support = await VideoDecoder.isConfigSupported({
     ...base,
@@ -1894,8 +1939,8 @@ Yuzuko.test("VideoDecoder copies rotation and flip onto output frames", async ()
     flip: true,
   });
   assert(support.supported === true, "supported");
-  assert(support.config.rotation === 90, `rotation ${support.config.rotation}`);
-  assert(support.config.flip === true, "flip");
+  assert(support.config!.rotation === 90, `rotation ${support.config!.rotation}`);
+  assert(support.config!.flip === true, "flip");
   let rejected = false;
   try {
     await VideoDecoder.isConfigSupported({ ...base, rotation: 45 });
@@ -1920,11 +1965,11 @@ Yuzuko.test("VideoDecoder copies rotation and flip onto output frames", async ()
   );
   assert(decoder.state === "unconfigured", decoder.state);
   decoder.configure({ ...base, rotation: 90, flip: true });
-  decoder.decode(track.chunks[0]);
+  decoder.decode(track.chunks[0]!);
   await decoder.flush();
   assert(failed === "", failed);
   assert(frames.length >= 1, "frames");
-  const turned = frames[0];
+  const turned = frames[0]!;
   assert(turned.rotation === 90 && turned.flip === true, "oriented");
   assert(
     turned.displayWidth === turned.codedHeight
@@ -1932,10 +1977,10 @@ Yuzuko.test("VideoDecoder copies rotation and flip onto output frames", async ()
     `display ${turned.displayWidth}x${turned.displayHeight}`,
   );
   decoder.configure({ ...base, rotation: 180, flip: false });
-  decoder.decode(track.chunks[0]);
+  decoder.decode(track.chunks[0]!);
   await decoder.flush();
   assert(failed === "", failed);
-  const flat = frames[frames.length - 1];
+  const flat = frames[frames.length - 1]!;
   assert(flat.rotation === 180 && flat.flip === false, "reconfigured");
   assert(
     flat.displayWidth === flat.codedWidth && flat.displayHeight === flat.codedHeight,
@@ -1981,7 +2026,8 @@ Yuzuko.test("AudioDecoder dispatches a dequeue event", () => {
   decoder.decode(chunk);
   assert(decoder.decodeQueueSize === 1, "queued");
   decoder.reset();
-  assert(decoder.decodeQueueSize === 0, "cleared");
+  let queueSize: number = decoder.decodeQueueSize;
+  assert(queueSize === 0, "cleared");
   assert(handled.length === 1, "one handler call");
   assert(listened.length === 1 && listened[0] === handled[0], "same event");
   decoder.ondequeue = null;
@@ -1994,7 +2040,8 @@ Yuzuko.test("AudioDecoder dispatches a dequeue event", () => {
   decoder.decode(chunk);
   decoder.reset();
   assert(handled.length === 1, "removed handler stays quiet");
-  assert(listened.length === 2, "listener still runs");
+  let listenedCount: number = listened.length;
+  assert(listenedCount === 2, "listener still runs");
   decoder.close();
 });
 
@@ -2040,21 +2087,21 @@ Yuzuko.test("Opus pre-skip moves only a negative timestamp", async () => {
   };
   const early = await decode(-42);
   assert(early.length === 2, `frames ${early.length}`);
-  assert(early[0].sampleRate === 48000, `rate ${early[0].sampleRate}`);
-  assert(early[0].numberOfChannels === 1, "channels");
-  assert(early[0].numberOfFrames === 960 - 312, `frames ${early[0].numberOfFrames}`);
-  assert(early[0].timestamp === -42 + 6500, `timestamp ${early[0].timestamp}`);
-  assert(early[1].numberOfFrames === 960, `second ${early[1].numberOfFrames}`);
-  assert(early[1].timestamp === 20_000 - 42, `second time ${early[1].timestamp}`);
+  assert(early[0]!.sampleRate === 48000, `rate ${early[0]!.sampleRate}`);
+  assert(early[0]!.numberOfChannels === 1, "channels");
+  assert(early[0]!.numberOfFrames === 960 - 312, `frames ${early[0]!.numberOfFrames}`);
+  assert(early[0]!.timestamp === -42 + 6500, `timestamp ${early[0]!.timestamp}`);
+  assert(early[1]!.numberOfFrames === 960, `second ${early[1]!.numberOfFrames}`);
+  assert(early[1]!.timestamp === 20_000 - 42, `second time ${early[1]!.timestamp}`);
   for (const frame of early) {
     frame.close();
   }
 
   const kept = await decode(42);
   assert(kept.length === 2, `kept ${kept.length}`);
-  assert(kept[0].timestamp === 42, `kept time ${kept[0].timestamp}`);
-  assert(kept[0].sampleRate === 48000, "kept rate");
-  assert(kept[0].numberOfFrames === 960 - 312, `kept frames ${kept[0].numberOfFrames}`);
+  assert(kept[0]!.timestamp === 42, `kept time ${kept[0]!.timestamp}`);
+  assert(kept[0]!.sampleRate === 48000, "kept rate");
+  assert(kept[0]!.numberOfFrames === 960 - 312, `kept frames ${kept[0]!.numberOfFrames}`);
   for (const frame of kept) {
     frame.close();
   }

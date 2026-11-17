@@ -1,3 +1,6 @@
+declare const WebKitCSSMatrix: unknown;
+declare const requestAnimationFrame: unknown;
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
@@ -19,14 +22,19 @@ function nextMessage(worker: Worker): Promise<unknown> {
 
 Yuzuko.test("dedicated workers stay off the window global", async () => {
   assert(String(new DOMMatrix()) === "matrix(1, 0, 0, 1, 0, 0)", "window matrix");
-  assert(globalThis.fonts === undefined, "no globalThis.fonts");
+  assert(
+    // @ts-expect-error fonts is absent on the main global.
+    globalThis.fonts === undefined,
+    "no globalThis.fonts",
+  );
   assert(Yuzuko.fonts instanceof FontFaceSet, "Yuzuko.fonts");
   assert(typeof WebKitCSSMatrix === "undefined", "no WebKitCSSMatrix");
 
   const worker = new Worker(script("classic.js"));
   const pending = nextMessage(worker);
   worker.postMessage({ kind: "ping" });
-  const reply = await pending as {
+  // @ts-expect-error The classic worker replies with this record.
+  const reply: {
     selfIsGlobal: boolean;
     dedicated: boolean;
     workerScope: boolean;
@@ -47,7 +55,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
     webkit: boolean;
     imported: number;
     encoded: string;
-  };
+  } = await pending;
   assert(reply.selfIsGlobal, "self");
   assert(reply.dedicated && reply.workerScope, "scope");
   assert(reply.hasWindow === false, "no Yuzuko.Window");
@@ -70,14 +78,16 @@ Yuzuko.test("module workers, nested workers, and errors", async () => {
   const moduleWorker = new Worker(script("module.js"), { type: "module" });
   const modulePending = nextMessage(moduleWorker);
   moduleWorker.postMessage({ kind: "module", n: 4 });
-  const moduleReply = await modulePending as { kind: string; n: number };
+  // @ts-expect-error The module worker replies with kind and n.
+  const moduleReply: { kind: string; n: number } = await modulePending;
   assert(moduleReply.kind === "module" && moduleReply.n === 5, "module");
   moduleWorker.terminate();
 
   const classic = new Worker(script("classic.js"));
   const nestedPending = nextMessage(classic);
   classic.postMessage({ kind: "nest", url: script("child.js") });
-  const nested = await nestedPending as { kind: string; text: string };
+  // @ts-expect-error The nested worker replies with kind and text.
+  const nested: { kind: string; text: string } = await nestedPending;
   assert(nested.kind === "nested" && nested.text === "child-ok", nested.text);
   classic.terminate();
 
@@ -115,7 +125,8 @@ Yuzuko.test("postMessage transfers buffers, ports, and canvases", async () => {
   const bytes = new Uint8Array([4, 5, 6]).buffer;
   const copied = nextMessage(worker);
   worker.postMessage(bytes, [bytes]);
-  const view = await copied as number[];
+  // @ts-expect-error The worker replies with the copied bytes.
+  const view: number[] = await copied;
   assert(bytes.byteLength === 0, "detached");
   assert(view.join() === "4,5,6", view.join());
 
@@ -141,7 +152,8 @@ Yuzuko.test("postMessage transfers buffers, ports, and canvases", async () => {
     detached = error instanceof DOMException ? error.name : "";
   }
   assert(detached === "InvalidStateError", detached);
-  const painted = await canvasReply as { width: number; pixel: number[] };
+  // @ts-expect-error The worker replies with the painted canvas.
+  const painted: { width: number; pixel: number[] } = await canvasReply;
   assert(painted.width === 4, String(painted.width));
   assert(painted.pixel.join() === "255,0,0,255", painted.pixel.join());
   worker.terminate();
@@ -152,12 +164,13 @@ Yuzuko.test("fonts, windows, and WebGPU stay on their thread", async () => {
   const fontPending = nextMessage(worker);
   const fontUrl = new URL("./fonts/YuzukoTest.ttf", import.meta.url).href;
   worker.postMessage({ kind: "font", url: fontUrl });
-  const font = await fontPending as {
+  // @ts-expect-error The worker replies with the font measurement.
+  const font: {
     same: boolean;
     width: number;
     generic: number;
     status: string;
-  };
+  } = await fontPending;
   assert(font.same, "fonts");
   assert(font.status === "loaded", font.status);
   assert(Math.abs(font.width - font.generic) > 1, `${font.width} vs ${font.generic}`);
@@ -169,11 +182,16 @@ Yuzuko.test("fonts, windows, and WebGPU stay on their thread", async () => {
   main.font = "20px sans-serif";
   const genericWidth = main.measureText("A").width;
   assert(missingWidth === genericWidth, `${missingWidth} vs ${genericWidth}`);
-  assert(globalThis.fonts === undefined, "main fonts");
+  assert(
+    // @ts-expect-error fonts is absent on the main global.
+    globalThis.fonts === undefined,
+    "main fonts",
+  );
 
   const window = new Yuzuko.Window({ width: 32, height: 32, title: "worker" });
   let transfer = "";
   try {
+    // @ts-expect-error A window is not transferable.
     worker.postMessage(window, [window]);
   } catch (error) {
     transfer = error instanceof DOMException ? error.name : "";
@@ -188,6 +206,7 @@ Yuzuko.test("fonts, windows, and WebGPU stay on their thread", async () => {
   const device = await adapter.requestDevice();
   let clone = "";
   try {
+    // @ts-expect-error A GPU device is not transferable.
     worker.postMessage(device, [device]);
   } catch (error) {
     clone = error instanceof DOMException ? error.name : "";
@@ -201,7 +220,8 @@ Yuzuko.test("fonts, windows, and WebGPU stay on their thread", async () => {
 
   const gpuPending = nextMessage(worker);
   worker.postMessage({ kind: "gpu" });
-  const gpu = await gpuPending as { name: string };
+  // @ts-expect-error The worker replies with the GPU error name.
+  const gpu: { name: string } = await gpuPending;
   assert(gpu.name === "InvalidStateError", gpu.name);
   worker.terminate();
 });
@@ -221,6 +241,7 @@ Yuzuko.test("WindowSurface transfers control, not itself, to a worker", async ()
   let held = "";
   const probe = new Worker(script("classic.js"));
   try {
+    // @ts-expect-error A window surface is not transferable.
     probe.postMessage(direct.surface, [direct.surface]);
   } catch (error) {
     held = error instanceof DOMException ? error.name : "";
@@ -260,7 +281,8 @@ Yuzuko.test("WindowSurface transfers control, not itself, to a worker", async ()
   const painted = nextMessage(worker);
   worker.postMessage(offscreen, [offscreen]);
   assert(offscreen.width === 0, "detached offscreen");
-  const reply = await painted as { kind: string; pixel: number[]; width: number };
+  // @ts-expect-error The worker replies with the presented frame.
+  const reply: { kind: string; pixel: number[]; width: number } = await painted;
   assert(reply.kind === "frame", reply.kind);
   assert(reply.width === 8, String(reply.width));
   assert(reply.pixel.join() === "0,0,255,255", reply.pixel.join());
@@ -273,14 +295,15 @@ Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () =
   const image = new ImageData(new Uint8ClampedArray([4, 5, 6, 7]), 1, 1);
   const imageReply = nextMessage(worker);
   worker.postMessage(image);
-  const imageSummary = await imageReply as {
+  // @ts-expect-error The worker replies with the cloned image.
+  const imageSummary: {
     kind: string;
     width: number;
     height: number;
     colorSpace: string;
     pixelFormat: string;
     pixel: number;
-  };
+  } = await imageReply;
   assert(imageSummary.kind === "image", imageSummary.kind);
   assert(imageSummary.width === 1 && imageSummary.height === 1, "image size");
   assert(imageSummary.colorSpace === "srgb", imageSummary.colorSpace);
@@ -292,11 +315,12 @@ Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () =
   const bitmapReply = nextMessage(worker);
   worker.postMessage(bitmap, [bitmap]);
   assert(bitmap.width === 0 && bitmap.height === 0, "bitmap detached");
-  const bitmapSummary = await bitmapReply as {
+  // @ts-expect-error The worker replies with the transferred bitmap.
+  const bitmapSummary: {
     kind: string;
     width: number;
     height: number;
-  };
+  } = await bitmapReply;
   assert(bitmapSummary.kind === "bitmap", bitmapSummary.kind);
   assert(bitmapSummary.width === 1 && bitmapSummary.height === 1, "bitmap size");
 
@@ -305,7 +329,8 @@ Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () =
   );
   const keptReply = nextMessage(worker);
   worker.postMessage(kept);
-  const keptSummary = await keptReply as { kind: string; width: number };
+  // @ts-expect-error The worker replies with the copied bitmap.
+  const keptSummary: { kind: string; width: number } = await keptReply;
   assert(keptSummary.kind === "bitmap", keptSummary.kind);
   assert(kept.width === 1 && keptSummary.width === 1, "bitmap copy");
   worker.terminate();
@@ -314,8 +339,9 @@ Yuzuko.test("postMessage clones ImageData and transfers ImageBitmap", async () =
 function workerMessages(worker: Worker): { next(): Promise<Record<string, unknown>> } {
   const queue: Record<string, unknown>[] = [];
   let wait: ((value: Record<string, unknown>) => void) | null = null;
-  worker.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as Record<string, unknown>;
+  worker.addEventListener("message", (event: Event) => {
+    // @ts-expect-error A message event carries a data record.
+    const data: Record<string, unknown> = event.data;
     if (wait) {
       const resolve = wait;
       wait = null;
@@ -342,11 +368,11 @@ function wasmModule(): WebAssembly.Module {
 }
 
 function assertMessageError(event: Record<string, unknown>, label: string) {
-  assert(event.data === null, `${label} data`);
-  assert(event.type === "messageerror", `${label} type`);
-  assert(event.trusted === true, `${label} trust`);
-  assert(event.bubbles === false && event.cancelable === false, `${label} flags`);
-  assert(event.messageEvent === true, `${label} event`);
+  assert(event["data"] === null, `${label} data`);
+  assert(event["type"] === "messageerror", `${label} type`);
+  assert(event["trusted"] === true, `${label} trust`);
+  assert(event["bubbles"] === false && event["cancelable"] === false, `${label} flags`);
+  assert(event["messageEvent"] === true, `${label} event`);
 }
 
 Yuzuko.test("messageerror for a module posted across agents", async () => {
@@ -361,13 +387,14 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   local.port1.postMessage(module);
   assert(await localResult instanceof WebAssembly.Module, "same agent");
   local.port2.onmessageerror = () => {};
+  // @ts-expect-error A number is not a messageerror handler.
   local.port2.onmessageerror = 1;
   assert(local.port2.onmessageerror === null, "port handler cleared");
 
   const worker = new Worker(script("message_error.js"));
   const incoming = workerMessages(worker);
   worker.postMessage({ kind: "ping" });
-  assert((await incoming.next()).kind === "pong", "ready");
+  assert((await incoming.next())["kind"] === "pong", "ready");
 
   let parentError = false;
   let parentMessageError = false;
@@ -379,7 +406,10 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   };
   worker.postMessage(module);
   const globalError = await incoming.next();
-  assert(globalError.kind === "global-messageerror", String(globalError.kind));
+  assert(
+    globalError["kind"] === "global-messageerror",
+    String(globalError["kind"]),
+  );
   assertMessageError(globalError, "worker global");
   assert(parentError === false, "parent error");
   assert(parentMessageError === false, "parent messageerror");
@@ -402,19 +432,23 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   assert(parentError === false, "owner error");
 
   worker.onmessageerror = () => {};
+  // @ts-expect-error A number is not a messageerror handler.
   worker.onmessageerror = 1;
   assert(worker.onmessageerror === null, "worker handler cleared");
 
   const channel = new MessageChannel();
   worker.postMessage({ kind: "hold-port", port: channel.port1 }, [channel.port1]);
   const holding = await incoming.next();
-  assert(holding.kind === "holding" && holding.handler === true, "holding");
+  assert(holding["kind"] === "holding" && holding["handler"] === true, "holding");
   channel.port2.postMessage(module);
   worker.postMessage({ kind: "release-port" });
   const before = await incoming.next();
-  assert(before.kind === "before-start" && before.seen === false, "not started");
+  assert(
+    before["kind"] === "before-start" && before["seen"] === false,
+    "not started",
+  );
   const portError = await incoming.next();
-  assert(portError.kind === "port-messageerror", String(portError.kind));
+  assert(portError["kind"] === "port-messageerror", String(portError["kind"]));
   assertMessageError(portError, "port");
 
   const queued = new MessageChannel();
@@ -422,11 +456,14 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   worker.postMessage(queued.port1, [queued.port1]);
   const queuedBefore = await incoming.next();
   assert(
-    queuedBefore.kind === "queued-before-start" && queuedBefore.seen === false,
+    queuedBefore["kind"] === "queued-before-start" && queuedBefore["seen"] === false,
     "queued quiet",
   );
   const queuedError = await incoming.next();
-  assert(queuedError.kind === "queued-messageerror", String(queuedError.kind));
+  assert(
+    queuedError["kind"] === "queued-messageerror",
+    String(queuedError["kind"]),
+  );
   assertMessageError(queuedError, "queued");
 
   parentMessageError = false;
@@ -442,7 +479,7 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   assert(cloneName === "DataCloneError", cloneName);
   worker.postMessage({ kind: "ping" });
   const pong = await incoming.next();
-  assert(pong.kind === "pong", String(pong.kind));
+  assert(pong["kind"] === "pong", String(pong["kind"]));
   assert(parentMessageError === false, "function messageerror");
   assert(parentError === false, "function error");
   worker.terminate();

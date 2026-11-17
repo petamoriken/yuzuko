@@ -36,15 +36,16 @@ if (mode === "chdir") {
     Yuzuko.chdir(new URL("https://example.invalid/dir"));
   });
   fail("type", () => {
-    (Yuzuko.chdir as (directory: unknown) => void)(1);
+    // @ts-expect-error A number is not a directory.
+    Yuzuko.chdir(1);
   });
   Yuzuko.chdir(new URL("./", import.meta.url));
   console.log("ok:url");
 } else {
-  const get = Yuzuko.env.get as (
+  const get: (
     name: string,
     extra?: string,
-  ) => string | undefined;
+  ) => string | undefined = Yuzuko.env.get;
   console.log("cwd:" + Yuzuko.cwd());
   console.log("probe:" + get("YUZUKO_PROCESS_PROBE", "ignored"));
   console.log(
@@ -68,7 +69,7 @@ if (mode === "chdir") {
   console.log("get:" + Yuzuko.env.get("YuzukoEnvRoundTrip"));
   const snap = Yuzuko.env.toObject();
   Yuzuko.env.delete("YuzukoEnvRoundTrip");
-  console.log("snap:" + snap.YuzukoEnvRoundTrip);
+  console.log("snap:" + snap["YuzukoEnvRoundTrip"]);
   console.log("after:" + String(Yuzuko.env.get("YuzukoEnvRoundTrip")));
   Yuzuko.env.set("YuzukoEnvEmpty", "");
   console.log("empty:" + JSON.stringify(Yuzuko.env.get("YuzukoEnvEmpty")));
@@ -86,13 +87,12 @@ if (mode === "chdir") {
     Yuzuko.env.set("YuzukoEnvRoundTrip", "a\0b");
   });
   fail("name-type", () => {
-    (Yuzuko.env.get as (name: unknown) => unknown)(1);
+    // @ts-expect-error A number is not an environment name.
+    Yuzuko.env.get(1);
   });
   fail("value-type", () => {
-    (Yuzuko.env.set as (name: string, value: unknown) => void)(
-      "YuzukoEnvRoundTrip",
-      1,
-    );
+    // @ts-expect-error A number is not an environment value.
+    Yuzuko.env.set("YuzukoEnvRoundTrip", 1);
   });
   Yuzuko.env.delete("YuzukoEnvMissingName");
   console.log("ok:delete-missing");

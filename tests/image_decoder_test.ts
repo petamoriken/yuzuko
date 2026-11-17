@@ -1,18 +1,19 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: unknown): asserts condition {
   if (!condition) {
+    // @ts-expect-error the assertion message is a string.
     throw new Error(message);
   }
 }
 
-async function bytes(name) {
+async function bytes(name: string): Promise<Uint8Array<ArrayBuffer>> {
   const url = new URL(`./fixtures/images/${name}`, import.meta.url);
   return new Uint8Array(await (await fetch(url)).arrayBuffer());
 }
 
-async function bitmapPixels(source) {
+async function bitmapPixels(source: ImageBitmapSource): Promise<number[]> {
   const bitmap = await createImageBitmap(source);
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bitmap, 0, 0);
   const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
   bitmap.close();
@@ -61,6 +62,7 @@ Yuzuko.test("ImageDecoder promise members reject a foreign receiver", async () =
   assert(decode instanceof Promise, "foreign decode returns a promise");
   assert(await rejectionName(decode) === "TypeError", "foreign decode");
   assert(ImageDecoder.isTypeSupported.length === 1, "isTypeSupported length");
+  // @ts-expect-error isTypeSupported requires a type.
   const missing = ImageDecoder.isTypeSupported();
   assert(missing instanceof Promise, "missing type returns a promise");
   assert(await rejectionName(missing) === "TypeError", "missing type");
@@ -84,9 +86,9 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   await decoder.tracks.ready;
   assert(decoder.tracks.length === 1, "one track");
   assert(decoder.tracks.selectedIndex === 0, "selected");
-  assert(decoder.tracks[0].animated === false, "still");
-  assert(decoder.tracks[0].frameCount === 1, "one frame");
-  assert(decoder.tracks[0].repetitionCount === 0, "no loop");
+  assert(decoder.tracks[0]!.animated === false, "still");
+  assert(decoder.tracks[0]!.frameCount === 1, "one frame");
+  assert(decoder.tracks[0]!.repetitionCount === 0, "no loop");
   const result = await decoder.decode();
   assert(result.complete, "frame complete");
   assert(result.image.displayWidth === 2, "width");
@@ -109,7 +111,8 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   assert(result.image.colorSpace.transfer === null, "closed transfer");
   assert(result.image.colorSpace.matrix === null, "closed matrix");
   assert(result.image.colorSpace.fullRange === null, "closed range");
-  assert(result.image.displayWidth === 0, "closed display");
+  let displayWidth: number = result.image.displayWidth;
+  assert(displayWidth === 0, "closed display");
   const again = await decoder.decode();
   assert(again.image.displayWidth === 2, "second frame");
   again.image.close();
@@ -118,7 +121,7 @@ Yuzuko.test("decode a PNG buffer into a VideoFrame", async () => {
   try {
     await decoder.decode();
   } catch (error) {
-    closed = error.name === "InvalidStateError";
+    closed = error instanceof DOMException && error.name === "InvalidStateError";
   }
   assert(closed, "closed decode");
 });
@@ -142,7 +145,10 @@ Yuzuko.test("VideoColorSpace keeps the WebCodecs enums", () => {
   assert(empty.toJSON().primaries === null, "json null");
   let invalid = false;
   try {
-    new VideoColorSpace({ primaries: "nope" });
+    new VideoColorSpace({
+      // @ts-expect-error nope is not a VideoColorPrimaries value.
+      primaries: "nope",
+    });
   } catch (error) {
     invalid = error instanceof TypeError;
   }
@@ -169,10 +175,11 @@ Yuzuko.test("a ReadableStream of JPEG bytes decodes", async () => {
 });
 
 Yuzuko.test("WebP and JPEG XL decode", async () => {
-  for (const [name, type] of [
+  const samples: Array<[string, string]> = [
     ["corners.webp", "image/webp"],
     ["corners.jxl", "image/jxl"],
-  ]) {
+  ];
+  for (const [name, type] of samples) {
     const encoded = await bytes(name);
     const decoder = new ImageDecoder({ type, data: encoded });
     const result = await decoder.decode();
@@ -182,11 +189,11 @@ Yuzuko.test("WebP and JPEG XL decode", async () => {
   }
 });
 
-function pushU16(out, value) {
+function pushU16(out: number[], value: number): void {
   out.push(value & 0xff, (value >> 8) & 0xff);
 }
 
-function pushU32(out, value) {
+function pushU32(out: number[], value: number): void {
   out.push(
     value & 0xff,
     (value >> 8) & 0xff,
@@ -196,7 +203,7 @@ function pushU32(out, value) {
 }
 
 Yuzuko.test("a 24-bit bottom-up BMP is red at the origin", async () => {
-  const file = [];
+  const file: number[] = [];
   file.push(0x42, 0x4d);
   const header = 14 + 40;
   const stride = 8;
@@ -244,9 +251,9 @@ Yuzuko.test("AVIF decodes as one still frame", async () => {
   await decoder.completed;
   await decoder.tracks.ready;
   assert(decoder.tracks.length === 1, "one track");
-  assert(decoder.tracks[0].animated === false, "still");
-  assert(decoder.tracks[0].frameCount === 1, "one frame");
-  assert(decoder.tracks[0].repetitionCount === 0, "no loop");
+  assert(decoder.tracks[0]!.animated === false, "still");
+  assert(decoder.tracks[0]!.frameCount === 1, "one frame");
+  assert(decoder.tracks[0]!.repetitionCount === 0, "no loop");
   const result = await decoder.decode();
   assert(result.complete, "complete");
   assert(result.image.displayWidth === 16, "width");
@@ -257,10 +264,10 @@ Yuzuko.test("AVIF decodes as one still frame", async () => {
   const decoded = await bitmapPixels(result.image);
   const index = (8 * 16 + 8) * 4;
   assert(
-    decoded[index] > 180 &&
-      decoded[index + 1] < 80 &&
-      decoded[index + 2] < 80 &&
-      decoded[index + 3] === 255,
+    decoded[index]! > 180 &&
+      decoded[index + 1]! < 80 &&
+      decoded[index + 2]! < 80 &&
+      decoded[index + 3]! === 255,
     `pixel ${decoded[index]},${decoded[index + 1]},${decoded[index + 2]}`,
   );
   assert(decoded.join() === bitmap.join(), "matches createImageBitmap");
@@ -268,7 +275,11 @@ Yuzuko.test("AVIF decodes as one still frame", async () => {
   decoder.close();
 });
 
-function samePixels(actual, expected, message) {
+function samePixels(
+  actual: ArrayLike<number>,
+  expected: ArrayLike<number>,
+  message: string,
+): void {
   assert(actual.length === expected.length, `${message} length`);
   for (let index = 0; index < actual.length; index += 1) {
     if (actual[index] !== expected[index]) {
@@ -277,13 +288,16 @@ function samePixels(actual, expected, message) {
   }
 }
 
-function corner(pixels, x, y, width) {
+function corner(pixels: number[], x: number, y: number, width: number): number[] {
   const index = (y * width + x) * 4;
   return pixels.slice(index, index + 4);
 }
 
-function assertCorner(pixel, kind, name) {
-  const [red, green, blue, alpha] = pixel;
+function assertCorner(pixel: number[], kind: string, name: string): void {
+  const red = pixel[0]!;
+  const green = pixel[1]!;
+  const blue = pixel[2]!;
+  const alpha = pixel[3]!;
   assert(alpha === 255, `${name} ${kind} alpha ${alpha}`);
   if (kind === "yellow") {
     assert(red >= 250 && green >= 250 && blue <= 8, `${name} yellow ${pixel}`);
@@ -296,10 +310,12 @@ function assertCorner(pixel, kind, name) {
   }
 }
 
-async function drawnPixels(source) {
+async function drawnPixels(
+  source: ImageBitmapSource,
+): Promise<{ bitmap: ImageBitmap; pixels: number[] }> {
   const bitmap = await createImageBitmap(source);
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d")!;
   assert(context, "context");
   context.drawImage(bitmap, 0, 0);
   const pixels = [...context.getImageData(0, 0, bitmap.width, bitmap.height).data];
@@ -308,7 +324,7 @@ async function drawnPixels(source) {
 
 Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () => {
   const root = new URL("./wpt/suite/webcodecs/", import.meta.url);
-  const cases = [
+  const cases: Array<[string, string]> = [
     ["four-colors.avif", "I444"],
     ["four-colors-limited-range-420-8bpc.avif", "I420"],
     ["four-colors-limited-range-422-8bpc.avif", "I422"],
@@ -318,7 +334,7 @@ Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () =
     ["four-colors-full-range-bt2020-pq-444-10bpc.avif", "I444P10"],
   ];
   const adapter = await navigator.gpu.requestAdapter();
-  let device = null;
+  let device: GPUDevice | null = null;
   if (adapter) {
     device = await adapter.requestDevice();
   }
@@ -339,7 +355,7 @@ Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () =
       assertCorner(corner(bare.pixels, 319, 239, 320), "green", name);
 
       const patternCanvas = new OffscreenCanvas(1, 1);
-      const patternContext = patternCanvas.getContext("2d");
+      const patternContext = patternCanvas.getContext("2d")!;
       assert(patternContext, "pattern context");
       const pattern = patternContext.createPattern(bare.bitmap, "repeat");
       assert(pattern !== null, `${name} pattern`);
@@ -362,7 +378,7 @@ Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () =
       const result = await decoder.decode();
       assert(result.image.format === format, `${name} ${result.image.format}`);
       const direct = new OffscreenCanvas(320, 240);
-      const directContext = direct.getContext("2d");
+      const directContext = direct.getContext("2d")!;
       assert(directContext, "direct context");
       directContext.drawImage(result.image, 0, 0);
       samePixels(
@@ -391,7 +407,11 @@ Yuzuko.test("AVIF reaches ImageBitmap, drawImage, and createPattern", async () =
   }
 });
 
-async function assertGpuPixel(device, source, pixels) {
+async function assertGpuPixel(
+  device: GPUDevice,
+  source: GPUCopyExternalImageSource,
+  pixels: number[],
+): Promise<void> {
   const texture = device.createTexture({
     size: [1, 1],
     format: "rgba8unorm",
@@ -432,13 +452,19 @@ Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
   try {
     await junk.decode();
   } catch (error) {
-    unsupported = error.name === "NotSupportedError";
+    unsupported = error instanceof DOMException && error.name === "NotSupportedError";
   }
   assert(unsupported, "junk decode");
   const readyError = await junkReady;
   const completedError = await junkCompleted;
-  assert(readyError.name === "NotSupportedError", "junk tracks");
-  assert(completedError.name === "NotSupportedError", "junk completed");
+  assert(
+    readyError instanceof DOMException && readyError.name === "NotSupportedError",
+    "junk tracks",
+  );
+  assert(
+    completedError instanceof DOMException && completedError.name === "NotSupportedError",
+    "junk completed",
+  );
   junk.close();
 
   const decoder = new ImageDecoder({ type: "image/png", data: encoded });
@@ -450,17 +476,17 @@ Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
     range = error instanceof RangeError;
   }
   assert(range, "frame index");
-  decoder.tracks[0].selected = false;
+  decoder.tracks[0]!.selected = false;
   assert(decoder.tracks.selectedIndex === -1, "deselected");
   assert(decoder.tracks.selectedTrack === null, "no selected track");
   let none = false;
   try {
     await decoder.decode();
   } catch (error) {
-    none = error.name === "InvalidStateError";
+    none = error instanceof DOMException && error.name === "InvalidStateError";
   }
   assert(none, "no track");
-  decoder.tracks[0].selected = true;
+  decoder.tracks[0]!.selected = true;
   const selected = await decoder.decode();
   selected.image.close();
   const pending = decoder.decode();
@@ -469,7 +495,7 @@ Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
   try {
     await pending;
   } catch (error) {
-    aborted = error.name === "AbortError";
+    aborted = error instanceof DOMException && error.name === "AbortError";
   }
   assert(aborted || (await decoder.decode()).image.displayWidth === 2, "reset");
   decoder.close();
@@ -483,16 +509,19 @@ Yuzuko.test("bad type, bad index, and a truncated buffer fail", async () => {
   try {
     await partial.completed;
   } catch (error) {
-    encoding = error.name === "EncodingError";
+    encoding = error instanceof DOMException && error.name === "EncodingError";
   }
   const partialTracks = await partialReady;
   assert(encoding, "truncated");
-  assert(partialTracks.name === "EncodingError", "truncated tracks");
+  assert(
+    partialTracks instanceof DOMException && partialTracks.name === "EncodingError",
+    "truncated tracks",
+  );
   partial.close();
 });
 
 Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
-  async function open(name) {
+  async function open(name: string): Promise<{ decoder: ImageDecoder; encoded: Uint8Array<ArrayBuffer> }> {
     const url = new URL(
       `./wpt/suite/jpegxl/resources/${name}`,
       import.meta.url,
@@ -504,7 +533,7 @@ Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
   }
 
   const once = await open("animation-1loop.jxl");
-  const track = once.decoder.tracks.selectedTrack;
+  const track = once.decoder.tracks.selectedTrack!;
   assert(track.animated === true, "animated");
   assert(track.frameCount === 4, "frames");
   assert(track.repetitionCount === 0, "plays once");
@@ -514,8 +543,9 @@ Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
     const result = await once.decoder.decode({ frameIndex: index });
     assert(result.image.timestamp > previous, "timestamp increases");
     previous = result.image.timestamp;
-    assert(typeof result.image.duration === "number", "duration");
-    total += result.image.duration;
+    const duration = result.image.duration;
+    assert(typeof duration === "number", "duration");
+    total += duration;
     result.image.close();
   }
   assert(total === 2000000, "cycle duration");
@@ -537,13 +567,13 @@ Yuzuko.test("ImageDecoder returns every JPEG XL animation frame", async () => {
 
   const forever = await open("animation-infiniteloop.jxl");
   assert(
-    forever.decoder.tracks.selectedTrack.repetitionCount === Infinity,
+    forever.decoder.tracks.selectedTrack!.repetitionCount === Infinity,
     "forever",
   );
   forever.decoder.close();
 
   const twice = await open("animation-2loops.jxl");
-  assert(twice.decoder.tracks.selectedTrack.repetitionCount === 1, "twice");
+  assert(twice.decoder.tracks.selectedTrack!.repetitionCount === 1, "twice");
   twice.decoder.close();
 });
 
@@ -575,7 +605,7 @@ Yuzuko.test("transfer detaches listed ArrayBuffers", async () => {
       transfer: [twice, twice],
     });
   } catch (error) {
-    duplicate = error.name === "DataCloneError";
+    duplicate = error instanceof DOMException && error.name === "DataCloneError";
   }
   assert(duplicate, "duplicate");
   assert(twice.byteLength > 0, "duplicate stays attached");
@@ -591,7 +621,7 @@ Yuzuko.test("transfer detaches listed ArrayBuffers", async () => {
       transfer: [kept, detached],
     });
   } catch (error) {
-    detachedError = error.name === "DataCloneError";
+    detachedError = error instanceof DOMException && error.name === "DataCloneError";
   }
   assert(detachedError, "already detached");
   assert(kept.byteLength === 8, "earlier buffer stays attached");
@@ -601,6 +631,7 @@ Yuzuko.test("transfer detaches listed ArrayBuffers", async () => {
     new ImageDecoder({
       type: "image/png",
       data: encoded,
+      // @ts-expect-error 1 is not an ArrayBuffer.
       transfer: [kept, 1],
     });
   } catch (error) {
@@ -614,6 +645,7 @@ Yuzuko.test("transfer detaches listed ArrayBuffers", async () => {
     new ImageDecoder({
       type: "image/png",
       data: encoded,
+      // @ts-expect-error transfer must be an array.
       transfer: kept,
     });
   } catch (error) {
@@ -634,7 +666,7 @@ Yuzuko.test("a non-detachable transfer throws DataCloneError", () => {
       transfer: [kept, memory.buffer],
     });
   } catch (error) {
-    clone = error.name === "DataCloneError";
+    clone = error instanceof DOMException && error.name === "DataCloneError";
   }
   assert(clone, "cannot detach wasm memory");
   assert(kept.byteLength === 8, "earlier buffer stays attached");
@@ -711,6 +743,6 @@ Yuzuko.test("ImageDecoder desired size scales every frame", async () => {
     preferAnimation: true,
   });
   await still.tracks.ready;
-  assert(still.tracks[0].animated === false, "one track");
+  assert(still.tracks[0]!.animated === false, "one track");
   still.close();
 });

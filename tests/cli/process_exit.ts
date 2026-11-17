@@ -1,20 +1,22 @@
 const mode = Yuzuko.args[0];
 
+const exit: (code?: number, extra?: unknown) => void = Yuzuko.exit;
+
 if (mode === "code") {
-  Yuzuko.exit(Number(Yuzuko.args[1]), "no");
+  exit(Number(Yuzuko.args[1]), "no");
   console.log("after");
 } else if (mode === "omit") {
-  Yuzuko.exit();
+  exit();
   console.log("after");
 } else if (mode === "negzero") {
-  Yuzuko.exit(-0);
+  exit(-0);
   console.log("after");
 } else if (mode === "undef") {
-  Yuzuko.exit(undefined);
+  exit(undefined);
   console.log("after");
 } else if (mode === "catch") {
   try {
-    Yuzuko.exit(4);
+    exit(4);
     console.log("still");
   } catch {
     console.log("caught");
@@ -39,7 +41,7 @@ if (mode === "code") {
   ];
   for (const sample of samples) {
     try {
-      Yuzuko.exit(sample as number);
+      exit(sample);
       console.log("exited");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

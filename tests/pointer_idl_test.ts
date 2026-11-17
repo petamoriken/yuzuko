@@ -1,10 +1,10 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function throwsTypeError(run) {
+function throwsTypeError(run: () => void): boolean {
   try {
     run();
   } catch (error) {
@@ -13,7 +13,7 @@ function throwsTypeError(run) {
   return false;
 }
 
-function constant(holder, name, value) {
+function constant(holder: object, name: string, value: unknown): void {
   const desc = Object.getOwnPropertyDescriptor(holder, name);
   assert(desc !== undefined, `${name} own`);
   assert(desc.value === value, `${name} value`);
@@ -29,15 +29,25 @@ Yuzuko.test("mouse event constructors have length 1", () => {
   assert(PointerEvent.length === 1, "pointer");
   assert(DragEvent.length === 1, "drag");
   assert(MouseEvent.prototype.initMouseEvent.length === 1, "init");
-  assert(throwsTypeError(() => new MouseEvent()), "mouse arity");
   assert(
-    throwsTypeError(() => new MouseEvent("mousedown").initMouseEvent()),
+    throwsTypeError(() => {
+      // @ts-expect-error The event type is required.
+      new MouseEvent();
+    }),
+    "mouse arity",
+  );
+  assert(
+    throwsTypeError(() => {
+      const mouse = new MouseEvent("mousedown");
+      // @ts-expect-error The event type is required.
+      mouse.initMouseEvent();
+    }),
     "init arity",
   );
 });
 
 Yuzuko.test("wheel and key constants are fixed data properties", () => {
-  const cases = [
+  const cases: ReadonlyArray<[{ prototype: object }, string, number]> = [
     [WheelEvent, "DOM_DELTA_PIXEL", 0],
     [WheelEvent, "DOM_DELTA_LINE", 1],
     [WheelEvent, "DOM_DELTA_PAGE", 2],
@@ -52,6 +62,7 @@ Yuzuko.test("wheel and key constants are fixed data properties", () => {
   }
   assert(
     throwsTypeError(() => {
+      // @ts-expect-error DOM_DELTA_PIXEL is not optional.
       delete WheelEvent.DOM_DELTA_PIXEL;
     }),
     "delete",
@@ -95,6 +106,7 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
     "mouseup",
     true,
     true,
+    // @ts-expect-error The view is the realm global.
     globalThis,
     2,
     5.9,
@@ -110,6 +122,7 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
   );
   assert(event.type === "mouseup", "type");
   assert(event.bubbles === true && event.cancelable === true, "flags");
+  // @ts-expect-error The view is the realm global.
   assert(event.view === globalThis, "view");
   assert(event.detail === 2, "detail");
   assert(event.screenX === 5 && event.screenY === 1, "screen");
@@ -140,11 +153,14 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
 
   const live = new MouseEvent("mousedown", { clientX: 4 });
   let during = false;
-  const listener = (dispatched) => {
-    dispatched.initMouseEvent(
+  const listener = (dispatched: Event) => {
+    // @ts-expect-error The listener receives the dispatched mouse event.
+    const mouse: MouseEvent = dispatched;
+    mouse.initMouseEvent(
       "mouseup",
       true,
       true,
+      // @ts-expect-error The view is the realm global.
       globalThis,
       7,
       9,
@@ -158,13 +174,13 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
       1,
       target,
     );
-    during = dispatched.type === "mousedown" && dispatched.clientX === 4;
+    during = mouse.type === "mousedown" && mouse.clientX === 4;
   };
-  addEventListener("mousedown", listener);
+  self.addEventListener("mousedown", listener);
   try {
-    assert(dispatchEvent(live) === true, "dispatch");
+    assert(self.dispatchEvent(live) === true, "dispatch");
   } finally {
-    removeEventListener("mousedown", listener);
+    self.removeEventListener("mousedown", listener);
   }
   assert(during, "during");
   assert(live.type === "mousedown" && live.clientX === 4, "after");
@@ -175,27 +191,34 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
       throw new TypeError("convert");
     },
   };
-  const converting = (dispatched) => {
+  const converting = (dispatched: Event) => {
+    // @ts-expect-error The listener receives the dispatched mouse event.
+    const mouse: MouseEvent = dispatched;
     converted = throwsTypeError(() => {
-      dispatched.initMouseEvent("mouseup", false, false, null, bad);
+      // @ts-expect-error detail is converted with ToNumber.
+      mouse.initMouseEvent("mouseup", false, false, null, bad);
     });
-    assert(dispatched.type === "mousedown", "type after throw");
+    assert(mouse.type === "mousedown", "type after throw");
   };
-  addEventListener("mousedown", converting);
+  self.addEventListener("mousedown", converting);
   try {
-    dispatchEvent(live);
+    self.dispatchEvent(live);
   } finally {
-    removeEventListener("mousedown", converting);
+    self.removeEventListener("mousedown", converting);
   }
   assert(converted, "convert");
   assert(live.detail === 0, "detail stayed");
 
   assert(
-    throwsTypeError(() => live.initMouseEvent("x", false, false, {})),
+    throwsTypeError(() => {
+      // @ts-expect-error The view must be a Window.
+      live.initMouseEvent("x", false, false, {});
+    }),
     "view",
   );
   assert(
-    throwsTypeError(() =>
+    throwsTypeError(() => {
+      // @ts-expect-error null is not a Window, and 1 is not an EventTarget.
       live.initMouseEvent(
         "x",
         false,
@@ -212,8 +235,8 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
         false,
         0,
         1,
-      ),
-    ),
+      );
+    }),
     "related",
   );
 });
@@ -244,7 +267,10 @@ Yuzuko.test("drag events floor and store a data transfer", () => {
   const withStore = new DragEvent("drop", { dataTransfer: store });
   assert(withStore.dataTransfer === store, "same");
   assert(
-    throwsTypeError(() => new DragEvent("drop", { dataTransfer: {} })),
+    throwsTypeError(() => {
+      // @ts-expect-error dataTransfer must be a DataTransfer.
+      new DragEvent("drop", { dataTransfer: {} });
+    }),
     "reject",
   );
 });

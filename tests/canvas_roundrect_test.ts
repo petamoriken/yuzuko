@@ -1,40 +1,51 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function alpha(ctx, x, y) {
-  return ctx.getImageData(x, y, 1, 1).data[3];
+function alpha(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): number {
+  return ctx.getImageData(x, y, 1, 1).data[3]!;
 }
 
-function filled(ctx, x, y, label) {
+function filled(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  label: string,
+): void {
   const value = alpha(ctx, x, y);
   assert(value >= 200, `${label} at ${x},${y} alpha ${value}`);
 }
 
-function clear(ctx, x, y, label) {
+function clear(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  label: string,
+): void {
   const value = alpha(ctx, x, y);
   assert(value <= 20, `${label} at ${x},${y} alpha ${value}`);
 }
 
-function paint(radii, omitted) {
-  const ctx = new OffscreenCanvas(40, 40).getContext("2d");
+function paint(radii: unknown, omitted: boolean): OffscreenCanvasRenderingContext2D {
+  const ctx = new OffscreenCanvas(40, 40).getContext("2d")!;
   ctx.beginPath();
   if (omitted) {
     ctx.roundRect(0, 0, 40, 40);
   } else {
+    // @ts-expect-error radii is an arbitrary host value.
     ctx.roundRect(0, 0, 40, 40, radii);
   }
   ctx.fill();
   return ctx;
 }
 
-function bytes(radii) {
+function bytes(radii: unknown): Uint8ClampedArray {
   return paint(radii, false).getImageData(0, 0, 40, 40).data;
 }
 
-function same(left, right, label) {
+function same(left: ArrayLike<number>, right: ArrayLike<number>, label: string): void {
   for (let i = 0; i < left.length; i++) {
     if (left[i] !== right[i]) {
       throw new Error(`${label} differs at ${i}: ${left[i]} vs ${right[i]}`);
@@ -42,7 +53,7 @@ function same(left, right, label) {
   }
 }
 
-function differs(left, right, label) {
+function differs(left: ArrayLike<number>, right: ArrayLike<number>, label: string): void {
   for (let i = 0; i < left.length; i++) {
     if (left[i] !== right[i]) {
       return;
@@ -51,15 +62,19 @@ function differs(left, right, label) {
   throw new Error(`${label} unexpectedly matches`);
 }
 
-function corners(ctx, shape, label) {
-  const sample = [
+function corners(
+  ctx: OffscreenCanvasRenderingContext2D,
+  shape: ArrayLike<number>,
+  label: string,
+): void {
+  const sample: [number, number][] = [
     [2, 2],
     [37, 2],
     [37, 37],
     [2, 37],
   ];
   for (let index = 0; index < 4; index++) {
-    const [x, y] = sample[index];
+    const [x, y] = sample[index]!;
     if (shape[index] === 1) {
       filled(ctx, x, y, `${label} corner ${index}`);
     } else {
@@ -69,7 +84,11 @@ function corners(ctx, shape, label) {
   filled(ctx, 20, 20, `${label} center`);
 }
 
-function throws(fn, type, message) {
+function throws(
+  fn: () => void,
+  type: new (...args: never[]) => Error,
+  message?: string,
+): void {
   try {
     fn();
   } catch (error) {
@@ -110,25 +129,28 @@ Yuzuko.test("roundRect radii follow DOMPointInit and sequences", () => {
     yield new DOMPoint(16, 16);
   }
   corners(paint(pairs(), false), [1, 0, 1, 0], "generator");
-  function list(a, b) {
+  function list(a: number, b: number): IArguments {
+    void a;
+    void b;
     return arguments;
   }
   corners(paint(list(0, 16), false), [1, 0, 1, 0], "arguments");
 
   const path = new Path2D();
+  // @ts-expect-error A nested array is not a radius.
   path.roundRect(0, 0, 40, 40, [[25]]);
-  const ctx = new OffscreenCanvas(40, 40).getContext("2d");
+  const ctx = new OffscreenCanvas(40, 40).getContext("2d")!;
   ctx.fill(path);
   corners(ctx, sharp, "Path2D zero");
   const rounded = new Path2D();
   rounded.roundRect(0, 0, 40, 40, [16]);
-  const other = new OffscreenCanvas(40, 40).getContext("2d");
+  const other = new OffscreenCanvas(40, 40).getContext("2d")!;
   other.fill(rounded);
   corners(other, round, "Path2D number");
 });
 
 Yuzuko.test("roundRect rejects an unusable radius list", () => {
-  const ctx = new OffscreenCanvas(40, 40).getContext("2d");
+  const ctx = new OffscreenCanvas(40, 40).getContext("2d")!;
   throws(
     () => ctx.roundRect(0, 0, 40, 40, -1),
     RangeError,
@@ -154,11 +176,31 @@ Yuzuko.test("roundRect rejects an unusable radius list", () => {
     RangeError,
     "The radius is negative",
   );
-  throws(() => ctx.roundRect(0, 0, 40, 40, 0n), TypeError);
-  throws(() => ctx.roundRect(0, 0, 40, 40, { x: 0n }), TypeError);
-  throws(() => ctx.roundRect(0, 0, 40, 40, [{ x: 0n }]), TypeError);
-  throws(() => ctx.roundRect(0, 0, 40, 40, { z: 0n }), TypeError);
-  throws(() => ctx.roundRect(NaN, 0, 40, 40, 0n), TypeError);
+  throws(
+    // @ts-expect-error A bigint is not a radius.
+    () => ctx.roundRect(0, 0, 40, 40, 0n),
+    TypeError,
+  );
+  throws(
+    // @ts-expect-error A bigint is not a DOMPoint coordinate.
+    () => ctx.roundRect(0, 0, 40, 40, { x: 0n }),
+    TypeError,
+  );
+  throws(
+    // @ts-expect-error A bigint is not a DOMPoint coordinate.
+    () => ctx.roundRect(0, 0, 40, 40, [{ x: 0n }]),
+    TypeError,
+  );
+  throws(
+    // @ts-expect-error A bigint is not a DOMPoint coordinate.
+    () => ctx.roundRect(0, 0, 40, 40, { z: 0n }),
+    TypeError,
+  );
+  throws(
+    // @ts-expect-error A bigint is not a radius.
+    () => ctx.roundRect(NaN, 0, 40, 40, 0n),
+    TypeError,
+  );
   throws(
     () => ctx.roundRect(0, 0, 40, 40, [-1, NaN]),
     RangeError,
@@ -177,16 +219,19 @@ Yuzuko.test("roundRect rejects an unusable radius list", () => {
     },
   };
   throws(
+    // @ts-expect-error An infinite iterator is not a radius list.
     () => ctx.roundRect(0, 0, 40, 40, infinite),
     RangeError,
     "roundRect radii must contain one to four values",
   );
   throws(
+    // @ts-expect-error The iterator property is not callable.
     () => ctx.roundRect(0, 0, 40, 40, { [Symbol.iterator]: 1 }),
     TypeError,
     "@@iterator is not callable",
   );
   throws(
+    // @ts-expect-error A throwing getter is not a DOMPoint coordinate.
     () => ctx.roundRect(0, 0, 40, 40, {
       get w() {
         throw new TypeError("w getter");
@@ -197,11 +242,17 @@ Yuzuko.test("roundRect rejects an unusable radius list", () => {
     TypeError,
     "w getter",
   );
-  throws(() => ctx.roundRect(0, 0), TypeError, "roundRect requires a rectangle");
+  const roundRect = ctx.roundRect;
+  throws(
+    // @ts-expect-error roundRect requires a rectangle.
+    () => roundRect(0, 0),
+    TypeError,
+    "roundRect requires a rectangle",
+  );
 });
 
 Yuzuko.test("stroke draws the current path or a Path2D", () => {
-  const ctx = new OffscreenCanvas(30, 30).getContext("2d");
+  const ctx = new OffscreenCanvas(30, 30).getContext("2d")!;
   ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.rect(4, 4, 10, 10);
@@ -216,6 +267,7 @@ Yuzuko.test("stroke draws the current path or a Path2D", () => {
   clear(ctx, 8, 4, "current path left unstroked");
   filled(ctx, 20, 16, "path edge");
   throws(
+    // @ts-expect-error The path argument is not a Path2D.
     () => ctx.stroke({}),
     TypeError,
     "The path argument is not a Path2D",

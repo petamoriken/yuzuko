@@ -5,7 +5,11 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 Yuzuko.test("dialogs belong to the window and are absent when headless", () => {
-  assert(typeof globalThis.alert === "undefined", "no global alert");
+  assert(
+    // @ts-expect-error alert is not a global.
+    typeof globalThis.alert === "undefined",
+    "no global alert",
+  );
   const win = new Yuzuko.Window({ title: "dialogs", width: 80, height: 60 });
   let text = "";
   const value = {
@@ -76,6 +80,7 @@ Yuzuko.test(
   assert(Yuzuko.setDialogLabels.length === 0, "setDialogLabels length");
 
   let error = thrown(() => {
+    // @ts-expect-error null is not dialog labels.
     Yuzuko.setDialogLabels(null);
   });
   assert(errorName(error) === "TypeError", errorName(error));
@@ -85,6 +90,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error A string is not dialog labels.
     Yuzuko.setDialogLabels("OK");
   });
   assert(
@@ -93,11 +99,13 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error ok must be a string.
     Yuzuko.setDialogLabels({ ok: 1 });
   });
   assert(errorMessage(error) === "ok must be a string.", errorMessage(error));
 
   error = thrown(() => {
+    // @ts-expect-error open must be a string.
     Yuzuko.setDialogLabels({ open: false });
   });
   assert(
@@ -106,6 +114,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error select must be a string.
     Yuzuko.setDialogLabels({ select: null });
   });
   assert(
@@ -130,6 +139,7 @@ Yuzuko.test(
 
   error = thrown(() => {
     Yuzuko.setDialogLabels({
+      // @ts-expect-error ok must be a string.
       get ok() {
         throw new TypeError("ok getter");
       },
@@ -153,6 +163,7 @@ Yuzuko.test(
 
   let seen = false;
   Yuzuko.setDialogLabels({
+    // @ts-expect-error title is not a dialog label.
     get title() {
       seen = true;
       throw new TypeError("title");
@@ -163,6 +174,7 @@ Yuzuko.test(
   Yuzuko.setDialogLabels();
   Yuzuko.setDialogLabels(undefined);
   Yuzuko.setDialogLabels({});
+  // @ts-expect-error An array is not dialog labels.
   Yuzuko.setDialogLabels([]);
   Yuzuko.setDialogLabels({ ok: "はい", cancel: "いいえ" });
   Yuzuko.setDialogLabels({ open: "開く", save: "保存", select: "選択" });
@@ -176,10 +188,19 @@ Yuzuko.test(
 
   const win = new Yuzuko.Window({ title: "picker", width: 80, height: 60 });
   assert(win.pickFiles.length === 0, "pickFiles length");
-  assert(win.pickSaveFile === undefined, "no pickSaveFile");
-  assert(win.pickDirectory === undefined, "no pickDirectory");
+  assert(
+    // @ts-expect-error pickSaveFile is not a window method.
+    win.pickSaveFile === undefined,
+    "no pickSaveFile",
+  );
+  assert(
+    // @ts-expect-error pickDirectory is not a window method.
+    win.pickDirectory === undefined,
+    "no pickDirectory",
+  );
 
   error = thrown(() => {
+    // @ts-expect-error null is not file picker options.
     win.pickFiles(null);
   });
   assert(errorName(error) === "TypeError", errorName(error));
@@ -189,12 +210,14 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error multiple must be a boolean.
     win.pickFiles({ multiple: 1 });
   });
   assert(errorMessage(error) === "multiple must be a boolean.", errorMessage(error));
 
   error = thrown(() => {
     win.pickFiles({
+      // @ts-expect-error multiple must be a boolean.
       get multiple() {
         throw new TypeError("multiple getter");
       },
@@ -204,6 +227,7 @@ Yuzuko.test(
   assert(errorMessage(error) === "multiple getter", errorMessage(error));
 
   error = thrown(() => {
+    // @ts-expect-error filters must be an array.
     win.pickFiles({ filters: { extensions: ["txt"] } });
   });
   assert(
@@ -213,6 +237,7 @@ Yuzuko.test(
 
   error = thrown(() => {
     win.pickFiles({
+      // @ts-expect-error filters must be an array.
       get filters() {
         throw new TypeError("filters getter");
       },
@@ -222,6 +247,7 @@ Yuzuko.test(
   assert(errorMessage(error) === "filters getter", errorMessage(error));
 
   error = thrown(() => {
+    // @ts-expect-error A file filter must be an object.
     win.pickFiles({ filters: ["txt"] });
   });
   assert(
@@ -230,6 +256,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error extensions is required.
     win.pickFiles({ filters: [{ name: "Text" }] });
   });
   assert(
@@ -246,6 +273,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error extensions must be an array.
     win.pickFiles({ filters: [{ extensions: "txt" }] });
   });
   assert(
@@ -287,6 +315,7 @@ Yuzuko.test(
 
   error = thrown(() => {
     win.pickFiles({ mode: "save",
+      // @ts-expect-error suggestedName must be a string.
       suggestedName: {
         toString() {
           throw new TypeError("name hook");
@@ -311,6 +340,7 @@ Yuzuko.test(
     win.pickFiles({
       filters: [
         {
+          // @ts-expect-error A filter name must be a string.
           name: {
             toString() {
               throw new TypeError("filter name");
@@ -373,6 +403,7 @@ Yuzuko.test(
 
   error = thrown(() => {
     win.pickFiles({
+      // @ts-expect-error mode must be a dialog kind.
       get mode() {
         throw new TypeError("mode getter");
       },
@@ -382,6 +413,7 @@ Yuzuko.test(
   assert(errorMessage(error) === "mode getter", errorMessage(error));
 
   error = thrown(() => {
+    // @ts-expect-error mode and multiple are not file picker options.
     win.pickFiles({ mode: "nope", multiple: 1 });
   });
   assert(
@@ -391,6 +423,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error mode must be a dialog kind.
     win.pickFiles({ mode: 1 });
   });
   assert(
@@ -441,6 +474,7 @@ Yuzuko.test(
   error = thrown(() => {
     win.pickFiles({
       mode: "directory",
+      // @ts-expect-error filters must be an array.
       get filters() {
         throw new TypeError("directory filters");
       },
@@ -460,6 +494,7 @@ Yuzuko.test(
   error = thrown(() => {
     win.pickFiles({
       mode: "directory",
+      // @ts-expect-error title is not a file picker option.
       get title() {
         throw new TypeError("title");
       },
@@ -489,6 +524,7 @@ Yuzuko.test(
   assert(errorMessage(error) === "The surface is closed.", errorMessage(error));
 
   error = thrown(() => {
+    // @ts-expect-error null is not file picker options.
     win.pickFiles(null);
   });
   assert(errorName(error) === "TypeError", `closed null: ${errorName(error)}`);
@@ -498,6 +534,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error filters must be an array.
     win.pickFiles({ filters: "txt" });
   });
   assert(errorName(error) === "TypeError", `closed filters: ${errorName(error)}`);
@@ -532,6 +569,7 @@ Yuzuko.test(
   );
 
   error = thrown(() => {
+    // @ts-expect-error mode must be a dialog kind.
     win.pickFiles({ mode: "nope" });
   });
   assert(

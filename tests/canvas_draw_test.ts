@@ -1,21 +1,28 @@
-function assert(condition, message) {
+declare const TextCluster: unknown;
+declare const CanvasFilter: unknown;
+
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function pixel(ctx, x, y) {
+function pixel(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const data = ctx.getImageData(x, y, 1, 1).data;
-  return [data[0], data[1], data[2], data[3]];
+  return [data[0]!, data[1]!, data[2]!, data[3]!];
 }
 
-function pixels(ctx, w, h) {
+function pixels(ctx: OffscreenCanvasRenderingContext2D, w: number, h: number): string {
   return Array.from(ctx.getImageData(0, 0, w, h).data).join(",");
 }
 
-function checkerboard() {
+function checkerboard(): OffscreenCanvas {
   const source = new OffscreenCanvas(4, 4);
-  const src = source.getContext("2d");
+  const src = source.getContext("2d")!;
   for (let y = 0; y < 4; y++) {
     for (let x = 0; x < 4; x++) {
       src.fillStyle = (x + y) % 2 === 0 ? "#ff0000" : "#0000ff";
@@ -25,10 +32,14 @@ function checkerboard() {
   return source;
 }
 
-async function scaled(quality, dw, dh) {
+async function scaled(
+  quality: ImageSmoothingQuality,
+  dw: number,
+  dh: number,
+): Promise<string> {
   const bitmap = await createImageBitmap(checkerboard());
   const canvas = new OffscreenCanvas(dw, dh);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = quality;
   ctx.drawImage(bitmap, 0, 0, dw, dh);
@@ -36,7 +47,7 @@ async function scaled(quality, dw, dh) {
 }
 
 Yuzuko.test("modern colors convert to srgb and paint", () => {
-  const ctx = new OffscreenCanvas(2, 2).getContext("2d");
+  const ctx = new OffscreenCanvas(2, 2).getContext("2d")!;
   ctx.fillStyle = "color-mix(in srgb, red, blue)";
   assert(ctx.fillStyle === "color(srgb 0.5 0 0.5)", "color-mix in srgb");
   ctx.fillStyle = "color-mix(in srgb, red, color(srgb 1 0 0))";
@@ -89,15 +100,16 @@ Yuzuko.test("imageSmoothingQuality changes a scaled draw", async () => {
   assert(nativeLow === nativeMedium, "1:1 low matches medium");
   assert(nativeLow === nativeHigh, "1:1 low matches high");
 
-  const ctx = new OffscreenCanvas(4, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(4, 4).getContext("2d")!;
   ctx.imageSmoothingQuality = "high";
   assert(ctx.imageSmoothingQuality === "high", "quality round-trips");
+  // @ts-expect-error An unknown smoothing quality is ignored.
   ctx.imageSmoothingQuality = "nope";
   assert(ctx.imageSmoothingQuality === "high", "unknown quality is ignored");
 });
 
 Yuzuko.test("measureText reports glyph ink", () => {
-  const ctx = new OffscreenCanvas(8, 8).getContext("2d");
+  const ctx = new OffscreenCanvas(8, 8).getContext("2d")!;
   ctx.font = "80px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -137,25 +149,32 @@ Yuzuko.test("measureText reports glyph ink", () => {
     top.fontBoundingBoxAscent < letter.fontBoundingBoxAscent,
     "top baseline reduces font ascent",
   );
-  assert(typeof ctx.fillTextCluster === "undefined", "no fillTextCluster");
+  assert(
+    // @ts-expect-error fillTextCluster is absent.
+    typeof ctx.fillTextCluster === "undefined",
+    "no fillTextCluster",
+  );
   assert(typeof TextCluster === "undefined", "no TextCluster");
 });
 
 Yuzuko.test("CanvasFilter stays absent", () => {
-  const ctx = new OffscreenCanvas(4, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(4, 4).getContext("2d")!;
   assert(typeof CanvasFilter === "undefined", "the class was removed");
   let threw = false;
   try {
-    ctx.beginLayer({ filter: { name: "gaussianBlur", stdDeviation: 4 } });
+    ctx.beginLayer({
+      // @ts-expect-error A filter dictionary is not a string.
+      filter: { name: "gaussianBlur", stdDeviation: 4 },
+    });
   } catch (error) {
-    threw = error.name === "TypeError";
+    threw = error instanceof Error && error.name === "TypeError";
   }
   assert(threw, "a filter dictionary throws");
   let closed = false;
   try {
     ctx.endLayer();
   } catch (error) {
-    closed = error.name === "InvalidStateError";
+    closed = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(closed, "the dictionary did not open a layer");
 });

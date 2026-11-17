@@ -4,6 +4,11 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+// A `let` binding is narrowed to the literal just written. The type argument keeps the wider type.
+function read<T>(value: T): T {
+  return value;
+}
+
 function assertThrows(
   run: () => unknown,
   kind: "type" | "dom",
@@ -21,13 +26,11 @@ function assertThrows(
   }
   if (kind === "dom") {
     assert(thrown instanceof DOMException, `not DOMException: ${message}`);
-    const exception = thrown as DOMException;
-    assert(exception.name === name, `${exception.name} !== ${name}`);
+    assert(thrown.name === name, `${thrown.name} !== ${name}`);
   } else {
     assert(thrown instanceof TypeError, `not TypeError: ${message}`);
   }
-  const error = thrown as Error;
-  assert(error.message === message, error.message);
+  assert(thrown.message === message, thrown.message);
 }
 
 async function assertRejects(
@@ -41,20 +44,22 @@ async function assertRejects(
   } catch (error) {
     if (kind === "dom") {
       assert(error instanceof DOMException, `not DOMException: ${message}`);
-      const exception = error as DOMException;
-      assert(exception.name === name, `${exception.name} !== ${name}`);
+      assert(error.name === name, `${error.name} !== ${name}`);
     } else {
       assert(error instanceof TypeError, `not TypeError: ${message}`);
     }
-    const reported = error as Error;
-    assert(reported.message === message, reported.message);
+    assert(error.message === message, error.message);
     return;
   }
   throw new Error(`expected rejection: ${message}`);
 }
 
 Yuzuko.test("the computed tree is the published snapshot", async () => {
-  assert(globalThis.ComputedAccessibleNode === undefined, "global constructor");
+  assert(
+    // @ts-expect-error ComputedAccessibleNode is absent on the main global.
+    globalThis.ComputedAccessibleNode === undefined,
+    "global constructor",
+  );
   assert(typeof Yuzuko.ComputedAccessibleNode === "function", "constructor");
   assert(
     Yuzuko.ComputedAccessibleNode.name === "ComputedAccessibleNode",
@@ -82,7 +87,15 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
   assert(method.length === 1, "length");
   assert(method.name === "getComputedAccessibleNode", "method name");
   const sample = new Yuzuko.AccessibleNode();
-  assertThrows(() => method.call({}), "type", "", "illegal invocation");
+  assertThrows(
+    () => {
+      // @ts-expect-error The node argument is required.
+      return method.call({});
+    },
+    "type",
+    "",
+    "illegal invocation",
+  );
   assertThrows(
     () => method.call({}, sample),
     "type",
@@ -106,13 +119,19 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
   try {
     closed.close();
     assertThrows(
-      () => closed.getComputedAccessibleNode(),
+      () => {
+        // @ts-expect-error The node argument is required.
+        return closed.getComputedAccessibleNode();
+      },
       "type",
       "",
       "Not enough arguments",
     );
     assertThrows(
-      () => closed.getComputedAccessibleNode(1 as unknown as Yuzuko.AccessibleNode),
+      () => {
+        // @ts-expect-error A number is not an AccessibleNode.
+        return closed.getComputedAccessibleNode(1);
+      },
       "type",
       "",
       "The node must be an AccessibleNode.",
@@ -124,13 +143,19 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
       "The window is closed.",
     );
     assertThrows(
-      () => window.getComputedAccessibleNode(),
+      () => {
+        // @ts-expect-error The node argument is required.
+        return window.getComputedAccessibleNode();
+      },
       "type",
       "",
       "Not enough arguments",
     );
     assertThrows(
-      () => window.getComputedAccessibleNode({} as Yuzuko.AccessibleNode),
+      () => {
+        // @ts-expect-error An empty object is not an AccessibleNode.
+        return window.getComputedAccessibleNode({});
+      },
       "type",
       "",
       "The node must be an AccessibleNode.",
@@ -157,13 +182,16 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
     root.role = "link";
     assert(seen === false, "snapshot waits for a task");
     const computed = await pending;
-    assert(seen === true, "task settled");
+    let settled: boolean = read<boolean>(seen);
+    assert(settled === true, "task settled");
     assert(computed !== null, "author root");
     assert(computed instanceof Yuzuko.ComputedAccessibleNode, "instanceof");
     assert(!(computed instanceof EventTarget), "not an EventTarget");
     assert(!(computed instanceof Yuzuko.AccessibleNode), "not authored");
-    assert(computed.role === "link", "write before the task is included");
+    let linked: string | null = computed.role;
+    assert(linked === "link", "write before the task is included");
     assert(computed.ensureUpToDate.length === 0, "ensureUpToDate length");
+    // @ts-expect-error Extra arguments are ignored.
     const again = await window.getComputedAccessibleNode(root, "extra");
     assert(again === computed, "identity");
 
@@ -172,7 +200,8 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
     assert(chrome instanceof Yuzuko.ComputedAccessibleNode, "chrome type");
     assert(!(chrome instanceof Yuzuko.AccessibleNode), "chrome is synthetic");
     assert(chrome.role === "window", "chrome role");
-    assert(chrome.name === "Palette", "chrome name");
+    let name: string | null = chrome.name;
+    assert(name === "Palette", "chrome name");
     assert(chrome.parent === null, "chrome parent");
     assert(chrome.offsetParent === null, "chrome offset parent");
     assert(chrome.firstChild === computed, "chrome first child");
@@ -198,16 +227,20 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
     assert(!("keyShortcuts" in computed), "no keyShortcuts");
     assert(!("placeholder" in computed), "no placeholder");
     assert(!("label" in computed), "no label");
-    assert(computed.firstChild === null, "no children yet");
+    let firstChild: Yuzuko.ComputedAccessibleNode | null = computed.firstChild;
+    assert(firstChild === null, "no children yet");
 
     root.role = "button";
-    assert(computed.role === "link", "stale role");
+    let staleRole: string | null = computed.role;
+    assert(staleRole === "link", "stale role");
     assert((await computed.ensureUpToDate()) === undefined, "ensure resolves");
-    assert(computed.role === "button", "refreshed role");
+    let refreshed: string | null = computed.role;
+    assert(refreshed === "button", "refreshed role");
 
     window.surface.title = "";
     await computed.ensureUpToDate();
-    assert(chrome.name === "", "empty title");
+    let emptyName: string | null = chrome.name;
+    assert(emptyName === "", "empty title");
     window.surface.title = "Palette";
 
     const directory = new Yuzuko.AccessibleNode();
@@ -320,7 +353,8 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
     assert(placed.offsetParent === root, "rejected offset parent is ignored");
 
     await computed.ensureUpToDate();
-    assert(computed.role === "unknown", "unknown role");
+    let unknown: string | null = computed.role;
+    assert(unknown === "unknown", "unknown role");
     assert(computed.name === "", "empty name");
     assert(computed.description === "desc", "description");
     assert(computed.roleDescription === "role", "role description");
@@ -442,7 +476,10 @@ Yuzuko.test("the computed tree is the published snapshot", async () => {
     );
     assert(computed.role === role, "rejected refresh keeps the snapshot");
     assertThrows(
-      () => window.getComputedAccessibleNode(),
+      () => {
+        // @ts-expect-error The node argument is required.
+        return window.getComputedAccessibleNode();
+      },
       "type",
       "",
       "Not enough arguments",

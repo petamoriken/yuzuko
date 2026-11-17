@@ -1,10 +1,10 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function throwsTypeError(run) {
+function throwsTypeError(run: () => void): boolean {
   try {
     run();
   } catch (error) {
@@ -120,9 +120,18 @@ Yuzuko.test("inherited initMouseEvent leaves subclass fields", () => {
 Yuzuko.test("initUIEvent writes the UI fields only", () => {
   assert(UIEvent.prototype.initUIEvent.length === 1, "length");
   const fresh = new UIEvent("a", { detail: 5, which: 8, composed: true });
-  assert(throwsTypeError(() => fresh.initUIEvent()), "arity");
+  assert(throwsTypeError(() => {
+    // @ts-expect-error initUIEvent requires a type.
+    fresh.initUIEvent();
+  }), "arity");
   assert(fresh.type === "a", "arity type");
-  assert(throwsTypeError(() => fresh.initUIEvent("b", true, true, {}, 9)), "view");
+  assert(
+    throwsTypeError(() => {
+      // @ts-expect-error A plain object is not a Window view.
+      fresh.initUIEvent("b", true, true, {}, 9);
+    }),
+    "view",
+  );
   assert(fresh.type === "a", "view type");
   assert(fresh.detail === 5, "view detail");
 
@@ -136,7 +145,9 @@ Yuzuko.test("initUIEvent writes the UI fields only", () => {
   assert(fresh.composed === true, "composed");
   assert(fresh.isTrusted === false, "trusted");
 
+  // @ts-expect-error The global object is not a Window view.
   fresh.initUIEvent("b", true, true, globalThis, 3);
+  // @ts-expect-error The global object is not a Window view.
   assert(fresh.view === globalThis, "global view");
   assert(fresh.detail === 3, "set detail");
   fresh.initUIEvent("c", false, false, null, 1);
@@ -150,7 +161,10 @@ Yuzuko.test("initUIEvent writes the UI fields only", () => {
   });
   target.addEventListener("a", () => {
     assert(
-      throwsTypeError(() => event.initUIEvent("b", true, true, {}, 9)),
+      throwsTypeError(() => {
+        // @ts-expect-error A plain object is not a Window view.
+        event.initUIEvent("b", true, true, {}, 9);
+      }),
       "dispatch view",
     );
     assert(event.type === "a", "dispatch type");
@@ -192,12 +206,19 @@ Yuzuko.test("initKeyboardEvent writes the key and the four modifiers", () => {
     which: 65,
     detail: 3,
   });
-  assert(throwsTypeError(() => event.initKeyboardEvent()), "arity");
+  assert(
+    throwsTypeError(() => {
+      // @ts-expect-error initKeyboardEvent requires a type.
+      event.initKeyboardEvent();
+    }),
+    "arity",
+  );
   assert(event.key === "A", "arity key");
   assert(
-    throwsTypeError(() =>
-      event.initKeyboardEvent("keyup", true, true, {}, "b"),
-    ),
+    throwsTypeError(() => {
+      // @ts-expect-error A plain object is not a Window view.
+      event.initKeyboardEvent("keyup", true, true, {}, "b");
+    }),
     "view",
   );
   assert(event.key === "A", "view key");
@@ -257,10 +278,19 @@ Yuzuko.test("initCompositionEvent writes data and leaves detail", () => {
     data: "ab",
     detail: 4,
   });
-  assert(throwsTypeError(() => event.initCompositionEvent()), "arity");
+  assert(
+    throwsTypeError(() => {
+      // @ts-expect-error initCompositionEvent requires a type.
+      event.initCompositionEvent();
+    }),
+    "arity",
+  );
   assert(event.data === "ab", "arity data");
   assert(
-    throwsTypeError(() => event.initCompositionEvent("compositionstart", true, true, {})),
+    throwsTypeError(() => {
+      // @ts-expect-error A plain object is not a Window view.
+      event.initCompositionEvent("compositionstart", true, true, {});
+    }),
     "view",
   );
   assert(event.data === "ab", "view data");
@@ -286,7 +316,10 @@ Yuzuko.test("initCustomEvent stores detail by identity", () => {
   assert(CustomEvent.prototype.initCustomEvent.length === 1, "length");
   const original = { n: 1 };
   const event = new CustomEvent("a", { detail: original });
-  assert(throwsTypeError(() => event.initCustomEvent()), "arity");
+  assert(throwsTypeError(() => {
+    // @ts-expect-error initCustomEvent requires a type.
+    event.initCustomEvent();
+  }), "arity");
   assert(event.detail === original, "arity detail");
   event.initCustomEvent("b");
   assert(event.type === "b", "type");
@@ -298,6 +331,7 @@ Yuzuko.test("initCustomEvent stores detail by identity", () => {
   event.initCustomEvent("d", true, true, box);
   assert(event.detail === box, "identity");
   assert(event.bubbles === true, "set bubbles");
+  // @ts-expect-error null is not the event detail.
   event.initCustomEvent("e", false, false, null);
   assert(event.detail === null, "null");
 
@@ -317,7 +351,13 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   const constructed = new MessageEvent("m");
   assert(constructed.data === undefined, "constructed data");
   assert(constructed.source === null, "constructed source");
-  assert(throwsTypeError(() => constructed.initMessageEvent()), "arity");
+  assert(
+    throwsTypeError(() => {
+      // @ts-expect-error initMessageEvent requires a type.
+      constructed.initMessageEvent();
+    }),
+    "arity",
+  );
   assert(constructed.data === undefined, "arity data");
 
   constructed.initMessageEvent("message");
@@ -357,7 +397,9 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   constructed.initMessageEvent("message", false, false, 1, "", "", undefined);
   assert(constructed.source === null, "undefined source");
 
+  // @ts-expect-error The global object is not a message source.
   constructed.initMessageEvent("x", false, false, 1, "", "", globalThis);
+  // @ts-expect-error The global object is not a message source.
   assert(constructed.source === globalThis, "global source");
   assert(constructed.source === self && !("window" in globalThis), "self");
   assert(constructed.type === "x", "global type");
@@ -373,6 +415,7 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
         1,
         "",
         "",
+        // @ts-expect-error A proxy of the global is not a message source.
         new Proxy(globalThis, {}),
       ),
     ),
@@ -396,12 +439,14 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   assert(constructed.type === "message", "prototype type");
   assert(
     throwsTypeError(() =>
+      // @ts-expect-error A plain object is not a message source.
       constructed.initMessageEvent("x", false, false, 1, "", "", {}),
     ),
     "object source",
   );
   assert(
     throwsTypeError(() =>
+      // @ts-expect-error A number is not a message source.
       constructed.initMessageEvent("x", false, false, 1, "", "", 1),
     ),
     "primitive source",
@@ -409,27 +454,55 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   assert(constructed.type === "message", "primitive type");
 
   const listed = new Set([channel.port1]);
-  constructed.initMessageEvent("m", false, false, null, "", "", null, listed);
+  constructed.initMessageEvent(
+    "m",
+    false,
+    false,
+    null,
+    "",
+    "",
+    null,
+    // @ts-expect-error A Set is not a sequence of ports.
+    listed,
+  );
   assert(constructed.ports.length === 1, "set length");
   assert(constructed.ports[0] === channel.port1, "set port");
   function* ports() {
     yield channel.port2;
   }
-  constructed.initMessageEvent("m", false, false, null, "", "", null, ports());
+  constructed.initMessageEvent(
+    "m",
+    false,
+    false,
+    null,
+    "",
+    "",
+    null,
+    // @ts-expect-error A generator is not a sequence of ports.
+    ports(),
+  );
   assert(constructed.ports[0] === channel.port2, "generator");
   assert(
     throwsTypeError(() =>
-      constructed.initMessageEvent("m", false, false, null, "", "", null, null),
+      constructed.initMessageEvent(
+        "m",
+        false,
+        false,
+        null,
+        "",
+        "",
+        null,
+        // @ts-expect-error ports must be a sequence of MessagePorts.
+        null,
+      ),
     ),
     "null ports",
   );
   assert(constructed.ports[0] === channel.port2, "null ports kept");
   assert(
     throwsTypeError(() =>
-      constructed.initMessageEvent("m", false, false, null, "", "", null, [
-        channel.port1,
-        {},
-      ]),
+      // @ts-expect-error A port list cannot contain a plain object.
+      constructed.initMessageEvent("m", false, false, null, "", "", null, [channel.port1, {}]),
     ),
     "bad element",
   );
@@ -440,6 +513,7 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   target.addEventListener("m", () => {
     assert(
       throwsTypeError(() =>
+        // @ts-expect-error A plain object is not a message source.
         held.initMessageEvent("n", true, true, "x", "p", "q", {}),
       ),
       "dispatch source",
@@ -453,15 +527,17 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
   });
   target.dispatchEvent(held);
 
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("message")), 1000);
-    addEventListener(
+    self.addEventListener(
       "message",
-      (event) => {
+      (event: Event) => {
         clearTimeout(timer);
         try {
-          assert(event.source === null, "posted source");
-          assert(event.data === "legacy-init-source", "posted data");
+          // @ts-expect-error The message listener receives an Event.
+          const message: MessageEvent = event;
+          assert(message.source === null, "posted source");
+          assert(message.data === "legacy-init-source", "posted data");
           resolve();
         } catch (error) {
           reject(error);
@@ -500,7 +576,7 @@ Yuzuko.test("initMessageEvent stores a port and a frozen port list", async () =>
 });
 
 Yuzuko.test("omitted stream chunks are undefined", async () => {
-  const written = [];
+  const written: unknown[] = [];
   const writable = new WritableStream({
     write(chunk) {
       written.push(chunk);
@@ -514,7 +590,7 @@ Yuzuko.test("omitted stream chunks are undefined", async () => {
   assert(written[0] === undefined, "omitted write");
   assert(written[1] === 7, "chunk write");
 
-  let controller;
+  let controller: TransformStreamDefaultController<unknown> | undefined;
   const transformed = new TransformStream({
     start(next) {
       controller = next;
@@ -522,8 +598,8 @@ Yuzuko.test("omitted stream chunks are undefined", async () => {
   });
   const reader = transformed.readable.getReader();
   const pending = reader.read();
-  controller.enqueue();
-  controller.enqueue("chunk");
+  controller!.enqueue();
+  controller!.enqueue("chunk");
   const first = await pending;
   const second = await reader.read();
   assert(first.done === false, "first open");

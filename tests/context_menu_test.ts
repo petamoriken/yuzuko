@@ -40,8 +40,9 @@ Yuzuko.test("a context menu clicks its window", () => {
   let trusted = false;
   let targetIsWindow = false;
   const onClick = (event: Event) => {
-    const record = event as Event & { action?: string };
-    action = record.action ?? "";
+    // @ts-expect-error The host event carries action.
+    let chosen: string | undefined = event.action;
+    action = chosen ?? "";
     trusted = event.isTrusted;
     targetIsWindow = event.target === window;
   };
@@ -68,6 +69,7 @@ Yuzuko.test("a context menu clicks its window", () => {
     );
 
     error = thrown(() => {
+      // @ts-expect-error y is required.
       window.showContextMenu(menu, 1);
     });
     assert(
@@ -195,8 +197,7 @@ Yuzuko.test("a context menu clicks its window", () => {
     assert(sawContext, "contextmenu reached the window");
     let keptAction = "";
     second.addEventListener("menuclick", (event) => {
-      const record = event as Event & { action?: string };
-      keptAction = record.action ?? "";
+      keptAction = event.action ?? "";
     });
     Yuzuko.__test.inject(second, [{ kind: "menu", action: "ctx.keep" }]);
     assert(keptAction === "ctx.keep", keptAction);

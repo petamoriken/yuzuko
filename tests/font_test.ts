@@ -1,3 +1,5 @@
+declare const document: unknown;
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
@@ -33,6 +35,7 @@ function widthOf(family: string): number {
 Yuzuko.test("loaded FontFace families shape differently from sans-serif", async () => {
   assert(typeof FontFace === "function", "FontFace");
   assert(Yuzuko.fonts instanceof FontFaceSet, "Yuzuko.fonts");
+  // @ts-expect-error fonts is absent on the main global.
   assert(globalThis.fonts === undefined, "no globalThis.fonts");
   assert(typeof document === "undefined", "no document");
 
@@ -98,7 +101,8 @@ Yuzuko.test("FontFaceSet iterators follow insertion order", async () => {
   assert(Yuzuko.fonts.add(first) === Yuzuko.fonts, "duplicate add");
   assert(Yuzuko.fonts.size === before + 3, `size ${Yuzuko.fonts.size}`);
   assert(Yuzuko.fonts.has(second), "has");
-  const foreign = {} as FontFace;
+  // @ts-expect-error a plain object is not a FontFace.
+  const foreign: FontFace = {};
   assert(Yuzuko.fonts.has(foreign) === false, "has foreign");
   assert(Yuzuko.fonts.delete(foreign) === false, "delete foreign");
   assert(Yuzuko.fonts.status === "loaded", Yuzuko.fonts.status);
@@ -114,7 +118,7 @@ Yuzuko.test("FontFaceSet iterators follow insertion order", async () => {
 
   const receiver = { tag: "set" };
   let seen = 0;
-  Yuzuko.fonts.forEach(function (value, key, parent) {
+  Yuzuko.fonts.forEach(function (this: { tag: string }, value, key, parent) {
     if (value === first) {
       seen += 1;
       assert(this === receiver, "thisArg");
@@ -210,7 +214,9 @@ Yuzuko.test("FontFaceSet check, load, ready, and loading events", async () => {
     order.push(`error:${event.fontfaces.length}`);
   };
   fonts.addEventListener("loading", onLoading);
+  // @ts-expect-error the listener receives a FontFaceSetLoadEvent.
   fonts.addEventListener("loadingdone", onDone);
+  // @ts-expect-error the listener receives a FontFaceSetLoadEvent.
   fonts.addEventListener("loadingerror", onError);
   let attribute = 0;
   fonts.onloading = () => {
@@ -259,7 +265,9 @@ Yuzuko.test("FontFaceSet check, load, ready, and loading events", async () => {
 
   fonts.onloading = null;
   fonts.removeEventListener("loading", onLoading);
+  // @ts-expect-error the listener receives a FontFaceSetLoadEvent.
   fonts.removeEventListener("loadingdone", onDone);
+  // @ts-expect-error the listener receives a FontFaceSetLoadEvent.
   fonts.removeEventListener("loadingerror", onError);
 });
 
@@ -268,7 +276,8 @@ function quotedUrl(file: string): string {
 }
 
 async function expectReject(face: FontFace, name: string): Promise<void> {
-  assert(face.status === "unloaded", `${face.family} ${face.status}`);
+  let status: string = face.status;
+  assert(status === "unloaded", `${face.family} ${face.status}`);
   let rejected: unknown;
   try {
     await face.load();
@@ -330,8 +339,8 @@ Yuzuko.test("queryLocalFonts returns sorted FontData", async () => {
   assert(list[0] instanceof FontData, "FontData");
   for (let index = 1; index < list.length; index += 1) {
     assert(
-      list[index - 1].postscriptName <= list[index].postscriptName,
-      `${list[index - 1].postscriptName} before ${list[index].postscriptName}`,
+      list[index - 1]!.postscriptName <= list[index]!.postscriptName,
+      `${list[index - 1]!.postscriptName} before ${list[index]!.postscriptName}`,
     );
   }
   let illegal = false;
@@ -370,6 +379,7 @@ Yuzuko.test("queryLocalFonts returns sorted FontData", async () => {
     });
     assert(lower.length === 0, "case sensitive");
   }
+  // @ts-expect-error null is not QueryOptions.
   const again = await queryLocalFonts(null);
   assert(again.length === list.length, "null options");
   const bare = await queryLocalFonts({});
@@ -377,14 +387,16 @@ Yuzuko.test("queryLocalFonts returns sorted FontData", async () => {
 
   let options = false;
   try {
-    queryLocalFonts(1 as unknown as QueryOptions);
+    // @ts-expect-error a number is not QueryOptions.
+    queryLocalFonts(1);
   } catch (error) {
     options = error instanceof TypeError;
   }
   assert(options, "options type");
   let names = false;
   try {
-    queryLocalFonts({ postscriptNames: "Arial" as unknown as string[] });
+    // @ts-expect-error postscriptNames is not an array.
+    queryLocalFonts({ postscriptNames: "Arial" });
   } catch (error) {
     names = error instanceof TypeError;
   }

@@ -1,10 +1,22 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: unknown): asserts condition {
   if (!condition) {
+    // @ts-expect-error The message is read with ToString.
     throw new Error(message);
   }
 }
 
-function record(event) {
+interface ProgressRecord {
+  type: string;
+  bubbles: boolean;
+  cancelable: boolean;
+  trusted: boolean;
+  progress: boolean;
+  lengthComputable: boolean;
+  loaded: number;
+  total: number;
+}
+
+function record(event: ProgressEvent): ProgressRecord {
   return {
     type: event.type,
     bubbles: event.bubbles,
@@ -17,11 +29,21 @@ function record(event) {
   };
 }
 
-function readText(blob, listen) {
+interface NotedEvent extends ProgressRecord {
+  target: boolean;
+}
+
+function readText(
+  blob: Blob,
+  listen?: (
+    reader: FileReader,
+    note: (event: ProgressEvent<FileReader>) => void,
+  ) => void,
+): Promise<{ reader: FileReader; events: NotedEvent[] }> {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    const events = [];
-    const note = (event) => {
+    const events: NotedEvent[] = [];
+    const note = (event: ProgressEvent<FileReader>) => {
       events.push({ ...record(event), target: event.target === reader });
     };
     reader.onloadstart = note;
@@ -63,10 +85,11 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
       "loadstart,progress,load,loadend",
     text.events.map((event) => event.type).join(),
   );
+  const loadstart = text.events[0]!;
   assert(
-    text.events[0].loaded === 0 &&
-      text.events[0].total === 2 &&
-      text.events[0].lengthComputable === true,
+    loadstart.loaded === 0 &&
+      loadstart.total === 2 &&
+      loadstart.lengthComputable === true,
     "loadstart counts",
   );
   for (const event of text.events.slice(1)) {
@@ -96,7 +119,7 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
   }
   assert(early.reader.readyState === early.reader.DONE, "done");
   assert(early.reader.result === null, "aborted result");
-  assert(early.reader.error.name === "AbortError", early.reader.error.name);
+  assert(early.reader.error!.name === "AbortError", early.reader.error!.name);
 
   const mid = await readText(new Blob(["ab"]), (reader, note) => {
     reader.onprogress = (event) => {
@@ -109,8 +132,8 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
       "loadstart,progress,abort,loadend",
     mid.events.map((event) => event.type).join(),
   );
-  assert(mid.events[1].loaded === 2, "progress loaded");
-  assert(mid.events[2].loaded === 2 && mid.events[3].loaded === 2, "abort loaded");
+  assert(mid.events[1]!.loaded === 2, "progress loaded");
+  assert(mid.events[2]!.loaded === 2 && mid.events[3]!.loaded === 2, "abort loaded");
 
   const scripted = new ProgressEvent("load", {
     lengthComputable: true,
@@ -123,7 +146,19 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
   assert(scripted.loaded === 1 && scripted.total === 4, "scripted counts");
 
   const xhr = new XMLHttpRequest();
-  const loaded = await new Promise((resolve) => {
+  const loaded = await new Promise<{
+    type: string;
+    lengthComputable: boolean;
+    loaded: number;
+    total: number;
+    target: boolean;
+    current: boolean;
+    phase: number;
+    trusted: boolean;
+    progress: boolean;
+    text: string;
+    event: ProgressEvent;
+  }>((resolve) => {
     xhr.open("GET", "data:text/plain,hi");
     xhr.onload = (event) => {
       resolve({
@@ -152,7 +187,7 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
   assert(loaded.event.target === xhr, "target stays");
   assert(loaded.event.eventPhase === 0, "phase after");
 
-  const bad = await new Promise((resolve) => {
+  const bad = await new Promise<ProgressEvent | null>((resolve) => {
     const request = new XMLHttpRequest();
     request.open("GET", "data:text/plain");
     request.onerror = (event) => resolve(event);
@@ -165,7 +200,7 @@ Yuzuko.test("FileReader and XHR progress events", async () => {
     "xhr error counts",
   );
 
-  const blank = await new Promise((resolve) => {
+  const blank = await new Promise<ProgressEvent | null>((resolve) => {
     const request = new XMLHttpRequest();
     request.open("GET", "data:text/plain,");
     request.onload = (event) => resolve(event);
@@ -188,10 +223,11 @@ Yuzuko.test("XMLHttpRequest is an EventTarget", async () => {
   assert(typeof xhr.dispatchEvent === "function", "dispatchEvent");
 
   xhr.onload = () => {};
+  // @ts-expect-error A number is not a load handler.
   xhr.onload = 1;
   assert(xhr.onload === null, "non-function handler");
 
-  const seen = [];
+  const seen: string[] = [];
   xhr.addEventListener("ping", (event) => {
     seen.push("a");
     event.stopPropagation();
@@ -202,7 +238,7 @@ Yuzuko.test("XMLHttpRequest is an EventTarget", async () => {
   assert(xhr.dispatchEvent(new Event("ping")) === true, "dispatch");
   assert(seen.join() === "a,b", seen.join());
 
-  const order = [];
+  const order: string[] = [];
   xhr.open("GET", "data:text/plain,hi");
   xhr.send();
   xhr.addEventListener("load", (event) => {
@@ -237,7 +273,7 @@ Yuzuko.test("XMLHttpRequest is an EventTarget", async () => {
 
   const failed = new XMLHttpRequest();
   failed.open("GET", "data:text/plain");
-  const error = await new Promise((resolve) => {
+  const error = await new Promise<Event>((resolve) => {
     failed.addEventListener("error", resolve);
     failed.send();
   });
@@ -255,7 +291,8 @@ Yuzuko.test("XMLHttpRequest dispatches loadstart, progress, and loadend", async 
     const events: ProgressEvent[] = [];
     for (const type of ["loadstart", "progress", "load", "error", "loadend"]) {
       xhr.addEventListener(type, (event) => {
-        events.push(event as ProgressEvent);
+        // @ts-expect-error The dispatched event is a ProgressEvent.
+        events.push(event);
       });
     }
     xhr.open("GET", url);
@@ -277,10 +314,10 @@ Yuzuko.test("XMLHttpRequest dispatches loadstart, progress, and loadend", async 
     hi.map((event) => event.type).join() === "loadstart,progress,load,loadend",
     hi.map((event) => event.type).join(),
   );
-  counts(hi[0], 0, 2, true);
-  counts(hi[1], 2, 2, true);
-  counts(hi[2], 2, 2, true);
-  counts(hi[3], 2, 2, true);
+  counts(hi[0]!, 0, 2, true);
+  counts(hi[1]!, 2, 2, true);
+  counts(hi[2]!, 2, 2, true);
+  counts(hi[3]!, 2, 2, true);
 
   const empty = await record("data:text/plain,");
   assert(
@@ -328,6 +365,7 @@ Yuzuko.test("XMLHttpRequest dispatches readystatechange, abort, and timeout", as
   assert(XMLHttpRequest.LOADING === 3 && fresh.LOADING === 3, "LOADING");
   assert(XMLHttpRequest.DONE === 4 && fresh.DONE === 4, "DONE");
   fresh.onabort = () => {};
+  // @ts-expect-error A number is not an abort handler.
   fresh.onabort = 1;
   assert(fresh.onabort === null, "non-function onabort");
 
@@ -340,7 +378,8 @@ Yuzuko.test("XMLHttpRequest dispatches readystatechange, abort, and timeout", as
   const quiet: string[] = [];
   fresh.addEventListener("abort", () => quiet.push("abort"));
   fresh.abort();
-  assert(quiet.length === 0 && fresh.readyState === 1, "abort before send");
+  let freshState: number = fresh.readyState;
+  assert(quiet.length === 0 && freshState === 1, "abort before send");
 
   const aborted: string[] = [];
   const request = new XMLHttpRequest();
@@ -372,7 +411,8 @@ Yuzuko.test("XMLHttpRequest dispatches readystatechange, abort, and timeout", as
     aborted.join() === "ready:1,ready:4,onabort,loadend",
     aborted.join(),
   );
-  assert(request.readyState === 0, "unsent after abort");
+  let abortedState: number = request.readyState;
+  assert(abortedState === 0, "unsent after abort");
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert(aborted.join() === "ready:1,ready:4,onabort,loadend", "aborted task dropped");
 
@@ -422,7 +462,8 @@ Yuzuko.test("XMLHttpRequest dispatches readystatechange, abort, and timeout", as
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert(timed.join() === "ready:1,ready:4,ontimeout,loadend", "timeout task dropped");
   slow.abort();
-  assert(slow.readyState === 0, "abort after done");
+  let doneState: number = slow.readyState;
+  assert(doneState === 0, "abort after done");
   assert(timed.join() === "ready:1,ready:4,ontimeout,loadend", "no event from done");
 
   const replaced: string[] = [];
@@ -438,7 +479,8 @@ Yuzuko.test("XMLHttpRequest dispatches readystatechange, abort, and timeout", as
 
   let threw = false;
   try {
-    fresh.timeout = Symbol() as unknown as number;
+    // @ts-expect-error A symbol is not a timeout.
+    fresh.timeout = Symbol();
   } catch (error) {
     threw = error instanceof TypeError;
   }
@@ -468,7 +510,10 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
   }
 
   function load(xhr: XMLHttpRequest): Promise<void> {
-    return new Promise((resolve) => xhr.addEventListener("loadend", resolve));
+    return new Promise((resolve) => {
+      // @ts-expect-error The listener resolves without using the event.
+      xhr.addEventListener("loadend", resolve);
+    });
   }
 
   const fresh = new XMLHttpRequest();
@@ -493,13 +538,19 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
     thrown(() => kept.open("GET\u0100", "data:,")) === "TypeError:The method is invalid",
     "byte string",
   );
-  assert(thrown(() => kept.open(Symbol("m") as unknown as string, "data:,")).startsWith("TypeError"), "symbol");
   assert(
-    thrown(() => kept.open("POST", "data:text/plain,yo", true, {
-      toString() {
-        throw new Error("user");
-      },
-    } as unknown as string)) === "Error:user",
+    thrown(() => {
+      // @ts-expect-error A symbol is not a method.
+      kept.open(Symbol("m"), "data:,");
+    }).startsWith("TypeError"),
+    "symbol",
+  );
+  assert(
+    thrown(() => {
+      // @ts-expect-error Username is read with ToString.
+      let username: string = { toString() { throw new Error("user"); } };
+      kept.open("POST", "data:text/plain,yo", true, username);
+    }) === "Error:user",
     "username hook",
   );
   assert(kept.readyState === 1, "kept state");
@@ -508,17 +559,41 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
   assert(kept.responseText === "hi", kept.responseText);
 
   const early = new XMLHttpRequest();
-  assert(thrown(() => early.send(new ReadableStream())) === "InvalidStateError", "send before open");
+  assert(
+    thrown(() => {
+      // @ts-expect-error A stream is not a request body.
+      early.send(new ReadableStream());
+    }) === "InvalidStateError",
+    "send before open",
+  );
   assert(early.readyState === 0, "still unsent");
 
   const rejected = new XMLHttpRequest();
   rejected.open("POST", "data:text/plain,hi");
   const bodyError = "TypeError:The provided value is not of type 'XMLHttpRequestBodyInit'.";
-  assert(thrown(() => rejected.send(new ReadableStream())) === bodyError, "stream");
-  assert(thrown(() => rejected.send(new URL("https://example.com/"))) === bodyError, "url body");
-  const shared = thrown(() => rejected.send(new SharedArrayBuffer(4)));
+  assert(
+    thrown(() => {
+      // @ts-expect-error A stream is not a request body.
+      rejected.send(new ReadableStream());
+    }) === bodyError,
+    "stream",
+  );
+  assert(
+    thrown(() => {
+      // @ts-expect-error A URL is not a request body.
+      rejected.send(new URL("https://example.com/"));
+    }) === bodyError,
+    "url body",
+  );
+  const shared = thrown(() => {
+    // @ts-expect-error A shared buffer is not a request body.
+    rejected.send(new SharedArrayBuffer(4));
+  });
   assert(shared === "TypeError:The buffer is shared", shared);
-  const sharedView = thrown(() => rejected.send(new Uint8Array(new SharedArrayBuffer(4))));
+  const sharedView = thrown(() => {
+    // @ts-expect-error A shared buffer is not a request body.
+    rejected.send(new Uint8Array(new SharedArrayBuffer(4)));
+  });
   assert(sharedView === "TypeError:The buffer is shared", sharedView);
   const detached = new ArrayBuffer(4);
   const view = new Uint8Array(detached);
@@ -543,17 +618,16 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
 
   const hook = new XMLHttpRequest();
   hook.open("POST", "data:text/plain,hi");
-  assert(thrown(() => hook.send({
-    toString() {
-      throw new Error("hook");
-    },
-  })) === "Error:hook", "body hook");
+  assert(
+    thrown(() => {
+      // @ts-expect-error The body is read with ToString.
+      hook.send({ toString() { throw new Error("hook"); } });
+    }) === "Error:hook",
+    "body hook",
+  );
   assert(hook.readyState === 1, "hook stays opened");
-  hook.send({
-    toString() {
-      return "body";
-    },
-  });
+  // @ts-expect-error The body is read with ToString.
+  hook.send({ toString() { return "body"; } });
   await load(hook);
   assert(hook.responseText === "hi", "hook payload");
 
@@ -585,6 +659,7 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
   for (const method of ["GET", "HEAD"]) {
     const xhr = new XMLHttpRequest();
     xhr.open(method, "data:text/plain,hi");
+    // @ts-expect-error A stream is not a request body.
     xhr.send(new ReadableStream());
     assert(xhr.readyState === 1, `${method} ignores the body`);
     await load(xhr);
@@ -642,6 +717,7 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
   viaUndefined.addEventListener("progress", () => undefinedEvents.push("progress"));
   viaUndefined.addEventListener("load", () => undefinedEvents.push("load"));
   viaUndefined.addEventListener("loadend", () => undefinedEvents.push("loadend"));
+  // @ts-expect-error An explicit undefined third argument is synchronous.
   viaUndefined.open("GET", "data:text/plain,hi", undefined);
   viaUndefined.send();
   assert(
@@ -655,7 +731,8 @@ Yuzuko.test("XMLHttpRequest open and send", async () => {
   asyncRequest.send();
   assert(asyncRequest.readyState === 1 && asyncRequest.responseText === "", "async returns opened");
   await load(asyncRequest);
-  assert(asyncRequest.responseText === "hi", "async text");
+  let asyncText: string = asyncRequest.responseText;
+  assert(asyncText === "hi", "async text");
 
   const timed = new XMLHttpRequest();
   timed.timeout = 1000;

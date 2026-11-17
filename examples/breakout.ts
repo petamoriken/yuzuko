@@ -41,7 +41,7 @@ function makeBricks(): Brick[] {
         y: top + row * (h + gap),
         w,
         h,
-        color: COLORS[row % COLORS.length],
+        color: COLORS[row % COLORS.length]!,
       });
     }
   }
@@ -172,7 +172,7 @@ function step(dt: number): void {
   }
   for (let i = bricks.length - 1; i >= 0; i--) {
     const brick = bricks[i];
-    if (!hits(brick)) {
+    if (brick === undefined || !hits(brick)) {
       continue;
     }
     bricks.splice(i, 1);

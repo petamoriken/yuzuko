@@ -4,6 +4,11 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+// A `let` binding is narrowed to the literal just written. The type argument keeps the wider type.
+function read<T>(value: T): T {
+  return value;
+}
+
 const INVALID_TYPE = "The wake lock type is invalid";
 
 Yuzuko.test("screen wake lock requests a sentinel and release ends it", async () => {
@@ -49,7 +54,8 @@ Yuzuko.test("screen wake lock requests a sentinel and release ends it", async ()
       let sync = false;
       let promise: Promise<WakeLockSentinel> | undefined;
       try {
-        promise = navigator.wakeLock.request(value as WakeLockType);
+        // @ts-expect-error Invalid wake lock types are rejected at runtime.
+        promise = navigator.wakeLock.request(value);
       } catch {
         sync = true;
       }
@@ -85,15 +91,17 @@ Yuzuko.test("screen wake lock requests a sentinel and release ends it", async ()
     const pending = omitted.release();
     assert(fromListener === 1, "listener runs before release returns");
     assert(fromHandler === 1, "onrelease runs before release returns");
-    assert(seen !== null, "event");
-    assert(seen!.type === "release", seen!.type);
-    assert(seen!.target === omitted, "target");
-    assert(seen!.isTrusted === true, "trusted");
-    assert(seen!.bubbles === false, "bubbles");
-    assert(seen!.cancelable === false, "cancelable");
+    const releaseEvent = read<Event | null>(seen);
+    assert(releaseEvent !== null, "event");
+    assert(releaseEvent.type === "release", releaseEvent.type);
+    assert(releaseEvent.target === omitted, "target");
+    assert(releaseEvent.isTrusted === true, "trusted");
+    assert(releaseEvent.bubbles === false, "bubbles");
+    assert(releaseEvent.cancelable === false, "cancelable");
     const resolved = await pending;
     assert(resolved === undefined, "release resolves undefined");
-    assert(omitted.released === true, "stays released");
+    let omittedReleased: boolean = read<boolean>(omitted.released);
+    assert(omittedReleased === true, "stays released");
     assert(explicit.released === false, "other sentinel stays held");
     const again = await omitted.release();
     assert(again === undefined, "second release");
@@ -101,10 +109,14 @@ Yuzuko.test("screen wake lock requests a sentinel and release ends it", async ()
     assert(fromHandler === 1, "onrelease fires once");
 
     window.hide();
-    assert(explicit.released === false, "hiding the window keeps the sentinel");
+    assert(
+      explicit.released === false,
+      "hiding the window keeps the sentinel",
+    );
     const afterHide = await explicit.release();
     assert(afterHide === undefined, "release after hide");
-    assert(explicit.released === true, "released after hide");
+    let explicitReleased: boolean = read<boolean>(explicit.released);
+    assert(explicitReleased === true, "released after hide");
   } finally {
     for (const sentinel of held) {
       if (!sentinel.released) {
@@ -122,7 +134,8 @@ Yuzuko.test("a dedicated worker has no screen wake lock", async () => {
   const probe = await new Promise<{ wakeLock: boolean; WakeLock: boolean }>(
     (resolve, reject) => {
       worker.onmessage = (event: MessageEvent) => {
-        resolve(event.data as { wakeLock: boolean; WakeLock: boolean });
+        const value: { wakeLock: boolean; WakeLock: boolean } = event.data;
+        resolve(value);
       };
       worker.onerror = (event: ErrorEvent) => {
         reject(new Error(event.message || "worker error"));

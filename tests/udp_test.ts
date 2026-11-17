@@ -40,6 +40,9 @@ function closeQuiet(socket: Socket | undefined): void {
   }
 }
 
+declare const listenDatagram: unknown;
+declare const Datagram: unknown;
+
 Yuzuko.test("local datagrams exchange bytes and the source address", async () => {
   const open: Socket[] = [];
   const inflight: Promise<unknown>[] = [];
@@ -58,8 +61,8 @@ Yuzuko.test("local datagrams exchange bytes and the source address", async () =>
     assert(left instanceof Yuzuko.Datagram, "instanceof");
     assert(left.addr.hostname === "127.0.0.1", `left host ${left.addr.hostname}`);
     assert(right.addr.hostname === "127.0.0.1", `right host ${right.addr.hostname}`);
-    assert(left.addr.port > 0 && left.addr.port <= 65535, `left port ${left.addr.port}`);
-    assert(right.addr.port > 0 && right.addr.port !== left.addr.port, "ports");
+    assert(left.addr.port! > 0 && left.addr.port! <= 65535, `left port ${left.addr.port}`);
+    assert(right.addr.port! > 0 && right.addr.port !== left.addr.port, "ports");
     const again = left.addr;
     assert(again !== left.addr, "addr is a new object");
     assert(again.hostname === "127.0.0.1" && again.port === left.addr.port, "stable addr");
@@ -72,7 +75,7 @@ Yuzuko.test("local datagrams exchange bytes and the source address", async () =>
     inflight.push(waiting);
     const sent = await right.send(payload, {
       hostname: "localhost",
-      port: left.addr.port,
+      port: left.addr.port!,
     });
     assert(sent === 1000, `sent ${sent}`);
     const message = await waiting;
@@ -107,11 +110,12 @@ Yuzuko.test("local datagrams exchange bytes and the source address", async () =>
 
     const omitted = Yuzuko.listenDatagram();
     const absent = Yuzuko.listenDatagram(null);
+    // @ts-expect-error An explicit undefined port uses the default.
     const explicit = Yuzuko.listenDatagram({ port: undefined });
     open.push(omitted, absent, explicit);
-    assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port > 0, "omitted");
-    assert(absent.addr.hostname === "127.0.0.1" && absent.addr.port > 0, "null options");
-    assert(explicit.addr.port > 0, "undefined port");
+    assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port! > 0, "omitted");
+    assert(absent.addr.hostname === "127.0.0.1" && absent.addr.port! > 0, "null options");
+    assert(explicit.addr.port! > 0, "undefined port");
 
     worker = new Worker(new URL("./workers/udp.js", import.meta.url), {
       type: "module",
@@ -120,7 +124,7 @@ Yuzuko.test("local datagrams exchange bytes and the source address", async () =>
     let waitingMessage: ((value: (typeof inbox)[number]) => void) | undefined;
     let failMessage: ((error: Error) => void) | undefined;
     worker.onmessage = (event) => {
-      const value = event.data as (typeof inbox)[number];
+      const value = event.data;
       if (waitingMessage) {
         const resolve = waitingMessage;
         waitingMessage = undefined;
@@ -192,6 +196,7 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
   try {
     let constructed = "";
     try {
+      // @ts-expect-error Datagram has no public constructor.
       new Yuzuko.Datagram();
     } catch (error) {
       constructed = error instanceof TypeError ? error.message : "other";
@@ -200,7 +205,8 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
 
     let options = "";
     try {
-      Yuzuko.listenDatagram(1 as unknown as Yuzuko.ListenDatagramOptions);
+      // @ts-expect-error A number is not listen options.
+      Yuzuko.listenDatagram(1);
     } catch (error) {
       options = error instanceof TypeError ? error.message : "other";
     }
@@ -224,13 +230,9 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
 
     let boom = "";
     try {
-      Yuzuko.listenDatagram({
-        hostname: {
-          toString() {
-            throw new Error("boom");
-          },
-        },
-      } as unknown as Yuzuko.ListenDatagramOptions);
+      // @ts-expect-error Hostname is read with ToString.
+      let hostname: string = { toString() { throw new Error("boom"); } };
+      Yuzuko.listenDatagram({ hostname });
     } catch (error) {
       boom = error instanceof Error ? error.message : "other";
     }
@@ -241,12 +243,13 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
         return "127.0.0.1";
       },
     };
-    const converted = Yuzuko.listenDatagram({
-      hostname: named as unknown as string,
-      port: { valueOf: () => 0 } as unknown as number,
-    });
+    // @ts-expect-error Hostname is read with ToString.
+    let hostname: string = named;
+    // @ts-expect-error Port is read with valueOf.
+    let port: number = { valueOf: () => 0 };
+    const converted = Yuzuko.listenDatagram({ hostname, port });
     open.push(converted);
-    assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port > 0, "converted");
+    assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port! > 0, "converted");
 
     for (const port of [-1, 1.5, 65536, Number.NaN, Number.POSITIVE_INFINITY]) {
       let message = "";
@@ -290,7 +293,8 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     returned = "unset";
     let data = "";
     try {
-      returned = socket.send("hi" as unknown as Uint8Array, socket.addr);
+      // @ts-expect-error A string is not a buffer source.
+      returned = socket.send("hi", socket.addr);
     } catch (error) {
       data = error instanceof TypeError ? error.message : "other";
     }

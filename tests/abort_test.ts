@@ -45,11 +45,17 @@ Yuzuko.test("AbortSignal.any follows sources without retaining them", () => {
   }
 
   const controllers = [0, 1, 2].map(() => new AbortController());
+  const firstController = controllers[0];
+  const secondController = controllers[1];
+  const thirdController = controllers[2];
+  if (!firstController || !secondController || !thirdController) {
+    throw new Error("controllers");
+  }
   const outer = AbortSignal.any([
-    AbortSignal.any([controllers[0].signal, controllers[1].signal]),
-    controllers[2].signal,
+    AbortSignal.any([firstController.signal, secondController.signal]),
+    thirdController.signal,
   ]);
-  controllers[1].abort();
+  secondController.abort();
   if (!outer.aborted || outer.reason.name !== "AbortError") {
     throw new Error("composed");
   }
@@ -61,11 +67,20 @@ Yuzuko.test("AbortSignal.any aborts dependents after the source event", () => {
   signals.push(controller.signal);
   signals.push(AbortSignal.any([controller.signal]));
   signals.push(AbortSignal.any([controller.signal]));
-  signals.push(AbortSignal.any([signals[0]]));
-  signals.push(AbortSignal.any([signals[1]]));
+  const rootSignal = signals[0];
+  const nestedSignal = signals[1];
+  if (!rootSignal || !nestedSignal) {
+    throw new Error("signals");
+  }
+  signals.push(AbortSignal.any([rootSignal]));
+  signals.push(AbortSignal.any([nestedSignal]));
   let result = "";
   for (let index = 0; index < signals.length; index++) {
-    signals[index].addEventListener("abort", () => {
+    const signal = signals[index];
+    if (!signal) {
+      throw new Error("signal");
+    }
+    signal.addEventListener("abort", () => {
       result += index;
     });
   }
@@ -73,7 +88,8 @@ Yuzuko.test("AbortSignal.any aborts dependents after the source event", () => {
   if (result !== "01234") {
     throw new Error(result);
   }
-  if (signals[4].reason !== "ordered") {
+  const ordered = signals[4];
+  if (!ordered || ordered.reason !== "ordered") {
     throw new Error("ordered reason");
   }
 
@@ -88,6 +104,7 @@ Yuzuko.test("AbortSignal.any aborts dependents after the source event", () => {
     result = "during";
   });
   root.abort();
+  // @ts-expect-error The earlier check narrowed result to "01234".
   if (result !== "during") {
     throw new Error("during listener");
   }
