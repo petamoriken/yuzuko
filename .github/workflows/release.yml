@@ -24,6 +24,12 @@ jobs:
   build:
     name: ${{ matrix.triple }}
     runs-on: ${{ matrix.os }}
+    # Linux builds run in an older distribution so the binary binds to old
+    # glibc symbol versions. A binary linked on the runner's own glibc needs
+    # that glibc. JavaScript actions need glibc 2.28 inside the container, so
+    # Ubuntu 20.04 (glibc 2.31) is the oldest image they run in. An empty
+    # value runs the job on the runner.
+    container: ${{ matrix.container }}
     timeout-minutes: 120
     strategy:
       fail-fast: true
@@ -40,10 +46,12 @@ jobs:
             exe: ""
           - triple: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
+            container: ubuntu:20.04
             asset: yuzuko-aarch64-unknown-linux-gnu
             exe: ""
           - triple: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
+            container: ubuntu:20.04
             asset: yuzuko-x86_64-unknown-linux-gnu
             exe: ""
           - triple: x86_64-pc-windows-msvc
@@ -53,6 +61,26 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
+      # The container starts as root with an empty package list and no git
+      # or curl, which checkout and rustup need.
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            build-essential \
+            pkg-config \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -95,21 +123,6 @@ jobs:
         env:
           TRIPLE: ${{ matrix.triple }}
 
-      - name: Install Linux packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            libgtk-3-dev \
-            libxdo-dev \
-            libudev-dev \
-            libayatana-appindicator3-dev \
-            libasound2-dev \
-            libxkbcommon0 \
-            libxkbcommon-x11-0
-
       - name: Build
         shell: bash
         run: |
@@ -134,6 +147,20 @@ jobs:
           fi
         env:
           TRIPLE: ${{ matrix.triple }}
+          ASSET: ${{ matrix.asset }}
+
+      - name: Check the glibc requirement
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          newest=$(objdump -T "$ASSET" | grep -o 'GLIBC_2\.[0-9.]*' | sort -Vu | tail -n 1)
+          echo "newest glibc symbol version: $newest"
+          if [ "$(printf '%s\n' "$newest" GLIBC_2.31 | sort -V | tail -n 1)" != GLIBC_2.31 ]; then
+            echo "$ASSET needs $newest, newer than glibc 2.31"
+            exit 1
+          fi
+        env:
           ASSET: ${{ matrix.asset }}
 
       - name: Upload the binary
