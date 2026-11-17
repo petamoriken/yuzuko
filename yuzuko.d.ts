@@ -16707,10 +16707,27 @@ interface ImportMeta {
   url: string;
 
   /**
-   * Instances created when this module graph evaluated a WebAssembly module.
-   * The key is that module's `file:` URL.
+   * File-system path of `url`.
    */
-  wasmInstances: Map<string, WebAssembly.Instance>;
+  filename: string;
+
+  /**
+   * Directory of `filename`, with no trailing separator except a root.
+   */
+  dirname: string;
+
+  /**
+   * Resolves `specifier` with the same loader as `import()`, relative to this module, and returns the absolute `file:` URL.
+   *
+   * `parent`, when it is not `undefined`, is the parent module's `file:` URL. A `file:` specifier is normalized even when that file is absent. Any other specifier that does not resolve throws `TypeError`.
+   *
+   * @param specifier Converted with `ToString`.
+   * @param parent Parent module `file:` URL. Omitted or `undefined` uses this module.
+   * @throws {TypeError} The specifier does not resolve, or `parent` is not a `file:` URL.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Operators/import.meta/resolve)
+   */
+  resolve(specifier: string, parent?: string): string;
 }
 
 declare namespace WebAssembly {

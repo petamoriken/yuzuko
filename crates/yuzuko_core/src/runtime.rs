@@ -2953,12 +2953,7 @@ unsafe extern "C" fn on_import_meta(
   let scope = &mut v8::ContextScope::new(scope, context);
   let url =
     host::module_url(module.get_identity_hash().get()).unwrap_or_default();
-  let key = v8::String::new(scope, "url").unwrap();
-  let value = v8::String::new(scope, &url).unwrap();
-  meta.create_data_property(scope, key.into(), value.into());
-  let instances = host::wasm_instances(scope);
-  let key = v8::String::new(scope, "wasmInstances").unwrap();
-  meta.create_data_property(scope, key.into(), instances.into());
+  modules::install_import_meta(scope, meta, &url);
 }
 
 fn on_dynamic_import<'s>(

@@ -214,6 +214,9 @@ required-features = ["window"]
 name = "update"
 
 [[test]]
+name = "import_meta"
+
+[[test]]
 name = "image_decoder"
 required-features = ["codec", "canvas"]
 
