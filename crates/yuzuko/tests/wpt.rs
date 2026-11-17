@@ -941,14 +941,18 @@ impl WptServer {
     if port_open() {
       return Self { child: None };
     }
+    // The server's own log is the only signal when it exits before listening.
+    let log_path = std::env::temp_dir().join("yuzuko-wpt-serve.log");
+    let log_file = fs::File::create(&log_path).expect("WPT server log");
+    let stdout = log_file.try_clone().expect("WPT server log");
     let child = Command::new(wpt_python(suite))
       .arg("wpt")
       .arg("serve")
       .arg("--no-h2")
       .current_dir(suite)
       .stdin(Stdio::null())
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
+      .stdout(Stdio::from(stdout))
+      .stderr(Stdio::from(log_file))
       .spawn()
       .expect("start the WPT server");
     let deadline = std::time::Instant::now() + Duration::from_secs(120);
@@ -961,7 +965,10 @@ impl WptServer {
     let mut child = child;
     let _ = child.kill();
     let _ = child.wait();
-    panic!("WPT server did not listen on 127.0.0.1:8000");
+    let bytes = fs::read(&log_path).unwrap_or_default();
+    let start = bytes.len().saturating_sub(2000);
+    let tail = String::from_utf8_lossy(&bytes[start..]);
+    panic!("WPT server did not listen on 127.0.0.1:8000\n{tail}");
   }
 }
 

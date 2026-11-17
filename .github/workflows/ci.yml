@@ -65,8 +65,9 @@ jobs:
     steps:
       # The container starts as root with an empty package list and no git
       # or curl, which checkout and rustup need. Later steps call sudo.
-      # The WPT server needs Python 3.9. setup-python installs the runner's
-      # Ubuntu build, which needs a newer glibc than this container.
+      # The WPT server needs Python 3.9. wpt serve creates a virtualenv,
+      # which is the python3.9-venv package on this image. setup-python
+      # installs the runner's Ubuntu build, which needs a newer glibc.
       # DejaVu is a face for the generic families and queryLocalFonts.
       - name: Install Linux packages
         if: matrix.container == 'ubuntu:20.04'
@@ -80,6 +81,7 @@ jobs:
             build-essential \
             pkg-config \
             python3.9 \
+            python3.9-venv \
             xvfb \
             fonts-dejavu-core \
             libgtk-3-dev \
