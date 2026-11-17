@@ -75,13 +75,14 @@ fn backend() -> &'static Backend {
 }
 
 fn gpu_renderer_works() -> bool {
-  yuzuko_window::with_device(|device, _queue| {
+  yuzuko_window::with_device(|device, queue| {
     // `Renderer::new` builds pipelines and does not return `Result`. A
     // panic means this device cannot run the fragment renderer.
     let created =
       std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         vello_gpu::Renderer::new(
           device,
+          queue,
           &vello_gpu::RenderTargetConfig {
             format: wgpu::TextureFormat::Rgba8Unorm,
             width: 1,
@@ -1439,7 +1440,7 @@ fn draw_gpu_texture(
   GPU.with(|slot| {
     let mut slot = slot.borrow_mut();
     let state = slot.as_mut()?;
-    let depth = depth_view(&mut state.depth, device, width, height);
+    let depth = depth_view(&mut state.depth, &state.renderer, width, height);
     let mut encoder =
       device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("yuzuko-canvas"),
@@ -1447,14 +1448,13 @@ fn draw_gpu_texture(
     match state.renderer.render(
       &scene,
       &mut state.resources,
-      device,
-      queue,
       &mut encoder,
-      &vello_gpu::RenderSize { width, height },
-      &view,
-      depth.as_ref(),
+      vello_gpu::RenderTarget {
+        view: &view,
+        depth_view: depth.as_ref(),
+      },
       &bindings,
-      vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
+      vello_gpu::RenderOptions::default(),
     ) {
       Ok(()) => {
         queue.submit([encoder.finish()]);
@@ -1472,7 +1472,7 @@ fn draw_gpu_texture(
 
 fn depth_view(
   depth: &mut Option<DepthCache>,
-  device: &wgpu::Device,
+  renderer: &vello_gpu::Renderer,
   width: u16,
   height: u16,
 ) -> Option<wgpu::TextureView> {
@@ -1486,10 +1486,7 @@ fn depth_view(
     return Some(view.clone());
   }
   let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-    vello_gpu::Renderer::create_depth_texture_view(
-      device,
-      &vello_gpu::RenderSize { width, height },
-    )
+    renderer.create_depth_texture_view(&vello_gpu::RenderSize { width, height })
   }));
   match created {
     Ok(view) => {
@@ -1880,7 +1877,7 @@ fn upload_rgba8(
     bytes.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 255);
   ImageUpload::Texture(vello_gpu::ImageSource::external_texture(
     id,
-    vello_gpu::RectU16::new(0, 0, width, height),
+    vello_gpu::TextureRegion::Full,
     transparent,
   ))
 }
