@@ -279,7 +279,7 @@ fn push_rdata(
         return Err(());
       }
       rows.push(CaaRecord {
-        critical: (flag & 1) != 0,
+        critical: (flag & 0x80) != 0,
         tag: String::from_utf8_lossy(&message[tag_at..value_at]).into_owned(),
         value: String::from_utf8_lossy(&message[value_at..end]).into_owned(),
       });
@@ -448,6 +448,10 @@ unsafe extern "C" {
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "ios"))))]
 #[link(name = "resolv")]
 unsafe extern "C" {
+  // glibc's `resolv.h` defines `res_query` as `__res_query`, which every
+  // glibc exports. A plain `res_query` exists only from glibc 2.34, so
+  // linking it fails on older glibc and makes the binary need 2.34.
+  #[cfg_attr(target_env = "gnu", link_name = "__res_query")]
   fn res_query(
     dname: *const libc::c_char,
     class: libc::c_int,
@@ -546,9 +550,12 @@ fn windows_push(
       });
     }
     Typed::Txt(rows) => {
-      let data = unsafe { record.Data.TXT };
-      let count = data.dwStringCount as usize;
-      let base = data.pStringArray.as_ptr();
+      // `pStringArray` is a one-element array that the record extends.
+      // Read it in place. A copy of the union holds only the first pointer.
+      let data = &raw const record.Data.TXT;
+      let count = unsafe { (*data).dwStringCount } as usize;
+      let base = unsafe { &raw const (*data).pStringArray }
+        .cast::<windows_sys::core::PSTR>();
       let mut strings = Vec::with_capacity(count);
       for index in 0..count {
         let pointer = unsafe { *base.add(index) };
@@ -578,19 +585,21 @@ fn windows_push(
       });
     }
     Typed::Caa(rows) => {
-      let data = unsafe { record.Data.UNKNOWN };
-      let count = data.dwByteCount as usize;
+      // Windows has no CAA data struct. `Data` holds the raw RDATA, which
+      // is `wDataLength` bytes and runs past the union. It is not
+      // `DNS_UNKNOWN_DATA`, so there is no byte count in front.
+      let count = usize::from(record.wDataLength);
       if count < 2 {
         return Err(());
       }
-      let bytes =
-        unsafe { std::slice::from_raw_parts(data.bData.as_ptr(), count) };
+      let base = (&raw const record.Data).cast::<u8>();
+      let bytes = unsafe { std::slice::from_raw_parts(base, count) };
       let tag_len = bytes[1] as usize;
       if tag_len + 2 > bytes.len() {
         return Err(());
       }
       rows.push(CaaRecord {
-        critical: (bytes[0] & 1) != 0,
+        critical: (bytes[0] & 0x80) != 0,
         tag: String::from_utf8_lossy(&bytes[2..2 + tag_len]).into_owned(),
         value: String::from_utf8_lossy(&bytes[2 + tag_len..]).into_owned(),
       });
@@ -631,6 +640,8 @@ fn lossy_c(pointer: windows_sys::core::PSTR) -> String {
 #[cfg(test)]
 mod tests {
   use super::{Kind, Typed, parse_message};
+  #[cfg(windows)]
+  use windows_sys::Win32::NetworkManagement::Dns::DNS_RECORDA;
 
   fn mx_packet() -> Vec<u8> {
     vec![
@@ -702,7 +713,7 @@ mod tests {
 
     let caa = [
       0x00, 0x01, 0x81, 0x80, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x01,
+      0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x80,
       0x05, b'i', b's', b's', b'u', b'e', b'c', b'a',
     ];
     let Typed::Caa(rows) = parse_message(&caa, Kind::Caa).unwrap() else {
@@ -711,6 +722,14 @@ mod tests {
     assert!(rows[0].critical);
     assert_eq!(rows[0].tag, "issue");
     assert_eq!(rows[0].value, "ca");
+    // RFC 8659 numbers the flags from the high bit, so the low bit is not
+    // Issuer Critical.
+    let mut low = caa;
+    low[23] = 0x01;
+    let Typed::Caa(rows) = parse_message(&low, Kind::Caa).unwrap() else {
+      panic!("caa");
+    };
+    assert!(!rows[0].critical);
 
     let srv = [
       0x00, 0x01, 0x81, 0x80, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
@@ -725,5 +744,74 @@ mod tests {
     assert_eq!(rows[0].weight, 2);
     assert_eq!(rows[0].port, 443);
     assert_eq!(rows[0].target, "example");
+  }
+
+  /// A `DNS_RECORDA` followed by `extra` bytes, as `DnsQuery_A` lays out a
+  /// record whose data runs past the union.
+  #[cfg(windows)]
+  fn windows_record(extra: usize) -> (Vec<u64>, *mut DNS_RECORDA) {
+    let bytes = std::mem::size_of::<DNS_RECORDA>() + extra;
+    let mut buffer = vec![0u64; bytes.div_ceil(8)];
+    let record = buffer.as_mut_ptr().cast();
+    (buffer, record)
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn windows_caa_reads_the_raw_rdata_past_the_union() {
+    use super::windows_push;
+
+    // flags 128, tag "issue", value "letsencrypt.org", 22 bytes.
+    let mut rdata = vec![0x80, 5];
+    rdata.extend_from_slice(b"issue");
+    rdata.extend_from_slice(b"letsencrypt.org");
+    let (_buffer, record) = windows_record(rdata.len());
+    unsafe {
+      (*record).wType = 257;
+      (*record).wDataLength = rdata.len() as u16;
+      std::ptr::copy_nonoverlapping(
+        rdata.as_ptr(),
+        (&raw mut (*record).Data).cast::<u8>(),
+        rdata.len(),
+      );
+    }
+    let mut found = Typed::empty(Kind::Caa);
+    windows_push(&mut found, unsafe { &*record }).expect("caa");
+    let Typed::Caa(rows) = found else {
+      panic!("caa");
+    };
+    assert!(rows[0].critical);
+    assert_eq!(rows[0].tag, "issue");
+    assert_eq!(rows[0].value, "letsencrypt.org");
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn windows_txt_reads_every_string_of_one_record() {
+    use super::windows_push;
+    use windows_sys::core::PSTR;
+
+    let strings = [c"first", c"second", c"third"];
+    let (_buffer, record) =
+      windows_record(strings.len() * std::mem::size_of::<PSTR>());
+    unsafe {
+      (*record).wType = 16;
+      let data = &raw mut (*record).Data.TXT;
+      (*data).dwStringCount = strings.len() as u32;
+      let base = (&raw mut (*data).pStringArray).cast::<PSTR>();
+      for (index, text) in strings.iter().enumerate() {
+        base.add(index).write(text.as_ptr().cast_mut().cast());
+      }
+    }
+    let mut found = Typed::empty(Kind::Txt);
+    windows_push(&mut found, unsafe { &*record }).expect("txt");
+    assert_eq!(
+      found,
+      Typed::Txt(vec![vec![
+        "first".to_string(),
+        "second".to_string(),
+        "third".to_string(),
+      ]])
+    );
   }
 }

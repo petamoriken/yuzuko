@@ -3564,7 +3564,8 @@ declare namespace Yuzuko {
   /**
    * One CAA record from {@link resolveDns}.
    *
-   * `critical` is bit 0 of the flags octet.
+   * `critical` is the RFC 8659 Issuer Critical flag, the `0x80` bit of the
+   * flags octet.
    */
   interface DnsCaaRecord {
     critical: boolean;
