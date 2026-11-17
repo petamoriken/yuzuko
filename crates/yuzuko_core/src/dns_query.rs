@@ -448,10 +448,18 @@ unsafe extern "C" {
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "ios"))))]
 #[link(name = "resolv")]
 unsafe extern "C" {
-  // glibc exports `__res_query@GLIBC_2.2.5`. A plain `res_query` symbol
-  // exists only from glibc 2.34, so that name would make the binary need
-  // 2.34. rust-lld does not bind the unversioned `__res_query`.
-  #[cfg_attr(target_env = "gnu", link_name = "__res_query@GLIBC_2.2.5")]
+  // glibc's plain `res_query` exists only from 2.34. The older export is
+  // versioned `__res_query` at that architecture's baseline: `GLIBC_2.2.5`
+  // on x86_64 and `GLIBC_2.17` on aarch64. aarch64 has no `GLIBC_2.2.5`
+  // version node. rust-lld does not bind an unversioned `__res_query`.
+  #[cfg_attr(
+    all(target_env = "gnu", target_arch = "x86_64"),
+    link_name = "__res_query@GLIBC_2.2.5"
+  )]
+  #[cfg_attr(
+    all(target_env = "gnu", target_arch = "aarch64"),
+    link_name = "__res_query@GLIBC_2.17"
+  )]
   fn res_query(
     dname: *const libc::c_char,
     class: libc::c_int,
