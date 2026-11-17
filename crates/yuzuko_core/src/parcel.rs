@@ -4,7 +4,7 @@
 //! is copied and detached on the sender. Host objects use the registered
 //! clone writers.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use v8::ValueDeserializerHelper;
@@ -42,6 +42,8 @@ pub struct Parcel {
 
 struct CrossHost {
   shared: Rc<RefCell<Vec<SharedStore>>>,
+  /// Ids written for `WebAssembly.Module`. The bytes are not kept.
+  next_wasm: Cell<u32>,
 }
 
 impl v8::ValueSerializerImpl for CrossHost {
@@ -91,6 +93,18 @@ impl v8::ValueSerializerImpl for CrossHost {
     list.push(wrapped);
     Some((list.len() - 1) as u32)
   }
+
+  fn get_wasm_module_transfer_id(
+    &self,
+    _scope: &mut v8::PinScope<'_, '_>,
+    _module: v8::Local<v8::WasmModuleObject>,
+  ) -> Option<u32> {
+    // The sender must not throw. `CrossRead` fails the module so the
+    // receiver dispatches `messageerror` instead of delivering it.
+    let id = self.next_wasm.get().saturating_add(1).max(1);
+    self.next_wasm.set(id);
+    Some(id)
+  }
 }
 
 struct CrossRead {
@@ -116,6 +130,16 @@ impl v8::ValueDeserializerImpl for CrossRead {
       scope,
       store.backing(),
     ))
+  }
+
+  fn get_wasm_module_from_id<'s>(
+    &self,
+    _scope: &mut v8::PinScope<'s, '_>,
+    _clone_id: u32,
+  ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
+    // Returning `None` fails the read without throwing. The default
+    // delegate throws while JavaScript is disallowed.
+    None
   }
 }
 
@@ -157,6 +181,7 @@ pub fn serialize_parcel(
       tc,
       Box::new(CrossHost {
         shared: Rc::clone(&shared),
+        next_wasm: Cell::new(0),
       }),
     );
     serializer.write_header();

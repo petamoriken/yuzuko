@@ -17,6 +17,12 @@ jobs:
   ci:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # Linux jobs link in an older distribution. The release binaries do too,
+    # so a symbol that links on the runner's glibc can still be missing here.
+    # JavaScript actions need glibc 2.28 inside the container, so Ubuntu 20.04
+    # (glibc 2.31) is the oldest image they run in. An empty value runs the
+    # job on the runner.
+    container: ${{ matrix.container }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -24,10 +30,12 @@ jobs:
         include:
           - name: Linux
             os: ubuntu-24.04
+            container: ubuntu:20.04
             suite: test
             timeout: 60
           - name: Linux WPT
             os: ubuntu-24.04
+            container: ubuntu:20.04
             suite: wpt
             timeout: 360
           - name: macOS
@@ -55,6 +63,38 @@ jobs:
       # after one quantum. The timer fallback keeps the realtime clock moving.
       YUZUKO_AUDIO_TIMER: "1"
     steps:
+      # The container starts as root with an empty package list and no git
+      # or curl, which checkout and rustup need. Later steps call sudo.
+      # The WPT server needs Python 3.9. wpt serve creates a virtualenv,
+      # which is the python3.9-venv package on this image. setup-python
+      # installs the runner's Ubuntu build, which needs a newer glibc.
+      # DejaVu is a face for the generic families and queryLocalFonts.
+      - name: Install Linux packages
+        if: matrix.container == 'ubuntu:20.04'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            sudo \
+            build-essential \
+            pkg-config \
+            python3.9 \
+            python3.9-venv \
+            xvfb \
+            fonts-dejavu-core \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            mesa-vulkan-drivers \
+            libvulkan1
+          ln -sf /usr/bin/python3.9 /usr/local/bin/python
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -67,7 +107,8 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: yuzuko
+          # Objects linked on the runner's glibc do not belong in this cache.
+          shared-key: ${{ matrix.container && 'yuzuko-focal' || 'yuzuko' }}
           save-if: ${{ matrix.suite == 'test' }}
 
       - name: Restore the V8 static library
@@ -101,30 +142,13 @@ jobs:
             rm -rf "${to_remove[@]}"
           done
 
+      # Linux WPT uses the container's Python 3.9. setup-python would
+      # install the runner's build.
       - name: Install Python
-        if: matrix.suite == 'wpt'
+        if: matrix.suite == 'wpt' && matrix.container != 'ubuntu:20.04'
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-
-      - name: Install Linux packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            python3 \
-            xvfb \
-            libgtk-3-dev \
-            libxdo-dev \
-            libudev-dev \
-            libayatana-appindicator3-dev \
-            libasound2-dev \
-            libxkbcommon0 \
-            libxkbcommon-x11-0 \
-            mesa-vulkan-drivers \
-            libvulkan1
 
       - name: Probe VA-API
         if: runner.os == 'Linux' && matrix.suite == 'test'
@@ -215,6 +239,9 @@ jobs:
   lint:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # Linux Clippy links in the same distribution as the release binaries.
+    # See the test job. Format does not link, so it stays on the runner.
+    container: ${{ matrix.container }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -226,6 +253,7 @@ jobs:
             timeout: 15
           - name: Linux Clippy
             os: ubuntu-24.04
+            container: ubuntu:20.04
             task: clippy
             timeout: 60
           - name: macOS Clippy
@@ -239,6 +267,28 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
+      - name: Install Linux packages
+        if: matrix.container == 'ubuntu:20.04'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            sudo \
+            build-essential \
+            pkg-config \
+            python3 \
+            libgtk-3-dev \
+            libxdo-dev \
+            libudev-dev \
+            libayatana-appindicator3-dev \
+            libasound2-dev \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            mesa-vulkan-drivers \
+            libvulkan1
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -261,7 +311,8 @@ jobs:
         if: matrix.task == 'clippy'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: yuzuko-clippy
+          # Objects linked on the runner's glibc do not belong in this cache.
+          shared-key: ${{ matrix.container && 'yuzuko-clippy-focal' || 'yuzuko-clippy' }}
 
       - name: Restore the V8 static library
         if: matrix.task == 'clippy'
@@ -294,24 +345,6 @@ jobs:
             echo "rusty_v8 archive missing in ${profile}; discarding cached v8 outputs"
             rm -rf "${to_remove[@]}"
           done
-
-      - name: Install Linux packages
-        if: matrix.task == 'clippy' && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            python3 \
-            libgtk-3-dev \
-            libxdo-dev \
-            libudev-dev \
-            libayatana-appindicator3-dev \
-            libasound2-dev \
-            libxkbcommon0 \
-            libxkbcommon-x11-0 \
-            mesa-vulkan-drivers \
-            libvulkan1
 
       - name: Clippy
         if: matrix.task == 'clippy'

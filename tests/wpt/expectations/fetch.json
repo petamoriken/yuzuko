@@ -857,8 +857,10 @@
       "Request interface: new Request('about:blank') must inherit property \"mode\" with the proper type",
       "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
       "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
+      "Window interface: calling fetch(RequestInfo, optional RequestInit) on window with too few arguments must throw TypeError",
       "Window interface: calling fetchLater(RequestInfo, optional DeferredRequestInit) on window with too few arguments must throw TypeError",
       "Window interface: operation fetchLater(RequestInfo, optional DeferredRequestInit)",
+      "Window interface: window must inherit property \"fetch(RequestInfo, optional RequestInit)\" with the proper type",
       "Window interface: window must inherit property \"fetchLater(RequestInfo, optional DeferredRequestInit)\" with the proper type"
     ]
   },
@@ -2017,7 +2019,11 @@
       "A same-origin window[target='_blank'][features='popup'] can trigger fetchLater."
     ]
   },
-  "fetch/fetch-later/non-secure.window.js": true,
+  "fetch/fetch-later/non-secure.window.js": {
+    "expectedFailures": [
+      "fetchLater() is not supported in non-secure context."
+    ]
+  },
   "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy-attribute-redirect.https.window.js": {
     "expectedFailures": [
       "Permissions policy allow=\"deferred-fetch\" allows fetchLater() from a redirected same-origin iframe.",
@@ -2354,14 +2360,7 @@
       "Response with Cache-Control: max-age=2592000, immutable and Pragma: no-cache should be cached"
     ]
   },
-  "fetch/http-cache/split-cache.html": {
-    "expectedFailures": [
-      "HTTP cache is not shared between cross-site top-level frames",
-      "HTTP cache is not shared between same-site frames with cross-site top-level frames",
-      "HTTP cache is shared between same-site frames with same-site top-level frames",
-      "HTTP cache is shared between same-site top-level frames"
-    ]
-  },
+  "fetch/http-cache/split-cache.html": false,
   "fetch/http-cache/status.any.js": {
     "expectedFailures": [
       "HTTP cache avoids going to the network if it has a fresh 200 response",

@@ -804,6 +804,60 @@ impl Response {
     *self.stream.borrow_mut() = Some(traced(scope, local));
     self.stream_id.set(id);
   }
+
+  pub(crate) fn cache_status(&self) -> u16 {
+    self.status
+  }
+
+  /// Copies a response for `Cache.put` without disturbing a buffered body.
+  /// A stream body is teed, so the original stays readable.
+  pub(crate) fn snapshot_for_cache(
+    &self,
+    scope: &mut v8::PinScope,
+  ) -> Result<CachedResponse, OpError> {
+    if self.status == 206 {
+      return Err(OpError::type_(
+        "Partial response (status code 206) is unsupported",
+      ));
+    }
+    let headers = self.header_pairs(scope);
+    if vary_contains_star(&headers) {
+      return Err(OpError::type_("Vary header contains *"));
+    }
+    let stream_id = self.stream_id.get();
+    if self.consumed.get()
+      || crate::stream::is_disturbed(stream_id)
+      || crate::stream::is_locked(stream_id)
+    {
+      return Err(OpError::type_("Body has already been used"));
+    }
+    let body = if stream_id == 0 {
+      match self.body.borrow().clone() {
+        Some(source) => {
+          let bytes = source
+            .read_all()
+            .map_err(|_| OpError::type_("The body could not be read"))?;
+          CachedBody::Bytes(bytes)
+        }
+        None => CachedBody::Null,
+      }
+    } else {
+      let cloned = self.clone_response(scope)?;
+      match cloned.take_body(scope)? {
+        StreamBody::Ready(bytes) => CachedBody::Bytes(bytes),
+        StreamBody::Pending(promise) => CachedBody::Pending(promise),
+      }
+    };
+    Ok(CachedResponse {
+      status: self.status,
+      status_text: self.status_text.clone(),
+      url: self.url.clone(),
+      redirected: self.redirected,
+      kind: self.kind.to_string(),
+      headers,
+      body,
+    })
+  }
 }
 
 struct ResponsePromise(v8::Global<v8::Promise>);
@@ -1192,6 +1246,115 @@ fn text_stream_of(
   let local = v8::Local::new(scope, &decoded);
   let value: v8::Local<v8::Value> = local.into();
   Ok(Js(v8::Global::new(scope, value)))
+}
+
+pub(crate) enum CachedBody {
+  Null,
+  Bytes(Vec<u8>),
+  Pending(v8::Global<v8::Promise>),
+}
+
+pub(crate) struct CachedResponse {
+  pub status: u16,
+  pub status_text: String,
+  pub url: String,
+  pub redirected: bool,
+  pub kind: String,
+  pub headers: Vec<(String, String)>,
+  pub body: CachedBody,
+}
+
+pub(crate) fn is_response(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return false;
+  };
+  unsafe { yuzuko_core::op::host_ref::<Response>(scope, object) }.is_some()
+}
+
+pub(crate) fn response_status(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  missing: &str,
+) -> Result<u16, OpError> {
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_(missing))?;
+  let host = unsafe { yuzuko_core::op::host_ref::<Response>(scope, object) }
+    .ok_or_else(|| OpError::type_(missing))?;
+  Ok(host.get().cache_status())
+}
+
+pub(crate) fn snapshot_response(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  missing: &str,
+) -> Result<CachedResponse, OpError> {
+  let object = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_(missing))?;
+  let host = unsafe { yuzuko_core::op::host_ref::<Response>(scope, object) }
+    .ok_or_else(|| OpError::type_(missing))?;
+  host.get().snapshot_for_cache(scope)
+}
+
+pub(crate) fn response_from_cache<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  cached: CachedResponse,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let body = match cached.body {
+    CachedBody::Null => None,
+    CachedBody::Bytes(bytes) => Some(bytes),
+    CachedBody::Pending(_) => {
+      return Err(OpError::type_("The body could not be read"));
+    }
+  };
+  let mime = cached
+    .headers
+    .iter()
+    .find(|(name, _)| name == "content-type")
+    .map(|(_, value)| value.clone())
+    .unwrap_or_default();
+  let headers = unsafe {
+    yuzuko_core::op::wrap_instance(
+      scope,
+      Headers::from_pairs(cached.headers, HeaderGuard::Immutable)?,
+    )
+  };
+  let response = Response {
+    status: cached.status,
+    status_text: cached.status_text,
+    url: cached.url,
+    mime,
+    redirected: cached.redirected,
+    kind: kind_static(&cached.kind),
+    body: RefCell::new(body.map(crate::blob::BlobSource::from_vec)),
+    stream: RefCell::new(None),
+    stream_id: Cell::new(0),
+    consumed: Cell::new(false),
+    headers: RefCell::new(Some(traced(scope, headers))),
+  };
+  Ok(unsafe { yuzuko_core::op::wrap_instance(scope, response) })
+}
+
+fn kind_static(kind: &str) -> &'static str {
+  match kind {
+    "basic" => "basic",
+    "cors" => "cors",
+    "error" => "error",
+    "opaque" => "opaque",
+    "opaqueredirect" => "opaqueredirect",
+    _ => "default",
+  }
+}
+
+fn vary_contains_star(pairs: &[(String, String)]) -> bool {
+  pairs.iter().any(|(name, value)| {
+    name.eq_ignore_ascii_case("vary")
+      && value
+        .split(',')
+        .any(|token| token.trim().eq_ignore_ascii_case("*"))
+  })
 }
 
 fn response_from_parts(

@@ -255,9 +255,22 @@ fn realm_globals_cover_phase_one_basics() {
     console.log(typeof navigator.userAgent);
     console.log(typeof performance.now);
     console.log(self === globalThis);
+    console.log(typeof window);
+    console.log("window" in globalThis);
     "#])
   .expect("realm");
-  assert_eq!(logs, vec!["1", "true", "string", "function", "true"]);
+  assert_eq!(
+    logs,
+    vec![
+      "1",
+      "true",
+      "string",
+      "function",
+      "true",
+      "undefined",
+      "false"
+    ]
+  );
 }
 
 #[test]
@@ -431,6 +444,45 @@ fn assert_logs(source: &str, expected: &[&str]) {
       .collect::<Vec<_>>()
       .join("\n")
   );
+}
+
+#[test]
+fn console_time_stamp_prints_a_marker() {
+  let logs = logs_of(
+    r#"
+    console.timeStamp();
+    console.timeStamp(undefined);
+    console.timeStamp("mark", "extra");
+    console.timeStamp(null);
+    "#,
+  );
+  assert_eq!(logs.len(), 4, "{logs:?}");
+  for line in &logs[..2] {
+    assert!(
+      line.starts_with("timeStamp @ ") && line.ends_with(" ms"),
+      "{line:?}"
+    );
+  }
+  assert!(
+    logs[2].starts_with("timeStamp: mark @ ") && logs[2].ends_with(" ms"),
+    "{:?}",
+    logs[2]
+  );
+  assert!(!logs[2].contains("extra"), "{:?}", logs[2]);
+  assert!(
+    logs[3].starts_with("timeStamp: null @ ") && logs[3].ends_with(" ms"),
+    "{:?}",
+    logs[3]
+  );
+}
+
+#[test]
+fn console_time_stamp_rethrows_to_string() {
+  let error = run_scripts(&[r#"
+    console.timeStamp({ toString() { throw new Error("boom"); } });
+    "#])
+  .expect_err("toString");
+  assert!(error.message.contains("boom"), "{}", error.message);
 }
 
 #[test]

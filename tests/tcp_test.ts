@@ -15,8 +15,12 @@ const BUSY_READ = "A read is already waiting.";
 const UNAVAILABLE = "The address is not available.";
 const CONNECT = "The connection was refused.";
 
-type Listener = Yuzuko.TcpListener;
 type Conn = Yuzuko.TcpConn;
+
+declare const listenTcp: unknown;
+declare const connectTcp: unknown;
+declare const TcpListener: unknown;
+declare const TcpConn: unknown;
 
 function sameBytes(left: Uint8Array, right: ArrayLike<number>): boolean {
   if (left.length !== right.length) {
@@ -92,7 +96,7 @@ Yuzuko.test("local TCP sockets exchange bytes", async () => {
       open.push(listener);
       assert(listener instanceof Yuzuko.TcpListener, "instanceof listener");
       assert(listener.addr.hostname === "127.0.0.1", `host ${listener.addr.hostname}`);
-      assert(listener.addr.port > 0, `port ${listener.addr.port}`);
+      assert(listener.addr.port! > 0, `port ${listener.addr.port}`);
       const again = listener.addr;
       assert(again !== listener.addr, "addr is a new object");
       assert(again.port === listener.addr.port, "stable port");
@@ -101,7 +105,7 @@ Yuzuko.test("local TCP sockets exchange bytes", async () => {
       inflight.push(accepted);
       const client = await Yuzuko.connectTcp({
         hostname: "localhost",
-        port: listener.addr.port,
+        port: listener.addr.port!,
       });
       open.push(client);
       const server = await accepted;
@@ -142,18 +146,19 @@ Yuzuko.test("local TCP sockets exchange bytes", async () => {
 
       const omitted = Yuzuko.listenTcp();
       const absent = Yuzuko.listenTcp(null);
+      // @ts-expect-error An explicit undefined port uses the default.
       const explicit = Yuzuko.listenTcp({ port: undefined });
       open.push(omitted, absent, explicit);
-      assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port > 0, "omitted");
-      assert(absent.addr.hostname === "127.0.0.1" && absent.addr.port > 0, "null options");
-      assert(explicit.addr.port > 0, "undefined port");
+      assert(omitted.addr.hostname === "127.0.0.1" && omitted.addr.port! > 0, "omitted");
+      assert(absent.addr.hostname === "127.0.0.1" && absent.addr.port! > 0, "null options");
+      assert(explicit.addr.port! > 0, "undefined port");
 
       worker = new Worker(new URL("./workers/tcp.js", import.meta.url), { type: "module" });
       const inbox: Array<{ port?: number; hostname?: string; bytes?: number[]; error?: string }> = [];
       let waitingMessage: ((value: (typeof inbox)[number]) => void) | undefined;
       let failMessage: ((error: Error) => void) | undefined;
       worker.onmessage = (event) => {
-        const value = event.data as (typeof inbox)[number];
+        const value = event.data;
         if (waitingMessage) {
           const resolve = waitingMessage;
           waitingMessage = undefined;
@@ -222,6 +227,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
     await deadline((async () => {
       let constructed = "";
       try {
+        // @ts-expect-error TcpListener has no public constructor.
         new Yuzuko.TcpListener();
       } catch (error) {
         constructed = error instanceof TypeError ? error.message : "other";
@@ -229,6 +235,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       assert(constructed === "Illegal constructor", constructed);
       constructed = "";
       try {
+        // @ts-expect-error TcpConn has no public constructor.
         new Yuzuko.TcpConn();
       } catch (error) {
         constructed = error instanceof TypeError ? error.message : "other";
@@ -237,7 +244,8 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
 
       let options = "";
       try {
-        Yuzuko.listenTcp(1 as unknown as Yuzuko.ListenTcpOptions);
+        // @ts-expect-error A number is not listen options.
+        Yuzuko.listenTcp(1);
       } catch (error) {
         options = error instanceof TypeError ? error.message : "other";
       }
@@ -261,24 +269,24 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
 
       let boom = "";
       try {
-        Yuzuko.listenTcp({
-          hostname: {
-            toString() {
-              throw new Error("boom");
-            },
-          },
-        } as unknown as Yuzuko.ListenTcpOptions);
+        // @ts-expect-error Hostname is read with ToString.
+        let hostname: string = { toString() { throw new Error("boom"); } };
+        Yuzuko.listenTcp({ hostname });
       } catch (error) {
         boom = error instanceof Error ? error.message : "other";
       }
       assert(boom === "boom", boom);
 
+      // @ts-expect-error Hostname is read with ToString.
+      let convertedHostname: string = { toString: () => "127.0.0.1" };
+      // @ts-expect-error Port is read with valueOf.
+      let convertedPort: number = { valueOf: () => 0 };
       const converted = Yuzuko.listenTcp({
-        hostname: { toString: () => "127.0.0.1" } as unknown as string,
-        port: { valueOf: () => 0 } as unknown as number,
+        hostname: convertedHostname,
+        port: convertedPort,
       });
       open.push(converted);
-      assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port > 0, "converted");
+      assert(converted.addr.hostname === "127.0.0.1" && converted.addr.port! > 0, "converted");
 
       for (const port of [-1, 1.5, 65536, Number.NaN, Number.POSITIVE_INFINITY]) {
         let message = "";
@@ -301,6 +309,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       let missing = "";
       let returned: unknown = "unset";
       try {
+        // @ts-expect-error connectTcp requires an address.
         returned = Yuzuko.connectTcp();
       } catch (error) {
         missing = error instanceof TypeError ? error.message : "other";
@@ -325,7 +334,7 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
 
       const listener = Yuzuko.listenTcp({ hostname: "127.0.0.1", port: 0 });
       open.push(listener);
-      const port = listener.addr.port;
+      const port = listener.addr.port!;
       listener.close();
       let refused = "";
       let refusedClass = false;
@@ -357,7 +366,10 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
         busy = error instanceof Yuzuko.errors.Busy ? error.message : "other";
       }
       assert(busy === BUSY_ACCEPT, busy);
-      const client = await Yuzuko.connectTcp({ hostname: "127.0.0.1", port: live.addr.port });
+      const client = await Yuzuko.connectTcp({
+        hostname: "127.0.0.1",
+        port: live.addr.port!,
+      });
       open.push(client);
       const server = await pending;
       open.push(server);
@@ -365,7 +377,8 @@ Yuzuko.test("TCP arguments and close use the socket", async () => {
       returned = "unset";
       let data = "";
       try {
-        returned = client.write("hi" as unknown as Uint8Array);
+        // @ts-expect-error A string is not a buffer source.
+        returned = client.write("hi");
       } catch (error) {
         data = error instanceof TypeError ? error.message : "other";
       }

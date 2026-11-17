@@ -1,23 +1,12 @@
 {
   "skipTypes": [
-    "Window",
-    "GPUCopyExternalImageSource"
+    "Window"
   ],
   "skipOverloads": [
     {
       "member": "GPUCommandEncoder.copyBufferToBuffer",
       "params": 3,
       "reason": "The runtime requires five arguments and a non-zero size."
-    },
-    {
-      "member": "AudioBufferSourceNode.start",
-      "params": 3,
-      "reason": "start takes when in seconds only."
-    },
-    {
-      "member": "Cache.keys",
-      "params": 2,
-      "reason": "Cache matching is not implemented. keys() takes no query."
     },
     {
       "member": "Console.dir",
@@ -28,61 +17,6 @@
       "member": "FormData.new",
       "params": 2,
       "reason": "FormData has no HTMLFormElement constructor."
-    },
-    {
-      "member": "OffscreenCanvasRenderingContext2D.roundRect",
-      "params": 5,
-      "reason": "roundRect radii are a number or a list of numbers, not DOMPointInit."
-    },
-    {
-      "member": "Path2D.roundRect",
-      "params": 5,
-      "reason": "roundRect radii are a number or a list of numbers, not DOMPointInit."
-    },
-    {
-      "member": "OffscreenCanvasRenderingContext2D.stroke",
-      "params": 1,
-      "reason": "stroke's path argument is optional and strokes the current path when it is omitted."
-    },
-    {
-      "member": "DragEvent.initMouseEvent",
-      "params": 15,
-      "reason": "Legacy initMouseEvent keeps optional arguments."
-    },
-    {
-      "member": "MouseEvent.initMouseEvent",
-      "params": 15,
-      "reason": "Legacy initMouseEvent keeps optional arguments."
-    },
-    {
-      "member": "PointerEvent.initMouseEvent",
-      "params": 15,
-      "reason": "Legacy initMouseEvent keeps optional arguments."
-    },
-    {
-      "member": "WheelEvent.initMouseEvent",
-      "params": 15,
-      "reason": "Legacy initMouseEvent keeps optional arguments."
-    },
-    {
-      "member": "TransformStreamDefaultController.enqueue",
-      "params": 1,
-      "reason": "enqueue's chunk is optional."
-    },
-    {
-      "member": "WritableStreamDefaultWriter.write",
-      "params": 1,
-      "reason": "write's chunk is optional."
-    },
-    {
-      "member": "XMLHttpRequest.open",
-      "params": 5,
-      "reason": "open takes a method and a URL. The async, username, and password overload is absent."
-    },
-    {
-      "member": "XMLHttpRequest.send",
-      "params": 1,
-      "reason": "send takes no body argument."
     }
   ],
   "groups": [
@@ -95,181 +29,24 @@
       ]
     },
     {
-      "reason": "A render bundle encoder does not expose debug markers, setViewport, or setScissorRect.",
-      "members": [
-        "GPURenderBundleEncoder.insertDebugMarker",
-        "GPURenderBundleEncoder.popDebugGroup",
-        "GPURenderBundleEncoder.pushDebugGroup",
-        "GPURenderBundleEncoder.setViewport",
-        "GPURenderBundleEncoder.setScissorRect"
-      ]
-    },
-    {
-      "reason": "copyExternalImageToTexture accepts an ImageBitmap, an OffscreenCanvas, or a VideoFrame. ImageData is declared but is not a source, so this union is not compared. Remove the GPUCopyExternalImageSource skip to see a newly declared source type.",
-      "mismatches": [
-        "GPUCopyExternalImageSourceInfo.source"
-      ]
-    },
-    {
-      "reason": "MessageEvent.source stays null. There is no WindowProxy, and a message does not carry a port or service worker as its source.",
-      "mismatches": [
-        "MessageEvent.source"
-      ]
-    },
-    {
       "reason": "WebTransport.datagrams is the Yuzuko WebTransportDatagrams pair, not WebTransportDatagramDuplexStream.",
       "mismatches": [
         "WebTransport.datagrams"
       ]
     },
     {
-      "reason": "Media-element and media-stream sources, ScriptProcessorNode, getOutputTimestamp, and AudioParamMap.forEach are not implemented.",
+      "reason": "Media-element and media-stream sources and ScriptProcessorNode are not implemented.",
       "members": [
         "AudioContext.createMediaElementSource",
         "AudioContext.createMediaStreamDestination",
         "AudioContext.createMediaStreamSource",
-        "AudioContext.getOutputTimestamp",
-        "AudioParamMap.forEach",
         "BaseAudioContext.createScriptProcessor"
       ]
     },
     {
-      "reason": "CacheStorage opens and deletes a cache. Cache match, add, and delete are not implemented.",
+      "reason": "EncodedAudioChunk does not take a transfer list.",
       "members": [
-        "Cache.add",
-        "Cache.addAll",
-        "Cache.delete",
-        "Cache.match",
-        "Cache.matchAll",
-        "CacheStorage.has",
-        "CacheStorage.keys",
-        "CacheStorage.match"
-      ]
-    },
-    {
-      "reason": "Legacy init* methods are not implemented. Construct the event instead.",
-      "members": [
-        "CompositionEvent.initCompositionEvent",
-        "CustomEvent.initCustomEvent",
-        "KeyboardEvent.initKeyboardEvent",
-        "MessageEvent.initMessageEvent",
-        "UIEvent.initUIEvent"
-      ]
-    },
-    {
-      "reason": "Console.timeStamp is not implemented.",
-      "members": [
-        "Console.timeStamp"
-      ]
-    },
-    {
-      "reason": "DOMRectList, ImageTrackList, and TouchList are not iterable and have no index signature.",
-      "members": [
-        "DOMRectList.Symbol.iterator",
-        "DOMRectList.[number]",
-        "ImageTrackList.Symbol.iterator",
-        "ImageTrackList.[number]",
-        "TouchList.Symbol.iterator"
-      ]
-    },
-    {
-      "reason": "UI Events modifier-lock keys are not fields of these event init dictionaries.",
-      "members": [
-        "DragEventInit.modifierAltGraph",
-        "DragEventInit.modifierCapsLock",
-        "DragEventInit.modifierFn",
-        "DragEventInit.modifierFnLock",
-        "DragEventInit.modifierHyper",
-        "DragEventInit.modifierNumLock",
-        "DragEventInit.modifierScrollLock",
-        "DragEventInit.modifierSuper",
-        "DragEventInit.modifierSymbol",
-        "DragEventInit.modifierSymbolLock",
-        "KeyboardEventInit.modifierAltGraph",
-        "KeyboardEventInit.modifierCapsLock",
-        "KeyboardEventInit.modifierFn",
-        "KeyboardEventInit.modifierFnLock",
-        "KeyboardEventInit.modifierHyper",
-        "KeyboardEventInit.modifierNumLock",
-        "KeyboardEventInit.modifierScrollLock",
-        "KeyboardEventInit.modifierSuper",
-        "KeyboardEventInit.modifierSymbol",
-        "KeyboardEventInit.modifierSymbolLock",
-        "MouseEventInit.modifierAltGraph",
-        "MouseEventInit.modifierCapsLock",
-        "MouseEventInit.modifierFn",
-        "MouseEventInit.modifierFnLock",
-        "MouseEventInit.modifierHyper",
-        "MouseEventInit.modifierNumLock",
-        "MouseEventInit.modifierScrollLock",
-        "MouseEventInit.modifierSuper",
-        "MouseEventInit.modifierSymbol",
-        "MouseEventInit.modifierSymbolLock",
-        "PointerEventInit.modifierAltGraph",
-        "PointerEventInit.modifierCapsLock",
-        "PointerEventInit.modifierFn",
-        "PointerEventInit.modifierFnLock",
-        "PointerEventInit.modifierHyper",
-        "PointerEventInit.modifierNumLock",
-        "PointerEventInit.modifierScrollLock",
-        "PointerEventInit.modifierSuper",
-        "PointerEventInit.modifierSymbol",
-        "PointerEventInit.modifierSymbolLock",
-        "TouchEventInit.modifierAltGraph",
-        "TouchEventInit.modifierCapsLock",
-        "TouchEventInit.modifierFn",
-        "TouchEventInit.modifierFnLock",
-        "TouchEventInit.modifierHyper",
-        "TouchEventInit.modifierNumLock",
-        "TouchEventInit.modifierScrollLock",
-        "TouchEventInit.modifierSuper",
-        "TouchEventInit.modifierSymbol",
-        "TouchEventInit.modifierSymbolLock",
-        "WheelEventInit.modifierAltGraph",
-        "WheelEventInit.modifierCapsLock",
-        "WheelEventInit.modifierFn",
-        "WheelEventInit.modifierFnLock",
-        "WheelEventInit.modifierHyper",
-        "WheelEventInit.modifierNumLock",
-        "WheelEventInit.modifierScrollLock",
-        "WheelEventInit.modifierSuper",
-        "WheelEventInit.modifierSymbol",
-        "WheelEventInit.modifierSymbolLock"
-      ]
-    },
-    {
-      "reason": "EncodedAudioChunk and ImageDecoder do not take a transfer list.",
-      "members": [
-        "EncodedAudioChunkInit.transfer",
-        "ImageDecoderInit.transfer"
-      ]
-    },
-    {
-      "reason": "These legacy event fields and webkitRelativePath are not implemented.",
-      "members": [
-        "Event.cancelBubble",
-        "File.webkitRelativePath",
-        "KeyboardEventInit.charCode",
-        "KeyboardEventInit.keyCode",
-        "MouseEvent.x",
-        "MouseEvent.y",
-        "UIEvent.which",
-        "UIEventInit.which"
-      ]
-    },
-    {
-      "reason": "These WebGPU fields are not part of the implemented surface.",
-      "members": [
-        "GPUDeviceDescriptor.defaultQueue",
-        "GPUFragmentState.constants",
-        "GPUPipelineLayoutDescriptor.immediateSize",
-        "GPUProgrammableStage.constants",
-        "GPURenderPassDescriptor.maxDrawCount",
-        "GPURequestAdapterOptions.featureLevel",
-        "GPURequestAdapterOptions.xrCompatible",
-        "GPUShaderModuleDescriptor.compilationHints",
-        "GPUTextureUsage.TRANSIENT_ATTACHMENT",
-        "GPUVertexState.constants"
+        "EncodedAudioChunkInit.transfer"
       ]
     },
     {
@@ -282,11 +59,9 @@
       ]
     },
     {
-      "reason": "messageerror handlers, MessageEventInit.source, and worker credential options are not implemented.",
+      "reason": "MessageEventInit.source and worker credential options are not implemented.",
       "members": [
         "MessageEventInit.source",
-        "MessagePort.onmessageerror",
-        "Worker.onmessageerror",
         "WorkerOptions.credentials"
       ]
     },
@@ -353,27 +128,6 @@
       ]
     },
     {
-      "reason": "Pointer and touch init dictionaries omit predicted events, coalesced events, altitude, azimuth, and touchType.",
-      "members": [
-        "PointerEventInit.altitudeAngle",
-        "PointerEventInit.azimuthAngle",
-        "PointerEventInit.coalescedEvents",
-        "PointerEventInit.predictedEvents",
-        "TouchInit.altitudeAngle",
-        "TouchInit.azimuthAngle",
-        "TouchInit.touchType"
-      ]
-    },
-    {
-      "reason": "Byte-stream transformers and ReadableStream.from are not implemented.",
-      "members": [
-        "ReadableStream.from",
-        "Transformer.readableType",
-        "Transformer.writableType",
-        "UnderlyingSink.type"
-      ]
-    },
-    {
       "reason": "Request does not expose mode, credentials, referrer, referrerPolicy, destination, or keepalive. A non-empty integrity string is rejected, and the field is not declared.",
       "members": [
         "Request.credentials",
@@ -391,12 +145,6 @@
       ]
     },
     {
-      "reason": "URL.toString is the ordinary object string. It is not declared as the href.",
-      "members": [
-        "URL.toString"
-      ]
-    },
-    {
       "reason": "WebTransport declares the streams this runtime creates. Connection stats, send groups, and the extra datagram counters are not on that surface.",
       "members": [
         "WebTransport.anticipatedConcurrentIncomingBidirectionalStreams",
@@ -410,29 +158,12 @@
       ]
     },
     {
-      "reason": "XMLHttpRequest is not an EventTarget. It opens a URL and reports status, responseText, onload, and onerror.",
+      "reason": "XMLHttpRequest does not expose response, responseType, responseURL, responseXML, upload, or withCredentials.",
       "members": [
-        "XMLHttpRequest.DONE",
-        "XMLHttpRequest.HEADERS_RECEIVED",
-        "XMLHttpRequest.LOADING",
-        "XMLHttpRequest.OPENED",
-        "XMLHttpRequest.UNSENT",
-        "XMLHttpRequest.abort",
-        "XMLHttpRequest.addEventListener",
-        "XMLHttpRequest.dispatchEvent",
-        "XMLHttpRequest.onabort",
-        "XMLHttpRequest.onloadend",
-        "XMLHttpRequest.onloadstart",
-        "XMLHttpRequest.onprogress",
-        "XMLHttpRequest.onreadystatechange",
-        "XMLHttpRequest.ontimeout",
-        "XMLHttpRequest.readyState",
-        "XMLHttpRequest.removeEventListener",
         "XMLHttpRequest.response",
         "XMLHttpRequest.responseType",
         "XMLHttpRequest.responseURL",
         "XMLHttpRequest.responseXML",
-        "XMLHttpRequest.timeout",
         "XMLHttpRequest.upload",
         "XMLHttpRequest.withCredentials"
       ]

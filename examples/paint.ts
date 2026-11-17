@@ -23,7 +23,7 @@ type Point = { x: number; y: number };
 type Stroke = { color: string; points: Point[] };
 
 const strokes: Stroke[] = [];
-let color = colors[0];
+let color = colors[0]!;
 let drawing = false;
 
 function swatchX(index: number): number {
@@ -44,7 +44,7 @@ function colorAt(x: number, y: number): string | null {
       y >= top &&
       y < top + SWATCH + 8
     ) {
-      return colors[i];
+      return colors[i] ?? null;
     }
   }
   return null;
@@ -62,8 +62,9 @@ win.addEventListener("keydown", (event) => {
   }
   if (event.code.startsWith("Digit")) {
     const index = Number(event.code.slice(5)) - 1;
-    if (index >= 0 && index < colors.length) {
-      color = colors[index];
+    const next = colors[index];
+    if (next !== undefined) {
+      color = next;
     }
   }
 });
@@ -91,7 +92,10 @@ win.addEventListener("pointermove", (event) => {
     return;
   }
   const stroke = strokes[strokes.length - 1];
-  const last = stroke.points[stroke.points.length - 1];
+  const last = stroke?.points[stroke.points.length - 1];
+  if (stroke === undefined || last === undefined) {
+    return;
+  }
   const dx = event.offsetX - last.x;
   const dy = event.offsetY - last.y;
   if (dx * dx + dy * dy < 1) {
@@ -128,14 +132,26 @@ win.requestAnimationFrame(function frame() {
     ctx.strokeStyle = stroke.color;
     if (points.length === 1) {
       ctx.beginPath();
-      ctx.arc(points[0].x, points[0].y, 2, 0, Math.PI * 2);
+      const only = points[0];
+      if (only === undefined) {
+        continue;
+      }
+      ctx.arc(only.x, only.y, 2, 0, Math.PI * 2);
       ctx.fill();
       continue;
     }
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
+    const first = points[0];
+    if (first === undefined) {
+      continue;
+    }
+    ctx.moveTo(first.x, first.y);
     for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
+      const point = points[i];
+      if (point === undefined) {
+        continue;
+      }
+      ctx.lineTo(point.x, point.y);
     }
     ctx.stroke();
   }
@@ -145,7 +161,11 @@ win.requestAnimationFrame(function frame() {
   for (let i = 0; i < colors.length; i++) {
     const x = swatchX(i);
     const y = swatchY();
-    ctx.fillStyle = colors[i];
+    const swatch = colors[i];
+    if (swatch === undefined) {
+      continue;
+    }
+    ctx.fillStyle = swatch;
     ctx.fillRect(x, y, SWATCH, SWATCH);
     if (colors[i] === color) {
       ctx.strokeStyle = "#1c1917";

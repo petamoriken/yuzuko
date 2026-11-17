@@ -59,9 +59,6 @@ pub fn install(scope: &mut v8::PinScope) {
     global.into(),
     v8::PropertyAttribute::READ_ONLY,
   );
-  if !host::is_dedicated_worker() {
-    js::set_value(scope, global, "window", global.into());
-  }
   // No document, COOP, or COEP, so the agent is not cross-origin isolated.
   js::set_value(
     scope,

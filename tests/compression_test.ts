@@ -1,10 +1,10 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-async function readAll(stream) {
+async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks = [];
   for (;;) {

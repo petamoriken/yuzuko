@@ -3,6 +3,8 @@
 //! An evaluation import compiles the bytes, then evaluates a JavaScript
 //! wrapper that instantiates them. A source-phase import returns the
 //! `WebAssembly.Module` and does not resolve the Wasm module's imports.
+//! The wrapper records the instance through [`BRIDGE_SPECIFIER`], which
+//! user modules cannot import.
 //!
 //! `wasm:js-string` and `wasm:js/string-constants` are compile-time imports.
 //! `WasmModuleObject::compile` has no options argument, so those bytes go
@@ -21,6 +23,81 @@ struct Import {
 struct Export {
   name: String,
   kind: String,
+}
+
+/// Module specifier of the instance table. A NUL keeps it out of ordinary
+/// source. Only a `.wasm` evaluation wrapper may import it.
+pub(crate) const BRIDGE_SPECIFIER: &str = "\0yuzuko-wasm-instance";
+
+pub(crate) fn bridge_module<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  if let Some(existing) = host::with(|state| state.wasm_bridge.clone()) {
+    return Ok(v8::Local::new(scope, existing));
+  }
+  let name = v8::String::new(scope, BRIDGE_SPECIFIER).expect("bridge name");
+  let note = v8::String::new(scope, "noteInstance").expect("noteInstance");
+  let exports =
+    v8::String::new(scope, "instanceExports").expect("instanceExports");
+  let module = v8::Module::create_synthetic_module(
+    scope,
+    name,
+    &[note, exports],
+    evaluate_bridge,
+  );
+  let stored = v8::Global::new(scope, module);
+  host::with_mut(|state| state.wasm_bridge = Some(stored));
+  Ok(module)
+}
+
+fn evaluate_bridge<'s>(
+  context: v8::Local<'s, v8::Context>,
+  module: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  v8::callback_scope!(unsafe scope, context);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let note = v8::Function::new(scope, note_instance)?;
+  let note_name = v8::String::new(scope, "noteInstance")?;
+  note.set_name(note_name);
+  module.set_synthetic_module_export(scope, note_name, note.into())?;
+  let exports = v8::Function::new(scope, instance_exports)?;
+  let exports_name = v8::String::new(scope, "instanceExports")?;
+  exports.set_name(exports_name);
+  module.set_synthetic_module_export(scope, exports_name, exports.into())?;
+  Some(v8::undefined(scope).into())
+}
+
+fn note_instance(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  _ret: v8::ReturnValue,
+) {
+  let map = host::wasm_instances(scope);
+  let _ = map.set(scope, args.get(0), args.get(1));
+}
+
+fn instance_exports(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let map = host::wasm_instances(scope);
+  let Some(found) = map.get(scope, args.get(0)) else {
+    return;
+  };
+  if found.is_null_or_undefined() {
+    return;
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(found) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "exports") else {
+    return;
+  };
+  let Some(exports) = object.get(scope, key.into()) else {
+    return;
+  };
+  ret.set(exports);
 }
 
 pub(crate) fn wrapper_source(
@@ -271,6 +348,9 @@ fn render(url: &str, imports: &[Import], exports: &[Export]) -> String {
   }
 
   let mut source = String::new();
+  source.push_str("import { noteInstance, instanceExports } from ");
+  source.push_str(&js_string(BRIDGE_SPECIFIER));
+  source.push_str(";\n");
   source.push_str("import source wasmMod from ");
   source.push_str(&js_string(url));
   source.push_str(";\n");
@@ -299,7 +379,7 @@ fn render(url: &str, imports: &[Import], exports: &[Export]) -> String {
        let href;\n  try {\n    \
        href = new URL(specifier, import.meta.url).href;\n  \
        } catch {\n    return undefined;\n  }\n  \
-       return import.meta.wasmInstances.get(href)?.exports;\n};\n",
+       return instanceExports(href);\n};\n",
     );
   }
 
@@ -349,8 +429,7 @@ fn render(url: &str, imports: &[Import], exports: &[Export]) -> String {
     .filter(|(_, export)| export.kind == "global")
     .map(|(index, _)| index)
     .collect();
-  source
-    .push_str("import.meta.wasmInstances.set(import.meta.url, modInstance);\n");
+  source.push_str("noteInstance(import.meta.url, modInstance);\n");
   let refresh = !global_exports.is_empty()
     && exports.iter().any(|export| export.kind == "function");
   for (index, export) in exports.iter().enumerate() {
@@ -373,7 +452,8 @@ fn render(url: &str, imports: &[Import], exports: &[Export]) -> String {
 
 fn reserved_name(imports: &[Import], exports: &[Export]) -> bool {
   imports.iter().any(|import| {
-    is_reserved(&import.name)
+    import.module == BRIDGE_SPECIFIER
+      || is_reserved(&import.name)
       || (is_reserved(&import.module)
         && !is_compile_time_module(&import.module))
   }) || exports.iter().any(|export| is_reserved(&export.name))

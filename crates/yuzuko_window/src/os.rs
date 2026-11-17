@@ -13,7 +13,7 @@ use winit::event::{
 };
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::ModifiersState;
-use winit::platform::pump_events::EventLoopExtPumpEvents;
+use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
 #[cfg(not(target_os = "macos"))]
 use winit::window::UserAttentionType;
 use winit::window::{
@@ -185,6 +185,8 @@ struct OsLoop {
 thread_local! {
   static OS: RefCell<Option<OsLoop>> = const { RefCell::new(None) };
   static IN_PUMP: Cell<bool> = const { Cell::new(false) };
+  /// The display connection ended. See `lose_connection`.
+  static LOST: Cell<bool> = const { Cell::new(false) };
   static LOCKED: Cell<Option<u64>> = const { Cell::new(None) };
   /// Windows that acquired a drawable during this event-loop turn.
   static PRESENTED_TURN: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
@@ -861,7 +863,14 @@ pub fn pump(timeout: Option<Duration>) -> bool {
     } else {
       timeout
     };
-    event_loop.pump_app_events(timeout, app);
+    // Runtime code never asks winit to exit, so `Exit` means the display
+    // connection failed. Pumping again would restart winit's loop on a dead
+    // connection and spin.
+    let status = event_loop.pump_app_events(timeout, app);
+    if let PumpStatus::Exit(code) = status {
+      lose_connection(slot.take(), code);
+      return true;
+    }
     #[cfg(target_os = "linux")]
     crate::shell::gtk_loop::drain();
     true
@@ -869,6 +878,9 @@ pub fn pump(timeout: Option<Duration>) -> bool {
 }
 
 fn ensure_loop() -> Result<(), String> {
+  if LOST.with(Cell::get) {
+    return Err("The connection to the window system was lost.".to_string());
+  }
   if OS.with(|slot| slot.borrow().is_some()) {
     return Ok(());
   }
@@ -906,6 +918,34 @@ fn ensure_loop() -> Result<(), String> {
     });
   });
   Ok(())
+}
+
+/// The display connection ended, for example when the Wayland compositor
+/// or X server went away. Every window closes the way a destroyed window
+/// does, and the event loop is dropped. winit's Wayland backend keeps a
+/// `pump_events` monitor thread that spins on a dead socket, printing a
+/// wayland-backend error each turn, until the `EventLoop` is dropped. winit
+/// does not allow a second `EventLoop`, so the runtime does not reconnect.
+fn lose_connection(os: Option<OsLoop>, code: i32) {
+  LOST.with(|lost| lost.set(true));
+  yuzuko_core::set_task_waker(None);
+  let Some(mut os) = os else {
+    return;
+  };
+  let ids = os
+    .app
+    .by_surface
+    .drain()
+    .map(|(id, _)| id)
+    .chain(os.app.pending.drain(..).map(|pending| pending.id))
+    .collect::<Vec<_>>();
+  os.app.windows.clear();
+  for id in ids {
+    inbox::push(id, Raw::Close);
+  }
+  eprintln!(
+    "error: The connection to the window system was lost (status {code})."
+  );
 }
 
 fn take_error(id: u64) -> Option<String> {

@@ -790,6 +790,12 @@ impl File {
   fn last_modified(&self) -> f64 {
     self.last_modified
   }
+
+  #[getter]
+  #[rename("webkitRelativePath")]
+  fn webkit_relative_path(&self) -> String {
+    String::new()
+  }
 }
 
 pub fn install(scope: &mut v8::PinScope) {

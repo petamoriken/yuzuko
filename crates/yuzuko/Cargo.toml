@@ -147,6 +147,10 @@ name = "canvas_draw"
 required-features = ["canvas"]
 
 [[test]]
+name = "canvas_roundrect"
+required-features = ["canvas"]
+
+[[test]]
 name = "font"
 required-features = ["canvas"]
 
@@ -200,11 +204,17 @@ name = "runtime_feature"
 name = "runtime_usage"
 
 [[test]]
+name = "surface_gaps"
+
+[[test]]
 name = "tray"
 required-features = ["window"]
 
 [[test]]
 name = "update"
+
+[[test]]
+name = "import_meta"
 
 [[test]]
 name = "image_decoder"

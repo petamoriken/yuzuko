@@ -12,7 +12,7 @@ function assert(condition: unknown, message: string): asserts condition {
 // glyphs produce identical pixels.
 const WIDTH = 64;
 const ROW = 48;
-const LANGS = ["zh", "zh-Hans", "zh-Hant", "zh-TW", "zh-HK"] as const;
+const LANGS = ["zh", "zh-Hans", "zh-Hant", "zh-TW", "zh-HK"];
 
 function rowBytes(data: Uint8ClampedArray, index: number): Uint8ClampedArray {
   const stride = ROW * WIDTH * 4;
@@ -91,7 +91,11 @@ function draw(): OffscreenCanvasRenderingContext2D {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#000000";
   for (let index = 0; index < LANGS.length; index += 1) {
-    context.lang = LANGS[index];
+    const lang = LANGS[index];
+    if (lang === undefined) {
+      throw new Error("lang");
+    }
+    context.lang = lang;
     context.fillText("骨", 8, index * ROW + 36);
   }
   return context;
@@ -118,7 +122,11 @@ Yuzuko.test("OffscreenCanvas lang selects Noto Sans CJK locl glyphs", async () =
   await loadSubset();
   const drawn = draw().getImageData(0, 0, WIDTH, ROW * LANGS.length).data;
   for (let index = 0; index < LANGS.length; index += 1) {
-    assertInk(rowBytes(drawn, index), LANGS[index]);
+    const lang = LANGS[index];
+    if (lang === undefined) {
+      throw new Error("lang");
+    }
+    assertInk(rowBytes(drawn, index), lang);
   }
   assertSame(rowBytes(drawn, 0), rowBytes(drawn, 1), "zh and zh-Hans");
   assertSame(rowBytes(drawn, 2), rowBytes(drawn, 3), "zh-Hant and zh-TW");

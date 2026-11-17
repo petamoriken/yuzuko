@@ -4,6 +4,9 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+declare const dlopen: unknown;
+declare const Library: unknown;
+
 const PATH_TYPE = "The path must be a string.";
 const PATH_EMPTY = "The path must not be empty.";
 const PATH_NUL = "The path must not contain a null character.";
@@ -105,7 +108,8 @@ Yuzuko.test("a loaded function returns the sum", async () => {
   assert(Yuzuko.dlopen.length === 2, "dlopen length");
   assert(Yuzuko.Library.length === 0, "Library length");
   const ctor = throws(() => {
-    new (Yuzuko.Library as unknown as new () => unknown)();
+    // @ts-expect-error Library has no public constructor.
+    new Yuzuko.Library();
   });
   assert(ctor instanceof TypeError, "ctor type");
   assert(text(ctor) === ILLEGAL, text(ctor));
@@ -129,12 +133,12 @@ Yuzuko.test("a loaded function returns the sum", async () => {
     `compiler ${compiled.code} stdout ${stdout} stderr ${stderr}`,
   );
 
-  const symbols = {
+  const symbols: { [name: string]: Yuzuko.ForeignFunction } = {
     yuzuko_add: { parameters: ["i32", "i32"], result: "i32" },
     yuzuko_scale: { parameters: ["f64"], result: "f64" },
     yuzuko_note: { parameters: ["i32"], result: "void" },
     yuzuko_seen: { result: "i32" },
-  } as const;
+  };
   let lib: Yuzuko.Library | undefined = Yuzuko.dlopen(library, symbols);
   let open = true;
   let worker: Worker | undefined;
@@ -146,29 +150,31 @@ Yuzuko.test("a loaded function returns the sum", async () => {
       keys.join(",") === "yuzuko_add,yuzuko_scale,yuzuko_note,yuzuko_seen",
       `keys ${keys.join(",")}`,
     );
-    const add = lib.symbols.yuzuko_add;
+    const add = lib.symbols["yuzuko_add"]!;
+    const scale = lib.symbols["yuzuko_scale"]!;
+    const note = lib.symbols["yuzuko_note"]!;
+    const seen = lib.symbols["yuzuko_seen"]!;
     assert(add.length === 2, `add length ${add.length}`);
     assert(add.name === "yuzuko_add", `add name ${add.name}`);
-    assert(lib.symbols.yuzuko_scale.length === 1, "scale length");
-    assert(lib.symbols.yuzuko_note.length === 1, "note length");
-    assert(lib.symbols.yuzuko_seen.length === 0, "seen length");
+    assert(scale.length === 1, "scale length");
+    assert(note.length === 1, "note length");
+    assert(seen.length === 0, "seen length");
     assert(add(20, 22) === 42, `sum ${add(20, 22)}`);
     assert(add(-1, 1) === 0, `neg ${add(-1, 1)}`);
     assert(
       add(2147483647, 1) === -2147483648,
       `wrap ${add(2147483647, 1)}`,
     );
-    assert(lib.symbols.yuzuko_scale(21) === 42, "scale");
-    assert(lib.symbols.yuzuko_note(7) === undefined, "note");
-    assert(lib.symbols.yuzuko_seen() === 7, `seen ${lib.symbols.yuzuko_seen()}`);
+    assert(scale(21) === 42, "scale");
+    assert(note(7) === undefined, "note");
+    assert(seen() === 7, `seen ${seen()}`);
 
     let calls = 0;
-    const box = (value: number) => ({
-      valueOf() {
-        calls += 1;
-        return value;
-      },
-    });
+    const box = (value: number) => {
+      // @ts-expect-error i32 arguments are read with valueOf.
+      let boxed: number = { valueOf() { calls += 1; return value; } };
+      return boxed;
+    };
     assert(add(box(20), box(22)) === 42, "valueOf sum");
     assert(calls === 2, `valueOf calls ${calls}`);
     let extra = false;
@@ -178,7 +184,11 @@ Yuzuko.test("a loaded function returns the sum", async () => {
         throw new Error("extra");
       },
     };
-    assert(add(20, 22, ignored as unknown as number) === 42, "extra");
+    assert(
+      // @ts-expect-error An extra argument is ignored.
+      add(20, 22, ignored) === 42,
+      "extra",
+    );
     assert(extra === false, "extra converted");
     const boom = new Error("valueOf");
     const bad = {
@@ -187,7 +197,8 @@ Yuzuko.test("a loaded function returns the sum", async () => {
       },
     };
     const thrown = throws(() => {
-      add(bad as unknown as number, 1);
+      // @ts-expect-error The argument is read with valueOf.
+      add(bad, 1);
     });
     assert(thrown === boom, "valueOf throw");
     assert(add(2, 3) === 5, "still open");
@@ -213,7 +224,7 @@ Yuzuko.test("a loaded function returns the sum", async () => {
     let waiting: ((value: FfiMessage) => void) | undefined;
     let failing: ((error: Error) => void) | undefined;
     worker.onmessage = (event) => {
-      const value = event.data as FfiMessage;
+      const value = event.data;
       if (waiting) {
         const resolve = waiting;
         waiting = undefined;
@@ -291,10 +302,11 @@ Yuzuko.test("a loaded function returns the sum", async () => {
 });
 
 Yuzuko.test("a bad library does not stay open", () => {
-  const open = Yuzuko.dlopen as (
+  // @ts-expect-error The calls pass values dlopen rejects.
+  const open: (
     path?: unknown,
     symbols?: unknown,
-  ) => Yuzuko.Library;
+  ) => Yuzuko.Library = Yuzuko.dlopen;
 
   assert(text(throws(() => open())) === "Not enough arguments", "arity");
   assert(text(throws(() => open("lib"))) === "Not enough arguments", "one");
@@ -592,17 +604,17 @@ Yuzuko.test("pointers, buffers, and C strings cross the call", async () => {
   });
   let open = true;
   try {
-    const fill = lib.symbols.yuzuko_fill;
-    const length = lib.symbols.yuzuko_length;
-    const lengthAt = lib.symbols.yuzuko_length_at;
-    const word = lib.symbols.yuzuko_word;
-    const none = lib.symbols.yuzuko_none;
-    const badUtf8 = lib.symbols.yuzuko_bad_utf8;
-    const identity = lib.symbols.yuzuko_identity;
-    const store = lib.symbols.yuzuko_store_ptr;
-    const sum3 = lib.symbols.yuzuko_sum3;
-    const sum4 = lib.symbols.yuzuko_sum4;
-    const echo = lib.symbols.yuzuko_echo;
+    const fill = lib.symbols["yuzuko_fill"]!;
+    const length = lib.symbols["yuzuko_length"]!;
+    const lengthAt = lib.symbols["yuzuko_length_at"]!;
+    const word = lib.symbols["yuzuko_word"]!;
+    const none = lib.symbols["yuzuko_none"]!;
+    const badUtf8 = lib.symbols["yuzuko_bad_utf8"]!;
+    const identity = lib.symbols["yuzuko_identity"]!;
+    const store = lib.symbols["yuzuko_store_ptr"]!;
+    const sum3 = lib.symbols["yuzuko_sum3"]!;
+    const sum4 = lib.symbols["yuzuko_sum4"]!;
+    const echo = lib.symbols["yuzuko_echo"]!;
     assert(fill.length === 2, "fill length");
     assert(sum3.length === 3, "sum3 length");
     assert(sum4.length === 4, "sum4 length");
@@ -673,10 +685,22 @@ Yuzuko.test("pointers, buffers, and C strings cross the call", async () => {
         throw new Error("extra");
       },
     };
-    assert(identity(1n, ignored as unknown as null) === 1n, "extra pointer");
+    assert(
+      // @ts-expect-error An extra argument is ignored.
+      identity(1n, ignored) === 1n,
+      "extra pointer",
+    );
     assert(extra === false, "extra pointer converted");
 
-    assert(text(throws(() => identity(undefined))) === ARGUMENT, "undefined");
+    assert(
+      text(
+        throws(() => {
+          // @ts-expect-error undefined is not a pointer.
+          identity(undefined);
+        }),
+      ) === ARGUMENT,
+      "undefined",
+    );
     assert(text(throws(() => identity(Object(1n)))) === ARGUMENT, "boxed bigint");
     assert(text(throws(() => identity(Object(1)))) === ARGUMENT, "boxed number");
     assert(text(throws(() => identity(-1))) === ARGUMENT, "negative");
@@ -691,16 +715,19 @@ Yuzuko.test("pointers, buffers, and C strings cross the call", async () => {
         return "hi";
       },
     };
-    const stringError = throws(() => length(evil as unknown as string));
+    const stringError = throws(() => {
+      // @ts-expect-error A cstring rejects a non-string.
+      length(evil);
+    });
     assert(stringError instanceof TypeError, "cstring type");
     assert(text(stringError) === STRING_TYPE, text(stringError));
     assert(stringHook === false, "cstring toString");
-    assert(text(throws(() => length(1 as unknown as string))) === STRING_TYPE, "cstring number");
+    assert(text(throws(() => length(1))) === STRING_TYPE, "cstring number");
     assert(
       text(throws(() => length("a\0b"))) === STRING_NUL,
       "cstring nul",
     );
-    assert(text(throws(() => fill(null as unknown as Uint8Array, 4))) === DATA, "null buffer");
+    assert(text(throws(() => fill(null, 4))) === DATA, "null buffer");
 
     const detachedBuffer = new ArrayBuffer(4);
     const detachedView = new Uint8Array(detachedBuffer);
@@ -717,7 +744,10 @@ Yuzuko.test("pointers, buffers, and C strings cross the call", async () => {
         return 4;
       },
     };
-    const detachedDuring = throws(() => fill(liveView, detaching as unknown as number));
+    const detachedDuring = throws(() => {
+      // @ts-expect-error The length is read with valueOf.
+      fill(liveView, detaching);
+    });
     assert(detachedDuring instanceof TypeError, "detach during type");
     assert(text(detachedDuring) === DETACHED, text(detachedDuring));
 
@@ -729,7 +759,10 @@ Yuzuko.test("pointers, buffers, and C strings cross the call", async () => {
         return 4;
       },
     };
-    const closed = throws(() => fill(fresh, closing as unknown as number));
+    const closed = throws(() => {
+      // @ts-expect-error The length is read with valueOf.
+      fill(fresh, closing);
+    });
     assert(isError(closed), `closed type ${text(closed)}`);
     assert(text(closed) === CLOSED, text(closed));
     const after = throws(() => word());

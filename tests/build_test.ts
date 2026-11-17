@@ -42,6 +42,7 @@ Yuzuko.test("build reports the host triple", () => {
   }
   const os = build.os;
   try {
+    // @ts-expect-error build.os is readonly.
     build.os = "freebsd";
     throw new Error("assigned");
   } catch (error) {

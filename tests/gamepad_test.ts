@@ -4,6 +4,11 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+// A `let` binding is narrowed to the literal just written. The type argument keeps the wider type.
+function read<T>(value: T): T {
+  return value;
+}
+
 function connected(): Gamepad[] {
   return navigator.getGamepads().filter((pad): pad is Gamepad => pad !== null);
 }
@@ -43,7 +48,7 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
   const events: string[] = [];
   const onConnect = (event: Event) => {
     assert(event instanceof GamepadEvent, "event class");
-    const gamepad = (event as GamepadEvent).gamepad;
+    const gamepad = event.gamepad;
     events.push(
       `connect:${gamepad.index}:${gamepad.id}:${gamepad.connected}:${gamepad.mapping}`,
     );
@@ -52,15 +57,17 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
       "same object during connect",
     );
   };
-  addEventListener("gamepadconnected", onConnect);
+  self.addEventListener("gamepadconnected", onConnect);
   const disconnected: string[] = [];
   const onDisconnect = (event: Event) => {
-    const gamepad = (event as GamepadEvent).gamepad;
+    // @ts-expect-error The disconnect listener receives a GamepadEvent.
+    const disconnect: GamepadEvent = event;
+    const gamepad = disconnect.gamepad;
     disconnected.push(
       `${gamepad.index}:${gamepad.connected}:${navigator.getGamepads()[gamepad.index] === gamepad}`,
     );
   };
-  addEventListener("gamepaddisconnected", onDisconnect);
+  self.addEventListener("gamepaddisconnected", onDisconnect);
   let viaHandler = 0;
   globalThis.ongamepadconnected = () => {
     viaHandler += 1;
@@ -73,14 +80,14 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
       buttons: [{ pressed: true, touched: true, value: 1 }],
     });
     assert(events.length === 1, "one connect");
-    assert(events[0] === "connect:0:Pad A:true:standard", events[0]);
+    assert(events[0] === "connect:0:Pad A:true:standard", events[0]!);
     assert(viaHandler === 1, "ongamepadconnected");
-    const pad = navigator.getGamepads()[0];
+    const pad = navigator.getGamepads()[0]!;
     assert(pad !== null, "slot 0");
     assert(pad.buttons.length === 17, "standard buttons");
-    assert(pad.buttons[0].pressed && pad.buttons[0].touched, "pressed");
-    assert(pad.buttons[0].value === 1, "value");
-    assert(pad.buttons[1].pressed === false, "other button");
+    assert(pad.buttons[0]!.pressed && pad.buttons[0]!.touched, "pressed");
+    assert(pad.buttons[0]!.value === 1, "value");
+    assert(pad.buttons[1]!.pressed === false, "other button");
     assert(pad.axes[0] === 0.25 && pad.axes[1] === -1, "axes");
     assert(pad.axes.length === 4, "axis count");
     assert(Object.isFrozen(pad.axes) && Object.isFrozen(pad.buttons), "frozen");
@@ -96,7 +103,8 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
     const before = pad.timestamp;
     Yuzuko.__test.gamepad({ type: "update", index: 0, axes: [1, 0, 0, 0] });
     assert(events.length === 1, "update does not fire");
-    assert(pad.axes[0] === 1, "updated axis");
+    let axis: number = read<number>(pad.axes[0]);
+    assert(axis === 1, "updated axis");
     assert(pad.timestamp >= before, "timestamp");
 
     Yuzuko.__test.gamepad({ type: "connect", id: "Pad B", mapping: "" });
@@ -105,7 +113,7 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
     assert(navigator.getGamepads()[1]?.buttons.length === 0, "no buttons");
 
     Yuzuko.__test.gamepad({ type: "disconnect", index: 0 });
-    assert(disconnected[0] === "0:false:true", disconnected[0]);
+    assert(disconnected[0] === "0:false:true", disconnected[0]!);
     assert(navigator.getGamepads()[0] === null, "slot cleared");
     assert(navigator.getGamepads()[1]?.id === "Pad B", "second remains");
     assert(pad.connected === false, "saved object");
@@ -115,8 +123,8 @@ Yuzuko.test("gamepads connect, update, and disconnect on globalThis", () => {
     assert(navigator.getGamepads()[0] !== pad, "new object");
   } finally {
     globalThis.ongamepadconnected = null;
-    removeEventListener("gamepadconnected", onConnect);
-    removeEventListener("gamepaddisconnected", onDisconnect);
+    self.removeEventListener("gamepadconnected", onConnect);
+    self.removeEventListener("gamepaddisconnected", onDisconnect);
     disconnectAll();
   }
 });
@@ -177,7 +185,10 @@ Yuzuko.test("dual-rumble completes, preempts, and resets", async () => {
       "magnitude",
     );
     assert(
-      (await rejectionName(() => actuator.playEffect("nope"))) === "TypeError",
+      (await rejectionName(() => {
+        // @ts-expect-error nope is not a haptic effect type.
+        return actuator.playEffect("nope");
+      })) === "TypeError",
       "type",
     );
     assert(

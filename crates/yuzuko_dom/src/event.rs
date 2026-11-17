@@ -105,25 +105,6 @@ impl Event {
     ))
   }
 
-  /// Point `target` and `currentTarget` at `xhr` for one handler call.
-  /// `XMLHttpRequest` is not an `EventTarget`, so this is not a dispatch.
-  #[cfg(feature = "fetch")]
-  pub(crate) fn arm_xhr(
-    &self,
-    scope: &mut v8::PinScope,
-    target: v8::Local<v8::Object>,
-  ) {
-    *self.target.borrow_mut() = Some(traced(scope, target));
-    *self.current.borrow_mut() = Some(traced(scope, target));
-    self.phase.set(2);
-  }
-
-  #[cfg(feature = "fetch")]
-  pub(crate) fn disarm_xhr(&self) {
-    *self.current.borrow_mut() = None;
-    self.phase.set(0);
-  }
-
   /// Replaces `type`, `bubbles`, and `cancelable` unless the event is dispatching.
   pub(crate) fn init_type(
     &self,
@@ -172,6 +153,21 @@ impl Event {
   #[getter]
   fn bubbles(&self) -> bool {
     self.bubbles.get()
+  }
+
+  #[getter]
+  #[rename("cancelBubble")]
+  fn cancel_bubble(&self) -> bool {
+    self.stopped.get()
+  }
+
+  /// `true` stops later targets. `false` does not clear a stop.
+  #[setter]
+  #[rename("cancelBubble")]
+  fn cancel_bubble(&self, value: bool) {
+    if value {
+      self.stopped.set(true);
+    }
   }
 
   #[getter]
@@ -575,6 +571,53 @@ impl CustomEvent {
       None => Js::null(scope),
     }
   }
+
+  /// An omitted `detail` is null. The value is stored by identity.
+  #[length(1)]
+  fn init_custom_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = init_flag(scope, args, 1);
+    let cancelable = init_flag(scope, args, 2);
+    let detail = match init_present(args, 3) {
+      None => None,
+      Some(value) => {
+        let value = yuzuko_core::op::root(scope, value);
+        Some(traced(scope, value))
+      }
+    };
+    if !self.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    *self.detail.borrow_mut() = detail;
+    Ok(())
+  }
+}
+
+fn init_present<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+  index: i32,
+) -> Option<v8::Local<'s, v8::Value>> {
+  if index < 0 || index >= args.length() {
+    return None;
+  }
+  let value = args.get(index);
+  if value.is_undefined() {
+    None
+  } else {
+    Some(value)
+  }
+}
+
+fn init_flag(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> bool {
+  init_present(args, index).is_some_and(|value| value.boolean_value(scope))
 }
 
 fn custom_detail(
@@ -949,39 +992,6 @@ pub(crate) fn dispatch_progress(
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, object);
   let _ = crate::target::dispatch(scope, target, object);
-}
-
-/// Build a trusted progress event and call `handler` with the request as `this`.
-///
-/// `target` stays the request. `currentTarget` is the request only during the
-/// call, then becomes null. The request is not an `EventTarget`.
-#[cfg(feature = "fetch")]
-pub(crate) fn deliver_xhr_progress(
-  scope: &mut v8::PinScope,
-  xhr: &v8::Global<v8::Object>,
-  handler: &v8::Global<v8::Function>,
-  type_name: &str,
-  length_computable: bool,
-  loaded: f64,
-  total: f64,
-) {
-  let xhr = v8::Local::new(scope, xhr);
-  let event = ProgressEvent {
-    base: Event::new(type_name, false, false, false, true),
-    length_computable,
-    loaded,
-    total,
-  };
-  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
-  define_is_trusted(scope, object);
-  if let Some(host) = unsafe { host_ref::<ProgressEvent>(scope, object) } {
-    host.get().base.arm_xhr(scope, xhr);
-  }
-  let handler = v8::Local::new(scope, handler);
-  let _ = handler.call(scope, xhr.into(), &[object.into()]);
-  if let Some(host) = unsafe { host_ref::<ProgressEvent>(scope, object) } {
-    host.get().base.disarm_xhr();
-  }
 }
 
 fn traced_value(

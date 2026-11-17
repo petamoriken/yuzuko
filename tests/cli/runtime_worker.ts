@@ -1,3 +1,6 @@
+declare const requestAnimationFrame: unknown;
+
+// @ts-expect-error A worker global has onmessage.
 self.onmessage = () => {
   postMessage(
     [

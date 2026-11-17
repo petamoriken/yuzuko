@@ -802,6 +802,12 @@ fn resolve_and_compile<'a>(
   specifier: &str,
   attribute: Option<&str>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
+  if attribute.is_none()
+    && specifier == crate::loader::wasm_module::BRIDGE_SPECIFIER
+    && referrer.extension().and_then(|ext| ext.to_str()) == Some("wasm")
+  {
+    return crate::loader::wasm_module::bridge_module(scope);
+  }
   let (path, url) = locate(referrer, specifier)?;
   let label =
     lexical_request(referrer, specifier).unwrap_or_else(|| path.clone());
@@ -842,6 +848,20 @@ fn locate(
   let path = resolved.path().to_path_buf();
   let url = file_url(&path)?;
   Ok((path, url))
+}
+
+/// Absolute `file:` URL `import()` would load for `specifier`.
+///
+/// `parent_url` is the module the resolution is relative to. A `file:`
+/// specifier is normalized and does not have to exist. Any other specifier
+/// that does not resolve produces the same error as a failed import.
+fn resolve_from_parent(
+  parent_url: &str,
+  specifier: &str,
+) -> Result<String, RuntimeError> {
+  let referrer = url_to_path(parent_url)?;
+  let (_path, url) = locate(&referrer, specifier)?;
+  Ok(url)
 }
 
 fn existing_module<'a>(
@@ -2246,6 +2266,105 @@ mod graph {
       && member.property.name.as_str() == "url"
       && is_import_meta(&member.object)
   }
+}
+
+/// `import.meta.url`, `filename`, `dirname`, and `resolve` for one module.
+///
+/// `filename` and `dirname` are set only when `url` is a `file:` URL.
+/// `resolve` closes over `url`, so the receiver is not the base URL.
+pub(crate) fn install_import_meta(
+  scope: &mut v8::PinScope,
+  meta: v8::Local<v8::Object>,
+  url: &str,
+) {
+  if let Some(value) = v8::String::new(scope, url) {
+    define_import_meta_property(scope, meta, "url", value.into());
+  }
+  if let Ok(path) = url_to_path(url) {
+    let filename = path.to_string_lossy();
+    if let Some(value) = v8::String::new(scope, &filename) {
+      define_import_meta_property(scope, meta, "filename", value.into());
+    }
+    if let Some(parent) = path.parent() {
+      let dirname = parent.to_string_lossy();
+      if let Some(value) = v8::String::new(scope, &dirname) {
+        define_import_meta_property(scope, meta, "dirname", value.into());
+      }
+    }
+  }
+  if let Some(resolve) = import_meta_resolve_function(scope, url) {
+    define_import_meta_property(scope, meta, "resolve", resolve.into());
+  }
+}
+
+fn define_import_meta_property(
+  scope: &mut v8::PinScope,
+  meta: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let Some(key) = v8::String::new(scope, name) else {
+    return;
+  };
+  meta.create_data_property(scope, key.into(), value);
+}
+
+fn import_meta_resolve_function<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  url: &str,
+) -> Option<v8::Local<'s, v8::Function>> {
+  let data = v8::String::new(scope, url)?;
+  let function = v8::Function::builder(on_import_meta_resolve)
+    .data(data.into())
+    .length(1)
+    .constructor_behavior(v8::ConstructorBehavior::Throw)
+    .build(scope)?;
+  let name = v8::String::new(scope, "resolve")?;
+  function.set_name(name);
+  Some(function)
+}
+
+fn on_import_meta_resolve(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let Some(specifier) = callback_string(scope, args.get(0)) else {
+    return;
+  };
+  let parent = if args.length() > 1 && !args.get(1).is_undefined() {
+    let Some(parent) = callback_string(scope, args.get(1)) else {
+      return;
+    };
+    parent
+  } else {
+    captured_module_url(scope, &args)
+  };
+  match resolve_from_parent(&parent, &specifier) {
+    Ok(url) => {
+      if let Some(value) = v8::String::new(scope, &url) {
+        ret.set(value.into());
+      }
+    }
+    Err(error) => throw_load(scope, &error),
+  }
+}
+
+fn callback_string(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Option<String> {
+  let text = value.to_string(scope)?;
+  Some(text.to_rust_string_lossy(scope))
+}
+
+fn captured_module_url(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+) -> String {
+  v8::Local::<v8::String>::try_from(args.data())
+    .map(|text| text.to_rust_string_lossy(scope))
+    .unwrap_or_default()
 }
 
 fn url_to_path(specifier: &str) -> Result<PathBuf, RuntimeError> {

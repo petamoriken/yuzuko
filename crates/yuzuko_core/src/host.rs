@@ -106,9 +106,12 @@ pub struct HostState {
   /// JavaScript `ModuleSource` objects, keyed by [`source_cache_key`].
   pub js_sources: HashMap<String, v8::Global<v8::Object>>,
   /// `WebAssembly.Instance` objects. Keys are the module URL and, after
-  /// evaluation, the module namespace. Importers read `.exports` so a
-  /// mutable global stays a `WebAssembly.Global`.
+  /// evaluation, the module namespace. The Wasm ESM wrapper reads `.exports`
+  /// through an internal module, so a mutable global stays a
+  /// `WebAssembly.Global`. This map is not a property of `import.meta`.
   pub wasm_instances: Option<v8::Global<v8::Map>>,
+  /// Synthetic module that wrapper imports to reach `wasm_instances`.
+  pub(crate) wasm_bridge: Option<v8::Global<v8::Module>>,
   /// Function templates for `#[op]` classes, so inheritance reuses one template.
   pub templates: HashMap<std::any::TypeId, v8::Global<v8::FunctionTemplate>>,
   pub unhandled: HashMap<i32, String>,
@@ -174,6 +177,7 @@ impl HostState {
       wasm_modules: HashMap::new(),
       js_sources: HashMap::new(),
       wasm_instances: None,
+      wasm_bridge: None,
       templates: HashMap::new(),
       unhandled: HashMap::new(),
       deferred_rejections: HashMap::new(),
@@ -394,6 +398,17 @@ pub fn entry_dir() -> Option<PathBuf> {
 
 pub fn entry_url() -> Option<String> {
   with(|state| state.entry_url.clone())
+}
+
+/// `None` when this thread has not entered a realm. A unit test can parse an
+/// absolute URL without one. A relative URL then fails.
+pub fn try_entry_url() -> Option<String> {
+  STATE.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .and_then(|state| state.entry_url.clone())
+  })
 }
 
 /// Resolves relative `fetch` and `Request` URLs against `url`.

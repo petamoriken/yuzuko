@@ -16,7 +16,8 @@ use yuzuko_macros::op;
 use crate::animation;
 use crate::event::{ErrorEvent, define_is_trusted};
 use crate::message::{
-  capture_ports, message_event_for, receive_port_message, take_captured_ports,
+  capture_ports, fail_port_message, message_error_event, message_event_for,
+  receive_port_message, take_captured_ports,
 };
 use crate::report;
 use crate::target::{self, EventTarget};
@@ -105,12 +106,9 @@ fn deliver_script(
   capture_ports(true);
   let value = match yuzuko_core::deserialize_parcel(scope, parcel) {
     Ok(value) => value,
-    Err(error) => {
+    Err(_) => {
       let _ = take_captured_ports();
-      if let Some(error) = error {
-        let error = v8::Local::new(scope, error);
-        report::report_error(scope, error);
-      }
+      deliver_message_error(scope, worker);
       return;
     }
   };
@@ -140,11 +138,28 @@ fn deliver_port(
     Ok(value) => value,
     Err(_) => {
       let _ = take_captured_ports();
+      fail_port_message(port);
       return;
     }
   };
   let _ = take_captured_ports();
   receive_port_message(scope, port, value);
+}
+
+fn deliver_message_error(scope: &mut v8::PinScope, worker: u64) {
+  let event = message_error_event(scope);
+  if worker == agent_id() {
+    let global = yuzuko_core::global(scope);
+    let _ = target::dispatch(scope, global, event);
+    call_property(scope, global, "onmessageerror", event);
+    return;
+  }
+  let wrapper = OWNED.with(|slot| slot.borrow().get(&worker).cloned());
+  let Some(wrapper) = wrapper else {
+    return;
+  };
+  let target = v8::Local::new(scope, wrapper);
+  let _ = target::dispatch(scope, target, event);
 }
 
 fn deliver_failure(
@@ -570,6 +585,7 @@ struct Worker {
   base: EventTarget,
   id: u64,
   onmessage: RefCell<Option<v8::TracedReference<v8::Value>>>,
+  onmessageerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
   onerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
@@ -577,6 +593,11 @@ unsafe impl v8::cppgc::GarbageCollected for Worker {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
     if let Ok(handler) = self.onmessage.try_borrow()
+      && let Some(handler) = handler.as_ref()
+    {
+      visitor.trace(handler);
+    }
+    if let Ok(handler) = self.onmessageerror.try_borrow()
       && let Some(handler) = handler.as_ref()
     {
       visitor.trace(handler);
@@ -651,6 +672,7 @@ impl Worker {
       base: EventTarget::new(),
       id,
       onmessage: RefCell::new(None),
+      onmessageerror: RefCell::new(None),
       onerror: RefCell::new(None),
     })
   }
@@ -700,6 +722,26 @@ impl Worker {
   #[setter]
   fn onmessage(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
     set_handler(scope, &self.base, &self.onmessage, "message", value);
+  }
+
+  #[getter]
+  fn onmessageerror(&self, scope: &mut v8::PinScope) -> Js {
+    handler_value(scope, &self.onmessageerror)
+  }
+
+  #[setter]
+  fn onmessageerror(
+    &self,
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) {
+    set_handler(
+      scope,
+      &self.base,
+      &self.onmessageerror,
+      "messageerror",
+      value,
+    );
   }
 
   #[getter]

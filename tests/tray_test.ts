@@ -24,8 +24,16 @@ const PNG = Uint8Array.from(
 Yuzuko.test("tray and dock use methods and their own menuclick", () => {
   assert(typeof Yuzuko.Tray === "function", "Tray");
   assert(Yuzuko.dock instanceof EventTarget, "dock is an EventTarget");
-  assert(typeof Yuzuko.dock.visible === "undefined", "no dock.visible");
-  assert(typeof globalThis.Tray === "undefined", "Tray stays off globalThis");
+  assert(
+    // @ts-expect-error dock has no visible property.
+    typeof Yuzuko.dock.visible === "undefined",
+    "no dock.visible",
+  );
+  assert(
+    // @ts-expect-error Tray is absent on the main global.
+    typeof globalThis.Tray === "undefined",
+    "Tray stays off globalThis",
+  );
 
   const tray = new Yuzuko.Tray();
   const window = new Yuzuko.Window({ width: 80, height: 60, title: "tray" });
@@ -33,13 +41,17 @@ Yuzuko.test("tray and dock use methods and their own menuclick", () => {
   let clicks = 0;
   let dockAction = "";
   const onTray = (event: Event) => {
-    trayAction = (event as Event & { action?: string }).action ?? "";
+    // @ts-expect-error The host event carries action.
+    let action: string | undefined = event.action;
+    trayAction = action ?? "";
   };
   const onClick = () => {
     clicks += 1;
   };
   const onDock = (event: Event) => {
-    dockAction = (event as Event & { action?: string }).action ?? "";
+    // @ts-expect-error The host event carries action.
+    let action: string | undefined = event.action;
+    dockAction = action ?? "";
   };
   tray.addEventListener("menuclick", onTray);
   tray.addEventListener("click", onClick);

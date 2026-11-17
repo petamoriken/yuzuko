@@ -52,6 +52,41 @@ pub fn string(
     .map(|text| text.to_rust_string_lossy(scope))
 }
 
+/// `ToString`, keeping a throw from `toString` as the rejection.
+pub fn try_string(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<String, OpError> {
+  v8::tc_scope!(let tc, scope);
+  let Some(text) = value.to_string(tc) else {
+    return Err(match tc.exception() {
+      Some(thrown) => OpError::thrown(tc, thrown),
+      None => OpError::type_("The provided value is not a string"),
+    });
+  };
+  Ok(text.to_rust_string_lossy(tc))
+}
+
+/// Own property get. `undefined` is absent. A throwing getter is returned.
+pub fn try_get(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<v8::Global<v8::Value>>, OpError> {
+  v8::tc_scope!(let tc, scope);
+  let Some(key) = v8::String::new(tc, name) else {
+    return Err(OpError::type_("The provided value is not readable"));
+  };
+  match object.get(tc, key.into()) {
+    Some(value) if value.is_undefined() => Ok(None),
+    Some(value) => Ok(Some(v8::Global::new(tc, value))),
+    None => Err(match tc.exception() {
+      Some(thrown) => OpError::thrown(tc, thrown),
+      None => OpError::type_("The provided value is not readable"),
+    }),
+  }
+}
+
 pub fn finite_number(
   scope: &v8::PinScope,
   value: v8::Local<v8::Value>,

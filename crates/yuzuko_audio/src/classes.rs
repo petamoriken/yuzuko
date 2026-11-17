@@ -684,6 +684,55 @@ impl AudioParamMap {
       .iter()
       .any(|(found, _)| found == &name)
   }
+
+  /// Walks descriptor order. A throw from the callback propagates.
+  #[length(1)]
+  fn for_each(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let callback = args.get(0);
+    let Ok(callback) = v8::Local::<v8::Function>::try_from(callback) else {
+      return Err(OpError::type_("AudioParamMap.forEach requires a function"));
+    };
+    let this_arg = if args.length() > 1 {
+      args.get(1)
+    } else {
+      v8::undefined(scope).into()
+    };
+    let callback = v8::Global::new(scope, callback);
+    let this_arg = v8::Global::new(scope, this_arg);
+    let parent = v8::Global::new(scope, args.this());
+    for (name, id) in engine::worklet_param_ids(self.node) {
+      let called = {
+        v8::tc_scope!(let tc, scope);
+        let callback = v8::Local::new(tc, &callback);
+        let this_arg = v8::Local::new(tc, &this_arg);
+        let parent = v8::Local::new(tc, &parent);
+        let param = match engine::param_object(id) {
+          Some(object) => {
+            let object = v8::Local::new(tc, &object);
+            v8::Local::<v8::Value>::from(object)
+          }
+          None => v8::undefined(tc).into(),
+        };
+        let key = v8::String::new(tc, &name).unwrap();
+        match callback.call(tc, this_arg, &[param, key.into(), parent.into()]) {
+          Some(_) => Ok(()),
+          None => Err(tc.exception().map(|value| v8::Global::new(tc, value))),
+        }
+      };
+      match called {
+        Ok(()) => {}
+        Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
+        Err(None) => {
+          return Err(OpError::type_("AudioParamMap.forEach failed"));
+        }
+      }
+    }
+    Ok(())
+  }
 }
 
 fn install_param_map_iterator(scope: &mut v8::PinScope) {
@@ -2245,6 +2294,26 @@ impl AudioContext {
         Err(fault) => fault.reject(scope, resolver),
       }
     })
+  }
+
+  fn get_output_timestamp(&self, scope: &mut v8::PinScope) -> Js {
+    let context_time = engine::context_time(self.base.id).unwrap_or(0.0);
+    let performance_time = yuzuko_core::performance_now_ms();
+    let object = v8::Object::new(scope);
+    let context_key = v8::String::new(scope, "contextTime").unwrap();
+    let performance_key = v8::String::new(scope, "performanceTime").unwrap();
+    let _ = object.set(
+      scope,
+      context_key.into(),
+      v8::Number::new(scope, context_time).into(),
+    );
+    let _ = object.set(
+      scope,
+      performance_key.into(),
+      v8::Number::new(scope, performance_time).into(),
+    );
+    let value: v8::Local<v8::Value> = object.into();
+    Js(v8::Global::new(scope, value))
   }
 
   #[promise]

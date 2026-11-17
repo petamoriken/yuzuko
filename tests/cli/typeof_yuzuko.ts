@@ -1,3 +1,5 @@
+declare const requestAnimationFrame: unknown;
+
 console.log(typeof Yuzuko.test);
 console.log(typeof Yuzuko.__test);
 console.log(typeof Yuzuko.Window);
@@ -12,6 +14,7 @@ console.log(build.vendor);
 console.log(build.env === undefined ? "env-absent" : "env " + build.env);
 console.log(build.standalone);
 try {
+  // @ts-expect-error build.os is readonly.
   build.os = "freebsd";
   console.log("assigned");
 } catch (error) {

@@ -10,9 +10,10 @@ use std::time::Instant;
 
 use yuzuko_core::op::host_ref;
 use yuzuko_dom::{
-  Event, FiredComposition, FiredInput, FiredKey, FiredPointer, FiredWheel,
-  define_is_trusted, dispatch, dispatch_composition, dispatch_focus,
-  dispatch_input, dispatch_key, dispatch_simple, dispatch_wheel,
+  Event, FiredComposition, FiredInput, FiredKey, FiredPointer, FiredTouch,
+  FiredWheel, TouchPoint, define_is_trusted, dispatch, dispatch_composition,
+  dispatch_focus, dispatch_input, dispatch_key, dispatch_simple,
+  dispatch_wheel,
 };
 
 use crate::activation;
@@ -37,6 +38,7 @@ struct Tracker {
   last_click_button: i32,
   active: Vec<i32>,
   captured: Vec<i32>,
+  touches: Vec<TouchPoint>,
   preedit: String,
   ime_open: bool,
 }
@@ -55,6 +57,7 @@ impl Tracker {
       last_click_button: -1,
       active: Vec::new(),
       captured: Vec::new(),
+      touches: Vec::new(),
       preedit: String::new(),
       ime_open: false,
     }
@@ -116,6 +119,7 @@ impl PointerState {
 
 enum Step {
   Pointer(FiredPointer),
+  Touch(FiredTouch),
   Key(FiredKey, Option<String>),
   Composition(FiredComposition),
   Input(FiredInput),
@@ -146,6 +150,9 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
       };
       host.get().plan(raw)
     };
+    // A cancelled touchstart, touchmove, or touchend skips the mouse
+    // compatibility events planned after it. Pointer events still run.
+    let mut skip_mouse = false;
     for step in steps {
       if !inbox::contains(id) {
         return;
@@ -155,11 +162,19 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
       };
       match step {
         Step::Pointer(event) => {
+          if skip_mouse && mouse_compatibility(&event.type_name) {
+            continue;
+          }
           let proceed =
             crate::surface::dispatch_pointer_on_window(scope, object, &event);
           if proceed {
             open_context_menu(scope, id, &event);
           }
+        }
+        Step::Touch(event) => {
+          let proceed =
+            crate::surface::dispatch_touch_on_window(scope, object, &event);
+          skip_mouse = !proceed;
         }
         Step::Key(event, text) => {
           let allowed = dispatch_key(scope, object, &event);
@@ -363,6 +378,7 @@ impl Window {
         );
         event.coalesced = coalesced;
         steps.push(Step::Pointer(event));
+        push_touch(&mut steps, &mut tracker, &last, pressure);
         let mut mouse = pointer_event(
           "mousemove",
           &last,
@@ -393,6 +409,7 @@ impl Window {
           (0.0, 0.0),
           0,
         )));
+        push_touch(&mut steps, &mut tracker, &last, pressure);
         steps.push(Step::Pointer(pointer_event(
           "mousedown",
           &last,
@@ -418,6 +435,7 @@ impl Window {
           (0.0, 0.0),
           0,
         )));
+        push_touch(&mut steps, &mut tracker, &last, pressure);
         steps.push(Step::Pointer(pointer_event(
           "mouseup",
           &last,
@@ -497,6 +515,7 @@ impl Window {
           (0.0, 0.0),
           0,
         )));
+        push_touch(&mut steps, &mut tracker, &last, 0.0);
         if lost {
           steps.push(Step::Pointer(pointer_event(
             "lostpointercapture",
@@ -604,6 +623,82 @@ impl Window {
       }
     }
   }
+}
+
+fn mouse_compatibility(type_name: &str) -> bool {
+  matches!(
+    type_name,
+    "mousedown"
+      | "mousemove"
+      | "mouseup"
+      | "click"
+      | "dblclick"
+      | "auxclick"
+      | "contextmenu"
+  )
+}
+
+fn push_touch(
+  steps: &mut Vec<Step>,
+  tracker: &mut Tracker,
+  pointer: &RawPointer,
+  force: f64,
+) {
+  if pointer.pointer_type != "touch" {
+    return;
+  }
+  let point = TouchPoint {
+    identifier: pointer.pointer_id,
+    screen_x: pointer.screen_x,
+    screen_y: pointer.screen_y,
+    client_x: pointer.x,
+    client_y: pointer.y,
+    force,
+  };
+  let (type_name, cancelable, changed) = match pointer.kind {
+    PointerKind::Down | PointerKind::Move => {
+      let changed = upsert_touch(&mut tracker.touches, point);
+      let type_name = if pointer.kind == PointerKind::Down {
+        "touchstart"
+      } else {
+        "touchmove"
+      };
+      (type_name, true, changed)
+    }
+    PointerKind::Up | PointerKind::Cancel => {
+      tracker
+        .touches
+        .retain(|item| item.identifier != point.identifier);
+      let type_name = if pointer.kind == PointerKind::Up {
+        "touchend"
+      } else {
+        "touchcancel"
+      };
+      (type_name, pointer.kind == PointerKind::Up, point)
+    }
+  };
+  steps.push(Step::Touch(FiredTouch {
+    type_name: type_name.to_string(),
+    cancelable,
+    ctrl: pointer.ctrl,
+    shift: pointer.shift,
+    alt: pointer.alt,
+    meta: pointer.meta,
+    touches: tracker.touches.clone(),
+    changed: vec![changed],
+  }));
+}
+
+fn upsert_touch(list: &mut Vec<TouchPoint>, point: TouchPoint) -> TouchPoint {
+  if let Some(slot) = list
+    .iter_mut()
+    .find(|item| item.identifier == point.identifier)
+  {
+    *slot = point.clone();
+  } else {
+    list.push(point.clone());
+  }
+  point
 }
 
 fn mark_active(tracker: &mut Tracker, pointer_id: i32) {

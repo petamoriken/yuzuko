@@ -1,4 +1,4 @@
-//! Software AV1 via rav1d, without assembly.
+//! Software AV1 via rav1d, without assembly, on one thread.
 //!
 //! H.264 stays on the platform decoder. Video and AVIF accept 8, 10, and 12
 //! bits at 4:2:0, 4:2:2, 4:4:4, and monochrome. An AVIF alpha item is
@@ -137,11 +137,10 @@ impl Av1Session {
       let mut settings = MaybeUninit::<Dav1dSettings>::uninit();
       dav1d_default_settings(NonNull::from(&mut settings).cast());
       let settings = settings.assume_init_mut();
-      let threads = std::thread::available_parallelism()
-        .map(|count| count.get())
-        .unwrap_or(1)
-        .min(256);
-      settings.n_threads = c_int::try_from(threads).unwrap_or(1);
+      // rav1d 1.1.0 tile workers abort when one CDEF row reads a two-byte
+      // edge that another row is still copying (`padding` and `backup2lines`).
+      // One thread keeps that edge sequential.
+      settings.n_threads = 1;
       settings.max_frame_delay = 1;
       settings.apply_grain = 1;
       settings.frame_size_limit = 100_000_000;

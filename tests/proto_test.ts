@@ -23,6 +23,8 @@ interface ProtoFacts {
 }
 
 function protoFacts(): ProtoFacts {
+  const unread: { __proto__?: unknown } = {};
+  const unmarked: { marker?: boolean } = {};
   const assigned: { __proto__?: unknown } = {};
   Object.assign(assigned, JSON.parse('{"__proto__": null}'));
   const literal: { __proto__?: unknown } = { __proto__: null };
@@ -35,14 +37,14 @@ function protoFacts(): ProtoFacts {
   return {
     descriptor: Object.getOwnPropertyDescriptor(Object.prototype, "__proto__") === undefined,
     inherited: "__proto__" in Object.prototype,
-    readUndefined: ({} as { __proto__?: unknown }).__proto__ === undefined,
+    readUndefined: unread.__proto__ === undefined,
     assignPrototype: Object.getPrototypeOf(assigned) === Object.prototype,
     assignOwn: Object.hasOwn(assigned, "__proto__") && assigned.__proto__ === null,
     literalNull: Object.getPrototypeOf(literal) === null,
     literalOwn: Object.hasOwn(literal, "__proto__"),
     writePrototype: Object.getPrototypeOf(written) === Object.prototype,
     writeOwn: Object.hasOwn(written, "__proto__") && written.__proto__?.marker === true,
-    clean: ({} as { marker?: boolean }).marker === undefined,
+    clean: unmarked.marker === undefined,
     reflectPrototype: Object.getPrototypeOf(reflected) === Object.prototype,
     reflectOwn: Object.hasOwn(reflected, "__proto__") && reflected.__proto__ === null,
     setPrototypeOf: Object.getPrototypeOf(replaced) === null,

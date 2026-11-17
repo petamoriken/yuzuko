@@ -6,10 +6,14 @@ import {
   triangleShader,
 } from "./webgpu_draw.ts";
 
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : "";
 }
 
 async function adapterOrSkip() {
@@ -33,7 +37,7 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
     try {
       navigator.gpu.getPreferredCanvasFormat();
     } catch (error) {
-      threw = error.name === "InvalidStateError";
+      threw = errorName(error) === "InvalidStateError";
     }
     assert(threw, "preferred format without an adapter");
     return;
@@ -65,7 +69,10 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
   }
   let rejected = false;
   try {
-    await adapter.requestDevice({ requiredFeatures: ["not-a-feature"] });
+    await adapter.requestDevice({
+      // @ts-expect-error not-a-feature is not a GPUFeatureName.
+      requiredFeatures: ["not-a-feature"],
+    });
   } catch (error) {
     rejected = error instanceof TypeError;
   }
@@ -92,7 +99,7 @@ Yuzuko.test("a triangle readback and the same current texture", async () => {
   const device = await adapter.requestDevice();
   const format = navigator.gpu.getPreferredCanvasFormat();
   const canvas = new OffscreenCanvas(16, 16);
-  const context = canvas.getContext("webgpu");
+  const context = canvas.getContext("webgpu")!;
   assert(context !== null, "context");
   context.configure({ device, format, alphaMode: "opaque" });
   const first = context.getCurrentTexture();
@@ -135,8 +142,8 @@ Yuzuko.test("two canvases keep distinct textures", async () => {
   }
   const device = await adapter.requestDevice();
   const format = navigator.gpu.getPreferredCanvasFormat();
-  const left = new OffscreenCanvas(4, 4).getContext("webgpu");
-  const right = new OffscreenCanvas(4, 4).getContext("webgpu");
+  const left = new OffscreenCanvas(4, 4).getContext("webgpu")!;
+  const right = new OffscreenCanvas(4, 4).getContext("webgpu")!;
   left.configure({ device, format });
   right.configure({ device, format });
   const leftTexture = left.getCurrentTexture();
@@ -168,7 +175,8 @@ Yuzuko.test("validation scope, lost device, and pass validation", async () => {
   assert(error instanceof GPUValidationError, "validation error");
   let invalid = false;
   try {
-    device.createComputePipeline();
+    // @ts-expect-error createComputePipeline requires a descriptor.
+    device.createComputePipeline.call(device);
   } catch (caught) {
     invalid = caught instanceof TypeError;
   }
@@ -176,7 +184,7 @@ Yuzuko.test("validation scope, lost device, and pass validation", async () => {
   const compute = device.createCommandEncoder().beginComputePass();
   compute.end();
   const canvas = new OffscreenCanvas(4, 4);
-  const context = canvas.getContext("webgpu");
+  const context = canvas.getContext("webgpu")!;
   context.configure({
     device,
     format: navigator.gpu.getPreferredCanvasFormat(),
@@ -189,6 +197,7 @@ Yuzuko.test("validation scope, lost device, and pass validation", async () => {
         loadOp: "clear",
         storeOp: "store",
       }],
+      // @ts-expect-error a depth attachment requires a view.
       depthStencilAttachment: {},
     });
   } catch (caught) {
@@ -203,7 +212,7 @@ Yuzuko.test("validation scope, lost device, and pass validation", async () => {
   try {
     device.createBuffer({ size: 4, usage: GPUBufferUsage.COPY_DST });
   } catch (caught) {
-    lostDevice = caught.name === "InvalidStateError";
+    lostDevice = errorName(caught) === "InvalidStateError";
   }
   assert(lostDevice, "device lost");
 });
@@ -229,7 +238,7 @@ Yuzuko.test("writeBuffer round-trips through mapAsync", async () => {
   device.destroy();
 });
 
-function clear(device, texture, color) {
+function clear(device: GPUDevice, texture: GPUTexture, color: GPUColorDict): void {
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
     colorAttachments: [{
@@ -252,7 +261,7 @@ fn main() {
 }
 `;
 
-function depthShader(z, color) {
+function depthShader(z: string, color: string): string {
   return `
 @vertex
 fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
@@ -271,7 +280,11 @@ fn fs() -> @location(0) vec4f {
 `;
 }
 
-async function readBytes(device, source, size) {
+async function readBytes(
+  device: GPUDevice,
+  source: GPUBuffer,
+  size: number,
+): Promise<Uint8Array> {
   const read = device.createBuffer({
     size,
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
@@ -337,7 +350,7 @@ Yuzuko.test("a nearer fragment wins the depth test", async () => {
     format: "depth24plus",
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
   });
-  function pipeline(z, pixel) {
+  function pipeline(z: string, pixel: string): GPURenderPipeline {
     const module = device.createShaderModule({ code: depthShader(z, pixel) });
     return device.createRenderPipeline({
       layout: "auto",
@@ -469,7 +482,7 @@ Yuzuko.test("timestamp queries follow the device feature", async () => {
     try {
       device.createQuerySet({ type: "timestamp", count: 1 });
     } catch (caught) {
-      unsupported = caught.name === "NotSupportedError";
+      unsupported = errorName(caught) === "NotSupportedError";
     }
     assert(unsupported, "timestamp query");
   }
@@ -552,12 +565,12 @@ fn bump() {
 }
 `;
 
-function uintPixel(pixel) {
+function uintPixel(pixel: ArrayLike<number | undefined>): number {
   return (
-    pixel[0] +
-    pixel[1] * 256 +
-    pixel[2] * 65536 +
-    pixel[3] * 16777216
+    pixel[0]! +
+    pixel[1]! * 256 +
+    pixel[2]! * 65536 +
+    pixel[3]! * 16777216
   );
 }
 
@@ -747,7 +760,7 @@ Yuzuko.test(
         },
       });
     } catch (error) {
-      unsupported = error.name === "NotSupportedError";
+      unsupported = errorName(error) === "NotSupportedError";
     }
     assert(
       !device.features.has("dual-source-blending") && unsupported,
@@ -759,7 +772,11 @@ Yuzuko.test(
         entries: [{
           binding: 0,
           visibility: GPUShaderStage.COMPUTE,
-          storageTexture: { access: "nope", format: "r32uint" },
+          storageTexture: {
+            // @ts-expect-error nope is not a storage-texture access.
+            access: "nope",
+            format: "r32uint",
+          },
         }],
       });
     } catch (error) {
@@ -807,10 +824,11 @@ Yuzuko.test("GPU object labels round-trip", async () => {
   const command = encoder.finish({ label: "cmd" });
   assert(command.label === "cmd", command.label);
   const canvas = new OffscreenCanvas(4, 4);
-  const context = canvas.getContext("webgpu");
+  const context = canvas.getContext("webgpu")!;
   assert(context.label === "", "canvas label");
   let threw = false;
   try {
+    // @ts-expect-error label is read-only.
     context.label = "nope";
   } catch (error) {
     threw = error instanceof TypeError;
@@ -820,12 +838,12 @@ Yuzuko.test("GPU object labels round-trip", async () => {
   device.destroy();
 });
 
-const alphaBlend = {
+const alphaBlend: GPUBlendState = {
   color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
   alpha: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
 };
 
-function colorTexture(device) {
+function colorTexture(device: GPUDevice): GPUTexture {
   return device.createTexture({
     size: [16, 16],
     format: "rgba8unorm",
@@ -833,7 +851,7 @@ function colorTexture(device) {
   });
 }
 
-async function overdraw(device, blend) {
+async function overdraw(device: GPUDevice, blend: GPUBlendState | null) {
   const color = colorTexture(device);
   const red = device.createShaderModule({
     code: depthShader("0.0", "1.0, 0.0, 0.0, 1.0"),
@@ -841,8 +859,8 @@ async function overdraw(device, blend) {
   const green = device.createShaderModule({
     code: depthShader("0.0", "0.0, 1.0, 0.0, 0.5"),
   });
-  function pipeline(module) {
-    const target = { format: "rgba8unorm" };
+  function pipeline(module: GPUShaderModule): GPURenderPipeline {
+    const target: GPUColorTargetState = { format: "rgba8unorm" };
     if (blend) {
       target.blend = blend;
     }
@@ -884,7 +902,7 @@ Yuzuko.test("blend changes a read-back pixel", async () => {
   device.destroy();
 });
 
-async function coveredPixel(device, alpha) {
+async function coveredPixel(device: GPUDevice, alpha: string) {
   const multisample = device.createTexture({
     size: [8, 8],
     format: "rgba8unorm",
@@ -972,13 +990,13 @@ Yuzuko.test("unclipped depth keeps a fragment outside the clip volume", async ()
         primitive: { unclippedDepth: true },
       });
     } catch (error) {
-      threw = error.name === "NotSupportedError";
+      threw = errorName(error) === "NotSupportedError";
     }
     assert(threw, "unclippedDepth");
     device.destroy();
     return;
   }
-  function pipeline(unclipped) {
+  function pipeline(unclipped: boolean): GPURenderPipeline {
     return device.createRenderPipeline({
       layout: "auto",
       vertex: { module, entryPoint: "vs" },
@@ -990,7 +1008,7 @@ Yuzuko.test("unclipped depth keeps a fragment outside the clip volume", async ()
       primitive: { unclippedDepth: unclipped },
     });
   }
-  async function pixel(unclipped) {
+  async function pixel(unclipped: boolean) {
     const color = colorTexture(device);
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -1029,7 +1047,7 @@ Yuzuko.test("depth32float-stencil8 rejects a farther fragment", async () => {
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
       });
     } catch (error) {
-      threw = error.name === "NotSupportedError";
+      threw = errorName(error) === "NotSupportedError";
     }
     assert(threw, "depth32float-stencil8");
     device.destroy();
@@ -1041,7 +1059,7 @@ Yuzuko.test("depth32float-stencil8 rejects a farther fragment", async () => {
     format: "depth32float-stencil8",
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
   });
-  function pipeline(z, pixel) {
+  function pipeline(z: string, pixel: string): GPURenderPipeline {
     const module = device.createShaderModule({ code: depthShader(z, pixel) });
     return device.createRenderPipeline({
       layout: "auto",
@@ -1144,7 +1162,10 @@ Yuzuko.test("an imported video frame samples as an external texture", async () =
   try {
     external = device.importExternalTexture({ source: frame });
   } catch (error) {
-    assert(error.name === "NotSupportedError", `external import ${error.name}`);
+    assert(
+      errorName(error) === "NotSupportedError",
+      `external import ${errorName(error)}`,
+    );
     let layoutThrew = false;
     try {
       device.createBindGroupLayout({
@@ -1155,7 +1176,7 @@ Yuzuko.test("an imported video frame samples as an external texture", async () =
         }],
       });
     } catch (layoutError) {
-      layoutThrew = layoutError.name === "NotSupportedError";
+      layoutThrew = errorName(layoutError) === "NotSupportedError";
     }
     assert(layoutThrew, "external layout");
     frame.close();
@@ -1223,12 +1244,15 @@ Yuzuko.test("an imported video frame samples as an external texture", async () =
   try {
     device.importExternalTexture({ source: frame });
   } catch (error) {
-    closed = error.name === "InvalidStateError";
+    closed = errorName(error) === "InvalidStateError";
   }
   assert(closed, "closed frame");
   let typeError = false;
   try {
-    device.importExternalTexture({ source: {} });
+    device.importExternalTexture({
+      // @ts-expect-error source must be a VideoFrame.
+      source: {},
+    });
   } catch (error) {
     typeError = error instanceof TypeError;
   }
@@ -1304,8 +1328,14 @@ Yuzuko.test("debug markers on the command encoder and on passes", async () => {
   const bundle = device.createRenderBundleEncoder({
     colorFormats: ["rgba8unorm"],
   });
-  assert(typeof bundle.pushDebugGroup !== "function", "bundle markers");
-  assert(typeof bundle.setViewport !== "function", "bundle viewport");
+  assert(
+    throwName(() => bundle.pushDebugGroup("group")) === "NotSupportedError",
+    "bundle markers",
+  );
+  assert(
+    throwName(() => bundle.setViewport(0, 0, 1, 1, 0, 1)) === "NotSupportedError",
+    "bundle viewport",
+  );
   bundle.finish();
   device.destroy();
 });
@@ -1332,7 +1362,11 @@ Yuzuko.test("GPUUncapturedErrorEvent carries a GPU error", () => {
   assert(event.isTrusted === false, "script event");
   let missing = false;
   try {
-    new GPUUncapturedErrorEvent("uncapturederror", {});
+    new GPUUncapturedErrorEvent(
+      "uncapturederror",
+      // @ts-expect-error error is required.
+      {},
+    );
   } catch (caught) {
     missing = caught instanceof TypeError;
   }
@@ -1365,14 +1399,14 @@ Yuzuko.test("mapAsync writes back and detaches the range", async () => {
   try {
     buffer.getMappedRange(4, 8);
   } catch (caught) {
-    overlap = caught.name === "OperationError";
+    overlap = errorName(caught) === "OperationError";
   }
   assert(overlap, "overlap");
   let align = false;
   try {
     buffer.getMappedRange(4, 4);
   } catch (caught) {
-    align = caught.name === "OperationError";
+    align = errorName(caught) === "OperationError";
   }
   assert(align, "offset alignment");
   buffer.unmap();
@@ -1381,7 +1415,7 @@ Yuzuko.test("mapAsync writes back and detaches the range", async () => {
   try {
     await buffer.mapAsync(GPUMapMode.WRITE, 4, 4);
   } catch (caught) {
-    badOffset = caught.name === "OperationError";
+    badOffset = errorName(caught) === "OperationError";
   }
   assert(badOffset, "map offset");
   device.destroy();
@@ -1402,7 +1436,7 @@ Yuzuko.test("writeTimestamp follows the timestamp feature", async () => {
         0,
       );
     } catch (caught) {
-      unsupported = caught.name === "NotSupportedError";
+      unsupported = errorName(caught) === "NotSupportedError";
     }
     assert(unsupported, "timestamp write");
     device.destroy();
@@ -1413,7 +1447,7 @@ Yuzuko.test("writeTimestamp follows the timestamp feature", async () => {
   try {
     encoder.writeTimestamp(queries, 0);
   } catch (caught) {
-    assert(caught.name === "NotSupportedError", "inside encoder");
+    assert(errorName(caught) === "NotSupportedError", "inside encoder");
     inside = false;
   }
   if (inside) {
@@ -1483,10 +1517,10 @@ Yuzuko.test("an uncaptured validation error is an event", async () => {
   device.queue.submit([scoped.finish()]);
   const captured = await device.popErrorScope();
   assert(captured instanceof GPUValidationError, "scoped validation");
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   assert(uncaptured === 0, "scope captured the error");
 
-  const seen = new Promise((resolve) => {
+  const seen = new Promise<Event>((resolve) => {
     device.addEventListener("uncapturederror", resolve, { once: true });
   });
   const encoder = device.createCommandEncoder();
@@ -1494,30 +1528,33 @@ Yuzuko.test("an uncaptured validation error is an event", async () => {
   device.queue.submit([encoder.finish()]);
   const event = await Promise.race([
     seen,
-    new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
+    new Promise<Event | null>((resolve) => setTimeout(() => resolve(null), 1000)),
   ]);
   assert(event instanceof GPUUncapturedErrorEvent, "event type");
+  if (!(event instanceof GPUUncapturedErrorEvent)) {
+    throw new Error("event type");
+  }
   assert(event.error instanceof GPUValidationError, "validation");
   assert(event.isTrusted === true, "trusted");
   assert(uncaptured >= 1, "handler");
   device.destroy();
 });
 
-function throwName(fn) {
+function throwName(fn: () => void): string {
   try {
     fn();
     return "";
   } catch (error) {
-    return error.name;
+    return errorName(error);
   }
 }
 
-async function rejectionName(promise) {
+async function rejectionName(promise: Promise<unknown>): Promise<string> {
   try {
     await promise;
     return "";
   } catch (error) {
-    return error.name;
+    return errorName(error);
   }
 }
 
@@ -1617,16 +1654,32 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   const encoder = device.createCommandEncoder();
   assert(throwName(() => encoder.clearBuffer(buffer)) === "NotSupportedError", "clearBuffer");
   assert(
-    throwName(() => encoder.copyBufferToTexture({}, {}, [1, 1])) === "NotSupportedError",
+    throwName(() => encoder.copyBufferToTexture(
+      // @ts-expect-error the copy source requires a buffer.
+      {},
+      {},
+      [1, 1],
+    )) === "NotSupportedError",
     "copyBufferToTexture",
   );
   assert(
-    throwName(() => encoder.copyTextureToTexture({}, {}, [1, 1])) === "NotSupportedError",
+    throwName(() => encoder.copyTextureToTexture(
+      // @ts-expect-error the copy source requires a texture.
+      {},
+      {},
+      [1, 1],
+    )) === "NotSupportedError",
     "copyTextureToTexture",
   );
   assert(
     throwName(() => {
-      device.queue.writeTexture({}, new Uint8Array(4), {}, [1, 1]);
+      device.queue.writeTexture(
+        // @ts-expect-error the destination requires a texture.
+        {},
+        new Uint8Array(4),
+        {},
+        [1, 1],
+      );
     }) === "NotSupportedError",
     "writeTexture",
   );
@@ -1648,7 +1701,10 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     "compilation info",
   );
   assert(
-    await rejectionName(device.createRenderPipelineAsync({})) === "NotSupportedError",
+    await rejectionName(device.createRenderPipelineAsync(
+      // @ts-expect-error layout and vertex are required.
+      {},
+    )) === "NotSupportedError",
     "render pipeline async",
   );
   assert(
@@ -1657,18 +1713,21 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   );
 
   const canvas = new OffscreenCanvas(4, 4);
-  const context = canvas.getContext("webgpu");
+  const context = canvas.getContext("webgpu")!;
   assert(context !== null, "webgpu context");
   assert(context.getConfiguration() === null, "unconfigured");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format });
   const configuration = context.getConfiguration();
   assert(configuration !== null, "configured");
+  if (configuration === null) {
+    throw new Error("configured");
+  }
   assert(configuration.device === device, "config device");
   assert(configuration.format === format, "config format");
   assert(configuration.alphaMode === "opaque", "alpha");
   assert(configuration.colorSpace === "srgb", "color space");
-  assert(configuration.toneMapping.mode === "standard", "tone mapping");
+  assert(configuration.toneMapping!.mode === "standard", "tone mapping");
   assert(Array.isArray(configuration.viewFormats), "view formats");
   assert(configuration.usage === GPUTextureUsage.RENDER_ATTACHMENT, "config usage");
   const current = context.getCurrentTexture();
@@ -1685,7 +1744,10 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     format,
     toneMapping: { mode: "standard" },
   });
-  assert(context.getConfiguration().toneMapping.mode === "standard", "standard tone mapping");
+  assert(
+    context.getConfiguration()!.toneMapping!.mode === "standard",
+    "standard tone mapping",
+  );
   assert(
     throwName(() => {
       context.configure({
@@ -1703,5 +1765,325 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   texture.destroy();
   assert(texture.usage === textureUsage, "texture usage after destroy");
   assert(texture.sampleCount === 1, "samples after destroy");
+  device.destroy();
+});
+
+Yuzuko.test("ImageData copies into a texture", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const data = new ImageData(new Uint8ClampedArray([0, 255, 0, 255]), 1, 1);
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  device.queue.copyExternalImageToTexture(
+    { source: data },
+    { texture },
+    [1, 1],
+  );
+  const pixel = channels(await readPixel(device, texture, 0, 0), "rgba8unorm");
+  assert(pixel.g === 255 && pixel.r === 0 && pixel.b === 0 && pixel.a === 255, "green");
+
+  const bytes = new Uint8ClampedArray([0, 255, 0, 255]);
+  const detached = new ImageData(bytes, 1, 1);
+  structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+  assert(
+    throwName(() => {
+      device.queue.copyExternalImageToTexture(
+        { source: detached },
+        { texture },
+        [1, 1],
+      );
+    }) === "InvalidStateError",
+    "detached ImageData",
+  );
+  device.destroy();
+});
+
+Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
+  assert(GPUTextureUsage.TRANSIENT_ATTACHMENT === 0x20, "transient bit");
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  assert(await navigator.gpu.requestAdapter({ featureLevel: "core" }) !== null, "core");
+  assert(await navigator.gpu.requestAdapter({ featureLevel: "compatibility" }) === null, "compatibility");
+  assert(await navigator.gpu.requestAdapter({ xrCompatible: true }) === null, "xr");
+  assert(await navigator.gpu.requestAdapter({ xrCompatible: false }) !== null, "xr false");
+  assert(
+    await rejectionName(navigator.gpu.requestAdapter({ featureLevel: "extended" })) === "TypeError",
+    "feature level",
+  );
+  const level = {
+    toString() {
+      throw new RangeError("level");
+    },
+  };
+  assert(
+    await rejectionName(navigator.gpu.requestAdapter({
+      // @ts-expect-error featureLevel is converted with ToString.
+      featureLevel: level,
+    })) === "RangeError",
+    "feature level throw",
+  );
+
+  const plain = await adapter.requestDevice();
+  assert(plain.queue.label === "", "omitted queue label");
+  plain.destroy();
+  assert(
+    await rejectionName(adapter.requestDevice({
+      // @ts-expect-error defaultQueue is not null.
+      defaultQueue: null,
+    })) === "TypeError",
+    "null queue",
+  );
+  const device = await adapter.requestDevice({ defaultQueue: { label: "frames" } });
+  assert(device.queue.label === "frames", "queue label");
+
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert(await device.popErrorScope() === null, "transient texture");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "bad transient");
+
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
+  device.createShaderModule({
+    code: triangleShader,
+    compilationHints: [
+      { entryPoint: "vs", layout: "auto" },
+      { entryPoint: "fs", layout },
+    ],
+  });
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        compilationHints: [{
+          entryPoint: "vs",
+          // @ts-expect-error a plain object is not a GPUPipelineLayout.
+          layout: {},
+        }],
+      });
+    }) === "TypeError",
+    "hint layout",
+  );
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        compilationHints: [
+          // @ts-expect-error a hint requires an entryPoint.
+          {},
+        ],
+      });
+    }) === "TypeError",
+    "hint entry",
+  );
+  assert(
+    throwName(() => {
+      device.createShaderModule({
+        code: triangleShader,
+        // @ts-expect-error compilationHints is not null.
+        compilationHints: null,
+      });
+    }) === "TypeError",
+    "hint null",
+  );
+  device.createPipelineLayout({ bindGroupLayouts: [], immediateSize: 0 });
+  assert(
+    throwName(() => device.createPipelineLayout({
+      bindGroupLayouts: [],
+      immediateSize: 4,
+    })) === "NotSupportedError",
+    "immediateSize",
+  );
+
+  const vertexModule = device.createShaderModule({
+    code: `
+      override bias: f32 = 1.0;
+      @vertex
+      fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+        const positions = array<vec2f, 3>(
+          vec2f(-1.0, -1.0),
+          vec2f(3.0, -1.0),
+          vec2f(-1.0, 3.0),
+        );
+        return vec4f(positions[vertexIndex] + vec2f(bias, 0.0), 0.0, 1.0);
+      }
+    `,
+  });
+  const fragmentModule = device.createShaderModule({
+    code: `
+      override amount: f32 = 0.0;
+      @fragment
+      fn fs() -> @location(0) vec4f {
+        return vec4f(0.0, amount, 0.0, 1.0);
+      }
+    `,
+  });
+  const painted = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: vertexModule, entryPoint: "vs", constants: { bias: 0 } },
+    fragment: {
+      module: fragmentModule,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+      constants: { amount: 1 },
+    },
+  });
+  const drawing = device.createCommandEncoder();
+  const drawPass = drawing.beginRenderPass({
+    colorAttachments: [{
+      view: painted.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  drawPass.setPipeline(pipeline);
+  drawPass.draw(3);
+  drawPass.end();
+  device.queue.submit([drawing.finish()]);
+  const paintedPixel = channels(await readPixel(device, painted, 0, 0), "rgba8unorm");
+  assert(paintedPixel.g === 255 && paintedPixel.r === 0, "override green");
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: {
+          module: vertexModule,
+          entryPoint: "vs",
+          constants: {
+            // @ts-expect-error a pipeline constant is a number.
+            bias: "nope",
+          },
+        },
+        fragment: {
+          module: fragmentModule,
+          entryPoint: "fs",
+          targets: [{ format: "rgba8unorm" }],
+        },
+      });
+    }) === "TypeError",
+    "constant",
+  );
+
+  const computeModule = device.createShaderModule({
+    code: `
+      override factor: f32 = 1.0;
+      @group(0) @binding(0) var<storage, read_write> values: array<f32>;
+      @compute @workgroup_size(1)
+      fn main() {
+        values[0] = factor;
+      }
+    `,
+  });
+  const compute = device.createComputePipeline({
+    layout: "auto",
+    compute: { module: computeModule, entryPoint: "main", constants: { factor: 0.5 } },
+  });
+  const storage = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const readback = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const bind = device.createBindGroup({
+    layout: compute.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: storage } }],
+  });
+  const computeEncoder = device.createCommandEncoder();
+  const computePass = computeEncoder.beginComputePass();
+  computePass.setPipeline(compute);
+  computePass.setBindGroup(0, bind);
+  computePass.dispatchWorkgroups(1);
+  computePass.end();
+  computeEncoder.copyBufferToBuffer(storage, 0, readback, 0, 4);
+  device.queue.submit([computeEncoder.finish()]);
+  await readback.mapAsync(GPUMapMode.READ);
+  const factor = new Float32Array(readback.getMappedRange())[0];
+  readback.unmap();
+  assert(factor === 0.5, "compute factor");
+
+  const attachment = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const passPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: device.createShaderModule({ code: triangleShader }), entryPoint: "vs" },
+    fragment: {
+      module: device.createShaderModule({ code: triangleShader }),
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  async function drawCount(draws: number, bundles?: GPURenderBundle[]) {
+    device.pushErrorScope("validation");
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: attachment.createView(),
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+      maxDrawCount: 1,
+    });
+    pass.setPipeline(passPipeline);
+    for (let index = 0; index < draws; index += 1) {
+      pass.draw(3);
+    }
+    if (bundles) {
+      pass.executeBundles(bundles);
+    }
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    return device.popErrorScope();
+  }
+  assert(await drawCount(1) === null, "one draw");
+  assert((await drawCount(2)) instanceof GPUValidationError, "two draws");
+  const bundleEncoder = device.createRenderBundleEncoder({
+    colorFormats: ["rgba8unorm"],
+  });
+  assert(throwName(() => bundleEncoder.pushDebugGroup("group")) === "NotSupportedError", "push");
+  assert(throwName(() => bundleEncoder.popDebugGroup()) === "NotSupportedError", "pop");
+  assert(throwName(() => bundleEncoder.insertDebugMarker("mark")) === "NotSupportedError", "marker");
+  assert(
+    throwName(() => bundleEncoder.setViewport(0, 0, 1, 1, 0, 1)) === "NotSupportedError",
+    "viewport",
+  );
+  assert(throwName(() => bundleEncoder.setScissorRect(0, 0, 1, 1)) === "NotSupportedError", "scissor");
+  assert(throwName(() => bundleEncoder.setViewport(NaN, 0, 1, 1, 0, 1)) === "TypeError", "viewport nan");
+  bundleEncoder.setPipeline(passPipeline);
+  bundleEncoder.draw(3);
+  const bundle = bundleEncoder.finish();
+  assert(throwName(() => bundleEncoder.pushDebugGroup("group")) === "InvalidStateError", "finished");
+  assert(throwName(() => bundleEncoder.setViewport(NaN, 0, 1, 1, 0, 1)) === "TypeError", "finished nan");
+  assert(
+    throwName(() => bundleEncoder.setViewport(0, 0, 1, 1, 0, 1)) === "InvalidStateError",
+    "finished viewport",
+  );
+  assert(await drawCount(0, [bundle]) === null, "one bundle");
+  assert((await drawCount(0, [bundle, bundle])) instanceof GPUValidationError, "two bundles");
   device.destroy();
 });

@@ -26,6 +26,7 @@ Yuzuko.test("text encoder and decoder", () => {
   try {
     new TextDecoder("not-an-encoding");
   } catch (error) {
+    // @ts-expect-error A thrown value is unknown.
     name = error.name;
   }
   if (name !== "RangeError") {

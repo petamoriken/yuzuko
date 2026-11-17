@@ -21,6 +21,15 @@ impl Mime {
       .find(|(key, _)| key == name)
       .map(|(_, value)| value.as_str())
   }
+
+  /// Replaces the first parameter named `name`. A missing name is left absent.
+  pub(crate) fn set_parameter(&mut self, name: &str, value: &str) {
+    if let Some((_, slot)) =
+      self.parameters.iter_mut().find(|(key, _)| key == name)
+    {
+      *slot = value.to_string();
+    }
+  }
 }
 
 /// Parse `input`, or `None` when the type or subtype is not a token.

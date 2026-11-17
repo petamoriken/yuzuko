@@ -51,7 +51,7 @@ async function decodeTone(
     assert(channel.length > 0, `${name} length`);
     let peak = 0;
     for (let index = 0; index < channel.length; index += 1) {
-      peak = Math.max(peak, Math.abs(channel[index]));
+      peak = Math.max(peak, Math.abs(channel[index]!));
     }
     assert(peak > 0.05, `${name} peak ${peak}`);
     return buffer;
@@ -85,7 +85,7 @@ Yuzuko.test("decodeAudioData reads WAV, FLAC, MP3, Vorbis, and Opus", async () =
   for (let frame = 0; frame < channel.length; frame += 1) {
     const expected = sineSample(440, 48000, frame) * 0.5;
     assert(
-      Math.abs(channel[frame] - expected) < 0.02,
+      Math.abs(channel[frame]! - expected) < 0.02,
       `opus sample ${frame}: ${channel[frame]} expected ${expected}`,
     );
   }
@@ -105,7 +105,7 @@ Yuzuko.test("gain scales a buffer played into an offline context", async () => {
   const channel = rendered.getChannelData(0);
   assert(channel.length === 128, "rendered length");
   for (let index = 0; index < channel.length; index += 1) {
-    assertClose(channel[index], 0.5, `gain sample ${index}`);
+    assertClose(channel[index]!, 0.5, `gain sample ${index}`);
   }
 });
 
@@ -125,7 +125,7 @@ Yuzuko.test("an oscillator render is periodic and not silent", async () => {
   }
   assert(peak > 0.5, `oscillator peak ${peak}`);
   for (let index = 0; index < 100; index += 1) {
-    assertClose(channel[index], channel[index + 100], `period ${index}`);
+    assertClose(channel[index]!, channel[index + 100]!, `period ${index}`);
   }
 });
 
@@ -195,10 +195,10 @@ Yuzuko.test("AudioWorklet process uses the render quantum", async () => {
       };
     });
     assert(context.renderQuantumSize === 256, "context quantum");
-    assert(ctor.renderQuantumSize === 256, "worklet quantum");
-    assert(ctor.sampleRate === context.sampleRate, "worklet rate");
-    assert(ctor.currentFrame === 0, "worklet frame");
-    assert(ctor.currentTime === 0, "worklet time");
+    assert(ctor["renderQuantumSize"] === 256, "worklet quantum");
+    assert(ctor["sampleRate"] === context.sampleRate, "worklet rate");
+    assert(ctor["currentFrame"] === 0, "worklet frame");
+    assert(ctor["currentTime"] === 0, "worklet time");
     const gain = node.parameters.get("gain");
     assert(gain instanceof AudioParam, "parameter");
     assertClose(gain.value, 0.25, "parameter value");
@@ -310,8 +310,8 @@ Yuzuko.test("offline suspend stops on a quantum boundary", async () => {
   const rendered = await renderingPromise;
   assert(rendered.length === renderSize * 2, "rendered length");
   const channel = rendered.getChannelData(0);
-  assertClose(channel[0], 0.25, "first sample");
-  assertClose(channel[channel.length - 1], 0.25, "last sample");
+  assertClose(channel[0]!, 0.25, "first sample");
+  assertClose(channel[channel.length - 1]!, 0.25, "last sample");
 
   const mid = new OfflineAudioContext(1, 44100, 44100);
   const tone = new ConstantSourceNode(mid, { offset: 1 });
@@ -337,10 +337,10 @@ Yuzuko.test("copyToChannel keeps samples outside the written range", () => {
   buffer.copyToChannel(source, 0);
   const head = buffer.getChannelData(0);
   for (let index = 0; index < 10; index += 1) {
-    assertClose(head[index], index + 1, `head ${index}`);
+    assertClose(head[index]!, index + 1, `head ${index}`);
   }
   for (let index = 10; index < 16; index += 1) {
-    assertClose(head[index], -1, `tail ${index}`);
+    assertClose(head[index]!, -1, `tail ${index}`);
   }
 
   const offset = context.createBuffer(1, 16, 48000);
@@ -348,12 +348,12 @@ Yuzuko.test("copyToChannel keeps samples outside the written range", () => {
   offset.copyToChannel(source, 0, 5);
   const placed = offset.getChannelData(0);
   for (let index = 0; index < 5; index += 1) {
-    assertClose(placed[index], -1, `prefix ${index}`);
+    assertClose(placed[index]!, -1, `prefix ${index}`);
   }
   for (let index = 0; index < 10; index += 1) {
-    assertClose(placed[index + 5], index + 1, `offset ${index}`);
+    assertClose(placed[index + 5]!, index + 1, `offset ${index}`);
   }
-  assertClose(placed[15], -1, "offset tail");
+  assertClose(placed[15]!, -1, "offset tail");
   buffer.copyToChannel(source, 0, -1);
   offset.copyFromChannel(source, 0, -1);
 });
@@ -378,13 +378,13 @@ Yuzuko.test("start acquires the buffer and detaches the previous view", async ()
   const again = buffer.getChannelData(0);
   assert(again !== channel, "getChannelData returns a new view");
   for (let index = 0; index < again.length; index += 1) {
-    assertClose(again[index], 1, `acquired sample ${index}`);
+    assertClose(again[index]!, 1, `acquired sample ${index}`);
   }
   source.connect(context.destination);
   const rendered = await context.startRendering();
   const played = rendered.getChannelData(0);
   for (let index = 0; index < played.length; index += 1) {
-    assertClose(played[index], 1, `played sample ${index}`);
+    assertClose(played[index]!, 1, `played sample ${index}`);
   }
 
   const later = new OfflineAudioContext(1, 128, 8000);
@@ -397,10 +397,10 @@ Yuzuko.test("start acquires the buffer and detaches the previous view", async ()
   scheduled.buffer = held;
   assert(before.buffer.byteLength === 0, "setter detaches the previous view");
   const readback = held.getChannelData(0);
-  assertClose(readback[0], 1, "setter keeps the acquired sample");
+  assertClose(readback[0]!, 1, "setter keeps the acquired sample");
   scheduled.connect(later.destination);
   const second = await later.startRendering();
-  assertClose(second.getChannelData(0)[0], 1, "setter playback");
+  assertClose(second.getChannelData(0)[0]!, 1, "setter playback");
 });
 
 Yuzuko.test("a constant source fires ended when it is not connected", async () => {
@@ -438,11 +438,10 @@ Yuzuko.test(
       "AudioWorklet",
     ];
     for (const name of names) {
-      const ctor = (globalThis as Record<string, unknown>)[name];
+      // @ts-expect-error the name is a runtime global, not a typed binding.
+      const ctor: (new () => unknown) & (() => unknown) = globalThis[name];
       assert(typeof ctor === "function", name);
-      const construct = ctor as new () => unknown;
-      const call = ctor as () => unknown;
-      for (const run of [() => new construct(), () => call()]) {
+      for (const run of [() => new ctor(), () => ctor()]) {
         try {
           run();
         } catch (error) {
@@ -476,7 +475,8 @@ function assertName(run: () => unknown, name: string): void {
   try {
     run();
   } catch (error) {
-    const caught = error as { name?: string };
+    // @ts-expect-error the thrown value has a name.
+    const caught: { name?: string } = error;
     assert(caught.name === name, `${name} was ${caught.name}`);
     return;
   }
@@ -498,35 +498,35 @@ Yuzuko.test("AudioParam automation changes the rendered gain", async () => {
   const linear = await renderGain((gain) => {
     gain.setValueAtTime(0, 0).linearRampToValueAtTime(1, 128 / 48000);
   });
-  assertClose(linear[0], 0, "linear start");
-  assert(linear[127] > 0.9, `linear end ${linear[127]}`);
+  assertClose(linear[0]!, 0, "linear start");
+  assert(linear[127]! > 0.9, `linear end ${linear[127]!}`);
 
   const exponential = await renderGain((gain) => {
     gain.setValueAtTime(0.25, 0);
     gain.exponentialRampToValueAtTime(1, 128 / 48000);
   });
-  assertClose(exponential[0], 0.25, "exponential start");
-  assert(exponential[127] > 0.9, `exponential end ${exponential[127]}`);
+  assertClose(exponential[0]!, 0.25, "exponential start");
+  assert(exponential[127]! > 0.9, `exponential end ${exponential[127]!}`);
 
   const target = await renderGain((gain) => {
     gain.setValueAtTime(0, 0);
     gain.setTargetAtTime(1, 0, 128 / 48000);
   });
-  assertClose(target[0], 0, "target start");
-  assertClose(target[127], 1 - Math.exp(-127 / 128), "target end");
+  assertClose(target[0]!, 0, "target start");
+  assertClose(target[127]!, 1 - Math.exp(-127 / 128), "target end");
 
   const curve = await renderGain((gain) => {
     gain.setValueCurveAtTime(new Float32Array([0, 1]), 0, 128 / 48000);
   });
-  assertClose(curve[0], 0, "curve start");
-  assert(curve[127] > 0.9, `curve end ${curve[127]}`);
+  assertClose(curve[0]!, 0, "curve start");
+  assert(curve[127]! > 0.9, `curve end ${curve[127]!}`);
 
   const cancelled = await renderGain((gain) => {
     gain.setValueAtTime(0, 0);
     gain.cancelScheduledValues(0);
   });
-  assertClose(cancelled[0], 1, "cancel restores the intrinsic value");
-  assertClose(cancelled[127], 1, "cancel holds the intrinsic value");
+  assertClose(cancelled[0]!, 1, "cancel restores the intrinsic value");
+  assertClose(cancelled[127]!, 1, "cancel holds the intrinsic value");
 });
 
 Yuzuko.test("cancelAndHoldAtTime keeps the partial ramp", async () => {
@@ -541,8 +541,8 @@ Yuzuko.test("cancelAndHoldAtTime keeps the partial ramp", async () => {
   source.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[64], 0.25, "partial ramp");
-  assertClose(channel[200], 0.5, "held ramp");
+  assertClose(channel[64]!, 0.25, "partial ramp");
+  assertClose(channel[200]!, 0.5, "held ramp");
 });
 
 Yuzuko.test("a buffer source fires ended after the buffer plays", async () => {
@@ -578,10 +578,10 @@ Yuzuko.test("a ramp stays when setValueAtTime shares its end time", async () => 
   source.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[0], 0, "ramp start");
-  assertClose(channel[127], 127 / 128, "sample before the shared time");
-  assertClose(channel[128], 0, "setValue at the ramp end");
-  assertClose(channel[255], 0, "held setValue");
+  assertClose(channel[0]!, 0, "ramp start");
+  assertClose(channel[127]!, 127 / 128, "sample before the shared time");
+  assertClose(channel[128]!, 0, "setValue at the ramp end");
+  assertClose(channel[255]!, 0, "held setValue");
 });
 
 Yuzuko.test("an AudioParam input sums output 0 into the parameter", async () => {
@@ -597,8 +597,8 @@ Yuzuko.test("an AudioParam input sums output 0 into the parameter", async () => 
   control.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[0], 0.25, "param input");
-  assertClose(channel[127], 0.25, "param input end");
+  assertClose(channel[0]!, 0.25, "param input");
+  assertClose(channel[127]!, 0.25, "param input end");
 });
 
 Yuzuko.test("automation methods reject an incomplete schedule", () => {
@@ -643,7 +643,7 @@ Yuzuko.test("audioOutputDevices lists sink names", async () => {
   const probe = await new Promise<{ fn: boolean; names: string[] }>(
     (resolve, reject) => {
       worker.onmessage = (event: MessageEvent) => {
-        resolve(event.data as { fn: boolean; names: string[] });
+        resolve(event.data);
       };
       worker.onerror = (event: ErrorEvent) => {
         reject(new Error(event.message || "worker error"));
@@ -673,7 +673,7 @@ function sinkType(sink: unknown): string {
     return sink;
   }
   if (sink !== null && typeof sink === "object" && "type" in sink) {
-    return String((sink as { type: unknown }).type);
+    return String(sink.type);
   }
   throw new Error(`sink ${String(sink)}`);
 }
@@ -685,7 +685,8 @@ async function assertRejected(
   try {
     await promise;
   } catch (error) {
-    const caught = error as { name?: string };
+    // @ts-expect-error the thrown value has a name.
+    const caught: { name?: string } = error;
     assert(caught.name === name, `${name} was ${caught.name}`);
     if (name !== "TypeError") {
       assert(error instanceof DOMException, String(error));
@@ -712,7 +713,10 @@ Yuzuko.test("setSinkId selects the default device or no device", async () => {
     );
     assert(sinkType(context.sinkId) === "none", "unknown keeps the sink");
     await assertRejected(
-      context.setSinkId({ type: "something_else" } as AudioSinkOptions),
+      context.setSinkId({
+        // @ts-expect-error something_else is not an AudioSinkType.
+        type: "something_else",
+      }),
       "TypeError",
     );
     assert(sinkType(context.sinkId) === "none", "bad type keeps the sink");
@@ -728,7 +732,10 @@ Yuzuko.test("setSinkId selects the default device or no device", async () => {
   }
   assertName(
     () => new AudioContext({
-      sinkId: { type: "something_else" } as AudioSinkOptions,
+      sinkId: {
+        // @ts-expect-error something_else is not an AudioSinkType.
+        type: "something_else",
+      },
     }),
     "TypeError",
   );
@@ -752,8 +759,8 @@ Yuzuko.test("delay of zero is identity and ten samples land the impulse", async 
   source.connect(delay).connect(identity.destination);
   source.start();
   const same = await identity.startRendering();
-  assertClose(same.getChannelData(0)[0], 1, "delay zero");
-  assertClose(same.getChannelData(0)[1], 0, "delay zero tail");
+  assertClose(same.getChannelData(0)[0]!, 1, "delay zero");
+  assertClose(same.getChannelData(0)[1]!, 0, "delay zero tail");
 
   const context = new OfflineAudioContext(1, 128, 48000);
   const shifted = context.createBuffer(1, 128, 48000);
@@ -766,8 +773,8 @@ Yuzuko.test("delay of zero is identity and ten samples land the impulse", async 
   shiftedSource.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[9], 0, "sample before the delay");
-  assertClose(channel[10], 1, "sample 10");
+  assertClose(channel[9]!, 0, "sample before the delay");
+  assertClose(channel[10]!, 1, "sample 10");
   await assertThrows(
     () => new DelayNode(context, { maxDelayTime: 0 }),
     "NotSupportedError",
@@ -786,12 +793,12 @@ Yuzuko.test("stereo pan places a mono source", async () => {
     return [rendered.getChannelData(0), rendered.getChannelData(1)];
   }
   const hardLeft = await pan(-1);
-  assertClose(hardLeft[0][0], 1, "hard left");
-  assertClose(hardLeft[1][0], 0, "hard left right");
+  assertClose(hardLeft[0]![0]!, 1, "hard left");
+  assertClose(hardLeft[1]![0]!, 0, "hard left right");
   const center = await pan(0);
   const gain = Math.SQRT1_2;
-  assertClose(center[0][64], gain, "center left");
-  assertClose(center[1][64], gain, "center right");
+  assertClose(center[0]![64]!, gain, "center left");
+  assertClose(center[1]![64]!, gain, "center right");
 });
 
 Yuzuko.test("splitter and merger route and downmix channels", async () => {
@@ -809,8 +816,8 @@ Yuzuko.test("splitter and merger route and downmix channels", async () => {
   merger.connect(context.destination);
   source.start();
   const routed = await context.startRendering();
-  assertClose(routed.getChannelData(0)[0], 0.25, "splitter left");
-  assertClose(routed.getChannelData(1)[0], 0.75, "splitter right");
+  assertClose(routed.getChannelData(0)[0]!, 0.25, "splitter left");
+  assertClose(routed.getChannelData(1)[0]!, 0.75, "splitter right");
 
   const down = new OfflineAudioContext(1, 128, 48000);
   const stereo = down.createBuffer(2, 128, 48000);
@@ -822,7 +829,7 @@ Yuzuko.test("splitter and merger route and downmix channels", async () => {
   downSource.connect(one).connect(down.destination);
   downSource.start();
   const mixed = await down.startRendering();
-  assertClose(mixed.getChannelData(0)[0], 0.5, "merger average");
+  assertClose(mixed.getChannelData(0)[0]!, 0.5, "merger average");
 
   const wide = new OfflineAudioContext(1, 128, 48000);
   const triple = wide.createBuffer(3, 128, 48000);
@@ -835,7 +842,7 @@ Yuzuko.test("splitter and merger route and downmix channels", async () => {
   wideSource.connect(merged).connect(wide.destination);
   wideSource.start();
   const first = await wide.startRendering();
-  assertClose(first.getChannelData(0)[0], 1, "merger keeps the first channel");
+  assertClose(first.getChannelData(0)[0]!, 1, "merger keeps the first channel");
 
   const locked = new OfflineAudioContext(1, 8, 48000);
   await assertThrows(() => {
@@ -865,18 +872,20 @@ Yuzuko.test("waveshaper maps the curve", async () => {
   source.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[0], 0, "curve start");
-  assertClose(channel[1], 0.5, "curve middle");
-  assertClose(channel[2], 1, "curve end");
+  assertClose(channel[0]!, 0, "curve start");
+  assertClose(channel[1]!, 0.5, "curve middle");
+  assertClose(channel[2]!, 1, "curve end");
   await assertThrows(() => {
     shaper.curve = new Float32Array([1]);
   }, "InvalidStateError");
-  shaper.oversample = "invalid" as OverSampleType;
+  // @ts-expect-error invalid is not an OverSampleType.
+  shaper.oversample = "invalid";
   assert(shaper.oversample === "none", "bad oversample ignored");
   assertName(
     () =>
       new WaveShaperNode(context, {
-        oversample: "invalid" as OverSampleType,
+        // @ts-expect-error invalid is not an OverSampleType.
+        oversample: "invalid",
       }),
     "TypeError",
   );
@@ -890,7 +899,7 @@ Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
     source.connect(filter).connect(context.destination);
     source.start();
     const rendered = await context.startRendering();
-    return rendered.getChannelData(0)[64];
+    return rendered.getChannelData(0)[64]!;
   }
   assertClose(await filtered("lowpass"), 0, "lowpass dc");
   assertClose(await filtered("highpass"), 0.5, "highpass dc");
@@ -899,10 +908,14 @@ Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
   const filter = context.createBiquadFilter();
   assert(filter.context === context, "node context");
   assert(context.destination.context === context, "destination context");
-  filter.type = "foobar" as BiquadFilterType;
+  // @ts-expect-error foobar is not a BiquadFilterType.
+  filter.type = "foobar";
   assert(filter.type === "lowpass", "bad type ignored");
   assertName(
-    () => new BiquadFilterNode(context, { type: "foobar" as BiquadFilterType }),
+    () => new BiquadFilterNode(context, {
+      // @ts-expect-error foobar is not a BiquadFilterType.
+      type: "foobar",
+    }),
     "TypeError",
   );
   assertName(
@@ -925,8 +938,8 @@ Yuzuko.test("biquad frequency zero and the lowpass response", async () => {
   const magnitude = new Float32Array(2);
   const phase = new Float32Array(2);
   filter.getFrequencyResponse(frequency, magnitude, phase);
-  assertClose(magnitude[0], 1, "response at 0 Hz");
-  assert(Math.abs(magnitude[1]) < 1e-3, `nyquist ${magnitude[1]}`);
+  assertClose(magnitude[0]!, 1, "response at 0 Hz");
+  assert(Math.abs(magnitude[1]!) < 1e-3, `nyquist ${magnitude[1]!}`);
 });
 
 Yuzuko.test("IIR halves a constant and rejects coefficients", async () => {
@@ -939,8 +952,8 @@ Yuzuko.test("IIR halves a constant and rejects coefficients", async () => {
   source.connect(filter).connect(context.destination);
   source.start();
   const rendered = await context.startRendering();
-  assertClose(rendered.getChannelData(0)[0], 0.5, "iir half");
-  assertClose(rendered.getChannelData(0)[32], 0.5, "iir holds");
+  assertClose(rendered.getChannelData(0)[0]!, 0.5, "iir half");
+  assertClose(rendered.getChannelData(0)[32]!, 0.5, "iir holds");
   await assertThrows(
     () => new IIRFilterNode(context, { feedforward: [], feedback: [1] }),
     "NotSupportedError",
@@ -960,12 +973,14 @@ Yuzuko.test("IIR halves a constant and rejects coefficients", async () => {
   );
   assertName(
     () =>
-      new IIRFilterNode(context, { feedback: [1] } as IIRFilterOptions),
+      // @ts-expect-error feedforward is required.
+      new IIRFilterNode(context, { feedback: [1] }),
     "TypeError",
   );
   assertName(
     () =>
-      new IIRFilterNode(context, { feedforward: [1] } as IIRFilterOptions),
+      // @ts-expect-error feedback is required.
+      new IIRFilterNode(context, { feedforward: [1] }),
     "TypeError",
   );
 });
@@ -982,7 +997,7 @@ Yuzuko.test("the compressor identity, hard knee, and automatic makeup", async ()
   quiet.connect(flat).connect(identity.destination);
   quiet.start();
   const plain = await identity.startRendering();
-  assertClose(plain.getChannelData(0)[64], 0.5, "ratio one");
+  assertClose(plain.getChannelData(0)[64]!, 0.5, "ratio one");
 
   const context = new OfflineAudioContext(1, 128, 48000);
   const source = constant(context, 1);
@@ -1000,8 +1015,8 @@ Yuzuko.test("the compressor identity, hard knee, and automatic makeup", async ()
   const channel = rendered.getChannelData(0);
   const threshold = 10 ** (-24 / 20);
   const expected = threshold + (1 - threshold) / 20;
-  assertClose(channel[0], expected, "hard knee start");
-  assertClose(channel[127], expected, "hard knee end");
+  assertClose(channel[0]!, expected, "hard knee start");
+  assertClose(channel[127]!, expected, "hard knee end");
 
   const automatic = new DynamicsCompressorNode(context);
   assert(automatic.threshold.automationRate === "k-rate", "k-rate");
@@ -1041,9 +1056,9 @@ Yuzuko.test("convolution reproduces a short impulse response", async () => {
   source.start();
   const rendered = await context.startRendering();
   const channel = rendered.getChannelData(0);
-  assertClose(channel[0], 1, "impulse");
-  assertClose(channel[1], 0, "gap");
-  assertClose(channel[2], 0.5, "tail");
+  assertClose(channel[0]!, 1, "impulse");
+  assertClose(channel[1]!, 0, "gap");
+  assertClose(channel[2]!, 0.5, "tail");
   const wide = context.createBuffer(3, 4, 48000);
   await assertThrows(() => {
     convolver.buffer = wide;
@@ -1062,9 +1077,9 @@ Yuzuko.test("an analyser reads a side chain", async () => {
   assert(analyser.frequencyBinCount === 1024, "bins");
   const time = new Float32Array(analyser.fftSize);
   analyser.getFloatTimeDomainData(time);
-  assertClose(time[0], 0, "unfilled prefix");
-  assertClose(time[analyser.fftSize - 1], 0.5, "newest sample");
-  assertClose(time[analyser.fftSize - 128], 0.5, "quantum start");
+  assertClose(time[0]!, 0, "unfilled prefix");
+  assertClose(time[analyser.fftSize - 1]!, 0.5, "newest sample");
+  assertClose(time[analyser.fftSize - 128]!, 0.5, "quantum start");
   const bytes = new Uint8Array(analyser.fftSize);
   analyser.getByteTimeDomainData(bytes);
   assert(bytes[0] === 128, `silence byte ${bytes[0]}`);
@@ -1095,20 +1110,20 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
   const right = await render((panner) => {
     panner.positionX.value = 1;
   });
-  assertClose(right[0][64], 0, "right left");
-  assertClose(right[1][64], 1, "right right");
+  assertClose(right[0]![64]!, 0, "right left");
+  assertClose(right[1]![64]!, 1, "right right");
   const center = await render((panner, listener) => {
     panner.positionX.value = 1;
     listener.setPosition(1, 0, 0);
   });
   const gain = Math.SQRT1_2;
-  assertClose(center[0][32], gain, "same point left");
-  assertClose(center[1][32], gain, "same point right");
+  assertClose(center[0]![32]!, gain, "same point left");
+  assertClose(center[1]![32]!, gain, "same point right");
   const left = await render((_panner, listener) => {
     listener.setPosition(1, 0, 0);
   });
-  assertClose(left[0][32], 1, "listener left");
-  assertClose(left[1][32], 0, "listener right");
+  assertClose(left[0]![32]!, 1, "listener left");
+  assertClose(left[1]![32]!, 0, "listener right");
 
   const context = new OfflineAudioContext(1, 8, 48000);
   assert(context.listener === context.listener, "listener identity");
@@ -1123,6 +1138,7 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
   panner.panningModel = "equalpower";
   assert(panner.panningModel === "equalpower", "restored model");
   assertName(() => {
+    // @ts-expect-error room is not a PanningModelType.
     panner.panningModel = "room";
   }, "TypeError");
   assert(panner.panningModel === "equalpower", "invalid model stays");
@@ -1137,7 +1153,8 @@ Yuzuko.test("equalpower panning follows the listener", async () => {
     "InvalidStateError",
   );
   assert(panner.coneOuterGain === 0, "cone stays 0");
-  panner.channelCountMode = "foobar" as ChannelCountMode;
+  // @ts-expect-error foobar is not a ChannelCountMode.
+  panner.channelCountMode = "foobar";
   assert(panner.channelCountMode === "clamped-max", "bad mode ignored");
   for (const node of [
     panner,
@@ -1166,7 +1183,7 @@ Yuzuko.test("HRTF delays one ear of a side click", async () => {
     let index = 0;
     let peak = 0;
     for (let frame = 0; frame < channel.length; frame += 1) {
-      const value = Math.abs(channel[frame]);
+      const value = Math.abs(channel[frame]!);
       if (value > peak) {
         peak = value;
         index = frame;
@@ -1225,7 +1242,7 @@ async function takeAudioData(): Promise<AudioData> {
   assert(failed === "", failed);
   decoder.close();
   assert(parts.length > 0, "no audio");
-  const first = parts[0];
+  const first = parts[0]!;
   assert(first.numberOfFrames > 0, "empty audio");
   for (const extra of parts.slice(1)) {
     extra.close();
@@ -1265,7 +1282,8 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
         };
       });
     };
-    const ready = await next() as { kind: string };
+    // @ts-expect-error the worklet posts a ready record.
+    const ready: { kind: string } = await next();
     assert(ready.kind === "ready", ready.kind);
 
     const audio = await takeAudioData();
@@ -1273,7 +1291,8 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     const local = new Float32Array(audio.numberOfFrames);
     audio.copyTo(local, { planeIndex: 0 });
     node.port.postMessage({ kind: "audio", value: audio });
-    const copied = await next() as {
+    // @ts-expect-error the worklet posts an audio record.
+    const copied: {
       kind: string;
       frames: number;
       channels: number;
@@ -1281,7 +1300,7 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
       sample: number;
       hasAudioData: boolean;
       message?: string;
-    };
+    } = await next();
     assert(copied.kind === "audio", copied.message || copied.kind);
     assert(copied.frames === audio.numberOfFrames, "frames");
     assert(copied.channels === audio.numberOfChannels, "channels");
@@ -1291,7 +1310,8 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     assert(audio.numberOfFrames > 0, "source stays open");
 
     node.port.postMessage({ kind: "audio", value: audio }, [audio]);
-    const moved = await next() as { kind: string; sample: number; message?: string };
+    // @ts-expect-error the worklet posts a transferred audio record.
+    const moved: { kind: string; sample: number; message?: string } = await next();
     assert(moved.kind === "audio", moved.message || moved.kind);
     assert(moved.sample === local[0], "transferred sample");
     assert(audio.format === null, "closed format");
@@ -1305,13 +1325,14 @@ Yuzuko.test("an AudioWorklet port transfers AudioData and VideoFrame", async () 
     const width = frame.displayWidth;
     const height = frame.displayHeight;
     node.port.postMessage({ kind: "frame", value: frame }, [frame]);
-    const painted = await next() as {
+    // @ts-expect-error the worklet posts a frame record.
+    const painted: {
       kind: string;
       width: number;
       height: number;
       hasVideoFrame: boolean;
       message?: string;
-    };
+    } = await next();
     assert(painted.kind === "frame", painted.message || painted.kind);
     assert(painted.width === width, "frame width");
     assert(painted.height === height, "frame height");
@@ -1341,9 +1362,10 @@ Yuzuko.test("offline rendering dispatches complete before resolving", async () =
     assert(event.bubbles === false, "bubbles");
   };
   const rendered = await context.startRendering();
+  const renderedChannel = rendered.getChannelData(0);
   assert(sawEvent, "complete ran before the promise resolved");
   assert(eventBuffer === rendered, "same buffer");
-  assertClose(rendered.getChannelData(0)[0], 0.25, "sample");
+  assertClose(renderedChannel[0]!, 0.25, "sample");
 });
 
 Yuzuko.test("a cycle without a DelayNode is silent", async () => {
@@ -1374,7 +1396,7 @@ Yuzuko.test("a DelayNode in a cycle delays by one quantum", async () => {
   const channel = rendered.getChannelData(0);
   for (let index = 0; index < channel.length; index += 1) {
     const expected = index % 128 === 0 ? 1 : 0;
-    assertClose(channel[index], expected, `delay sample ${index}`);
+    assertClose(channel[index]!, expected, `delay sample ${index}`);
   }
 });
 
@@ -1435,7 +1457,11 @@ Yuzuko.test("createIIRFilter accepts a Float64Array", async () => {
   const source = context.createBufferSource();
   source.buffer = buffer;
   const normalized = context.createIIRFilter([1], [1, 0.9]);
-  const scaled = context.createIIRFilter([1], new Float64Array([2, 1.8]));
+  const scaled = context.createIIRFilter(
+    [1],
+    // @ts-expect-error createIIRFilter is declared to take number arrays.
+    new Float64Array([2, 1.8]),
+  );
   const gain = context.createGain();
   // Dividing by the first feedback coefficient scales the feedforward too.
   gain.gain.value = 2;
@@ -1450,6 +1476,6 @@ Yuzuko.test("createIIRFilter accepts a Float64Array", async () => {
   const left = rendered.getChannelData(0);
   const right = rendered.getChannelData(1);
   for (let index = 0; index < left.length; index += 1) {
-    assertClose(right[index], left[index], `iir sample ${index}`);
+    assertClose(right[index]!, left[index]!, `iir sample ${index}`);
   }
 });

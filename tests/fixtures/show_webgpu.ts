@@ -11,7 +11,7 @@ const right = new Yuzuko.Window({
   height: 120,
 });
 
-function finish(reason) {
+function finish(reason: string): void {
   console.log(reason);
   left.close();
   right.close();

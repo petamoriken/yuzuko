@@ -18,7 +18,6 @@ const STDIN_MODE =
 const STREAM_MODE =
   'The standard stream must be "null", "inherit", "piped", or "collect".';
 const STDIN_NOT_PIPED = "The standard input is not piped.";
-const STDOUT_NOT_PIPED = "The standard output is not piped.";
 const STDERR_NOT_PIPED = "The standard error is not piped.";
 const STDIN_CLOSED = "The standard input is closed.";
 const DATA = "The data must be a BufferSource.";
@@ -168,13 +167,17 @@ type ChildMessage = {
   error?: string;
 };
 
+declare const spawn: unknown;
+declare const Child: unknown;
+
 Yuzuko.test("a child reports its exit code and stdout", async () => {
   assert(typeof spawn === "undefined", "global spawn");
   assert(typeof Child === "undefined", "global Child");
   assert(Yuzuko.spawn.length === 1, "spawn length");
   assert(Yuzuko.Child.length === 0, "Child length");
   const ctor = throws(() => {
-    new (Yuzuko.Child as unknown as new () => unknown)();
+    // @ts-expect-error Child has no public constructor.
+    new Yuzuko.Child();
   });
   assert(ctor instanceof TypeError, "ctor type");
   assert(text(ctor) === ILLEGAL, text(ctor));
@@ -229,7 +232,7 @@ Yuzuko.test("a child reports its exit code and stdout", async () => {
     let waiting: ((value: ChildMessage) => void) | undefined;
     let failing: ((error: Error) => void) | undefined;
     worker.onmessage = (event) => {
-      const value = event.data as ChildMessage;
+      const value = event.data;
       if (waiting) {
         const resolve = waiting;
         waiting = undefined;
@@ -306,10 +309,11 @@ Yuzuko.test("kill ends the child and the process stays alive", async () => {
 });
 
 Yuzuko.test("a bad command does not start a process", () => {
-  const spawn = Yuzuko.spawn as (
+  // @ts-expect-error The calls pass values spawn rejects.
+  const spawn: (
     command?: unknown,
     options?: unknown,
-  ) => Yuzuko.Child;
+  ) => Yuzuko.Child = Yuzuko.spawn;
 
   assert(text(throws(() => spawn())) === "Not enough arguments", "arity");
 
@@ -345,10 +349,11 @@ Yuzuko.test("a bad command does not start a process", () => {
 });
 
 Yuzuko.test("spawn rejects bad streams, env, and cwd", () => {
-  const spawn = Yuzuko.spawn as (
+  // @ts-expect-error The calls pass values spawn rejects.
+  const spawn: (
     command?: unknown,
     options?: unknown,
-  ) => Yuzuko.Child;
+  ) => Yuzuko.Child = Yuzuko.spawn;
 
   assert(
     text(throws(() => spawn("sh", { stdin: "collect" }))) === STDIN_MODE,
@@ -505,16 +510,14 @@ Yuzuko.test("cwd and env are applied to the child", async () => {
         ? "echo %YUZUKO_CHILD_KEEP%-%YUZUKO_CHILD_EXTRA%& if defined YUZUKO_CHILD_HIDDEN (echo bad-hidden) else (echo clear-hidden)& if defined YUZUKO_CHILD_PROTO (echo bad-proto) else (echo clear-proto)"
         : 'printf %s "$YUZUKO_CHILD_KEEP-$YUZUKO_CHILD_EXTRA-[$YUZUKO_CHILD_HIDDEN]-[$YUZUKO_CHILD_PROTO]"';
     const overlay = shell(overlayScript);
-    const env = Object.create({ YUZUKO_CHILD_PROTO: "proto" }) as {
-      YUZUKO_CHILD_EXTRA?: string;
-    };
+    const env = Object.create({ YUZUKO_CHILD_PROTO: "proto" });
     env.YUZUKO_CHILD_EXTRA = "extra";
     Object.defineProperty(env, "YUZUKO_CHILD_HIDDEN", {
       enumerable: false,
       value: "hidden",
     });
     const symbol = Symbol("yuzuko");
-    (env as Record<symbol, string>)[symbol] = "no";
+    env[symbol] = "no";
     const overChild = Yuzuko.spawn(overlay.command, {
       args: overlay.args,
       env,
@@ -604,7 +607,8 @@ Yuzuko.test("cwd and env are applied to the child", async () => {
 
 Yuzuko.test("null and inherit streams are empty", async () => {
   const launched = exitCommand();
-  for (const mode of ["null", "inherit"] as const) {
+  const modes: readonly ["null", "inherit"] = ["null", "inherit"];
+  for (const mode of modes) {
     const child = Yuzuko.spawn(launched.command, {
       args: launched.args,
       stdin: mode === "inherit" ? "inherit" : "null",
@@ -684,7 +688,10 @@ Yuzuko.test("a piped standard input is collected with output()", async () => {
   try {
     const writer = bad.stdin?.getWriter();
     assert(writer !== undefined, "bad writer");
-    const error = await rejects(writer.write("nope"));
+    const error = await rejects(
+      // @ts-expect-error A string is not a buffer source.
+      writer.write("nope"),
+    );
     assert(error instanceof TypeError, `chunk type ${text(error)}`);
     assert(text(error) === DATA, text(error));
   } finally {
@@ -774,11 +781,21 @@ Yuzuko.test("reads honor offsets, detachment, and the end of the pipe", async ()
   });
   try {
     assert(
-      text(throws(() => child.readStdout())) === "Not enough arguments",
+      text(
+        throws(() => {
+          // @ts-expect-error readStdout requires a buffer.
+          child.readStdout();
+        }),
+      ) === "Not enough arguments",
       "read arity",
     );
     assert(
-      text(throws(() => child.writeStdin())) === "Not enough arguments",
+      text(
+        throws(() => {
+          // @ts-expect-error writeStdin requires data.
+          child.writeStdin();
+        }),
+      ) === "Not enough arguments",
       "write arity",
     );
     assert(
@@ -794,7 +811,15 @@ Yuzuko.test("reads honor offsets, detachment, and the end of the pipe", async ()
         STDERR_NOT_PIPED,
       "stderr not piped",
     );
-    assert(text(throws(() => child.readStdout(1))) === DATA, "read type");
+    assert(
+      text(
+        throws(() => {
+          // @ts-expect-error A number is not a buffer source.
+          child.readStdout(1);
+        }),
+      ) === DATA,
+      "read type",
+    );
 
     const doomedBuffer = new ArrayBuffer(4);
     const doomed = new Uint8Array(doomedBuffer);

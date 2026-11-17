@@ -86,10 +86,14 @@ Yuzuko.test("clipboard round-trips text and PNG from a focused user action", asy
     await navigator.clipboard.write([item]);
     const items = await navigator.clipboard.read();
     assert(items.length === 1, "one item");
-    const label = await (await items[0].getType("text/plain")).text();
+    const readItem = items[0];
+    if (readItem === undefined) {
+      throw new Error("clipboard item");
+    }
+    const label = await (await readItem.getType("text/plain")).text();
     assert(label === "png-label", label);
     const png = new Uint8Array(
-      await (await items[0].getType("image/png")).arrayBuffer(),
+      await (await readItem.getType("image/png")).arrayBuffer(),
     );
     assert(bytesEqual(png, PNG), "png bytes");
 
@@ -116,7 +120,9 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
   let attribute = 0;
   let attributeThis: Clipboard | undefined;
   const onChange = (event: Event) => {
-    seen.push(event as ClipboardChangeEvent);
+    // @ts-expect-error The clipboardchange listener receives a ClipboardChangeEvent.
+    const change: ClipboardChangeEvent = event;
+    seen.push(change);
   };
   navigator.clipboard.addEventListener("clipboardchange", onChange);
   navigator.clipboard.onclipboardchange = function (this: Clipboard) {
@@ -148,8 +154,10 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
 
     gesture(window);
     await navigator.clipboard.writeText("changed");
-    assert(seen.length === 1, `once: ${seen.length}`);
-    assert(attribute === 1, `attribute: ${attribute}`);
+    let changesOnce: number = seen.length;
+    assert(changesOnce === 1, `once: ${seen.length}`);
+    let writesOnce: number = attribute;
+    assert(writesOnce === 1, `attribute: ${attribute}`);
     assert(attributeThis === navigator.clipboard, "handler this");
     const event = seen[0];
     assert(event instanceof ClipboardChangeEvent, "instance");
@@ -170,7 +178,8 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
-    assert(seen.length === 1, `after poll ${seen.length}`);
+    let changesAfterPoll: number = seen.length;
+    assert(changesAfterPoll === 1, `after poll ${seen.length}`);
 
     const blob = new Blob([PNG], { type: "image/png" });
     gesture(window);
@@ -180,8 +189,12 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
         "text/plain": "both",
       }),
     ]);
-    assert(seen.length === 2, `second: ${seen.length}`);
+    let changesTwice: number = seen.length;
+    assert(changesTwice === 2, `second: ${seen.length}`);
     const both = seen[1];
+    if (both === undefined) {
+      throw new Error("second change");
+    }
     assert(both.types.length === 2, `${both.types.length}`);
     assert(both.types[0] === "text/plain", both.types.join(","));
     assert(both.types[1] === "image/png", both.types.join(","));
@@ -190,24 +203,29 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
     if (both.changeId !== firstId) {
       assert(both.changeId > firstId, `later ${both.changeId}`);
     }
-    assert(attribute === 2, `attribute after both: ${attribute}`);
+    let writesTwice: number = attribute;
+    assert(writesTwice === 2, `attribute after both: ${attribute}`);
 
     navigator.clipboard.onclipboardchange = null;
     assert(navigator.clipboard.onclipboardchange === null, "cleared");
     gesture(window);
     await navigator.clipboard.writeText("after clear");
-    assert(seen.length === 3, "listener remains");
-    assert(attribute === 2, "attribute stayed cleared");
+    let changesRemain: number = seen.length;
+    assert(changesRemain === 3, "listener remains");
+    let writesCleared: number = attribute;
+    assert(writesCleared === 2, "attribute stayed cleared");
 
     navigator.clipboard.removeEventListener("clipboardchange", onChange);
     gesture(window);
     await navigator.clipboard.writeText("removed");
-    assert(seen.length === 3, "removed");
+    let changesRemoved: number = seen.length;
+    assert(changesRemoved === 3, "removed");
 
     navigator.clipboard.addEventListener("clipboardchange", onChange);
     gesture(window);
     await navigator.clipboard.writeText("restored");
-    assert(seen.length === 4, "re-added");
+    let changesRestored: number = seen.length;
+    assert(changesRestored === 4, "re-added");
 
     const empty = new ClipboardChangeEvent("clipboardchange");
     assert(empty.types.length === 0, "default types");
@@ -244,7 +262,10 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
 
     name = "";
     try {
-      new ClipboardChangeEvent("clipboardchange", { types: "text/plain" });
+      new ClipboardChangeEvent("clipboardchange", {
+        // @ts-expect-error types must be an array.
+        types: "text/plain",
+      });
     } catch (error) {
       name = error instanceof Error ? error.name : "";
     }
@@ -254,7 +275,8 @@ Yuzuko.test("clipboardchange reports a focused write", async () => {
     name = "";
     try {
       new ClipboardChangeEvent("clipboardchange", {
-        changeId: 4 as unknown as bigint,
+        // @ts-expect-error changeId must be a bigint.
+        changeId: 4,
       });
     } catch (error) {
       name = error instanceof Error ? error.name : "";
@@ -298,7 +320,9 @@ Yuzuko.test("DataTransfer stores strings and keeps a stable types array", () => 
   transfer.clearData();
   assert(transfer.types === empty, "clear of nothing");
 
+  // @ts-expect-error Invalid drop effects are ignored.
   transfer.dropEffect = "COPY";
+  // @ts-expect-error Invalid effectAllowed values are ignored.
   transfer.effectAllowed = "Copy";
   assert(transfer.dropEffect === "none", "invalid drop");
   assert(transfer.effectAllowed === "none", "invalid allowed");
@@ -346,7 +370,8 @@ Yuzuko.test("DataTransfer stores strings and keeps a stable types array", () => 
   const kept = transfer.types;
   transfer.clearData("text/uri-list");
   assert(transfer.types === kept, "missing clearData");
-  transfer.clearData(null as unknown as string);
+  // @ts-expect-error null is not a format.
+  transfer.clearData(null);
   assert(transfer.getData("text/plain") === "replaced", "null format");
   transfer.clearData();
   assert(transfer.types.length === 0, "cleared");
@@ -354,7 +379,8 @@ Yuzuko.test("DataTransfer stores strings and keeps a stable types array", () => 
 
   let name = "";
   try {
-    (transfer.getData as (format?: string) => string)();
+    // @ts-expect-error format is required.
+    transfer.getData();
   } catch (error) {
     name = error instanceof TypeError ? error.message : "";
   }
@@ -367,7 +393,14 @@ Yuzuko.test("ClipboardEvent stores a DataTransfer", () => {
     new ClipboardEvent("copy", { clipboardData: null }).clipboardData === null,
     "null",
   );
-  assert(new ClipboardEvent("copy", null).clipboardData === null, "non-object");
+  assert(
+    new ClipboardEvent(
+      "copy",
+      // @ts-expect-error A null init is ignored.
+      null,
+    ).clipboardData === null,
+    "non-object",
+  );
   const transfer = new DataTransfer();
   transfer.setData("text/plain", "stored");
   const event = new ClipboardEvent("paste", { clipboardData: transfer });
@@ -378,7 +411,8 @@ Yuzuko.test("ClipboardEvent stores a DataTransfer", () => {
   let message = "";
   try {
     new ClipboardEvent("copy", {
-      clipboardData: {} as DataTransfer,
+      // @ts-expect-error clipboardData must be a DataTransfer.
+      clipboardData: {},
     });
   } catch (error) {
     name = error instanceof TypeError ? error.name : "";
@@ -410,7 +444,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
   });
   const changes: string[][] = [];
   const onChange = (event: Event) => {
-    changes.push([...(event as ClipboardChangeEvent).types]);
+    // @ts-expect-error The clipboardchange listener receives a ClipboardChangeEvent.
+    const change: ClipboardChangeEvent = event;
+    changes.push([...change.types]);
   };
   navigator.clipboard.addEventListener("clipboardchange", onChange);
   try {
@@ -421,7 +457,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     let started = "";
     let startedTypes = "";
     const onCopy = (event: Event) => {
-      const data = (event as ClipboardEvent).clipboardData;
+      // @ts-expect-error The copy listener receives a ClipboardEvent.
+      const copyEvent: ClipboardEvent = event;
+      const data = copyEvent.clipboardData;
       assert(data instanceof DataTransfer, "copy data");
       started = data?.getData("text/plain") ?? "missing";
       startedTypes = data?.types.join(",") ?? "missing";
@@ -439,10 +477,16 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     gesture(window);
     assert((await navigator.clipboard.readText()) === "from copy", "published");
     assert(changes.length === afterWrite + 1, "change fired");
-    assert(changes[changes.length - 1].join(",") === "text/plain", "text only");
+    const lastChange = changes[changes.length - 1];
+    if (lastChange === undefined) {
+      throw new Error("change fired");
+    }
+    assert(lastChange.join(",") === "text/plain", "text only");
 
     const onPlain = (event: Event) => {
-      const data = (event as ClipboardEvent).clipboardData;
+      // @ts-expect-error The copy listener receives a ClipboardEvent.
+      const copyEvent: ClipboardEvent = event;
+      const data = copyEvent.clipboardData;
       data?.setData("text/plain", "ignored");
     };
     window.addEventListener("copy", onPlain);
@@ -455,7 +499,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     assert(changes.length === afterWrite + 1, "no change without cancel");
 
     const onHtml = (event: Event) => {
-      (event as ClipboardEvent).clipboardData?.setData("text/html", "<i>x</i>");
+      // @ts-expect-error The copy listener receives a ClipboardEvent.
+      const copyEvent: ClipboardEvent = event;
+      copyEvent.clipboardData?.setData("text/html", "<i>x</i>");
       event.preventDefault();
     };
     window.addEventListener("copy", onHtml);
@@ -467,7 +513,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     assert((await navigator.clipboard.readText()) === "from copy", "html stays");
 
     const onCut = (event: Event) => {
-      (event as ClipboardEvent).clipboardData?.setData("text/plain", "");
+      // @ts-expect-error The cut listener receives a ClipboardEvent.
+      const cutEvent: ClipboardEvent = event;
+      cutEvent.clipboardData?.setData("text/plain", "");
       event.preventDefault();
     };
     window.addEventListener("cut", onCut);
@@ -486,7 +534,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     let allowed = "unset";
     let dropped = "unset";
     const onPaste = (event: Event) => {
-      const data = (event as ClipboardEvent).clipboardData;
+      // @ts-expect-error The paste listener receives a ClipboardEvent.
+      const pasteEvent: ClipboardEvent = event;
+      const data = pasteEvent.clipboardData;
       assert(data instanceof DataTransfer, "paste data");
       pasted = data?.getData("text") ?? "missing";
       pasteTypes = data?.types.join(",") ?? "missing";
@@ -537,8 +587,9 @@ Yuzuko.test("host copy, cut, and paste use clipboardData", async () => {
     ]);
     let pngTypes = "unset";
     const onPngPaste = (event: Event) => {
-      pngTypes =
-        (event as ClipboardEvent).clipboardData?.types.join(",") ?? "missing";
+      // @ts-expect-error The paste listener receives a ClipboardEvent.
+      const pasteEvent: ClipboardEvent = event;
+      pngTypes = pasteEvent.clipboardData?.types.join(",") ?? "missing";
     };
     window.addEventListener("paste", onPngPaste);
     Yuzuko.__test.inject(window, [
@@ -663,14 +714,13 @@ Yuzuko.test("a dedicated worker has no DataTransfer", async () => {
     ClipboardEvent: boolean;
   }>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent) => {
-      resolve(
-        event.data as {
-          clipboard: boolean;
-          Clipboard: boolean;
-          DataTransfer: boolean;
-          ClipboardEvent: boolean;
-        },
-      );
+      const value: {
+        clipboard: boolean;
+        Clipboard: boolean;
+        DataTransfer: boolean;
+        ClipboardEvent: boolean;
+      } = event.data;
+      resolve(value);
     };
     worker.onerror = (event: ErrorEvent) => {
       reject(new Error(event.message || "worker error"));

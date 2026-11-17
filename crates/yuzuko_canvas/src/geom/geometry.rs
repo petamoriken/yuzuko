@@ -5,6 +5,8 @@ use std::cell::Cell;
 use yuzuko_core::op::Js;
 use yuzuko_core::op::New;
 use yuzuko_core::op::OpError;
+use yuzuko_core::op::OpException;
+use yuzuko_core::op::host_ref;
 use yuzuko_macros::op;
 
 use crate::geom::matrix::read_dom_matrix_parts;
@@ -648,6 +650,51 @@ impl DomRectList {
 
   fn item(&self, _index: f64) -> Option<New<DomRect>> {
     None
+  }
+}
+
+pub(crate) fn install_dom_rect_list_iterator(scope: &mut v8::PinScope) {
+  let templ = DomRectList::template(scope);
+  let Some(ctor) = templ.get_function(scope) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "prototype") else {
+    return;
+  };
+  let Some(prototype) = ctor.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let Some(function) = v8::Function::new(scope, dom_rect_list_iterator) else {
+    return;
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    function.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn dom_rect_list_iterator(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  if unsafe { host_ref::<DomRectList>(scope, args.this()) }.is_none() {
+    OpException::throw(OpError::type_("illegal invocation"), scope);
+    return;
+  }
+  let array = v8::Array::new(scope, 0);
+  let symbol = v8::Symbol::get_iterator(scope);
+  if let Some(next) = array.get(scope, symbol.into())
+    && let Ok(next) = v8::Local::<v8::Function>::try_from(next)
+    && let Some(iterator) = next.call(scope, array.into(), &[])
+  {
+    ret.set(iterator);
   }
 }
 

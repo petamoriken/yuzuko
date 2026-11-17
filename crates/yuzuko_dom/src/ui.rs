@@ -7,7 +7,9 @@
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{FromV8, Js, OpError, host_ref, traced, traced_local};
+use yuzuko_core::op::{
+  FromV8, Js, OpError, OpException, host_ref, traced, traced_local,
+};
 use yuzuko_macros::op;
 
 use crate::event::{self, Event};
@@ -16,7 +18,7 @@ use crate::util::{self, key};
 
 const PI: f64 = std::f64::consts::PI;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Modifiers {
   ctrl: bool,
   shift: bool,
@@ -24,6 +26,14 @@ struct Modifiers {
   meta: bool,
   alt_graph: bool,
   caps_lock: bool,
+  fn_key: bool,
+  fn_lock: bool,
+  hyper: bool,
+  num_lock: bool,
+  scroll_lock: bool,
+  super_key: bool,
+  symbol: bool,
+  symbol_lock: bool,
 }
 
 fn modifier_active(mods: Modifiers, name: &str) -> bool {
@@ -34,6 +44,14 @@ fn modifier_active(mods: Modifiers, name: &str) -> bool {
     "Meta" => mods.meta,
     "AltGraph" => mods.alt_graph,
     "CapsLock" => mods.caps_lock,
+    "Fn" => mods.fn_key,
+    "FnLock" => mods.fn_lock,
+    "Hyper" => mods.hyper,
+    "NumLock" => mods.num_lock,
+    "ScrollLock" => mods.scroll_lock,
+    "Super" => mods.super_key,
+    "Symbol" => mods.symbol,
+    "SymbolLock" => mods.symbol_lock,
     // UI Events' virtual Accel modifier is Meta on macOS and Control elsewhere.
     "Accel" => {
       if cfg!(target_os = "macos") {
@@ -57,6 +75,25 @@ fn read_modifiers(
     meta: util::dict_bool(scope, init, "metaKey"),
     alt_graph: util::dict_bool(scope, init, "modifierAltGraph"),
     caps_lock: util::dict_bool(scope, init, "modifierCapsLock"),
+    fn_key: util::dict_bool(scope, init, "modifierFn"),
+    fn_lock: util::dict_bool(scope, init, "modifierFnLock"),
+    hyper: util::dict_bool(scope, init, "modifierHyper"),
+    num_lock: util::dict_bool(scope, init, "modifierNumLock"),
+    scroll_lock: util::dict_bool(scope, init, "modifierScrollLock"),
+    super_key: util::dict_bool(scope, init, "modifierSuper"),
+    symbol: util::dict_bool(scope, init, "modifierSymbol"),
+    symbol_lock: util::dict_bool(scope, init, "modifierSymbolLock"),
+  }
+}
+
+/// Host events report Control, Shift, Alt, and Meta. Lock keys stay false.
+fn host_modifiers(ctrl: bool, shift: bool, alt: bool, meta: bool) -> Modifiers {
+  Modifiers {
+    ctrl,
+    shift,
+    alt,
+    meta,
+    ..Modifiers::default()
   }
 }
 
@@ -398,6 +435,7 @@ pub struct UIEvent {
   base: Event,
   view: RefCell<Option<v8::TracedReference<v8::Object>>>,
   detail: Cell<i32>,
+  which: Cell<i32>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for UIEvent {
@@ -421,6 +459,7 @@ fn ui_from_args(
     base,
     view: RefCell::new(read_view(scope, init)?),
     detail: Cell::new(idl_long(raw_number(scope, init, "detail"))),
+    which: Cell::new(idl_long(raw_number(scope, init, "which"))),
   })
 }
 
@@ -459,6 +498,32 @@ impl UIEvent {
   #[getter]
   fn detail(&self) -> i32 {
     self.detail.get()
+  }
+
+  #[getter]
+  fn which(&self) -> i32 {
+    self.which.get()
+  }
+
+  /// Writes `type`, `view`, and `detail`. Propagation and `isTrusted` stay.
+  #[length(1)]
+  #[rename("initUIEvent")]
+  fn init_ui_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = flag_arg(scope, args, 1);
+    let cancelable = flag_arg(scope, args, 2);
+    let view = view_arg(scope, args, 3)?;
+    let detail = long_arg(scope, args, 4)?;
+    if !self.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    let view = view.map(|object| traced(scope, object));
+    self.assign_ui(detail, view);
+    Ok(())
   }
 }
 
@@ -600,6 +665,16 @@ impl MouseEvent {
   }
 
   #[getter]
+  fn x(&self) -> f64 {
+    floor_coord(self.state.borrow().client_x)
+  }
+
+  #[getter]
+  fn y(&self) -> f64 {
+    floor_coord(self.state.borrow().client_y)
+  }
+
+  #[getter]
   fn page_x(&self) -> f64 {
     floor_coord(self.state.borrow().client_x)
   }
@@ -644,6 +719,17 @@ impl MouseEvent {
   #[getter]
   fn button(&self) -> i32 {
     self.state.borrow().button
+  }
+
+  /// Shadows `UIEvent.which`. A non-negative button is `button + 1`.
+  #[getter]
+  fn which(&self) -> i32 {
+    let button = self.state.borrow().button;
+    if button < 0 {
+      0
+    } else {
+      button.saturating_add(1)
+    }
   }
 
   #[getter]
@@ -846,12 +932,12 @@ impl DragEvent {
 #[repr(C)]
 pub struct KeyboardEvent {
   base: UIEvent,
-  key: String,
+  key: RefCell<String>,
   code: String,
-  location: u32,
+  location: Cell<u32>,
   repeat: bool,
   is_composing: bool,
-  modifiers: Modifiers,
+  modifiers: Cell<Modifiers>,
   char_code: u32,
   key_code: u32,
   which: u32,
@@ -878,12 +964,12 @@ impl KeyboardEvent {
     let init = util::init_arg(args);
     Ok(KeyboardEvent {
       base,
-      key: util::dict_string(scope, init, "key"),
+      key: RefCell::new(util::dict_string(scope, init, "key")),
       code: util::dict_string(scope, init, "code"),
-      location: idl_unsigned(raw_number(scope, init, "location")),
+      location: Cell::new(idl_unsigned(raw_number(scope, init, "location"))),
       repeat: util::dict_bool(scope, init, "repeat"),
       is_composing: util::dict_bool(scope, init, "isComposing"),
-      modifiers: read_modifiers(scope, init),
+      modifiers: Cell::new(read_modifiers(scope, init)),
       char_code: idl_unsigned(raw_number(scope, init, "charCode")),
       key_code: idl_unsigned(raw_number(scope, init, "keyCode")),
       which: idl_unsigned(raw_number(scope, init, "which")),
@@ -898,7 +984,7 @@ impl KeyboardEvent {
 
   #[getter]
   fn key(&self) -> String {
-    self.key.clone()
+    self.key.borrow().clone()
   }
 
   #[getter]
@@ -908,7 +994,7 @@ impl KeyboardEvent {
 
   #[getter]
   fn location(&self) -> f64 {
-    f64::from(self.location)
+    f64::from(self.location.get())
   }
 
   #[getter]
@@ -923,22 +1009,22 @@ impl KeyboardEvent {
 
   #[getter]
   fn ctrl_key(&self) -> bool {
-    self.modifiers.ctrl
+    self.modifiers.get().ctrl
   }
 
   #[getter]
   fn shift_key(&self) -> bool {
-    self.modifiers.shift
+    self.modifiers.get().shift
   }
 
   #[getter]
   fn alt_key(&self) -> bool {
-    self.modifiers.alt
+    self.modifiers.get().alt
   }
 
   #[getter]
   fn meta_key(&self) -> bool {
-    self.modifiers.meta
+    self.modifiers.get().meta
   }
 
   #[getter]
@@ -957,14 +1043,47 @@ impl KeyboardEvent {
   }
 
   fn get_modifier_state(&self, key: String) -> bool {
-    modifier_active(self.modifiers, &key)
+    modifier_active(self.modifiers.get(), &key)
+  }
+
+  /// Sets `view` without changing `detail`. Lock modifiers stay as they are.
+  #[length(1)]
+  fn init_keyboard_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = flag_arg(scope, args, 1);
+    let cancelable = flag_arg(scope, args, 2);
+    let view = view_arg(scope, args, 3)?;
+    let key = string_arg(scope, args, 4)?;
+    let location = unsigned_arg(scope, args, 5)?;
+    let ctrl = flag_arg(scope, args, 6);
+    let alt = flag_arg(scope, args, 7);
+    let shift = flag_arg(scope, args, 8);
+    let meta = flag_arg(scope, args, 9);
+    if !self.base.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    let view = view.map(|object| traced(scope, object));
+    *self.base.view.borrow_mut() = view;
+    *self.key.borrow_mut() = key;
+    self.location.set(location);
+    let mut modifiers = self.modifiers.get();
+    modifiers.ctrl = ctrl;
+    modifiers.alt = alt;
+    modifiers.shift = shift;
+    modifiers.meta = meta;
+    self.modifiers.set(modifiers);
+    Ok(())
   }
 }
 
 #[repr(C)]
 pub struct CompositionEvent {
   base: UIEvent,
-  data: String,
+  data: RefCell<String>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for CompositionEvent {
@@ -988,7 +1107,7 @@ impl CompositionEvent {
     let init = util::init_arg(args);
     Ok(CompositionEvent {
       base,
-      data: util::dict_string(scope, init, "data"),
+      data: RefCell::new(util::dict_string(scope, init, "data")),
     })
   }
 
@@ -1000,7 +1119,28 @@ impl CompositionEvent {
 
   #[getter]
   fn data(&self) -> String {
-    self.data.clone()
+    self.data.borrow().clone()
+  }
+
+  /// Sets `view` without changing `detail`.
+  #[length(1)]
+  fn init_composition_event(
+    &self,
+    scope: &mut v8::PinScope,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<(), OpError> {
+    let type_name = util::try_string(scope, args.get(0))?;
+    let bubbles = flag_arg(scope, args, 1);
+    let cancelable = flag_arg(scope, args, 2);
+    let view = view_arg(scope, args, 3)?;
+    let data = string_arg(scope, args, 4)?;
+    if !self.base.base.init_type(type_name, bubbles, cancelable) {
+      return Ok(());
+    }
+    let view = view.map(|object| traced(scope, object));
+    *self.base.view.borrow_mut() = view;
+    *self.data.borrow_mut() = data;
+    Ok(())
   }
 }
 
@@ -1404,14 +1544,7 @@ fn mouse_state_from(fired: &FiredPointer) -> MouseState {
     movement_y: fired.movement_y,
     button: fired.button,
     buttons: fired.buttons,
-    modifiers: Modifiers {
-      ctrl: fired.ctrl,
-      shift: fired.shift,
-      alt: fired.alt,
-      meta: fired.meta,
-      alt_graph: false,
-      caps_lock: false,
-    },
+    modifiers: host_modifiers(fired.ctrl, fired.shift, fired.alt, fired.meta),
   }
 }
 
@@ -1439,6 +1572,7 @@ fn pointer_from_fired(
         ),
         view: RefCell::new(window_view(scope)),
         detail: Cell::new(fired.detail),
+        which: Cell::new(0),
       },
       state: RefCell::new(mouse_state_from(fired)),
       related: RefCell::new(None),
@@ -1507,6 +1641,137 @@ pub fn dispatch_pointer_through(
   target::dispatch_path(scope, &path, object).unwrap_or(false)
 }
 
+/// One contact in a trusted `TouchEvent`. Coordinates stay unrestricted doubles.
+#[derive(Clone)]
+pub struct TouchPoint {
+  pub identifier: i32,
+  pub screen_x: f64,
+  pub screen_y: f64,
+  pub client_x: f64,
+  pub client_y: f64,
+  pub force: f64,
+}
+
+/// A trusted touch event built by the window crate.
+pub struct FiredTouch {
+  pub type_name: String,
+  pub cancelable: bool,
+  pub ctrl: bool,
+  pub shift: bool,
+  pub alt: bool,
+  pub meta: bool,
+  /// Contacts still on the surface, in the order they began.
+  pub touches: Vec<TouchPoint>,
+  /// The contacts that changed. Active ones also appear in `touches`.
+  pub changed: Vec<TouchPoint>,
+}
+
+/// Dispatches `fired` at `target`. Returns whether the default action may run.
+pub fn dispatch_touch(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  fired: &FiredTouch,
+) -> bool {
+  dispatch_touch_through(scope, target, &[], fired)
+}
+
+/// Dispatches `fired` at `target`, then through `ancestors` from parent to root.
+///
+/// `Touch.target` is `target`. `targetTouches` contains the same `Touch`
+/// objects as `touches`. A changed contact that is still active is that same
+/// object.
+pub fn dispatch_touch_through(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  ancestors: &[v8::Local<v8::Object>],
+  fired: &FiredTouch,
+) -> bool {
+  let active = fired
+    .touches
+    .iter()
+    .map(|point| (point.identifier, seal_touch(scope, target, point)))
+    .collect::<Vec<_>>();
+  let changed = fired
+    .changed
+    .iter()
+    .map(|point| {
+      active
+        .iter()
+        .find(|(identifier, _)| *identifier == point.identifier)
+        .map(|(_, object)| *object)
+        .unwrap_or_else(|| seal_touch(scope, target, point))
+    })
+    .collect::<Vec<_>>();
+  let active_objects =
+    active.iter().map(|(_, object)| *object).collect::<Vec<_>>();
+  let touches = touch_list(scope, &active_objects);
+  let target_touches = touch_list(scope, &active_objects);
+  let changed_touches = touch_list(scope, &changed);
+  let event = TouchEvent {
+    base: UIEvent {
+      base: Event::new(
+        fired.type_name.clone(),
+        true,
+        fired.cancelable,
+        true,
+        true,
+      ),
+      view: RefCell::new(window_view(scope)),
+      detail: Cell::new(0),
+      which: Cell::new(0),
+    },
+    touches: traced(scope, touches),
+    target_touches: traced(scope, target_touches),
+    changed_touches: traced(scope, changed_touches),
+    modifiers: host_modifiers(fired.ctrl, fired.shift, fired.alt, fired.meta),
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  event::define_is_trusted(scope, object);
+  let mut path = Vec::with_capacity(1 + ancestors.len());
+  path.push(target);
+  path.extend_from_slice(ancestors);
+  target::dispatch_path(scope, &path, object).unwrap_or(false)
+}
+
+fn seal_touch<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  target: v8::Local<'_, v8::Object>,
+  point: &TouchPoint,
+) -> v8::Local<'s, v8::Object> {
+  let touch = Touch {
+    identifier: point.identifier,
+    target: traced(scope, target),
+    screen_x: point.screen_x,
+    screen_y: point.screen_y,
+    client_x: point.client_x,
+    client_y: point.client_y,
+    page_x: point.client_x,
+    page_y: point.client_y,
+    radius_x: 0.0,
+    radius_y: 0.0,
+    rotation_angle: 0.0,
+    force: point.force,
+    altitude_angle: PI / 2.0,
+    azimuth_angle: 0.0,
+    touch_type: String::new(),
+  };
+  unsafe { yuzuko_core::op::wrap_instance(scope, touch) }
+}
+
+fn touch_list<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  touches: &[v8::Local<'_, v8::Object>],
+) -> v8::Local<'s, v8::Object> {
+  let touches = touches
+    .iter()
+    .map(|object| traced(scope, *object))
+    .collect();
+  let list = TouchList {
+    touches: RefCell::new(touches),
+  };
+  unsafe { yuzuko_core::op::wrap_instance(scope, list) }
+}
+
 pub struct FiredKey {
   pub type_name: String,
   pub key: String,
@@ -1530,20 +1795,19 @@ pub fn dispatch_key(
       base: Event::new(fired.type_name.clone(), true, true, true, true),
       view: RefCell::new(window_view(scope)),
       detail: Cell::new(0),
+      which: Cell::new(0),
     },
-    key: fired.key.clone(),
+    key: RefCell::new(fired.key.clone()),
     code: fired.code.clone(),
-    location: fired.location,
+    location: Cell::new(fired.location),
     repeat: fired.repeat,
     is_composing: fired.is_composing,
-    modifiers: Modifiers {
-      ctrl: fired.ctrl,
-      shift: fired.shift,
-      alt: fired.alt,
-      meta: fired.meta,
-      alt_graph: false,
-      caps_lock: false,
-    },
+    modifiers: Cell::new(host_modifiers(
+      fired.ctrl,
+      fired.shift,
+      fired.alt,
+      fired.meta,
+    )),
     char_code: 0,
     key_code: 0,
     which: 0,
@@ -1568,8 +1832,9 @@ pub fn dispatch_composition(
       base: Event::new(fired.type_name.clone(), true, cancelable, true, true),
       view: RefCell::new(window_view(scope)),
       detail: Cell::new(0),
+      which: Cell::new(0),
     },
-    data: fired.data.clone(),
+    data: RefCell::new(fired.data.clone()),
   };
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   dispatch_sealed(scope, target, object)
@@ -1591,6 +1856,7 @@ pub fn dispatch_input(
       base: Event::new("beforeinput", true, true, true, true),
       view: RefCell::new(window_view(scope)),
       detail: Cell::new(0),
+      which: Cell::new(0),
     },
     data: Some(fired.data.clone()),
     is_composing: Cell::new(fired.is_composing),
@@ -1626,6 +1892,7 @@ pub fn dispatch_wheel(
         base: Event::new("wheel", true, true, true, true),
         view: RefCell::new(window_view(scope)),
         detail: Cell::new(0),
+        which: Cell::new(0),
       },
       state: RefCell::new(MouseState {
         screen_x: fired.screen_x,
@@ -1636,14 +1903,12 @@ pub fn dispatch_wheel(
         movement_y: 0.0,
         button: 0,
         buttons: 0,
-        modifiers: Modifiers {
-          ctrl: fired.ctrl,
-          shift: fired.shift,
-          alt: fired.alt,
-          meta: fired.meta,
-          alt_graph: false,
-          caps_lock: false,
-        },
+        modifiers: host_modifiers(
+          fired.ctrl,
+          fired.shift,
+          fired.alt,
+          fired.meta,
+        ),
       }),
       related: RefCell::new(None),
     },
@@ -1680,6 +1945,7 @@ pub fn dispatch_focus(
       base: Event::new(type_name, false, false, true, true),
       view: RefCell::new(window_view(scope)),
       detail: Cell::new(0),
+      which: Cell::new(0),
     },
     related: RefCell::new(None),
   };
@@ -1702,6 +1968,9 @@ pub struct Touch {
   radius_y: f64,
   rotation_angle: f64,
   force: f64,
+  altitude_angle: f64,
+  azimuth_angle: f64,
+  touch_type: String,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for Touch {
@@ -1738,6 +2007,10 @@ impl Touch {
     let radius_y = dict_unrestricted(scope, init, "radiusY")?;
     let rotation_angle = dict_unrestricted(scope, init, "rotationAngle")?;
     let force = dict_unrestricted(scope, init, "force")?;
+    let altitude_angle =
+      dict_number_or(scope, init, "altitudeAngle", PI / 2.0)?;
+    let azimuth_angle = dict_unrestricted(scope, init, "azimuthAngle")?;
+    let touch_type = dict_string_member(scope, init, "touchType")?;
     Ok(Touch {
       identifier,
       target,
@@ -1751,6 +2024,9 @@ impl Touch {
       radius_y,
       rotation_angle,
       force,
+      altitude_angle,
+      azimuth_angle,
+      touch_type,
     })
   }
 
@@ -1813,6 +2089,21 @@ impl Touch {
   fn force(&self) -> f64 {
     self.force
   }
+
+  #[getter]
+  fn altitude_angle(&self) -> f64 {
+    self.altitude_angle
+  }
+
+  #[getter]
+  fn azimuth_angle(&self) -> f64 {
+    self.azimuth_angle
+  }
+
+  #[getter]
+  fn touch_type(&self) -> String {
+    self.touch_type.clone()
+  }
 }
 
 /// Immutable list of `Touch` objects. `new TouchList()` throws.
@@ -1853,6 +2144,70 @@ impl TouchList {
       }
       None => Js::null(scope),
     }
+  }
+}
+
+fn install_touch_list_iterator(scope: &mut v8::PinScope) {
+  let templ = TouchList::template(scope);
+  let Some(ctor) = templ.get_function(scope) else {
+    return;
+  };
+  let Some(key) = v8::String::new(scope, "prototype") else {
+    return;
+  };
+  let Some(prototype) = ctor.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let Some(function) = v8::Function::new(scope, touch_list_iterator) else {
+    return;
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let _ = prototype.define_own_property(
+    scope,
+    symbol.into(),
+    function.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
+}
+
+fn touch_list_iterator(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let Some(host) = (unsafe { host_ref::<TouchList>(scope, args.this()) })
+  else {
+    OpException::throw(OpError::type_("illegal invocation"), scope);
+    return;
+  };
+  let locals = {
+    let list = host.get().touches.borrow();
+    list
+      .iter()
+      .filter_map(|reference| traced_local(scope, reference))
+      .collect::<Vec<_>>()
+  };
+  let array = v8::Array::new(scope, locals.len() as i32);
+  for (index, object) in locals.iter().enumerate() {
+    array.set_index(scope, index as u32, (*object).into());
+  }
+  return_array_iterator(scope, array, &mut ret);
+}
+
+fn return_array_iterator(
+  scope: &mut v8::PinScope,
+  array: v8::Local<v8::Array>,
+  ret: &mut v8::ReturnValue,
+) {
+  let symbol = v8::Symbol::get_iterator(scope);
+  if let Some(next) = array.get(scope, symbol.into())
+    && let Ok(next) = v8::Local::<v8::Function>::try_from(next)
+    && let Some(iterator) = next.call(scope, array.into(), &[])
+  {
+    ret.set(iterator);
   }
 }
 
@@ -1990,11 +2345,32 @@ fn dict_unrestricted(
   init: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<f64, OpError> {
+  dict_number_or(scope, init, name, 0.0)
+}
+
+fn dict_number_or(
+  scope: &mut v8::PinScope,
+  init: v8::Local<v8::Object>,
+  name: &str,
+  default: f64,
+) -> Result<f64, OpError> {
   let value = get_property(scope, init, name)?;
   if value.is_undefined() {
-    return Ok(0.0);
+    return Ok(default);
   }
   f64::from_v8(scope, value)
+}
+
+fn dict_string_member(
+  scope: &mut v8::PinScope,
+  init: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<String, OpError> {
+  let value = get_property(scope, init, name)?;
+  if value.is_null() || value.is_undefined() {
+    return Ok(String::new());
+  }
+  String::from_v8(scope, value)
 }
 
 fn event_target<'s>(
@@ -2293,6 +2669,25 @@ fn long_arg(
   Ok(idl_long(double_arg(scope, args, index)?))
 }
 
+fn unsigned_arg(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<u32, OpError> {
+  Ok(idl_unsigned(double_arg(scope, args, index)?))
+}
+
+fn string_arg(
+  scope: &mut v8::PinScope,
+  args: &v8::FunctionCallbackArguments,
+  index: i32,
+) -> Result<String, OpError> {
+  let Some(value) = present_arg(args, index) else {
+    return Ok(String::new());
+  };
+  util::try_string(scope, value)
+}
+
 fn present_arg<'s>(
   args: &v8::FunctionCallbackArguments<'s>,
   index: i32,
@@ -2389,6 +2784,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   Touch::install(scope);
   install_touch_list_indices(scope);
   TouchList::install(scope);
+  install_touch_list_iterator(scope);
   TouchEvent::install(scope);
   KeyboardEvent::install(scope);
   CompositionEvent::install(scope);

@@ -55,7 +55,7 @@ fn encode_latin1(input: &str) -> Result<String, ()> {
   Ok(encode(&bytes))
 }
 
-fn encode(bytes: &[u8]) -> String {
+pub(crate) fn encode(bytes: &[u8]) -> String {
   let mut out = String::new();
   let mut index = 0;
   while index + 3 <= bytes.len() {

@@ -24,6 +24,10 @@ function throws(run: () => void): unknown {
   throw new Error("did not throw");
 }
 
+declare const addSignalListener: unknown;
+declare const removeSignalListener: unknown;
+declare const raiseSignal: unknown;
+
 type SignalMessage = { ready?: boolean; hit?: boolean; error?: string };
 
 Yuzuko.test("SIGINT and SIGTERM listeners run and the process stays alive", async () => {
@@ -78,7 +82,7 @@ Yuzuko.test("SIGINT and SIGTERM listeners run and the process stays alive", asyn
     let waiting: ((value: SignalMessage) => void) | undefined;
     let failing: ((error: Error) => void) | undefined;
     worker.onmessage = (event) => {
-      const value = event.data as SignalMessage;
+      const value: SignalMessage = event.data;
       if (waiting) {
         const resolve = waiting;
         waiting = undefined;
@@ -148,12 +152,12 @@ Yuzuko.test("SIGINT and SIGTERM listeners run and the process stays alive", asyn
 });
 
 Yuzuko.test("a bad signal does not terminate the process", () => {
-  const add = Yuzuko.addSignalListener as (signal?: unknown, listener?: unknown) => void;
-  const remove = Yuzuko.removeSignalListener as (
-    signal?: unknown,
-    listener?: unknown,
-  ) => void;
-  const raise = Yuzuko.raiseSignal as (signal?: unknown) => void;
+  // @ts-expect-error Callers pass the wrong arity and argument types.
+  const add: (signal?: unknown, listener?: unknown) => void = Yuzuko.addSignalListener;
+  // @ts-expect-error Callers pass the wrong arity and argument types.
+  const remove: (signal?: unknown, listener?: unknown) => void = Yuzuko.removeSignalListener;
+  // @ts-expect-error Callers pass the wrong arity and argument types.
+  const raise: (signal?: unknown) => void = Yuzuko.raiseSignal;
 
   assert(text(throws(() => add())) === ARITY, "add arity");
   assert(text(throws(() => remove("SIGINT"))) === ARITY, "remove arity");

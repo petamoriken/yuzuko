@@ -1,16 +1,28 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function pixel(ctx, x, y) {
+declare const TextCluster: unknown;
+declare const CanvasFilter: unknown;
+
+function pixel(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const data = ctx.getImageData(x, y, 1, 1).data;
-  return [data[0], data[1], data[2], data[3]];
+  return [data[0]!, data[1]!, data[2]!, data[3]!];
 }
 
-function inkColumns(canvas) {
-  const ctx = canvas.getContext("2d");
+function inkColumns(canvas: OffscreenCanvas): {
+  minX: number;
+  maxX: number;
+  above: number;
+  below: number;
+} {
+  const ctx = canvas.getContext("2d")!;
   const w = canvas.width;
   const h = canvas.height;
   const data = ctx.getImageData(0, 0, w, h).data;
@@ -20,7 +32,7 @@ function inkColumns(canvas) {
   let below = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4 + 3] < 16) {
+      if (data[(y * w + x) * 4 + 3]! < 16) {
         continue;
       }
       minX = Math.min(minX, x);
@@ -37,7 +49,7 @@ function inkColumns(canvas) {
 }
 
 Yuzuko.test("css filters parse and do not paint", () => {
-  const ctx = new OffscreenCanvas(8, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(8, 4).getContext("2d")!;
   assert(ctx.filter === "none", "default");
   ctx.filter = "blur(2px)";
   assert(ctx.filter === "blur(2px)", "stored");
@@ -59,7 +71,8 @@ Yuzuko.test("css filters parse and do not paint", () => {
   ctx.filter = "opacity(50%)";
   assert(ctx.filter === "opacity(50%)", "saved value");
   ctx.restore();
-  assert(ctx.filter === "drop-shadow(4px 4px 0 red)", "restored");
+  let restoredFilter: string = ctx.filter;
+  assert(restoredFilter === "drop-shadow(4px 4px 0 red)", "restored");
 
   ctx.filter = "blur(4px)";
   ctx.fillStyle = "#ff0000";
@@ -69,7 +82,7 @@ Yuzuko.test("css filters parse and do not paint", () => {
 });
 
 Yuzuko.test("layers group alpha and keep filters unpainted", () => {
-  const ctx = new OffscreenCanvas(8, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(8, 4).getContext("2d")!;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, 8, 4);
   ctx.globalAlpha = 0.5;
@@ -83,8 +96,10 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   ctx.fillRect(0, 0, 8, 4);
   assert(pixel(ctx, 1, 1).join() === "255,255,255,255", "open layer hidden");
   ctx.endLayer();
-  assert(ctx.globalAlpha === 0.5, "alpha restored");
-  assert(ctx.filter === "blur(3px)", "filter restored");
+  let restoredAlpha: number = ctx.globalAlpha;
+  let restoredLayerFilter: string = ctx.filter;
+  assert(restoredAlpha === 0.5, "alpha restored");
+  assert(restoredLayerFilter === "blur(3px)", "filter restored");
   const [r, g, b, a] = pixel(ctx, 1, 1);
   assert(a === 255, "opaque canvas");
   assert(g > 240 && r > 100 && r < 160 && b > 100 && b < 160, `grouped ${r},${g},${b}`);
@@ -96,16 +111,18 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   ctx.beginLayer();
   assert(ctx.globalAlpha === 1, "inner reset");
   ctx.endLayer();
-  assert(ctx.globalAlpha === 0.25, "inner restored");
+  let innerAlpha: number = ctx.globalAlpha;
+  assert(innerAlpha === 0.25, "inner restored");
   ctx.endLayer();
-  assert(ctx.globalAlpha === 0.5, "outer restored");
+  let outerAlpha: number = ctx.globalAlpha;
+  assert(outerAlpha === 0.5, "outer restored");
 
   let restore = false;
   ctx.beginLayer();
   try {
     ctx.restore();
   } catch (error) {
-    restore = error.name === "InvalidStateError";
+    restore = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(restore, "restore inside layer");
   ctx.endLayer();
@@ -115,7 +132,7 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   try {
     ctx.endLayer();
   } catch (error) {
-    ended = error.name === "InvalidStateError";
+    ended = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(ended, "endLayer inside save");
   ctx.restore();
@@ -124,7 +141,7 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   try {
     ctx.endLayer();
   } catch (error) {
-    lone = error.name === "InvalidStateError";
+    lone = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(lone, "lone endLayer");
 
@@ -141,14 +158,14 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   try {
     ctx.endLayer();
   } catch (error) {
-    afterReset = error.name === "InvalidStateError";
+    afterReset = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(afterReset, "reset discards the layer");
   assert(ctx.filter === "none", "reset filter");
 });
 
 Yuzuko.test("layer filters validate and clips do not leak", () => {
-  const ctx = new OffscreenCanvas(8, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(8, 4).getContext("2d")!;
   ctx.beginLayer({ filter: "blur(4px)" });
   ctx.fillStyle = "#00ff00";
   ctx.fillRect(2, 1, 2, 2);
@@ -158,6 +175,7 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
 
   ctx.beginLayer();
   ctx.endLayer();
+  // @ts-expect-error null is not layer options.
   ctx.beginLayer(null);
   ctx.endLayer();
   ctx.beginLayer({});
@@ -169,30 +187,34 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   try {
     ctx.beginLayer({ filter: "blur(4)" });
   } catch (error) {
-    bad = error.name === "TypeError";
+    bad = error instanceof Error && error.name === "TypeError";
   }
   assert(bad, "bad filter");
   let closed = false;
   try {
     ctx.endLayer();
   } catch (error) {
-    closed = error.name === "InvalidStateError";
+    closed = error instanceof Error && error.name === "InvalidStateError";
   }
   assert(closed, "layer was not opened");
 
   let object = false;
   try {
-    ctx.beginLayer({ filter: { name: "gaussianBlur", stdDeviation: 4 } });
+    ctx.beginLayer({
+      // @ts-expect-error A filter dictionary is not a string.
+      filter: { name: "gaussianBlur", stdDeviation: 4 },
+    });
   } catch (error) {
-    object = error.name === "TypeError";
+    object = error instanceof Error && error.name === "TypeError";
   }
   assert(object, "no CanvasFilter");
 
   let text = false;
   try {
+    // @ts-expect-error Options must be a dictionary.
     ctx.beginLayer("blur(1px)");
   } catch (error) {
-    text = error.name === "TypeError";
+    text = error instanceof Error && error.name === "TypeError";
   }
   assert(text, "options must be a dictionary");
 
@@ -207,7 +229,7 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   assert(pixel(ctx, 3, 1)[0] === 255, "inner clip did not leak");
 
   const clipped = new OffscreenCanvas(8, 4);
-  const ctx2 = clipped.getContext("2d");
+  const ctx2 = clipped.getContext("2d")!;
   ctx2.beginPath();
   ctx2.rect(0, 0, 2, 4);
   ctx2.clip();
@@ -219,7 +241,7 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   assert(pixel(ctx2, 4, 1)[3] === 0, "parent clip");
 
   const moved = new OffscreenCanvas(8, 4);
-  const ctx3 = moved.getContext("2d");
+  const ctx3 = moved.getContext("2d")!;
   ctx3.translate(3, 0);
   ctx3.beginLayer();
   ctx3.fillStyle = "#ff0000";
@@ -229,7 +251,7 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   assert(pixel(ctx3, 0, 0)[3] === 0, "origin empty");
 
   const replaced = new OffscreenCanvas(8, 4);
-  const ctx4 = replaced.getContext("2d");
+  const ctx4 = replaced.getContext("2d")!;
   ctx4.translate(3, 0);
   ctx4.beginLayer();
   ctx4.setTransform(1, 0, 0, 1, 0, 0);
@@ -244,7 +266,7 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
 
 Yuzuko.test("text metrics stay the classic getters", () => {
   const canvas = new OffscreenCanvas(80, 64);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.font = "20px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -254,12 +276,36 @@ Yuzuko.test("text metrics stay the classic getters", () => {
   assert(typeof metrics.fontBoundingBoxAscent === "number", "font ascent");
   assert(typeof metrics.emHeightAscent === "number", "em ascent");
   assert(typeof metrics.alphabeticBaseline === "number", "alphabetic");
-  assert(typeof metrics.getSelectionRects === "undefined", "no selection rects");
-  assert(typeof metrics.getActualBoundingBox === "undefined", "no range box");
-  assert(typeof metrics.getTextClusters === "undefined", "no clusters");
-  assert(typeof metrics.getIndexFromOffset === "undefined", "no caret index");
-  assert(typeof ctx.fillTextCluster === "undefined", "no fillTextCluster");
-  assert(typeof ctx.strokeTextCluster === "undefined", "no strokeTextCluster");
+  assert(
+    // @ts-expect-error getSelectionRects is absent.
+    typeof metrics.getSelectionRects === "undefined",
+    "no selection rects",
+  );
+  assert(
+    // @ts-expect-error getActualBoundingBox is absent.
+    typeof metrics.getActualBoundingBox === "undefined",
+    "no range box",
+  );
+  assert(
+    // @ts-expect-error getTextClusters is absent.
+    typeof metrics.getTextClusters === "undefined",
+    "no clusters",
+  );
+  assert(
+    // @ts-expect-error getIndexFromOffset is absent.
+    typeof metrics.getIndexFromOffset === "undefined",
+    "no caret index",
+  );
+  assert(
+    // @ts-expect-error fillTextCluster is absent.
+    typeof ctx.fillTextCluster === "undefined",
+    "no fillTextCluster",
+  );
+  assert(
+    // @ts-expect-error strokeTextCluster is absent.
+    typeof ctx.strokeTextCluster === "undefined",
+    "no strokeTextCluster",
+  );
   assert(typeof TextCluster === "undefined", "no TextCluster");
   assert(typeof CanvasFilter === "undefined", "CanvasFilter absent");
 
@@ -270,13 +316,13 @@ Yuzuko.test("text metrics stay the classic getters", () => {
   assert(placed.below < placed.above, "little ink below the baseline");
 
   const wide = new OffscreenCanvas(80, 64);
-  const wideCtx = wide.getContext("2d");
+  const wideCtx = wide.getContext("2d")!;
   wideCtx.font = "20px sans-serif";
   wideCtx.fillStyle = "#000000";
   wideCtx.fillText("Ab", 4, 40);
   const pair = inkColumns(wide);
   const narrow = new OffscreenCanvas(80, 64);
-  const narrowCtx = narrow.getContext("2d");
+  const narrowCtx = narrow.getContext("2d")!;
   narrowCtx.font = "20px sans-serif";
   narrowCtx.fillStyle = "#000000";
   narrowCtx.fillText("A", 4, 40);

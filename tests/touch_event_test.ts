@@ -1,10 +1,15 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function throwsTypeError(run) {
+// A `let` binding is narrowed to the literal just written. The type argument keeps the wider type.
+function read<T>(value: T): T {
+  return value;
+}
+
+function throwsTypeError(run: () => void): boolean {
   try {
     run();
   } catch (error) {
@@ -27,17 +32,17 @@ Yuzuko.test("a synthetic TouchEvent is not cancelable", () => {
     assert(event.touches.item(0) === null, `${type} item`);
     assert(event.touches[0] === undefined, `${type} index`);
     assert(event.altKey === false && event.ctrlKey === false, `${type} keys`);
-    let prevented = null;
-    const listener = (dispatched) => {
+    let prevented: boolean | null = null;
+    const listener = (dispatched: Event) => {
       dispatched.preventDefault();
       prevented = dispatched.defaultPrevented;
     };
-    addEventListener(type, listener);
+    self.addEventListener(type, listener);
     try {
-      assert(dispatchEvent(event) === true, `${type} dispatch`);
+      assert(self.dispatchEvent(event) === true, `${type} dispatch`);
       assert(prevented === false, `${type} default`);
     } finally {
-      removeEventListener(type, listener);
+      self.removeEventListener(type, listener);
     }
   }
 });
@@ -69,14 +74,17 @@ Yuzuko.test("Touch and TouchList keep the constructed contacts", () => {
   const event = new TouchEvent("touchstart", {
     cancelable: true,
     bubbles: true,
+    // @ts-expect-error A custom iterator is a touch sequence.
     touches: iterable,
     changedTouches: [touch],
     altKey: true,
+    // @ts-expect-error The view is the realm global.
     view: globalThis,
     detail: 2,
   });
   assert(event.cancelable === true, "cancelable");
   assert(event.bubbles === true, "bubbles");
+  // @ts-expect-error The view is the realm global.
   assert(event.view === globalThis, "view");
   assert(event.detail === 2, "detail");
   assert(event.altKey === true, "alt");
@@ -103,31 +111,38 @@ Yuzuko.test("Touch and TouchList keep the constructed contacts", () => {
     "delete",
   );
   assert(event.touches.length === 1, "still there");
-  let prevented = false;
-  addEventListener("touchstart", (dispatched) => {
+  let prevented: boolean = false;
+  self.addEventListener("touchstart", (dispatched: Event) => {
     dispatched.preventDefault();
     prevented = dispatched.defaultPrevented;
   });
-  assert(dispatchEvent(event) === false, "canceled");
-  assert(prevented === true, "defaultPrevented");
+  assert(self.dispatchEvent(event) === false, "canceled");
+  let settled: boolean = read<boolean>(prevented);
+  assert(settled === true, "defaultPrevented");
 });
 
 Yuzuko.test("Touch and TouchList reject the wrong values", () => {
   assert(
     throwsTypeError(() => {
+      // @ts-expect-error Touch requires an init dictionary.
       new Touch();
     }),
     "no init",
   );
   assert(
     throwsTypeError(() => {
+      // @ts-expect-error target is required.
       new Touch({ identifier: 1 });
     }),
     "missing target",
   );
   assert(
     throwsTypeError(() => {
-      new Touch({ identifier: 1, target: {} });
+      new Touch({
+        identifier: 1,
+        // @ts-expect-error A plain object is not an EventTarget.
+        target: {},
+      });
     }),
     "plain target",
   );
@@ -139,13 +154,19 @@ Yuzuko.test("Touch and TouchList reject the wrong values", () => {
   );
   assert(
     throwsTypeError(() => {
-      new TouchEvent("touchstart", { touches: [new EventTarget()] });
+      new TouchEvent("touchstart", {
+        // @ts-expect-error An EventTarget is not a Touch.
+        touches: [new EventTarget()],
+      });
     }),
     "not a touch",
   );
   assert(
     throwsTypeError(() => {
-      new TouchEvent("touchstart", { touches: null });
+      new TouchEvent("touchstart", {
+        // @ts-expect-error null is not a touch sequence.
+        touches: null,
+      });
     }),
     "null sequence",
   );
@@ -153,6 +174,7 @@ Yuzuko.test("Touch and TouchList reject the wrong values", () => {
   let threw = false;
   try {
     new TouchEvent("touchstart", {
+      // @ts-expect-error The iterator throws while the sequence is read.
       touches: {
         [Symbol.iterator]() {
           return {

@@ -1,3 +1,6 @@
+declare function importScripts(...urls: string[]): void;
+
+// @ts-expect-error onmessage belongs to the worker global.
 self.onmessage = (event: MessageEvent) => {
   let scripts = true;
   try {

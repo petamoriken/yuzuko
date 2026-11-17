@@ -17,8 +17,8 @@ Yuzuko.test("accessible inject is absent without the feature", () => {
     }
     assert(thrown instanceof TypeError, "type");
     assert(
-      (thrown as Error).message === "unknown inject kind accessible",
-      (thrown as Error).message,
+      thrown.message === "unknown inject kind accessible",
+      thrown.message,
     );
   } finally {
     window.close();

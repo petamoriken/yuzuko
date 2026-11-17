@@ -56,7 +56,8 @@ Yuzuko.test("keyboard.lock reserves codes for the focused window", async () => {
   assert(missed.name === "InvalidStateError", missed.name);
   assert(missed.message === NO_FOCUS, missed.message);
 
-  const nullList = await rejection(() => navigator.keyboard.lock(null as never));
+  // @ts-expect-error null is not a key code sequence.
+  const nullList = await rejection(() => navigator.keyboard.lock(null));
   assert(nullList.name === "TypeError", nullList.name);
   assert(nullList.message === NOT_SEQUENCE, nullList.message);
 
@@ -94,10 +95,9 @@ Yuzuko.test("keyboard.lock reserves codes for the focused window", async () => {
       "set",
     );
     const described = [{ toString() { return "Escape"; } }];
-    assert(
-      (await navigator.keyboard.lock(described)) === undefined,
-      "toString",
-    );
+    // @ts-expect-error The host reads each code with ToString.
+    const describedLock = await navigator.keyboard.lock(described);
+    assert(describedLock === undefined, "toString");
 
     const invalid = await rejection(() =>
       navigator.keyboard.lock(["KeyW", "Nope"]),
@@ -126,7 +126,7 @@ Yuzuko.test("keyboard.lock reserves codes for the focused window", async () => {
     assert(endless.message === TOO_LONG, endless.message);
 
     const letters = await rejection(() =>
-      navigator.keyboard.lock("KeyW" as never),
+      navigator.keyboard.lock("KeyW"),
     );
     assert(letters.name === "InvalidAccessError", letters.name);
     assert(letters.message === BAD_CODE, letters.message);
@@ -147,6 +147,7 @@ Yuzuko.test("keyboard.lock reserves codes for the focused window", async () => {
         };
       },
     };
+    // @ts-expect-error The iterator yields objects, not strings.
     const thrown = await rejection(() => navigator.keyboard.lock(boom));
     assert(thrown.name === "TypeError", thrown.name);
     assert(thrown.message === "boom", thrown.message);
@@ -196,7 +197,8 @@ Yuzuko.test("a dedicated worker has no keyboard lock", async () => {
   const probe = await new Promise<{ keyboard: boolean; Keyboard: boolean }>(
     (resolve, reject) => {
       worker.onmessage = (event: MessageEvent) => {
-        resolve(event.data as { keyboard: boolean; Keyboard: boolean });
+        const value: { keyboard: boolean; Keyboard: boolean } = event.data;
+        resolve(value);
       };
       worker.onerror = (event: ErrorEvent) => {
         reject(new Error(event.message || "worker error"));

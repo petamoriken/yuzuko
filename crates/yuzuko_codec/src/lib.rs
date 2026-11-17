@@ -41,7 +41,7 @@ fn install(scope: &mut v8::PinScope) {
   classes::AudioData::install(scope);
   classes::AudioDecoder::install(scope);
   image::ImageDecoder::install(scope);
-  image::ImageTrackList::install(scope);
+  image::install_image_track_list(scope);
   image::ImageTrack::install(scope);
   demux::install(scope);
 }

@@ -445,11 +445,11 @@ fn classify(path: &Path, key: &str) -> Option<Kind> {
 }
 
 /// The file needs a media element, a `MediaStream`, `ScriptProcessorNode`,
-/// or a permissions policy. `getOutputTimestamp` and `playbackStats` are
-/// absent. Sink-id pages stay skipped because they need `enumerateDevices`.
-/// The main global has no `requestAnimationFrame`.
-/// Processing nodes, `AudioParam` automation, and `AudioListener` are part
-/// of the runtime and are not skipped here.
+/// or a permissions policy. `playbackStats` is absent. Sink-id pages stay
+/// skipped because they need `enumerateDevices`. The main global has no
+/// `requestAnimationFrame`. Processing nodes, `AudioParam` automation,
+/// `AudioListener`, and `getOutputTimestamp` are part of the runtime and
+/// are not skipped here.
 fn webaudio_ignored(path: &Path, key: &str, name: &str) -> bool {
   webaudio_skip_reason(path, key, name).is_some()
 }
@@ -489,9 +489,6 @@ fn webaudio_skip_reason(
   if lower.contains("playbackstats") {
     return Some("The runner has no playbackStats.");
   }
-  if lower.contains("getoutputtimestamp") {
-    return Some("The runner has no getOutputTimestamp.");
-  }
   if key.ends_with("/historical.html") {
     return Some("The runner does not implement historical Web Audio names.");
   }
@@ -511,7 +508,6 @@ fn webaudio_skip_reason(
     "createMediaStreamDestination",
     "createMediaStreamSource",
     "createScriptProcessor",
-    "getOutputTimestamp",
     "playbackStats",
     "setSinkId",
   ];
@@ -945,14 +941,18 @@ impl WptServer {
     if port_open() {
       return Self { child: None };
     }
+    // The server's own log is the only signal when it exits before listening.
+    let log_path = std::env::temp_dir().join("yuzuko-wpt-serve.log");
+    let log_file = fs::File::create(&log_path).expect("WPT server log");
+    let stdout = log_file.try_clone().expect("WPT server log");
     let child = Command::new(wpt_python(suite))
       .arg("wpt")
       .arg("serve")
       .arg("--no-h2")
       .current_dir(suite)
       .stdin(Stdio::null())
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
+      .stdout(Stdio::from(stdout))
+      .stderr(Stdio::from(log_file))
       .spawn()
       .expect("start the WPT server");
     let deadline = std::time::Instant::now() + Duration::from_secs(120);
@@ -965,7 +965,10 @@ impl WptServer {
     let mut child = child;
     let _ = child.kill();
     let _ = child.wait();
-    panic!("WPT server did not listen on 127.0.0.1:8000");
+    let bytes = fs::read(&log_path).unwrap_or_default();
+    let start = bytes.len().saturating_sub(2000);
+    let tail = String::from_utf8_lossy(&bytes[start..]);
+    panic!("WPT server did not listen on 127.0.0.1:8000\n{tail}");
   }
 }
 

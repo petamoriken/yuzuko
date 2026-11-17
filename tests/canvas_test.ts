@@ -1,12 +1,16 @@
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
 }
 
-function pixel(ctx, x, y) {
+function pixel(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const data = ctx.getImageData(x, y, 1, 1).data;
-  return [data[0], data[1], data[2], data[3]];
+  return [data[0]!, data[1]!, data[2]!, data[3]!];
 }
 
 Yuzuko.test("fillRect paints an exact sRGB pixel", () => {
@@ -24,7 +28,7 @@ Yuzuko.test("fillRect paints an exact sRGB pixel", () => {
 });
 
 Yuzuko.test("save, restore, and translate affect later draws", () => {
-  const ctx = new OffscreenCanvas(6, 6).getContext("2d");
+  const ctx = new OffscreenCanvas(6, 6).getContext("2d")!;
   ctx.fillStyle = "#ff0000";
   ctx.save();
   ctx.translate(2, 2);
@@ -38,7 +42,7 @@ Yuzuko.test("save, restore, and translate affect later draws", () => {
 });
 
 Yuzuko.test("a path fill and even-odd hole", () => {
-  const ctx = new OffscreenCanvas(10, 10).getContext("2d");
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   ctx.fillStyle = "rgb(0, 0, 255)";
   ctx.beginPath();
   ctx.rect(1, 1, 8, 8);
@@ -55,8 +59,9 @@ Yuzuko.test("putImageData round-trips float16 Display P3", () => {
   const ctx = canvas.getContext("2d", {
     colorSpace: "display-p3",
     colorType: "float16",
-  });
+  })!;
   const source = new Float16Array([1.5, -0.25, 0.5, 0.75]);
+  // @ts-expect-error Float16Array is not an ImageDataArray.
   const data = new ImageData(source, 1, 1, {
     colorSpace: "display-p3",
     pixelFormat: "rgba-float16",
@@ -69,24 +74,24 @@ Yuzuko.test("putImageData round-trips float16 Display P3", () => {
   assert(out.colorSpace === "display-p3", "space");
   assert(out.pixelFormat === "rgba-float16", "format");
   for (let i = 0; i < 4; i++) {
-    const delta = Math.abs(out.data[i] - source[i]);
+    const delta = Math.abs(out.data[i]! - source[i]!);
     assert(delta <= 0.002, `channel ${i} delta ${delta}`);
   }
 });
 
 Yuzuko.test("toneMapping is stored and does not change a fill", () => {
-  const plain = new OffscreenCanvas(1, 1).getContext("2d");
+  const plain = new OffscreenCanvas(1, 1).getContext("2d")!;
   assert(plain.getContextAttributes().toneMapping.mode === "standard", "default");
-  const empty = new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: {} });
+  const empty = new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: {} })!;
   assert(empty.getContextAttributes().toneMapping.mode === "standard", "empty");
   const standard = new OffscreenCanvas(1, 1).getContext("2d", {
     toneMapping: { mode: "standard" },
-  });
+  })!;
   assert(standard.getContextAttributes().toneMapping.mode === "standard", "standard");
   const extended = new OffscreenCanvas(1, 1).getContext("2d", {
     toneMapping: { mode: "extended" },
     colorType: "float16",
-  });
+  })!;
   assert(extended.getContextAttributes().toneMapping.mode === "extended", "extended");
   extended.fillStyle = "#00ff00";
   extended.fillRect(0, 0, 1, 1);
@@ -95,20 +100,20 @@ Yuzuko.test("toneMapping is stored and does not change a fill", () => {
   try {
     new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: { mode: "hdr" } });
   } catch (error) {
-    bad = error.name === "TypeError";
+    bad = error instanceof Error && error.name === "TypeError";
   }
   assert(bad, "invalid mode");
   let object = false;
   try {
     new OffscreenCanvas(1, 1).getContext("2d", { toneMapping: null });
   } catch (error) {
-    object = error.name === "TypeError";
+    object = error instanceof Error && error.name === "TypeError";
   }
   assert(object, "null toneMapping");
 });
 
 Yuzuko.test("display-p3 path color is stored as sRGB unorm8", () => {
-  const ctx = new OffscreenCanvas(4, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(4, 4).getContext("2d")!;
   ctx.fillStyle = "color(display-p3 1 0 0)";
   ctx.fillRect(0, 0, 4, 4);
   const [r, g, b, a] = pixel(ctx, 2, 2);
@@ -117,7 +122,7 @@ Yuzuko.test("display-p3 path color is stored as sRGB unorm8", () => {
 });
 
 Yuzuko.test("canvas state stores fonts, composites, and shadows", () => {
-  const ctx = new OffscreenCanvas(2, 2).getContext("2d");
+  const ctx = new OffscreenCanvas(2, 2).getContext("2d")!;
   ctx.font = "16px Arial";
   assert(ctx.font.includes("Arial"), ctx.font);
   const unloaded = ctx.measureText("A").width;
@@ -131,13 +136,15 @@ Yuzuko.test("canvas state stores fonts, composites, and shadows", () => {
 
   ctx.globalCompositeOperation = "destination-over";
   assert(ctx.globalCompositeOperation === "destination-over", "composite");
+  // @ts-expect-error An unknown composite operation is ignored.
   ctx.globalCompositeOperation = "nope";
   assert(ctx.globalCompositeOperation === "destination-over", "ignored");
   ctx.save();
   ctx.globalCompositeOperation = "xor";
   ctx.shadowBlur = 4;
   ctx.restore();
-  assert(ctx.globalCompositeOperation === "destination-over", "restored");
+  let restoredComposite: string = ctx.globalCompositeOperation;
+  assert(restoredComposite === "destination-over", "restored");
   assert(ctx.shadowBlur === 0, "shadow restored");
 
   ctx.shadowBlur = 4;
@@ -153,20 +160,26 @@ Yuzuko.test("canvas state stores fonts, composites, and shadows", () => {
   assert(ctx.shadowColor === "#00ff00", "color ignored");
   ctx.globalCompositeOperation = "xor";
   ctx.beginLayer();
-  assert(ctx.globalCompositeOperation === "source-over", "layer composite");
-  assert(ctx.shadowBlur === 0, "layer blur");
-  assert(ctx.shadowColor === "rgba(0, 0, 0, 0)", "layer color");
+  let layerComposite: string = ctx.globalCompositeOperation;
+  assert(layerComposite === "source-over", "layer composite");
+  let layerBlur: number = ctx.shadowBlur;
+  let layerColor: string = ctx.shadowColor;
+  assert(layerBlur === 0, "layer blur");
+  assert(layerColor === "rgba(0, 0, 0, 0)", "layer color");
   ctx.endLayer();
   assert(ctx.globalCompositeOperation === "xor", "layer restored");
   assert(ctx.shadowBlur === 4, "layer blur restored");
   ctx.reset();
-  assert(ctx.shadowBlur === 0, "reset blur");
-  assert(ctx.shadowColor === "rgba(0, 0, 0, 0)", ctx.shadowColor);
-  assert(ctx.globalCompositeOperation === "source-over", "reset composite");
+  let resetBlur: number = ctx.shadowBlur;
+  let resetColor: string = ctx.shadowColor;
+  assert(resetBlur === 0, "reset blur");
+  assert(resetColor === "rgba(0, 0, 0, 0)", ctx.shadowColor);
+  let resetComposite: string = ctx.globalCompositeOperation;
+  assert(resetComposite === "source-over", "reset composite");
 });
 
 Yuzuko.test("lang is part of the canvas state and shapes text", () => {
-  const ctx = new OffscreenCanvas(64, 32).getContext("2d");
+  const ctx = new OffscreenCanvas(64, 32).getContext("2d")!;
   assert(ctx.lang === "inherit", "default");
   const unknown = ctx.measureText("骨").width;
   ctx.lang = "ja";
@@ -175,7 +188,8 @@ Yuzuko.test("lang is part of the canvas state and shapes text", () => {
   ctx.lang = "zh-Hans";
   assert(ctx.lang === "zh-Hans", "hans");
   ctx.restore();
-  assert(ctx.lang === "ja", "restored");
+  let restoredLang: string = ctx.lang;
+  assert(restoredLang === "ja", "restored");
   ctx.lang = "";
   assert(ctx.lang === "", "empty");
   assert(ctx.measureText("骨").width === unknown, "empty is unknown");
@@ -188,11 +202,12 @@ Yuzuko.test("lang is part of the canvas state and shapes text", () => {
   assert(ctx.lang === "not a tag", "stored");
   assert(ctx.measureText("骨").width === unknown, "invalid is unknown");
   ctx.reset();
-  assert(ctx.lang === "inherit", "reset");
+  let resetLang: string = ctx.lang;
+  assert(resetLang === "inherit", "reset");
 });
 
 Yuzuko.test("text draws and CJK has a width", () => {
-  const ctx = new OffscreenCanvas(64, 32).getContext("2d");
+  const ctx = new OffscreenCanvas(64, 32).getContext("2d")!;
   ctx.font = "20px sans-serif";
   const latin = ctx.measureText("A").width;
   const cjk = ctx.measureText("字").width;
@@ -203,7 +218,7 @@ Yuzuko.test("text draws and CJK has a width", () => {
   const sample = ctx.getImageData(0, 0, 64, 32).data;
   let ink = false;
   for (let i = 3; i < sample.length; i += 4) {
-    if (sample[i] > 0) {
+    if (sample[i]! > 0) {
       ink = true;
       break;
     }
@@ -213,11 +228,11 @@ Yuzuko.test("text draws and CJK has a width", () => {
 
 Yuzuko.test("drawImage copies an ImageBitmap", async () => {
   const source = new OffscreenCanvas(2, 2);
-  const src = source.getContext("2d");
+  const src = source.getContext("2d")!;
   src.fillStyle = "#ff00ff";
   src.fillRect(0, 0, 2, 2);
   const bitmap = await createImageBitmap(source);
-  const ctx = new OffscreenCanvas(4, 4).getContext("2d");
+  const ctx = new OffscreenCanvas(4, 4).getContext("2d")!;
   ctx.drawImage(bitmap, 1, 1);
   assert(pixel(ctx, 1, 1).join() === "255,0,255,255", "copied");
   assert(pixel(ctx, 0, 0).join() === "0,0,0,0", "untouched");
@@ -225,7 +240,7 @@ Yuzuko.test("drawImage copies an ImageBitmap", async () => {
 
 Yuzuko.test("convertToBlob encodes png, jpeg, and webp", async () => {
   const canvas = new OffscreenCanvas(2, 2);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#112233";
   ctx.fillRect(0, 0, 2, 2);
   const png = new Uint8Array(await (await canvas.convertToBlob()).arrayBuffer());
@@ -266,17 +281,17 @@ Yuzuko.test("a 2d context is not lost", () => {
 
 Yuzuko.test("bitmaprenderer transfers and detaches", async () => {
   const painted = new OffscreenCanvas(3, 1);
-  const pixels = painted.getContext("2d");
+  const pixels = painted.getContext("2d")!;
   pixels.fillStyle = "#00ff00";
   pixels.fillRect(0, 0, 3, 1);
   const bitmap = await createImageBitmap(painted);
   const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext("bitmaprenderer");
+  const ctx = canvas.getContext("bitmaprenderer")!;
   ctx.transferFromImageBitmap(bitmap);
   assert(bitmap.width === 0, "detached");
   assert(canvas.width === 3 && canvas.height === 1, "resized");
   const copy = await createImageBitmap(canvas);
-  const view = new OffscreenCanvas(3, 1).getContext("2d");
+  const view = new OffscreenCanvas(3, 1).getContext("2d")!;
   view.drawImage(copy, 0, 0);
   assert(pixel(view, 1, 0).join() === "0,255,0,255", "transferred");
 });
@@ -289,7 +304,7 @@ Yuzuko.test("canvasRenderer is cpu or gpu", () => {
 });
 
 Yuzuko.test("CSS filters change composited pixels", () => {
-  const ctx = new OffscreenCanvas(4, 2).getContext("2d");
+  const ctx = new OffscreenCanvas(4, 2).getContext("2d")!;
   ctx.fillStyle = "#ff0000";
   ctx.filter = "brightness(0)";
   ctx.fillRect(0, 0, 4, 2);
@@ -324,21 +339,21 @@ Yuzuko.test("CSS filters change composited pixels", () => {
   ctx.fillRect(0, 0, 1, 1);
   assert(pixel(ctx, 0, 0).join() === "255,255,255,255", "url draws nothing");
 
-  const blur = new OffscreenCanvas(3, 1).getContext("2d");
+  const blur = new OffscreenCanvas(3, 1).getContext("2d")!;
   blur.filter = "blur(1px)";
   blur.fillStyle = "#ff0000";
   blur.fillRect(1, 0, 1, 1);
   assert(pixel(blur, 1, 0)[3] > 0, "blur keeps coverage");
   assert(pixel(blur, 0, 0)[3] > 0, "blur spreads");
 
-  const shadow = new OffscreenCanvas(6, 3).getContext("2d");
+  const shadow = new OffscreenCanvas(6, 3).getContext("2d")!;
   shadow.filter = "drop-shadow(2px 0 0 #00ff00)";
   shadow.fillStyle = "#ff0000";
   shadow.fillRect(0, 0, 2, 3);
   assert(pixel(shadow, 0, 1).join() === "255,0,0,255", "shadow source");
   assert(pixel(shadow, 3, 1).join() === "0,255,0,255", "shadow offset");
 
-  const layer = new OffscreenCanvas(2, 2).getContext("2d");
+  const layer = new OffscreenCanvas(2, 2).getContext("2d")!;
   layer.beginLayer({ filter: "invert(1)" });
   layer.fillStyle = "#ff0000";
   layer.fillRect(0, 0, 2, 2);

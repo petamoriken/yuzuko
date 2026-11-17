@@ -112,7 +112,11 @@
     "ignore": "The file needs a document."
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": true,
-  "webcodecs/chunk-serialization.any.js": true,
+  "webcodecs/chunk-serialization.any.js": {
+    "expectedFailures": [
+      "Verify EncodedVideoChunk cannot be stored"
+    ]
+  },
   "webcodecs/encoded-audio-chunk.any.js": true,
   "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": true,
   "webcodecs/encoded-video-chunk.any.js": true,
@@ -253,7 +257,6 @@
       "Test transfering ArrayBuffer to EncodedVideoChunk",
       "Test transfering ArrayBuffer to VideoFrame",
       "Test transfering buffers to VideoFrame with uneven samples",
-      "Test transfering same array buffer twice to ImageDecoder",
       "Test transfering view of an ArrayBuffer to VideoFrame"
     ]
   },

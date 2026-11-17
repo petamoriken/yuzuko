@@ -974,8 +974,15 @@ fn raster_of(
     }
     FramePixels::NotFrame => {}
   }
+  if let Ok(object) = v8::Local::<v8::Object>::try_from(value)
+    && let Some(host) = unsafe {
+      yuzuko_core::op::host_ref::<yuzuko_image::ImageData>(scope, object)
+    }
+  {
+    return host.get().snapshot(scope);
+  }
   Err(OpError::type_(
-    "The external image is not an ImageBitmap, a VideoFrame, or an OffscreenCanvas",
+    "The external image is not an ImageBitmap, an ImageData, a VideoFrame, or an OffscreenCanvas",
   ))
 }
 

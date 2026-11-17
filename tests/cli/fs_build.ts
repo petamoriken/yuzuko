@@ -12,4 +12,11 @@ const names = [
   "errors",
   "chmod",
 ];
-console.log(names.map((name) => typeof Yuzuko[name]).join(" "));
+console.log(
+  names
+    .map((name) => {
+      // @ts-expect-error Yuzuko has no string index.
+      return typeof Yuzuko[name];
+    })
+    .join(" "),
+);

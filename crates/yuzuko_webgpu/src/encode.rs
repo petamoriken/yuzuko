@@ -34,6 +34,9 @@ struct PassRecord {
   occlusion_open: bool,
   timestamps: Option<TimestampWrite>,
   commands: Vec<PassCommand>,
+  max_draws: u64,
+  draws: u64,
+  draws_exceeded: bool,
 }
 
 struct ColorTarget {
@@ -283,6 +286,7 @@ impl GpuCommandEncoder {
     }
     let occlusion = occlusion_query_set(scope, object)?;
     let timestamps = timestamp_writes(scope, object)?;
+    let max_draws = max_draw_count(scope, object)?;
     ENCODERS.with(|encoders| {
       let mut encoders = encoders.borrow_mut();
       let slot = encoders.get_mut(&self.id).ok_or_else(|| {
@@ -301,6 +305,9 @@ impl GpuCommandEncoder {
         occlusion_open: false,
         timestamps,
         commands: Vec::new(),
+        max_draws,
+        draws: 0,
+        draws_exceeded: false,
       }));
       Ok(())
     })?;
@@ -734,7 +741,7 @@ impl GpuRenderPass {
     first_vertex: Option<u32>,
     first_instance: Option<u32>,
   ) -> Result<(), OpError> {
-    self.push(PassCommand::Draw {
+    self.push_draw(PassCommand::Draw {
       vertices,
       instances: instances.unwrap_or(1),
       first_vertex: first_vertex.unwrap_or(0),
@@ -750,7 +757,7 @@ impl GpuRenderPass {
     base_vertex: Option<i32>,
     first_instance: Option<u32>,
   ) -> Result<(), OpError> {
-    self.push(PassCommand::DrawIndexed {
+    self.push_draw(PassCommand::DrawIndexed {
       indices,
       instances: instances.unwrap_or(1),
       first_index: first_index.unwrap_or(0),
@@ -767,7 +774,7 @@ impl GpuRenderPass {
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndirect requires a GPUBuffer")?;
-    self.push(PassCommand::DrawIndirect {
+    self.push_draw(PassCommand::DrawIndirect {
       buffer,
       offset: u64::from(offset),
     })
@@ -781,7 +788,7 @@ impl GpuRenderPass {
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndexedIndirect requires a GPUBuffer")?;
-    self.push(PassCommand::DrawIndexedIndirect {
+    self.push_draw(PassCommand::DrawIndexedIndirect {
       buffer,
       offset: u64::from(offset),
     })
@@ -831,14 +838,20 @@ impl GpuRenderPass {
     let array = v8::Local::<v8::Array>::try_from(bundles)
       .map_err(|_| OpError::type_("executeBundles requires a sequence"))?;
     let mut recorded = Vec::new();
+    let mut draws = 0u64;
     for index in 0..array.length() {
       let value = array.get_index(scope, index).unwrap();
       let bundle = host_bundle(scope, value).ok_or_else(|| {
         OpError::type_("executeBundles requires GPURenderBundle objects")
       })?;
+      draws = draws.saturating_add(bundle.draws);
       recorded.push(bundle.bundle.clone());
     }
-    self.push(PassCommand::Bundles(recorded))
+    self.with_render(|record| {
+      note_draws(record, draws);
+      record.commands.push(PassCommand::Bundles(recorded));
+      Ok(())
+    })
   }
 
   fn push_debug_group(&self, label: String) -> Result<(), OpError> {
@@ -930,6 +943,14 @@ impl GpuRenderPass {
 impl GpuRenderPass {
   fn push(&self, command: PassCommand) -> Result<(), OpError> {
     self.with_render(|record| {
+      record.commands.push(command);
+      Ok(())
+    })
+  }
+
+  fn push_draw(&self, command: PassCommand) -> Result<(), OpError> {
+    self.with_render(|record| {
+      note_draws(record, 1);
       record.commands.push(command);
       Ok(())
     })
@@ -1335,6 +1356,49 @@ impl GpuRenderBundleEncoder {
     })
   }
 
+  fn push_debug_group(&self, label: String) -> Result<(), OpError> {
+    let _ = label;
+    self.ensure_recording()?;
+    Err(js::unsupported("GPURenderBundleEncoder.pushDebugGroup"))
+  }
+
+  fn pop_debug_group(&self) -> Result<(), OpError> {
+    self.ensure_recording()?;
+    Err(js::unsupported("GPURenderBundleEncoder.popDebugGroup"))
+  }
+
+  fn insert_debug_marker(&self, label: String) -> Result<(), OpError> {
+    let _ = label;
+    self.ensure_recording()?;
+    Err(js::unsupported("GPURenderBundleEncoder.insertDebugMarker"))
+  }
+
+  fn set_viewport(
+    &self,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    min_depth: f64,
+    max_depth: f64,
+  ) -> Result<(), OpError> {
+    let _ = viewport_args(x, y, width, height, min_depth, max_depth)?;
+    self.ensure_recording()?;
+    Err(js::unsupported("GPURenderBundleEncoder.setViewport"))
+  }
+
+  fn set_scissor_rect(
+    &self,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+  ) -> Result<(), OpError> {
+    let _ = (x, y, width, height);
+    self.ensure_recording()?;
+    Err(js::unsupported("GPURenderBundleEncoder.setScissorRect"))
+  }
+
   fn finish(
     &self,
     scope: &mut v8::PinScope,
@@ -1355,6 +1419,7 @@ impl GpuRenderBundleEncoder {
         )
       })
     })?;
+    let draws = bundle_draw_count(&slot);
     let bundle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       finish_bundle(slot)
     }));
@@ -1363,12 +1428,32 @@ impl GpuRenderBundleEncoder {
     })?;
     Ok(New(GpuRenderBundle {
       bundle,
+      draws,
       label: ObjectLabel::new(descriptor_label(scope, descriptor)),
     }))
   }
 }
 
 impl GpuRenderBundleEncoder {
+  fn ensure_recording(&self) -> Result<(), OpError> {
+    if self.ended.get() {
+      return Err(OpError::dom(
+        "InvalidStateError",
+        "The render bundle encoder has finished",
+      ));
+    }
+    BUNDLES.with(|bundles| {
+      if bundles.borrow().contains_key(&self.id) {
+        Ok(())
+      } else {
+        Err(OpError::dom(
+          "InvalidStateError",
+          "The render bundle encoder has finished",
+        ))
+      }
+    })
+  }
+
   fn push(&self, command: BundleCommand) -> Result<(), OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
@@ -1392,6 +1477,7 @@ impl GpuRenderBundleEncoder {
 
 pub struct GpuRenderBundle {
   bundle: wgpu::RenderBundle,
+  draws: u64,
   label: ObjectLabel,
 }
 
@@ -1559,6 +1645,11 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
         pass.write_timestamp(query_set, *index);
       }
     }
+  }
+  if record.draws_exceeded {
+    // wgpu does not count draws. An out-of-range scissor is the validation
+    // error an error scope observes. The message names the scissor.
+    pass.set_scissor_rect(0, 0, u32::MAX, u32::MAX);
   }
 }
 
@@ -1741,6 +1832,50 @@ fn with_idle_encoder(
     })?;
     body(encoder)
   })
+}
+
+fn note_draws(record: &mut PassRecord, count: u64) {
+  if count == 0 {
+    return;
+  }
+  let next = record.draws.saturating_add(count);
+  if next > record.max_draws {
+    record.draws_exceeded = true;
+  }
+  record.draws = next;
+}
+
+fn bundle_draw_count(slot: &BundleSlot) -> u64 {
+  slot
+    .commands
+    .iter()
+    .filter(|command| {
+      matches!(
+        command,
+        BundleCommand::Draw { .. }
+          | BundleCommand::DrawIndexed { .. }
+          | BundleCommand::DrawIndirect { .. }
+          | BundleCommand::DrawIndexedIndirect { .. }
+      )
+    })
+    .count() as u64
+}
+
+const DEFAULT_MAX_DRAWS: u64 = 50_000_000;
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+fn max_draw_count(
+  scope: &mut v8::PinScope,
+  descriptor: v8::Local<v8::Object>,
+) -> Result<u64, OpError> {
+  let Some(value) = js::get(scope, descriptor, "maxDrawCount") else {
+    return Ok(DEFAULT_MAX_DRAWS);
+  };
+  let number = js::finite_number(scope, value)?;
+  if !(0.0..=MAX_SAFE_INTEGER).contains(&number) {
+    return Err(OpError::range("maxDrawCount is out of range"));
+  }
+  Ok(number.trunc() as u64)
 }
 
 fn viewport_args(

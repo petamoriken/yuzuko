@@ -442,7 +442,7 @@ impl UrlSearchParams {
 
   #[rename("toString")]
   fn stringify(&self) -> String {
-    serialize_pairs(&self.pairs())
+    self.serialized()
   }
 }
 
@@ -459,6 +459,10 @@ impl UrlSearchParams {
       pairs: RefCell::new(pairs),
       shared: RefCell::new(None),
     }
+  }
+
+  pub(crate) fn serialized(&self) -> String {
+    serialize_pairs(&self.pairs())
   }
 
   fn pairs(&self) -> Vec<(String, String)> {

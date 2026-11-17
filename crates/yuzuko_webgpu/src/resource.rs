@@ -990,6 +990,7 @@ pub fn create_shader(
     OpError::type_("createShaderModule requires a descriptor")
   })?;
   let code = required_string(scope, object, "code")?;
+  check_compilation_hints(scope, object)?;
   let label = optional_label(scope, object);
   let module = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     handle
@@ -1044,6 +1045,13 @@ pub fn create_pipeline_layout(
   let refs: Vec<Option<&wgpu::BindGroupLayout>> =
     layouts.iter().map(|layout| Some(layout.layout())).collect();
   let label = optional_label(scope, object);
+  let immediate = js::field_u32(scope, object, "immediateSize")?.unwrap_or(0);
+  if immediate != 0 {
+    return Err(OpError::dom(
+      "NotSupportedError",
+      "immediates are not enabled",
+    ));
+  }
   let layout =
     handle
       .device
@@ -1105,6 +1113,8 @@ pub fn create_render_pipeline(
   let module = shader_of(scope, vertex)?;
   let entry = js::get(scope, vertex, "entryPoint")
     .and_then(|value| js::string(scope, value));
+  let vertex_constants = pipeline_constants(scope, vertex)?;
+  let vertex_pairs = constant_pairs(&vertex_constants);
   let attribute_sets = vertex_attributes(scope, vertex)?;
   let layouts = attribute_sets
     .iter()
@@ -1118,6 +1128,10 @@ pub fn create_render_pipeline(
     .collect::<Vec<_>>();
   let features = handle.device.features();
   let fragment = fragment_state(scope, object, features)?;
+  let fragment_pairs = match &fragment {
+    Some(stage) => constant_pairs(&stage.constants),
+    None => Vec::new(),
+  };
   let targets = fragment
     .as_ref()
     .map(|stage| stage.targets.clone())
@@ -1140,7 +1154,10 @@ pub fn create_render_pipeline(
     Some(wgpu::FragmentState {
       module: &fragment_module,
       entry_point: fragment_entry.as_deref(),
-      compilation_options: wgpu::PipelineCompilationOptions::default(),
+      compilation_options: wgpu::PipelineCompilationOptions {
+        constants: &fragment_pairs,
+        ..Default::default()
+      },
       targets: &target_refs,
     })
   } else {
@@ -1160,7 +1177,10 @@ pub fn create_render_pipeline(
         vertex: wgpu::VertexState {
           module: module.module(),
           entry_point: entry.as_deref(),
-          compilation_options: wgpu::PipelineCompilationOptions::default(),
+          compilation_options: wgpu::PipelineCompilationOptions {
+            constants: &vertex_pairs,
+            ..Default::default()
+          },
           buffers: &layouts,
         },
         primitive,
@@ -1196,6 +1216,8 @@ pub fn create_compute_pipeline(
   let module = shader_of(scope, compute)?;
   let entry = js::get(scope, compute, "entryPoint")
     .and_then(|value| js::string(scope, value));
+  let constants = pipeline_constants(scope, compute)?;
+  let pairs = constant_pairs(&constants);
   let label = optional_label(scope, object);
   let explicit = explicit_layout(scope, object)?;
   let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1206,7 +1228,10 @@ pub fn create_compute_pipeline(
         layout: explicit.as_ref().map(GpuPipelineLayout::layout),
         module: module.module(),
         entry_point: entry.as_deref(),
-        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        compilation_options: wgpu::PipelineCompilationOptions {
+          constants: &pairs,
+          ..Default::default()
+        },
         cache: None,
       })
   }));
@@ -1287,6 +1312,7 @@ struct FragmentOwned {
   module: wgpu::ShaderModule,
   entry: Option<String>,
   targets: Vec<Option<ColorTargetOwned>>,
+  constants: Vec<(String, f64)>,
 }
 
 enum OwnedBinding {
@@ -1606,6 +1632,7 @@ fn fragment_state(
   let module = shader_of(scope, fragment)?;
   let entry = js::get(scope, fragment, "entryPoint")
     .and_then(|value| js::string(scope, value));
+  let constants = pipeline_constants(scope, fragment)?;
   let list = array_of(scope, fragment, "targets")?;
   let mut targets = Vec::new();
   for value in list {
@@ -1632,6 +1659,7 @@ fn fragment_state(
     module: module.module().clone(),
     entry,
     targets,
+    constants,
   }))
 }
 
@@ -2279,6 +2307,118 @@ fn required_string(
   js::get(scope, object, name)
     .and_then(|value| js::string(scope, value))
     .ok_or_else(|| OpError::type_(format!("{name} is required")))
+}
+
+fn check_compilation_hints(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<(), OpError> {
+  let Some(value) = js::try_get(scope, object, "compilationHints")? else {
+    return Ok(());
+  };
+  let value = v8::Local::new(scope, value);
+  let array = v8::Local::<v8::Array>::try_from(value)
+    .map_err(|_| OpError::type_("compilationHints must be an array"))?;
+  for index in 0..array.length() {
+    let item = array
+      .get_index(scope, index)
+      .ok_or_else(|| OpError::type_("A compilation hint must be an object"))?;
+    let hint = js::object(scope, item)
+      .ok_or_else(|| OpError::type_("A compilation hint must be an object"))?;
+    let entry = js::try_get(scope, hint, "entryPoint")?.ok_or_else(|| {
+      OpError::type_("A compilation hint entryPoint is required")
+    })?;
+    let entry = v8::Local::new(scope, entry);
+    let _entry = js::try_string(scope, entry)?;
+    let Some(layout) = js::try_get(scope, hint, "layout")? else {
+      continue;
+    };
+    let layout = v8::Local::new(scope, layout);
+    if layout.is_null() {
+      return Err(OpError::type_("A compilation hint layout is invalid"));
+    }
+    if layout.is_string() {
+      if js::try_string(scope, layout)? != "auto" {
+        return Err(OpError::type_("A compilation hint layout is invalid"));
+      }
+    } else if host_pipeline_layout(scope, layout).is_err() {
+      return Err(OpError::type_("A compilation hint layout is invalid"));
+    }
+  }
+  Ok(())
+}
+
+/// Enumerable own string keys. A value is a finite WebIDL double.
+fn pipeline_constants(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Vec<(String, f64)>, OpError> {
+  let Some(value) = js::try_get(scope, object, "constants")? else {
+    return Ok(Vec::new());
+  };
+  let value = v8::Local::new(scope, value);
+  if value.is_null() || !value.is_object() {
+    return Err(OpError::type_("Pipeline constants must be an object"));
+  }
+  let record = v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::type_("Pipeline constants must be an object"))?;
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .property_filter(
+      v8::PropertyFilter::ONLY_ENUMERABLE | v8::PropertyFilter::SKIP_SYMBOLS,
+    )
+    .key_conversion(v8::KeyConversionMode::ConvertToString)
+    .build();
+  let names = {
+    v8::tc_scope!(let tc, scope);
+    match record.get_own_property_names(tc, args) {
+      Some(names) => Ok(v8::Global::new(tc, names)),
+      None => Err(match tc.exception() {
+        Some(thrown) => OpError::thrown(tc, thrown),
+        None => OpError::type_("Pipeline constants must be an object"),
+      }),
+    }
+  }?;
+  let names = v8::Local::new(scope, names);
+  let mut constants = Vec::new();
+  for index in 0..names.length() {
+    let key = names
+      .get_index(scope, index)
+      .ok_or_else(|| OpError::type_("Pipeline constants must be an object"))?;
+    let name = js::try_string(scope, key)?;
+    let number = {
+      v8::tc_scope!(let tc, scope);
+      let value = match record.get(tc, key) {
+        Some(value) => value,
+        None => {
+          return Err(match tc.exception() {
+            Some(thrown) => OpError::thrown(tc, thrown),
+            None => OpError::type_("Pipeline constants must be an object"),
+          });
+        }
+      };
+      match value.number_value(tc) {
+        Some(number) if number.is_finite() => number,
+        Some(_) => {
+          return Err(OpError::type_("The provided value is not finite"));
+        }
+        None => {
+          return Err(match tc.exception() {
+            Some(thrown) => OpError::thrown(tc, thrown),
+            None => OpError::type_("The provided value is not a number"),
+          });
+        }
+      }
+    };
+    constants.push((name, number));
+  }
+  Ok(constants)
+}
+
+fn constant_pairs(constants: &[(String, f64)]) -> Vec<(&str, f64)> {
+  constants
+    .iter()
+    .map(|(name, value)| (name.as_str(), *value))
+    .collect()
 }
 
 fn array_of<'a>(

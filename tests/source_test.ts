@@ -31,7 +31,8 @@ Yuzuko.test("new Worker runs a ModuleSource as a module", async () => {
   const worker = new Worker(workerSource);
   const pending = nextMessage(worker);
   worker.postMessage(4);
-  const reply = await pending as { kind: string; n: number; scripts: boolean };
+  // @ts-expect-error The worker message is unknown.
+  const reply: { kind: string; n: number; scripts: boolean } = await pending;
   assert(reply.kind === "from-source" && reply.n === 5, JSON.stringify(reply));
   assert(reply.scripts === false, "module worker");
   worker.terminate();
@@ -39,7 +40,8 @@ Yuzuko.test("new Worker runs a ModuleSource as a module", async () => {
   const explicit = new Worker(workerSource, { type: "module" });
   const explicitPending = nextMessage(explicit);
   explicit.postMessage(1);
-  const explicitReply = await explicitPending as { n: number };
+  // @ts-expect-error The worker message is unknown.
+  const explicitReply: { n: number } = await explicitPending;
   assert(explicitReply.n === 2, String(explicitReply.n));
   explicit.terminate();
 });
@@ -66,11 +68,8 @@ Yuzuko.test("a module worker can import source", async () => {
   const worker = new Worker(script("source_inner.ts"), { type: "module" });
   const pending = nextMessage(worker);
   worker.postMessage(null);
-  const reply = await pending as {
-    tag: string;
-    abstract: boolean;
-    global: string;
-  };
+  // @ts-expect-error The worker message is unknown.
+  const reply: { tag: string; abstract: boolean; global: string } = await pending;
   assert(reply.tag === "[object ModuleSource]", reply.tag);
   assert(reply.abstract, "abstract");
   assert(reply.global === "undefined", reply.global);
@@ -85,10 +84,12 @@ Yuzuko.test("postMessage clones a ModuleSource into another realm", async () => 
   assert(back === workerSource, "clone identity");
   echo.terminate();
 
+  // @ts-expect-error The cloned module source is the worker entry.
   const worker = new Worker(back);
   const started = nextMessage(worker);
   worker.postMessage(8);
-  const reply = await started as { n: number };
+  // @ts-expect-error The worker message is unknown.
+  const reply: { n: number } = await started;
   assert(reply.n === 9, String(reply.n));
   worker.terminate();
 });

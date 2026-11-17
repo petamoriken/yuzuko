@@ -6,8 +6,11 @@ import { marker as styled } from "./text_bytes/side.js" with { type: "css" };
 import { marker as scripted } from "./text_bytes/side.js" with {
   type: "javascript",
 };
+// @ts-expect-error Import attribute is not a JavaScript binding.
 import sideText from "./text_bytes/side.js" with { type: "text" };
+// @ts-expect-error Import attribute is not a JavaScript binding.
 import sideBytes from "./text_bytes/side.js" with { type: "bytes" };
+// @ts-expect-error Import attribute is not a JavaScript binding.
 import onlyText from "./text_bytes/unevaluated.js" with { type: "text" };
 import { count } from "./text_bytes/counter.ts";
 import note from "./text_bytes/note.txt" with { type: "text" };
@@ -58,26 +61,34 @@ function bytesEqual(view: Uint8Array, expected: number[], label: string): void {
   }
 }
 
+type ImmutableArrayBuffer = ArrayBuffer & {
+  readonly immutable: boolean;
+  transferToImmutable(): ImmutableArrayBuffer;
+  sliceToImmutable(begin?: number, end?: number): ImmutableArrayBuffer;
+};
+
 function checkImmutable(view: Uint8Array, label: string): void {
+  // @ts-expect-error ArrayBuffer does not declare an immutable view.
+  const buffer: ImmutableArrayBuffer = view.buffer;
   assert(view instanceof Uint8Array, label + " view");
-  assert(view.buffer instanceof ArrayBuffer, label + " buffer");
-  assert(!(view.buffer instanceof SharedArrayBuffer), label + " shared");
-  assert(view.buffer.immutable === true, label + " immutable");
-  assert(view.buffer.resizable === false, label + " resizable");
-  assert(view.buffer.detached === false, label + " detached");
-  assert(view.byteLength === view.buffer.byteLength, label + " sizes");
-  const resize = throws(() => view.buffer.resize(0));
+  assert(buffer instanceof ArrayBuffer, label + " buffer");
+  assert(!(buffer instanceof SharedArrayBuffer), label + " shared");
+  assert(buffer.immutable === true, label + " immutable");
+  assert(buffer.resizable === false, label + " resizable");
+  assert(buffer.detached === false, label + " detached");
+  assert(view.byteLength === buffer.byteLength, label + " sizes");
+  const resize = throws(() => buffer.resize(0));
   assert(resize instanceof TypeError, label + " resize " + String(resize));
-  const transfer = throws(() => view.buffer.transfer());
+  const transfer = throws(() => buffer.transfer());
   assert(transfer instanceof TypeError, label + " transfer " + String(transfer));
-  const again = throws(() => view.buffer.transferToImmutable());
+  const again = throws(() => buffer.transferToImmutable());
   assert(
     again instanceof TypeError,
     label + " transferToImmutable " + String(again),
   );
-  assert(view.buffer.detached === false, label + " stayed attached");
+  assert(buffer.detached === false, label + " stayed attached");
   if (view.length > 0) {
-    const saved = view[0];
+    const saved = view[0]!;
     const write = throws(() => {
       view[0] = (saved + 1) % 256;
     });
@@ -96,7 +107,11 @@ Yuzuko.test("text modules export the decoded source", () => {
   assert(bomText.charCodeAt(0) === 0xfeff, "bom kept");
   assert(nulText === "a\0b", "nul text");
   assert(nulText.length === 3, "nul length");
-  assert(rawJson === "{\"ok\":true}\n", JSON.stringify(rawJson));
+  assert(
+    // @ts-expect-error A text import of JSON is typed as the parsed object.
+    rawJson === "{\"ok\":true}\n",
+    JSON.stringify(rawJson),
+  );
   assert(parsedJson.ok === true, "json still parses");
   assert(typeof wasmText === "string", "wasm text");
   assert(sideText.startsWith("import { bump }"), "side source");
@@ -121,8 +136,10 @@ Yuzuko.test("bytes modules export an immutable Uint8Array", () => {
   bytesEqual(badBytes, [0xff, 0xfe, 0x41], "bad");
   checkImmutable(badBytes, "bad");
   bytesEqual(nulBytes, [0x61, 0x00, 0x62], "nul");
-  checkImmutable(jsonBytes, "json");
-  assert(jsonBytes[0] === 0x7b, "json byte");
+  // @ts-expect-error A bytes import is typed as JSON.
+  const jsonByteView: Uint8Array = jsonBytes;
+  checkImmutable(jsonByteView, "json");
+  assert(jsonByteView[0] === 0x7b, "json byte");
   checkImmutable(sideBytes, "side");
   assert(sideBytes[0] === "i".charCodeAt(0), "side byte");
   checkImmutable(wasmBytes, "wasm");
@@ -134,8 +151,12 @@ Yuzuko.test("bytes modules export an immutable Uint8Array", () => {
 });
 
 Yuzuko.test("deferred text and bytes evaluate on observation", () => {
-  assert(deferredBom[Symbol.toStringTag] === "Deferred Module", "text tag");
-  assert(deferredEmpty[Symbol.toStringTag] === "Deferred Module", "bytes tag");
+  // @ts-expect-error A deferred namespace does not declare toStringTag.
+  const deferredText: { readonly [Symbol.toStringTag]: string } = deferredBom;
+  // @ts-expect-error A deferred namespace does not declare toStringTag.
+  const deferredBytes: { readonly [Symbol.toStringTag]: string } = deferredEmpty;
+  assert(deferredText[Symbol.toStringTag] === "Deferred Module", "text tag");
+  assert(deferredBytes[Symbol.toStringTag] === "Deferred Module", "bytes tag");
   assert(deferredBom.default === "\uFEFFhi", "deferred text");
   assert(deferredEmpty.default instanceof Uint8Array, "deferred bytes");
   assert(deferredEmpty.default.length === 0, "deferred empty");
@@ -185,12 +206,15 @@ Yuzuko.test("the module map keeps each type", async () => {
   const deferredNul = await import.defer("./text_bytes/null-byte.txt", {
     with: { type: "text" },
   });
-  assert(deferredNul[Symbol.toStringTag] === "Deferred Module", "nul tag");
+  // @ts-expect-error A deferred namespace does not declare toStringTag.
+  const deferredNulView: { readonly [Symbol.toStringTag]: string } = deferredNul;
+  assert(deferredNulView[Symbol.toStringTag] === "Deferred Module", "nul tag");
   assert(deferredNul.default === "a\0b", "deferred nul");
 });
 
 Yuzuko.test("ordinary buffers can become immutable", () => {
-  const plain = new ArrayBuffer(4);
+  // @ts-expect-error ArrayBuffer does not declare an immutable view.
+  const plain: ImmutableArrayBuffer = new ArrayBuffer(4);
   assert(plain.immutable === false, "plain immutable");
   const view = new Uint8Array(plain);
   view[0] = 7;
@@ -199,7 +223,8 @@ Yuzuko.test("ordinary buffers can become immutable", () => {
   assert(frozen.immutable === true, "frozen");
   assert(frozen.byteLength === 4, "frozen length");
   assert(new Uint8Array(frozen)[0] === 7, "frozen byte");
-  const sliceSource = new Uint8Array([9, 8, 7]).buffer;
+  // @ts-expect-error ArrayBuffer does not declare an immutable view.
+  const sliceSource: ImmutableArrayBuffer = new Uint8Array([9, 8, 7]).buffer;
   const sliced = sliceSource.sliceToImmutable(1, 3);
   assert(sliced.immutable === true, "slice immutable");
   assert(sliced.byteLength === 2, "slice length");

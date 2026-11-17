@@ -88,7 +88,7 @@ Yuzuko.test("structuredClone copies Blob, File, and DOMException", async () => {
   try {
     structuredClone(new URL("https://example.test/"));
   } catch (caught) {
-    name = caught.name;
+    name = caught instanceof DOMException ? caught.name : "";
   }
   if (name !== "DataCloneError") {
     throw new Error("url " + name);
@@ -97,7 +97,7 @@ Yuzuko.test("structuredClone copies Blob, File, and DOMException", async () => {
   try {
     structuredClone(new URLSearchParams("a=1"));
   } catch (caught) {
-    name = caught.name;
+    name = caught instanceof DOMException ? caught.name : "";
   }
   if (name !== "DataCloneError") {
     throw new Error("params " + name);
@@ -106,7 +106,7 @@ Yuzuko.test("structuredClone copies Blob, File, and DOMException", async () => {
   try {
     structuredClone(globalThis);
   } catch (caught) {
-    name = caught.name;
+    name = caught instanceof DOMException ? caught.name : "";
   }
   if (name !== "DataCloneError") {
     throw new Error("global " + name);
@@ -128,7 +128,8 @@ Yuzuko.test("structuredClone rejects a SharedArrayBuffer", () => {
     try {
       structuredClone(value);
     } catch (error) {
-      caught = error as DOMException;
+      // @ts-expect-error structuredClone throws DOMException.
+      caught = error;
     }
     if (
       !(caught instanceof DOMException)
@@ -148,7 +149,7 @@ function cloneError(run: () => unknown): string {
     run();
     return "";
   } catch (caught) {
-    return caught.name;
+    return caught instanceof Error ? caught.name : "";
   }
 }
 
@@ -177,7 +178,10 @@ Yuzuko.test("structuredClone copies ImageData and transfers its buffer", () => {
     throw new Error("shared pixel");
   }
 
-  if (cloneError(() => structuredClone(image, { transfer: [image] })) !== "DataCloneError") {
+  if (cloneError(() => {
+    // @ts-expect-error ImageData is not transferable.
+    structuredClone(image, { transfer: [image] });
+  }) !== "DataCloneError") {
     throw new Error("image transfer");
   }
   if (image.data[0] !== 1 || image.data.buffer.byteLength === 0) {
@@ -185,6 +189,7 @@ Yuzuko.test("structuredClone copies ImageData and transfers its buffer", () => {
   }
 
   const source = new Float16Array([1.5, -0.25, 0.5, 0.75]);
+  // @ts-expect-error Float16Array is not an ImageDataArray.
   const wide = new ImageData(source, 1, 1, {
     colorSpace: "display-p3",
     pixelFormat: "rgba-float16",
@@ -230,7 +235,14 @@ Yuzuko.test("structuredClone copies and transfers ImageBitmap", async () => {
     throw new Error("bitmap source");
   }
   const moved = structuredClone(bitmap, { transfer: [bitmap] });
-  if (moved.width !== 1 || moved.height !== 1 || bitmap.width !== 0 || bitmap.height !== 0) {
+  let width: number = bitmap.width;
+  let height: number = bitmap.height;
+  if (
+    moved.width !== 1
+    || moved.height !== 1
+    || width !== 0
+    || height !== 0
+  ) {
     throw new Error("bitmap transfer");
   }
 
@@ -291,7 +303,10 @@ Yuzuko.test("structuredClone copies encoded chunks and rejects a transfer", () =
     throw new Error("audio chunk");
   }
   if (
-    cloneError(() => structuredClone(audio, { transfer: [audio] }))
+    cloneError(() => {
+      // @ts-expect-error An encoded audio chunk is not transferable.
+      structuredClone(audio, { transfer: [audio] });
+    })
       !== "DataCloneError"
     || audio.byteLength !== 3
   ) {
@@ -312,7 +327,10 @@ Yuzuko.test("structuredClone copies encoded chunks and rejects a transfer", () =
   ) {
     throw new Error("video chunk");
   }
-  if (cloneError(() => structuredClone(video, { transfer: [video] })) !== "DataCloneError") {
+  if (cloneError(() => {
+    // @ts-expect-error An encoded video chunk is not transferable.
+    structuredClone(video, { transfer: [video] });
+  }) !== "DataCloneError") {
     throw new Error("video chunk transfer");
   }
 });
@@ -362,7 +380,10 @@ Yuzuko.test("structuredClone transfers a port and a canvas", async () => {
 
 Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   const blob = new Blob(["ab"]);
-  if (cloneError(() => structuredClone(blob, { transfer: [blob] })) !== "DataCloneError") {
+  if (cloneError(() => {
+    // @ts-expect-error A blob is not transferable.
+    structuredClone(blob, { transfer: [blob] });
+  }) !== "DataCloneError") {
     throw new Error("blob transfer");
   }
   if (await blob.text() !== "ab") {
@@ -370,7 +391,10 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   }
 
   const view = new Uint8Array([4, 5]);
-  if (cloneError(() => structuredClone(view, { transfer: [view] })) !== "DataCloneError") {
+  if (cloneError(() => {
+    // @ts-expect-error A view is not transferable.
+    structuredClone(view, { transfer: [view] });
+  }) !== "DataCloneError") {
     throw new Error("view transfer");
   }
   if (view[0] !== 4) {
@@ -387,6 +411,7 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   );
   const stream = new ReadableStream({
     start(controller) {
+      // @ts-expect-error An owning controller enqueues with a transfer list.
       controller.enqueue(owned, { transfer: [owned] });
     },
     type: "owning",
@@ -403,6 +428,7 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   if (cloneError(() => {
     new ReadableStream({
       start(controller) {
+        // @ts-expect-error An owning controller rejects a view in the transfer list.
         controller.enqueue(bytes, { transfer: [bytes] });
       },
       type: "owning",
@@ -415,6 +441,7 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   if (cloneError(() => {
     new ReadableStream({
       start(controller) {
+        // @ts-expect-error An owning controller rejects a blob in the transfer list.
         controller.enqueue(payload, { transfer: [payload] });
       },
       type: "owning",
@@ -424,15 +451,15 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   }
 });
 
-function delay() {
+function delay(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
 }
 
-function withTimeout(promise, message) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timer: number | undefined;
+  const timeout = new Promise<T>((_, reject) => {
     timer = setTimeout(() => {
       reject(new Error(message));
     }, 2000);
@@ -442,31 +469,35 @@ function withTimeout(promise, message) {
   });
 }
 
-function cloneFailure(run) {
+function cloneFailure(run: () => void): { name: string; message: string } {
   try {
     run();
     return { name: "", message: "" };
   } catch (caught) {
     return {
-      name: caught && caught.name ? caught.name : "",
-      message: caught && caught.message ? String(caught.message) : "",
+      name: caught instanceof Error ? caught.name : "",
+      message: caught instanceof Error ? String(caught.message) : "",
     };
   }
 }
 
-async function rejection(promise) {
+async function rejection(promise: Promise<unknown>): Promise<{
+  value: unknown;
+  name: string;
+  message: string;
+}> {
   try {
     return { value: await promise, name: "", message: "" };
   } catch (caught) {
     return {
       value: caught,
-      name: caught && caught.name ? caught.name : "",
-      message: caught && caught.message ? String(caught.message) : "",
+      name: caught instanceof Error ? caught.name : "",
+      message: caught instanceof Error ? String(caught.message) : "",
     };
   }
 }
 
-function turn() {
+function turn(): Promise<void> {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
@@ -476,7 +507,7 @@ function turn() {
   });
 }
 
-async function until(ready, message) {
+async function until(ready: () => boolean, message: string): Promise<void> {
   // A zero-delay timer is polled before a queued port job, so spinning on
   // setTimeout never delivers the stream message this wait observes.
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -496,17 +527,26 @@ function streamWorker() {
   );
 }
 
-function messageQueue(worker) {
-  const items = [];
-  const resolvers = [];
-  const rejecters = [];
-  let failure;
+interface WorkerReply {
+  kind?: string;
+  message?: string;
+  value?: unknown;
+  restDone?: boolean;
+  stream?: unknown;
+}
+
+function messageQueue(worker: Worker): { take(): Promise<WorkerReply> } {
+  const items: WorkerReply[] = [];
+  const resolvers: Array<(value: WorkerReply) => void> = [];
+  const rejecters: Array<(reason: Error) => void> = [];
+  let failure: Error | undefined;
   worker.onmessage = (event) => {
     const resolve = resolvers.shift();
+    const data: WorkerReply = event.data;
     if (resolve) {
-      resolve(event.data);
+      resolve(data);
     } else {
-      items.push(event.data);
+      items.push(data);
     }
   };
   worker.onerror = (event) => {
@@ -515,13 +555,16 @@ function messageQueue(worker) {
     }
     failure = new Error(event.message || "worker error");
     while (rejecters.length > 0) {
-      rejecters.shift()(failure);
+      const reject = rejecters.shift();
+      if (reject) {
+        reject(failure);
+      }
     }
   };
   return {
     take() {
       if (items.length > 0) {
-        return Promise.resolve(items.shift());
+        return Promise.resolve(items.shift()!);
       }
       if (failure) {
         return Promise.reject(failure);
@@ -534,7 +577,7 @@ function messageQueue(worker) {
   };
 }
 
-function assertReply(reply, kind) {
+function assertReply(reply: WorkerReply, kind: string): void {
   if (!reply || reply.kind === "error") {
     throw new Error(reply && reply.message ? reply.message : "worker failed");
   }
@@ -543,7 +586,7 @@ function assertReply(reply, kind) {
   }
 }
 
-function chunkStream(value) {
+function chunkStream(value: unknown): ReadableStream {
   return new ReadableStream({
     start(controller) {
       controller.enqueue(value);
@@ -640,8 +683,8 @@ Yuzuko.test("a stream transfer list rejects copies, duplicates, and locks", asyn
     throw new Error("duplicate " + duplicateFailure.message);
   }
 
-  let controller;
-  const locked = new ReadableStream({
+  let controller: ReadableStreamDefaultController<string> | undefined;
+  const locked = new ReadableStream<string>({
     start(control) {
       controller = control;
       control.enqueue("held");
@@ -657,11 +700,11 @@ Yuzuko.test("a stream transfer list rejects copies, duplicates, and locks", asyn
   if ((await reader.read()).value !== "held") {
     throw new Error("locked reader");
   }
-  controller.close();
+  controller!.close();
 });
 
 Yuzuko.test("transferred readables keep the base prototype and the source state", async () => {
-  class SubRead extends ReadableStream {}
+  class SubRead extends ReadableStream<string> {}
   const subclass = new SubRead({
     start(controller) {
       controller.enqueue("sub");
@@ -679,25 +722,25 @@ Yuzuko.test("transferred readables keep the base prototype and the source state"
     throw new Error("subclass chunk");
   }
 
-  let closedController;
+  let closedController: ReadableStreamDefaultController<unknown> | undefined;
   const closed = new ReadableStream({
     start(controller) {
       closedController = controller;
     },
   });
-  closedController.close();
+  closedController!.close();
   const movedClosed = structuredClone(closed, { transfer: [closed] });
   if ((await movedClosed.getReader().read()).done !== true) {
     throw new Error("closed");
   }
 
-  let erroredController;
+  let erroredController: ReadableStreamDefaultController<unknown> | undefined;
   const errored = new ReadableStream({
     start(controller) {
       erroredController = controller;
     },
   });
-  erroredController.error("foo");
+  erroredController!.error("foo");
   const movedErrored = structuredClone(errored, { transfer: [errored] });
   const erroredRead = await rejection(movedErrored.getReader().read());
   if (erroredRead.value !== "foo") {
@@ -705,13 +748,13 @@ Yuzuko.test("transferred readables keep the base prototype and the source state"
   }
 
   const reason = new DOMException("nope", "NotFoundError");
-  let exceptionController;
+  let exceptionController: ReadableStreamDefaultController<unknown> | undefined;
   const exceptional = new ReadableStream({
     start(controller) {
       exceptionController = controller;
     },
   });
-  exceptionController.error(reason);
+  exceptionController!.error(reason);
   const movedException = structuredClone(exceptional, { transfer: [exceptional] });
   const exceptionRead = await rejection(movedException.getReader().read());
   if (
@@ -721,10 +764,8 @@ Yuzuko.test("transferred readables keep the base prototype and the source state"
     throw new Error("exception " + exceptionRead.name + " " + exceptionRead.message);
   }
 
-  let disturbedController;
   const disturbed = new ReadableStream({
     start(controller) {
-      disturbedController = controller;
       controller.enqueue("one");
       controller.enqueue("two");
     },
@@ -741,24 +782,24 @@ Yuzuko.test("transferred readables keep the base prototype and the source state"
 });
 
 Yuzuko.test("a non-cloneable chunk errors both sides of a transferred readable", async () => {
-  let controller;
-  const readable = new ReadableStream({
+  let controller: ReadableStreamDefaultController<unknown> | undefined;
+  const readable = new ReadableStream<unknown>({
     start(control) {
       controller = control;
     },
   });
   const moved = structuredClone(readable, { transfer: [readable] });
   const reader = moved.getReader();
-  controller.enqueue(new ReadableStream());
+  controller!.enqueue(new ReadableStream());
   const readFailure = await rejection(reader.read());
   if (readFailure.name !== "DataCloneError") {
     throw new Error("read " + readFailure.name);
   }
   let enqueueName = "";
   try {
-    controller.enqueue("later");
+    controller!.enqueue("later");
   } catch (caught) {
-    enqueueName = caught && caught.name ? caught.name : "";
+    enqueueName = caught instanceof Error ? caught.name : "";
   }
   if (enqueueName !== "TypeError") {
     throw new Error("enqueue " + enqueueName);
@@ -767,15 +808,15 @@ Yuzuko.test("a non-cloneable chunk errors both sides of a transferred readable",
 
 Yuzuko.test("chunk getters run when a transferred readable posts the chunk", async () => {
   let flag = false;
-  let controller;
-  const readable = new ReadableStream({
+  let controller: ReadableStreamDefaultController<{ getter: string }> | undefined;
+  const readable = new ReadableStream<{ getter: string }>({
     start(control) {
       controller = control;
     },
   });
   const moved = structuredClone(readable, { transfer: [readable] });
   const reader = moved.getReader();
-  controller.enqueue({
+  controller!.enqueue({
     get getter() {
       flag = true;
       return "a";
@@ -792,15 +833,16 @@ Yuzuko.test("chunk getters run when a transferred readable posts the chunk", asy
 });
 
 Yuzuko.test("transferring a readable counts one extra chunk of backpressure", async () => {
-  const idle = [];
+  const idle: string[] = [];
   const quiet = new ReadableStream({
     pull() {
       idle.push("pull");
     },
   }, { highWaterMark: 0 });
   await delay();
-  if (idle.length !== 0) {
-    throw new Error("early pull " + idle.length);
+  const earlyPulls = idle.length;
+  if (earlyPulls !== 0) {
+    throw new Error("early pull " + earlyPulls);
   }
   structuredClone(quiet, { transfer: [quiet] });
   await delay();
@@ -824,7 +866,7 @@ Yuzuko.test("transferring a readable counts one extra chunk of backpressure", as
 
 Yuzuko.test("a transferred byte stream arrives as a default stream", async () => {
   let pulls = 0;
-  let controller;
+  let controller: ReadableByteStreamController | undefined;
   const readable = new ReadableStream({
     type: "bytes",
     start(control) {
@@ -834,25 +876,27 @@ Yuzuko.test("a transferred byte stream arrives as a default stream", async () =>
     },
     pull() {
       pulls += 1;
-      controller.enqueue(new Uint8Array(1024));
+      controller!.enqueue(new Uint8Array(1024));
     },
   }, { highWaterMark: 512 });
   await delay();
-  if (pulls !== 0) {
-    throw new Error("setup pulls " + pulls);
+  const setupPulls = pulls;
+  if (setupPulls !== 0) {
+    throw new Error("setup pulls " + setupPulls);
   }
   const moved = structuredClone(readable, { transfer: [readable] });
   await delay();
-  if (pulls !== 0) {
-    throw new Error("transfer pulls " + pulls);
+  const transferPulls = pulls;
+  if (transferPulls !== 0) {
+    throw new Error("transfer pulls " + transferPulls);
   }
   let byobName = "";
   let byobMessage = "";
   try {
     moved.getReader({ mode: "byob" });
   } catch (caught) {
-    byobName = caught && caught.name ? caught.name : "";
-    byobMessage = caught && caught.message ? String(caught.message) : "";
+    byobName = caught instanceof Error ? caught.name : "";
+    byobMessage = caught instanceof Error ? String(caught.message) : "";
   }
   if (byobName !== "TypeError" || !byobMessage.includes("BYOB")) {
     throw new Error("byob " + byobName + " " + byobMessage);
@@ -880,15 +924,15 @@ Yuzuko.test("a transferred writable starts with one chunk of queue space", () =>
 });
 
 Yuzuko.test("a transferred writable resolves a write when the chunk is posted", async () => {
-  let resolveWrite;
-  let markEntered;
-  const entered = new Promise((resolve) => {
+  let resolveWrite: (() => void) | undefined;
+  let markEntered: (() => void) | undefined;
+  const entered = new Promise<void>((resolve) => {
     markEntered = resolve;
   });
   const original = new WritableStream({
     write() {
-      markEntered();
-      return new Promise((resolve) => {
+      markEntered!();
+      return new Promise<void>((resolve) => {
         resolveWrite = resolve;
       });
     },
@@ -913,7 +957,7 @@ Yuzuko.test("a transferred writable resolves a write when the chunk is posted", 
   if (settled) {
     throw new Error("second write settled");
   }
-  resolveWrite();
+  resolveWrite!();
   await second;
   if (!settled) {
     throw new Error("second write stayed pending");
@@ -922,14 +966,14 @@ Yuzuko.test("a transferred writable resolves a write when the chunk is posted", 
 
 Yuzuko.test("abort and a failed write cross a transferred writable", async () => {
   let reason = "missing";
-  let markAbort;
-  const aborted = new Promise((resolve) => {
+  let markAbort: (() => void) | undefined;
+  const aborted = new Promise<void>((resolve) => {
     markAbort = resolve;
   });
   const original = new WritableStream({
     abort(value) {
       reason = value;
-      markAbort();
+      markAbort!();
     },
   });
   const moved = structuredClone(original, { transfer: [original] });
@@ -941,7 +985,7 @@ Yuzuko.test("abort and a failed write cross a transferred writable", async () =>
   }
   await pending;
 
-  const reasons = [];
+  const reasons: unknown[] = [];
   const sink = new WritableStream({
     abort(value) {
       reasons.push(value);
@@ -959,7 +1003,8 @@ Yuzuko.test("abort and a failed write cross a transferred writable", async () =>
     throw new Error("closed " + closedFailure.name);
   }
   await until(() => reasons.length > 0, "original abort missing");
-  if (!reasons[0] || reasons[0].name !== "DataCloneError") {
+  const abortReason = reasons[0];
+  if (!(abortReason instanceof DOMException) || abortReason.name !== "DataCloneError") {
     throw new Error("original abort");
   }
 });
@@ -1108,13 +1153,13 @@ Yuzuko.test("a worker writes a transferred writable", async () => {
   const queue = messageQueue(worker);
   try {
     let closed = false;
-    let resolveSink;
-    const sink = new Promise((resolve) => {
+    let resolveSink: ((chunk: unknown) => void) | undefined;
+    const sink = new Promise<unknown>((resolve) => {
       resolveSink = resolve;
     });
     const writable = new WritableStream({
-      write(chunk) {
-        resolveSink(chunk);
+      write(chunk: unknown) {
+        resolveSink!(chunk);
       },
       close() {
         closed = true;
@@ -1140,10 +1185,11 @@ Yuzuko.test("a worker transfers a readable back to its owner", async () => {
     worker.postMessage({ kind: "send-readable" });
     const reply = await withTimeout(queue.take(), "worker stream timed out");
     assertReply(reply, "readable");
-    if (!(reply.stream instanceof ReadableStream)) {
+    const stream = reply.stream;
+    if (!(stream instanceof ReadableStream)) {
       throw new Error("worker stream");
     }
-    const reader = reply.stream.getReader();
+    const reader = stream.getReader();
     const first = await withTimeout(reader.read(), "worker chunk timed out");
     if (first.value !== "from-worker" || first.done) {
       throw new Error("worker chunk");
@@ -1157,9 +1203,25 @@ Yuzuko.test("a worker transfers a readable back to its owner", async () => {
   }
 });
 
-function nextSelfMessage() {
+declare function addEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject | null,
+  options?: boolean | AddEventListenerOptions,
+): void;
+declare function removeEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject | null,
+  options?: boolean | EventListenerOptions,
+): void;
+
+function nextSelfMessage(): Promise<MessageEvent> {
   return new Promise((resolve) => {
-    addEventListener("message", (event) => resolve(event), { once: true });
+    addEventListener(
+      "message",
+      // @ts-expect-error The message listener receives a MessageEvent.
+      (event) => resolve(event),
+      { once: true },
+    );
   });
 }
 

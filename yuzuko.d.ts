@@ -122,7 +122,7 @@ interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
 interface GPUPipelineBase {
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
-type GPUCopyExternalImageSource = ImageBitmap | OffscreenCanvas | VideoFrame;
+type GPUCopyExternalImageSource = ImageBitmap | ImageData | OffscreenCanvas | VideoFrame;
 type GPUCullMode = "back" | "front" | "none";
 type GPUDeviceLostReason = "destroyed" | "unknown";
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError) */
@@ -177,11 +177,73 @@ interface GPUQuerySet extends GPUObjectBase {
 type GPUSize32Out = number;
 type GPUQueryType = "occlusion" | "timestamp";
 /**
- * Debug markers, `setViewport`, and `setScissorRect` are absent. wgpu 29
- * `RenderBundleEncoder` does not expose them.
+ * The **`GPURenderBundleEncoder`** interface of the WebGPU API is used to pre-record bundles of commands.
+ * Available only in secure contexts.
+ *
+ * `pushDebugGroup`, `popDebugGroup`, `insertDebugMarker`, `setViewport`, and
+ * `setScissorRect` throw `NotSupportedError`. wgpu's `RenderBundleEncoder` does
+ * not record them. A finished encoder throws `InvalidStateError` before that.
+ * `setViewport` uses the render pass argument checks.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderBundleEncoder)
  */
 interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase, GPURenderCommandsMixin {
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/pushDebugGroup)
+   */
+  pushDebugGroup(groupLabel: string): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/popDebugGroup)
+   */
+  popDebugGroup(): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/insertDebugMarker)
+   */
+  insertDebugMarker(markerLabel: string): void;
+
+  /**
+   * @throws {@link TypeError} When an argument is not finite.
+   * @throws {@link RangeError} When `width` or `height` is negative, a depth
+   * is outside 0 through 1, or `minDepth` is greater than `maxDepth`.
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setViewport)
+   */
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number,
+  ): void;
+
+  /**
+   * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
+   * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setScissorRect)
+   */
+  setScissorRect(
+    x: GPUIntegerCoordinate,
+    y: GPUIntegerCoordinate,
+    width: GPUIntegerCoordinate,
+    height: GPUIntegerCoordinate,
+  ): void;
 }
 
 interface GPURenderCommandsMixin {
@@ -330,6 +392,7 @@ type RequestPriority = "auto" | "high" | "low";
 type RequestRedirect = "error" | "follow" | "manual";
 type ResponseType = "basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect";
 type TimerHandler = string | Function;
+type TouchType = "direct" | "stylus";
 type Transferable = OffscreenCanvas | ImageBitmap | MessagePort | ReadableStream | WritableStream | TransformStream | AudioData | VideoFrame | ArrayBuffer;
 interface TransformerStartCallback<O> {
   (controller: TransformStreamDefaultController<O>): any;
@@ -358,7 +421,23 @@ interface WGSLLanguageFeatures {
 interface WGSLLanguageFeatures extends ReadonlySet<string> {
 
 }
-interface Window extends EventTarget {}
+interface Window extends EventTarget {
+  /**
+   * The **`Window.self`** read-only property returns the window itself, as a
+   * WindowProxy. It can be used with dot notation on a window object (that is,
+   * window.self) or standalone (self). The advantage of the standalone notation
+   * is that a similar notation exists for non-window contexts, such as in Web
+   * Workers. By using self, you can refer to the global scope in a way that will
+   * work not only in a window context (self will resolve to window.self) but also
+   * in a worker context (self will then resolve to WorkerGlobalScope.self).
+   *
+   * This realm's `self` is the same object as `globalThis`. Assignment does not
+   * replace it. There is no `window` binding.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
+   */
+  readonly self: Window & typeof globalThis;
+}
 type WorkerType = "classic" | "module";
 type URLPatternInput = string | URLPatternInit;
 type BlobPart = BufferSource | Blob | string;
@@ -1307,6 +1386,9 @@ declare namespace Yuzuko {
      * @param options - Size, title, and frame flags.
      * @throws {@link TypeError} When `options` is not an object, a length or
      * position is not finite, or a minimum is greater than the matching maximum.
+     * `The connection to the window system was lost.` after the Wayland
+     * compositor or the X server went away. Every open window has received
+     * `close` by then.
      */
     constructor(options?: WindowOptions);
 
@@ -3485,7 +3567,8 @@ declare namespace Yuzuko {
   /**
    * One CAA record from {@link resolveDns}.
    *
-   * `critical` is bit 0 of the flags octet.
+   * `critical` is the RFC 8659 Issuer Critical flag, the `0x80` bit of the
+   * flags octet.
    */
   interface DnsCaaRecord {
     critical: boolean;
@@ -6066,7 +6149,16 @@ declare namespace Yuzuko {
 }
 
 /**
- * Alias of `globalThis` in every realm. Assignment does not replace it.
+ * The **`Window.self`** read-only property returns the window itself, as a
+ * WindowProxy. It can be used with dot notation on a window object (that is,
+ * window.self) or standalone (self). The advantage of the standalone notation
+ * is that a similar notation exists for non-window contexts, such as in Web
+ * Workers. By using self, you can refer to the global scope in a way that will
+ * work not only in a window context (self will resolve to window.self) but also
+ * in a worker context (self will then resolve to WorkerGlobalScope.self).
+ *
+ * This realm's `self` is the same object as `globalThis`. Assignment does not
+ * replace it. There is no `window` binding.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
  */
@@ -6080,15 +6172,6 @@ declare const self: Window & typeof globalThis;
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/crossOriginIsolated)
  */
 declare const crossOriginIsolated: false;
-
-/**
- * Alias of `globalThis` on the main realm. This is the execution realm, not a
- * {@link Yuzuko.Window}. There is no global `Window` constructor. A dedicated
- * worker does not have `window`.
- *
- * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/window)
- */
-declare var window: Window & typeof globalThis;
 
 /**
  * Reports an error on `globalThis`. The handler is called as
@@ -6389,6 +6472,13 @@ interface Console {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/timeEnd_static) */
   timeEnd(label?: string): void;
+
+  /**
+   * The **`console.timeStamp()`** static method adds a marker to a performance recording in developer tools that support it, such as the Chrome Performance panel and Firefox Profiler. This lets you correlate a point in your code with recorded events such as layout and painting.
+   *
+   * There is no performance panel, so the call prints a stdout marker.
+   */
+  timeStamp(label?: string): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/count_static) */
   count(label?: string): void;
@@ -6757,6 +6847,17 @@ interface Event {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/bubbles) */
   readonly bubbles: boolean;
 
+  /**
+   * The **`cancelBubble`** property of the Event interface is deprecated. Use Event.stopPropagation() instead. Setting its value to true before returning from an event handler prevents propagation of the event. In later implementations, setting this to false does nothing. See Browser compatibility for details.
+   *
+   * A true value does not skip another listener on the same target.
+   *
+   * @deprecated
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/cancelBubble)
+   */
+  cancelBubble: boolean;
+
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Event/cancelable) */
   readonly cancelable: boolean;
 
@@ -6862,6 +6963,21 @@ interface CustomEvent<T = any> extends Event {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CustomEvent/detail) */
   readonly detail: T;
+
+  /**
+   * Legacy initializer. An omitted `detail` is null. The call does nothing
+   * while the event is dispatching.
+   *
+   * @throws {@link TypeError} When called with no arguments.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CustomEvent/initCustomEvent)
+   */
+  initCustomEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    detail?: T,
+  ): void;
 }
 declare var CustomEvent: {
   prototype: CustomEvent;
@@ -7033,6 +7149,8 @@ declare class QuotaExceededError extends DOMException {
 interface UIEventInit extends EventInit {
   view?: Window | null;
   detail?: number;
+  /** @deprecated */
+  which?: number;
 }
 
 /**
@@ -7047,6 +7165,35 @@ interface UIEvent extends Event {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/detail) */
   readonly detail: number;
+
+  /**
+   * The **`UIEvent.which`** read-only property of the UIEvent interface returns a number that indicates which button was pressed on the mouse, or the numeric keyCode or the character code (charCode) of the key pressed on the keyboard.
+   *
+   * A constructed `UIEvent` uses {@link UIEventInit.which}. The default is 0.
+   *
+   * @deprecated
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/which)
+   */
+  readonly which: number;
+
+  /**
+   * Legacy initializer. Omitted arguments use false, null, or 0. The call
+   * does nothing while the event is dispatching. It does not change `which`,
+   * `composed`, or `isTrusted`. `view` must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/UIEvent/initUIEvent)
+   */
+  initUIEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    detail?: number,
+  ): void;
 }
 declare var UIEvent: {
   prototype: UIEvent;
@@ -7092,6 +7239,16 @@ interface MouseEventInit extends UIEventInit {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
   relatedTarget?: EventTarget | null;
   movementX?: number;
   movementY?: number;
@@ -7121,6 +7278,20 @@ interface MouseEvent extends UIEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY) */
   readonly clientY: number;
+
+  /**
+   * The **`MouseEvent.x`** property is an alias for the MouseEvent.clientX property.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/x)
+   */
+  readonly x: number;
+
+  /**
+   * The **`MouseEvent.y`** property is an alias for the MouseEvent.clientY property.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/y)
+   */
+  readonly y: number;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MouseEvent/pageX) */
   readonly pageX: number;
@@ -7208,6 +7379,23 @@ interface MouseEvent extends UIEvent {
     metaKey?: boolean,
     button?: number,
     relatedTarget?: EventTarget | null,
+  ): void;
+  initMouseEvent(
+    typeArg: string,
+    canBubbleArg: boolean,
+    cancelableArg: boolean,
+    viewArg: Window,
+    detailArg: number,
+    screenXArg: number,
+    screenYArg: number,
+    clientXArg: number,
+    clientYArg: number,
+    ctrlKeyArg: boolean,
+    altKeyArg: boolean,
+    shiftKeyArg: boolean,
+    metaKeyArg: boolean,
+    buttonArg: number,
+    relatedTargetArg: EventTarget | null,
   ): void;
 }
 declare var MouseEvent: {
@@ -7326,6 +7514,9 @@ interface TouchInit {
   radiusY?: number;
   rotationAngle?: number;
   force?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
+  touchType?: TouchType | "";
 }
 
 /**
@@ -7334,9 +7525,14 @@ interface TouchInit {
  * the device may be a touchscreen or trackpad.
  *
  * One contact point in a {@link TouchEvent}. `identifier` and `target` are
- * required. The coordinate members default to 0. The runtime does not dispatch a
- * trusted touch event. A touch contact is a {@link PointerEvent} with
- * `pointerType` `"touch"`.
+ * required. `clientX`, `clientY`, `screenX`, `screenY`, `pageX`, `pageY`,
+ * `radiusX`, `radiusY`, `rotationAngle`, and `force` default to 0. An omitted
+ * `altitudeAngle` is `Math.PI / 2`, an omitted `azimuthAngle` is 0, and an
+ * omitted `touchType` is `""`. A host touch uses the surface as `target`,
+ * keeps the pointer's CSS coordinates, and sets `pageX` and `pageY` to
+ * `clientX` and `clientY`. `radiusX`, `radiusY`, and `rotationAngle` are 0.
+ * `altitudeAngle`, `azimuthAngle`, and `touchType` use those omitted defaults.
+ * `identifier` is the contact's `pointerId`.
  *
  * @throws {@link TypeError} When `identifier` or `target` is missing, or
  * `target` is not an `EventTarget`.
@@ -7380,6 +7576,15 @@ interface Touch {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/force) */
   readonly force: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/altitudeAngle) */
+  readonly altitudeAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/azimuthAngle) */
+  readonly azimuthAngle: number;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Touch/touchType) */
+  readonly touchType: string;
 }
 declare var Touch: {
   prototype: Touch;
@@ -7405,6 +7610,7 @@ interface TouchList {
   item(index: number): Touch | null;
 
   [index: number]: Touch;
+  [Symbol.iterator](): ArrayIterator<Touch>;
 }
 declare var TouchList: {
   prototype: TouchList;
@@ -7423,12 +7629,31 @@ interface TouchEventInit extends UIEventInit {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
 }
 
 /**
- * A constructed touch event. `cancelable` defaults to false. `touches`,
- * `targetTouches`, and `changedTouches` default to empty {@link TouchList}
- * objects. The runtime does not dispatch a trusted `TouchEvent`.
+ * The **`TouchEvent`** interface represents an UIEvent which is sent when the
+ * state of contacts with a touch-sensitive surface changes. This surface can
+ * be a touch screen or trackpad, for example. The event can describe one or
+ * more points of contact with the screen and includes support for detecting
+ * movement, addition and removal of contact points, and so forth.
+ *
+ * A constructed event is not cancelable unless `cancelable` is true.
+ * `touches`, `targetTouches`, and `changedTouches` default to empty
+ * {@link TouchList} objects. A host touch dispatches a trusted `touchstart`,
+ * `touchmove`, `touchend`, or `touchcancel` on the window surface.
+ * `touchcancel` is not cancelable. Cancelling `touchstart`, `touchmove`, or
+ * `touchend` skips the mouse compatibility events that follow it.
  *
  * @throws {@link TypeError} When a touch list is not a sequence of `Touch`.
  *
@@ -7472,10 +7697,24 @@ interface KeyboardEventInit extends UIEventInit {
   location?: number;
   repeat?: boolean;
   isComposing?: boolean;
+  /** @deprecated `charCode` is inconsistent across environments, consider using `key` instead. */
+  charCode?: number;
+  /** @deprecated `keyCode` is inconsistent across environments, consider using `key` instead. */
+  keyCode?: number;
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  modifierAltGraph?: boolean;
+  modifierCapsLock?: boolean;
+  modifierFn?: boolean;
+  modifierFnLock?: boolean;
+  modifierHyper?: boolean;
+  modifierNumLock?: boolean;
+  modifierScrollLock?: boolean;
+  modifierSuper?: boolean;
+  modifierSymbol?: boolean;
+  modifierSymbolLock?: boolean;
 }
 
 /**
@@ -7534,6 +7773,30 @@ interface KeyboardEvent extends UIEvent {
    */
   getModifierState(key: string): boolean;
 
+  /**
+   * Legacy initializer. Omitted arguments use false, null, `""`, or 0. The
+   * call does nothing while the event is dispatching. It does not change
+   * `detail`, `code`, `repeat`, `isComposing`, `charCode`, `keyCode`,
+   * `which`, or a lock modifier. `view` must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/initKeyboardEvent)
+   */
+  initKeyboardEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    key?: string,
+    location?: number,
+    ctrlKey?: boolean,
+    altKey?: boolean,
+    shiftKey?: boolean,
+    metaKey?: boolean,
+  ): void;
+
   readonly DOM_KEY_LOCATION_STANDARD: 0x00;
   readonly DOM_KEY_LOCATION_LEFT: 0x01;
   readonly DOM_KEY_LOCATION_RIGHT: 0x02;
@@ -7571,6 +7834,24 @@ interface CompositionEvent extends UIEvent {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompositionEvent/data) */
   readonly data: string;
+
+  /**
+   * Legacy initializer. An omitted `data` is `""`. The call does nothing
+   * while the event is dispatching. It does not change `detail`. `view`
+   * must be this realm's global or null.
+   *
+   * @throws {@link TypeError} When called with no arguments, or when `view`
+   * is not this realm's global or null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompositionEvent/initCompositionEvent)
+   */
+  initCompositionEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    view?: Window | null,
+    data?: string,
+  ): void;
 }
 declare var CompositionEvent: {
   prototype: CompositionEvent;
@@ -7623,8 +7904,12 @@ interface PointerEventInit extends MouseEventInit {
   tiltX?: number;
   tiltY?: number;
   twist?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
   pointerType?: string;
   isPrimary?: boolean;
+  coalescedEvents?: PointerEvent[];
+  predictedEvents?: PointerEvent[];
 }
 
 /**
@@ -7812,11 +8097,17 @@ interface MessageEvent<T = any> extends Event {
   readonly lastEventId: string;
 
   /**
-   * Always `null`. There is no document and no service worker.
+   * The **`source`** read-only property of the MessageEvent interface is a
+   * MessageEventSource (which can be a WindowProxy, MessagePort, or
+   * ServiceWorker object) representing the message emitter.
+   *
+   * A constructed event and a posted message stay null. `initMessageEvent`
+   * stores a `MessagePort` or, on the main realm, this realm. A dedicated
+   * worker rejects its global. There is no `ServiceWorker`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/source)
    */
-  readonly source: null;
+  readonly source: Window | MessagePort | null;
 
   /**
    * Frozen array of transferred {@link MessagePort} s that were reachable from the
@@ -7825,6 +8116,30 @@ interface MessageEvent<T = any> extends Event {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports)
    */
   readonly ports: readonly MessagePort[];
+
+  /**
+   * Legacy initializer. An omitted `data` is null. `source` is a
+   * {@link MessagePort}, this realm on the main global, or null. A dedicated
+   * worker rejects its global. There is no `ServiceWorker`. `ports` is
+   * replaced with a new frozen array. The call does nothing while the event
+   * is dispatching. It does not change `isTrusted`.
+   *
+   * @throws {@link TypeError} When called with no arguments, when `source` is
+   * not a `MessagePort`, the main realm, or null, or when `ports` is not a
+   * sequence of `MessagePort` objects.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/initMessageEvent)
+   */
+  initMessageEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    data?: T,
+    origin?: string,
+    lastEventId?: string,
+    source?: Window | MessagePort | null,
+    ports?: MessagePort[],
+  ): void;
 }
 declare var MessageEvent: {
   prototype: MessageEvent;
@@ -7834,7 +8149,9 @@ declare var MessageEvent: {
 
 /**
  * One end of a message channel. `postMessage` carries the values
- * {@link structuredClone} can carry.
+ * {@link structuredClone} can carry. `onmessage` starts the port.
+ * `onmessageerror` does not. A `WebAssembly.Module` sent to a peer in
+ * another agent dispatches `messageerror` there.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link MessageChannel}.
  *
@@ -7867,6 +8184,9 @@ interface MessagePort extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/message_event) */
   onmessage: ((this: MessagePort, ev: MessageEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort/messageerror_event) */
+  onmessageerror: ((this: MessagePort, ev: MessageEvent) => any) | null;
 }
 declare var MessagePort: {
   prototype: MessagePort;
@@ -7903,6 +8223,7 @@ declare var MessageChannel: {
  */
 interface URL {
   href: string;
+  toString(): string;
   readonly origin: string;
   protocol: string;
   username: string;
@@ -8250,6 +8571,15 @@ interface File extends Blob {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/lastModified) */
   readonly lastModified: number;
+
+  /**
+   * The **`webkitRelativePath`** read-only property of the File interface contains a string which specifies the file's path relative to the directory selected by the user in an <input> element with its webkitdirectory attribute set.
+   *
+   * Always `""`. There is no directory picker.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/webkitRelativePath)
+   */
+  readonly webkitRelativePath: string;
 }
 declare var File: {
   prototype: File;
@@ -8707,8 +9037,21 @@ declare var FormData: {
 };
 
 
+interface CacheQueryOptions {
+  ignoreMethod?: boolean;
+  ignoreSearch?: boolean;
+  ignoreVary?: boolean;
+}
+
+interface MultiCacheQueryOptions extends CacheQueryOptions {
+  cacheName?: string;
+}
+
 /**
- * A named cache. `add` and `match` are absent.
+ * A named in-memory cache. One GET `http:` or `https:` URL is one entry, and a
+ * later `put` replaces it. A `Vary` header other than `*` is stored and does
+ * not select a variant. `ignoreVary` does not change matching. `match` resolves
+ * `undefined` when nothing matches.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link caches}.
  *
@@ -8716,15 +9059,26 @@ declare var FormData: {
  */
 interface Cache {
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
-   */
-  put(request: RequestInfo | URL, response: Response): Promise<void>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+  add(request: RequestInfo | URL): Promise<void>;
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys)
-   */
-  keys(): Promise<readonly Request[]>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+  addAll(requests: RequestInfo[]): Promise<void>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete) */
+  delete(request: RequestInfo | URL, options?: CacheQueryOptions): Promise<boolean>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+  keys(request?: RequestInfo | URL, options?: CacheQueryOptions): Promise<ReadonlyArray<Request>>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match) */
+  match(request: RequestInfo | URL, options?: CacheQueryOptions): Promise<Response | undefined>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll) */
+  matchAll(request?: RequestInfo | URL, options?: CacheQueryOptions): Promise<ReadonlyArray<Response>>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put) */
+  put(request: RequestInfo | URL, response: Response): Promise<void>;
 }
 declare var Cache: {
   prototype: Cache;
@@ -8733,7 +9087,8 @@ declare var Cache: {
 
 
 /**
- * The process cache storage. `has`, `keys`, and `match` are absent.
+ * In-memory cache storage for this realm. Names keep insertion order. The
+ * storage is cleared when the realm drops.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -8741,14 +9096,19 @@ declare var Cache: {
  */
 interface CacheStorage {
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open) */
   open(cacheName: string): Promise<Cache>;
 
-  /**
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/has) */
+  has(cacheName: string): Promise<boolean>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
+  match(request: RequestInfo | URL, options?: MultiCacheQueryOptions): Promise<Response | undefined>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+  keys(): Promise<string[]>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete) */
   delete(cacheName: string): Promise<boolean>;
 }
 declare var CacheStorage: {
@@ -8763,16 +9123,44 @@ declare var CacheStorage: {
 declare var caches: CacheStorage;
 
 /**
- * `send` loads `http:`, `https:`, and `data:`, then queues `onload` or
- * `onerror`. This object is not an {@link EventTarget}. `responseType`, upload
- * progress, and handlers other than `onload` and `onerror` are absent.
+ * **`XMLHttpRequest`** (XHR) objects are used to interact with servers. You can
+ * retrieve data from a URL without having to do a full page refresh. This
+ * enables a Web page to update just part of a page without disrupting what the
+ * user is doing.
+ *
+ * `send` loads `http:`, `https:`, and `data:`. An asynchronous completion
+ * task sets `readyState` to `DONE` and dispatches `readystatechange`,
+ * `loadstart`, `progress` when the body is not empty, `load`, `error`, or
+ * `timeout`, and `loadend`. A listener assigned after `send()` returns still
+ * runs. `send(body)` accepts `null`, a string, a `Blob`, a `BufferSource`,
+ * `FormData`, or `URLSearchParams`. A synchronous `send` finishes inside the
+ * call and does not dispatch `loadstart` or `progress`.
+ * `response`, `responseType`, `responseURL`, `responseXML`, `upload`, and
+ * `withCredentials` are absent.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest)
  */
-interface XMLHttpRequest {
+interface XMLHttpRequest extends EventTarget {
 
   /**
-   * @throws {@link DOMException} `SyntaxError` when the method is invalid.
+   * The XMLHttpRequest method **`open()`** initializes a newly-created request,
+   * or re-initializes an existing one.
+   *
+   * `open(method, url)` is asynchronous. An explicit `undefined` third
+   * argument is synchronous. `CONNECT`, `TRACE`, and `TRACK` throw
+   * `SecurityError`. A non-null username or password is stored when the URL
+   * has a host. `data:` and `file:` ignore them. An empty password is not
+   * stored.
+   *
+   * @throws {@link DOMException} `SyntaxError` when the method or URL is invalid.
+   * @throws {@link DOMException} `SecurityError` when the method is `CONNECT`,
+   * `TRACE`, or `TRACK`.
+   * @throws {@link TypeError} When the method is not a ByteString.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/open)
    */
   open(method: string, url: string | URL): void;
+  open(method: string, url: string | URL, async: boolean, username?: string | null, password?: string | null): void;
 
   /**
    * @throws {@link DOMException} `InvalidStateError` when `open` has not been
@@ -8782,10 +9170,39 @@ interface XMLHttpRequest {
   setRequestHeader(name: string, value: string): void;
 
   /**
+   * The XMLHttpRequest method **`send()`** sends the request to the server.
+   *
+   * `GET` and `HEAD` ignore `body`. There is no `Document`. A platform object
+   * other than `Blob`, `File`, `BufferSource`, `FormData`, or
+   * `URLSearchParams` throws `TypeError` and does not send. An asynchronous
+   * request stays `OPENED` until the completion task. `open(..., false)` sets
+   * `DONE` and dispatches `readystatechange`, `load`, and `loadend` before
+   * `send` returns, and does not dispatch `loadstart` or `progress`. A
+   * synchronous network error throws `NetworkError`. A synchronous timeout
+   * throws `TimeoutError`. Neither dispatches an event.
+   *
    * @throws {@link DOMException} `InvalidStateError` when the request is not open.
-   * @throws {@link TypeError} When the URL cannot be resolved.
+   * @throws {@link TypeError} When `body` is not an `XMLHttpRequestBodyInit`.
+   * @throws {@link DOMException} `TimeoutError` when a synchronous request
+   * misses its deadline.
+   * @throws {@link DOMException} `NetworkError` when a synchronous request fails.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/send)
    */
-  send(): void;
+  send(body?: XMLHttpRequestBodyInit | null): void;
+
+  /**
+   * The **`XMLHttpRequest.abort()`** method aborts the request if it has already
+   * been sent. When a request is aborted, its readyState is changed to
+   * XMLHttpRequest.UNSENT (0) and the request's status code is set to 0.
+   *
+   * After `send()` returns and before the completion task, this dispatches
+   * `readystatechange`, `abort`, and `loadend`, then sets `readyState` to
+   * `UNSENT`. It does not dispatch `loadstart`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/abort)
+   */
+  abort(): void;
 
   /** The response header, or `null` before the request is done. */
   getResponseHeader(name: string): string | null;
@@ -8810,6 +9227,38 @@ interface XMLHttpRequest {
   readonly responseText: string;
 
   /**
+   * The **`readyState`** read-only property of the XMLHttpRequest interface
+   * returns the state an XMLHttpRequest client is in. An XHR client exists in
+   * one of the following states:
+   *
+   * This runtime reports `UNSENT`, `OPENED`, or `DONE`. It does not enter
+   * `HEADERS_RECEIVED` or `LOADING`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/readyState)
+   */
+  readonly readyState: number;
+
+  /**
+   * The **`XMLHttpRequest.timeout`** property is an unsigned long representing
+   * the number of milliseconds a request can take before automatically being
+   * terminated. The default value is 0, which means there is no timeout.
+   * Timeout shouldn't be used for synchronous XMLHttpRequests requests used in
+   * a document environment or it will throw an InvalidAccessError exception.
+   * When a timeout happens, a timeout event is fired.
+   *
+   * `0` does not time out. A non-zero value is measured from the start of
+   * `send`. Assigning one after `send()` returns, once that many milliseconds
+   * have already passed and the completion task has not run, dispatches
+   * `timeout`. A fetch that finishes inside the timeout still loads. A
+   * synchronous request does not throw `InvalidAccessError`. A missed
+   * deadline throws `TimeoutError` from `send` and does not dispatch
+   * `timeout`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/XMLHttpRequest/timeout)
+   */
+  timeout: number;
+
+  /**
    * The XMLHttpRequest method **`overrideMimeType()`** specifies a MIME type other
    * than the one provided by the server to be used instead when interpreting the
    * data being transferred in a request.
@@ -8820,8 +9269,19 @@ interface XMLHttpRequest {
    */
   overrideMimeType(mime: string): void;
 
+  onloadstart: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onprogress: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
   onload: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
   onerror: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onloadend: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onabort: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  ontimeout: ((this: XMLHttpRequest, ev: ProgressEvent) => any) | null;
+  onreadystatechange: ((this: XMLHttpRequest, ev: Event) => any) | null;
+  readonly UNSENT: 0;
+  readonly OPENED: 1;
+  readonly HEADERS_RECEIVED: 2;
+  readonly LOADING: 3;
+  readonly DONE: 4;
 }
 declare var XMLHttpRequest: {
   prototype: XMLHttpRequest;
@@ -8943,6 +9403,12 @@ declare var ReadableStream: {
   new(underlyingSource: UnderlyingByteSource, strategy?: { highWaterMark?: number }): ReadableStream<Uint8Array<ArrayBuffer>>;
   new<R = any>(underlyingSource: UnderlyingDefaultSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
   new<R = any>(underlyingSource?: UnderlyingSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
+  /**
+   * The **`ReadableStream.from()`** static method returns a ReadableStream from a provided iterable or async iterable object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStream/from_static)
+   */
+  from(asyncIterable: AsyncIterable<any> | Iterable<any>): ReadableStream;
 };
 
 
@@ -9089,6 +9555,7 @@ declare var ReadableStreamBYOBRequest: {
  */
 interface UnderlyingSink<W = any> {
   start?: UnderlyingSinkStartCallback;
+  type?: undefined;
   write?: (
     chunk: W,
     controller: WritableStreamDefaultController,
@@ -9140,6 +9607,7 @@ interface WritableStreamDefaultWriter<W = any> {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStreamDefaultWriter/write) */
   write(chunk?: W): Promise<void>;
+  write(chunk: W): Promise<void>;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WritableStreamDefaultWriter/close) */
   close(): Promise<void>;
@@ -9176,11 +9644,13 @@ declare var WritableStreamDefaultController: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStream/TransformStream)
  */
 interface Transformer<I = any, O = any> {
+  readableType?: undefined;
   start?: TransformerStartCallback<O>;
   transform?: (
     chunk: I,
     controller: TransformStreamDefaultController<O>,
   ) => void | PromiseLike<void>;
+  writableType?: undefined;
   flush?: (controller: TransformStreamDefaultController<O>) => void | PromiseLike<void>;
 }
 
@@ -9214,6 +9684,7 @@ interface TransformStreamDefaultController<O = any> {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStreamDefaultController/enqueue) */
   enqueue(chunk?: O): void;
+  enqueue(chunk: O): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/TransformStreamDefaultController/error) */
   error(reason?: any): void;
@@ -10055,6 +10526,8 @@ interface DOMQuadInit {
  * access to each rectangle in the list via its index, along with a length
  * property that indicates the total number of rectangles in the list.
  *
+ * This list is always empty.
+ *
  * @throws {@link TypeError} Illegal constructor.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectList)
@@ -10065,6 +10538,9 @@ interface DOMRectList {
   readonly length: number;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DOMRectList/item) */
   item(index: number): DOMRect | null;
+
+  [index: number]: DOMRect;
+  [Symbol.iterator](): ArrayIterator<DOMRect>;
 }
 declare var DOMRectList: {
   prototype: DOMRectList;
@@ -10684,14 +11160,21 @@ interface OffscreenCanvasRenderingContext2D {
   arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/roundRect) */
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | number[]): void;
+  roundRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii?: number | DOMPointInit | (number | DOMPointInit)[],
+  ): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fill) */
   fill(fillRule?: CanvasFillRule): void;
   fill(path: Path2D, fillRule?: CanvasFillRule): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/stroke) */
-  stroke(path?: Path2D): void;
+  stroke(): void;
+  stroke(path: Path2D): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/clip) */
   clip(fillRule?: CanvasFillRule): void;
@@ -11120,7 +11603,13 @@ interface Path2D {
   arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/roundRect) */
-  roundRect(x: number, y: number, w: number, h: number, radii?: number | number[]): void;
+  roundRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii?: number | DOMPointInit | (number | DOMPointInit)[],
+  ): void;
 }
 declare var Path2D: {
   prototype: Path2D;
@@ -11322,8 +11811,10 @@ declare var GPU: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPU/requestAdapter) */
 interface GPURequestAdapterOptions {
-  powerPreference?: GPUPowerPreference;
+  featureLevel?: string;
   forceFallbackAdapter?: boolean;
+  powerPreference?: GPUPowerPreference;
+  xrCompatible?: boolean;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapterInfo) */
@@ -11407,9 +11898,14 @@ declare var GPUAdapter: {
 };
 
 
+interface GPUQueueDescriptor {
+  label?: string;
+}
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/GPUDevice) */
 interface GPUDeviceDescriptor {
   label?: string;
+  defaultQueue?: GPUQueueDescriptor;
   requiredFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number | undefined>;
 }
@@ -11648,10 +12144,13 @@ interface GPUComputePipelineDescriptor {
   compute: GPUProgrammableStage;
 }
 
+type GPUPipelineConstantValue = number;
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipeline) */
 interface GPUProgrammableStage {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createQuerySet) */
@@ -11775,7 +12274,7 @@ interface GPUQueue {
    * a snapshot taken from a source image, video, or canvas into a given
    * GPUTexture.
    *
-   * Copies an {@link ImageBitmap}, {@link OffscreenCanvas}, or {@link VideoFrame}.
+   * Copies an {@link ImageBitmap}, an {@link ImageData}, an {@link OffscreenCanvas}, or a {@link VideoFrame}.
    * Matching unorm8 bytes upload directly. A float16 source, a color-space change,
    * a sub-rectangle, or a `bgra8unorm` destination is converted on the CPU.
    * `colorSpace` is `"srgb"` or `"display-p3"`.
@@ -12033,10 +12532,18 @@ declare var GPUShaderModule: {
 };
 
 
+type GPUAutoLayoutMode = "auto";
+
+interface GPUShaderModuleCompilationHint {
+  entryPoint: string;
+  layout?: GPUPipelineLayout | GPUAutoLayoutMode;
+}
+
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createShaderModule) */
 interface GPUShaderModuleDescriptor {
   label?: string;
   code: string;
+  compilationHints?: GPUShaderModuleCompilationHint[];
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationInfo) */
@@ -12186,6 +12693,7 @@ declare var GPUPipelineLayout: {
 interface GPUPipelineLayoutDescriptor {
   label?: string;
   bindGroupLayouts: (GPUBindGroupLayout | null)[];
+  immediateSize?: GPUSize32;
 }
 
 /**
@@ -12243,6 +12751,7 @@ type GPUStencilOperation = "decrement-clamp" | "decrement-wrap" | "increment-cla
 interface GPUVertexState {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
   buffers?: (GPUVertexBufferLayout | null)[];
 }
 
@@ -12264,6 +12773,7 @@ interface GPUVertexAttribute {
 interface GPUFragmentState {
   module: GPUShaderModule;
   entryPoint?: string;
+  constants?: Record<string, GPUPipelineConstantValue>;
   targets: (GPUColorTargetState | null)[];
 }
 
@@ -12463,6 +12973,7 @@ interface GPURenderPassDescriptor {
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
   occlusionQuerySet?: GPUQuerySet;
   timestampWrites?: GPURenderPassTimestampWrites;
+  maxDrawCount?: GPUSize64;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/beginRenderPass) */
@@ -12778,6 +13289,7 @@ declare const GPUTextureUsage: {
   readonly TEXTURE_BINDING: 0x04;
   readonly STORAGE_BINDING: 0x08;
   readonly RENDER_ATTACHMENT: 0x10;
+  readonly TRANSIENT_ATTACHMENT: 0x20;
 };
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderStage) */
@@ -13009,6 +13521,11 @@ interface PeriodicWaveConstraints {
   disableNormalization?: boolean;
 }
 
+interface AudioTimestamp {
+  contextTime?: number;
+  performanceTime?: DOMHighResTimeStamp;
+}
+
 /**
  * The **`AudioContext`** interface represents an audio-processing graph built
  * from audio modules linked together, each represented by an AudioNode.
@@ -13063,6 +13580,16 @@ interface AudioContext extends BaseAudioContext {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/resume) */
   resume(): Promise<void>;
+
+  /**
+   * The **`getOutputTimestamp()`** method of the AudioContext interface returns a new AudioTimestamp object containing two audio timestamp values relating to the current audio context.
+   *
+   * `contextTime` is `currentTime`. `performanceTime` is `performance.now()`.
+   * `outputLatency` is not subtracted. The call does not open a device.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/getOutputTimestamp)
+   */
+  getOutputTimestamp(): AudioTimestamp;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioContext/close) */
   close(): Promise<void>;
@@ -13272,7 +13799,8 @@ declare var AudioParam: {
 
 
 /**
- * Named parameters on an {@link AudioWorkletNode}.
+ * Named parameters on an {@link AudioWorkletNode}. `forEach` walks descriptor
+ * order. A throw from the callback propagates.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -13288,6 +13816,9 @@ interface AudioParamMap {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap/has) */
   has(name: string): boolean;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioParamMap/forEach) */
+  forEach(callbackfn: (value: AudioParam, key: string, parent: AudioParamMap) => void, thisArg?: any): void;
 
   /**
    * Yields `[name, param]` pairs in descriptor order.
@@ -13527,6 +14058,19 @@ interface AudioBufferSourceNode extends AudioScheduledSourceNode {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/detune)
    */
   readonly detune: AudioParam;
+
+  /**
+   * The **`start()`** method of the AudioBufferSourceNode Interface is used to schedule playback of the audio data contained in the buffer, or to begin playback immediately.
+   *
+   * `offset` and `duration` are seconds. An omitted `offset` is 0. An omitted
+   * `duration` plays through. A negative `when`, `offset`, or `duration` throws
+   * `RangeError`.
+   *
+   * @throws {@link RangeError} When `when`, `offset`, or `duration` is negative.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/start)
+   */
+  start(when?: number, offset?: number, duration?: number): void;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode/loop) */
   loop: boolean;
@@ -14884,6 +15428,7 @@ interface ImageDecoderInit {
   desiredWidth?: number;
   desiredHeight?: number;
   preferAnimation?: boolean;
+  transfer?: ArrayBuffer[];
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder/decode) */
@@ -14900,7 +15445,8 @@ interface ImageDecodeResult {
 
 /**
  * Tracks of an {@link ImageDecoder}. `ready` rejects `NotSupportedError` for an
- * unsupported type.
+ * unsupported type. Index 0 is the track when the decoder is ready, including a
+ * deselected track. `item` returns `null` past the end.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrackList)
  */
@@ -14916,6 +15462,12 @@ interface ImageTrackList {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageTrackList/selectedTrack) */
   readonly selectedTrack: ImageTrack | null;
+
+  /** `null` when `index` is not 0 or the decoder is not ready. */
+  item(index: number): ImageTrack | null;
+
+  [index: number]: ImageTrack;
+  [Symbol.iterator](): ArrayIterator<ImageTrack>;
 }
 declare var ImageTrackList: {
   prototype: ImageTrackList;
@@ -15427,7 +15979,9 @@ declare class WebTransportError extends DOMException {
  * `{ type: "module" }` runs an ES module. A source-phase import of JavaScript or
  * TypeScript also starts a module worker. There is no `SharedWorker`. A
  * {@link Yuzuko.Window} cannot be transferred. A WebGPU device stays on the
- * thread that created it.
+ * thread that created it. A `WebAssembly.Module` posted to another agent
+ * does not throw. That agent dispatches `messageerror` and does not dispatch
+ * `error`.
  *
  * @throws {@link TypeError} When the URL or `type` is invalid, or when
  * `type` is `"classic"` with a source-phase import.
@@ -15449,6 +16003,9 @@ interface Worker extends EventTarget {
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/message_event) */
   onmessage: ((this: Worker, ev: MessageEvent) => any) | null;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/messageerror_event) */
+  onmessageerror: ((this: Worker, ev: MessageEvent) => any) | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Worker/error_event) */
   onerror: ((this: Worker, ev: ErrorEvent) => any) | null;
@@ -15562,6 +16119,7 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope/message_event) */
   onmessage: ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any) | null;
 
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope/messageerror_event) */
   onmessageerror: ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any) | null;
 }
 
@@ -16144,4 +16702,378 @@ declare var GamepadEvent: {
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GamepadEvent/GamepadEvent) */
 interface GamepadEventInit extends EventInit {
   gamepad?: Gamepad | null;
+}
+
+interface ImportMeta {
+  /**
+   * Absolute `file:` URL of this module, including a `.ts` or `.mts` URL.
+   */
+  url: string;
+
+  /**
+   * File-system path of `url`.
+   */
+  filename: string;
+
+  /**
+   * Directory of `filename`, with no trailing separator except a root.
+   */
+  dirname: string;
+
+  /**
+   * Resolves `specifier` with the same loader as `import()`, relative to this module, and returns the absolute `file:` URL.
+   *
+   * `parent`, when it is not `undefined`, is the parent module's `file:` URL. A `file:` specifier is normalized even when that file is absent. Any other specifier that does not resolve throws `TypeError`.
+   *
+   * @param specifier Converted with `ToString`.
+   * @param parent Parent module `file:` URL. Omitted or `undefined` uses this module.
+   * @throws {TypeError} The specifier does not resolve, or `parent` is not a `file:` URL.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Operators/import.meta/resolve)
+   */
+  resolve(specifier: string, parent?: string): string;
+}
+
+declare namespace WebAssembly {
+  /** The **`WebAssembly.CompileError`** object indicates an error during WebAssembly decoding or validation. */
+  interface CompileError extends Error {
+  }
+
+  var CompileError: {
+    prototype: CompileError;
+    new(message?: string): CompileError;
+    (message?: string): CompileError;
+  };
+
+  /**
+   * The **`WebAssembly.Exception`** object represents a runtime exception thrown in a Wasm module.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception)
+   */
+  interface Exception {
+    /**
+     * The **`stack`** read-only property of the WebAssembly.Exception object may contain a stack trace.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/stack)
+     */
+    readonly stack: string | undefined;
+    /**
+     * The **`getArg()`** method of the Exception object can be used to get the value of a specified item in the exception's data arguments.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/getArg)
+     */
+    getArg(exceptionTag: Tag, index: number): any;
+    /**
+     * The **`is()`** method of the Exception object can be used to test if the Exception matches a given tag.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Exception/is)
+     */
+    is(exceptionTag: Tag): boolean;
+  }
+
+  var Exception: {
+    prototype: Exception;
+    new(exceptionTag: Tag, payload: any[], options?: ExceptionOptions): Exception;
+  };
+
+  /**
+   * A **`WebAssembly.Global`** object represents a global variable instance, accessible from both JavaScript and importable/exportable across one or more WebAssembly.Module instances. This allows dynamic linking of multiple modules.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global)
+   */
+  interface Global<T extends ValueType = ValueType> {
+    /**
+     * The **`value`** property of the WebAssembly.Global object prototype returns the value contained inside the global variable.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global/value)
+     */
+    value: ValueTypeMap[T];
+    /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Global/valueOf) */
+    valueOf(): ValueTypeMap[T];
+  }
+
+  var Global: {
+    prototype: Global;
+    new<T extends ValueType = ValueType>(descriptor: GlobalDescriptor<T>, v?: ValueTypeMap[T]): Global<T>;
+  };
+
+  /**
+   * A **`WebAssembly.Instance`** object is a stateful, executable instance of a WebAssembly.Module. Instance objects contain all the Exported WebAssembly functions that allow calling into WebAssembly code from JavaScript.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Instance)
+   */
+  interface Instance {
+    /**
+     * The **`exports`** read-only property of the WebAssembly.Instance object prototype returns an object containing as its members all the functions exported from the WebAssembly module instance, to allow them to be accessed and used by JavaScript.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Instance/exports)
+     */
+    readonly exports: Exports;
+  }
+
+  var Instance: {
+    prototype: Instance;
+    new(module: Module, importObject?: Imports): Instance;
+  };
+
+  /** The **`WebAssembly.LinkError`** object indicates an error during module instantiation (besides traps from the start function). */
+  interface LinkError extends Error {
+  }
+
+  var LinkError: {
+    prototype: LinkError;
+    new(message?: string): LinkError;
+    (message?: string): LinkError;
+  };
+
+  /**
+   * The **`WebAssembly.Memory`** object is a resizable ArrayBuffer or SharedArrayBuffer that holds raw bytes of memory accessed by a WebAssembly.Instance.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory)
+   */
+  interface Memory {
+    /**
+     * The read-only **`buffer`** prototype property of the WebAssembly.Memory object returns the buffer contained in the memory. Depending on whether or not the memory was constructed with shared: true, the buffer is either an ArrayBuffer or a SharedArrayBuffer.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory/buffer)
+     */
+    readonly buffer: ArrayBuffer;
+    /**
+     * The **`grow()`** prototype method of the WebAssembly.Memory object increases the size of the memory instance by a specified number of WebAssembly pages.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Memory/grow)
+     */
+    grow(delta: AddressValue): AddressValue;
+    toFixedLengthBuffer(): ArrayBuffer;
+    toResizableBuffer(): ArrayBuffer;
+  }
+
+  var Memory: {
+    prototype: Memory;
+    new(descriptor: MemoryDescriptor): Memory;
+  };
+
+  /**
+   * A **`WebAssembly.Module`** object contains stateless WebAssembly code that has already been compiled by the browser — this can be efficiently shared with Workers, and instantiated multiple times.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module)
+   */
+  interface Module {
+  }
+
+  var Module: {
+    prototype: Module;
+    new(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): Module;
+    /**
+     * The WebAssembly.**`Module.customSections()`** static method returns a copy of the contents of all custom sections in the given module with the given string name.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/customSections_static)
+     */
+    customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
+    /**
+     * The WebAssembly.**`Module.exports()`** static method returns an array containing descriptions of all the declared exports of the given Module.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/exports_static)
+     */
+    exports(moduleObject: Module): ModuleExportDescriptor[];
+    /**
+     * The WebAssembly.**`Module.imports()`** static method returns an array containing descriptions of all the declared imports of the given Module.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Module/imports_static)
+     */
+    imports(moduleObject: Module): ModuleImportDescriptor[];
+  };
+
+  /** The **`WebAssembly.RuntimeError`** object is the error type that is thrown whenever WebAssembly specifies a trap. */
+  interface RuntimeError extends Error {
+  }
+
+  var RuntimeError: {
+    prototype: RuntimeError;
+    new(message?: string): RuntimeError;
+    (message?: string): RuntimeError;
+  };
+
+  /**
+   * The **`WebAssembly.Table`** object is a JavaScript wrapper object — an array-like structure representing a WebAssembly table, which stores homogeneous references. A table created by JavaScript or in WebAssembly code will be accessible and mutable from both JavaScript and WebAssembly.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table)
+   */
+  interface Table {
+    /**
+     * The read-only **`length`** prototype property of the WebAssembly.Table object returns the length of the table, i.e., the number of elements in the table.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/length)
+     */
+    readonly length: AddressValue;
+    /**
+     * The **`get()`** prototype method of the WebAssembly.Table() object retrieves the element stored at a given index.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/get)
+     */
+    get(index: AddressValue): any;
+    /**
+     * The **`grow()`** prototype method of the WebAssembly.Table object increases the size of the Table instance by a specified number of elements, filled with the provided value.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/grow)
+     */
+    grow(delta: AddressValue, value?: any): AddressValue;
+    /**
+     * The **`set()`** prototype method of the WebAssembly.Table object mutates a reference stored at a given index to a different value.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Table/set)
+     */
+    set(index: AddressValue, value?: any): void;
+  }
+
+  var Table: {
+    prototype: Table;
+    new(descriptor: TableDescriptor, value?: any): Table;
+  };
+
+  /**
+   * The **`WebAssembly.Tag`** object represents a WebAssembly exception type that can be thrown in a Wasm module.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Tag)
+   */
+  interface Tag {
+  }
+
+  var Tag: {
+    prototype: Tag;
+    new(type: TagType): Tag;
+  };
+
+  interface ExceptionOptions {
+    traceStack?: boolean;
+  }
+
+  interface GlobalDescriptor<T extends ValueType = ValueType> {
+    mutable?: boolean;
+    value: T;
+  }
+
+  interface MemoryDescriptor {
+    address?: AddressType;
+    initial: AddressValue;
+    maximum?: AddressValue;
+    shared?: boolean;
+  }
+
+  interface ModuleExportDescriptor {
+    kind: ImportExportKind;
+    name: string;
+  }
+
+  interface ModuleImportDescriptor {
+    kind: ImportExportKind;
+    module: string;
+    name: string;
+  }
+
+  interface TableDescriptor {
+    address?: AddressType;
+    element: TableKind;
+    initial: AddressValue;
+    maximum?: AddressValue;
+  }
+
+  interface TagType {
+    parameters: ValueType[];
+  }
+
+  interface ValueTypeMap {
+    anyfunc: Function;
+    externref: any;
+    f32: number;
+    f64: number;
+    i32: number;
+    i64: bigint;
+    v128: never;
+  }
+
+  interface WebAssemblyCompileOptions {
+    builtins?: string[];
+    importedStringConstants?: string | null;
+  }
+
+  interface WebAssemblyInstantiatedSource {
+    instance: Instance;
+    module: Module;
+  }
+
+  type AddressType = "i32" | "i64";
+  type ImportExportKind = "function" | "global" | "memory" | "table" | "tag";
+  type TableKind = "anyfunc" | "externref";
+  type AddressValue = number;
+  type ExportValue = Function | Global | Memory | Table;
+  type Exports = Record<string, ExportValue>;
+  type ImportValue = ExportValue | Suspending | number;
+  type Imports = Record<string, ModuleImports>;
+  type ModuleImports = Record<string, ImportValue>;
+  type ValueType = keyof ValueTypeMap;
+  var JSTag: Tag;
+  /**
+   * The **`WebAssembly.Suspending`** object represents a suspending function — an asynchronous (`Promise`-based) JavaScript function that, when imported into a Wasm module and called from inside, will result in execution being suspended until the promise resolves.
+   *
+   * The argument is a JavaScript function. A WebAssembly exported function throws `TypeError`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/Suspending)
+   */
+  interface Suspending {
+  }
+
+  var Suspending: {
+    prototype: Suspending;
+    new(fn: Function): Suspending;
+  };
+
+  /**
+   * The **`WebAssembly.SuspendError`** object indicates an error during WebAssembly function suspension.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/SuspendError)
+   */
+  interface SuspendError extends Error {
+  }
+
+  var SuspendError: {
+    prototype: SuspendError;
+    new(message?: string): SuspendError;
+    (message?: string): SuspendError;
+  };
+
+  /**
+   * The **`WebAssembly.promising()`** static method wraps an exported Wasm function that relies on an asynchronous operation, turning the call into a `Promise`.
+   *
+   * The argument must be a WebAssembly exported function.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/promising_static)
+   */
+  function promising(fn: Function): (...args: any[]) => Promise<any>;
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/compile_static) */
+  function compile(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): Promise<Module>;
+  /**
+   * A compile-options argument is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/compileStreaming_static)
+   */
+  function compileStreaming(source: Response | PromiseLike<Response>, options?: WebAssemblyCompileOptions): Promise<Module>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/instantiate_static) */
+  function instantiate(bytes: AllowSharedBufferSource, importObject?: Imports, options?: WebAssemblyCompileOptions): Promise<WebAssemblyInstantiatedSource>;
+  function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
+  /**
+   * A compile-options argument is ignored.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/instantiateStreaming_static)
+   */
+  function instantiateStreaming(source: Response | PromiseLike<Response>, importObject?: Imports, options?: WebAssemblyCompileOptions): Promise<WebAssemblyInstantiatedSource>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/WebAssembly/Reference/JavaScript_interface/validate_static) */
+  function validate(bytes: AllowSharedBufferSource, options?: WebAssemblyCompileOptions): boolean;
+  /**
+   * Returns the instance behind a WebAssembly module namespace.
+   *
+   * @throws {@link TypeError} When `namespace` is not a WebAssembly module namespace.
+   */
+  function namespaceInstance(namespace: object): Instance;
 }

@@ -253,11 +253,7 @@
   "FileAPI/filelist-section/filelist_selected_file-manual.html": {
     "ignore": "The file needs a document."
   },
-  "FileAPI/historical.https.html": {
-    "expectedFailures": [
-      "Service worker test setup"
-    ]
-  },
+  "FileAPI/historical.https.html": false,
   "FileAPI/idlharness-manual.html": {
     "ignore": "The file needs a document."
   },

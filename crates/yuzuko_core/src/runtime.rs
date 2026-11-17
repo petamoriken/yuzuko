@@ -2269,6 +2269,7 @@ fn install_console(scope: &mut v8::PinScope<'_, '_>) {
   crate::js::set_function(scope, console, "time", console_time);
   crate::js::set_function(scope, console, "timeLog", console_time_log);
   crate::js::set_function(scope, console, "timeEnd", console_time_end);
+  crate::js::set_function(scope, console, "timeStamp", console_time_stamp);
   crate::js::set_function(scope, console, "count", console_count);
   crate::js::set_function(scope, console, "countReset", console_count_reset);
   crate::js::set_function(scope, console, "group", console_group);
@@ -2412,6 +2413,22 @@ fn stringify_thrown(
     }
     Err(None) => Err(()),
   }
+}
+
+fn console_time_stamp(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _return: v8::ReturnValue,
+) {
+  let now = crate::performance_now_ms();
+  if args.length() == 0 || args.get(0).is_undefined() {
+    emit(&format!("timeStamp @ {now:.3} ms"), false);
+    return;
+  }
+  let Ok(label) = stringify_thrown(scope, args.get(0)) else {
+    return;
+  };
+  emit(&format!("timeStamp: {label} @ {now:.3} ms"), false);
 }
 
 fn console_time(
@@ -2936,12 +2953,7 @@ unsafe extern "C" fn on_import_meta(
   let scope = &mut v8::ContextScope::new(scope, context);
   let url =
     host::module_url(module.get_identity_hash().get()).unwrap_or_default();
-  let key = v8::String::new(scope, "url").unwrap();
-  let value = v8::String::new(scope, &url).unwrap();
-  meta.create_data_property(scope, key.into(), value.into());
-  let instances = host::wasm_instances(scope);
-  let key = v8::String::new(scope, "wasmInstances").unwrap();
-  meta.create_data_property(scope, key.into(), instances.into());
+  modules::install_import_meta(scope, meta, &url);
 }
 
 fn on_dynamic_import<'s>(

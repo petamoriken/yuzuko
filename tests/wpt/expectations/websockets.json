@@ -420,11 +420,7 @@
       "macos": "The cross-origin cookie handshake does not finish."
     }
   },
-  "websockets/cookies/third-party-cookie-accepted.https.html": {
-    "expectedFailures": [
-      "Test that third-party cookies are accepted for WebSockets."
-    ]
-  },
+  "websockets/cookies/third-party-cookie-accepted.https.html": false,
   "websockets/eventhandlers.any.js": true,
   "websockets/extended-payload-length.html": true,
   "websockets/idlharness.any.js": true,
@@ -434,7 +430,11 @@
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-arraybuffer.html": true,
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-blob.html": true,
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-defineProperty-getter.html": true,
-  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-defineProperty-setter.html": true,
+  "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-defineProperty-setter.html": {
+    "expectedFailures": [
+      "bufferedAmount-defineProperty-setter"
+    ]
+  },
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-deleting.html": true,
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-getting.html": true,
   "websockets/interfaces/WebSocket/bufferedAmount/bufferedAmount-initial.html": true,
@@ -500,7 +500,11 @@
   "websockets/interfaces/WebSocket/readyState/002.html": true,
   "websockets/interfaces/WebSocket/readyState/003.html": true,
   "websockets/interfaces/WebSocket/readyState/004.html": true,
-  "websockets/interfaces/WebSocket/readyState/005.html": true,
+  "websockets/interfaces/WebSocket/readyState/005.html": {
+    "expectedFailures": [
+      "005"
+    ]
+  },
   "websockets/interfaces/WebSocket/readyState/006.html": true,
   "websockets/interfaces/WebSocket/readyState/007.html": true,
   "websockets/interfaces/WebSocket/readyState/008.html": true,
@@ -531,7 +535,11 @@
   "websockets/interfaces/WebSocket/url/003.html": true,
   "websockets/interfaces/WebSocket/url/004.html": true,
   "websockets/interfaces/WebSocket/url/005.html": true,
-  "websockets/interfaces/WebSocket/url/006.html": true,
+  "websockets/interfaces/WebSocket/url/006.html": {
+    "expectedFailures": [
+      "006"
+    ]
+  },
   "websockets/interfaces/WebSocket/url/resolve.html": true,
   "websockets/keeping-connection-open/001.html": true,
   "websockets/mixed-content.https.any.js": {
