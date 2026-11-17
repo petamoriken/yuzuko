@@ -404,8 +404,9 @@ fn layout(
     // A parsed tag keeps its language, script, and region.
     builder.push_default(StyleProperty::Locale(shaping_language(lang)));
     let mut built = builder.build(&wrapped);
+    // Alignment takes effect on the next line break.
+    built.set_alignment(Alignment::Start, AlignmentOptions::default());
     built.break_all_lines(None);
-    built.align(Alignment::Start, AlignmentOptions::default());
     let placeholder_ascent = font.size * 0.8;
     let placeholder_descent = font.size * 0.2;
     let (em_ascent, em_descent) =
