@@ -8914,7 +8914,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -8944,7 +8944,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_audio"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "claxon",
  "cpal",
@@ -8960,7 +8960,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_canvas"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "brotli",
  "color",
@@ -8989,7 +8989,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_codec"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lewton",
  "libloading 0.9.0",
@@ -9007,7 +9007,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "oxc_allocator",
@@ -9030,7 +9030,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_dom"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "url",
  "v8",
@@ -9041,7 +9041,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_image"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "avif-parse",
  "gif",
@@ -9064,7 +9064,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9073,7 +9073,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_webgpu"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "pollster",
  "v8",
@@ -9088,7 +9088,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_window"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -9115,7 +9115,7 @@ dependencies = [
 
 [[package]]
 name = "yuzuko_winter"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes",
  "aes-gcm",
