@@ -1386,6 +1386,9 @@ declare namespace Yuzuko {
      * @param options - Size, title, and frame flags.
      * @throws {@link TypeError} When `options` is not an object, a length or
      * position is not finite, or a minimum is greater than the matching maximum.
+     * `The connection to the window system was lost.` after the Wayland
+     * compositor or the X server went away. Every open window has received
+     * `close` by then.
      */
     constructor(options?: WindowOptions);
 
