@@ -321,11 +321,17 @@
   "websockets/constructor/008.html": true,
   "websockets/constructor/009.html": {
     "flaky": {
-      "linux": "The protocol handshake does not finish.",
-      "windows": "The protocol handshake does not finish."
+      "reason": "The protocol handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The protocol handshake does not finish."
+      "reason": "The protocol handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/constructor/010.html": true,
@@ -343,11 +349,17 @@
   "websockets/constructor/017.html": true,
   "websockets/constructor/018.html": {
     "flaky": {
-      "linux": "The NUL echo handshake does not finish.",
-      "windows": "The NUL echo handshake does not finish."
+      "reason": "The NUL echo handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The NUL echo handshake does not finish."
+      "reason": "The NUL echo handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/constructor/019.html": true,
@@ -355,11 +367,17 @@
   "websockets/constructor/021.html": true,
   "websockets/constructor/022.html": {
     "flaky": {
-      "linux": "The protocol-array handshake does not finish.",
-      "windows": "The protocol-array handshake does not finish."
+      "reason": "The protocol-array handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The protocol-array handshake does not finish."
+      "reason": "The protocol-array handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/constructor/option-bag.any.js": {
@@ -368,11 +386,17 @@
       "Option bag with protocols array should be accepted"
     ],
     "flaky": {
-      "linux": "The option-bag handshake does not finish.",
-      "windows": "The option-bag handshake does not finish."
+      "reason": "The option-bag handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The option-bag handshake does not finish."
+      "reason": "The option-bag handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/constructor/target-address-space.any.js": {
@@ -413,11 +437,17 @@
       "Cookie should be set"
     ],
     "flaky": {
-      "linux": "The cross-origin cookie handshake does not finish.",
-      "windows": "The cross-origin cookie handshake does not finish."
+      "reason": "The cross-origin cookie handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The cross-origin cookie handshake does not finish."
+      "reason": "The cross-origin cookie handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/cookies/third-party-cookie-accepted.https.html": false,
@@ -563,20 +593,32 @@
   "websockets/opening-handshake/002.html": true,
   "websockets/opening-handshake/003-sets-origin.worker.js": {
     "flaky": {
-      "linux": "The origin handshake does not finish.",
-      "windows": "The origin handshake does not finish."
+      "reason": "The origin handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The origin handshake does not finish."
+      "reason": "The origin handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/opening-handshake/003.html": {
     "flaky": {
-      "linux": "The IDN origin handshake does not finish.",
-      "windows": "The IDN origin handshake does not finish."
+      "reason": "The IDN origin handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The IDN origin handshake does not finish."
+      "reason": "The IDN origin handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/opening-handshake/005.html": false,
@@ -588,11 +630,17 @@
   },
   "websockets/referrer.any.js": {
     "flaky": {
-      "linux": "The referrer handshake does not finish.",
-      "windows": "The referrer handshake does not finish."
+      "reason": "The referrer handshake does not finish.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The referrer handshake does not finish."
+      "reason": "The referrer handshake does not finish.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "websockets/remove-own-iframe-during-onerror.window.js": {
@@ -659,7 +707,10 @@
       "writer close() promise should not resolve until handshake completes"
     ],
     "ignore": {
-      "windows": "The WebSocket stream harness does not finish."
+      "reason": "The WebSocket stream harness does not finish.",
+      "os": [
+        "windows"
+      ]
     }
   },
   "websockets/stream/tentative/constructor.any.js": {
@@ -669,7 +720,10 @@
       "wss.opened should resolve to the right types"
     ],
     "ignore": {
-      "windows": "The WebSocket stream harness does not finish."
+      "reason": "The WebSocket stream harness does not finish.",
+      "os": [
+        "windows"
+      ]
     }
   },
   "websockets/stream/tentative/read.any.js": {
@@ -688,7 +742,10 @@
       "remote code and reason should be used"
     ],
     "ignore": {
-      "windows": "The WebSocket stream harness does not finish."
+      "reason": "The WebSocket stream harness does not finish.",
+      "os": [
+        "windows"
+      ]
     }
   },
   "websockets/stream/tentative/websocket-error.any.js": true,
@@ -702,7 +759,10 @@
       "writing a view on a shared buffer should be rejected"
     ],
     "ignore": {
-      "windows": "The WebSocket stream harness does not finish."
+      "reason": "The WebSocket stream harness does not finish.",
+      "os": [
+        "windows"
+      ]
     }
   },
   "websockets/unload-a-document/001-1.html": {

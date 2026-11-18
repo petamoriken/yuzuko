@@ -267,8 +267,11 @@
   },
   "webcodecs/video-decoder.crossOriginIsolated.https.any.js": {
     "ignore": {
-      "linux": "A SharedArrayBuffer codec description is not supported.",
-      "windows": "A SharedArrayBuffer codec description is not supported."
+      "reason": "A SharedArrayBuffer codec description is not supported.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     }
   },
   "webcodecs/video-decoder.https.any.js": true,
@@ -411,26 +414,38 @@
   "webcodecs/videoColorSpace.any.js": true,
   "webcodecs/videoDecoder-444-h264.https.any.js": {
     "ignore": {
-      "linux": "4:4:4 H.264 is not supported by this hardware decoder.",
-      "windows": "4:4:4 H.264 is not supported by this hardware decoder."
+      "reason": "4:4:4 H.264 is not supported by this hardware decoder.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     }
   },
   "webcodecs/videoDecoder-codec-specific-orientation.https.any.js": {
     "ignore": {
-      "linux": "H.264 variants in this file need a hardware decoder.",
-      "windows": "H.264 variants in this file need a hardware decoder."
+      "reason": "H.264 variants in this file need a hardware decoder.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     }
   },
   "webcodecs/videoDecoder-codec-specific.https.any.js": {
     "ignore": {
-      "linux": "This hardware decoder rejects the codec-specific H.264 samples.",
-      "windows": "This hardware decoder rejects the codec-specific H.264 samples."
+      "reason": "This hardware decoder rejects the codec-specific H.264 samples.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     }
   },
   "webcodecs/videoDecoder-h264-sei.https.any.js": {
     "ignore": {
-      "linux": "This hardware decoder rejects the H.264 SEI sample.",
-      "windows": "This hardware decoder rejects the H.264 SEI sample."
+      "reason": "This hardware decoder rejects the H.264 SEI sample.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     }
   },
   "webcodecs/videoDecoder-interlaced-h264.https.any.js": {

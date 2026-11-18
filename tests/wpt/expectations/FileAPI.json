@@ -85,7 +85,10 @@
   "FileAPI/file/File-constructor.any.js": true,
   "FileAPI/file/File-lastModified.html": {
     "ignore": {
-      "windows": "File lastModified is 1 ms ahead of Date.now()."
+      "reason": "File lastModified is 1 ms ahead of Date.now().",
+      "os": [
+        "windows"
+      ]
     }
   },
   "FileAPI/file/Worker-read-file-constructor.worker.js": true,

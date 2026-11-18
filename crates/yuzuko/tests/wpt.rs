@@ -1,13 +1,14 @@
 //! Web-platform-tests.
 //!
 //! `YUZUKO_WPT_UPDATE=1` rewrites `tests/wpt/expectations`.
-//! `YUZUKO_WPT_NO_IGNORE=1` also runs ignored files, including a platform
-//! ignore for this host. `YUZUKO_WPT_FILTER` keeps paths that contain the
+//! `YUZUKO_WPT_NO_IGNORE=1` also runs ignored files, including an ignore
+//! that covers this host. `YUZUKO_WPT_FILTER` keeps paths that contain the
 //! substring.
 //!
-//! `ignore` and `flaky` are a reason string, or an object of `linux`,
-//! `macos`, and `windows` whose values are reasons. `flaky` retries that
-//! platform up to three times.
+//! `ignore` and `flaky` are one reason. A string covers every host. An
+//! object has `reason` and `os`. `os` lists `linux`, `macos`, and
+//! `windows`. `expectedFailures` is an array of subtest names. `flaky`
+//! retries that host up to three times.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -147,12 +148,19 @@ enum FileResult {
   Failures(Vec<String>),
 }
 
-/// An all-platform or per-platform annotation. Every arm carries a reason.
+/// An annotation and the hosts it covers. Every arm carries a reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Note {
   No,
   All { reason: String },
-  Platforms(BTreeMap<Platform, String>),
+  Clauses(Vec<Clause>),
+}
+
+/// One operating system covered by an ignore or flaky reason.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Clause {
+  platform: Platform,
+  reason: String,
 }
 
 /// Names match `std::env::consts::OS` for the supported targets.
@@ -315,10 +323,11 @@ fn wpt_expectations_match() {
             String::new()
           };
           mismatches.push(format!(
-            "{}: expected {} but {}{attempts}",
+            "{}: expected {} but {}{attempts} ({})",
             case.key,
             format_expect(expected),
-            summarize(&outcome)
+            summarize(&outcome),
+            host.as_str()
           ));
         }
         None => mismatches.push(format!("{}: missing expectation", case.key)),
@@ -1504,36 +1513,40 @@ impl Platform {
       Self::Windows => "windows",
     }
   }
-
-  fn parse(name: &str) -> Option<Self> {
-    match name {
-      "linux" => Some(Self::Linux),
-      "macos" => Some(Self::Macos),
-      "windows" => Some(Self::Windows),
-      _ => None,
-    }
-  }
 }
 
 fn ignored_everywhere(expect: &Expect) -> bool {
   matches!(expect.ignore, Note::All { .. })
 }
 
+const PLATFORMS: [Platform; 3] =
+  [Platform::Linux, Platform::Macos, Platform::Windows];
+
 fn noted_on(note: &Note, host: Platform) -> bool {
   match note {
     Note::No => false,
     Note::All { .. } => true,
-    Note::Platforms(map) => map.contains_key(&host),
+    Note::Clauses(clauses) => {
+      clauses.iter().any(|clause| clause.platform == host)
+    }
   }
 }
 
-/// Update keeps an all-platform reason. A platform map becomes an
-/// all-platform ignore. When the platform reasons differ, `fallback` is
-/// the reason.
+fn platform_index(platform: Platform) -> usize {
+  match platform {
+    Platform::Linux => 0,
+    Platform::Macos => 1,
+    Platform::Windows => 2,
+  }
+}
+
+/// Update keeps an all-host reason. Clauses that share one reason widen
+/// to that all-host ignore. When the reasons differ, `fallback` is the
+/// reason.
 fn preserve_runner_ignore(previous: Option<&Expect>, fallback: &str) -> Expect {
   let reason = match previous.map(|expect| &expect.ignore) {
     Some(Note::All { reason }) => reason.clone(),
-    Some(Note::Platforms(map)) => shared_reason(map, fallback),
+    Some(note) => shared_reason(note, fallback),
     _ => fallback.to_string(),
   };
   Expect {
@@ -1543,12 +1556,15 @@ fn preserve_runner_ignore(previous: Option<&Expect>, fallback: &str) -> Expect {
   }
 }
 
-fn shared_reason(map: &BTreeMap<Platform, String>, fallback: &str) -> String {
+fn shared_reason(note: &Note, fallback: &str) -> String {
+  let Note::Clauses(clauses) = note else {
+    return fallback.to_string();
+  };
   let mut found = None;
-  for reason in map.values() {
+  for clause in clauses {
     match &found {
-      None => found = Some(reason.clone()),
-      Some(previous) if previous == reason => {}
+      None => found = Some(clause.reason.clone()),
+      Some(previous) if previous == &clause.reason => {}
       Some(_) => return fallback.to_string(),
     }
   }
@@ -1571,29 +1587,60 @@ fn merge_observation(
     .map(|expect| expect.flaky.clone())
     .unwrap_or(Note::No);
   Expect {
-    result: actual,
+    result: normalize_result(actual),
     ignore,
     flaky,
   }
 }
 
-fn retain_note(note: &Note, drop_host: bool, host: Platform) -> Note {
-  match note {
-    Note::No => Note::No,
-    Note::All { .. } if drop_host => Note::No,
-    Note::All { .. } => note.clone(),
-    Note::Platforms(map) => {
-      let mut map = map.clone();
-      if drop_host {
-        map.remove(&host);
-      }
-      if map.is_empty() {
-        Note::No
+fn normalize_result(actual: FileResult) -> FileResult {
+  match actual {
+    FileResult::Failures(mut names) => {
+      names.sort();
+      names.dedup();
+      if names.is_empty() {
+        FileResult::Pass
       } else {
-        Note::Platforms(map)
+        FileResult::Failures(names)
       }
     }
+    other => other,
   }
+}
+
+fn retain_note(note: &Note, drop_host: bool, host: Platform) -> Note {
+  if drop_host {
+    subtract_host(note, host)
+  } else {
+    note.clone()
+  }
+}
+
+/// Drop the operating system that just ran.
+fn subtract_host(note: &Note, host: Platform) -> Note {
+  match note {
+    Note::No => Note::No,
+    Note::All { .. } => Note::No,
+    Note::Clauses(clauses) => {
+      let mut slots = expand(clauses);
+      slots[platform_index(host)] = None;
+      compact(&slots)
+    }
+  }
+}
+
+fn expand(clauses: &[Clause]) -> [Option<String>; 3] {
+  let mut slots: [Option<String>; 3] = [None, None, None];
+  for clause in clauses {
+    fill(
+      &mut slots,
+      clause.platform,
+      clause.reason.clone(),
+      "",
+      "ignore",
+    );
+  }
+  slots
 }
 
 fn expect_of(outcome: &Outcome) -> FileResult {
@@ -1620,11 +1667,12 @@ fn expect_of(outcome: &Outcome) -> FileResult {
 }
 
 fn expectation_matches(expect: &Expect, outcome: &Outcome) -> bool {
+  let actual = expect_of(outcome);
   match &expect.result {
-    FileResult::Pass => expect_of(outcome) == FileResult::Pass,
-    FileResult::Fail => expect_of(outcome) != FileResult::Pass,
-    FileResult::Failures(expected) => match expect_of(outcome) {
-      FileResult::Failures(actual) => expected == &actual,
+    FileResult::Pass => actual == FileResult::Pass,
+    FileResult::Fail => actual != FileResult::Pass,
+    FileResult::Failures(required) => match actual {
+      FileResult::Failures(actual) => actual == *required,
       _ => false,
     },
   }
@@ -1669,12 +1717,12 @@ fn truncate(text: &str) -> String {
 }
 
 fn format_expect(expect: &Expect) -> String {
-  let mut result = match &expect.result {
+  let result = match &expect.result {
     FileResult::Pass => "pass".to_string(),
     FileResult::Fail => "file failure".to_string(),
     FileResult::Failures(names) => format!("failures {names:?}"),
   };
-  result = format_note(&result, "flaky", &expect.flaky);
+  let result = format_note(&result, "flaky", &expect.flaky);
   format_note(&result, "ignored", &expect.ignore)
 }
 
@@ -1688,18 +1736,32 @@ fn format_note(result: &str, label: &str, note: &Note) -> String {
         format!("{result}, {label} ({reason})")
       }
     }
-    Note::Platforms(map) => {
-      format!("{result}, {label} on {}", format_platforms(map))
+    Note::Clauses(clauses) => {
+      format!("{result}, {label} on {}", format_clauses(clauses))
     }
   }
 }
 
-fn format_platforms(map: &BTreeMap<Platform, String>) -> String {
-  let parts: Vec<String> = map
+fn format_clauses(clauses: &[Clause]) -> String {
+  let slots = expand(clauses);
+  match shared_slot_reason(&slots) {
+    Some(reason) => format!("{} ({reason})", os_list(&slots)),
+    None => clauses
+      .iter()
+      .map(|clause| format!("{} ({})", clause.platform.as_str(), clause.reason))
+      .collect::<Vec<_>>()
+      .join(", "),
+  }
+}
+
+fn os_list(slots: &[Option<String>]) -> String {
+  PLATFORMS
     .iter()
-    .map(|(platform, reason)| format!("{} ({reason})", platform.as_str()))
-    .collect();
-  parts.join(", ")
+    .enumerate()
+    .filter(|(index, _)| slots[*index].is_some())
+    .map(|(_, platform)| platform.as_str())
+    .collect::<Vec<_>>()
+    .join(", ")
 }
 
 fn read_expectations(path: &Path, update: bool) -> BTreeMap<String, Expect> {
@@ -1743,9 +1805,12 @@ fn parse_expect_object(
   key: &str,
   map: serde_json::Map<String, Value>,
 ) -> Expect {
+  if map.contains_key("fail") {
+    panic!("{key}: use false for a whole-file failure");
+  }
   for name in map.keys() {
     match name.as_str() {
-      "ignore" | "flaky" | "expectedFailures" | "fail" => {}
+      "ignore" | "flaky" | "expectedFailures" => {}
       "reason" => {
         panic!("{key}: write the reason as the value of ignore or flaky")
       }
@@ -1760,52 +1825,53 @@ fn parse_expect_object(
   if matches!(flaky, Note::All { .. }) && !matches!(ignore, Note::No) {
     panic!("{key}: an all-platform flaky cannot combine with ignore");
   }
-  if let (Note::Platforms(left), Note::Platforms(right)) = (&ignore, &flaky)
-    && left.keys().any(|platform| right.contains_key(platform))
-  {
-    panic!("{key}: ignore and flaky name the same platform");
+  if notes_overlap(&ignore, &flaky) {
+    panic!("{key}: ignore and flaky cover the same host");
   }
   let has_failures = map.contains_key("expectedFailures");
-  let has_fail = map.contains_key("fail");
-  if has_failures && has_fail {
-    panic!("{key}: fail and expectedFailures cannot combine");
+  if matches!(ignore, Note::All { .. }) && has_failures {
+    panic!("{key}: an all-platform ignore cannot set expectedFailures");
   }
-  if matches!(ignore, Note::All { .. }) && (has_failures || has_fail) {
-    panic!("{key}: an all-platform ignore cannot set expectedFailures or fail");
-  }
-  let result = if has_fail {
-    match map.get("fail") {
-      Some(Value::Bool(true)) => FileResult::Fail,
-      _ => panic!("{key}: fail must be true"),
-    }
-  } else if let Some(list) = map.get("expectedFailures") {
+  let names = if let Some(list) = map.get("expectedFailures") {
     let Some(list) = list.as_array() else {
-      panic!("{key}: expectedFailures must be an array of strings");
+      panic!("{key}: expectedFailures must be an array");
     };
-    let mut names = Vec::new();
-    for item in list {
-      let Some(name) = item.as_str() else {
-        panic!("{key}: expectedFailures must be an array of strings");
-      };
-      names.push(name.to_string());
-    }
-    names.sort();
-    names.dedup();
+    parse_failure_names(key, list)
+  } else {
+    Vec::new()
+  };
+  let result = if has_failures {
     FileResult::Failures(names)
   } else {
     FileResult::Pass
   };
-  if matches!(result, FileResult::Fail)
-    && matches!(ignore, Note::No)
-    && matches!(flaky, Note::No)
-  {
-    panic!("{key}: use false for a whole-file failure");
-  }
   Expect {
     result,
     ignore,
     flaky,
   }
+}
+
+fn notes_overlap(left: &Note, right: &Note) -> bool {
+  if matches!(left, Note::No) || matches!(right, Note::No) {
+    return false;
+  }
+  PLATFORMS
+    .iter()
+    .any(|platform| noted_on(left, *platform) && noted_on(right, *platform))
+}
+
+fn parse_failure_names(key: &str, list: &[Value]) -> Vec<String> {
+  let mut names = Vec::new();
+  for item in list {
+    let Value::String(name) = item else {
+      panic!("{key}: expectedFailures entries must be strings");
+    };
+    names.push(name.clone());
+  }
+  names.sort();
+  names.dedup();
+  names
 }
 
 fn parse_mark(key: &str, label: &str, value: Option<&Value>) -> Note {
@@ -1814,40 +1880,129 @@ fn parse_mark(key: &str, label: &str, value: Option<&Value>) -> Note {
     Some(Value::String(text)) => Note::All {
       reason: nonempty_reason(key, label, text),
     },
-    Some(Value::Object(platforms)) => parse_platforms(key, label, platforms),
+    Some(Value::Object(conditions)) => parse_conditions(key, label, conditions),
     Some(_) => {
-      panic!("{key}: {label} must be a reason string or a platform object")
+      panic!("{key}: {label} must be a reason string or a condition object")
     }
   }
 }
 
-fn parse_platforms(
+fn parse_conditions(
   key: &str,
   label: &str,
   value: &serde_json::Map<String, Value>,
 ) -> Note {
-  if value.is_empty() {
-    panic!("{key}: {label} lists no platform");
-  }
-  let mut platforms = BTreeMap::new();
+  let mut reason = None;
+  let mut operating_systems = None;
   for (name, entry) in value {
-    let Some(platform) = Platform::parse(name) else {
-      panic!("{key}: platform must be \"linux\", \"macos\", or \"windows\"");
-    };
-    let Value::String(text) = entry else {
-      panic!("{key}: {label} for {name} must be a reason string");
-    };
-    let reason = nonempty_reason(key, &format!("reason for {name}"), text);
-    platforms.insert(platform, reason);
-  }
-  if platforms.len() == 3 {
-    let mut values = platforms.values();
-    let first = values.next().expect("platform").clone();
-    if values.all(|reason| reason == &first) {
-      return Note::All { reason: first };
+    match name.as_str() {
+      "reason" => reason = Some(parse_reason_value(key, label, entry)),
+      "os" => operating_systems = Some(parse_os_list(key, label, entry)),
+      _ => panic!("{key}: {label} field must be reason or os"),
     }
   }
-  Note::Platforms(platforms)
+  let Some(reason) = reason else {
+    panic!("{key}: {label} needs a reason");
+  };
+  let Some(platforms) = operating_systems else {
+    panic!("{key}: {label} needs os");
+  };
+  let mut slots: [Option<String>; 3] = [None, None, None];
+  for platform in platforms {
+    fill(&mut slots, platform, reason.clone(), key, label);
+  }
+  compact(&slots)
+}
+
+fn parse_reason_value(key: &str, label: &str, entry: &Value) -> String {
+  let Value::String(text) = entry else {
+    panic!("{key}: {label} reason must be a string");
+  };
+  nonempty_reason(key, label, text)
+}
+
+fn parse_os_list(key: &str, label: &str, entry: &Value) -> Vec<Platform> {
+  let Value::Array(items) = entry else {
+    panic!("{key}: {label} os must be an array");
+  };
+  if items.is_empty() {
+    panic!("{key}: {label} os must not be empty");
+  }
+  let mut seen = [false; 3];
+  let mut platforms = Vec::new();
+  for item in items {
+    let platform = match item.as_str() {
+      Some("linux") => Platform::Linux,
+      Some("macos") => Platform::Macos,
+      Some("windows") => Platform::Windows,
+      _ => panic!("{key}: os must be \"linux\", \"macos\", or \"windows\""),
+    };
+    let index = platform_index(platform);
+    if seen[index] {
+      panic!("{key}: {label} names {} twice", platform.as_str());
+    }
+    seen[index] = true;
+    platforms.push(platform);
+  }
+  platforms
+}
+
+fn fill(
+  slots: &mut [Option<String>; 3],
+  platform: Platform,
+  reason: String,
+  key: &str,
+  label: &str,
+) {
+  let index = platform_index(platform);
+  match &slots[index] {
+    Some(previous) if previous != &reason => {
+      panic!("{key}: {label} gives two reasons for one host");
+    }
+    Some(_) => {}
+    None => slots[index] = Some(reason),
+  }
+}
+
+fn compact(slots: &[Option<String>; 3]) -> Note {
+  if slots.iter().all(Option::is_none) {
+    return Note::No;
+  }
+  if slots.iter().all(Option::is_some)
+    && let Some(reason) = shared_slot_reason(slots)
+  {
+    return Note::All { reason };
+  }
+  let mut clauses = Vec::new();
+  for (index, slot) in slots.iter().enumerate() {
+    let Some(reason) = slot else {
+      continue;
+    };
+    clauses.push(Clause {
+      platform: PLATFORMS[index],
+      reason: reason.clone(),
+    });
+  }
+  if clauses.is_empty() {
+    Note::No
+  } else {
+    Note::Clauses(clauses)
+  }
+}
+
+fn shared_slot_reason(slots: &[Option<String>]) -> Option<String> {
+  let mut found = None;
+  for slot in slots {
+    let Some(reason) = slot else {
+      continue;
+    };
+    match &found {
+      None => found = Some(reason.clone()),
+      Some(previous) if previous == reason => {}
+      Some(_) => return None,
+    }
+  }
+  found
 }
 
 fn nonempty_reason(key: &str, label: &str, text: &str) -> String {
@@ -1863,39 +2018,123 @@ fn write_expectations(path: &Path, expectations: &BTreeMap<String, Expect>) {
   for (key, expect) in expectations {
     map.insert(key.clone(), expect_json(expect));
   }
-  let text = serde_json::to_string_pretty(&Value::Object(map)).expect("json");
+  let text = pretty_json(&Value::Object(map));
   fs::write(path, format!("{text}\n")).expect("write expectations");
 }
 
 fn expect_json(expect: &Expect) -> Value {
-  if matches!(expect.ignore, Note::No) && matches!(expect.flaky, Note::No) {
-    return match &expect.result {
-      FileResult::Pass => Value::Bool(true),
-      FileResult::Fail => Value::Bool(false),
-      FileResult::Failures(names) => json!({"expectedFailures": names}),
-    };
-  }
   if matches!(expect.ignore, Note::All { .. }) {
     return note_object("ignore", &expect.ignore);
   }
+  // A whole-file failure is `false` and stands alone.
+  if matches!(expect.result, FileResult::Fail) {
+    return Value::Bool(false);
+  }
+  let failures = failure_array(expect);
+  if matches!(expect.ignore, Note::No) && matches!(expect.flaky, Note::No) {
+    return match &expect.result {
+      FileResult::Pass => Value::Bool(true),
+      FileResult::Failures(_) => {
+        json!({"expectedFailures": failures.expect("failure names")})
+      }
+      FileResult::Fail => Value::Bool(false),
+    };
+  }
   if matches!(expect.flaky, Note::All { .. })
     && matches!(expect.result, FileResult::Pass)
+    && failures.is_none()
   {
     return note_object("flaky", &expect.flaky);
   }
   let mut map = serde_json::Map::new();
-  match &expect.result {
-    FileResult::Pass => {}
-    FileResult::Fail => {
-      map.insert("fail".to_string(), Value::Bool(true));
-    }
-    FileResult::Failures(names) => {
-      map.insert("expectedFailures".to_string(), json!(names));
-    }
+  if let Some(list) = failures {
+    map.insert("expectedFailures".to_string(), list);
   }
   insert_note(&mut map, "flaky", &expect.flaky);
   insert_note(&mut map, "ignore", &expect.ignore);
   Value::Object(map)
+}
+
+fn failure_array(expect: &Expect) -> Option<Value> {
+  let FileResult::Failures(names) = &expect.result else {
+    return None;
+  };
+  Some(Value::Array(
+    names.iter().cloned().map(Value::String).collect(),
+  ))
+}
+
+/// `serde_json::Map` sorts keys. A condition object is written `reason`,
+/// then `os`. Every other object keeps sorted keys, which is what
+/// `to_string_pretty` emits.
+fn pretty_json(value: &Value) -> String {
+  let mut out = String::new();
+  write_json(&mut out, value, 0);
+  out
+}
+
+fn write_json(out: &mut String, value: &Value, indent: usize) {
+  match value {
+    Value::Null => out.push_str("null"),
+    Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+    Value::Number(number) => out.push_str(&number.to_string()),
+    Value::String(text) => {
+      out.push_str(&serde_json::to_string(text).expect("string"));
+    }
+    Value::Array(items) if items.is_empty() => out.push_str("[]"),
+    Value::Array(items) => {
+      out.push_str("[\n");
+      for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+          out.push_str(",\n");
+        }
+        push_indent(out, indent + 1);
+        write_json(out, item, indent + 1);
+      }
+      out.push('\n');
+      push_indent(out, indent);
+      out.push(']');
+    }
+    Value::Object(map) if map.is_empty() => out.push_str("{}"),
+    Value::Object(map) => {
+      let keys = object_keys(map);
+      out.push_str("{\n");
+      for (index, key) in keys.iter().enumerate() {
+        if index > 0 {
+          out.push_str(",\n");
+        }
+        push_indent(out, indent + 1);
+        out.push_str(&serde_json::to_string(key).expect("key"));
+        out.push_str(": ");
+        write_json(out, &map[key], indent + 1);
+      }
+      out.push('\n');
+      push_indent(out, indent);
+      out.push('}');
+    }
+  }
+}
+
+fn object_keys(map: &serde_json::Map<String, Value>) -> Vec<String> {
+  let note = map.contains_key("reason")
+    && map
+      .keys()
+      .all(|key| matches!(key.as_str(), "reason" | "os"));
+  if note {
+    ["reason", "os"]
+      .into_iter()
+      .filter(|key| map.contains_key(*key))
+      .map(str::to_string)
+      .collect()
+  } else {
+    map.keys().cloned().collect()
+  }
+}
+
+fn push_indent(out: &mut String, level: usize) {
+  for _ in 0..level {
+    out.push_str("  ");
+  }
 }
 
 fn note_object(name: &str, note: &Note) -> Value {
@@ -1915,17 +2154,32 @@ fn insert_note(
     Note::All { reason } => {
       map.insert(name.to_string(), Value::String(reason.clone()));
     }
-    Note::Platforms(platforms) => {
-      map.insert(name.to_string(), platforms_json(platforms));
+    Note::Clauses(clauses) => {
+      map.insert(name.to_string(), clauses_json(clauses));
     }
   }
 }
 
-fn platforms_json(platforms: &BTreeMap<Platform, String>) -> Value {
-  let mut map = serde_json::Map::new();
-  for (platform, reason) in platforms {
-    map.insert(platform.as_str().to_string(), Value::String(reason.clone()));
+fn clauses_json(clauses: &[Clause]) -> Value {
+  let slots = expand(clauses);
+  let Some(reason) = shared_slot_reason(&slots) else {
+    panic!("a condition records one reason");
+  };
+  let os: Vec<Value> = PLATFORMS
+    .iter()
+    .enumerate()
+    .filter(|(index, _)| slots[*index].is_some())
+    .map(|(_, platform)| Value::String(platform.as_str().to_string()))
+    .collect();
+  if os.len() == PLATFORMS.len() {
+    panic!("a condition that covers every host is a string");
   }
+  if os.is_empty() {
+    panic!("a condition records one reason");
+  }
+  let mut map = serde_json::Map::new();
+  map.insert("reason".to_string(), Value::String(reason));
+  map.insert("os".to_string(), Value::Array(os));
   Value::Object(map)
 }
 
@@ -1996,23 +2250,23 @@ fn expectation_platform_ignore_round_trips() {
   let value = json!({
     "expectedFailures": ["interlaced"],
     "ignore": {
-      "linux": "No VA-API",
-      "windows": "No DXVA"
+      "reason": "No hardware decoder.",
+      "os": ["linux", "windows"]
     }
   });
-  let expect = parse_expect("example.js", value.clone());
+  let swapped = json!({
+    "expectedFailures": ["interlaced"],
+    "ignore": {
+      "reason": "No hardware decoder.",
+      "os": ["windows", "linux"]
+    }
+  });
+  let expect = parse_expect("example.js", swapped);
   assert!(noted_on(&expect.ignore, Platform::Linux));
   assert!(noted_on(&expect.ignore, Platform::Windows));
   assert!(!noted_on(&expect.ignore, Platform::Macos));
   assert!(!ignored_everywhere(&expect));
   assert_eq!(expect_json(&expect), value);
-  assert_eq!(
-    expect_json(&parse_expect(
-      "example.js",
-      json!({"fail": true, "ignore": {"linux": "No VA-API"}}),
-    )),
-    json!({"fail": true, "ignore": {"linux": "No VA-API"}}),
-  );
 }
 
 #[test]
@@ -2038,6 +2292,13 @@ fn expectation_bool_and_failures_round_trip() {
     expect_json(&parsed),
     json!({"expectedFailures": ["a", "b"]})
   );
+  assert_eq!(
+    expect_json(&parse_expect(
+      "example.js",
+      json!({"expectedFailures": [""]}),
+    )),
+    json!({"expectedFailures": [""]})
+  );
 }
 
 #[test]
@@ -2051,21 +2312,31 @@ fn expectation_update_keeps_reason_and_other_platforms() {
     )),
     json!({"ignore": "Needs a document"})
   );
-  let linux =
-    parse_expect("example.js", json!({"ignore": {"linux": "No VA-API"}}));
+  let linux = parse_expect(
+    "example.js",
+    json!({"ignore": {"reason": "No VA-API.", "os": ["linux"]}}),
+  );
   assert_eq!(
     expect_json(&preserve_runner_ignore(
       Some(&linux),
       "The runner skips this file."
     )),
-    json!({"ignore": "No VA-API"})
+    json!({"ignore": "No VA-API."})
   );
-  let split = parse_expect(
-    "example.js",
-    json!({
-      "ignore": {"linux": "No VA-API", "windows": "No DXVA"}
-    }),
-  );
+  let split = Expect {
+    result: FileResult::Pass,
+    ignore: Note::Clauses(vec![
+      Clause {
+        platform: Platform::Linux,
+        reason: "No VA-API.".to_string(),
+      },
+      Clause {
+        platform: Platform::Windows,
+        reason: "No DXVA.".to_string(),
+      },
+    ]),
+    flaky: Note::No,
+  };
   assert_eq!(
     expect_json(&preserve_runner_ignore(
       Some(&split),
@@ -2076,7 +2347,7 @@ fn expectation_update_keeps_reason_and_other_platforms() {
 
   let previous = parse_expect(
     "example.js",
-    json!({"fail": true, "ignore": {"linux": "No VA-API"}}),
+    json!({"ignore": {"reason": "No VA-API.", "os": ["linux"]}}),
   );
   let observed = merge_observation(
     Some(&previous),
@@ -2088,23 +2359,31 @@ fn expectation_update_keeps_reason_and_other_platforms() {
     expect_json(&observed),
     json!({
       "expectedFailures": ["one"],
-      "ignore": {"linux": "No VA-API"}
+      "ignore": {"reason": "No VA-API.", "os": ["linux"]}
     })
   );
   let forced =
     merge_observation(Some(&previous), FileResult::Pass, true, Platform::Linux);
   assert_eq!(expect_json(&forced), json!(true));
+  let file_failure = merge_observation(
+    Some(&previous),
+    FileResult::Fail,
+    false,
+    Platform::Macos,
+  );
+  assert_eq!(expect_json(&file_failure), json!(false));
+  let whole = parse_expect("example.js", json!(false));
   assert!(!expectation_matches(
-    &previous,
+    &whole,
     &Outcome::Report {
       status: 0,
       message: String::new(),
       tests: Vec::new(),
-    }
+    },
   ));
   assert!(expectation_matches(
-    &parse_expect("example.js", json!(false)),
-    &Outcome::Error("boom".to_string())
+    &whole,
+    &Outcome::Error("boom".to_string()),
   ));
 }
 
@@ -2114,11 +2393,12 @@ fn expectation_platform_names_match_the_host() {
 }
 
 #[test]
-#[should_panic(
-  expected = "platform must be \"linux\", \"macos\", or \"windows\""
-)]
+#[should_panic(expected = "os must be \"linux\", \"macos\", or \"windows\"")]
 fn expectation_rejects_darwin_as_a_platform() {
-  parse_expect("example.js", json!({"ignore": {"darwin": "VideoToolbox"}}));
+  parse_expect(
+    "example.js",
+    json!({"ignore": {"reason": "VideoToolbox", "os": ["darwin"]}}),
+  );
 }
 
 #[test]
@@ -2137,22 +2417,67 @@ fn expectation_rejects_a_sibling_reason() {
 }
 
 #[test]
-#[should_panic(expected = "must be a reason string or a platform object")]
+#[should_panic(expected = "must be a reason string or a condition object")]
 fn expectation_rejects_an_ignore_without_a_reason() {
   parse_expect("example.js", json!({"ignore": true}));
 }
 
 #[test]
-#[should_panic(expected = "must be a reason string")]
-fn expectation_rejects_a_platform_ignore_without_a_reason() {
-  parse_expect("example.js", json!({"ignore": {"linux": true}}));
+#[should_panic(expected = "ignore needs a reason")]
+fn expectation_rejects_a_condition_without_a_reason() {
+  parse_expect("example.js", json!({"ignore": {"os": ["linux"]}}));
+}
+
+#[test]
+#[should_panic(expected = "ignore field must be reason or os")]
+fn expectation_rejects_a_gpu_field() {
+  parse_expect(
+    "example.js",
+    json!({"ignore": {"reason": "No GPU.", "gpu": false}}),
+  );
+}
+
+#[test]
+#[should_panic(expected = "ignore needs os")]
+fn expectation_rejects_a_reason_without_os() {
+  parse_expect("example.js", json!({"ignore": {"reason": "No GPU."}}));
+}
+
+#[test]
+#[should_panic(expected = "ignore os must not be empty")]
+fn expectation_rejects_an_empty_os_list() {
+  parse_expect(
+    "example.js",
+    json!({"ignore": {"reason": "No GPU.", "os": []}}),
+  );
+}
+
+#[test]
+#[should_panic(expected = "ignore names linux twice")]
+fn expectation_rejects_a_repeated_os() {
+  parse_expect(
+    "example.js",
+    json!({"ignore": {"reason": "No GPU.", "os": ["linux", "linux"]}}),
+  );
+}
+
+#[test]
+#[should_panic(expected = "expectedFailures entries must be strings")]
+fn expectation_rejects_an_object_in_expected_failures() {
+  parse_expect(
+    "example.js",
+    json!({"expectedFailures": [{"name": "hardware"}]}),
+  );
 }
 
 #[test]
 fn expectation_flaky_round_trips() {
   let value = json!({
     "expectedFailures": ["Cookie should be set"],
-    "flaky": {"macos": "The handshake does not finish."}
+    "flaky": {
+      "reason": "The handshake does not finish.",
+      "os": ["macos"]
+    }
   });
   let expect = parse_expect("example.js", value.clone());
   assert!(noted_on(&expect.flaky, Platform::Macos));
@@ -2165,9 +2490,8 @@ fn expectation_flaky_round_trips() {
   );
   let repeated = json!({
     "flaky": {
-      "linux": "The handshake does not finish.",
-      "macos": "The handshake does not finish.",
-      "windows": "The handshake does not finish."
+      "reason": "The handshake does not finish.",
+      "os": ["windows", "macos", "linux"]
     }
   });
   assert_eq!(
@@ -2181,8 +2505,11 @@ fn expectation_update_keeps_flaky() {
   let previous = parse_expect(
     "example.js",
     json!({
-      "flaky": {"macos": "The handshake does not finish."},
-      "ignore": {"linux": "No VA-API"}
+      "flaky": {
+        "reason": "The handshake does not finish.",
+        "os": ["macos"]
+      },
+      "ignore": {"reason": "No VA-API.", "os": ["linux"]}
     }),
   );
   let observed = merge_observation(
@@ -2194,20 +2521,23 @@ fn expectation_update_keeps_flaky() {
   assert_eq!(
     expect_json(&observed),
     json!({
-      "flaky": {"macos": "The handshake does not finish."},
-      "ignore": {"linux": "No VA-API"}
+      "flaky": {
+        "reason": "The handshake does not finish.",
+        "os": ["macos"]
+      },
+      "ignore": {"reason": "No VA-API.", "os": ["linux"]}
     })
   );
 }
 
 #[test]
-#[should_panic(expected = "name the same platform")]
+#[should_panic(expected = "cover the same host")]
 fn expectation_rejects_ignore_and_flaky_on_one_platform() {
   parse_expect(
     "example.js",
     json!({
-      "ignore": {"macos": "Skipped."},
-      "flaky": {"macos": "Sometimes hangs."}
+      "ignore": {"reason": "Skipped.", "os": ["macos"]},
+      "flaky": {"reason": "Sometimes hangs.", "os": ["macos"]}
     }),
   );
 }
@@ -2219,9 +2549,7 @@ fn expectation_rejects_fail_without_a_platform() {
 }
 
 #[test]
-#[should_panic(
-  expected = "an all-platform ignore cannot set expectedFailures or fail"
-)]
+#[should_panic(expected = "an all-platform ignore cannot set expectedFailures")]
 fn expectation_rejects_failures_on_an_all_platform_ignore() {
   parse_expect(
     "example.js",
@@ -2230,6 +2558,100 @@ fn expectation_rejects_failures_on_an_all_platform_ignore() {
       "expectedFailures": ["name"]
     }),
   );
+}
+
+fn failure_report(names: &[&str]) -> Outcome {
+  let mut tests = vec![Subtest {
+    name: "passes".to_string(),
+    status: 0,
+    message: String::new(),
+  }];
+  for name in names {
+    tests.push(Subtest {
+      name: (*name).to_string(),
+      status: 1,
+      message: "failed".to_string(),
+    });
+  }
+  Outcome::Report {
+    status: 0,
+    message: String::new(),
+    tests,
+  }
+}
+
+#[test]
+fn expectation_matches_the_named_failures() {
+  let expect =
+    parse_expect("example.js", json!({"expectedFailures": ["real failure"]}));
+  assert!(expectation_matches(
+    &expect,
+    &failure_report(&["real failure"]),
+  ));
+  assert!(!expectation_matches(
+    &expect,
+    &failure_report(&["real failure", "other"]),
+  ));
+  assert!(!expectation_matches(&expect, &failure_report(&[])));
+}
+
+#[test]
+fn expectation_note_object_orders_reason_first() {
+  let leaf = json!({
+    "expectedFailures": ["b", "a"],
+    "ignore": "Needs a document"
+  });
+  assert_eq!(
+    pretty_json(&leaf),
+    serde_json::to_string_pretty(&leaf).expect("json")
+  );
+  let note = json!({
+    "ignore": {"os": ["linux", "windows"], "reason": "No VA-API."}
+  });
+  let text = pretty_json(&note);
+  let reason = text.find("\"reason\"").expect("reason");
+  let os = text.find("\"os\"").expect("os");
+  assert!(reason < os);
+  assert!(!text.contains("\"gpu\""));
+}
+
+#[test]
+fn expectation_update_drops_only_the_host_that_ran() {
+  let previous = parse_expect(
+    "example.js",
+    json!({
+      "ignore": {"reason": "No VA-API.", "os": ["linux", "windows"]}
+    }),
+  );
+  assert_eq!(
+    expect_json(&merge_observation(
+      Some(&previous),
+      FileResult::Pass,
+      true,
+      Platform::Linux,
+    )),
+    json!({"ignore": {"reason": "No VA-API.", "os": ["windows"]}})
+  );
+}
+
+#[test]
+#[should_panic(expected = "a condition records one reason")]
+fn expectation_writer_rejects_two_reasons() {
+  let expect = Expect {
+    result: FileResult::Pass,
+    ignore: Note::Clauses(vec![
+      Clause {
+        platform: Platform::Linux,
+        reason: "No VA-API.".to_string(),
+      },
+      Clause {
+        platform: Platform::Windows,
+        reason: "No DXVA.".to_string(),
+      },
+    ]),
+    flaky: Note::No,
+  };
+  expect_json(&expect);
 }
 
 #[test]

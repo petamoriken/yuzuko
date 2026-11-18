@@ -48,30 +48,48 @@
   "eventsource/format-field-parsing.any.js": true,
   "eventsource/format-field-retry-bogus-2.any.js": {
     "flaky": {
-      "linux": "The reconnect lands outside the 25% window around 1000 ms.",
-      "windows": "The reconnect lands outside the 25% window around 1000 ms."
+      "reason": "The reconnect lands outside the 25% window around 1000 ms.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The reconnect lands outside the 25% window around 1000 ms."
+      "reason": "The reconnect lands outside the 25% window around 1000 ms.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "eventsource/format-field-retry-bogus.any.js": {
     "flaky": {
-      "linux": "The 3s reconnect does not finish within the harness deadline.",
-      "windows": "The 3s reconnect does not finish within the harness deadline."
+      "reason": "The 3s reconnect does not finish within the harness deadline.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The 3s reconnect does not finish within the harness deadline."
+      "reason": "The 3s reconnect does not finish within the harness deadline.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "eventsource/format-field-retry-empty.any.js": true,
   "eventsource/format-field-retry.any.js": {
     "flaky": {
-      "linux": "The 3s reconnect does not finish within the harness deadline.",
-      "windows": "The 3s reconnect does not finish within the harness deadline."
+      "reason": "The 3s reconnect does not finish within the harness deadline.",
+      "os": [
+        "linux",
+        "windows"
+      ]
     },
     "ignore": {
-      "macos": "The 3s reconnect does not finish within the harness deadline."
+      "reason": "The 3s reconnect does not finish within the harness deadline.",
+      "os": [
+        "macos"
+      ]
     }
   },
   "eventsource/format-field-unknown.any.js": true,
