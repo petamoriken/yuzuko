@@ -555,7 +555,6 @@ struct StoredError {
 #[repr(C)]
 pub struct VideoDecoder {
   base: EventTarget,
-  ondequeue: RefCell<Option<v8::TracedReference<v8::Value>>>,
   state: Cell<State>,
   output: RefCell<Option<v8::TracedReference<v8::Function>>>,
   error: RefCell<Option<v8::TracedReference<v8::Function>>>,
@@ -584,9 +583,6 @@ pub struct VideoDecoder {
 unsafe impl v8::cppgc::GarbageCollected for VideoDecoder {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(slot) = self.ondequeue.try_borrow() {
-      visitor.trace(&*slot);
-    }
     trace_fn(&self.output, visitor);
     trace_fn(&self.error, visitor);
     if let Ok(flushes) = self.flushes.try_borrow() {
@@ -617,7 +613,6 @@ impl VideoDecoder {
     let (output, error) = decoder_init(scope, args.get(0))?;
     Ok(Self {
       base: EventTarget::new(),
-      ondequeue: RefCell::new(None),
       state: Cell::new(State::Unconfigured),
       output: RefCell::new(Some(traced(scope, output))),
       error: RefCell::new(Some(traced(scope, error))),
@@ -644,16 +639,6 @@ impl VideoDecoder {
   #[getter]
   fn decode_queue_size(&self) -> u32 {
     self.queue_size.get()
-  }
-
-  #[getter]
-  fn ondequeue(&self, scope: &mut v8::PinScope) -> Js {
-    event_handler_value(scope, &self.ondequeue)
-  }
-
-  #[setter]
-  fn ondequeue(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_event_handler(scope, &self.base, &self.ondequeue, "dequeue", value);
   }
 
   #[static_method]
@@ -1155,38 +1140,6 @@ impl VideoDecoder {
   }
 }
 
-fn event_handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_event_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
-}
-
 fn pump_video(
   scope: &mut v8::PinScope,
   _args: v8::FunctionCallbackArguments,
@@ -1472,7 +1425,6 @@ enum AudioControl {
 #[repr(C)]
 pub struct AudioDecoder {
   base: EventTarget,
-  ondequeue: RefCell<Option<v8::TracedReference<v8::Value>>>,
   state: Cell<State>,
   output: RefCell<Option<v8::TracedReference<v8::Function>>>,
   error: RefCell<Option<v8::TracedReference<v8::Function>>>,
@@ -1489,9 +1441,6 @@ pub struct AudioDecoder {
 unsafe impl v8::cppgc::GarbageCollected for AudioDecoder {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(slot) = self.ondequeue.try_borrow() {
-      visitor.trace(&*slot);
-    }
     trace_fn(&self.output, visitor);
     trace_fn(&self.error, visitor);
     if let Ok(flushes) = self.flushes.try_borrow() {
@@ -1522,7 +1471,6 @@ impl AudioDecoder {
     let (output, error) = decoder_init(scope, args.get(0))?;
     Ok(Self {
       base: EventTarget::new(),
-      ondequeue: RefCell::new(None),
       state: Cell::new(State::Unconfigured),
       output: RefCell::new(Some(traced(scope, output))),
       error: RefCell::new(Some(traced(scope, error))),
@@ -1545,16 +1493,6 @@ impl AudioDecoder {
   #[getter]
   fn decode_queue_size(&self) -> u32 {
     self.queue_size.get()
-  }
-
-  #[getter]
-  fn ondequeue(&self, scope: &mut v8::PinScope) -> Js {
-    event_handler_value(scope, &self.ondequeue)
-  }
-
-  #[setter]
-  fn ondequeue(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_event_handler(scope, &self.base, &self.ondequeue, "dequeue", value);
   }
 
   #[static_method]

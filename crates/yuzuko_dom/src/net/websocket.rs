@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
+use yuzuko_core::op::{OpError, host_ref};
 use yuzuko_macros::op;
 use yuzuko_winter::{
   AddressSpace, Blob, Command, Connection, Note, NoteQueue, abort_all,
@@ -46,19 +46,11 @@ pub struct WebSocket {
   buffered: Cell<u64>,
   binary_blob: Cell<bool>,
   connection: RefCell<Option<Connection>>,
-  onopen: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onmessage: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onclose: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for WebSocket {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    trace_slot(&self.onopen, visitor);
-    trace_slot(&self.onmessage, visitor);
-    trace_slot(&self.onerror, visitor);
-    trace_slot(&self.onclose, visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -115,10 +107,6 @@ impl WebSocket {
       buffered: Cell::new(0),
       binary_blob: Cell::new(true),
       connection: RefCell::new(Some(connection)),
-      onopen: RefCell::new(None),
-      onmessage: RefCell::new(None),
-      onerror: RefCell::new(None),
-      onclose: RefCell::new(None),
     })
   }
 
@@ -248,46 +236,6 @@ impl WebSocket {
     self.command(Command::Text(text));
     Ok(())
   }
-
-  #[getter]
-  fn onopen(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onopen)
-  }
-
-  #[setter]
-  fn onopen(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onopen, "open", value);
-  }
-
-  #[getter]
-  fn onmessage(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onmessage)
-  }
-
-  #[setter]
-  fn onmessage(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onmessage, "message", value);
-  }
-
-  #[getter]
-  fn onerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onerror)
-  }
-
-  #[setter]
-  fn onerror(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onerror, "error", value);
-  }
-
-  #[getter]
-  fn onclose(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onclose)
-  }
-
-  #[setter]
-  fn onclose(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onclose, "close", value);
-  }
 }
 
 impl WebSocket {
@@ -373,6 +321,11 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   let constructor = WebSocket::template(scope)
     .get_function(scope)
     .expect("WebSocket");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["open", "message", "error", "close"],
+  );
   let constructor = v8::Local::<v8::Object>::try_from(
     v8::Local::<v8::Value>::from(constructor),
   )
@@ -684,45 +637,4 @@ fn define_constant(
     number.into(),
     v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
   );
-}
-
-fn trace_slot(
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
 }

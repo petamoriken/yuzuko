@@ -441,17 +441,11 @@ impl FontFace {
 #[repr(C)]
 struct FontFaceSet {
   base: EventTarget,
-  onloading: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onloadingdone: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onloadingerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for FontFaceSet {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    trace_handler(&self.onloading, visitor);
-    trace_handler(&self.onloadingdone, visitor);
-    trace_handler(&self.onloadingerror, visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -666,50 +660,6 @@ impl FontFaceSet {
     let _ = self;
     loading::ready(scope)
   }
-
-  #[getter]
-  fn onloading(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onloading)
-  }
-
-  #[setter]
-  fn onloading(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onloading, "loading", value);
-  }
-
-  #[getter]
-  fn onloadingdone(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onloadingdone)
-  }
-
-  #[setter]
-  fn onloadingdone(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_handler(scope, &self.base, &self.onloadingdone, "loadingdone", value);
-  }
-
-  #[getter]
-  fn onloadingerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onloadingerror)
-  }
-
-  #[setter]
-  fn onloadingerror(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_handler(
-      scope,
-      &self.base,
-      &self.onloadingerror,
-      "loadingerror",
-      value,
-    );
-  }
 }
 
 #[repr(C)]
@@ -761,47 +711,6 @@ impl FontFaceSetLoadEvent {
   }
 }
 
-fn trace_handler(
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
-}
-
 struct Job {
   face: v8::Global<v8::Object>,
 }
@@ -819,6 +728,14 @@ std::thread_local! {
 pub fn install(scope: &mut v8::PinScope) {
   FontFace::install(scope);
   FontFaceSet::install(scope);
+  let constructor = FontFaceSet::template(scope)
+    .get_function(scope)
+    .expect("FontFaceSet");
+  yuzuko_dom::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["loading", "loadingdone", "loadingerror"],
+  );
   FontFaceSetLoadEvent::install(scope);
   local::install(scope);
   install_font_iterators(scope);
@@ -827,9 +744,6 @@ pub fn install(scope: &mut v8::PinScope) {
       scope,
       FontFaceSet {
         base: EventTarget::new(),
-        onloading: RefCell::new(None),
-        onloadingdone: RefCell::new(None),
-        onloadingerror: RefCell::new(None),
       },
     )
   };

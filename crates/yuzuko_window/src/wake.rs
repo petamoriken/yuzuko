@@ -8,8 +8,6 @@ use std::cell::Cell;
 use std::cell::RefCell;
 
 use yuzuko_core::op::Js;
-use yuzuko_core::op::traced;
-use yuzuko_core::op::traced_local;
 use yuzuko_dom::EventTarget;
 use yuzuko_macros::op;
 
@@ -33,6 +31,10 @@ std::thread_local! {
 pub fn install(scope: &mut v8::PinScope) {
   WakeLock::install(scope);
   WakeLockSentinel::install(scope);
+  let constructor = WakeLockSentinel::template(scope)
+    .get_function(scope)
+    .expect("WakeLockSentinel");
+  yuzuko_dom::define_prototype_event_handlers(scope, constructor, &["release"]);
 }
 
 pub fn instance(scope: &mut v8::PinScope) -> Js {
@@ -116,7 +118,6 @@ impl WakeLock {
     let sentinel = WakeLockSentinel {
       base: EventTarget::new(),
       released: Cell::new(false),
-      on_release: RefCell::new(None),
     };
     let object = unsafe { yuzuko_core::op::wrap_instance(scope, sentinel) };
     resolve(scope, object.into())
@@ -127,15 +128,11 @@ impl WakeLock {
 struct WakeLockSentinel {
   base: EventTarget,
   released: Cell<bool>,
-  on_release: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for WakeLockSentinel {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(slot) = self.on_release.try_borrow() {
-      visitor.trace(&*slot);
-    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -173,48 +170,6 @@ impl WakeLockSentinel {
       let _ = yuzuko_dom::dispatch_simple(scope, this, "release", false, false);
     }
     resolve(scope, v8::undefined(scope).into())
-  }
-
-  #[getter]
-  fn onrelease(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.on_release)
-  }
-
-  #[setter]
-  fn onrelease(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.on_release, "release", value);
-  }
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
   }
 }
 

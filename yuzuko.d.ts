@@ -657,10 +657,11 @@ declare namespace Yuzuko {
   /**
    * Events dispatched on a {@link Window}.
    *
-   * Pointer events target {@link Window.surface} and propagate through the
-   * window. Key, IME, wheel, focus, blur, resize, close, `menuclick`,
-   * `filehover`, `filehovercancel`, and `filedrop` target the window only.
-   * `focus`, `blur`, and the file events do not bubble.
+   * Pointer, mouse, and touch events target {@link Window.surface} and
+   * propagate through the window. Key, IME, wheel, focus, blur, resize,
+   * close, `menuclick`, `filehover`, `filehovercancel`, and `filedrop`
+   * target the window only. `focus`, `blur`, and the file events do not
+   * bubble.
    */
   interface WindowEventMap {
     close: Event;
@@ -690,6 +691,10 @@ declare namespace Yuzuko {
     pointerleave: PointerEvent;
     gotpointercapture: PointerEvent;
     lostpointercapture: PointerEvent;
+    touchstart: TouchEvent;
+    touchmove: TouchEvent;
+    touchend: TouchEvent;
+    touchcancel: TouchEvent;
     mousedown: MouseEvent;
     mouseup: MouseEvent;
     mousemove: MouseEvent;
@@ -835,8 +840,11 @@ declare namespace Yuzuko {
    * {@link ComputedAccessibleNode}.
    *
    * Assistive-technology actions bubble through that tree and are not
-   * cancelable. They do not bubble to the window. There are no
-   * `onaccessible*` handlers. `dispatchEvent` stays single-target.
+   * cancelable. They do not bubble to the window. `dispatchEvent` stays
+   * single-target. Each event has an `on*` attribute on the prototype. The
+   * attribute starts as `null`. Assigning a function registers it as a
+   * listener and replaces the previous handler. Assigning `null`,
+   * `undefined`, or any other value removes the handler.
    *
    * `role`, `name`, `description`, `roleDescription`, and `valueText` use
    * `ToString`. `null` or `undefined` clears them. `checked` and `pressed`
@@ -1109,6 +1117,23 @@ declare namespace Yuzuko {
     /** Next authored sibling, or `null`. */
     readonly nextSibling: AccessibleNode | null;
 
+    /** Listener for `accessibleclick`. */
+    onaccessibleclick: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessiblecontextmenu`. */
+    onaccessiblecontextmenu: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessibledecrement`. */
+    onaccessibledecrement: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessiblefocus`. */
+    onaccessiblefocus: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessibleincrement`. */
+    onaccessibleincrement: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessiblescrollintoview`. */
+    onaccessiblescrollintoview: ((this: AccessibleNode, ev: Event) => any) | null;
+    /** Listener for `accessiblesetvalue`. */
+    onaccessiblesetvalue:
+      | ((this: AccessibleNode, ev: AccessibleSetValueEvent) => any)
+      | null;
+
     addEventListener<K extends keyof AccessibleNodeEventMap>(
       type: K,
       listener: (this: AccessibleNode, ev: AccessibleNodeEventMap[K]) => any,
@@ -1370,6 +1395,11 @@ declare namespace Yuzuko {
    * window still runs its drawing buffer and animation frames at 60 Hz. A
    * dedicated worker has no `Window`.
    * The window cannot be transferred.
+   *
+   * Each event in {@link WindowEventMap} has an `on*` attribute. The
+   * attribute starts as `null`. Assigning a function
+   * registers it as a listener and replaces the previous handler. Assigning
+   * `null`, `undefined`, or any other value removes the handler.
    *
    * @example
    * ```ts
@@ -1882,6 +1912,91 @@ declare namespace Yuzuko {
      */
     hasPointerCapture(pointerId: number): boolean;
 
+    /** Listener for `close`. */
+    onclose: ((this: Window, ev: Event) => any) | null;
+    /** Listener for `resize`. */
+    onresize: ((this: Window, ev: Event) => any) | null;
+    /** Listener for `focus`. */
+    onfocus: ((this: Window, ev: FocusEvent) => any) | null;
+    /** Listener for `blur`. */
+    onblur: ((this: Window, ev: FocusEvent) => any) | null;
+    /** Listener for `menuclick`. */
+    onmenuclick: ((this: Window, ev: MenuClickEvent) => any) | null;
+    /** Listener for `filehover`. */
+    onfilehover: ((this: Window, ev: FileDropEvent) => any) | null;
+    /** Listener for `filehovercancel`. */
+    onfilehovercancel: ((this: Window, ev: Event) => any) | null;
+    /** Listener for `filedrop`. */
+    onfiledrop: ((this: Window, ev: FileDropEvent) => any) | null;
+    /** Listener for `keydown`. */
+    onkeydown: ((this: Window, ev: KeyboardEvent) => any) | null;
+    /** Listener for `keyup`. */
+    onkeyup: ((this: Window, ev: KeyboardEvent) => any) | null;
+    /** Listener for `wheel`. */
+    onwheel: ((this: Window, ev: WheelEvent) => any) | null;
+    /** Listener for `compositionstart`. */
+    oncompositionstart: ((this: Window, ev: CompositionEvent) => any) | null;
+    /** Listener for `compositionupdate`. */
+    oncompositionupdate: ((this: Window, ev: CompositionEvent) => any) | null;
+    /** Listener for `compositionend`. */
+    oncompositionend: ((this: Window, ev: CompositionEvent) => any) | null;
+    /** Listener for `pointerlockchange`. */
+    onpointerlockchange: ((this: Window, ev: Event) => any) | null;
+    /** Listener for `pointerlockerror`. */
+    onpointerlockerror: ((this: Window, ev: Event) => any) | null;
+    /** Listener for `pointerdown`. */
+    onpointerdown: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerup`. */
+    onpointerup: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointermove`. */
+    onpointermove: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerrawupdate`. */
+    onpointerrawupdate: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointercancel`. */
+    onpointercancel: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerover`. */
+    onpointerover: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerout`. */
+    onpointerout: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerenter`. */
+    onpointerenter: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerleave`. */
+    onpointerleave: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `gotpointercapture`. */
+    ongotpointercapture: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `lostpointercapture`. */
+    onlostpointercapture: ((this: Window, ev: PointerEvent) => any) | null;
+    /** Listener for `touchstart`. */
+    ontouchstart: ((this: Window, ev: TouchEvent) => any) | null;
+    /** Listener for `touchmove`. */
+    ontouchmove: ((this: Window, ev: TouchEvent) => any) | null;
+    /** Listener for `touchend`. */
+    ontouchend: ((this: Window, ev: TouchEvent) => any) | null;
+    /** Listener for `touchcancel`. */
+    ontouchcancel: ((this: Window, ev: TouchEvent) => any) | null;
+    /** Listener for `mousedown`. */
+    onmousedown: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseup`. */
+    onmouseup: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mousemove`. */
+    onmousemove: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseover`. */
+    onmouseover: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseout`. */
+    onmouseout: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseenter`. */
+    onmouseenter: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseleave`. */
+    onmouseleave: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `click`. */
+    onclick: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `dblclick`. */
+    ondblclick: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `auxclick`. */
+    onauxclick: ((this: Window, ev: MouseEvent) => any) | null;
+    /** Listener for `contextmenu`. */
+    oncontextmenu: ((this: Window, ev: MouseEvent) => any) | null;
+
     addEventListener<K extends keyof WindowEventMap>(
       type: K,
       listener: (this: Window, ev: WindowEventMap[K]) => any,
@@ -1928,7 +2043,9 @@ declare namespace Yuzuko {
     | "optimizeQuality"
     | "optimizeSpeed";
 
-  /** Events dispatched on a {@link WindowSurface}. */
+  /**
+   * Events dispatched on a {@link WindowSurface}.
+   */
   interface WindowSurfaceEventMap {
     visibilitychange: Event;
     beforeinput: InputEvent;
@@ -1946,6 +2063,10 @@ declare namespace Yuzuko {
     pointerleave: PointerEvent;
     gotpointercapture: PointerEvent;
     lostpointercapture: PointerEvent;
+    touchstart: TouchEvent;
+    touchmove: TouchEvent;
+    touchend: TouchEvent;
+    touchcancel: TouchEvent;
     mousedown: MouseEvent;
     mouseup: MouseEvent;
     mousemove: MouseEvent;
@@ -1971,6 +2092,11 @@ declare namespace Yuzuko {
    * {@link WindowSurface.transferControlToOffscreen} returns the canvas a
    * worker draws. The constructor throws. The initial bitmap is
    * `round(cssWidth * devicePixelRatio)` by `round(cssHeight * devicePixelRatio)`.
+   *
+   * Each event in {@link WindowSurfaceEventMap} has an `on*` attribute.
+   * The attribute starts as `null`. Assigning a function
+   * registers it as a listener and replaces the previous handler.
+   * Assigning `null`, `undefined`, or any other value removes the handler.
    */
   class WindowSurface extends EventTarget {
     /**
@@ -2129,6 +2255,69 @@ declare namespace Yuzuko {
      * @throws {@link TypeError} On illegal invocation.
      */
     readonly accessibleRoot: AccessibleNode | null;
+
+    /** Listener for `visibilitychange`. */
+    onvisibilitychange: ((this: WindowSurface, ev: Event) => any) | null;
+    /** Listener for `beforeinput`. */
+    onbeforeinput: ((this: WindowSurface, ev: InputEvent) => any) | null;
+    /** Listener for `copy`. */
+    oncopy: ((this: WindowSurface, ev: ClipboardEvent) => any) | null;
+    /** Listener for `cut`. */
+    oncut: ((this: WindowSurface, ev: ClipboardEvent) => any) | null;
+    /** Listener for `paste`. */
+    onpaste: ((this: WindowSurface, ev: ClipboardEvent) => any) | null;
+    /** Listener for `pointerdown`. */
+    onpointerdown: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerup`. */
+    onpointerup: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointermove`. */
+    onpointermove: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerrawupdate`. */
+    onpointerrawupdate: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointercancel`. */
+    onpointercancel: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerover`. */
+    onpointerover: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerout`. */
+    onpointerout: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerenter`. */
+    onpointerenter: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `pointerleave`. */
+    onpointerleave: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `gotpointercapture`. */
+    ongotpointercapture: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `lostpointercapture`. */
+    onlostpointercapture: ((this: WindowSurface, ev: PointerEvent) => any) | null;
+    /** Listener for `touchstart`. */
+    ontouchstart: ((this: WindowSurface, ev: TouchEvent) => any) | null;
+    /** Listener for `touchmove`. */
+    ontouchmove: ((this: WindowSurface, ev: TouchEvent) => any) | null;
+    /** Listener for `touchend`. */
+    ontouchend: ((this: WindowSurface, ev: TouchEvent) => any) | null;
+    /** Listener for `touchcancel`. */
+    ontouchcancel: ((this: WindowSurface, ev: TouchEvent) => any) | null;
+    /** Listener for `mousedown`. */
+    onmousedown: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseup`. */
+    onmouseup: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mousemove`. */
+    onmousemove: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseover`. */
+    onmouseover: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseout`. */
+    onmouseout: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseenter`. */
+    onmouseenter: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `mouseleave`. */
+    onmouseleave: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `click`. */
+    onclick: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `dblclick`. */
+    ondblclick: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `auxclick`. */
+    onauxclick: ((this: WindowSurface, ev: MouseEvent) => any) | null;
+    /** Listener for `contextmenu`. */
+    oncontextmenu: ((this: WindowSurface, ev: MouseEvent) => any) | null;
 
     addEventListener<K extends keyof WindowSurfaceEventMap>(
       type: K,
@@ -2315,7 +2504,10 @@ declare namespace Yuzuko {
    *
    * An open tray keeps the process alive. A dedicated worker has no `Tray`.
    * A primary click dispatches `click`. A menu selection dispatches
-   * `menuclick` with `action`.
+   * `menuclick` with `action`. `onclick` and `onmenuclick` start as `null`.
+   * Assigning a function registers it as a listener and replaces the previous
+   * handler. Assigning `null`, `undefined`, or any other value removes the
+   * handler.
    */
   class Tray extends EventTarget {
     /**
@@ -2374,6 +2566,11 @@ declare namespace Yuzuko {
      */
     readonly bounds: TrayBounds | null;
 
+    /** Listener for `click`. The event is a primary click. */
+    onclick: ((this: Tray, ev: Event) => any) | null;
+    /** Listener for `menuclick`. */
+    onmenuclick: ((this: Tray, ev: MenuClickEvent) => any) | null;
+
     addEventListener<K extends keyof TrayEventMap>(
       type: K,
       listener: (this: Tray, ev: TrayEventMap[K]) => any,
@@ -2417,7 +2614,10 @@ declare namespace Yuzuko {
    * The process Dock target.
    *
    * There is one `Yuzuko.dock`. A dedicated worker has no `dock`. Writes the
-   * system cannot do throw `NotSupportedError`.
+   * system cannot do throw `NotSupportedError`. `onmenuclick` and `onreopen`
+   * start as `null`. Assigning a function registers it as a listener and
+   * replaces the previous handler. Assigning `null`, `undefined`, or any
+   * other value removes the handler.
    */
   interface Dock extends EventTarget {
     /**
@@ -2466,6 +2666,11 @@ declare namespace Yuzuko {
      * when no window is open.
      */
     bounce(critical?: boolean): void;
+
+    /** Listener for `menuclick`. */
+    onmenuclick: ((this: Dock, ev: MenuClickEvent) => any) | null;
+    /** Listener for `reopen`. Delivered only on macOS. */
+    onreopen: ((this: Dock, ev: DockReopenEvent) => any) | null;
 
     addEventListener<K extends keyof DockEventMap>(
       type: K,
@@ -6108,6 +6313,16 @@ declare namespace Yuzuko {
     paths: string | URL | readonly (string | URL)[],
     options?: WatchOptions,
   ): FsWatcher;
+
+  /**
+   * Listener for an application-menu `menuclick` on this object.
+   *
+   * The value starts as `null`. Assigning a function registers it as a
+   * listener and replaces the previous handler. Assigning `null`,
+   * `undefined`, or any other value removes the handler. A dedicated worker
+   * does not have this attribute.
+   */
+  let onmenuclick: ((ev: MenuClickEvent) => any) | null;
 
   /**
    * Registers a listener on the `Yuzuko` object.

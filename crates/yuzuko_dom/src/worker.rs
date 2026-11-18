@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use yuzuko_core::op::{Js, OpError, OpException};
+use yuzuko_core::op::{OpError, OpException};
 use yuzuko_core::{
   Inbound, ScriptKind, WorkerScript, agent_alive, agent_id,
   eval_classic_in_worker, is_dedicated_worker, load_worker_source,
@@ -19,7 +19,6 @@ use crate::message::{
   capture_ports, fail_port_message, message_error_event, message_event_for,
   receive_port_message, take_captured_ports,
 };
-use crate::report;
 use crate::target::{self, EventTarget};
 
 thread_local! {
@@ -33,6 +32,13 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   WorkerLocation::install(scope);
   WorkerNavigator::install(scope);
   Worker::install(scope);
+  let constructor =
+    Worker::template(scope).get_function(scope).expect("Worker");
+  target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["message", "messageerror", "error"],
+  );
   if !is_dedicated_worker() {
     return;
   }
@@ -58,13 +64,12 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   }
   let name = v8::String::new(scope, &worker_name()).unwrap();
   yuzuko_core::set_value(scope, global, "name", name.into());
-  for property in [
-    "onmessage",
-    "onmessageerror",
-    "onerror",
-    "onoffline",
-    "ononline",
-  ] {
+  target::define_event_handlers(
+    scope,
+    global,
+    &["message", "messageerror", "error"],
+  );
+  for property in ["onoffline", "ononline"] {
     yuzuko_core::set_value(scope, global, property, v8::null(scope).into());
   }
 }
@@ -117,7 +122,6 @@ fn deliver_script(
   if worker == agent_id() {
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
-    call_property(scope, global, "onmessage", event);
     return;
   }
   let wrapper = OWNED.with(|slot| slot.borrow().get(&worker).cloned());
@@ -151,7 +155,6 @@ fn deliver_message_error(scope: &mut v8::PinScope, worker: u64) {
   if worker == agent_id() {
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
-    call_property(scope, global, "onmessageerror", event);
     return;
   }
   let wrapper = OWNED.with(|slot| slot.borrow().get(&worker).cloned());
@@ -174,7 +177,6 @@ fn deliver_failure(
   if worker == agent_id() {
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
-    call_property(scope, global, "onerror", event);
     return;
   }
   let wrapper = OWNED.with(|slot| slot.borrow().get(&worker).cloned());
@@ -203,38 +205,6 @@ fn error_event<'s>(
   let event = unsafe { yuzuko_core::op::wrap_instance(scope, built) };
   define_is_trusted(scope, event);
   event
-}
-
-fn call_property(
-  scope: &mut v8::PinScope,
-  target: v8::Local<v8::Object>,
-  name: &str,
-  event: v8::Local<v8::Object>,
-) {
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(value) = target.get(scope, key.into()) else {
-    return;
-  };
-  let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
-    return;
-  };
-  let thrown = {
-    v8::tc_scope!(let tc, scope);
-    let called = function.call(tc, target.into(), &[event.into()]).is_some();
-    if called && !tc.has_caught() {
-      None
-    } else {
-      let error = tc.exception().map(|value| v8::Global::new(tc, value));
-      tc.reset();
-      error
-    }
-  };
-  if let Some(error) = thrown {
-    let error = v8::Local::new(scope, error);
-    report::report_error(scope, error);
-  }
 }
 
 fn prototype<'s>(
@@ -584,29 +554,11 @@ impl WorkerNavigator {
 struct Worker {
   base: EventTarget,
   id: u64,
-  onmessage: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onmessageerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for Worker {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(handler) = self.onmessage.try_borrow()
-      && let Some(handler) = handler.as_ref()
-    {
-      visitor.trace(handler);
-    }
-    if let Ok(handler) = self.onmessageerror.try_borrow()
-      && let Some(handler) = handler.as_ref()
-    {
-      visitor.trace(handler);
-    }
-    if let Ok(handler) = self.onerror.try_borrow()
-      && let Some(handler) = handler.as_ref()
-    {
-      visitor.trace(handler);
-    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -671,9 +623,6 @@ impl Worker {
     Ok(Worker {
       base: EventTarget::new(),
       id,
-      onmessage: RefCell::new(None),
-      onmessageerror: RefCell::new(None),
-      onerror: RefCell::new(None),
     })
   }
 
@@ -712,46 +661,6 @@ impl Worker {
 
   fn terminate(&self) {
     terminate_worker(self.id);
-  }
-
-  #[getter]
-  fn onmessage(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onmessage)
-  }
-
-  #[setter]
-  fn onmessage(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onmessage, "message", value);
-  }
-
-  #[getter]
-  fn onmessageerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onmessageerror)
-  }
-
-  #[setter]
-  fn onmessageerror(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_handler(
-      scope,
-      &self.base,
-      &self.onmessageerror,
-      "messageerror",
-      value,
-    );
-  }
-
-  #[getter]
-  fn onerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onerror)
-  }
-
-  #[setter]
-  fn onerror(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onerror, "error", value);
   }
 }
 
@@ -799,36 +708,4 @@ fn object_get<'s>(
 ) -> Option<v8::Local<'s, v8::Value>> {
   let key = v8::String::new(scope, name)?;
   object.get(scope, key.into())
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| yuzuko_core::op::traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = yuzuko_core::op::traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(yuzuko_core::op::traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
 }

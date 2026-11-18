@@ -1021,16 +1021,6 @@ unsafe impl v8::cppgc::GarbageCollected for AudioScheduledSourceNode {
 
 #[op(inherit = AudioNode)]
 impl AudioScheduledSourceNode {
-  #[getter]
-  fn onended(&self, scope: &mut v8::PinScope) -> Js {
-    engine::handler(scope, self.base.id, "ended")
-  }
-
-  #[setter]
-  fn onended(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    engine::bind_handler(scope, &self.base.base, self.base.id, "ended", value);
-  }
-
   fn start(
     &self,
     scope: &mut v8::PinScope,
@@ -1768,20 +1758,6 @@ impl BaseAudioContext {
     engine::context_state(self.id)
       .unwrap_or("closed")
       .to_string()
-  }
-
-  #[getter]
-  fn onstatechange(&self, scope: &mut v8::PinScope) -> Js {
-    engine::handler(scope, self.id, "statechange")
-  }
-
-  #[setter]
-  fn onstatechange(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    engine::bind_handler(scope, &self.base, self.id, "statechange", value);
   }
 
   #[getter]
@@ -2569,22 +2545,6 @@ impl OfflineAudioContext {
     }
   }
 
-  #[getter]
-  fn oncomplete(&self, scope: &mut v8::PinScope) -> Js {
-    engine::handler(scope, self.base.id, "complete")
-  }
-
-  #[setter]
-  fn oncomplete(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    engine::bind_handler(
-      scope,
-      &self.base.base,
-      self.base.id,
-      "complete",
-      value,
-    );
-  }
-
   #[promise]
   fn start_rendering(&self, scope: &mut v8::PinScope) -> Js {
     let id = self.base.id;
@@ -3007,26 +2967,6 @@ impl AudioWorkletNode {
       .map(|map| global_object(scope, map))
       .unwrap_or_else(|| Js::null(scope))
   }
-
-  #[getter]
-  fn onprocessorerror(&self, scope: &mut v8::PinScope) -> Js {
-    engine::handler(scope, self.base.id, "processorerror")
-  }
-
-  #[setter]
-  fn onprocessorerror(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    engine::bind_handler(
-      scope,
-      &self.base.base,
-      self.base.id,
-      "processorerror",
-      value,
-    );
-  }
 }
 
 fn worklet_counts(
@@ -3097,16 +3037,40 @@ pub fn install(scope: &mut v8::PinScope) {
   AudioNode::install(scope);
   AudioDestinationNode::install(scope);
   AudioScheduledSourceNode::install(scope);
+  let scheduled = AudioScheduledSourceNode::template(scope)
+    .get_function(scope)
+    .expect("AudioScheduledSourceNode");
+  yuzuko_dom::define_prototype_event_handlers(scope, scheduled, &["ended"]);
   GainNode::install(scope);
   ConstantSourceNode::install(scope);
   OscillatorNode::install(scope);
   AudioBufferSourceNode::install(scope);
   PeriodicWave::install(scope);
   BaseAudioContext::install(scope);
+  let base_context = BaseAudioContext::template(scope)
+    .get_function(scope)
+    .expect("BaseAudioContext");
+  yuzuko_dom::define_prototype_event_handlers(
+    scope,
+    base_context,
+    &["statechange"],
+  );
   AudioContext::install(scope);
   OfflineAudioCompletionEvent::install(scope);
   OfflineAudioContext::install(scope);
+  let offline = OfflineAudioContext::template(scope)
+    .get_function(scope)
+    .expect("OfflineAudioContext");
+  yuzuko_dom::define_prototype_event_handlers(scope, offline, &["complete"]);
   AudioWorklet::install(scope);
   AudioWorkletNode::install(scope);
+  let worklet_node = AudioWorkletNode::template(scope)
+    .get_function(scope)
+    .expect("AudioWorkletNode");
+  yuzuko_dom::define_prototype_event_handlers(
+    scope,
+    worklet_node,
+    &["processorerror"],
+  );
   crate::nodes::install(scope);
 }

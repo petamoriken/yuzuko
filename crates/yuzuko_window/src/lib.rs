@@ -7,6 +7,7 @@ mod canvas;
 mod fit;
 mod frame;
 mod gpu;
+mod handlers;
 mod identity;
 mod inbox;
 mod input;
@@ -80,7 +81,7 @@ pub use surface::{
 };
 
 fn install(scope: &mut v8::PinScope) {
-  canvas::OffscreenCanvas::install(scope);
+  canvas::install(scope);
   if yuzuko_core::is_dedicated_worker() {
     return;
   }

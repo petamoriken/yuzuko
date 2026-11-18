@@ -416,8 +416,6 @@ thread_local! {
   static BUFFERS: RefCell<HashMap<u64, BufferRec>> =
     RefCell::new(HashMap::new());
   static WAVES: RefCell<HashMap<u64, WaveRec>> = RefCell::new(HashMap::new());
-  static HANDLERS: RefCell<HashMap<(u64, &'static str), v8::Global<v8::Value>>> =
-    RefCell::new(HashMap::new());
   static TAILS: RefCell<HashMap<u64, Tail>> = RefCell::new(HashMap::new());
   static CURVES: RefCell<HashMap<u64, Vec<f32>>> = RefCell::new(HashMap::new());
   static LISTENERS: RefCell<HashMap<u64, ListenerRec>> =
@@ -438,7 +436,6 @@ pub fn clear() {
   PARAMS.with(|slot| slot.borrow_mut().clear());
   BUFFERS.with(|slot| slot.borrow_mut().clear());
   WAVES.with(|slot| slot.borrow_mut().clear());
-  HANDLERS.with(|slot| slot.borrow_mut().clear());
   TAILS.with(|slot| slot.borrow_mut().clear());
   CURVES.with(|slot| slot.borrow_mut().clear());
   LISTENERS.with(|slot| slot.borrow_mut().clear());
@@ -3766,39 +3763,6 @@ fn queue_ended() {
       yuzuko_dom::dispatch_trusted_event(scope, object, "ended");
     }
   });
-}
-
-pub fn bind_handler(
-  scope: &mut v8::PinScope,
-  target: &yuzuko_dom::EventTarget,
-  id: u64,
-  name: &'static str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) =
-    HANDLERS.with(|handlers| handlers.borrow_mut().remove(&(id, name)))
-  {
-    let previous = v8::Local::new(scope, previous);
-    target.remove_callback(scope, name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, name, value, false, false, false);
-    HANDLERS.with(|handlers| {
-      handlers
-        .borrow_mut()
-        .insert((id, name), v8::Global::new(scope, value));
-    });
-  }
-}
-
-pub fn handler(scope: &mut v8::PinScope, id: u64, name: &'static str) -> Js {
-  HANDLERS.with(|handlers| {
-    handlers
-      .borrow()
-      .get(&(id, name))
-      .map(|value| Js(v8::Global::new(scope, value.clone())))
-      .unwrap_or_else(|| Js::null(scope))
-  })
 }
 
 // The rest of this module is the worklet scope, ports, and process().

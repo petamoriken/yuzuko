@@ -36,9 +36,7 @@
       "HTMLBodyElement interface: attribute ongamepadconnected",
       "HTMLBodyElement interface: attribute ongamepaddisconnected",
       "HTMLFrameSetElement interface: attribute ongamepadconnected",
-      "HTMLFrameSetElement interface: attribute ongamepaddisconnected",
-      "Window interface: attribute ongamepadconnected",
-      "Window interface: attribute ongamepaddisconnected"
+      "HTMLFrameSetElement interface: attribute ongamepaddisconnected"
     ]
   },
   "gamepad/not-fully-active.html": {

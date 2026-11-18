@@ -49,6 +49,14 @@ std::thread_local! {
 
 pub fn install(scope: &mut v8::PinScope) {
   Clipboard::install(scope);
+  let constructor = Clipboard::template(scope)
+    .get_function(scope)
+    .expect("Clipboard");
+  yuzuko_dom::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["clipboardchange"],
+  );
   ClipboardItem::install(scope);
   DataTransfer::install(scope);
   ClipboardEvent::install(scope);
@@ -365,14 +373,12 @@ impl ClipboardItem {
 #[repr(C)]
 struct Clipboard {
   base: EventTarget,
-  on_change: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 impl Clipboard {
   fn new() -> Self {
     Self {
       base: EventTarget::new(),
-      on_change: RefCell::new(None),
     }
   }
 }
@@ -380,9 +386,6 @@ impl Clipboard {
 unsafe impl v8::cppgc::GarbageCollected for Clipboard {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(slot) = self.on_change.try_borrow() {
-      visitor.trace(&*slot);
-    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -495,20 +498,6 @@ impl Clipboard {
     }
     announce(scope);
     resolve(scope, v8::undefined(scope).into())
-  }
-
-  #[getter]
-  fn onclipboardchange(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.on_change)
-  }
-
-  #[setter]
-  fn onclipboardchange(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_handler(scope, &self.base, &self.on_change, "clipboardchange", value);
   }
 }
 
@@ -1324,38 +1313,6 @@ fn frozen_strings(
   }
   array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   Ok(js_value(scope, array.into()))
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
 }
 
 fn platform_sequence() -> Option<u64> {

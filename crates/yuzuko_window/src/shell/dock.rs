@@ -29,6 +29,7 @@ pub fn install(scope: &mut v8::PinScope) {
   set_method(scope, object, "setVisible", 1, set_visible);
   set_method(scope, object, "setMenu", 1, set_menu);
   set_method(scope, object, "bounce", 0, bounce);
+  crate::handlers::define(scope, object, &["menuclick", "reopen"]);
   let key = v8::String::new(scope, "dock").unwrap();
   yuzuko.set(scope, key.into(), object.into());
 }

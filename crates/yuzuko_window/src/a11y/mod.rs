@@ -22,6 +22,21 @@ thread_local! {
 pub(crate) fn install(scope: &mut v8::PinScope) {
   class::AccessibleNode::install(scope);
   hoist(scope, "AccessibleNode");
+  // Phase 2 event-handler attributes. `accessiblesetvalue` is in that event
+  // table; Blink's IDL omits its attribute.
+  crate::handlers::define_class(
+    scope,
+    "AccessibleNode",
+    &[
+      "accessibleclick",
+      "accessiblecontextmenu",
+      "accessibledecrement",
+      "accessiblefocus",
+      "accessibleincrement",
+      "accessiblescrollintoview",
+      "accessiblesetvalue",
+    ],
+  );
   computed::ComputedAccessibleNode::install(scope);
   hoist(scope, "ComputedAccessibleNode");
   install_surface(scope);

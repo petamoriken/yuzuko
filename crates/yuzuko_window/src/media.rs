@@ -2,7 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
+use yuzuko_core::op::{OpError, host_ref, traced, traced_local};
 use yuzuko_dom::{
   Event, EventTarget, define_is_trusted, dispatch, report_error,
 };
@@ -104,7 +104,6 @@ pub fn refresh(scope: &mut v8::PinScope, window_id: u64) {
 struct Pending<'s> {
   matches: bool,
   media: String,
-  onchange: Option<v8::Local<'s, v8::Function>>,
   legacy: Vec<v8::Local<'s, v8::Function>>,
 }
 
@@ -156,12 +155,6 @@ fn pending_change<'s>(
   }
   list.matches.set(now);
   let media = list.media.borrow().clone();
-  let onchange = {
-    let stored = list.onchange.borrow();
-    stored
-      .as_ref()
-      .and_then(|handler| traced_local(scope, handler))
-  };
   let legacy = {
     let stored = list.legacy.borrow();
     stored
@@ -172,7 +165,6 @@ fn pending_change<'s>(
   Some(Pending {
     matches: now,
     media,
-    onchange,
     legacy,
   })
 }
@@ -189,10 +181,8 @@ fn deliver(
   };
   let event_object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   define_is_trusted(scope, event_object);
+  // `onchange` is registered as a listener, so dispatch invokes it.
   let _ = dispatch(scope, list_object, event_object);
-  if let Some(function) = pending.onchange {
-    call_callback(scope, function, list_object, event_object.into());
-  }
   for function in pending.legacy {
     call_callback(scope, function, list_object, list_object.into());
   }
@@ -852,18 +842,12 @@ struct MediaQueryList {
   media: RefCell<String>,
   query: Query,
   matches: Cell<bool>,
-  onchange: RefCell<Option<v8::TracedReference<v8::Function>>>,
   legacy: RefCell<Vec<v8::TracedReference<v8::Function>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for MediaQueryList {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(handler) = self.onchange.try_borrow()
-      && let Some(handler) = handler.as_ref()
-    {
-      visitor.trace(handler);
-    }
     if let Ok(legacy) = self.legacy.try_borrow() {
       for callback in legacy.iter() {
         visitor.trace(callback);
@@ -893,30 +877,6 @@ impl MediaQueryList {
   #[getter]
   fn media(&self) -> String {
     self.media.borrow().clone()
-  }
-
-  #[getter]
-  fn onchange(&self, scope: &mut v8::PinScope) -> Js {
-    let stored = self.onchange.borrow();
-    let Some(handler) = stored.as_ref() else {
-      return Js::null(scope);
-    };
-    let Some(function) = traced_local(scope, handler) else {
-      return Js::null(scope);
-    };
-    let value: v8::Local<v8::Value> = function.into();
-    Js(v8::Global::new(scope, value))
-  }
-
-  #[setter]
-  fn onchange(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    if value.is_null() || value.is_undefined() {
-      *self.onchange.borrow_mut() = None;
-      return;
-    }
-    if let Ok(function) = v8::Local::<v8::Function>::try_from(value) {
-      *self.onchange.borrow_mut() = Some(traced(scope, function));
-    }
   }
 
   fn add_listener(
@@ -990,6 +950,10 @@ impl MediaQueryListEvent {
 pub fn install(scope: &mut v8::PinScope) {
   MediaQueryList::install(scope);
   MediaQueryListEvent::install(scope);
+  let constructor = MediaQueryList::template(scope)
+    .get_function(scope)
+    .expect("MediaQueryList");
+  yuzuko_dom::define_prototype_event_handlers(scope, constructor, &["change"]);
 }
 
 pub fn open<'s>(
@@ -1007,7 +971,6 @@ pub fn open<'s>(
     media: RefCell::new(query),
     query: parsed,
     matches: Cell::new(matches),
-    onchange: RefCell::new(None),
     legacy: RefCell::new(Vec::new()),
   };
   unsafe { yuzuko_core::op::wrap_instance(scope, list) }

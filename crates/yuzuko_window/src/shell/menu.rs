@@ -559,6 +559,7 @@ pub(crate) fn yuzuko_object<'s>(
   let object =
     unsafe { yuzuko_core::op::wrap_instance(scope, EventTarget::new()) };
   global.set(scope, key.into(), object.into());
+  crate::handlers::define(scope, object, &["menuclick"]);
   object
 }
 

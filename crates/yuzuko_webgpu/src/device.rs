@@ -3,7 +3,6 @@
 //! Every JavaScript device clones the process wgpu device. `destroy` loses
 //! that JavaScript device and leaves the process device in place.
 
-use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -134,15 +133,11 @@ pub struct GpuDevice {
   base: EventTarget,
   id: u64,
   label: ObjectLabel,
-  onuncapturederror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for GpuDevice {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    if let Ok(slot) = self.onuncapturederror.try_borrow() {
-      visitor.trace(&*slot);
-    }
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -176,26 +171,6 @@ impl GpuDevice {
   #[getter]
   fn label(&self) -> String {
     self.label.get()
-  }
-
-  #[getter]
-  fn onuncapturederror(&self, scope: &mut v8::PinScope) -> Js {
-    event_handler_value(scope, &self.onuncapturederror)
-  }
-
-  #[setter]
-  fn onuncapturederror(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_event_handler(
-      scope,
-      &self.base,
-      &self.onuncapturederror,
-      "uncapturederror",
-      value,
-    );
   }
 
   #[setter]
@@ -659,6 +634,14 @@ pub fn install(scope: &mut v8::PinScope) {
   Gpu::install(scope);
   GpuAdapter::install(scope);
   GpuDevice::install(scope);
+  let constructor = GpuDevice::template(scope)
+    .get_function(scope)
+    .expect("GPUDevice");
+  yuzuko_dom::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["uncapturederror"],
+  );
   GpuQueue::install(scope);
   GpuValidationError::install(scope);
   GpuOutOfMemoryError::install(scope);
@@ -848,7 +831,6 @@ fn open_device(
     base: EventTarget::new(),
     id,
     label: ObjectLabel::new(device_label),
-    onuncapturederror: RefCell::new(None),
   })
 }
 
@@ -1373,37 +1355,5 @@ fn is_gpu_error(
       return true;
     }
     yuzuko_core::op::host_ref::<GpuInternalError>(scope, object).is_some()
-  }
-}
-
-fn event_handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| yuzuko_core::op::traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_event_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = yuzuko_core::op::traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(yuzuko_core::op::traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
   }
 }

@@ -5,7 +5,7 @@
 
 use std::cell::RefCell;
 
-use yuzuko_core::op::{FromV8, Js, OpError, traced, traced_local};
+use yuzuko_core::op::{FromV8, Js, OpError};
 use yuzuko_macros::op;
 use yuzuko_winter::{XhrSend, XhrState, extract_xhr_body};
 
@@ -16,27 +16,11 @@ use crate::target::EventTarget;
 pub struct XMLHttpRequest {
   base: EventTarget,
   inner: RefCell<XhrState>,
-  onloadstart: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onprogress: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onload: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onloadend: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onabort: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  ontimeout: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onreadystatechange: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for XMLHttpRequest {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    trace_slot(&self.onloadstart, visitor);
-    trace_slot(&self.onprogress, visitor);
-    trace_slot(&self.onload, visitor);
-    trace_slot(&self.onerror, visitor);
-    trace_slot(&self.onloadend, visitor);
-    trace_slot(&self.onabort, visitor);
-    trace_slot(&self.ontimeout, visitor);
-    trace_slot(&self.onreadystatechange, visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -51,14 +35,6 @@ impl XMLHttpRequest {
     Self {
       base: EventTarget::new(),
       inner: RefCell::new(XhrState::new()),
-      onloadstart: RefCell::new(None),
-      onprogress: RefCell::new(None),
-      onload: RefCell::new(None),
-      onerror: RefCell::new(None),
-      onloadend: RefCell::new(None),
-      onabort: RefCell::new(None),
-      ontimeout: RefCell::new(None),
-      onreadystatechange: RefCell::new(None),
     }
   }
 
@@ -220,96 +196,6 @@ impl XMLHttpRequest {
   fn response_text(&self) -> String {
     self.inner.borrow().response_text()
   }
-
-  #[getter]
-  fn onloadstart(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onloadstart)
-  }
-
-  #[setter]
-  fn onloadstart(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onloadstart, "loadstart", value);
-  }
-
-  #[getter]
-  fn onprogress(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onprogress)
-  }
-
-  #[setter]
-  fn onprogress(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onprogress, "progress", value);
-  }
-
-  #[getter]
-  fn onload(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onload)
-  }
-
-  #[setter]
-  fn onload(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onload, "load", value);
-  }
-
-  #[getter]
-  fn onerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onerror)
-  }
-
-  #[setter]
-  fn onerror(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onerror, "error", value);
-  }
-
-  #[getter]
-  fn onloadend(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onloadend)
-  }
-
-  #[setter]
-  fn onloadend(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onloadend, "loadend", value);
-  }
-
-  #[getter]
-  fn onabort(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onabort)
-  }
-
-  #[setter]
-  fn onabort(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onabort, "abort", value);
-  }
-
-  #[getter]
-  fn ontimeout(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.ontimeout)
-  }
-
-  #[setter]
-  fn ontimeout(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.ontimeout, "timeout", value);
-  }
-
-  #[getter]
-  fn onreadystatechange(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onreadystatechange)
-  }
-
-  #[setter]
-  fn onreadystatechange(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    set_handler(
-      scope,
-      &self.base,
-      &self.onreadystatechange,
-      "readystatechange",
-      value,
-    );
-  }
 }
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
@@ -317,6 +203,20 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   let constructor = XMLHttpRequest::template(scope)
     .get_function(scope)
     .expect("XMLHttpRequest");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &[
+      "loadstart",
+      "progress",
+      "load",
+      "error",
+      "loadend",
+      "abort",
+      "timeout",
+      "readystatechange",
+    ],
+  );
   let constructor = v8::Local::<v8::Object>::try_from(
     v8::Local::<v8::Value>::from(constructor),
   )
@@ -511,45 +411,4 @@ fn unsigned_long(
     modulo += width;
   }
   Some(modulo as u32)
-}
-
-fn trace_slot(
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
 }

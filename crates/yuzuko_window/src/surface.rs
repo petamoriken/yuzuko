@@ -2093,7 +2093,9 @@ pub fn install(scope: &mut v8::PinScope) {
   // `globalThis`. Neither class is a global `Window`.
   crate::media::install(scope);
   publish(scope, WindowSurface::install, "WindowSurface");
+  crate::handlers::install_surface(scope);
   publish(scope, Window::install, "Window");
+  crate::handlers::install_window(scope);
 }
 
 #[cfg(test)]

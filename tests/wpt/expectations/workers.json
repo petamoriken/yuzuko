@@ -348,9 +348,7 @@
   "workers/interfaces/DedicatedWorkerGlobalScope/EventTarget.worker.js": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/onmessage.worker.js": {
     "expectedFailures": [
-      "Setting onmessage to 1",
-      "Setting onmessage to 1 (again)",
-      "Setting onmessage to a function"
+      "Setting onmessage to an object"
     ]
   },
   "workers/interfaces/DedicatedWorkerGlobalScope/postMessage/event-ports-dedicated.html": true,

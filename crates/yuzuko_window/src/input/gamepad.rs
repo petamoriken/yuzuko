@@ -98,7 +98,6 @@ struct Store {
   gilrs_ids: HashMap<gilrs::GamepadId, u64>,
   next: u64,
   scanned: bool,
-  handlers: HashMap<String, v8::Global<v8::Value>>,
 }
 
 struct Devices {
@@ -116,7 +115,6 @@ thread_local! {
     gilrs_ids: HashMap::new(),
     next: 1,
     scanned: false,
-    handlers: HashMap::new(),
   });
   static DEVICES: RefCell<Devices> =
     const { RefCell::new(Devices { gilrs: None, failed: false }) };
@@ -140,7 +138,6 @@ pub fn clear() {
       gilrs_ids: HashMap::new(),
       next: 1,
       scanned: false,
-      handlers: HashMap::new(),
     };
     timers
   });
@@ -176,8 +173,12 @@ pub fn install(scope: &mut v8::PinScope) {
   GamepadEvent::install(scope);
   Navigator::install(scope);
   attach_navigator(scope);
-  install_handler(scope, "ongamepadconnected", "gamepadconnected");
-  install_handler(scope, "ongamepaddisconnected", "gamepaddisconnected");
+  let global = scope.get_current_context().global(scope);
+  yuzuko_dom::define_event_handlers(
+    scope,
+    global,
+    &["gamepadconnected", "gamepaddisconnected"],
+  );
 }
 
 pub fn install_test(scope: &mut v8::PinScope, api: v8::Local<v8::Object>) {
@@ -643,88 +644,6 @@ fn attach_navigator(scope: &mut v8::PinScope) {
     }
   }
   global.set(scope, key.into(), navigator.into());
-}
-
-fn install_handler(scope: &mut v8::PinScope, attribute: &str, event: &str) {
-  let event_name = v8::String::new(scope, event).unwrap();
-  let getter = v8::Function::builder(read_handler)
-    .data(event_name.into())
-    .length(0)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .expect("getter");
-  let setter = v8::Function::builder(write_handler)
-    .data(event_name.into())
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .expect("setter");
-  let key = v8::String::new(scope, attribute).unwrap();
-  let global = scope.get_current_context().global(scope);
-  let mut descriptor =
-    v8::PropertyDescriptor::new_from_get_set(getter.into(), setter.into());
-  descriptor.set_enumerable(true);
-  descriptor.set_configurable(true);
-  let _ = global.define_property(scope, key.into(), &descriptor);
-}
-
-fn read_handler(
-  scope: &mut v8::PinScope,
-  args: v8::FunctionCallbackArguments,
-  mut ret: v8::ReturnValue,
-) {
-  let event = args.data().to_rust_string_lossy(scope);
-  let value = STORE.with(|slot| {
-    slot
-      .borrow()
-      .handlers
-      .get(&event)
-      .map(|value| v8::Local::new(scope, value))
-  });
-  match value {
-    Some(value) => ret.set(value),
-    None => ret.set(v8::null(scope).into()),
-  }
-}
-
-fn write_handler(
-  scope: &mut v8::PinScope,
-  args: v8::FunctionCallbackArguments,
-  mut _ret: v8::ReturnValue,
-) {
-  let event = args.data().to_rust_string_lossy(scope);
-  let next = args.get(0);
-  let previous = STORE.with(|slot| slot.borrow_mut().handlers.remove(&event));
-  if let Some(previous) = previous {
-    let previous = v8::Local::new(scope, &previous);
-    call_listener(scope, "removeEventListener", &event, previous);
-  }
-  if next.is_function() {
-    STORE.with(|slot| {
-      slot
-        .borrow_mut()
-        .handlers
-        .insert(event.clone(), v8::Global::new(scope, next));
-    });
-    call_listener(scope, "addEventListener", &event, next);
-  }
-}
-
-fn call_listener(
-  scope: &mut v8::PinScope,
-  method: &str,
-  event: &str,
-  callback: v8::Local<v8::Value>,
-) {
-  let global = scope.get_current_context().global(scope);
-  let Some(function) = global
-    .get(scope, v8::String::new(scope, method).unwrap().into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-  else {
-    return;
-  };
-  let event = v8::String::new(scope, event).unwrap();
-  let _ = function.call(scope, global.into(), &[event.into(), callback]);
 }
 
 fn object_string(

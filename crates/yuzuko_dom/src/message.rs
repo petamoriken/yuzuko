@@ -23,8 +23,6 @@ struct PortState {
   started: bool,
   closed: bool,
   wrapper: Option<v8::Global<v8::Object>>,
-  onmessage: Option<v8::Global<v8::Value>>,
-  onmessageerror: Option<v8::Global<v8::Value>>,
   /// Deserialization failures waiting for `deliver`.
   failures: u32,
   queue: VecDeque<v8::Global<v8::Value>>,
@@ -319,8 +317,6 @@ fn install_moved_port(
         started: false,
         closed: false,
         wrapper: None,
-        onmessage: None,
-        onmessageerror: None,
         failures,
         queue,
       },
@@ -436,8 +432,6 @@ fn moved_port(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
         started: false,
         closed: false,
         wrapper: None,
-        onmessage: None,
-        onmessageerror: None,
         failures,
         queue,
       },
@@ -572,113 +566,6 @@ impl MessagePort {
       PORTS.with(|slot| {
         if let Some(state) = slot.borrow_mut().get_mut(&peer) {
           state.peer = None;
-        }
-      });
-    }
-  }
-
-  #[getter]
-  fn onmessage(&self, scope: &mut v8::PinScope) -> Js {
-    let value = PORTS.with(|slot| {
-      slot
-        .borrow()
-        .get(&self.id)
-        .and_then(|state| state.onmessage.clone())
-    });
-    match value {
-      Some(value) => {
-        let local = v8::Local::new(scope, &value);
-        Js(v8::Global::new(scope, local))
-      }
-      None => {
-        let value: v8::Local<v8::Value> = v8::null(scope).into();
-        Js(v8::Global::new(scope, value))
-      }
-    }
-  }
-
-  #[setter]
-  fn onmessage(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    let previous = PORTS.with(|slot| {
-      slot
-        .borrow()
-        .get(&self.id)
-        .and_then(|state| state.onmessage.clone())
-    });
-    if let Some(previous) = previous {
-      let previous = v8::Local::new(scope, &previous);
-      self.base.remove_callback(scope, "message", previous, false);
-    }
-    if value.is_function() {
-      self
-        .base
-        .add_callback(scope, "message", value, false, false, false);
-      PORTS.with(|slot| {
-        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
-          state.onmessage = Some(v8::Global::new(scope, value));
-        }
-      });
-    } else {
-      PORTS.with(|slot| {
-        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
-          state.onmessage = None;
-        }
-      });
-    }
-    start_port(self.id);
-  }
-
-  #[getter]
-  fn onmessageerror(&self, scope: &mut v8::PinScope) -> Js {
-    let value = PORTS.with(|slot| {
-      slot
-        .borrow()
-        .get(&self.id)
-        .and_then(|state| state.onmessageerror.clone())
-    });
-    match value {
-      Some(value) => {
-        let local = v8::Local::new(scope, &value);
-        Js(v8::Global::new(scope, local))
-      }
-      None => {
-        let value: v8::Local<v8::Value> = v8::null(scope).into();
-        Js(v8::Global::new(scope, value))
-      }
-    }
-  }
-
-  #[setter]
-  fn onmessageerror(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    let previous = PORTS.with(|slot| {
-      slot
-        .borrow()
-        .get(&self.id)
-        .and_then(|state| state.onmessageerror.clone())
-    });
-    if let Some(previous) = previous {
-      let previous = v8::Local::new(scope, &previous);
-      self
-        .base
-        .remove_callback(scope, "messageerror", previous, false);
-    }
-    if value.is_function() {
-      self
-        .base
-        .add_callback(scope, "messageerror", value, false, false, false);
-      PORTS.with(|slot| {
-        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
-          state.onmessageerror = Some(v8::Global::new(scope, value));
-        }
-      });
-    } else {
-      PORTS.with(|slot| {
-        if let Some(state) = slot.borrow_mut().get_mut(&self.id) {
-          state.onmessageerror = None;
         }
       });
     }
@@ -967,6 +854,23 @@ fn post_port_remote(
   Ok(())
 }
 
+/// Setting `onmessage` starts the port, including an assignment of `null`.
+pub(crate) fn note_message_handler(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  type_name: &str,
+) {
+  if type_name != "message" {
+    return;
+  }
+  let Some(host) =
+    (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) })
+  else {
+    return;
+  };
+  start_port(host.get().id);
+}
+
 fn start_port(id: u64) {
   let started = PORTS.with(|slot| {
     let mut ports = slot.borrow_mut();
@@ -1005,8 +909,6 @@ fn entangled<'s>(
         started: false,
         closed: false,
         wrapper: None,
-        onmessage: None,
-        onmessageerror: None,
         failures: 0,
         queue: VecDeque::new(),
       },
@@ -1018,8 +920,6 @@ fn entangled<'s>(
         started: false,
         closed: false,
         wrapper: None,
-        onmessage: None,
-        onmessageerror: None,
         failures: 0,
         queue: VecDeque::new(),
       },
@@ -1106,16 +1006,25 @@ fn adopt_shared_buffers(
   id: u64,
   data: &v8::Global<v8::Value>,
 ) {
-  let handler = PORTS.with(|slot| {
+  let wrapper = PORTS.with(|slot| {
     slot
       .borrow()
       .get(&id)
-      .and_then(|state| state.onmessage.clone())
+      .and_then(|state| state.wrapper.clone())
   });
-  let Some(handler) = handler else {
+  let Some(wrapper) = wrapper else {
     return;
   };
-  let handler = v8::Local::new(scope, handler);
+  let wrapper = v8::Local::new(scope, wrapper);
+  let Some(host) =
+    (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, wrapper) })
+  else {
+    return;
+  };
+  let handler = host.get().base.event_handler(scope, "message");
+  if handler.is_null() {
+    return;
+  }
   let Ok(handler) = v8::Local::<v8::Object>::try_from(handler) else {
     return;
   };
@@ -1531,6 +1440,14 @@ fn traced_js(
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
   MessagePort::install(scope);
+  let constructor = MessagePort::template(scope)
+    .get_function(scope)
+    .expect("MessagePort");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["message", "messageerror"],
+  );
   MessageEvent::install(scope);
   MessageChannel::install(scope);
   if yuzuko_core::is_dedicated_worker() {

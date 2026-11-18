@@ -125,6 +125,47 @@ Yuzuko.test("assistive actions bubble through the authored tree", () => {
     assert(accessible, "accessiblefocus");
     assert(os === false, "no window focus or blur");
 
+    const handlerOrder: string[] = [];
+    child.onaccessibleclick = function (event) {
+      assert(this === child, "handler this");
+      handlerOrder.push("child");
+      event.stopPropagation();
+    };
+    root.onaccessibleclick = () => {
+      handlerOrder.push("root");
+    };
+    Yuzuko.__test.inject(window, [
+      { kind: "accessible", type: "click", node: child },
+    ]);
+    assert(handlerOrder.join(",") === "child", handlerOrder.join(","));
+    handlerOrder.length = 0;
+    child.onaccessibleclick = () => {
+      handlerOrder.push("child");
+    };
+    Yuzuko.__test.inject(window, [
+      { kind: "accessible", type: "click", node: child },
+    ]);
+    assert(
+      handlerOrder.join(",") === "child,root",
+      handlerOrder.join(","),
+    );
+    handlerOrder.length = 0;
+    child.dispatchEvent(new Event("accessibleclick", { bubbles: true }));
+    assert(handlerOrder.join(",") === "child", "dispatchEvent stays put");
+    child.onaccessibleclick = null;
+    root.onaccessibleclick = null;
+
+    let handlerDetail: unknown = "unset";
+    child.onaccessiblesetvalue = function (event) {
+      assert(this === child, "setvalue this");
+      handlerDetail = event.detail;
+    };
+    Yuzuko.__test.inject(window, [
+      { kind: "accessible", type: "setvalue", node: child, value: 2 },
+    ]);
+    assert(handlerDetail === 2, `handler detail ${String(handlerDetail)}`);
+    child.onaccessiblesetvalue = null;
+
     let thrown: unknown;
     try {
       Yuzuko.__test.inject(window, [

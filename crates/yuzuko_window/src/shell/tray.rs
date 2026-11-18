@@ -244,6 +244,7 @@ pub fn install(scope: &mut v8::PinScope) {
   let ctor = global.get(scope, key.into()).unwrap();
   global.delete(scope, key.into());
   yuzuko.set(scope, key.into(), ctor);
+  crate::handlers::install_tray(scope);
 }
 
 pub fn any_open() -> bool {

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use yuzuko_core::op::{Js, OpError, traced, traced_local};
+use yuzuko_core::op::OpError;
 use yuzuko_macros::op;
 use yuzuko_winter::{BodyNote, SseItem, SseParser, perform};
 
@@ -95,17 +95,11 @@ pub struct EventSource {
   retry_ms: Cell<u64>,
   generation: Cell<u64>,
   closed: Arc<AtomicBool>,
-  onopen: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onmessage: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onerror: RefCell<Option<v8::TracedReference<v8::Value>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for EventSource {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
-    trace_slot(&self.onopen, visitor);
-    trace_slot(&self.onmessage, visitor);
-    trace_slot(&self.onerror, visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -149,9 +143,6 @@ impl EventSource {
       retry_ms: Cell::new(3000),
       generation: Cell::new(1),
       closed: Arc::new(AtomicBool::new(false)),
-      onopen: RefCell::new(None),
-      onmessage: RefCell::new(None),
-      onerror: RefCell::new(None),
     })
   }
 
@@ -194,36 +185,6 @@ impl EventSource {
       });
     }
   }
-
-  #[getter]
-  fn onopen(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onopen)
-  }
-
-  #[setter]
-  fn onopen(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onopen, "open", value);
-  }
-
-  #[getter]
-  fn onmessage(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onmessage)
-  }
-
-  #[setter]
-  fn onmessage(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onmessage, "message", value);
-  }
-
-  #[getter]
-  fn onerror(&self, scope: &mut v8::PinScope) -> Js {
-    handler_value(scope, &self.onerror)
-  }
-
-  #[setter]
-  fn onerror(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    set_handler(scope, &self.base, &self.onerror, "error", value);
-  }
 }
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
@@ -231,6 +192,11 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
   let constructor = EventSource::template(scope)
     .get_function(scope)
     .expect("EventSource");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["open", "message", "error"],
+  );
   let constructor = v8::Local::<v8::Object>::try_from(
     v8::Local::<v8::Value>::from(constructor),
   )
@@ -620,45 +586,4 @@ fn define_constant(
     number.into(),
     v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
   );
-}
-
-fn trace_slot(
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
-}
-
-fn handler_value(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let value = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-    .unwrap_or_else(|| v8::null(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn set_handler(
-  scope: &mut v8::PinScope,
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  if let Some(previous) = slot.borrow().as_ref()
-    && let Some(previous) = traced_local(scope, previous)
-  {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
-  }
 }

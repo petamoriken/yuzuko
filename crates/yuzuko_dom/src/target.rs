@@ -1,9 +1,10 @@
-//! `EventTarget`. `globalThis` is not a cppgc wrapper, so its listeners live
-//! beside the realm and are dropped while the isolate is still alive.
+//! `EventTarget`. `globalThis` is not a cppgc wrapper, so its listeners and
+//! `on*` attributes live beside the realm and are dropped while the isolate
+//! is still alive.
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{OpError, host_ref, traced};
+use yuzuko_core::op::{OpError, OpException, host_ref, traced};
 use yuzuko_macros::op;
 
 use crate::abort;
@@ -22,8 +23,16 @@ struct Listener {
   owner: Option<String>,
 }
 
+/// The value of one `on*` attribute. The listener list is separate: removing
+/// the listener leaves this value in place until the attribute is assigned.
+struct EventHandler {
+  type_name: String,
+  callback: v8::TracedReference<v8::Value>,
+}
+
 pub struct EventTarget {
   listeners: RefCell<Vec<Listener>>,
+  handlers: RefCell<Vec<EventHandler>>,
   next_id: Cell<u64>,
 }
 
@@ -32,6 +41,11 @@ unsafe impl v8::cppgc::GarbageCollected for EventTarget {
     if let Ok(listeners) = self.listeners.try_borrow() {
       for listener in listeners.iter() {
         visitor.trace(&listener.callback);
+      }
+    }
+    if let Ok(handlers) = self.handlers.try_borrow() {
+      for handler in handlers.iter() {
+        visitor.trace(&handler.callback);
       }
     }
   }
@@ -51,7 +65,58 @@ impl EventTarget {
   pub fn new() -> Self {
     Self {
       listeners: RefCell::new(Vec::new()),
+      handlers: RefCell::new(Vec::new()),
       next_id: Cell::new(1),
+    }
+  }
+
+  /// The function stored for `type_name`, or `null`.
+  pub fn event_handler<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    type_name: &str,
+  ) -> v8::Local<'s, v8::Value> {
+    let handlers = self.handlers.borrow();
+    let Some(handler) = handlers
+      .iter()
+      .find(|handler| handler.type_name == type_name)
+    else {
+      return v8::null(scope).into();
+    };
+    yuzuko_core::op::traced_local(scope, &handler.callback)
+      .unwrap_or_else(|| v8::null(scope).into())
+  }
+
+  /// Stores `value` as the `on*` handler for `type_name`.
+  ///
+  /// A function is also registered as a bubbling listener. Any other value,
+  /// including `null` and `undefined`, clears the attribute and removes the
+  /// listener that the previous assignment added.
+  pub fn set_event_handler(
+    &self,
+    scope: &mut v8::PinScope,
+    type_name: &str,
+    value: v8::Local<v8::Value>,
+  ) {
+    let previous = {
+      let mut handlers = self.handlers.borrow_mut();
+      let index = handlers
+        .iter()
+        .position(|handler| handler.type_name == type_name);
+      index.map(|index| handlers.remove(index).callback)
+    };
+    if let Some(previous) = previous
+      .as_ref()
+      .and_then(|callback| yuzuko_core::op::traced_local(scope, callback))
+    {
+      self.remove_callback(scope, type_name, previous, false);
+    }
+    if value.is_function() {
+      self.add_callback(scope, type_name, value, false, false, false);
+      self.handlers.borrow_mut().push(EventHandler {
+        type_name: type_name.to_string(),
+        callback: traced(scope, value),
+      });
     }
   }
 
@@ -150,6 +215,108 @@ impl EventTarget {
       .iter()
       .any(|listener| listener.type_name == type_name)
   }
+}
+
+/// Defines `on*` accessors on `object` for each event type.
+///
+/// The attribute name is `on` plus the event type. The accessor is
+/// enumerable and configurable. `this` must be a host `EventTarget` or the
+/// realm global.
+pub fn define_event_handlers(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  events: &[&str],
+) {
+  for event in events {
+    let type_name = v8::String::new(scope, event).unwrap();
+    let attribute = format!("on{event}");
+    let key = v8::String::new(scope, &attribute).unwrap();
+    let getter = v8::Function::builder(read_event_handler)
+      .data(type_name.into())
+      .length(0)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
+    let getter_label = format!("get {attribute}");
+    getter.set_name(v8::String::new(scope, &getter_label).unwrap());
+    let setter = v8::Function::builder(write_event_handler)
+      .data(type_name.into())
+      .length(1)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
+    let setter_label = format!("set {attribute}");
+    setter.set_name(v8::String::new(scope, &setter_label).unwrap());
+    let mut descriptor =
+      v8::PropertyDescriptor::new_from_get_set(getter.into(), setter.into());
+    descriptor.set_enumerable(true);
+    descriptor.set_configurable(true);
+    let _ = object.define_property(scope, key.into(), &descriptor);
+  }
+}
+
+/// Defines `on*` accessors on `constructor`'s prototype.
+pub fn define_prototype_event_handlers(
+  scope: &mut v8::PinScope,
+  constructor: v8::Local<v8::Function>,
+  events: &[&str],
+) {
+  let proto_key = v8::String::new(scope, "prototype").unwrap();
+  let prototype = constructor
+    .get(scope, proto_key.into())
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+    .expect("event handler prototype");
+  define_event_handlers(scope, prototype, events);
+}
+
+fn event_handler_target(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Option<yuzuko_core::op::HostRef<EventTarget>> {
+  unsafe { host_ref::<EventTarget>(scope, object) }
+}
+
+fn read_event_handler(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let type_name = args.data().to_rust_string_lossy(scope);
+  let object = args.this();
+  if util::is_global(scope, object) {
+    ret.set(realm_event_handler(scope, &type_name));
+    return;
+  }
+  let Some(target) = event_handler_target(scope, object) else {
+    OpException::throw(OpError::type_("illegal invocation"), scope);
+    return;
+  };
+  ret.set(target.get().event_handler(scope, &type_name));
+}
+
+fn write_event_handler(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  let type_name = args.data().to_rust_string_lossy(scope);
+  let object = args.this();
+  let value = args.get(0);
+  if util::is_global(scope, object) {
+    realm_set_event_handler(scope, &type_name, value);
+    return;
+  }
+  let Some(target) = event_handler_target(scope, object) else {
+    OpException::throw(OpError::type_("illegal invocation"), scope);
+    return;
+  };
+  target.get().set_event_handler(scope, &type_name, value);
+  // `AbortSignal.any` keeps a dependent alive only while something listens
+  // for `abort`. `MessagePort.onmessage` starts the port.
+  if type_name == "abort" {
+    abort::sync_observers(scope, object);
+  }
+  crate::message::note_message_handler(scope, object, &type_name);
 }
 
 #[op]
@@ -727,8 +894,15 @@ struct RealmListener {
   owner: Option<String>,
 }
 
+struct RealmHandler {
+  type_name: String,
+  callback: v8::Global<v8::Value>,
+}
+
 thread_local! {
   static REALM: RefCell<Vec<RealmListener>> = const { RefCell::new(Vec::new()) };
+  static REALM_HANDLERS: RefCell<Vec<RealmHandler>> =
+    const { RefCell::new(Vec::new()) };
   static NEXT_REALM_ID: Cell<u64> = const { Cell::new(1) };
   static CURRENT_EVENT: RefCell<Option<v8::Global<v8::Object>>> =
     const { RefCell::new(None) };
@@ -832,6 +1006,7 @@ pub(crate) fn clear() {
     return;
   }
   REALM.with(|listeners| listeners.borrow_mut().clear());
+  REALM_HANDLERS.with(|handlers| handlers.borrow_mut().clear());
   NEXT_REALM_ID.with(|id| id.set(1));
   CURRENT_EVENT.with(|slot| *slot.borrow_mut() = None);
 }
@@ -846,6 +1021,53 @@ pub fn drop_reloaded_listeners(
   }
   if let Some(host) = unsafe { host_ref::<EventTarget>(scope, target) } {
     host.get().drop_reloaded_listeners();
+  }
+}
+
+fn realm_event_handler<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  type_name: &str,
+) -> v8::Local<'s, v8::Value> {
+  REALM_HANDLERS.with(|handlers| {
+    handlers
+      .borrow()
+      .iter()
+      .find(|handler| handler.type_name == type_name)
+      .map(|handler| {
+        let value: v8::Local<v8::Value> =
+          v8::Local::new(scope, &handler.callback);
+        value
+      })
+      .unwrap_or_else(|| v8::null(scope).into())
+  })
+}
+
+fn realm_set_event_handler(
+  scope: &mut v8::PinScope,
+  type_name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let previous = REALM_HANDLERS.with(|handlers| {
+    let mut handlers = handlers.borrow_mut();
+    let index = handlers
+      .iter()
+      .position(|handler| handler.type_name == type_name);
+    index.map(|index| handlers.remove(index).callback)
+  });
+  if let Some(previous) = previous {
+    let previous = v8::Local::new(scope, &previous);
+    realm_remove(scope, type_name, previous, false);
+  }
+  if value.is_function() {
+    if !realm_contains(scope, type_name, value, false) {
+      realm_push(scope, type_name, value, false, false, false);
+    }
+    REALM_HANDLERS.with(|handlers| {
+      handlers.borrow_mut().push(RealmHandler {
+        type_name: type_name.to_string(),
+        callback: v8::Global::new(scope, value),
+      });
+    });
   }
 }
 

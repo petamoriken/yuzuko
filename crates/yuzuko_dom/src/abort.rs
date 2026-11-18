@@ -19,7 +19,6 @@ pub struct AbortSignal {
   /// Created by `AbortSignal.any`. Only non-dependent signals abort it.
   dependent: Cell<bool>,
   reason: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  onabort: RefCell<Option<v8::TracedReference<v8::Value>>>,
   /// Wrapper for this signal. The wrapper also points back here, and that
   /// cycle is traced, so it does not root the signal by itself.
   wrapper: RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -50,9 +49,6 @@ unsafe impl v8::cppgc::GarbageCollected for AbortSignal {
       && slot.is_none()
     {
       *slot = Some(reason);
-    }
-    if let Ok(onabort) = self.onabort.try_borrow() {
-      visitor.trace(&*onabort);
     }
     if let Ok(wrapper) = self.wrapper.try_borrow() {
       visitor.trace(&*wrapper);
@@ -86,7 +82,6 @@ impl AbortSignal {
       aborted: Cell::new(false),
       dependent: Cell::new(false),
       reason: RefCell::new(None),
-      onabort: RefCell::new(None),
       wrapper: RefCell::new(None),
       source_signals: RefCell::new(Vec::new()),
       dependent_signals: RefCell::new(Vec::new()),
@@ -131,39 +126,6 @@ impl AbortSignal {
     {
       Some(value) => Js(v8::Global::new(scope, value)),
       None => undefined(scope),
-    }
-  }
-
-  #[getter]
-  fn onabort(&self, scope: &mut v8::PinScope) -> Js {
-    js_or_null(scope, &self.onabort)
-  }
-
-  #[setter]
-  fn onabort(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    let previous = self
-      .onabort
-      .borrow()
-      .as_ref()
-      .and_then(|reference| traced_local(scope, reference));
-    if let Some(previous) = previous {
-      self.base.remove_callback(scope, "abort", previous, false);
-    }
-    if value.is_function() {
-      self
-        .base
-        .add_callback(scope, "abort", value, false, false, false);
-      *self.onabort.borrow_mut() = Some(traced(scope, value));
-    } else {
-      *self.onabort.borrow_mut() = None;
-    }
-    let wrapper = self
-      .wrapper
-      .borrow()
-      .as_ref()
-      .and_then(|reference| traced_local(scope, reference));
-    if let Some(wrapper) = wrapper {
-      sync_observers(scope, wrapper);
     }
   }
 
@@ -287,6 +249,14 @@ impl AbortController {
 pub(crate) fn install(scope: &mut v8::PinScope) {
   AbortSignal::install(scope);
   AbortController::install(scope);
+  let constructor = AbortSignal::template(scope)
+    .get_function(scope)
+    .expect("AbortSignal");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["abort"],
+  );
 }
 
 pub(crate) fn is_aborted(
@@ -673,18 +643,4 @@ fn signal_reason<'s>(
 fn undefined(scope: &mut v8::PinScope) -> Js {
   let value: v8::Local<v8::Value> = v8::undefined(scope).into();
   Js(v8::Global::new(scope, value))
-}
-
-fn js_or_null(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-) -> Js {
-  let local = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference));
-  match local {
-    Some(value) => Js(v8::Global::new(scope, value)),
-    None => Js::null(scope),
-  }
 }

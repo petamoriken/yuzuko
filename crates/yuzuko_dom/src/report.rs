@@ -25,9 +25,6 @@ thread_local! {
   static CONSOLE: RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>> =
     const { RefCell::new(None) };
   static ONERROR: RefCell<Handler> = const { RefCell::new(Handler::empty()) };
-  static ONUNHANDLED: RefCell<Handler> =
-    const { RefCell::new(Handler::empty()) };
-  static ONHANDLED: RefCell<Handler> = const { RefCell::new(Handler::empty()) };
 }
 
 struct ReportingGuard;
@@ -48,20 +45,15 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
     report.into(),
     v8::PropertyAttribute::DONT_ENUM,
   );
-  install_onerror(scope, global);
-  install_handler(
+  // A dedicated worker's `onerror` receives the `ErrorEvent`. The five-argument
+  // `OnErrorEventHandler` belongs to the main realm.
+  if !yuzuko_core::is_dedicated_worker() {
+    install_onerror(scope, global);
+  }
+  target::define_event_handlers(
     scope,
     global,
-    "onunhandledrejection",
-    get_unhandled,
-    set_unhandled,
-  );
-  install_handler(
-    scope,
-    global,
-    "onrejectionhandled",
-    get_handled,
-    set_handled,
+    &["unhandledrejection", "rejectionhandled"],
   );
   let hook = v8::Function::new(scope, rejection_callback).unwrap();
   yuzuko_core::set_rejection_hook(scope, hook);
@@ -71,8 +63,6 @@ pub(crate) fn clear() {
   REPORTING.with(|flag| flag.set(false));
   CONSOLE.with(|slot| *slot.borrow_mut() = None);
   ONERROR.with(|slot| *slot.borrow_mut() = Handler::empty());
-  ONUNHANDLED.with(|slot| *slot.borrow_mut() = Handler::empty());
-  ONHANDLED.with(|slot| *slot.borrow_mut() = Handler::empty());
 }
 
 pub fn report_error(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
@@ -202,21 +192,6 @@ fn install_onerror(scope: &mut v8::PinScope, global: v8::Local<v8::Object>) {
   );
 }
 
-fn install_handler(
-  scope: &mut v8::PinScope,
-  global: v8::Local<v8::Object>,
-  name: &str,
-  getter: impl v8::MapFnTo<v8::AccessorNameGetterCallback>,
-  setter: impl v8::MapFnTo<v8::AccessorNameSetterCallback>,
-) {
-  let _ = global.set_accessor_with_setter(
-    scope,
-    key(scope, name).into(),
-    getter,
-    setter,
-  );
-}
-
 fn get_onerror(
   scope: &mut v8::PinScope,
   _key: v8::Local<v8::Name>,
@@ -290,65 +265,6 @@ fn onerror_adapter(
   if result.is_some_and(|value| value.is_true()) {
     event::with_event(scope, event, Event::prevent);
   }
-}
-
-fn get_unhandled(
-  scope: &mut v8::PinScope,
-  _key: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut ret: v8::ReturnValue<v8::Value>,
-) {
-  return_handler(scope, &ONUNHANDLED, &mut ret);
-}
-
-fn set_unhandled(
-  scope: &mut v8::PinScope,
-  _key: v8::Local<v8::Name>,
-  value: v8::Local<v8::Value>,
-  _args: v8::PropertyCallbackArguments,
-  mut _ret: v8::ReturnValue<()>,
-) {
-  set_direct(scope, "unhandledrejection", &ONUNHANDLED, value);
-}
-
-fn get_handled(
-  scope: &mut v8::PinScope,
-  _key: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut ret: v8::ReturnValue<v8::Value>,
-) {
-  return_handler(scope, &ONHANDLED, &mut ret);
-}
-
-fn set_handled(
-  scope: &mut v8::PinScope,
-  _key: v8::Local<v8::Name>,
-  value: v8::Local<v8::Value>,
-  _args: v8::PropertyCallbackArguments,
-  mut _ret: v8::ReturnValue<()>,
-) {
-  set_direct(scope, "rejectionhandled", &ONHANDLED, value);
-}
-
-fn set_direct(
-  scope: &mut v8::PinScope,
-  event_type: &str,
-  slot: &'static std::thread::LocalKey<RefCell<Handler>>,
-  value: v8::Local<v8::Value>,
-) {
-  let global = scope.get_current_context().global(scope);
-  clear_wrapper(scope, global, event_type, slot);
-  let Ok(handler) = v8::Local::<v8::Function>::try_from(value) else {
-    return;
-  };
-  if target::add_listener(scope, global, event_type, handler.into(), None)
-    .is_err()
-  {
-    return;
-  }
-  slot.with(|slot| {
-    slot.borrow_mut().callback = Some(v8::Global::new(scope, handler));
-  });
 }
 
 fn clear_wrapper(

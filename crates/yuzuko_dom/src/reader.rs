@@ -37,12 +37,6 @@ pub struct FileReader {
   generation: Cell<u32>,
   result: RefCell<Option<v8::TracedReference<v8::Value>>>,
   error: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_load_start: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_progress: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_load: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_abort: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_error: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  on_load_end: RefCell<Option<v8::TracedReference<v8::Value>>>,
   pending: RefCell<Option<Pending>>,
   loaded: Cell<u64>,
   total: Cell<u64>,
@@ -53,12 +47,6 @@ unsafe impl v8::cppgc::GarbageCollected for FileReader {
     v8::cppgc::GarbageCollected::trace(&self.base, visitor);
     trace_slot(visitor, &self.result);
     trace_slot(visitor, &self.error);
-    trace_slot(visitor, &self.on_load_start);
-    trace_slot(visitor, &self.on_progress);
-    trace_slot(visitor, &self.on_load);
-    trace_slot(visitor, &self.on_abort);
-    trace_slot(visitor, &self.on_error);
-    trace_slot(visitor, &self.on_load_end);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -88,12 +76,6 @@ impl FileReader {
       generation: Cell::new(0),
       result: RefCell::new(None),
       error: RefCell::new(None),
-      on_load_start: RefCell::new(None),
-      on_progress: RefCell::new(None),
-      on_load: RefCell::new(None),
-      on_abort: RefCell::new(None),
-      on_error: RefCell::new(None),
-      on_load_end: RefCell::new(None),
       pending: RefCell::new(None),
       loaded: Cell::new(0),
       total: Cell::new(0),
@@ -113,82 +95,6 @@ impl FileReader {
   #[getter]
   fn error(&self, scope: &mut v8::PinScope) -> Js {
     stored(scope, &self.error)
-  }
-
-  #[getter]
-  #[rename("onloadstart")]
-  fn on_load_start(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_load_start)
-  }
-
-  #[setter]
-  #[rename("onloadstart")]
-  fn on_load_start(
-    &self,
-    scope: &mut v8::PinScope,
-    value: v8::Local<v8::Value>,
-  ) {
-    assign_handler(&self.base, &self.on_load_start, scope, "loadstart", value);
-  }
-
-  #[getter]
-  #[rename("onprogress")]
-  fn on_progress(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_progress)
-  }
-
-  #[setter]
-  #[rename("onprogress")]
-  fn on_progress(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    assign_handler(&self.base, &self.on_progress, scope, "progress", value);
-  }
-
-  #[getter]
-  #[rename("onload")]
-  fn on_load(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_load)
-  }
-
-  #[setter]
-  #[rename("onload")]
-  fn on_load(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    assign_handler(&self.base, &self.on_load, scope, "load", value);
-  }
-
-  #[getter]
-  #[rename("onabort")]
-  fn on_abort(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_abort)
-  }
-
-  #[setter]
-  #[rename("onabort")]
-  fn on_abort(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    assign_handler(&self.base, &self.on_abort, scope, "abort", value);
-  }
-
-  #[getter]
-  #[rename("onerror")]
-  fn on_error(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_error)
-  }
-
-  #[setter]
-  #[rename("onerror")]
-  fn on_error(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    assign_handler(&self.base, &self.on_error, scope, "error", value);
-  }
-
-  #[getter]
-  #[rename("onloadend")]
-  fn on_load_end(&self, scope: &mut v8::PinScope) -> Js {
-    stored(scope, &self.on_load_end)
-  }
-
-  #[setter]
-  #[rename("onloadend")]
-  fn on_load_end(&self, scope: &mut v8::PinScope, value: v8::Local<v8::Value>) {
-    assign_handler(&self.base, &self.on_load_end, scope, "loadend", value);
   }
 
   #[rename("readAsArrayBuffer")]
@@ -374,6 +280,14 @@ impl FileReaderSync {
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
   FileReader::install(scope);
+  let constructor = FileReader::template(scope)
+    .get_function(scope)
+    .expect("FileReader");
+  crate::target::define_prototype_event_handlers(
+    scope,
+    constructor,
+    &["loadstart", "progress", "load", "abort", "error", "loadend"],
+  );
   if yuzuko_core::is_dedicated_worker() {
     FileReaderSync::install(scope);
   }
@@ -422,28 +336,6 @@ fn stored(
   {
     Some(value) => Js(v8::Global::new(scope, value)),
     None => Js::null(scope),
-  }
-}
-
-fn assign_handler(
-  target: &EventTarget,
-  slot: &RefCell<Option<v8::TracedReference<v8::Value>>>,
-  scope: &mut v8::PinScope,
-  type_name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  let previous = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference));
-  if let Some(previous) = previous {
-    target.remove_callback(scope, type_name, previous, false);
-  }
-  if value.is_function() {
-    target.add_callback(scope, type_name, value, false, false, false);
-    *slot.borrow_mut() = Some(traced(scope, value));
-  } else {
-    *slot.borrow_mut() = None;
   }
 }
 

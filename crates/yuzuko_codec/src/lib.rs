@@ -37,9 +37,17 @@ fn install(scope: &mut v8::PinScope) {
   classes::VideoFrame::install(scope);
   classes::VideoColorSpace::install(scope);
   classes::VideoDecoder::install(scope);
+  let video = classes::VideoDecoder::template(scope)
+    .get_function(scope)
+    .expect("VideoDecoder");
+  yuzuko_dom::define_prototype_event_handlers(scope, video, &["dequeue"]);
   classes::EncodedAudioChunk::install(scope);
   classes::AudioData::install(scope);
   classes::AudioDecoder::install(scope);
+  let audio = classes::AudioDecoder::template(scope)
+    .get_function(scope)
+    .expect("AudioDecoder");
+  yuzuko_dom::define_prototype_event_handlers(scope, audio, &["dequeue"]);
   image::ImageDecoder::install(scope);
   image::install_image_track_list(scope);
   image::ImageTrack::install(scope);
