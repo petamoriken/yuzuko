@@ -22,6 +22,7 @@
   "html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html": {
     "ignore": "The file needs a document."
   },
+  "html/canvas/element/manual/imagebitmap/createImageBitmap-crop-outside-source.html": true,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage-closed.html": {
     "ignore": "The file needs a document."
   },
@@ -2098,6 +2099,12 @@
       "Test offscreen context creation attributes colorSpace: 'srgb-linear'"
     ]
   },
+  "html/canvas/offscreen/manual/context-attributes/getContextAttributes.worker.js": {
+    "expectedFailures": [
+      "Test offscreen context creation attributes colorSpace: 'display-p3-linear' in a worker",
+      "Test offscreen context creation attributes colorSpace: 'srgb-linear' in a worker"
+    ]
+  },
   "html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html": {
     "ignore": "The file needs a document."
   },
@@ -3619,6 +3626,15 @@
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-baseline.tentative.w.html": {
     "ignore": "The file is not a testharness document."
   },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-direction-change.tentative-expected.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-direction-change.tentative.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-direction-change.tentative.w.html": {
+    "ignore": "The file is not a testharness document."
+  },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-drawing-styles-change.tentative-expected.html": {
     "ignore": "The file is not a testharness document."
   },
@@ -3707,6 +3723,15 @@
     "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-baseline.tentative.w.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-direction-change.tentative-expected.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-direction-change.tentative.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-direction-change.tentative.w.html": {
     "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-drawing-styles-change.tentative-expected.html": {

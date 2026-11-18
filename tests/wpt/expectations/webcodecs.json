@@ -84,6 +84,8 @@
       "Emit decoder config and extra data.",
       "Encode audio with negative timestamp",
       "Encoding and decoding",
+      "Reconfiguring AudioEncoder flushes buffered data and applies new Opus options",
+      "Reconfiguring AudioEncoder with new sampleRate flushes buffered data from previous configuration",
       "Sample rate variation: 13000",
       "Sample rate variation: 23000",
       "Sample rate variation: 3000",
@@ -102,7 +104,8 @@
       "Test encoding Opus with additional parameters: Opus with usedtx",
       "Test encoding Opus with additional parameters: Opus with useinbandfec",
       "Test reset during flush",
-      "encodeQueueSize test"
+      "encodeQueueSize test",
+      "reset() cancels queued configure() error and allows subsequent configuration"
     ]
   },
   "webcodecs/audio-serialization.crossAgentCluster.helper.html": {
@@ -112,6 +115,7 @@
     "ignore": "The file needs a document."
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": true,
+  "webcodecs/audioDecoder-pcm-output.https.any.js": true,
   "webcodecs/chunk-serialization.any.js": {
     "expectedFailures": [
       "Verify EncodedVideoChunk cannot be stored"
@@ -396,6 +400,7 @@
     "expectedFailures": [
       "Encode video preserves unset, zero, and duplicate-timestamp durations",
       "Encode video with negative timestamp",
+      "Reconfiguring VideoEncoder with unsupported config blocks subsequent encodes and closes encoder",
       "Test VideoEncoder construction",
       "Test successful configure(), encode(), and flush()",
       "Test successful encode() after re-configure().",
@@ -403,7 +408,8 @@
       "Verify closed VideoEncoder operations",
       "Verify encoding closed frames throws.",
       "Verify unconfigured VideoEncoder operations",
-      "encodeQueueSize test"
+      "encodeQueueSize test",
+      "reset() cancels queued configure() error and allows subsequent configuration"
     ]
   },
   "webcodecs/video-frame-serialization.any.js": {

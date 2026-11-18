@@ -344,7 +344,46 @@
     "ignore": "The runner does not run this .any.js global."
   },
   "workers/importscripts_mime.any.js": true,
-  "workers/importscripts_mime_local.any.js": false,
+  "workers/importscripts_mime_local.any.js": {
+    "expectedFailures": [
+      "importScripts() requires scripty MIME types for blob: URLs: TEXT/HTML is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: TeXt/HtMl is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: Text/html is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: aaa/aaa is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: application/octet-stream is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: application/xml is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: image/png is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: potato/text is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/Html is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/csv is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/csv; charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/csv;bla;bla is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/csv;charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/html is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/plain is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: text/potato is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: video/mpeg is blocked.",
+      "importScripts() requires scripty MIME types for blob: URLs: zzz/zzz is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: TEXT/HTML is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: TeXt/HtMl is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: Text/html is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: aaa/aaa is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: application/octet-stream is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: application/xml is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: image/png is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: potato/text is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/Html is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/csv is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/csv; charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/csv;bla;bla is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/csv;charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/html is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/plain is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: text/potato is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: video/mpeg is blocked.",
+      "importScripts() requires scripty MIME types for data: URLs: zzz/zzz is blocked."
+    ]
+  },
   "workers/interfaces/DedicatedWorkerGlobalScope/EventTarget.worker.js": true,
   "workers/interfaces/DedicatedWorkerGlobalScope/onmessage.worker.js": {
     "expectedFailures": [
@@ -514,7 +553,14 @@
   "workers/modules/dedicated-worker-blob-url-sandboxed-iframe.html": {
     "ignore": "The file needs a document."
   },
-  "workers/modules/dedicated-worker-blob-url.window.js": false,
+  "workers/modules/dedicated-worker-blob-url.window.js": {
+    "expectedFailures": [
+      "A module worker created from a blob URL can import another blob URL.",
+      "A module worker created from a blob URL revoked immediately after construction can import another blob URL.",
+      "Creating a module worker from a blob URL works immediately before revoking.",
+      "Creating a module worker from a blob URL works."
+    ]
+  },
   "workers/modules/dedicated-worker-import-blob-url.any.js": {
     "expectedFailures": [
       "Dynamic import and then static import.",

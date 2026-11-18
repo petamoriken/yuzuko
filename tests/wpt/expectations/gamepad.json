@@ -23,7 +23,7 @@
   "gamepad/getgamepads-polling-manual.html": false,
   "gamepad/idlharness-extensions.https.window.js": {
     "expectedFailures": [
-      "GamepadHapticActuator interface: operation pulse(double, double)"
+      "idl_test setup"
     ]
   },
   "gamepad/idlharness-manual.html": {

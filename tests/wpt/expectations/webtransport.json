@@ -225,6 +225,9 @@
   "webtransport/historical.https.sub.any.js": {
     "ignore": "The runner does not apply .sub. substitutions."
   },
+  "webtransport/idlharness-writer.https.sub.any.js": {
+    "ignore": "The runner does not apply .sub. substitutions."
+  },
   "webtransport/idlharness.https.sub.any.js": {
     "ignore": "The runner does not apply .sub. substitutions."
   },

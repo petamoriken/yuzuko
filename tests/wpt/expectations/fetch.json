@@ -439,6 +439,14 @@
       "Preflight response with a bad Access-Control-Allow-Methods"
     ]
   },
+  "fetch/api/cors/cors-preflight-safelist-value-size.any.js": {
+    "expectedFailures": [
+      "A denied CORS-preflight prevents the request when the combined safelisted value size is above 1024 bytes",
+      "Combined Content-Language value size above 1024 bytes needs a CORS-preflight",
+      "Combined safelisted value size above 1024 bytes across header names needs a CORS-preflight",
+      "Combined safelisted value size above 1024 bytes needs a CORS-preflight"
+    ]
+  },
   "fetch/api/cors/cors-preflight-star.any.js": {
     "expectedFailures": [
       "CORS that fails with credentials: false; method: POST (allowed: *); header: Authorization,123 (allowed: *)",
@@ -692,6 +700,7 @@
       "User-added bogus Authorization header with omit mode"
     ]
   },
+  "fetch/api/credentials/authentication-redirection-stored-credentials.window.js": true,
   "fetch/api/credentials/authentication-redirection.any.js": {
     "expectedFailures": [
       "getAuthorizationHeaderValue - cross origin redirection",
@@ -2936,7 +2945,12 @@
       "Privileged header not allowed for guard type: request-no-cors"
     ]
   },
-  "fetch/range/general.window.js": false,
+  "fetch/range/general.window.js": {
+    "expectedFailures": [
+      "Fetch with range header will be sent with Accept-Encoding: identity",
+      "Script executed from partial response"
+    ]
+  },
   "fetch/range/non-matching-range-response.html": {
     "ignore": "The file needs a document."
   },

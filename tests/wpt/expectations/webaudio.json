@@ -318,6 +318,7 @@
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-suspend.https.html": false,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworklet-throw-onmessage.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-creation-time.https.html": true,
+  "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-event-timestamp.https.html": false,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-sample-rate.https.html": false,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletglobalscope-timing-info.https.html": true,
   "webaudio/the-audio-api/the-audioworklet-interface/audioworkletnode-automatic-pull.https.html": false,
