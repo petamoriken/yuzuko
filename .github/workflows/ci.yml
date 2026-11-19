@@ -72,9 +72,15 @@ jobs:
       - name: Install Linux packages
         if: matrix.container == 'ubuntu:20.04'
         run: |
-          apt-get update
+          # Port 80 to the Ubuntu archive times out from the hosted runner.
+          # This image has ubuntu-keyring and no CA bundle, so the first fetch
+          # skips the TLS peer check. Apt still verifies the signed InRelease.
+          # ca-certificates covers the package download after that.
+          sed -i 's|http://|https://|g' /etc/apt/sources.list
+          apt-get -o Acquire::https::Verify-Peer=false update
+          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::Verify-Peer=false \
+            install -y --no-install-recommends ca-certificates
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates \
             curl \
             git \
             sudo \
@@ -302,9 +308,15 @@ jobs:
       - name: Install Linux packages
         if: matrix.container == 'ubuntu:20.04'
         run: |
-          apt-get update
+          # Port 80 to the Ubuntu archive times out from the hosted runner.
+          # This image has ubuntu-keyring and no CA bundle, so the first fetch
+          # skips the TLS peer check. Apt still verifies the signed InRelease.
+          # ca-certificates covers the package download after that.
+          sed -i 's|http://|https://|g' /etc/apt/sources.list
+          apt-get -o Acquire::https::Verify-Peer=false update
+          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::Verify-Peer=false \
+            install -y --no-install-recommends ca-certificates
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates \
             curl \
             git \
             sudo \
