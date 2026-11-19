@@ -260,18 +260,7 @@
   "FileAPI/idlharness-manual.html": {
     "ignore": "The file needs a document."
   },
-  "FileAPI/idlharness.any.js": {
-    "expectedFailures": [
-      "FileList interface object length",
-      "FileList interface object name",
-      "FileList interface: attribute length",
-      "FileList interface: existence and properties of interface object",
-      "FileList interface: existence and properties of interface prototype object",
-      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
-      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
-      "FileList interface: operation item(unsigned long)"
-    ]
-  },
+  "FileAPI/idlharness.any.js": true,
   "FileAPI/idlharness.html": {
     "ignore": "The file needs a document."
   },

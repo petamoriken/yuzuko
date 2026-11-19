@@ -52,11 +52,7 @@
   "clipboard-apis/data-transfer-file-list-change-reference-updates.html": {
     "ignore": "The file needs a layout element."
   },
-  "clipboard-apis/dataTransfer-clearData.html": {
-    "expectedFailures": [
-      "Clear data from dataTransfer"
-    ]
-  },
+  "clipboard-apis/dataTransfer-clearData.html": true,
   "clipboard-apis/detached-iframe/clipboard-on-detached-iframe.https.html": {
     "ignore": "The file needs a document."
   },
