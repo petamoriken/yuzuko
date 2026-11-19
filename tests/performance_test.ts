@@ -121,7 +121,9 @@ Yuzuko.test("PerformanceObserver reports marks on a later task", async () => {
   performance.measure("taken");
   const records = taken.takeRecords();
   assert(records.length === 1, "takeRecords");
-  assert(records[0].name === "taken", "taken name");
+  const takenEntry = records[0];
+  assert(takenEntry !== undefined, "taken entry");
+  assert(takenEntry.name === "taken", "taken name");
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
