@@ -17,6 +17,30 @@
       "member": "FormData.new",
       "params": 2,
       "reason": "FormData has no HTMLFormElement constructor."
+    },
+    {
+      "member": "Performance.getEntriesByName",
+      "params": 2,
+      "contains": "resource",
+      "reason": "Resource timing is not implemented."
+    },
+    {
+      "member": "Performance.getEntriesByType",
+      "params": 1,
+      "contains": "resource",
+      "reason": "Resource timing is not implemented."
+    },
+    {
+      "member": "PerformanceObserverEntryList.getEntriesByName",
+      "params": 2,
+      "contains": "resource",
+      "reason": "Resource timing is not implemented."
+    },
+    {
+      "member": "PerformanceObserverEntryList.getEntriesByType",
+      "params": 1,
+      "contains": "resource",
+      "reason": "Resource timing is not implemented."
     }
   ],
   "groups": [
@@ -111,18 +135,11 @@
       ]
     },
     {
-      "reason": "Performance exposes now, timeOrigin, and toJSON.",
+      "reason": "Performance exposes now, timeOrigin, toJSON, and user timing. Resource timing, navigation timing, and event counts are absent.",
       "members": [
-        "Performance.clearMarks",
-        "Performance.clearMeasures",
         "Performance.clearResourceTimings",
         "Performance.eventCounts",
-        "Performance.getEntries",
-        "Performance.getEntriesByName",
-        "Performance.getEntriesByType",
         "Performance.interactionCount",
-        "Performance.mark",
-        "Performance.measure",
         "Performance.navigation",
         "Performance.onresourcetimingbufferfull",
         "Performance.setResourceTimingBufferSize",

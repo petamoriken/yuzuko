@@ -77,6 +77,8 @@ const ENROLLED: &[(&str, &[&str])] = &[
   ("url", &["url"]),
   ("encoding", &["encoding"]),
   ("hr-time", &["hr-time"]),
+  ("user-timing", &["user-timing"]),
+  ("performance-timeline", &["performance-timeline"]),
   (
     "html",
     &[

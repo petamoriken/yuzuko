@@ -34,7 +34,7 @@ Bytes: `Blob`, `File`, `FormData`, streams, `CompressionStream`, and `Decompress
 
 `Intl` uses the full ICU locale data linked into this V8 build. `WebAssembly` includes streaming compilation, a direct `.wasm` import, `import source`, and `import defer`. `import source` of JavaScript or TypeScript yields a `ModuleSource` for `new Worker`. Text and bytes imports use `with { type: "text" }` and `with { type: "bytes" }`.
 
-`navigator.userAgent` is `Yuzuko/<version>`. `navigator.hardwareConcurrency` is the number of logical processors available to the process, and it is at least 1. `navigator.language` is the first preferred language tag, and `navigator.languages` is a new frozen array of the operating-system list on each read.
+`navigator.userAgent` is `Yuzuko/<version>`. `navigator.hardwareConcurrency` is the number of logical processors available to the process, and it is at least 1. `navigator.language` is the first preferred language tag, and `navigator.languages` is a new frozen array of the operating-system list on each read. `performance.mark` and `performance.measure` record user timing. `PerformanceObserver` reports `"mark"` and `"measure"`.
 
 The application entry is an ES module. TypeScript is erased with oxc before V8 parses it. The runtime does not typecheck. Classic scripts run in a dedicated worker and in the REPL. The Annex B `Object.prototype.__proto__` accessor is removed before user code runs. An object literal `{ __proto__: null }` still sets the prototype.
 

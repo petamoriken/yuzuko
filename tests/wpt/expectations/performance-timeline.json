@@ -1,0 +1,133 @@
+{
+  "performance-timeline/back-forward-cache-restoration.tentative.html": {
+    "ignore": "Back-forward cache restoration needs a document."
+  },
+  "performance-timeline/buffered-does-not-sync-invoke.html": true,
+  "performance-timeline/buffered-flag-after-timeout.any.js": true,
+  "performance-timeline/buffered-flag-observer.any.js": true,
+  "performance-timeline/buffered-flag-with-entryTypes-observer.tentative.any.js": {
+    "expectedFailures": [
+      "PerformanceObserver without buffered flag set to false cannot see past entries."
+    ]
+  },
+  "performance-timeline/case-sensitivity.any.js": {
+    "expectedFailures": [
+      "getEntriesByName values are case sensitive",
+      "getEntriesByType values are case sensitive"
+    ]
+  },
+  "performance-timeline/droppedentriescount.any.js": {
+    "ignore": "Resource timing is not implemented."
+  },
+  "performance-timeline/get-invalid-entries.html": true,
+  "performance-timeline/getEntriesByName-sort.html": {
+    "expectedFailures": [
+      "getEntriesByName() sorts the paint entry by startTime"
+    ]
+  },
+  "performance-timeline/getEntriesByName-type.html": {
+    "expectedFailures": [
+      "getEntriesByName() does not return the navigation entry for other types"
+    ]
+  },
+  "performance-timeline/idlharness.any.js": true,
+  "performance-timeline/multiple-buffered-flag-observers.any.js": true,
+  "performance-timeline/navigation-id-detached-frame.tentative.html": {
+    "ignore": "The file needs a document."
+  },
+  "performance-timeline/navigation-id-element-timing.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-initial-load.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-long-task-task-attribution.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-mark-measure.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-reset.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-resource-timing.tentative.html": {
+    "ignore": "Navigation id tests need a document navigation."
+  },
+  "performance-timeline/navigation-id-worker-created-entries.html": true,
+  "performance-timeline/not-clonable.html": {
+    "ignore": "The file needs a layout element."
+  },
+  "performance-timeline/not-restored-reasons/abort-block-bfcache.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/attributes.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/bfcache-reasons-stay.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/bfcache.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/cross-origin-bfcache.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/fetch.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/iframes-without-attributes.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/navigation-failure.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/not-bfcached.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/redirect-on-history.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/reload.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/same-origin-bfcache.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/not-restored-reasons/same-origin-replace.window.js": {
+    "ignore": "Back-forward cache tests need a document."
+  },
+  "performance-timeline/observer-buffered-false.any.js": true,
+  "performance-timeline/performanceentry-tojson.any.js": true,
+  "performance-timeline/po-callback-mutate.any.js": true,
+  "performance-timeline/po-disconnect-removes-observed-types.any.js": true,
+  "performance-timeline/po-disconnect.any.js": true,
+  "performance-timeline/po-entries-sort.any.js": true,
+  "performance-timeline/po-getentries.any.js": true,
+  "performance-timeline/po-mark-measure.any.js": true,
+  "performance-timeline/po-observe-repeated-type.any.js": true,
+  "performance-timeline/po-observe-type.any.js": true,
+  "performance-timeline/po-observe.any.js": true,
+  "performance-timeline/po-observe.html": {
+    "ignore": "The file needs a document."
+  },
+  "performance-timeline/po-resource.html": {
+    "ignore": "The file needs a document."
+  },
+  "performance-timeline/po-takeRecords.any.js": true,
+  "performance-timeline/resources/going-back.html": {
+    "ignore": "The page only calls history.back()."
+  },
+  "performance-timeline/supportedEntryTypes-cross-realm-access.html": {
+    "ignore": "The file needs a document."
+  },
+  "performance-timeline/supportedEntryTypes.any.js": true,
+  "performance-timeline/timing-removed-iframe.html": {
+    "ignore": "The file needs a document."
+  },
+  "performance-timeline/webtiming-resolution.any.js": {
+    "expectedFailures": [
+      "Verifies the resolution of performance.now() is at least 5 microseconds."
+    ]
+  },
+  "performance-timeline/worker-with-performance-observer.html": true
+}

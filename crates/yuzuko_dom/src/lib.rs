@@ -129,6 +129,7 @@ pub fn dispatch_trusted_event(
 fn clear() {
   target::clear();
   message::clear();
+  performance::clear();
   report::clear();
   event::clear_is_trusted();
   worker::clear();

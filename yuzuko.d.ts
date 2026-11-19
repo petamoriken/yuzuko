@@ -6803,10 +6803,17 @@ interface Console {
   clear(): void;
 }
 
+type PerformanceEntryList = PerformanceEntry[];
+
 /**
  * Milliseconds since the time origin. `now()` and event `timeStamp` are not
  * coarsened. This process is not a cross-origin browser context. `toJSON()`
  * returns `{ timeOrigin }`.
+ *
+ * `mark`, `measure`, `clearMarks`, `clearMeasures`, `getEntries`,
+ * `getEntriesByName`, and `getEntriesByType` record user timing. A
+ * `PerformanceTiming` attribute name is a valid mark name. Measuring with that
+ * name throws `TypeError`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6828,6 +6835,59 @@ interface Performance extends EventTarget {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/toJSON)
    */
   toJSON(): { timeOrigin: DOMHighResTimeStamp };
+
+  /**
+   * The **`clearMarks()`** method removes all or specific PerformanceMark objects from the browser's performance timeline.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/clearMarks)
+   */
+  clearMarks(markName?: string): void;
+
+  /**
+   * The **`clearMeasures()`** method removes all or specific PerformanceMeasure objects from the browser's performance timeline.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/clearMeasures)
+   */
+  clearMeasures(measureName?: string): void;
+
+  /**
+   * The **`getEntries()`** method returns an array of all PerformanceEntry objects currently present in the performance timeline.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/getEntries)
+   */
+  getEntries(): PerformanceEntryList;
+
+  /**
+   * The **`getEntriesByName()`** method returns an array of PerformanceEntry objects currently present in the performance timeline with the given name and type.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/getEntriesByName)
+   */
+  getEntriesByName(name: string, type: "mark"): PerformanceMark[];
+  getEntriesByName(name: string, type: "measure"): PerformanceMeasure[];
+  getEntriesByName(name: string, type?: string): PerformanceEntryList;
+
+  /**
+   * The **`getEntriesByType()`** method returns an array of PerformanceEntry objects currently present in the performance timeline for a given type.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/getEntriesByType)
+   */
+  getEntriesByType(type: "mark"): PerformanceMark[];
+  getEntriesByType(type: "measure"): PerformanceMeasure[];
+  getEntriesByType(type: string): PerformanceEntryList;
+
+  /**
+   * The **`mark()`** method creates a named PerformanceMark object representing a high resolution timestamp marker in the browser's performance timeline.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/mark)
+   */
+  mark(markName: string, markOptions?: PerformanceMarkOptions): PerformanceMark;
+
+  /**
+   * The **`measure()`** method creates a named PerformanceMeasure object representing a time measurement between two marks in the browser's performance timeline.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/measure)
+   */
+  measure(measureName: string, startOrMeasureOptions?: string | PerformanceMeasureOptions, endMark?: string): PerformanceMeasure;
 }
 declare var Performance: {
   prototype: Performance;
@@ -6841,6 +6901,215 @@ declare var Performance: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/performance)
  */
 declare var performance: Performance;
+
+interface PerformanceMarkOptions {
+  detail?: any;
+  startTime?: DOMHighResTimeStamp;
+}
+
+interface PerformanceMeasureOptions {
+  detail?: any;
+  duration?: DOMHighResTimeStamp;
+  end?: string | DOMHighResTimeStamp;
+  start?: string | DOMHighResTimeStamp;
+}
+
+interface PerformanceObserverInit {
+  buffered?: boolean;
+  entryTypes?: string[];
+  type?: string;
+}
+
+interface PerformanceObserverCallback {
+  (entries: PerformanceObserverEntryList, observer: PerformanceObserver): void;
+}
+
+/**
+ * The **`PerformanceEntry`** object encapsulates a single performance metric that is part of the browser's performance timeline.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry)
+ */
+interface PerformanceEntry {
+  /**
+   * The read-only **`duration`** property returns a timestamp that is the duration of the performance entry. The meaning of this property depends on the value of this entry's entryType.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/duration)
+   */
+  readonly duration: DOMHighResTimeStamp;
+
+  /**
+   * The read-only **`entryType`** property returns a string representing the type of performance metric that this entry represents.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/entryType)
+   */
+  readonly entryType: string;
+
+  /**
+   * Identifier for this performance entry.
+   *
+   * `id` increases by 1 for each entry created in the realm, starting at 1.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/id)
+   */
+  readonly id: number;
+
+  /**
+   * The read-only **`name`** property of the PerformanceEntry interface is a string representing the name for a performance entry. It acts as an identifier, but it does not have to be unique. The value depends on the subclass.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/name)
+   */
+  readonly name: string;
+
+  /**
+   * Navigation identifier for this entry.
+   *
+   * There is no document, so the value is 0.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/navigationId)
+   */
+  readonly navigationId: number;
+
+  /**
+   * The read-only **`startTime`** property returns the first timestamp recorded for this PerformanceEntry. The meaning of this property depends on the value of this entry's entryType.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/startTime)
+   */
+  readonly startTime: DOMHighResTimeStamp;
+
+  /**
+   * The **`toJSON()`** method of the PerformanceEntry interface returns a JSON-serializable plain object representing the PerformanceEntry object.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceEntry/toJSON)
+   */
+  toJSON(): any;
+}
+declare var PerformanceEntry: {
+  prototype: PerformanceEntry;
+  new(): PerformanceEntry;
+};
+
+/**
+ * **`PerformanceMark`** is an interface for PerformanceEntry objects with an entryType of "mark".
+ *
+ * `new PerformanceMark` does not record the entry. `performance.mark` does.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceMark)
+ */
+interface PerformanceMark extends PerformanceEntry {
+  /**
+   * The read-only **`detail`** property returns arbitrary metadata that was included in the mark upon construction (either when using performance.mark() or the PerformanceMark() constructor).
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceMark/detail)
+   */
+  readonly detail: any;
+}
+declare var PerformanceMark: {
+  prototype: PerformanceMark;
+  new(markName: string, markOptions?: PerformanceMarkOptions): PerformanceMark;
+};
+
+/**
+ * **`PerformanceMeasure`** is an abstract interface for PerformanceEntry objects with an entryType of "measure". Entries of this type are created by calling performance.measure() to add a named DOMHighResTimeStamp (the measure) between two marks to the browser's performance timeline.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceMeasure)
+ */
+interface PerformanceMeasure extends PerformanceEntry {
+  /**
+   * The read-only **`detail`** property returns arbitrary metadata that was included in the measure upon construction (when using performance.measure()).
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceMeasure/detail)
+   */
+  readonly detail: any;
+}
+declare var PerformanceMeasure: {
+  prototype: PerformanceMeasure;
+  new(): PerformanceMeasure;
+};
+
+/**
+ * The **`PerformanceObserverEntryList`** interface is a list of performance events that were explicitly observed via the observe() method.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserverEntryList)
+ */
+interface PerformanceObserverEntryList {
+  /**
+   * The **`getEntries()`** method of the PerformanceObserverEntryList interface returns a list of explicitly observed performance entry objects. The list's members are determined by the set of entry types specified in the call to the observe() method. The list is available in the observer's callback function (as the first parameter in the callback).
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserverEntryList/getEntries)
+   */
+  getEntries(): PerformanceEntryList;
+
+  /**
+   * The **`getEntriesByName()`** method of the PerformanceObserverEntryList interface returns a list of explicitly observed PerformanceEntry objects for a given name and entryType. The list's members are determined by the set of entry types specified in the call to the observe() method. The list is available in the observer's callback function (as the first parameter in the callback).
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserverEntryList/getEntriesByName)
+   */
+  getEntriesByName(name: string, type: "mark"): PerformanceMark[];
+  getEntriesByName(name: string, type: "measure"): PerformanceMeasure[];
+  getEntriesByName(name: string, type?: string): PerformanceEntryList;
+
+  /**
+   * The **`getEntriesByType()`** method of the PerformanceObserverEntryList returns a list of explicitly observed performance entry objects for a given performance entry type. The list's members are determined by the set of entry types specified in the call to the observe() method. The list is available in the observer's callback function (as the first parameter in the callback).
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserverEntryList/getEntriesByType)
+   */
+  getEntriesByType(type: "mark"): PerformanceMark[];
+  getEntriesByType(type: "measure"): PerformanceMeasure[];
+  getEntriesByType(type: string): PerformanceEntryList;
+}
+declare var PerformanceObserverEntryList: {
+  prototype: PerformanceObserverEntryList;
+  new(): PerformanceObserverEntryList;
+};
+
+/**
+ * The **`PerformanceObserver`** interface is used to observe performance measurement events and be notified of new performance entries as they are recorded in the browser's performance timeline.
+ *
+ * `supportedEntryTypes` is a frozen array of `"mark"` and `"measure"`. An unknown type is ignored and does not throw.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserver)
+ */
+interface PerformanceObserver {
+  /**
+   * The **`disconnect()`** method of the PerformanceObserver interface is used to stop the performance observer from receiving any performance entry events.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserver/disconnect)
+   */
+  disconnect(): void;
+
+  /**
+   * The **`observe()`** method of the PerformanceObserver interface is used to specify the set of performance entry types to observe.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserver/observe)
+   */
+  observe(options?: PerformanceObserverInit): void;
+
+  /**
+   * The **`takeRecords()`** method of the PerformanceObserver interface returns the current list of PerformanceEntry objects stored in the performance observer, emptying it out.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserver/takeRecords)
+   */
+  takeRecords(): PerformanceEntryList;
+}
+declare var PerformanceObserver: {
+  prototype: PerformanceObserver;
+  new(callback: PerformanceObserverCallback): PerformanceObserver;
+
+  /**
+   * The static **`supportedEntryTypes`** read-only property of the PerformanceObserver interface returns an array of the entryType values supported by the user agent.
+   *
+   * The array is frozen and is the same object on each read. The values are `"mark"` and `"measure"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/PerformanceObserver/supportedEntryTypes_static)
+   */
+  readonly supportedEntryTypes: ReadonlyArray<string>;
+};
 
 /**
  * The **`Navigator`** interface represents the state and the identity of the
