@@ -65,7 +65,8 @@ crates/yuzuko_audio/
 crates/yuzuko_codec/
 crates/yuzuko_macros/     #[op] host bindings
 examples/
-tools/web-types/          yuzuko.d.ts follow-up for @types/web
+package.json              npm workspace for tools/types
+tools/types/              yuzuko.d.ts follow-up and test typecheck
 tests/wpt/suite/          web-platform-tests submodule
 tests/wpt/expectations/
 tests/fixtures/images/
@@ -93,7 +94,7 @@ A behavior change includes its test in the same change.
 
 - Web-platform behavior is an upstream WPT file under `tests/wpt/suite`, run with `cargo test -p yuzuko --test wpt`. There is no `yuzuko wpt` subcommand. Update `tests/wpt/expectations` in the same change when results change, including newly passing subtests.
 - Behavior WPT does not cover is a `Yuzuko.test` in a `*_test.js`, `*.test.js`, `*_test.ts`, or `*.test.ts` file, run with `yuzuko test`. `Yuzuko.test` exists only in that command.
-- Resolve imports with `oxc_resolver` and erase TypeScript with `oxc_transformer`. Do not shell out to `tsc`, and do not typecheck during `run` or `test`.
+- Resolve imports with `oxc_resolver` and erase TypeScript with `oxc_transformer`. Do not shell out to `tsc`, and do not typecheck during `run` or `test`. Type errors in the root `tsconfig.json` program are `node tools/types/lint-types.mjs`. `node tools/types/lint-web-types.mjs` compares `yuzuko.d.ts` with the pinned `@types/web`.
 - Do not copy WPT cases into the repository.
 - Pixel comparisons for Canvas 2D use the vello CPU renderer. GPU present is a smoke test. Canvas 2D must fall back to the CPU when the GPU fails.
 - Pin a new divergence with a test and add it to `docs/deviations.md`.

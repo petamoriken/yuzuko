@@ -18,6 +18,6 @@ updates:
       - dependency-name: "oxc_*"
 
   - package-ecosystem: npm
-    directory: /tools/web-types
+    directory: /
     schedule:
       interval: weekly

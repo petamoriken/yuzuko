@@ -434,10 +434,38 @@ jobs:
           package-manager-cache: false
 
       - name: Install
-        run: npm ci --prefix tools/web-types
+        run: npm ci
 
       - name: Test
-        run: node --test tools/web-types/lint.test.mjs
+        run: node --test tools/types/lint-web-types.test.mjs
 
       - name: Compare
-        run: node tools/web-types/lint.mjs
+        run: node tools/types/lint-web-types.mjs
+
+  # Typecheck tests and examples. The two syntax fixtures stay invalid for the
+  # runtime tests; this job drops them from the root file list.
+  test-types:
+    name: Test types
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: node --test tools/types/lint-types.test.mjs
+
+      - name: Check
+        run: node tools/types/lint-types.mjs

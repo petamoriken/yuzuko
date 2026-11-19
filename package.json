@@ -1,0 +1,8 @@
+{
+  "name": "yuzuko",
+  "private": true,
+  "description": "Development install. The npm workspace hoists tools/types, including TypeScript, to the repository root.",
+  "workspaces": [
+    "tools/types"
+  ]
+}

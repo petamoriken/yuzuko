@@ -1,22 +1,27 @@
 /**
  * Compare yuzuko.d.ts with the installed @types/web.
  *
- *   node lint.mjs
- *   node lint.mjs --web node_modules/@types/web/index.d.ts
- *   node lint.mjs --yuzuko ../../yuzuko.d.ts --allow allowlist.json
+ *   node lint-web-types.mjs
+ *   node lint-web-types.mjs --web node_modules/@types/web/index.d.ts
+ *   node lint-web-types.mjs --yuzuko ../../yuzuko.d.ts --allow allowlist.json
+ *
+ * The default `@types/web` path is the copy installed for this workspace.
+ * `npm install` at the repository root hoists it to the root `node_modules`.
  *
  * Exit 0 when yuzuko.d.ts already follows the pinned types. Exit 1 and print
  * each @types/web member or spelling that yuzuko.d.ts does not follow.
  */
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { allowFromJson, compareTexts } from "./compare.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const options = parseArgs(process.argv.slice(2));
 const yuzukoPath = path.resolve(options.yuzuko ?? path.join(here, "../../yuzuko.d.ts"));
-const webPath = path.resolve(options.web ?? path.join(here, "node_modules/@types/web/index.d.ts"));
+const webPath = path.resolve(options.web ?? installedWebTypes());
 const allowPath = path.resolve(options.allow ?? path.join(here, "allowlist.json"));
 
 const yuzukoText = fs.readFileSync(yuzukoPath, "utf8");
@@ -52,6 +57,10 @@ function label(kind) {
   return "@types/web is more specific";
 }
 
+function installedWebTypes() {
+  return path.join(path.dirname(require.resolve("@types/web/package.json")), "index.d.ts");
+}
+
 function webPackageVersion(file) {
   const packagePath = path.join(path.dirname(file), "package.json");
   if (!fs.existsSync(packagePath)) return null;
@@ -67,7 +76,7 @@ function parseArgs(argv) {
       out[arg.slice(2)] = argv[index + 1];
       index += 1;
     } else if (arg === "--help") {
-      console.log("usage: node lint.mjs [--yuzuko file] [--web file] [--allow file]");
+      console.log("usage: node lint-web-types.mjs [--yuzuko file] [--web file] [--allow file]");
       process.exit(0);
     } else {
       console.error(`unknown argument: ${arg}`);
