@@ -10,6 +10,6 @@
   },
   "dependencies": {
     "@types/web": "0.0.367",
-    "typescript": "7.1.0-dev.20261113.1"
+    "typescript": "7.1.0-dev.20261116.1"
   }
 }
