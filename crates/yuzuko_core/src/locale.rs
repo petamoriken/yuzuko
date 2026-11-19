@@ -157,8 +157,8 @@ fn platform_languages() -> Vec<String> {
 ///
 /// `language` is `LANGUAGE` split on `:`. Then `LC_ALL`, `LC_MESSAGES`, and
 /// `LANG`. `C` and `POSIX` are skipped. A codeset or modifier is dropped.
-#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
-pub(crate) fn language_tags_from_posix(
+#[cfg(test)]
+fn language_tags_from_posix(
   language: Option<&str>,
   lc_all: Option<&str>,
   lc_messages: Option<&str>,
