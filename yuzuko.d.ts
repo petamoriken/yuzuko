@@ -10885,6 +10885,7 @@ interface FontFaceDescriptors {
   style?: string;
   weight?: string;
   stretch?: string;
+  width?: string;
   unicodeRange?: string;
   featureSettings?: string;
   display?: FontDisplay;
@@ -10922,6 +10923,17 @@ interface FontFace {
   width: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/unicodeRange) */
   unicodeRange: string;
+  /**
+   * The **`variant`** property of the FontFace interface programmatically retrieves or sets font variant values.
+   *
+   * The value defaults to `"normal"`. Assignment parses the CSS `font-variant`
+   * keywords and stores that serialization. An unparsable value, including a
+   * function, throws `SyntaxError` and leaves the previous value. The stored
+   * value does not change matching or shaping.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/variant)
+   */
+  variant: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/featureSettings) */
   featureSettings: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/FontFace/display) */

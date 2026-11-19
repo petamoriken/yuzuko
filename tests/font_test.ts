@@ -332,6 +332,31 @@ Yuzuko.test("FontFace format() skips an unsupported source and continues", async
   );
 });
 
+Yuzuko.test("FontFace variant parses keywords and keeps the previous value", () => {
+  const face = new FontFace("YuzukoVariant", new ArrayBuffer(0));
+  assert(face.variant === "normal", face.variant);
+  face.variant = "Small-Caps";
+  assert(face.variant === "small-caps", face.variant);
+  face.variant = "tabular-nums small-caps";
+  assert(face.variant === "small-caps tabular-nums", face.variant);
+  let rejected = false;
+  try {
+    face.variant = "???";
+  } catch (error) {
+    rejected = error instanceof DOMException && error.name === "SyntaxError";
+  }
+  assert(rejected, "invalid variant");
+  assert(face.variant === "small-caps tabular-nums", face.variant);
+  try {
+    face.variant = "stylistic(foo)";
+    rejected = false;
+  } catch (error) {
+    rejected = error instanceof DOMException && error.name === "SyntaxError";
+  }
+  assert(rejected, "function variant");
+  assert(face.variant === "small-caps tabular-nums", face.variant);
+});
+
 Yuzuko.test("queryLocalFonts returns sorted FontData", async () => {
   assert(typeof queryLocalFonts === "function", "queryLocalFonts");
   const list = await queryLocalFonts();
