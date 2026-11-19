@@ -44,6 +44,7 @@ struct Descriptors {
   weight: String,
   width: String,
   unicode_range: String,
+  variant: String,
   feature_settings: String,
   display: String,
   ascent_override: String,
@@ -60,6 +61,7 @@ impl Default for Descriptors {
       weight: "normal".to_string(),
       width: "normal".to_string(),
       unicode_range: "U+0-10FFFF".to_string(),
+      variant: "normal".to_string(),
       feature_settings: "normal".to_string(),
       display: "auto".to_string(),
       ascent_override: "normal".to_string(),
@@ -167,6 +169,20 @@ impl FontFace {
   #[setter]
   fn width(&self, value: String) -> Result<(), OpError> {
     self.set_width(value)
+  }
+
+  #[getter]
+  fn variant(&self) -> String {
+    self.descriptors.borrow().variant.clone()
+  }
+
+  #[setter]
+  fn variant(&self, value: String) -> Result<(), OpError> {
+    let Some(variant) = parse_variant(&value) else {
+      return Err(OpError::dom("SyntaxError", "The font variant is invalid"));
+    };
+    self.descriptors.borrow_mut().variant = variant;
+    Ok(())
   }
 
   #[getter]
@@ -1052,6 +1068,95 @@ fn own_string(
     .map(|text| text.to_rust_string_lossy(scope))
 }
 
+/// CSS `font-variant` keywords. `normal` and `none` are only the whole value.
+/// A function, such as `stylistic()`, is rejected. The stored value is not
+/// applied while shaping.
+fn parse_variant(value: &str) -> Option<String> {
+  let tokens: Vec<&str> = value.split_whitespace().collect();
+  let [token] = tokens.as_slice() else {
+    return variant_keywords(&tokens);
+  };
+  if token.eq_ignore_ascii_case("normal") {
+    return Some("normal".to_string());
+  }
+  if token.eq_ignore_ascii_case("none") {
+    return Some("none".to_string());
+  }
+  variant_keywords(&tokens)
+}
+
+fn variant_keywords(tokens: &[&str]) -> Option<String> {
+  if tokens.is_empty() {
+    return None;
+  }
+  let mut slots: [Option<&str>; 15] = [None; 15];
+  for token in tokens {
+    if token.eq_ignore_ascii_case("normal")
+      || token.eq_ignore_ascii_case("none")
+    {
+      return None;
+    }
+    let (canonical, slot) = variant_keyword(token)?;
+    if slots[slot].is_some() {
+      return None;
+    }
+    slots[slot] = Some(canonical);
+  }
+  let mut out = String::new();
+  for keyword in slots.into_iter().flatten() {
+    if !out.is_empty() {
+      out.push(' ');
+    }
+    out.push_str(keyword);
+  }
+  Some(out)
+}
+
+fn variant_keyword(token: &str) -> Option<(&'static str, usize)> {
+  const KEYWORDS: &[(&str, usize)] = &[
+    ("common-ligatures", 0),
+    ("no-common-ligatures", 0),
+    ("discretionary-ligatures", 1),
+    ("no-discretionary-ligatures", 1),
+    ("historical-ligatures", 2),
+    ("no-historical-ligatures", 2),
+    ("contextual", 3),
+    ("no-contextual", 3),
+    ("small-caps", 4),
+    ("all-small-caps", 4),
+    ("petite-caps", 4),
+    ("all-petite-caps", 4),
+    ("unicase", 4),
+    ("titling-caps", 4),
+    ("lining-nums", 5),
+    ("oldstyle-nums", 5),
+    ("proportional-nums", 6),
+    ("tabular-nums", 6),
+    ("diagonal-fractions", 7),
+    ("stacked-fractions", 7),
+    ("ordinal", 8),
+    ("slashed-zero", 9),
+    ("jis78", 10),
+    ("jis83", 10),
+    ("jis90", 10),
+    ("jis04", 10),
+    ("simplified", 10),
+    ("traditional", 10),
+    ("full-width", 11),
+    ("proportional-width", 11),
+    ("ruby", 12),
+    ("sub", 13),
+    ("super", 13),
+    ("text", 14),
+    ("emoji", 14),
+    ("unicode", 14),
+  ];
+  KEYWORDS
+    .iter()
+    .copied()
+    .find(|(word, _)| token.eq_ignore_ascii_case(word))
+}
+
 fn valid_width(value: &str) -> bool {
   matches!(
     value,
@@ -1611,4 +1716,29 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
     .get(offset..offset + 4)
     .ok_or_else(|| "The font data is invalid".to_string())?;
   Ok(u32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::parse_variant;
+
+  #[test]
+  fn variant_parses_font_variant_keywords() {
+    assert_eq!(parse_variant("normal").as_deref(), Some("normal"));
+    assert_eq!(parse_variant("  NONE ").as_deref(), Some("none"));
+    assert_eq!(parse_variant("Small-Caps").as_deref(), Some("small-caps"));
+    assert_eq!(
+      parse_variant("tabular-nums small-caps").as_deref(),
+      Some("small-caps tabular-nums")
+    );
+    assert_eq!(
+      parse_variant("emoji oldstyle-nums").as_deref(),
+      Some("oldstyle-nums emoji")
+    );
+    assert_eq!(parse_variant(""), None);
+    assert_eq!(parse_variant("???"), None);
+    assert_eq!(parse_variant("none small-caps"), None);
+    assert_eq!(parse_variant("sub super"), None);
+    assert_eq!(parse_variant("stylistic(foo)"), None);
+  }
 }

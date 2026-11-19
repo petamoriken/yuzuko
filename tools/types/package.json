@@ -9,7 +9,7 @@
     "test": "node --test lint-web-types.test.mjs lint-types.test.mjs"
   },
   "dependencies": {
-    "@types/web": "0.0.366",
+    "@types/web": "0.0.367",
     "typescript": "7.1.0-dev.20261116.1"
   }
 }
