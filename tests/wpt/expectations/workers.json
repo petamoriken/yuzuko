@@ -1048,14 +1048,7 @@
   },
   "workers/worker-performance.worker.js": {
     "expectedFailures": [
-      "Can use clearMarks and clearMeasures in workers",
-      "Can use performance.getEntriesByName in workers",
-      "Can use performance.getEntriesByType in workers",
-      "Can use performance.mark in workers",
-      "Can use performance.measure in workers",
-      "Performance marks and measures seem to be working correctly in workers",
       "Resource timing seems to work in workers",
-      "There are no navigation type performance entries in workers",
       "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
     ]
