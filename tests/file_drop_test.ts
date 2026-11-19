@@ -24,50 +24,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "";
 }
 
-Yuzuko.test("file drop events target the window", () => {
+Yuzuko.test("a coalesced drop exposes both files and no custom event", () => {
   const window = new Yuzuko.Window({
     width: 80,
     height: 60,
     title: "drop",
   });
-  const separator = Yuzuko.build.os === "windows" ? "\\" : "/";
   const absolute = Yuzuko.build.os === "windows"
     ? "C:\\yuzuko-drop\\a.txt"
     : "/yuzuko-drop/a.txt";
-  const events: Array<{
-    type: string;
-    paths?: readonly string[];
-    trusted: boolean;
-    target: boolean;
-    bubbles: boolean;
-    cancelable: boolean;
-  }> = [];
-  const take = (event: Event) => {
-    // @ts-expect-error File events carry paths.
-    let paths: readonly string[] | undefined = event.paths;
-    const copied = paths?.slice();
-    events.push({
-      type: event.type,
-      ...(copied === undefined ? {} : { paths: copied }),
-      trusted: event.isTrusted,
-      target: event.target === window,
-      bubbles: event.bubbles,
-      cancelable: event.cancelable,
-    });
+  let custom = 0;
+  const onCustom = () => {
+    custom += 1;
   };
-  window.addEventListener("filehover", take);
-  window.addEventListener("filehovercancel", take);
-  window.addEventListener("filedrop", take);
-  let yuzukoSaw = false;
-  const onYuzuko = () => {
-    yuzukoSaw = true;
-  };
-  Yuzuko.addEventListener("filedrop", onYuzuko);
-  let surfaceSaw = false;
-  const onSurface = () => {
-    surfaceSaw = true;
-  };
-  window.surface.addEventListener("filedrop", onSurface);
+  for (const type of ["filehover", "filehovercancel", "filedrop"]) {
+    window.addEventListener(type, onCustom);
+    Yuzuko.addEventListener(type, onCustom);
+    window.surface.addEventListener(type, onCustom);
+  }
+  const drops: DragEvent[] = [];
+  window.addEventListener("drop", (event) => {
+    drops.push(event);
+  });
   try {
     let error = thrown(() => {
       Yuzuko.__test.inject(window, [{ kind: "filedrop", paths: [] }]);
@@ -97,36 +75,13 @@ Yuzuko.test("file drop events target the window", () => {
       { kind: "filedrop", paths: [absolute] },
       { kind: "filedrop", paths: ["b.txt"] },
     ]);
-    assert(events.length === 3, `count ${events.length}`);
-    const hover = events[0];
-    const cancel = events[1];
-    const drop = events[2];
-    if (hover === undefined || cancel === undefined || drop === undefined) {
-      throw new Error(`count ${events.length}`);
-    }
-    assert(hover.type === "filehover", hover.type);
-    assert(hover.paths?.length === 2, "hover paths");
-    assert(hover.paths?.[0] === absolute, "hover absolute");
-    assert(
-      hover.paths?.[1]?.endsWith(`${separator}rel.txt`) === true,
-      hover.paths?.[1] ?? "",
-    );
-    assert(hover.trusted && hover.target, "hover target");
-    assert(!hover.bubbles && !hover.cancelable, "hover flags");
-    assert(cancel.type === "filehovercancel", cancel.type);
-    assert(cancel.paths === undefined, "cancel paths");
-    assert(cancel.trusted && cancel.target, "cancel target");
-    assert(drop.type === "filedrop", drop.type);
-    assert(drop.paths?.length === 2, "drop paths");
-    assert(drop.paths?.[0] === absolute, "drop absolute");
-    assert(
-      drop.paths?.[1]?.endsWith(`${separator}b.txt`) === true,
-      drop.paths?.[1] ?? "",
-    );
-    assert(drop.trusted && drop.target, "drop target");
-    assert(!drop.bubbles && !drop.cancelable, "drop flags");
-    assert(!yuzukoSaw, "filedrop stays off Yuzuko");
-    assert(!surfaceSaw, "filedrop stays off the surface");
+    assert(custom === 0, "no custom file event");
+    assert(drops.length === 1, `drops ${drops.length}`);
+    const drag = drops[0];
+    assert(drag !== undefined, "drop");
+    assert(drag.dataTransfer?.files.length === 2, "two files");
+    assert(drag.dataTransfer?.files[0]?.name === "a.txt", "first name");
+    assert(drag.dataTransfer?.files[1]?.name === "b.txt", "second name");
 
     window.close();
     error = thrown(() => {
@@ -138,11 +93,11 @@ Yuzuko.test("file drop events target the window", () => {
       errorMessage(error),
     );
   } finally {
-    window.removeEventListener("filehover", take);
-    window.removeEventListener("filehovercancel", take);
-    window.removeEventListener("filedrop", take);
-    Yuzuko.removeEventListener("filedrop", onYuzuko);
-    window.surface.removeEventListener("filedrop", onSurface);
+    for (const type of ["filehover", "filehovercancel", "filedrop"]) {
+      window.removeEventListener(type, onCustom);
+      Yuzuko.removeEventListener(type, onCustom);
+      window.surface.removeEventListener(type, onCustom);
+    }
     window.close();
   }
 });

@@ -6,14 +6,14 @@ pub(crate) mod keys;
 mod touch;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::Instant;
 
 use yuzuko_core::op::host_ref;
 use yuzuko_dom::{
-  Event, FiredComposition, FiredInput, FiredKey, FiredPointer, FiredTouch,
-  FiredWheel, TouchPoint, define_is_trusted, dispatch, dispatch_composition,
-  dispatch_focus, dispatch_input, dispatch_key, dispatch_simple,
-  dispatch_wheel,
+  FiredComposition, FiredInput, FiredKey, FiredPointer, FiredTouch, FiredWheel,
+  TouchPoint, dispatch_composition, dispatch_focus, dispatch_input,
+  dispatch_key, dispatch_simple, dispatch_wheel,
 };
 
 use crate::activation;
@@ -131,6 +131,7 @@ enum Step {
   Visibility(bool),
   Close,
   File(FilePhase, Vec<String>),
+  FileCancel(Vec<String>),
 }
 
 pub fn flush(scope: &mut v8::PinScope, id: u64) {
@@ -228,11 +229,30 @@ pub fn flush(scope: &mut v8::PinScope, id: u64) {
         Step::File(phase, paths) => {
           dispatch_files(scope, object, phase, &paths);
         }
+        Step::FileCancel(paths) => {
+          dispatch_drag(scope, object, "dragleave", true, false, &paths, true);
+        }
         Step::Close => Window::close_object(scope, object),
       }
     }
     scope.perform_microtask_checkpoint();
   }
+}
+
+fn dispatch_drag(
+  scope: &mut v8::PinScope,
+  window: v8::Local<v8::Object>,
+  type_name: &str,
+  bubbles: bool,
+  cancelable: bool,
+  paths: &[String],
+  protected: bool,
+) {
+  let transfer = clipboard::DataTransfer::for_paths(scope, paths, protected);
+  let transfer = unsafe { yuzuko_core::op::wrap_instance(scope, transfer) };
+  crate::surface::dispatch_drag_on_window(
+    scope, window, type_name, bubbles, cancelable, transfer,
+  );
 }
 
 fn dispatch_files(
@@ -241,30 +261,30 @@ fn dispatch_files(
   phase: FilePhase,
   paths: &[String],
 ) {
-  let type_name = match phase {
-    FilePhase::Hover => "filehover",
-    FilePhase::Drop => "filedrop",
-  };
-  if matches!(phase, FilePhase::Drop) {
-    for path in paths {
-      yuzuko_core::grant_read(std::path::Path::new(path));
+  match phase {
+    FilePhase::Hover => {
+      dispatch_drag(scope, target, "dragenter", true, true, paths, true);
+      dispatch_drag(scope, target, "dragover", true, true, paths, true);
+    }
+    FilePhase::Drop => {
+      dispatch_drag(scope, target, "drop", true, true, paths, false);
     }
   }
-  let event = Event::new(type_name, false, false, false, true);
-  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
-  define_is_trusted(scope, object);
-  let list = v8::Array::new(scope, paths.len() as i32);
-  let mut index = 0u32;
-  for path in paths {
-    let Some(value) = v8::String::new(scope, path) else {
-      continue;
-    };
-    list.set_index(scope, index, value.into());
-    index += 1;
-  }
-  let key = v8::String::new(scope, "paths").unwrap();
-  object.set(scope, key.into(), list.into());
-  let _ = dispatch(scope, target, object);
+}
+
+thread_local! {
+  static HOVER_PATHS: RefCell<HashMap<u64, Vec<String>>> =
+    RefCell::new(HashMap::new());
+}
+
+fn remember_hover(id: u64, paths: Vec<String>) {
+  HOVER_PATHS.with(|slot| {
+    slot.borrow_mut().insert(id, paths);
+  });
+}
+
+fn take_hover(id: u64) -> Vec<String> {
+  HOVER_PATHS.with(|slot| slot.borrow_mut().remove(&id).unwrap_or_default())
 }
 
 /// Right-click's default action shows the menu from `setContextMenu`.
@@ -313,14 +333,22 @@ impl Window {
       }
       Raw::Media => vec![Step::Media],
       Raw::Visibility(visible) => vec![Step::Visibility(visible)],
-      Raw::Close => vec![Step::Close],
+      Raw::Close => {
+        let _ = take_hover(self.id());
+        vec![Step::Close]
+      }
       Raw::Menu(action) => vec![Step::Menu(action)],
       Raw::File { phase, path } => {
         let mut paths = vec![path];
         paths.extend(inbox::pop_coalesced_files(self.id(), phase));
+        if phase == FilePhase::Hover {
+          remember_hover(self.id(), paths.clone());
+        } else {
+          let _ = take_hover(self.id());
+        }
         vec![Step::File(phase, paths)]
       }
-      Raw::FileCancel => vec![Step::Simple("filehovercancel")],
+      Raw::FileCancel => vec![Step::FileCancel(take_hover(self.id()))],
     }
   }
 

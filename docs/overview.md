@@ -58,7 +58,7 @@ Pointer events target the surface and propagate through the window. `pointerrawu
 
 `requestAnimationFrame` on a window runs at the refresh rate of the monitor that window is on. A Canvas 2D or `bitmaprenderer` change is also presented on the next event-loop turn. `surface.visibilityState` is `"visible"` or `"hidden"`, and `visibilitychange` fires on the surface.
 
-The window can move, resize, show, hide, and stay above other windows. `alert`, `confirm`, `prompt`, and `pickFiles` are modal dialogs for that window. `Yuzuko.setDialogLabels`, on the main realm, replaces the button labels the runtime draws. `filehover`, `filehovercancel`, and `filedrop` carry paths dropped on the window. Wayland does not report those drops.
+The window can move, resize, show, hide, and stay above other windows. `alert`, `confirm`, `prompt`, and `pickFiles` are modal dialogs for that window. `Yuzuko.setDialogLabels`, on the main realm, replaces the button labels the runtime draws. `dragenter`, `dragover`, `dragleave`, and `drop` on `window.surface` carry dropped files as a `DataTransfer`. Reading a dropped `File` does not check read permission. Wayland does not report those drops.
 
 `Yuzuko.Menu` and `Yuzuko.setMenu` install one application menu. A selection dispatches `menuclick`. On Linux, winit exposes no GTK window, so `setMenu` throws `NotSupportedError`. `setContextMenu` stores the menu a context click shows. `showContextMenu` opens a menu at a client point.
 

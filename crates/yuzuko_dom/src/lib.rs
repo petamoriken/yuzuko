@@ -26,12 +26,13 @@ pub use target::EventTarget;
 pub use target::define_event_handlers;
 pub use target::define_prototype_event_handlers;
 pub use target::dispatch;
+pub use target::dispatch_path;
 pub use target::drop_reloaded_listeners;
 pub use ui::{
   FiredComposition, FiredInput, FiredKey, FiredPointer, FiredTouch, FiredWheel,
   TouchPoint, dispatch_composition, dispatch_focus, dispatch_input,
   dispatch_key, dispatch_pointer, dispatch_pointer_through, dispatch_simple,
-  dispatch_touch, dispatch_touch_through, dispatch_wheel,
+  dispatch_touch, dispatch_touch_through, dispatch_wheel, host_drag_event,
 };
 
 use std::sync::Once;

@@ -883,7 +883,8 @@ impl WheelEvent {
   }
 }
 
-/// A constructed drag event. The runtime does not run an HTML drag session.
+/// A drag event. Host file drags use [`host_drag_event`]. A constructed
+/// event does not start a drag session.
 #[repr(C)]
 pub struct DragEvent {
   base: MouseEvent,
@@ -927,6 +928,42 @@ impl DragEvent {
   fn data_transfer(&self, scope: &mut v8::PinScope) -> Js {
     traced_object(scope, &self.data_transfer)
   }
+}
+
+/// Trusted file-drag event. Coordinates are 0, so `which` is 1.
+pub fn host_drag_event<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  type_name: &str,
+  bubbles: bool,
+  cancelable: bool,
+  transfer: v8::Local<'_, v8::Object>,
+) -> v8::Local<'s, v8::Object> {
+  let event = DragEvent {
+    base: MouseEvent {
+      base: UIEvent {
+        base: Event::new(type_name, bubbles, cancelable, false, true),
+        view: RefCell::new(None),
+        detail: Cell::new(0),
+        which: Cell::new(0),
+      },
+      state: RefCell::new(MouseState {
+        screen_x: 0.0,
+        screen_y: 0.0,
+        client_x: 0.0,
+        client_y: 0.0,
+        movement_x: 0.0,
+        movement_y: 0.0,
+        button: 0,
+        buttons: 0,
+        modifiers: host_modifiers(false, false, false, false),
+      }),
+      related: RefCell::new(None),
+    },
+    data_transfer: RefCell::new(Some(traced(scope, transfer))),
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  event::define_is_trusted(scope, object);
+  object
 }
 
 #[repr(C)]

@@ -21,11 +21,15 @@
   ],
   "groups": [
     {
-      "reason": "Drag data and drag images are not implemented. clipboardData stays null.",
+      "reason": "There is no drag image. A drag has no source element.",
       "members": [
-        "DataTransfer.items",
-        "DataTransfer.files",
         "DataTransfer.setDragImage"
+      ]
+    },
+    {
+      "reason": "There is no FileSystemEntry.",
+      "members": [
+        "DataTransferItem.webkitGetAsEntry"
       ]
     },
     {

@@ -11,8 +11,9 @@ mod url;
 use std::sync::Once;
 
 pub use blob::{
-  Blob, BlobUrlLease, binary_string, blob_parts, data_url, decode_blob_text,
-  lease_blob_url, new_blob, new_script_blob, snapshot_blob,
+  Blob, BlobUrlLease, File, binary_string, blob_parts, data_url,
+  decode_blob_text, file_from_path, lease_blob_url, new_blob, new_script_blob,
+  path_media_type, snapshot_blob,
 };
 pub use bytes::{array_buffer, buffer_source};
 #[cfg(feature = "fetch")]

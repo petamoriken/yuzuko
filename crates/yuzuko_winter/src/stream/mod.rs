@@ -795,9 +795,13 @@ pub fn stream_from_source(
         }
       }
       Ok(None) => break,
-      Err(_) => {
+      Err(error) => {
         let id = byte_stream::create_push();
-        let error = type_error(scope, "The blob could not be read");
+        let error = crate::blob::exception_for_read(
+          scope,
+          error,
+          "The blob could not be read",
+        );
         byte_stream::fail(scope, id, error);
         return wrap_stream(scope, id);
       }
@@ -1302,10 +1306,13 @@ pub fn consume_buffered(
   if let Some(native) = native {
     let mut cursor = native.cursor;
     loop {
-      let next = native
-        .source
-        .read_next(cursor, 64 * 1024)
-        .map_err(|_| OpError::type_("The body could not be read"))?;
+      let next =
+        native
+          .source
+          .read_next(cursor, 64 * 1024)
+          .map_err(|error| {
+            crate::blob::failure_for_read(error, "The body could not be read")
+          })?;
       let Some(chunk) = next else {
         break;
       };
@@ -2722,7 +2729,7 @@ fn pull_native(scope: &mut v8::PinScope, id: u64) {
         NativeStep::Chunk(chunk, done)
       }
       Ok(None) => NativeStep::End,
-      Err(_) => NativeStep::Error,
+      Err(error) => NativeStep::Error(error),
     }
   });
   match step {
@@ -2730,8 +2737,12 @@ fn pull_native(scope: &mut v8::PinScope, id: u64) {
     NativeStep::End => {
       let _ = close_stream(scope, id);
     }
-    NativeStep::Error => {
-      let error = type_error(scope, "The blob could not be read");
+    NativeStep::Error(error) => {
+      let error = crate::blob::exception_for_read(
+        scope,
+        error,
+        "The blob could not be read",
+      );
       let _ = error_stream(scope, id, error);
     }
     NativeStep::Chunk(chunk, done) => {
@@ -2749,7 +2760,7 @@ fn pull_native(scope: &mut v8::PinScope, id: u64) {
 enum NativeStep {
   Idle,
   End,
-  Error,
+  Error(std::io::Error),
   Chunk(::bytes::Bytes, bool),
 }
 

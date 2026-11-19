@@ -1,11 +1,13 @@
 //! `navigator.clipboard`, `ClipboardItem`, `ClipboardEvent`,
-//! `ClipboardChangeEvent`, and the string `DataTransfer` those events carry.
+//! `ClipboardChangeEvent`, and the `DataTransfer` those events carry.
 //!
 //! Reads and writes require a recent user gesture on the focused window.
 //! Text is published to the OS pasteboard. `image/png` bytes are kept so a
 //! later `getType` returns the same PNG. A successful write fires
 //! `clipboardchange` before its promise resolves. A cancelled host `copy` or
-//! `cut` publishes `text/plain` the same way. `paste` is read-only.
+//! `cut` publishes `text/plain` the same way. `paste` is read-only. File
+//! drag events use the same store. `setDragImage` is absent. A file added
+//! during `copy` or `cut` is not written to the operating system.
 
 use std::cell::{Cell, RefCell};
 use std::io::Cursor;
@@ -58,7 +60,9 @@ pub fn install(scope: &mut v8::PinScope) {
     &["clipboardchange"],
   );
   ClipboardItem::install(scope);
+  super::drag::prepare(scope);
   DataTransfer::install(scope);
+  super::drag::install(scope);
   ClipboardEvent::install(scope);
   ClipboardChangeEvent::install(scope);
 }
@@ -89,7 +93,7 @@ pub fn dispatch_command(
   let transfer = if type_name == "paste" {
     DataTransfer::from_paste()
   } else {
-    DataTransfer::fresh(false)
+    DataTransfer::fresh(StoreMode::ReadWrite)
   };
   let transfer_obj = unsafe { yuzuko_core::op::wrap_instance(scope, transfer) };
   let event = ClipboardEvent {
@@ -517,35 +521,98 @@ const ALLOWED_EFFECTS: &[&str] = &[
   "uninitialized",
 ];
 
-/// String items for a clipboard `DataTransfer`.
+/// Fixed for the life of one `DataTransfer`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StoreMode {
+  ReadWrite,
+  ReadOnly,
+  /// `dragenter`, `dragover`, and `dragleave`. Kinds and types are visible.
+  /// Strings and file bytes are not.
+  Protected,
+}
+
+enum ItemBody {
+  Text(String),
+  /// `None` while the store is protected, so the bytes are not created.
+  File(Option<v8::TracedReference<v8::Object>>),
+}
+
+struct StoreItem {
+  id: u64,
+  type_: String,
+  body: ItemBody,
+}
+
+/// Clipboard and drag data. The mode does not change.
 ///
-/// `items`, `files`, and `setDragImage` stay absent. There is no drag data
-/// store mode other than read/write and read-only.
-struct DataTransfer {
-  items: RefCell<Vec<(String, String)>>,
-  read_only: Cell<bool>,
+/// Read/write accepts `setData`, `clearData`, and item changes. Read-only
+/// and protected ignore them. `setDragImage` is not implemented.
+pub(crate) struct DataTransfer {
+  items: RefCell<Vec<StoreItem>>,
+  mode: Cell<StoreMode>,
   drop_effect: RefCell<String>,
   effect_allowed: RefCell<String>,
-  /// Reused until `setData` or a `clearData` that removes an entry.
+  /// Reused until the item list changes. `setData` always replaces it.
   types: RefCell<Option<v8::TracedReference<v8::Object>>>,
+  next_id: Cell<u64>,
+  item_list: RefCell<Option<v8::TracedReference<v8::Object>>>,
+  /// Kept after removal so a held item can report an empty kind and type.
+  wrappers: RefCell<Vec<(u64, v8::TracedReference<v8::Object>)>>,
 }
 
 impl DataTransfer {
-  fn fresh(read_only: bool) -> Self {
+  fn fresh(mode: StoreMode) -> Self {
     Self {
       items: RefCell::new(Vec::new()),
-      read_only: Cell::new(read_only),
+      mode: Cell::new(mode),
       drop_effect: RefCell::new("none".to_string()),
       effect_allowed: RefCell::new("none".to_string()),
       types: RefCell::new(None),
+      next_id: Cell::new(1),
+      item_list: RefCell::new(None),
+      wrappers: RefCell::new(Vec::new()),
     }
   }
 
   /// Read-only store seeded from the same text cache as `readText`.
   fn from_paste() -> Self {
-    let transfer = Self::fresh(true);
+    let transfer = Self::fresh(StoreMode::ReadOnly);
     if let Some(text) = CONTENTS.with(|slot| slot.borrow().text.clone()) {
-      transfer.items.borrow_mut().push((TEXT.to_string(), text));
+      transfer.push_item(TEXT.to_string(), ItemBody::Text(text));
+    }
+    transfer
+  }
+
+  /// One file item per path. Protected items have no `File` yet.
+  pub(crate) fn for_paths(
+    scope: &mut v8::PinScope,
+    paths: &[String],
+    protected: bool,
+  ) -> Self {
+    let mode = if protected {
+      StoreMode::Protected
+    } else {
+      StoreMode::ReadOnly
+    };
+    let transfer = Self::fresh(mode);
+    *transfer.effect_allowed.borrow_mut() = "all".to_string();
+    for path in paths {
+      let path = std::path::Path::new(path);
+      if protected {
+        transfer.push_item(
+          yuzuko_winter::path_media_type(path),
+          ItemBody::File(None),
+        );
+      } else {
+        let file = yuzuko_winter::file_from_path(scope, path);
+        let type_ = unsafe {
+          yuzuko_core::op::host_ref::<yuzuko_winter::File>(scope, file)
+        }
+        .map(|host| host.get().media_type())
+        .unwrap_or_default();
+        let reference = traced(scope, file);
+        transfer.push_item(type_, ItemBody::File(Some(reference)));
+      }
     }
     transfer
   }
@@ -555,12 +622,217 @@ impl DataTransfer {
       .items
       .borrow()
       .iter()
-      .find(|(format, _)| format == TEXT)
-      .map(|(_, text)| text.clone())
+      .find_map(|item| match &item.body {
+        ItemBody::Text(text) if item.type_ == TEXT => Some(text.clone()),
+        _ => None,
+      })
+  }
+
+  pub(crate) fn writable(&self) -> bool {
+    self.mode.get() == StoreMode::ReadWrite
+  }
+
+  fn protected(&self) -> bool {
+    self.mode.get() == StoreMode::Protected
+  }
+
+  fn alloc_id(&self) -> u64 {
+    let id = self.next_id.get();
+    self.next_id.set(id.saturating_add(1));
+    id
+  }
+
+  fn push_item(&self, type_: String, body: ItemBody) -> u64 {
+    let id = self.alloc_id();
+    self.items.borrow_mut().push(StoreItem { id, type_, body });
+    id
   }
 
   fn invalidate_types(&self) {
     *self.types.borrow_mut() = None;
+  }
+
+  pub(crate) fn len(&self) -> usize {
+    self.items.borrow().len()
+  }
+
+  pub(crate) fn id_at(&self, index: usize) -> Option<u64> {
+    self.items.borrow().get(index).map(|item| item.id)
+  }
+
+  pub(crate) fn kind_of(&self, id: u64) -> String {
+    let items = self.items.borrow();
+    let Some(item) = items.iter().find(|item| item.id == id) else {
+      return String::new();
+    };
+    match item.body {
+      ItemBody::Text(_) => "string".to_string(),
+      ItemBody::File(_) => "file".to_string(),
+    }
+  }
+
+  pub(crate) fn type_of(&self, id: u64) -> String {
+    self
+      .items
+      .borrow()
+      .iter()
+      .find(|item| item.id == id)
+      .map(|item| item.type_.clone())
+      .unwrap_or_default()
+  }
+
+  /// The captured string, or nothing when the item is not readable text.
+  pub(crate) fn text_of(&self, id: u64) -> Option<String> {
+    if self.protected() {
+      return None;
+    }
+    self.items.borrow().iter().find_map(|item| {
+      if item.id != id {
+        return None;
+      }
+      match &item.body {
+        ItemBody::Text(text) => Some(text.clone()),
+        ItemBody::File(_) => None,
+      }
+    })
+  }
+
+  pub(crate) fn file_of<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    id: u64,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    if self.protected() {
+      return None;
+    }
+    let items = self.items.borrow();
+    let item = items.iter().find(|item| item.id == id)?;
+    match &item.body {
+      ItemBody::File(Some(reference)) => traced_local(scope, reference),
+      _ => None,
+    }
+  }
+
+  pub(crate) fn file_locals<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Vec<v8::Local<'s, v8::Object>> {
+    if self.protected() {
+      return Vec::new();
+    }
+    self
+      .items
+      .borrow()
+      .iter()
+      .filter_map(|item| match &item.body {
+        ItemBody::File(Some(reference)) => traced_local(scope, reference),
+        _ => None,
+      })
+      .collect()
+  }
+
+  pub(crate) fn has_string_type(&self, type_: &str) -> bool {
+    self
+      .items
+      .borrow()
+      .iter()
+      .any(|item| matches!(item.body, ItemBody::Text(_)) && item.type_ == type_)
+  }
+
+  pub(crate) fn append_text(&self, type_: String, data: String) -> u64 {
+    let id = self.push_item(type_, ItemBody::Text(data));
+    self.invalidate_types();
+    id
+  }
+
+  pub(crate) fn append_file(
+    &self,
+    scope: &mut v8::PinScope,
+    type_: String,
+    file: v8::Local<'_, v8::Object>,
+  ) -> u64 {
+    let reference = traced(scope, file);
+    let id = self.push_item(type_, ItemBody::File(Some(reference)));
+    self.invalidate_types();
+    id
+  }
+
+  /// `false` when `index` is past the end. That read does not change `types`.
+  pub(crate) fn remove_at(&self, index: usize) -> bool {
+    let mut items = self.items.borrow_mut();
+    if index >= items.len() {
+      return false;
+    }
+    items.remove(index);
+    drop(items);
+    self.invalidate_types();
+    true
+  }
+
+  /// `false` when the list was already empty.
+  pub(crate) fn clear_items(&self) -> bool {
+    let mut items = self.items.borrow_mut();
+    if items.is_empty() {
+      return false;
+    }
+    items.clear();
+    drop(items);
+    self.invalidate_types();
+    true
+  }
+
+  fn type_names(&self) -> Vec<String> {
+    let items = self.items.borrow();
+    let mut names = Vec::new();
+    let mut files = false;
+    for item in items.iter() {
+      match &item.body {
+        ItemBody::Text(_) => names.push(item.type_.clone()),
+        ItemBody::File(_) => files = true,
+      }
+    }
+    if files {
+      names.push("Files".to_string());
+    }
+    names
+  }
+
+  pub(crate) fn item_list_local<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    self
+      .item_list
+      .borrow()
+      .as_ref()
+      .and_then(|reference| traced_local(scope, reference))
+  }
+
+  pub(crate) fn remember_item_list(
+    &self,
+    scope: &mut v8::PinScope,
+    object: v8::Local<v8::Object>,
+  ) {
+    *self.item_list.borrow_mut() = Some(traced(scope, object));
+  }
+
+  pub(crate) fn wrapper_local<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    id: u64,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    let wrappers = self.wrappers.borrow();
+    let (_, reference) = wrappers.iter().find(|(stored, _)| *stored == id)?;
+    traced_local(scope, reference)
+  }
+
+  pub(crate) fn remember_wrapper(
+    &self,
+    scope: &mut v8::PinScope,
+    id: u64,
+    object: v8::Local<v8::Object>,
+  ) {
+    self.wrappers.borrow_mut().push((id, traced(scope, object)));
   }
 }
 
@@ -568,6 +840,21 @@ unsafe impl v8::cppgc::GarbageCollected for DataTransfer {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     if let Ok(types) = self.types.try_borrow() {
       visitor.trace(&*types);
+    }
+    if let Ok(items) = self.items.try_borrow() {
+      for item in items.iter() {
+        if let ItemBody::File(Some(reference)) = &item.body {
+          visitor.trace(reference);
+        }
+      }
+    }
+    if let Ok(list) = self.item_list.try_borrow() {
+      visitor.trace(&*list);
+    }
+    if let Ok(wrappers) = self.wrappers.try_borrow() {
+      for (_, reference) in wrappers.iter() {
+        visitor.trace(reference);
+      }
     }
   }
 
@@ -580,7 +867,7 @@ unsafe impl v8::cppgc::GarbageCollected for DataTransfer {
 impl DataTransfer {
   #[constructor]
   fn new() -> Self {
-    Self::fresh(false)
+    Self::fresh(StoreMode::ReadWrite)
   }
 
   #[getter]
@@ -602,12 +889,26 @@ impl DataTransfer {
 
   #[setter]
   fn effect_allowed(&self, value: String) {
-    if self.read_only.get() {
+    if !self.writable() {
       return;
     }
     if ALLOWED_EFFECTS.contains(&value.as_str()) {
       *self.effect_allowed.borrow_mut() = value;
     }
+  }
+
+  #[getter]
+  fn items(
+    &self,
+    #[this] this: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> Js {
+    super::drag::items_object(scope, this, self)
+  }
+
+  #[getter]
+  fn files(&self, scope: &mut v8::PinScope) -> Js {
+    super::drag::files_object(scope, self)
   }
 
   #[getter]
@@ -620,12 +921,7 @@ impl DataTransfer {
     if let Some(object) = cached {
       return Ok(js_value(scope, object.into()));
     }
-    let names: Vec<String> = self
-      .items
-      .borrow()
-      .iter()
-      .map(|(format, _)| format.clone())
-      .collect();
+    let names = self.type_names();
     let array = v8::Array::new(scope, names.len() as i32);
     for (index, name) in names.iter().enumerate() {
       let Some(text) = v8::String::new(scope, name) else {
@@ -640,45 +936,50 @@ impl DataTransfer {
   }
 
   fn get_data(&self, format: String) -> String {
+    if self.protected() {
+      return String::new();
+    }
     let (format, convert_url) = canonical_format(&format);
     let items = self.items.borrow();
-    let Some((_, data)) = items.iter().find(|(stored, _)| stored == &format)
-    else {
+    let Some(data) = items.iter().find_map(|item| match &item.body {
+      ItemBody::Text(data) if item.type_ == format => Some(data.clone()),
+      _ => None,
+    }) else {
       return String::new();
     };
-    if convert_url {
-      first_uri(data)
-    } else {
-      data.clone()
-    }
+    if convert_url { first_uri(&data) } else { data }
   }
 
   fn set_data(&self, format: String, data: String) {
-    if self.read_only.get() {
+    if !self.writable() {
       return;
     }
     let (format, _) = canonical_format(&format);
-    let mut items = self.items.borrow_mut();
-    if let Some(index) = items.iter().position(|(stored, _)| stored == &format)
     {
-      items.remove(index);
+      let mut items = self.items.borrow_mut();
+      if let Some(index) = items.iter().position(|item| {
+        matches!(item.body, ItemBody::Text(_)) && item.type_ == format
+      }) {
+        items.remove(index);
+      }
     }
-    items.push((format, data));
-    drop(items);
+    self.push_item(format, ItemBody::Text(data));
     self.invalidate_types();
   }
 
   fn clear_data(&self, format: Option<String>) {
-    if self.read_only.get() {
+    if !self.writable() {
       return;
     }
     let mut items = self.items.borrow_mut();
     let before = items.len();
     match format {
-      None => items.clear(),
+      None => items.retain(|item| !matches!(item.body, ItemBody::Text(_))),
       Some(format) => {
         let (format, _) = canonical_format(&format);
-        items.retain(|(stored, _)| stored != &format);
+        items.retain(|item| {
+          !(matches!(item.body, ItemBody::Text(_)) && item.type_ == format)
+        });
       }
     }
     let changed = items.len() != before;
@@ -693,7 +994,7 @@ impl DataTransfer {
 ///
 /// `url` asks `getData` to return the first URI-list entry. `setData` and
 /// `clearData` only use the mapped type.
-fn canonical_format(format: &str) -> (String, bool) {
+pub(crate) fn canonical_format(format: &str) -> (String, bool) {
   let format = format.to_ascii_lowercase();
   match format.as_str() {
     "text" => (TEXT.to_string(), false),

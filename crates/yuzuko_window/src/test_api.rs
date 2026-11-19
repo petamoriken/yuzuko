@@ -67,6 +67,7 @@ fn inject_events(
       }
       continue;
     }
+    // The injected operating-system leave. It dispatches `dragleave`.
     if prop_string(scope, record, "kind").as_deref() == Some("filehovercancel")
     {
       inbox::push(id, Raw::FileCancel);
@@ -120,7 +121,10 @@ fn read_accessible(
 
 fn file_phase(kind: Option<&str>) -> Option<FilePhase> {
   match kind {
+    // The injected operating-system drop. It dispatches `drop`.
     Some("filedrop") => Some(FilePhase::Drop),
+    // The injected operating-system hover. It dispatches `dragenter`
+    // and `dragover`.
     Some("filehover") => Some(FilePhase::Hover),
     _ => None,
   }

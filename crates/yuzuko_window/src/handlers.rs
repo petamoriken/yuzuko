@@ -1,5 +1,8 @@
 //! `on*` attributes for the window event targets.
 
+/// File drag events shared by `Window` and `WindowSurface`.
+const DRAG: &[&str] = &["dragenter", "dragover", "dragleave", "drop"];
+
 /// Pointer, touch, and mouse events shared by `Window` and `WindowSurface`.
 const POINTER_AND_MOUSE: &[&str] = &[
   "pointerdown",
@@ -36,9 +39,6 @@ const WINDOW_ONLY: &[&str] = &[
   "focus",
   "blur",
   "menuclick",
-  "filehover",
-  "filehovercancel",
-  "filedrop",
   "keydown",
   "keyup",
   "wheel",
@@ -61,17 +61,21 @@ pub(crate) fn define(
 }
 
 pub(crate) fn install_window(scope: &mut v8::PinScope) {
-  let mut events =
-    Vec::with_capacity(WINDOW_ONLY.len() + POINTER_AND_MOUSE.len());
+  let mut events = Vec::with_capacity(
+    WINDOW_ONLY.len() + DRAG.len() + POINTER_AND_MOUSE.len(),
+  );
   events.extend_from_slice(WINDOW_ONLY);
+  events.extend_from_slice(DRAG);
   events.extend_from_slice(POINTER_AND_MOUSE);
   define_class(scope, "Window", &events);
 }
 
 pub(crate) fn install_surface(scope: &mut v8::PinScope) {
-  let mut events =
-    Vec::with_capacity(SURFACE_ONLY.len() + POINTER_AND_MOUSE.len());
+  let mut events = Vec::with_capacity(
+    SURFACE_ONLY.len() + DRAG.len() + POINTER_AND_MOUSE.len(),
+  );
   events.extend_from_slice(SURFACE_ONLY);
+  events.extend_from_slice(DRAG);
   events.extend_from_slice(POINTER_AND_MOUSE);
   define_class(scope, "WindowSurface", &events);
 }

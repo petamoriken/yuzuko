@@ -1773,6 +1773,26 @@ pub(crate) fn dispatch_pointer_on_window(
   }
 }
 
+pub(crate) fn dispatch_drag_on_window(
+  scope: &mut v8::PinScope,
+  window: v8::Local<v8::Object>,
+  type_name: &str,
+  bubbles: bool,
+  cancelable: bool,
+  transfer: v8::Local<v8::Object>,
+) {
+  let window = yuzuko_core::op::root(scope, window);
+  let event = yuzuko_dom::host_drag_event(
+    scope, type_name, bubbles, cancelable, transfer,
+  );
+  if let Some(surface) = surface_object(scope, window) {
+    let path = [surface, window];
+    let _ = yuzuko_dom::dispatch_path(scope, &path, event);
+  } else {
+    let _ = yuzuko_dom::dispatch(scope, window, event);
+  }
+}
+
 pub(crate) fn dispatch_touch_on_window(
   scope: &mut v8::PinScope,
   window: v8::Local<v8::Object>,

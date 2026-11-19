@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Read, Seek};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -341,7 +341,6 @@ pub(crate) struct BlobSource {
 
 enum SourceInner {
   Chunks(Vec<::bytes::Bytes>),
-  #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   File {
     path: PathBuf,
     offset: u64,
@@ -366,12 +365,12 @@ impl BlobSource {
 
   #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   pub(crate) fn file(path: PathBuf, len: u64) -> Self {
+    Self::file_span(path, 0, len)
+  }
+
+  fn file_span(path: PathBuf, offset: u64, len: u64) -> Self {
     Self {
-      inner: Arc::new(SourceInner::File {
-        path,
-        offset: 0,
-        len,
-      }),
+      inner: Arc::new(SourceInner::File { path, offset, len }),
       size: len,
     }
   }
@@ -439,14 +438,9 @@ impl BlobSource {
       return self.clone();
     }
     match &*self.inner {
-      SourceInner::File { path, offset, .. } => Self {
-        inner: Arc::new(SourceInner::File {
-          path: path.clone(),
-          offset: offset + start,
-          len,
-        }),
-        size: len,
-      },
+      SourceInner::File { path, offset, .. } => {
+        Self::file_span(path.clone(), offset + start, len)
+      }
       SourceInner::Chunks(chunks) => Self {
         inner: Arc::new(SourceInner::Chunks(slice_chunk_list(
           chunks, start, end,
@@ -518,6 +512,35 @@ fn slice_chunk_list(
     }
   }
   out
+}
+
+pub(crate) fn failure_for_read(
+  _error: std::io::Error,
+  fallback: &str,
+) -> OpError {
+  OpError::type_(fallback)
+}
+
+pub(crate) fn exception_for_read<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  error: std::io::Error,
+  fallback: &str,
+) -> v8::Local<'s, v8::Value> {
+  match failure_for_read(error, fallback) {
+    OpError::Dom { name, message } => {
+      yuzuko_core::op::new_dom_exception(scope, &name, &message)
+        .map(v8::Local::<v8::Value>::from)
+        .unwrap_or_else(|| {
+          let text = v8::String::new(scope, &message).unwrap();
+          v8::Exception::type_error(scope, text)
+        })
+    }
+    OpError::Type(message) | OpError::Range(message) => {
+      let text = v8::String::new(scope, &message).unwrap();
+      v8::Exception::type_error(scope, text)
+    }
+    OpError::Thrown(value) => v8::Local::new(scope, *value),
+  }
 }
 
 fn read_file(
@@ -602,7 +625,7 @@ impl Blob {
     let bytes = self
       .source
       .read_all()
-      .map_err(|_| OpError::type_("The blob could not be read"))?;
+      .map_err(|error| failure_for_read(error, "The blob could not be read"))?;
     Ok((bytes, self.mime.clone()))
   }
 }
@@ -621,6 +644,10 @@ impl File {
       name,
       last_modified: 0.0,
     }
+  }
+
+  pub fn media_type(&self) -> String {
+    self.base.mime.clone()
   }
 }
 
@@ -720,7 +747,7 @@ impl Blob {
     let bytes = self
       .source
       .read_all()
-      .map_err(|_| OpError::type_("The blob could not be read"))?;
+      .map_err(|error| failure_for_read(error, "The blob could not be read"))?;
     let text = decode_utf8(&bytes);
     let object = crate::stream::stream_from_text(scope, &text);
     let object = v8::Local::new(scope, &object);
@@ -796,6 +823,81 @@ impl File {
   fn webkit_relative_path(&self) -> String {
     String::new()
   }
+}
+
+/// A `File` whose bytes stay on disk until something reads them.
+///
+/// A directory or a missing path is empty. `type` is `""` for a directory
+/// and for an extension this runtime does not recognize. Reading the file
+/// does not check read permission.
+pub fn file_from_path<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  path: &Path,
+) -> v8::Local<'s, v8::Object> {
+  let name = path
+    .file_name()
+    .map(|name| name.to_string_lossy().into_owned())
+    .unwrap_or_default();
+  let meta = std::fs::metadata(path).ok();
+  let directory = meta.as_ref().is_some_and(|meta| meta.is_dir());
+  let len = if directory {
+    0
+  } else {
+    meta.as_ref().map(|meta| meta.len()).unwrap_or(0)
+  };
+  let modified = meta.as_ref().map(modified_ms).unwrap_or_else(unix_now_ms);
+  let source = BlobSource::file(path.to_path_buf(), len);
+  let file = File {
+    base: Blob::from_source(source, path_media_type(path)),
+    name,
+    last_modified: modified,
+  };
+  unsafe { yuzuko_core::op::wrap_instance(scope, file) }
+}
+
+/// Media type for a dropped path. Unknown extensions and directories are `""`.
+pub fn path_media_type(path: &Path) -> String {
+  if path.is_dir() {
+    return String::new();
+  }
+  let extension = path
+    .extension()
+    .and_then(|extension| extension.to_str())
+    .unwrap_or("");
+  let raw = match extension.to_ascii_lowercase().as_str() {
+    "txt" | "text" => "text/plain",
+    "html" | "htm" => "text/html",
+    "css" => "text/css",
+    "js" | "mjs" => "text/javascript",
+    "json" => "application/json",
+    "svg" => "image/svg+xml",
+    "png" => "image/png",
+    "jpg" | "jpeg" => "image/jpeg",
+    "gif" => "image/gif",
+    "webp" => "image/webp",
+    "bmp" => "image/bmp",
+    "ico" => "image/x-icon",
+    "wav" => "audio/wav",
+    "mp3" => "audio/mpeg",
+    "ogg" | "oga" => "audio/ogg",
+    "mp4" | "m4v" => "video/mp4",
+    "webm" => "video/webm",
+    "pdf" => "application/pdf",
+    "xml" => "application/xml",
+    "csv" => "text/csv",
+    "wasm" => "application/wasm",
+    _ => "",
+  };
+  crate::text::mime::blob_type(raw)
+}
+
+fn modified_ms(meta: &std::fs::Metadata) -> f64 {
+  meta
+    .modified()
+    .ok()
+    .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+    .map(|duration| duration.as_millis() as f64)
+    .unwrap_or_else(unix_now_ms)
 }
 
 pub fn install(scope: &mut v8::PinScope) {
@@ -1164,15 +1266,30 @@ fn queue_owned(
 ) -> ReadPromise {
   match blob.snapshot() {
     Ok((bytes, _)) => queue_read(scope, bytes, kind),
-    Err(_) => {
-      let resolver = v8::PromiseResolver::new(scope).unwrap();
-      let promise = resolver.get_promise(scope);
-      let message =
-        v8::String::new(scope, "The blob could not be read").unwrap();
-      resolver.reject(scope, v8::Exception::type_error(scope, message));
-      ReadPromise(v8::Global::new(scope, promise))
-    }
+    Err(error) => reject_read(scope, error),
   }
+}
+
+fn reject_read(scope: &mut v8::PinScope, error: OpError) -> ReadPromise {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  let exception = match error {
+    OpError::Dom { name, message } => {
+      yuzuko_core::op::new_dom_exception(scope, &name, &message)
+        .map(v8::Local::<v8::Value>::from)
+        .unwrap_or_else(|| {
+          let text = v8::String::new(scope, &message).unwrap();
+          v8::Exception::type_error(scope, text)
+        })
+    }
+    OpError::Type(message) | OpError::Range(message) => {
+      let text = v8::String::new(scope, &message).unwrap();
+      v8::Exception::type_error(scope, text)
+    }
+    OpError::Thrown(value) => v8::Local::new(scope, *value),
+  };
+  resolver.reject(scope, exception);
+  ReadPromise(v8::Global::new(scope, promise))
 }
 
 fn queue_read(

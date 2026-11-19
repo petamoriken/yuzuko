@@ -639,28 +639,11 @@ declare namespace Yuzuko {
   }
 
   /**
-   * `filehover` or `filedrop` on a {@link Window}.
-   *
-   * There is no `FileDropEvent` constructor. The event is an {@link Event}
-   * with an own `paths` property. It does not bubble and cannot be cancelled.
-   * The event does not carry a `DataTransfer`.
-   */
-  interface FileDropEvent extends Event {
-    /**
-     * Absolute paths, in the order the operating system reported them.
-     *
-     * A new array on each event. The paths are not canonicalized.
-     */
-    readonly paths: readonly string[];
-  }
-
-  /**
    * Events dispatched on a {@link Window}.
    *
-   * Pointer, mouse, and touch events target {@link Window.surface} and
+   * Pointer, mouse, touch, and drag events target {@link Window.surface} and
    * propagate through the window. Key, IME, wheel, focus, blur, resize,
-   * close, `menuclick`, `filehover`, `filehovercancel`, and `filedrop`
-   * target the window only. `focus`, `blur`, and the file events do not
+   * close, and `menuclick` target the window only. `focus` and `blur` do not
    * bubble.
    */
   interface WindowEventMap {
@@ -669,9 +652,10 @@ declare namespace Yuzuko {
     focus: FocusEvent;
     blur: FocusEvent;
     menuclick: MenuClickEvent;
-    filehover: FileDropEvent;
-    filehovercancel: Event;
-    filedrop: FileDropEvent;
+    dragenter: DragEvent;
+    dragover: DragEvent;
+    dragleave: DragEvent;
+    drop: DragEvent;
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
     wheel: WheelEvent;
@@ -1922,12 +1906,14 @@ declare namespace Yuzuko {
     onblur: ((this: Window, ev: FocusEvent) => any) | null;
     /** Listener for `menuclick`. */
     onmenuclick: ((this: Window, ev: MenuClickEvent) => any) | null;
-    /** Listener for `filehover`. */
-    onfilehover: ((this: Window, ev: FileDropEvent) => any) | null;
-    /** Listener for `filehovercancel`. */
-    onfilehovercancel: ((this: Window, ev: Event) => any) | null;
-    /** Listener for `filedrop`. */
-    onfiledrop: ((this: Window, ev: FileDropEvent) => any) | null;
+    /** Listener for `dragenter`. */
+    ondragenter: ((this: Window, ev: DragEvent) => any) | null;
+    /** Listener for `dragover`. */
+    ondragover: ((this: Window, ev: DragEvent) => any) | null;
+    /** Listener for `dragleave`. */
+    ondragleave: ((this: Window, ev: DragEvent) => any) | null;
+    /** Listener for `drop`. */
+    ondrop: ((this: Window, ev: DragEvent) => any) | null;
     /** Listener for `keydown`. */
     onkeydown: ((this: Window, ev: KeyboardEvent) => any) | null;
     /** Listener for `keyup`. */
@@ -2052,6 +2038,10 @@ declare namespace Yuzuko {
     copy: ClipboardEvent;
     cut: ClipboardEvent;
     paste: ClipboardEvent;
+    dragenter: DragEvent;
+    dragover: DragEvent;
+    dragleave: DragEvent;
+    drop: DragEvent;
     pointerdown: PointerEvent;
     pointerup: PointerEvent;
     pointermove: PointerEvent;
@@ -2266,6 +2256,14 @@ declare namespace Yuzuko {
     oncut: ((this: WindowSurface, ev: ClipboardEvent) => any) | null;
     /** Listener for `paste`. */
     onpaste: ((this: WindowSurface, ev: ClipboardEvent) => any) | null;
+    /** Listener for `dragenter`. */
+    ondragenter: ((this: WindowSurface, ev: DragEvent) => any) | null;
+    /** Listener for `dragover`. */
+    ondragover: ((this: WindowSurface, ev: DragEvent) => any) | null;
+    /** Listener for `dragleave`. */
+    ondragleave: ((this: WindowSurface, ev: DragEvent) => any) | null;
+    /** Listener for `drop`. */
+    ondrop: ((this: WindowSurface, ev: DragEvent) => any) | null;
     /** Listener for `pointerdown`. */
     onpointerdown: ((this: WindowSurface, ev: PointerEvent) => any) | null;
     /** Listener for `pointerup`. */
@@ -7633,11 +7631,13 @@ interface DragEventInit extends MouseEventInit {
  * (such as another DOM element). Applications are free to interpret a drag and
  * drop interaction in an application-specific way.
  *
- * A constructed drag event. The runtime does not run an HTML drag-and-drop
- * session. `dataTransfer` is null unless the dictionary passes a
- * {@link DataTransfer}. Coordinates are floored the same way as a
- * {@link MouseEvent}. A dedicated worker has this constructor and does not have
- * `DataTransfer`.
+ * An operating-system file drag dispatches `dragenter`, `dragover`,
+ * `dragleave`, and `drop` on {@link Yuzuko.WindowSurface}. They bubble through
+ * the window. Each carries its own {@link DataTransfer}. Coordinates are 0.
+ * Reading a dropped {@link File} does not check read permission and does not
+ * store a grant. A constructed event does not start a session. `dataTransfer`
+ * is null unless the dictionary passes one. A dedicated worker has this
+ * constructor and does not have `DataTransfer`.
  *
  * @throws {@link TypeError} When `dataTransfer` is not a `DataTransfer`.
  *
@@ -8799,6 +8799,39 @@ interface File extends Blob {
 declare var File: {
   prototype: File;
   new(fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+};
+
+/**
+ * The **`FileList`** interface represents an object of this type returned by the files property of the HTML <input> element; this lets you access the list of files selected with the <input type="file"> element. It's also used for a list of files dropped into web content when using the drag and drop API; see the DataTransfer object for details on this usage.
+ *
+ * There is no constructor. `item` returns null when the index is past the end.
+ * An index cannot be assigned or deleted.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileList)
+ */
+interface FileList {
+  /**
+   * The **`length`** read-only property of the FileList interface returns the number of files in the FileList.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileList/length)
+   */
+  readonly length: number;
+
+  /**
+   * The **`item()`** method of the FileList interface returns a File object representing the file at the specified index in the file list.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FileList/item)
+   */
+  item(index: number): File | null;
+
+  [index: number]: File;
+  [Symbol.iterator](): ArrayIterator<File>;
+}
+declare var FileList: {
+  prototype: FileList;
+  new(): FileList;
 };
 
 
@@ -16563,9 +16596,12 @@ declare var Clipboard: {
  * contexts, such as a drag and drop operation, or clipboard read/write. It may
  * hold one or more data items, each of one or more data types.
  *
- * A string store for clipboard `copy`, `cut`, and `paste`. `items`, `files`, and
- * `setDragImage` are absent. A dedicated worker has no `DataTransfer`. File
- * drops do not carry one.
+ * A store for clipboard `copy`, `cut`, and `paste`, and for an operating-system
+ * file drag. `setDragImage` is absent. A dedicated worker has no `DataTransfer`.
+ * `new DataTransfer()` is read/write. `dropEffect` and `effectAllowed` start as
+ * `"none"`. A paste and a `drop` are read-only. `dragenter`, `dragover`, and
+ * `dragleave` are protected: `getData` returns `""`, `files` is empty, and
+ * `getAsFile` returns null.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer)
  */
@@ -16580,7 +16616,7 @@ interface DataTransfer {
   /**
    * `"none"`, `"copy"`, `"copyLink"`, `"copyMove"`, `"link"`, `"linkMove"`,
    * `"move"`, `"all"`, or `"uninitialized"`. Other strings are ignored. A
-   * read-only store ignores every assignment.
+   * read-only or protected store ignores every assignment.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/effectAllowed)
    */
@@ -16596,8 +16632,30 @@ interface DataTransfer {
     | "uninitialized";
 
   /**
-   * A frozen array of the stored formats, in list order. The same array is
-   * returned until `setData`, or a `clearData` that removes an entry.
+   * The **`files`** read-only property of the DataTransfer interface is a list of the files in the drag operation. If the operation includes no files, the list is empty.
+   *
+   * A new {@link FileList} on each read. The list is empty while the store is
+   * protected (`dragenter`, `dragover`, and `dragleave`). A `File` from a
+   * `drop` reads without a read permission check.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/files)
+   */
+  readonly files: FileList;
+
+  /**
+   * The **`items`** read-only property of the DataTransfer interface is a DataTransferItemList of the DataTransferItem objects in a drag operation. The list includes one item for each item in the operation, and if the operation had no items, the list is empty.
+   *
+   * The same list on every read. A protected item exposes `kind` and `type`
+   * and does not expose the bytes. The list is iterable.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/items)
+   */
+  readonly items: DataTransferItemList;
+
+  /**
+   * A frozen array of the string formats, in list order, then `"Files"` when a
+   * file item is present. `"Files"` is last. The same array is returned until
+   * the list changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/types)
    */
@@ -16605,7 +16663,8 @@ interface DataTransfer {
 
   /**
    * The stored string, or `""` when the format is absent. `"text"` reads
-   * `text/plain`. `"url"` reads the first URL in `text/uri-list`.
+   * `text/plain`. `"url"` reads the first URL in `text/uri-list`. A protected
+   * store returns `""`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/getData)
    */
@@ -16613,8 +16672,8 @@ interface DataTransfer {
 
   /**
    * Stores `data` under `format`. `"text"` writes `text/plain` and `"url"` writes
-   * `text/uri-list`. Replacing a format moves it to the end. A read-only store
-   * ignores the call.
+   * `text/uri-list`. Replacing a format moves it to the end. A read-only or
+   * protected store ignores the call. A file item with the same type stays.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/setData)
    */
@@ -16622,7 +16681,7 @@ interface DataTransfer {
 
   /**
    * Removes every string entry when `format` is omitted. Otherwise removes that
-   * format. A read-only store ignores the call.
+   * format. File entries stay. A read-only or protected store ignores the call.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransfer/clearData)
    */
@@ -16631,6 +16690,129 @@ interface DataTransfer {
 declare var DataTransfer: {
   prototype: DataTransfer;
   new(): DataTransfer;
+};
+
+interface FunctionStringCallback {
+  (data: string): void;
+}
+
+/**
+ * The **`DataTransferItem`** object represents one drag data item. During a drag operation, each DragEvent has a dataTransfer property which contains a list of drag data items. Each item in the list is a DataTransferItem object.
+ *
+ * There is no constructor. `webkitGetAsEntry` is absent. A removed item has
+ * `kind` `""` and `type` `""`.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItem)
+ */
+interface DataTransferItem {
+  /**
+   * The **`kind`** read-only property of the DataTransferItem interface returns the kind–a string or a file–of the object representing the drag data item.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItem/kind)
+   */
+  readonly kind: string;
+
+  /**
+   * The **`type`** read-only property of the DataTransferItem interface returns the type (format) of the object representing the drag data item. The type is a Unicode string generally given by a MIME type, although a MIME type is not required.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItem/type)
+   */
+  readonly type: string;
+
+  /**
+   * The **`getAsFile()`** method of the DataTransferItem interface returns the drag data item's File object if the item is a file. If the item is not a file, this method returns null.
+   *
+   * A protected item and a removed item return null.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItem/getAsFile)
+   */
+  getAsFile(): File | null;
+
+  /**
+   * The **`getAsString()`** method of the DataTransferItem interface invokes the given callback with the drag data item's string data as the argument if the item's kind is a Plain unicode string (i.e., kind is string).
+   *
+   * `null` and `undefined` do nothing. A value that is not a function throws
+   * `TypeError`. A protected item, a file, and a removed item do not call the
+   * callback. A string item queues a task with the string captured at the
+   * call. A throw inside the callback is reported.
+   *
+   * @throws {@link TypeError} When the callback is not a function, `null`, or
+   * `undefined`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItem/getAsString)
+   */
+  getAsString(callback: FunctionStringCallback | null): void;
+}
+declare var DataTransferItem: {
+  prototype: DataTransferItem;
+  new(): DataTransferItem;
+};
+
+/**
+ * The **`DataTransferItemList`** object is a list of DataTransferItem objects representing items being dragged. During a drag operation, each DragEvent has a dataTransfer property and that property is a DataTransferItemList.
+ *
+ * There is no constructor. `[Symbol.iterator]` returns the array iterator of
+ * the items present at the call. A receiver that is not the list throws
+ * `TypeError` with `illegal invocation`. An index cannot be assigned or
+ * deleted. `item` is not a method.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItemList)
+ */
+interface DataTransferItemList {
+  /**
+   * The **`length`** read-only property of the DataTransferItemList interface returns the number of items currently in the drag item list.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItemList/length)
+   */
+  readonly length: number;
+
+  /**
+   * The **`add()`** method of the DataTransferItemList interface creates a new DataTransferItem using the specified data and adds it to the drag data list. The item may be a File or a string of a given type. If the item is successfully added to the list, the newly-created DataTransferItem object is returned.
+   *
+   * A read-only or protected list returns null and does not throw. A `File`
+   * may repeat a type. The mode is checked after a missing argument and after
+   * `ToString`, and before an empty type or a duplicate type can throw.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when the string type is
+   * already present.
+   * @throws {@link DOMException} `SyntaxError` when the type is empty.
+   * @throws {@link TypeError} When `data` is missing, or a string is passed
+   * without a type.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItemList/add)
+   */
+  add(data: string, type: string): DataTransferItem | null;
+  add(data: File): DataTransferItem | null;
+
+  /**
+   * The **`clear()`** method of the DataTransferItemList interface removes all DataTransferItem objects from the drag data items list, leaving the list empty.
+   *
+   * A read-only or protected list does nothing.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItemList/clear)
+   */
+  clear(): void;
+
+  /**
+   * The **`remove()`** method of the DataTransferItemList interface removes the DataTransferItem at the specified index from the list. If the index is less than zero or greater than one less than the length of the list, the list will not be changed.
+   *
+   * An index past the end does nothing. A read-only or protected list does
+   * nothing.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DataTransferItemList/remove)
+   */
+  remove(index: number): void;
+
+  [index: number]: DataTransferItem;
+  [Symbol.iterator](): ArrayIterator<DataTransferItem>;
+}
+declare var DataTransferItemList: {
+  prototype: DataTransferItemList;
+  new(): DataTransferItemList;
 };
 
 /**

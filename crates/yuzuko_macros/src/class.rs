@@ -72,6 +72,10 @@ struct Member {
   vis: syn::Visibility,
   /// Web IDL operation length: required arguments before the first optional.
   length: i32,
+  /// Arguments required before the body runs. Defaults to `length`.
+  /// `#[arity(0)]` leaves a short call to the body, which still reports
+  /// `length` to JavaScript.
+  arity: i32,
   /// The operation returns a promise, so a bad `this` or too few arguments
   /// reject that promise instead of throwing.
   promise: bool,
@@ -547,6 +551,7 @@ fn classify(mut method: ImplItemFn) -> syn::Result<Member> {
   let mut kind = None;
   let mut rename = None;
   let mut length_override = None;
+  let mut arity_override = None;
   let mut promise = false;
   let mut kept = Vec::new();
   for attr in method.attrs.drain(..) {
@@ -568,6 +573,9 @@ fn classify(mut method: ImplItemFn) -> syn::Result<Member> {
     } else if attr.path().is_ident("length") {
       let lit: LitInt = attr.parse_args()?;
       length_override = Some(lit.base10_parse::<i32>()?);
+    } else if attr.path().is_ident("arity") {
+      let lit: LitInt = attr.parse_args()?;
+      arity_override = Some(lit.base10_parse::<i32>()?);
     } else if attr.path().is_ident("promise") {
       promise = true;
     } else {
@@ -622,6 +630,7 @@ fn classify(mut method: ImplItemFn) -> syn::Result<Member> {
   let rust_name = method.sig.ident.clone();
   let js_name = rename.unwrap_or_else(|| camel_case(&rust_name.to_string()));
   let length = length_override.unwrap_or_else(|| js_length(&method.sig));
+  let arity = arity_override.unwrap_or(length);
   let role = match kind {
     Kind::Constructor => "ctor",
     Kind::Method => "call",
@@ -640,6 +649,7 @@ fn classify(mut method: ImplItemFn) -> syn::Result<Member> {
     block: method.block,
     vis: method.vis,
     length,
+    arity,
     promise,
   })
 }
@@ -776,7 +786,7 @@ fn emit_member(
   let arity = if matches!(member.kind, Kind::Setter | Kind::Constructor) {
     quote! {}
   } else {
-    arity_check(member.promise, member.length)
+    arity_check(member.promise, member.arity)
   };
 
   let callback_tokens = match member.kind {

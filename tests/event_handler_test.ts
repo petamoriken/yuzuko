@@ -28,9 +28,6 @@ const WINDOW_ONLY = [
   "focus",
   "blur",
   "menuclick",
-  "filehover",
-  "filehovercancel",
-  "filedrop",
   "keydown",
   "keyup",
   "wheel",
@@ -60,6 +57,10 @@ const ACCESSIBLE = [
 ];
 
 const SHARED = [
+  "dragenter",
+  "dragover",
+  "dragleave",
+  "drop",
   "pointerdown",
   "pointerup",
   "pointermove",
@@ -136,6 +137,13 @@ Yuzuko.test("event handler attributes follow the listener rules", () => {
   };
   globalThis.addEventListener("error", onError);
   try {
+    for (const name of ["onfiledrop", "onfilehover", "onfilehovercancel"]) {
+      assert(
+        Object.getOwnPropertyDescriptor(Yuzuko.Window.prototype, name) ===
+          undefined,
+        name,
+      );
+    }
     for (const event of WINDOW_ONLY) {
       expectHandler(Yuzuko.Window.prototype, event);
       assert(read(window, `on${event}`) === null, `${event} null`);
@@ -372,17 +380,18 @@ Yuzuko.test("host events call the handler attribute", () => {
     assert(focused, "focus");
 
     let hovered = "";
-    window.onfilehover = function (event) {
-      assert(this === window, "file this");
-      assert(event.target === window, "file target");
-      assert(event.eventPhase === Event.AT_TARGET, "file phase");
-      assert(event.bubbles === false, "file bubbles");
-      hovered = event.paths[0] ?? "";
+    window.surface.ondragenter = function (event) {
+      assert(this === window.surface, "drag this");
+      assert(event.target === window.surface, "drag target");
+      assert(event.eventPhase === Event.AT_TARGET, "drag phase");
+      assert(event.bubbles === true, "drag bubbles");
+      assert(event instanceof DragEvent, "drag class");
+      hovered = event.dataTransfer?.items[0]?.type ?? "";
     };
     Yuzuko.__test.inject(window, [
       { kind: "filehover", paths: ["rel.txt"] },
     ]);
-    assert(hovered.endsWith("rel.txt"), hovered);
+    assert(hovered === "text/plain", hovered);
 
     let state = "";
     window.surface.onvisibilitychange = function () {
