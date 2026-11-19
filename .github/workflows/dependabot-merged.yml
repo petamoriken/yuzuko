@@ -1,0 +1,28 @@
+name: Dependabot merged
+
+# Signals that a Dependabot pull request merged. This workflow has no
+# token permissions and does not check out the pull request. The
+# default-branch workflow deletes the head branch.
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions: {}
+
+jobs:
+  merged:
+    name: Merged
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'dependabot/')
+    steps:
+      - name: Record the merged pull request
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "merged ${BRANCH} ${SHA}"

@@ -1,0 +1,66 @@
+name: Delete Dependabot branch
+
+# Runs from the default branch after "Dependabot merged" completes.
+# The pull request cannot change this file. Auto-merge leaves the head
+# branch in place, so delete it only when the ref still points at the
+# merged Dependabot commit.
+
+on:
+  workflow_run:
+    workflows:
+      - Dependabot merged
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  delete_branch:
+    name: Delete branch
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    steps:
+      - name: Delete the merged head branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BRANCH" =~ ^dependabot/[A-Za-z0-9._/-]+$ || "$BRANCH" == *..* ]]; then
+            echo "refusing to delete: ${BRANCH}" >&2
+            exit 1
+          fi
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "refusing sha: ${SHA}" >&2
+            exit 1
+          fi
+          count=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=closed&head=${GITHUB_REPOSITORY_OWNER}:${BRANCH}&per_page=20" \
+            --jq "[.[] | select(.merged_at != null and .user.login == \"dependabot[bot]\" and .head.sha == \"${SHA}\" and .head.repo.full_name == \"${GITHUB_REPOSITORY}\")] | length")
+          if [[ "$count" -lt 1 ]]; then
+            echo "no merged Dependabot pull request for ${BRANCH} at ${SHA}" >&2
+            exit 1
+          fi
+          err=$(mktemp)
+          if ! live=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" --jq .object.sha 2>"$err"); then
+            if grep -q "Not Found" "$err"; then
+              echo "already deleted: ${BRANCH}"
+              exit 0
+            fi
+            cat "$err" >&2
+            exit 1
+          fi
+          if [[ "$live" != "$SHA" ]]; then
+            echo "left in place: ${BRANCH} moved to ${live}"
+            exit 0
+          fi
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}"
+          echo "deleted ${BRANCH}"
