@@ -11,6 +11,8 @@ workflows:
         - 'swatinem/rust-cache@v2'
     '.github/workflows/dependabot-automerge.yml':
         - 'fastify/github-action-merge-dependabot@v3'
+    '.github/workflows/dependabot-delete-branch.yml': []
+    '.github/workflows/dependabot-merged.yml': []
     '.github/workflows/release.yml':
         - 'actions/checkout@v7'
         - 'actions/download-artifact@v8'
