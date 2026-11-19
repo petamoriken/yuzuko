@@ -218,11 +218,11 @@ Yuzuko.test("initMouseEvent writes the legacy argument order", () => {
   );
   assert(
     throwsTypeError(() => {
-      // @ts-expect-error null is not a Window, and 1 is not an EventTarget.
       live.initMouseEvent(
         "x",
         false,
         false,
+        // @ts-expect-error null is not a Window, and 1 is not an EventTarget.
         null,
         0,
         0,

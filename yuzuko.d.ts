@@ -437,6 +437,34 @@ interface Window extends EventTarget {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
    */
   readonly self: Window & typeof globalThis;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/addEventListener)
+   */
+  addEventListener<K extends keyof GlobalEventMap>(
+    type: K,
+    callback: (this: typeof globalThis, ev: GlobalEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: AddEventListenerOptions | boolean,
+  ): void;
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/removeEventListener)
+   */
+  removeEventListener<K extends keyof GlobalEventMap>(
+    type: K,
+    callback: (this: typeof globalThis, ev: GlobalEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: EventListenerOptions | boolean,
+  ): void;
 }
 type WorkerType = "classic" | "module";
 type URLPatternInput = string | URLPatternInit;
@@ -6376,6 +6404,60 @@ declare namespace Yuzuko {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/self)
  */
 declare const self: Window & typeof globalThis;
+
+/**
+ * Events dispatched on `globalThis`.
+ *
+ * `error`, `unhandledrejection`, and `rejectionhandled` are reported on this
+ * realm. `postMessage` dispatches `message`. `gamepadconnected` and
+ * `gamepaddisconnected` fire on the main realm. Pointer and key events are
+ * delivered to {@link Yuzuko.Window}.
+ */
+interface GlobalEventMap {
+  error: ErrorEvent;
+  unhandledrejection: PromiseRejectionEvent;
+  rejectionhandled: PromiseRejectionEvent;
+  message: MessageEvent;
+  gamepadconnected: GamepadEvent;
+  gamepaddisconnected: GamepadEvent;
+}
+
+/**
+ * `globalThis` inherits {@link EventTarget}. Pointer and key events are
+ * delivered to {@link Yuzuko.Window}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/addEventListener)
+ */
+declare function addEventListener<K extends keyof GlobalEventMap>(
+  type: K,
+  callback: (this: typeof globalThis, ev: GlobalEventMap[K]) => any,
+  options?: boolean | AddEventListenerOptions,
+): void;
+declare function addEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: AddEventListenerOptions | boolean,
+): void;
+
+/** [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/removeEventListener) */
+declare function removeEventListener<K extends keyof GlobalEventMap>(
+  type: K,
+  callback: (this: typeof globalThis, ev: GlobalEventMap[K]) => any,
+  options?: boolean | EventListenerOptions,
+): void;
+declare function removeEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: EventListenerOptions | boolean,
+): void;
+
+/**
+ * @returns `false` when `preventDefault()` was called on a cancelable event.
+ * @throws {@link TypeError} When `event` is not an {@link Event}.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EventTarget/dispatchEvent)
+ */
+declare function dispatchEvent(event: Event): boolean;
 
 /**
  * Whether this agent is cross-origin isolated. There is no document and no COOP

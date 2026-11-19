@@ -4,7 +4,12 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-function read(target: object, name: string): unknown {
+function read<T>(value: T): T;
+function read(target: object, name: string): unknown;
+function read(target: unknown, name?: string): unknown {
+  if (typeof name !== "string" || typeof target !== "object" || target === null) {
+    return target;
+  }
   // @ts-expect-error Handler names are looked up as strings.
   return target[name];
 }
@@ -241,7 +246,7 @@ Yuzuko.test("event handler attributes follow the listener rules", () => {
     assert(calls === 0, `removed ${calls}`);
     window.onresize = listener;
     window.dispatchEvent(new Event("resize"));
-    assert(calls === 1, `restored ${calls}`);
+    assert(read<number>(calls) === 1, `restored ${calls}`);
     window.onresize = null;
 
     calls = 0;
@@ -340,7 +345,7 @@ Yuzuko.test("event handler attributes follow the listener rules", () => {
       seen = "dock";
     };
     Yuzuko.dock.dispatchEvent(new Event("menuclick"));
-    assert(seen === "dock", seen);
+    assert(read<string>(seen) === "dock", seen);
     Yuzuko.dock.onmenuclick = null;
   } finally {
     globalThis.removeEventListener("error", onError);

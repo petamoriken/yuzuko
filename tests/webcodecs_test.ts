@@ -1134,8 +1134,8 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
     9, 0, 10, 0,
     11, 0, 12, 0,
   ]);
-  // @ts-expect-error I420P10 is stored but not in VideoPixelFormat.
   const tenBit = new VideoFrame(p10, {
+    // @ts-expect-error I420P10 is stored but not in VideoPixelFormat.
     format: "I420P10",
     codedWidth: 4,
     codedHeight: 2,
@@ -1148,8 +1148,8 @@ Yuzuko.test("VideoFrame constructs from an image, a canvas, and a buffer", async
   await tenBit.copyTo(tenOut);
   assert(tenOut[0] === 1 && tenOut[1] === 0 && tenOut[16] === 9, "p10 bytes");
   tenBit.close();
-  // @ts-expect-error I420AP10 is not a stored VideoPixelFormat.
   await assertThrows(() => new VideoFrame(new Uint8Array(16), {
+    // @ts-expect-error I420AP10 is not a stored VideoPixelFormat.
     format: "I420AP10",
     timestamp: 0,
     codedWidth: 2,

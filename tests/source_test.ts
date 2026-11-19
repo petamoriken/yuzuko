@@ -28,6 +28,7 @@ Yuzuko.test("new Worker runs a ModuleSource as a module", async () => {
     Object.prototype.toString.call(workerSource),
   );
 
+  // @ts-expect-error A source-phase import is not a script URL.
   const worker = new Worker(workerSource);
   const pending = nextMessage(worker);
   worker.postMessage(4);
@@ -37,6 +38,7 @@ Yuzuko.test("new Worker runs a ModuleSource as a module", async () => {
   assert(reply.scripts === false, "module worker");
   worker.terminate();
 
+  // @ts-expect-error A source-phase import is not a script URL.
   const explicit = new Worker(workerSource, { type: "module" });
   const explicitPending = nextMessage(explicit);
   explicit.postMessage(1);
@@ -49,6 +51,7 @@ Yuzuko.test("new Worker runs a ModuleSource as a module", async () => {
 Yuzuko.test("Worker rejects a classic ModuleSource and a Wasm module", () => {
   let classic = "";
   try {
+    // @ts-expect-error A source-phase import is not a script URL.
     new Worker(workerSource, { type: "classic" });
   } catch (error) {
     classic = error instanceof Error ? error.message : "";
@@ -57,6 +60,7 @@ Yuzuko.test("Worker rejects a classic ModuleSource and a Wasm module", () => {
 
   let wasmType = "";
   try {
+    // @ts-expect-error A WebAssembly.Module is not a script URL.
     new Worker(wasm);
   } catch (error) {
     wasmType = error instanceof Error ? error.message : "";

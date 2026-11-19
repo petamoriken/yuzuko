@@ -6,6 +6,7 @@ const AbstractModuleSource = Object.getPrototypeOf(WebAssembly.Module);
 if (AbstractModuleSource.name !== "AbstractModuleSource") {
   throw new Error("abstract name " + AbstractModuleSource.name);
 }
+// @ts-expect-error ModuleSource is not a global.
 if (typeof ModuleSource !== "undefined") {
   throw new Error("ModuleSource is a global");
 }
@@ -35,6 +36,7 @@ if (dyn !== mod) {
 
 let evaluated = false;
 try {
+  // @ts-expect-error A dynamic import specifier is a string.
   await import(mod);
   evaluated = true;
 } catch {

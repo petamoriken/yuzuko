@@ -121,7 +121,10 @@ function expectProtected(transfer: DataTransfer, count: number) {
   const missing = thrown(() => transfer.items.add());
   assert(errorMessage(missing) === "DataTransferItemList.add requires data", errorMessage(missing));
   transfer.effectAllowed = "copy";
-  assert(transfer.effectAllowed === "all", "protected effectAllowed");
+  assert(
+    read<DataTransfer["effectAllowed"]>(transfer.effectAllowed) === "all",
+    "protected effectAllowed",
+  );
   transfer.dropEffect = "copy";
   assert(transfer.dropEffect === "copy", transfer.dropEffect);
 }
@@ -293,7 +296,10 @@ Yuzuko.test("a file drop exposes the files without a read grant", async () => {
       assert(transfer instanceof DataTransfer, "drop transfer");
       assert(transfer.effectAllowed === "all", transfer.effectAllowed);
       transfer.effectAllowed = "copy";
-      assert(transfer.effectAllowed === "all", "read-only effectAllowed");
+      assert(
+        read<DataTransfer["effectAllowed"]>(transfer.effectAllowed) === "all",
+        "read-only effectAllowed",
+      );
       assert(transfer.types.join(",") === "Files", transfer.types.join(","));
       assert(transfer.files.length === 3, `files ${transfer.files.length}`);
       assert(transfer.items.length === 3, `items ${transfer.items.length}`);
@@ -403,7 +409,7 @@ Yuzuko.test("DataTransfer items and files follow the drag data store", async () 
   assert(transfer.types.join(",") === "text/plain,Files", "file returns");
   const duplicateFile = transfer.items.add(file);
   assert(duplicateFile !== null, "duplicate file");
-  assert(transfer.files.length === 2, "two files");
+  assert(read<number>(transfer.files.length) === 2, "two files");
   assert(transfer.files[0] === file && transfer.files[1] === file, "same object");
   const spread = [...transfer.files];
   assert(spread.length === 2 && spread[0] === file, "file iterator");
@@ -422,7 +428,7 @@ Yuzuko.test("DataTransfer items and files follow the drag data store", async () 
   );
   transfer.clearData();
   assert(transfer.types.join(",") === "Files", transfer.types.join(","));
-  assert(transfer.files.length === 2, "clearData leaves files");
+  assert(read<number>(transfer.files.length) === 2, "clearData leaves files");
   const stable = transfer.types;
   transfer.items.remove(50);
   assert(transfer.types === stable, "remove past the end");
@@ -496,7 +502,7 @@ Yuzuko.test("DataTransfer items and files follow the drag data store", async () 
         throw new Error("callback failed");
       });
     });
-    assert(read(reported) === true, "reported callback");
+    assert(read<boolean>(reported) === true, "reported callback");
   } finally {
     globalThis.removeEventListener("error", onError);
   }
