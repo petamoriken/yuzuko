@@ -12,6 +12,7 @@ mod identity;
 mod inbox;
 mod input;
 mod media;
+mod navigator;
 mod os;
 mod png_rgba;
 mod prefs;
@@ -95,6 +96,7 @@ fn install(scope: &mut v8::PinScope) {
   shell::clipboard::install(scope);
   wake::install(scope);
   input::gamepad::install(scope);
+  navigator::install(scope);
   if TEST_INPUT.load(Ordering::SeqCst) && test_inject_enabled() {
     test_api::install(scope);
   }

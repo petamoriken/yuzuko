@@ -6849,7 +6849,7 @@ declare var performance: Performance;
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
  * `"Win32"`, `"MacIntel"`, or `"Linux"`. A worker navigator has `userAgent`,
- * `platform`, and `hardwareConcurrency`.
+ * `platform`, `hardwareConcurrency`, `language`, and `languages`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -6877,6 +6877,24 @@ interface Navigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/hardwareConcurrency)
    */
   readonly hardwareConcurrency: number;
+
+  /**
+   * The first preferred language tag. `languages` is a new frozen array of the
+   * operating-system list on each read. An empty list is `en`. A dedicated
+   * worker reports the same tags. `languagechange` does not fire.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/language)
+   */
+  readonly language: string;
+
+  /**
+   * A new frozen array of the preferred language tags on each read. The first
+   * tag is `language`. An empty operating-system list is `en`. A dedicated
+   * worker reports the same tags. `languagechange` does not fire.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/languages)
+   */
+  readonly languages: ReadonlyArray<string>;
 
   /**
    * The **`maxTouchPoints`** read-only property of the Navigator interface returns
@@ -16518,6 +16536,24 @@ declare class WorkerNavigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/hardwareConcurrency)
    */
   readonly hardwareConcurrency: number;
+
+  /**
+   * The first preferred language tag. `languages` is a new frozen array of the
+   * operating-system list on each read. An empty list is `en`. The list matches
+   * the main realm. `languagechange` does not fire.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/language)
+   */
+  readonly language: string;
+
+  /**
+   * A new frozen array of the preferred language tags on each read. The first
+   * tag is `language`. An empty operating-system list is `en`. The list matches
+   * the main realm. `languagechange` does not fire.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/languages)
+   */
+  readonly languages: ReadonlyArray<string>;
 }
 
 /**

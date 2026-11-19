@@ -3,7 +3,7 @@
 pub(crate) mod gamepad;
 pub(crate) mod keyboard;
 pub(crate) mod keys;
-mod touch;
+pub(crate) mod touch;
 
 use std::cell::RefCell;
 use std::collections::HashMap;

@@ -1,7 +1,7 @@
-//! `navigator.getGamepads()` and `gamepadconnected` / `gamepaddisconnected`
-//! on `globalThis`. Already-connected devices are exposed without waiting
-//! for a button press. Dual-rumble plays when the device supports force
-//! feedback.
+//! `gamepadconnected` / `gamepaddisconnected` on `globalThis`, and the list
+//! `navigator.getGamepads()` returns. Already-connected devices are exposed
+//! without waiting for a button press. Dual-rumble plays when the device
+//! supports force feedback.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -171,8 +171,6 @@ pub fn install(scope: &mut v8::PinScope) {
   GamepadHapticActuator::install(scope);
   GamepadPose::install(scope);
   GamepadEvent::install(scope);
-  Navigator::install(scope);
-  attach_navigator(scope);
   let global = scope.get_current_context().global(scope);
   yuzuko_dom::define_event_handlers(
     scope,
@@ -628,22 +626,20 @@ fn pad_object<'s>(
   })
 }
 
-fn attach_navigator(scope: &mut v8::PinScope) {
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "navigator").unwrap();
-  let previous = global.get(scope, key.into());
-  let navigator = unsafe { yuzuko_core::op::wrap_instance(scope, Navigator) };
-  if let Some(previous) =
-    previous.and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  {
-    for name in ["userAgent", "platform", "hardwareConcurrency"] {
-      let name = v8::String::new(scope, name).unwrap();
-      if let Some(value) = previous.get(scope, name.into()) {
-        navigator.set(scope, name.into(), value);
+pub(crate) fn get_gamepads(scope: &mut v8::PinScope) -> Js {
+  let slots = STORE.with(|slot| slot.borrow().slots.clone());
+  let array = v8::Array::new(scope, slots.len() as i32);
+  for (index, token) in slots.into_iter().enumerate() {
+    let value = match token.and_then(|token| pad_object(scope, token)) {
+      Some(object) => {
+        let value: v8::Local<v8::Value> = object.into();
+        value
       }
-    }
+      None => v8::null(scope).into(),
+    };
+    array.set_index(scope, index as u32, value);
   }
-  global.set(scope, key.into(), navigator.into());
+  js_array(scope, array)
 }
 
 fn object_string(
@@ -1617,65 +1613,6 @@ impl GamepadPose {
   fn angular_acceleration(&self, scope: &mut v8::PinScope) -> Js {
     let _ = self;
     js_null(scope)
-  }
-}
-
-pub struct Navigator;
-
-unsafe impl v8::cppgc::GarbageCollected for Navigator {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
-
-  fn get_name(&self) -> &'static std::ffi::CStr {
-    c"Navigator"
-  }
-}
-
-#[op]
-impl Navigator {
-  #[constructor]
-  fn new() -> Result<Self, OpError> {
-    Err(OpError::type_("Illegal constructor"))
-  }
-
-  #[getter]
-  fn clipboard(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    crate::shell::clipboard::instance(scope)
-  }
-
-  #[getter]
-  fn wake_lock(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    crate::wake::instance(scope)
-  }
-
-  #[getter]
-  fn keyboard(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    crate::input::keyboard::instance(scope)
-  }
-
-  #[getter]
-  fn max_touch_points(&self) -> i32 {
-    let _ = self;
-    super::touch::max_touch_points()
-  }
-
-  fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {
-    let _ = self;
-    let slots = STORE.with(|slot| slot.borrow().slots.clone());
-    let array = v8::Array::new(scope, slots.len() as i32);
-    for (index, token) in slots.into_iter().enumerate() {
-      let value = match token.and_then(|token| pad_object(scope, token)) {
-        Some(object) => {
-          let value: v8::Local<v8::Value> = object.into();
-          value
-        }
-        None => v8::null(scope).into(),
-      };
-      array.set_index(scope, index as u32, value);
-    }
-    js_array(scope, array)
   }
 }
 

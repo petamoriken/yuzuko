@@ -70,7 +70,7 @@
       ]
     },
     {
-      "reason": "Navigator exposes userAgent, platform, hardwareConcurrency, maxTouchPoints, clipboard, wakeLock, keyboard, gpu, and getGamepads.",
+      "reason": "Navigator exposes userAgent, platform, hardwareConcurrency, language, languages, maxTouchPoints, clipboard, wakeLock, keyboard, gpu, and getGamepads.",
       "members": [
         "Navigator.appCodeName",
         "Navigator.appName",
@@ -82,8 +82,6 @@
         "Navigator.doNotTrack",
         "Navigator.geolocation",
         "Navigator.javaEnabled",
-        "Navigator.language",
-        "Navigator.languages",
         "Navigator.locks",
         "Navigator.login",
         "Navigator.mediaCapabilities",

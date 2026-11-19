@@ -187,7 +187,53 @@ fn install_navigator(scope: &mut v8::PinScope, global: v8::Local<v8::Object>) {
   js::set_value(scope, navigator, "platform", platform.into());
   let cores = v8::Integer::new_from_unsigned(scope, hardware_concurrency());
   js::set_value(scope, navigator, "hardwareConcurrency", cores.into());
+  // A dedicated worker installs these on `WorkerNavigator.prototype`. An own
+  // accessor would shadow that and fail the IDL harness.
+  if !host::is_dedicated_worker() {
+    define_navigator_getter(scope, navigator, "language", navigator_language);
+    define_navigator_getter(scope, navigator, "languages", navigator_languages);
+  }
   js::set_value(scope, global, "navigator", navigator.into());
+}
+
+fn define_navigator_getter(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+) {
+  let getter = v8::Function::builder(callback)
+    .length(0)
+    .constructor_behavior(v8::ConstructorBehavior::Throw)
+    .build(scope)
+    .unwrap();
+  let label = format!("get {name}");
+  let getter_name = v8::String::new(scope, &label).unwrap();
+  getter.set_name(getter_name);
+  let key = v8::String::new(scope, name).unwrap();
+  let get: v8::Local<v8::Value> = getter.into();
+  let set: v8::Local<v8::Value> = v8::undefined(scope).into();
+  let mut descriptor = v8::PropertyDescriptor::new_from_get_set(get, set);
+  descriptor.set_enumerable(true);
+  descriptor.set_configurable(true);
+  let _ = object.define_property(scope, key.into(), &descriptor);
+}
+
+fn navigator_language(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let text = v8::String::new(scope, &crate::primary_language()).unwrap();
+  ret.set(text.into());
+}
+
+fn navigator_languages(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(crate::languages_array(scope).into());
 }
 
 /// Logical processors available to this process.

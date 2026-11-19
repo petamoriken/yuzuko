@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use yuzuko_core::op::{OpError, OpException};
+use yuzuko_core::op::{Js, OpError, OpException};
 use yuzuko_core::{
   Inbound, ScriptKind, WorkerScript, agent_alive, agent_id,
   eval_classic_in_worker, is_dedicated_worker, load_worker_source,
@@ -547,6 +547,23 @@ impl WorkerNavigator {
   #[constructor]
   fn new() -> Result<Self, OpError> {
     Err(OpError::type_("Illegal constructor"))
+  }
+
+  // The dedicated-worker navigator is a plain object. These getters stay on
+  // the prototype and accept that object, so they do not brand-check `this`.
+  #[getter]
+  fn language(#[this] _navigator: v8::Local<v8::Object>) -> String {
+    yuzuko_core::primary_language()
+  }
+
+  #[getter]
+  fn languages(
+    #[this] _navigator: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> Js {
+    let array = yuzuko_core::languages_array(scope);
+    let value: v8::Local<v8::Value> = array.into();
+    Js(v8::Global::new(scope, value))
   }
 }
 

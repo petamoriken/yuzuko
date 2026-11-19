@@ -26,6 +26,7 @@ mod jobs;
 mod js;
 mod line;
 mod loader;
+mod locale;
 pub mod op;
 mod parcel;
 mod permissions;
@@ -88,6 +89,7 @@ pub use js::{
 };
 pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};
+pub use locale::{languages_array, preferred_languages, primary_language};
 pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
 pub use permissions::{
   PermissionRules, PermissionSpec, authorize_url, check_env, check_env_all,
