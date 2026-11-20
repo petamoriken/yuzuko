@@ -668,11 +668,7 @@
     "ignore": "The file needs a document."
   },
   "fetch/api/cors/data-url-shared-worker.html": {
-    "expectedFailures": [
-      "fetching \"top.txt\" with CORS allowing null origin should be allowed.",
-      "fetching \"top.txt\" without ACAO should be rejected.",
-      "fetching data url script should be allowed."
-    ]
+    "ignore": "The runner has no shared worker or service worker."
   },
   "fetch/api/cors/data-url-worker.html": {
     "expectedFailures": [
@@ -2412,7 +2408,9 @@
   "fetch/local-network-access/service-worker.tentative.https.html": {
     "ignore": "The runner has no shared worker or service worker."
   },
-  "fetch/local-network-access/shared-worker.tentative.https.html": false,
+  "fetch/local-network-access/shared-worker.tentative.https.html": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
   "fetch/local-network-access/websocket.tentative.https.html": false,
   "fetch/local-network-access/webtransport.tentative.https.html": false,
   "fetch/metadata/audio-worklet.https.html": {

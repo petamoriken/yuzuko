@@ -23,34 +23,11 @@
   "streams/piping/throwing-options.any.js": true,
   "streams/piping/transform-streams.any.js": true,
   "streams/queuing-strategies-size-function-navigation.window.js": {
-    "expectedFailures": [
-      "ByteLengthQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (cross-site)",
-      "ByteLengthQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (same-host different-port)",
-      "ByteLengthQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (same-origin)",
-      "ByteLengthQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (subdomain)",
-      "ByteLengthQueuingStrategy size getter preserves relevant realm across cross-site navigation after caching",
-      "ByteLengthQueuingStrategy size getter preserves relevant realm across same-host different-port navigation after caching",
-      "ByteLengthQueuingStrategy size getter preserves relevant realm across same-origin navigation after caching",
-      "ByteLengthQueuingStrategy size getter preserves relevant realm across subdomain navigation after caching",
-      "ByteLengthQueuingStrategy size getter uses relevant realm when first accessed after cross-site navigation",
-      "ByteLengthQueuingStrategy size getter uses relevant realm when first accessed after same-host different-port navigation",
-      "ByteLengthQueuingStrategy size getter uses relevant realm when first accessed after same-origin navigation",
-      "ByteLengthQueuingStrategy size getter uses relevant realm when first accessed after subdomain navigation",
-      "CountQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (cross-site)",
-      "CountQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (same-host different-port)",
-      "CountQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (same-origin)",
-      "CountQueuingStrategy size getter in navigated realm is independent of pre-navigation instance (subdomain)",
-      "CountQueuingStrategy size getter preserves relevant realm across cross-site navigation after caching",
-      "CountQueuingStrategy size getter preserves relevant realm across same-host different-port navigation after caching",
-      "CountQueuingStrategy size getter preserves relevant realm across same-origin navigation after caching",
-      "CountQueuingStrategy size getter preserves relevant realm across subdomain navigation after caching",
-      "CountQueuingStrategy size getter uses relevant realm when first accessed after cross-site navigation",
-      "CountQueuingStrategy size getter uses relevant realm when first accessed after same-host different-port navigation",
-      "CountQueuingStrategy size getter uses relevant realm when first accessed after same-origin navigation",
-      "CountQueuingStrategy size getter uses relevant realm when first accessed after subdomain navigation"
-    ]
+    "ignore": "The file needs a document."
   },
-  "streams/queuing-strategies-size-function-per-global.window.js": false,
+  "streams/queuing-strategies-size-function-per-global.window.js": {
+    "ignore": "The file needs a document."
+  },
   "streams/queuing-strategies.any.js": true,
   "streams/readable-byte-streams/bad-buffers-and-views.any.js": true,
   "streams/readable-byte-streams/construct-byob-request.any.js": true,
@@ -89,9 +66,7 @@
     "ignore": "The file is not a testharness document."
   },
   "streams/readable-streams/cross-realm-crash.window.js": {
-    "expectedFailures": [
-      "should not crash on reading from stream cancelled in destroyed realm"
-    ]
+    "ignore": "The file needs a document."
   },
   "streams/readable-streams/default-reader.any.js": true,
   "streams/readable-streams/floating-point-total-queue-size.any.js": true,
@@ -113,7 +88,9 @@
   "streams/readable-streams/tee.any.js": true,
   "streams/readable-streams/templated.any.js": true,
   "streams/transferable/audioworklet.https.html": true,
-  "streams/transferable/deserialize-error.window.js": false,
+  "streams/transferable/deserialize-error.window.js": {
+    "ignore": "The file needs a document."
+  },
   "streams/transferable/gc-crash.html": {
     "ignore": "The file is not a testharness document."
   },
@@ -123,22 +100,9 @@
     "ignore": "The runner has no shared worker or service worker."
   },
   "streams/transferable/shared-worker.html": {
-    "expectedFailures": [
-      "postMessage in a worker should be able to transfer a ReadableStream",
-      "worker.postMessage should be able to transfer a ReadableStream"
-    ]
+    "ignore": "The runner has no shared worker or service worker."
   },
-  "streams/transferable/transfer-with-messageport.window.js": {
-    "expectedFailures": [
-      "Transferring a MessagePort with a ReadableStream should set `.ports`",
-      "Transferring a MessagePort with a ReadableStream should set `.ports`, advanced",
-      "Transferring a MessagePort with a TransformStream should set `.ports`",
-      "Transferring a MessagePort with a TransformStream should set `.ports`, advanced",
-      "Transferring a MessagePort with a WritableStream should set `.ports`",
-      "Transferring a MessagePort with a WritableStream should set `.ports`, advanced",
-      "Transferring a MessagePort with multiple streams should set `.ports`"
-    ]
-  },
+  "streams/transferable/transfer-with-messageport.window.js": true,
   "streams/transferable/transform-stream-members.any.js": true,
   "streams/transferable/transform-stream.html": true,
   "streams/transferable/window.html": {
@@ -152,9 +116,7 @@
   "streams/transform-streams/flush.any.js": true,
   "streams/transform-streams/general.any.js": true,
   "streams/transform-streams/invalid-realm.tentative.window.js": {
-    "expectedFailures": [
-      "TransformStream: write in detached realm should succeed"
-    ]
+    "ignore": "The file needs a document."
   },
   "streams/transform-streams/lipfuzz.any.js": true,
   "streams/transform-streams/patched-global.any.js": true,

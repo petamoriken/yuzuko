@@ -104,5 +104,50 @@
   "eventsource/request-cache-control.any.js": false,
   "eventsource/request-credentials.window.js": false,
   "eventsource/request-redirect.window.js": false,
-  "eventsource/request-status-error.window.js": false
+  "eventsource/request-status-error.window.js": false,
+  "eventsource/shared-worker/eventsource-close.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-close.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-constructor-non-same-origin.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-constructor-non-same-origin.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-constructor-url-bogus.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-eventtarget.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-eventtarget.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-onmesage.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-onmessage.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-onopen.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-onopen.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-prototype.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-prototype.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-url.htm": {
+    "ignore": "The runner has no shared worker or service worker."
+  },
+  "eventsource/shared-worker/eventsource-url.js": {
+    "ignore": "The runner has no shared worker or service worker."
+  }
 }

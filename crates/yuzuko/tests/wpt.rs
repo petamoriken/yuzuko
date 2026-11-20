@@ -32,6 +32,10 @@ globalThis.GLOBAL = {
 if (!("Window" in globalThis)) {
   globalThis.Window = function Window() {};
 }
+// Page tests name the realm `window`. The product global does not.
+if (!("window" in globalThis)) {
+  globalThis.window = globalThis;
+}
 "#;
 
 /// `promise_setup` records `assert_implements_optional` as a harness error.
@@ -566,13 +570,19 @@ fn skip_reason(path: &Path, key: &str) -> String {
 }
 
 fn shared_or_service(key: &str, name: &str) -> bool {
-  let key = key.to_ascii_lowercase();
-  let name = name.to_ascii_lowercase();
-  key.contains("service-worker")
-    || key.contains("serviceworker")
+  let key = compact_worker_name(&key.to_ascii_lowercase());
+  let name = compact_worker_name(&name.to_ascii_lowercase());
+  key.contains("serviceworker")
+    || key.contains("sharedworker")
     || name.contains("sharedworker")
-    || key.contains("/sharedworker")
-    || key.contains("sharedworker/")
+}
+
+/// `shared-worker`, `shared_worker`, and `sharedworker` are one name.
+fn compact_worker_name(value: &str) -> String {
+  value
+    .chars()
+    .filter(|ch| *ch != '-' && *ch != '_')
+    .collect()
 }
 
 /// `global=worker` or `dedicatedworker`, without a window or shell variant.
@@ -655,9 +665,9 @@ fn execute(
   shared: &SharedScripts,
 ) -> Outcome {
   let path = suite.join(&case.key);
-  let source = match fs::read_to_string(&path) {
+  let source = match read_lossy(&path) {
     Ok(source) => source,
-    Err(error) => return Outcome::Error(error.to_string()),
+    Err(error) => return Outcome::Error(error),
   };
   let queries = variant_queries(&source);
   let mut parts = Vec::with_capacity(queries.len());
@@ -721,11 +731,10 @@ fn execute_query(
         parts.insert(0, OPTIONAL_ASSERT.to_string());
         parts.insert(0, session.interned_source(shared.harness).to_string());
         parts.push(source.to_string());
-        if !source.contains("done()") {
-          // Dedicated workers wait for an explicit `done()`. The WPT server
-          // appends it when it wraps a worker `.any.js`.
-          parts.push("done();\n".to_string());
-        }
+        // Dedicated workers set `wait_for_finish`. The WPT server always
+        // appends `done()` after the test. `step_func_done` contains the
+        // substring `done()` and is not that call.
+        parts.push("done();\n".to_string());
         // The script URL stays on the WPT origin. A data: URL cannot resolve
         // a path-absolute importScripts, so the harness body is served for
         // this http URL instead of being inlined into a data: worker.
@@ -992,6 +1001,12 @@ impl Drop for WptServer {
   }
 }
 
+/// UTF-8 with U+FFFD, so a classic worker fixture can contain an invalid byte.
+fn read_lossy(path: &Path) -> Result<String, String> {
+  let bytes = fs::read(path).map_err(|error| error.to_string())?;
+  Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 fn port_open() -> bool {
   std::net::TcpStream::connect_timeout(
     &std::net::SocketAddr::from(([127, 0, 0, 1], 8000)),
@@ -1051,9 +1066,19 @@ fn location_script(
         WPT_HTTP.to_string(),
       )
     } else {
+      let canonical =
+        yuzuko_core::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+      let href = yuzuko_core::file_url(&canonical).unwrap_or_default();
+      let pathname = href
+        .strip_prefix("file://")
+        .unwrap_or(&href)
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_string();
       (
-        yuzuko_core::file_url(path).unwrap_or_default(),
-        String::new(),
+        href,
+        pathname,
         "file:".to_string(),
         String::new(),
         String::new(),
