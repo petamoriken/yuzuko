@@ -2813,6 +2813,10 @@ fn read_data_transfer(
 }
 
 pub(crate) fn install(scope: &mut v8::PinScope) {
+  // UI Events, pointer events, touch events, and `DragEvent` are Exposed=Window.
+  if yuzuko_core::is_dedicated_worker() {
+    return;
+  }
   UIEvent::install(scope);
   FocusEvent::install(scope);
   MouseEvent::install(scope);
