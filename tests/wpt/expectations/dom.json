@@ -65,9 +65,7 @@
     "ignore": "The file needs a document."
   },
   "dom/events/Event-dispatch-listener-order.window.js": {
-    "expectedFailures": [
-      ""
-    ]
+    "ignore": "The file needs a document."
   },
   "dom/events/Event-dispatch-multiple-cancelBubble.html": {
     "ignore": "The file needs a document."
@@ -137,19 +135,8 @@
   "dom/events/Event-timestamp-cross-realm-getter.html": {
     "ignore": "The file needs a document."
   },
-  "dom/events/Event-timestamp-high-resolution.html": {
-    "expectedFailures": [
-      "Constructed FocusEvent timestamp should be high resolution and have the same time origin as performance.now()",
-      "Constructed KeyboardEvent timestamp should be high resolution and have the same time origin as performance.now()",
-      "Constructed MouseEvent timestamp should be high resolution and have the same time origin as performance.now()",
-      "Constructed WheelEvent timestamp should be high resolution and have the same time origin as performance.now()"
-    ]
-  },
-  "dom/events/Event-timestamp-high-resolution.https.html": {
-    "expectedFailures": [
-      "Constructed GamepadEvent timestamp should be high resolution and have the same time origin as performance.now()"
-    ]
-  },
+  "dom/events/Event-timestamp-high-resolution.html": true,
+  "dom/events/Event-timestamp-high-resolution.https.html": true,
   "dom/events/Event-timestamp-safe-resolution.html": {
     "expectedFailures": [
       "Event timestamp should not have a resolution better than 5 microseconds"
@@ -235,7 +222,7 @@
   "dom/events/event-global-replaceable.html": {
     "ignore": "The file needs a document."
   },
-  "dom/events/event-global-set-before-handleEvent-lookup.window.js": false,
+  "dom/events/event-global-set-before-handleEvent-lookup.window.js": true,
   "dom/events/event-global.html": {
     "ignore": "The file needs a document."
   },
@@ -570,14 +557,6 @@
   "dom/events/webkit-animation-iteration-event.html": false,
   "dom/events/webkit-animation-start-event.html": false,
   "dom/events/webkit-transition-end-event.html": false,
-  "dom/events/window-composed-path.html": {
-    "expectedFailures": [
-      "window target has an empty path after dispatch"
-    ]
-  },
-  "dom/events/window-event-restored-after-throwing-onerror.html": {
-    "expectedFailures": [
-      "window.event is restored after a throwing window.onerror handler"
-    ]
-  }
+  "dom/events/window-composed-path.html": true,
+  "dom/events/window-event-restored-after-throwing-onerror.html": true
 }

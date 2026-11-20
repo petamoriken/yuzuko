@@ -13,12 +13,7 @@
   "user-timing/idlharness.any.js": true,
   "user-timing/invoke_with_timing_attributes.html": false,
   "user-timing/invoke_with_timing_attributes.worker.js": true,
-  "user-timing/invoke_without_parameter.html": {
-    "expectedFailures": [
-      "window.performance.mark() throws a TypeError exception when invoke without a parameter.",
-      "window.performance.measure() throws a TypeError exception when invoke without a parameter."
-    ]
-  },
+  "user-timing/invoke_without_parameter.html": true,
   "user-timing/mark-entry-constructor.any.js": true,
   "user-timing/mark-errors.any.js": true,
   "user-timing/mark-l3.any.js": true,

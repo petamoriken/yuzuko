@@ -862,10 +862,8 @@
       "Request interface: new Request('about:blank') must inherit property \"mode\" with the proper type",
       "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
       "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
-      "Window interface: calling fetch(RequestInfo, optional RequestInit) on window with too few arguments must throw TypeError",
       "Window interface: calling fetchLater(RequestInfo, optional DeferredRequestInit) on window with too few arguments must throw TypeError",
       "Window interface: operation fetchLater(RequestInfo, optional DeferredRequestInit)",
-      "Window interface: window must inherit property \"fetch(RequestInfo, optional RequestInit)\" with the proper type",
       "Window interface: window must inherit property \"fetchLater(RequestInfo, optional DeferredRequestInit)\" with the proper type"
     ]
   },
@@ -2024,11 +2022,7 @@
       "A same-origin window[target='_blank'][features='popup'] can trigger fetchLater."
     ]
   },
-  "fetch/fetch-later/non-secure.window.js": {
-    "expectedFailures": [
-      "fetchLater() is not supported in non-secure context."
-    ]
-  },
+  "fetch/fetch-later/non-secure.window.js": true,
   "fetch/fetch-later/permissions-policy/deferred-fetch-allowed-by-permissions-policy-attribute-redirect.https.window.js": {
     "expectedFailures": [
       "Permissions policy allow=\"deferred-fetch\" allows fetchLater() from a redirected same-origin iframe.",
@@ -2944,10 +2938,7 @@
     ]
   },
   "fetch/range/general.window.js": {
-    "expectedFailures": [
-      "Fetch with range header will be sent with Accept-Encoding: identity",
-      "Script executed from partial response"
-    ]
+    "ignore": "The file needs a document."
   },
   "fetch/range/non-matching-range-response.html": {
     "ignore": "The file needs a document."

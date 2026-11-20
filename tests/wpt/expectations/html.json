@@ -11,11 +11,7 @@
   "html/canvas/element/manual/imagebitmap/common.sub.js": {
     "ignore": "The runner does not apply .sub. substitutions."
   },
-  "html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html": true,
   "html/canvas/element/manual/imagebitmap/createImageBitmap-bounds.html": {
     "ignore": "The file needs a document."
   },
@@ -108,29 +104,13 @@
   "html/canvas/offscreen/canvas-context/2d.canvas.context.prototype.worker.js": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.shared.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.shared.worker.js": true,
-  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.exists.html": {
-    "expectedFailures": [
-      "The 2D context interface is a property of 'window'"
-    ]
-  },
+  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.exists.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.type.exists.worker.js": true,
-  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.extend.html": {
-    "expectedFailures": [
-      "Interface methods can be added"
-    ]
-  },
+  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.extend.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.type.extend.worker.js": true,
-  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.prototype.html": {
-    "expectedFailures": [
-      "window.CanvasRenderingContext2D.prototype are not [[Writable]] and not [[Configurable]], and its methods are [[Configurable]]."
-    ]
-  },
+  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.prototype.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.type.prototype.worker.js": true,
-  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.replace.html": {
-    "expectedFailures": [
-      "Interface methods can be overridden"
-    ]
-  },
+  "html/canvas/offscreen/canvas-context/2d.canvas.context.type.replace.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.type.replace.worker.js": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.unique.html": true,
   "html/canvas/offscreen/canvas-context/2d.canvas.context.unique.worker.js": true,
@@ -204,11 +184,7 @@
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.invalid.attributes.idl.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.large.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.size.large.worker.js": true,
-  "html/canvas/offscreen/canvas-host/2d.canvas.host.type.delete.html": {
-    "expectedFailures": [
-      "OffscreenCanvas interface object is [[Configurable]]"
-    ]
-  },
+  "html/canvas/offscreen/canvas-host/2d.canvas.host.type.delete.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.delete.worker.js": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.name.html": true,
   "html/canvas/offscreen/canvas-host/2d.canvas.host.type.name.worker.js": true,
@@ -1032,17 +1008,9 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidcolor.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.html": {
-    "expectedFailures": [
-      "createLinearGradient() and createRadialGradient() returns objects implementing CanvasGradient"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.type.html": {
-    "expectedFailures": [
-      "window.CanvasGradient exists and has the right properties"
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.type.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.type.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.update.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.update.worker.js": true,
@@ -1117,11 +1085,7 @@
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.image.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.nocontext.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.nocontext.worker.js": true,
-  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.type.html": {
-    "expectedFailures": [
-      ""
-    ]
-  },
+  "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.type.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.type.worker.js": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.zerocanvas.html": true,
   "html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.zerocanvas.worker.js": true,
@@ -3925,14 +3889,7 @@
   "html/webappapis/timers/arguments.html": true,
   "html/webappapis/timers/clearinterval-from-callback.any.js": true,
   "html/webappapis/timers/cleartimeout-clearinterval.any.js": true,
-  "html/webappapis/timers/errors.html": {
-    "expectedFailures": [
-      "setInterval, function argument",
-      "setInterval, string argument",
-      "setTimeout, function argument",
-      "setTimeout, string argument"
-    ]
-  },
+  "html/webappapis/timers/errors.html": true,
   "html/webappapis/timers/evil-spec-example.any.js": true,
   "html/webappapis/timers/missing-timeout-setinterval.any.js": true,
   "html/webappapis/timers/negative-setinterval.any.js": true,
@@ -3948,7 +3905,7 @@
     "ignore": "The file needs a document."
   },
   "html/webappapis/timers/settimeout-setinterval-handles.html": true,
-  "html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html": false,
+  "html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html": true,
   "html/webappapis/timers/type-long-setinterval.any.js": true,
   "html/webappapis/timers/type-long-settimeout.any.js": true,
   "html/webappapis/timers/zero-settimeout.any.js": true
