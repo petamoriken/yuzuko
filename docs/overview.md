@@ -14,7 +14,7 @@ This page introduces the surfaces. Normative behavior is [spec.md](spec.md). Int
 
 A dedicated worker runs on its own thread, in its own isolate. It receives the JavaScript runtime and the feature surfaces that are not tied to an OS window: fetch, sockets, files, datagrams, TCP, the HTTP server, signals, child processes, foreign functions, Web Audio, WebCodecs, images, Canvas 2D on an `OffscreenCanvas`, fonts, and WebGPU. It has `requestAnimationFrame` and `cancelAnimationFrame`. It does not have `requestIdleCallback`, `Yuzuko.Window`, the application menu, tray, dock, dialog labels, clipboard, gamepad, screen Wake Lock, or the accessibility nodes.
 
-An `AudioWorklet` processor realm has `Intl`, `AudioWorkletProcessor`, and the processor `port`. `Yuzuko` and the feature surfaces are not installed there.
+An `AudioWorklet` processor realm has `Intl`, `AudioWorkletProcessor`, the processor `port`, `WorkletPerformance`, and a replaceable `performance`. `Yuzuko` and the feature surfaces are not installed there.
 
 A name from a feature that was not enabled is absent. An unimplemented method throws `NotSupportedError`.
 

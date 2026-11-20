@@ -1,13 +1,5 @@
 {
-  "hr-time/audioworklet.https.html": {
-    "expectedFailures": [
-      "AudioWorkletGlobalScope exposes WorkletPerformance on performance",
-      "AudioWorkletGlobalScope performance attribute is [Replaceable]",
-      "High resolution time in AudioWorkletGlobalScope has approximately the right relative magnitude",
-      "Multiple AudioWorklet contexts and Window share the same time origin and monotonic clock",
-      "performance.now() returns positive, monotonically non-decreasing values in AudioWorkletGlobalScope"
-    ]
-  },
+  "hr-time/audioworklet.https.html": true,
   "hr-time/basic.any.js": true,
   "hr-time/clamped-time-origin-isolated.https.html": {
     "expectedFailures": [

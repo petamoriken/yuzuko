@@ -6898,9 +6898,27 @@ declare var Performance: {
 /**
  * The realm's performance object.
  *
+ * An `AudioWorklet` processor realm exposes {@link WorkletPerformance} on a
+ * replaceable `performance` attribute.
+ *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/performance)
  */
 declare var performance: Performance;
+
+/**
+ * High-resolution time in an `AudioWorklet` processor realm. The constructor
+ * exists only there. The main realm and a dedicated worker leave the name
+ * absent. `now()` uses the same clock as {@link Performance.now} and is not
+ * coarsened. `timeOrigin` and `toJSON` are absent. The prototype parent is
+ * `Object.prototype`. `performance` in that realm is one instance. Assigning
+ * `performance` replaces the attribute with a data property.
+ *
+ * @throws {@link TypeError} Illegal constructor.
+ */
+interface WorkletPerformance {
+  /** Milliseconds since the time origin. The value is not coarsened. */
+  now(): DOMHighResTimeStamp;
+}
 
 interface PerformanceMarkOptions {
   detail?: any;
@@ -14775,6 +14793,9 @@ interface PeriodicWaveOptions extends PeriodicWaveConstraints {
 
 /**
  * Loads worklet processors.
+ *
+ * The processor realm has {@link WorkletPerformance} and a replaceable
+ * `performance`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioWorklet)
  */

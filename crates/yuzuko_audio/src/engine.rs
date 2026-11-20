@@ -3815,6 +3815,8 @@ pub fn ensure_worklet(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
     yuzuko_core::delete_object_prototype_proto(scope);
     yuzuko_core::delete_intl_v8_break_iterator(scope);
     install_worklet_host(scope, id);
+    install_worklet_performance(scope)
+      .map_err(|message| Fault::type_(&message))?;
     let global = scope.get_current_context().global(scope);
     let key = v8::String::new(scope, "port").unwrap();
     global.set(scope, key.into(), worker_port.into());
@@ -3834,6 +3836,91 @@ pub fn ensure_worklet(scope: &mut v8::PinScope, id: u64) -> Result<(), Fault> {
   });
   publish_worklet_time(scope, id);
   Ok(())
+}
+
+/// `[Replaceable]` `performance` on this worklet global.
+///
+/// A JavaScript accessor, not a V8 native one: assigning to a native
+/// accessor reenters its setter. The getter closes over one object. `now`
+/// uses the same clock as the main realm. The constructor stays off the
+/// main realm and a dedicated worker.
+fn install_worklet_performance(scope: &mut v8::PinScope) -> Result<(), String> {
+  let Some(now) = v8::Function::new(scope, worklet_now) else {
+    return Err("performance.now could not be installed".to_string());
+  };
+  let name = v8::String::new(scope, "now").unwrap();
+  now.set_name(name);
+  let source = v8::String::new(
+    scope,
+    r#"(now) => {
+      const reflectApply = Reflect.apply;
+      const defineProperty = Object.defineProperty;
+      const ObjectCtor = Object;
+      const create = Object.create;
+      const TypeErrorCtor = TypeError;
+      function define(target, key, descriptor) {
+        return reflectApply(defineProperty, ObjectCtor, [target, key, descriptor]);
+      }
+      function WorkletPerformance() {
+        throw new TypeErrorCtor("Illegal constructor");
+      }
+      define(WorkletPerformance.prototype, "now", {
+        value: now,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      const performanceObject = create(WorkletPerformance.prototype);
+      define(globalThis, "WorkletPerformance", {
+        value: WorkletPerformance,
+        writable: true,
+        enumerable: false,
+        configurable: true
+      });
+      define(globalThis, "performance", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return performanceObject;
+        },
+        set(value) {
+          define(this, "performance", {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true
+          });
+        }
+      });
+    }"#,
+  )
+  .expect("worklet performance");
+  let Some(script) = v8::Script::compile(scope, source, None) else {
+    return Err("performance.now could not be installed".to_string());
+  };
+  let Some(installer) = script.run(scope) else {
+    return Err("performance.now could not be installed".to_string());
+  };
+  let Ok(installer) = v8::Local::<v8::Function>::try_from(installer) else {
+    return Err("performance.now could not be installed".to_string());
+  };
+  let global = scope.get_current_context().global(scope);
+  if installer
+    .call(scope, global.into(), &[now.into()])
+    .is_none()
+  {
+    return Err("performance.now could not be installed".to_string());
+  }
+  Ok(())
+}
+
+fn worklet_now(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let millis = yuzuko_core::performance_now_ms();
+  ret.set(v8::Number::new(scope, millis).into());
 }
 
 fn install_worklet_host(scope: &mut v8::PinScope, id: u64) {
