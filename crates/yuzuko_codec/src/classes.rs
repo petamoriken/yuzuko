@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::Arc;
 
 use yuzuko_core::op::{
   Js, New, OpError, host_ref, new_dom_exception, traced, traced_local,
@@ -45,7 +46,7 @@ struct ChunkParts {
 }
 
 pub struct VideoFrame {
-  body: RefCell<Option<FrameData>>,
+  body: RefCell<Option<Arc<FrameData>>>,
   timestamp: Cell<f64>,
   duration: Cell<Option<f64>>,
 }
@@ -72,6 +73,14 @@ impl VideoFrame {
     timestamp: f64,
     duration: Option<f64>,
   ) -> Self {
+    Self::from_shared(Arc::new(data), timestamp, duration)
+  }
+
+  pub(crate) fn from_shared(
+    data: Arc<FrameData>,
+    timestamp: f64,
+    duration: Option<f64>,
+  ) -> Self {
     Self {
       body: RefCell::new(Some(data)),
       timestamp: Cell::new(timestamp),
@@ -80,6 +89,15 @@ impl VideoFrame {
   }
 
   pub(crate) fn snapshot(&self) -> Option<FrameData> {
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|data| FrameData::clone(data.as_ref()))
+  }
+
+  /// Another handle to the planes and the display raster. A transfer parks this.
+  pub(crate) fn share(&self) -> Option<Arc<FrameData>> {
     self.body.borrow().clone()
   }
 
@@ -104,7 +122,12 @@ impl VideoFrame {
   }
 
   fn metric(&self, read: impl FnOnce(&FrameData) -> u32) -> u32 {
-    self.body.borrow().as_ref().map(read).unwrap_or(0)
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(|data| read(data))
+      .unwrap_or(0)
   }
 
   pub(crate) fn is_closed(&self) -> bool {
@@ -1206,7 +1229,26 @@ impl AudioData {
   }
 
   pub(crate) fn samples(&self) -> Option<crate::samples::AudioSamples> {
-    self.body.borrow().clone()
+    self
+      .body
+      .borrow()
+      .as_ref()
+      .map(crate::samples::AudioSamples::independent_copy)
+  }
+
+  /// Metadata and a shared handle to the sample bytes.
+  pub(crate) fn share_payload(&self) -> Option<crate::samples::SharedAudio> {
+    let body = self.body.borrow();
+    let samples = body.as_ref()?;
+    Some(crate::samples::SharedAudio {
+      kind: samples.kind,
+      planar: samples.planar,
+      channels: samples.channels,
+      frames: samples.frames,
+      rate: samples.rate,
+      timestamp: self.timestamp.get(),
+      bytes: samples.bytes.share(),
+    })
   }
 
   pub(crate) fn timestamp_us(&self) -> f64 {

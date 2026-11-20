@@ -35,11 +35,55 @@ impl SharedStore {
   }
 }
 
+/// Drops parked host allocations the receiver did not keep.
+struct Releases(Vec<Box<dyn FnOnce() + Send>>);
+
+impl Drop for Releases {
+  fn drop(&mut self) {
+    for release in self.0.drain(..) {
+      release();
+    }
+  }
+}
+
 pub struct Parcel {
   pub bytes: Vec<u8>,
   /// Transferred `ArrayBuffer` stores, keyed by the serializer's transfer id.
   pub buffers: Vec<(u32, SharedStore)>,
   pub shared: Vec<SharedStore>,
+  /// Host pixel and sample allocations. Dropped with the parcel, after a
+  /// successful read has cloned the ones it kept. Nothing reads the field:
+  /// `Releases` runs when the parcel drops.
+  #[allow(dead_code)]
+  releases: Releases,
+}
+
+/// Owns the resource frame for one `serialize_parcel`.
+///
+/// A failure runs the releases before the function returns, so the source
+/// objects stay intact. Success moves the releases onto the parcel.
+struct ResourceGuard {
+  armed: bool,
+}
+
+impl ResourceGuard {
+  fn open() -> Self {
+    clone::begin_resource_frame();
+    Self { armed: true }
+  }
+
+  fn commit(mut self) -> Vec<Box<dyn FnOnce() + Send>> {
+    self.armed = false;
+    clone::end_resource_frame(false)
+  }
+}
+
+impl Drop for ResourceGuard {
+  fn drop(&mut self) {
+    if self.armed {
+      clone::end_resource_frame(true);
+    }
+  }
 }
 
 struct CrossHost {
@@ -177,6 +221,7 @@ pub fn serialize_parcel(
   };
   clone::set_cross_agent(true, target_agent);
   clone::set_structured_transfer(objects.to_vec());
+  let resources = ResourceGuard::open();
   let shared = Rc::new(RefCell::new(Vec::new()));
   let moved = {
     v8::tc_scope!(let tc, scope);
@@ -209,6 +254,7 @@ pub fn serialize_parcel(
     let bytes = serializer.release();
     (bytes, moved)
   };
+  let releases = resources.commit();
   clone::detach_structured_transfers(scope);
   for buffer in buffers {
     let buffer = v8::Local::new(scope, buffer);
@@ -219,6 +265,7 @@ pub fn serialize_parcel(
     bytes: moved.0,
     buffers: moved.1,
     shared,
+    releases: Releases(releases),
   })
 }
 

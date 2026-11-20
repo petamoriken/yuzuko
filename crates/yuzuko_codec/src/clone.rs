@@ -1,5 +1,13 @@
 //! Structured clone for WebCodecs frames, samples, and encoded chunks.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+
 use yuzuko_core::ReadResult;
 use yuzuko_core::TransferStatus;
 use yuzuko_core::WriteResult;
@@ -16,8 +24,11 @@ use crate::classes::VideoFrame;
 use crate::layout::FrameColor;
 use crate::layout::FrameData;
 use crate::layout::PixelFormat;
+use crate::samples::AudioSamples;
 use crate::samples::MAX_BYTES;
+use crate::samples::SharedAudio;
 use crate::samples::kind_from_code;
+use crate::store::ByteStore;
 
 const TAG_AUDIO: u32 = 16;
 const TAG_FRAME: u32 = 17;
@@ -30,6 +41,7 @@ const MAX_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PLANE_BYTES: usize = 400_000_000;
 
 pub(crate) fn register() {
+  yuzuko_core::add_resource_frame_hooks(begin_seen, end_seen);
   yuzuko_core::add_host_clone(write_audio, read_audio);
   yuzuko_core::add_host_clone(write_frame, read_frame);
   yuzuko_core::add_host_clone(write_audio_chunk, read_audio_chunk);
@@ -40,6 +52,96 @@ pub(crate) fn register() {
   yuzuko_core::add_host_detach(detach_frame);
 }
 
+/// Sample allocations parked for a transfer. See the bitmap map.
+static AUDIO_MOVES: LazyLock<Mutex<HashMap<u64, SharedAudio>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
+static NEXT_AUDIO: AtomicU64 = AtomicU64::new(1);
+/// Frame allocations parked for a transfer. The `Arc` is the planes and the
+/// display raster. The source drops its handle only after the clone succeeds.
+static FRAME_MOVES: LazyLock<Mutex<HashMap<u64, Arc<FrameData>>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
+static NEXT_FRAME: AtomicU64 = AtomicU64::new(1);
+
+thread_local! {
+  static SEEN: RefCell<Vec<HashMap<usize, u64>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn begin_seen() {
+  SEEN.with(|slot| slot.borrow_mut().push(HashMap::new()));
+}
+
+fn end_seen() {
+  SEEN.with(|slot| {
+    slot.borrow_mut().pop();
+  });
+}
+
+fn seen_id(key: usize) -> Option<u64> {
+  SEEN.with(|slot| {
+    slot
+      .borrow()
+      .last()
+      .and_then(|seen| seen.get(&key).copied())
+  })
+}
+
+fn remember(key: usize, id: u64) {
+  SEEN.with(|slot| {
+    if let Some(seen) = slot.borrow_mut().last_mut() {
+      seen.insert(key, id);
+    }
+  });
+}
+
+fn park_audio(key: usize, audio: SharedAudio) -> u64 {
+  if let Some(id) = seen_id(key) {
+    return id;
+  }
+  let id = NEXT_AUDIO.fetch_add(1, Ordering::Relaxed);
+  AUDIO_MOVES.lock().expect("audio move").insert(id, audio);
+  let release_id = id;
+  yuzuko_core::note_resource_release(Box::new(move || {
+    AUDIO_MOVES.lock().expect("audio move").remove(&release_id);
+  }));
+  remember(key, id);
+  id
+}
+
+fn recall_audio(id: u64) -> Option<SharedAudio> {
+  let map = AUDIO_MOVES.lock().expect("audio move");
+  let audio = map.get(&id)?;
+  Some(SharedAudio {
+    kind: audio.kind,
+    planar: audio.planar,
+    channels: audio.channels,
+    frames: audio.frames,
+    rate: audio.rate,
+    timestamp: audio.timestamp,
+    bytes: audio.bytes.share_again(),
+  })
+}
+
+fn park_frame(key: usize, data: Arc<FrameData>) -> u64 {
+  if let Some(id) = seen_id(key) {
+    return id;
+  }
+  let id = NEXT_FRAME.fetch_add(1, Ordering::Relaxed);
+  FRAME_MOVES
+    .lock()
+    .expect("frame move")
+    .insert(id, Arc::clone(&data));
+  let release_id = id;
+  yuzuko_core::note_resource_release(Box::new(move || {
+    FRAME_MOVES.lock().expect("frame move").remove(&release_id);
+  }));
+  remember(key, id);
+  id
+}
+
+fn recall_frame(id: u64) -> Option<Arc<FrameData>> {
+  FRAME_MOVES.lock().expect("frame move").get(&id).cloned()
+}
+
 fn write_audio(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
@@ -48,7 +150,25 @@ fn write_audio(
   let Some(data) = (unsafe { host_ref::<AudioData>(scope, object) }) else {
     return WriteResult::Skip;
   };
-  let Some(samples) = data.get().samples() else {
+  let audio = data.get();
+  if is_structured_transfer(scope, object) {
+    let Some(payload) = audio.share_payload() else {
+      reject_clone(scope);
+      return WriteResult::Failed;
+    };
+    if payload.channels > crate::samples::MAX_CHANNELS
+      || payload.frames > crate::samples::MAX_FRAMES
+    {
+      reject_clone(scope);
+      return WriteResult::Failed;
+    }
+    let id = park_audio(std::ptr::from_ref(audio) as usize, payload);
+    helper.write_uint32(TAG_AUDIO);
+    helper.write_uint32(1);
+    helper.write_uint64(id);
+    return WriteResult::Wrote;
+  }
+  let Some(samples) = audio.samples() else {
     reject_clone(scope);
     return WriteResult::Failed;
   };
@@ -59,8 +179,9 @@ fn write_audio(
     return WriteResult::Failed;
   }
   helper.write_uint32(TAG_AUDIO);
+  helper.write_uint32(0);
   helper.write_double(samples.rate);
-  helper.write_double(data.get().timestamp_us());
+  helper.write_double(audio.timestamp_us());
   helper.write_uint32(samples.channels);
   helper.write_uint32(samples.frames);
   helper.write_uint32(samples.code());
@@ -76,14 +197,50 @@ fn read_audio(
   if tag != TAG_AUDIO {
     return ReadResult::Skip;
   }
-  let Some((samples, timestamp)) = read_audio_parts(helper) else {
+  let mut mode = 0u32;
+  if !helper.read_uint32(&mut mode) {
+    reject_clone(scope);
+    return ReadResult::Failed;
+  }
+  let built = if mode == 1 {
+    let mut id = 0u64;
+    if !helper.read_uint64(&mut id) {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    }
+    let Some(payload) = recall_audio(id) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    let Some(bytes) = ByteStore::from_share(payload.bytes) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    let Ok(samples) = AudioSamples::from_store(
+      payload.kind,
+      payload.planar,
+      payload.channels,
+      payload.frames,
+      payload.rate,
+      bytes,
+    ) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    (samples, payload.timestamp)
+  } else if mode == 0 {
+    let Some(parts) = read_audio_parts(helper) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    parts
+  } else {
     reject_clone(scope);
     return ReadResult::Failed;
   };
   let _ = AudioData::template(scope);
-  let wrapper = unsafe {
-    wrap_instance(scope, AudioData::from_samples(samples, timestamp))
-  };
+  let wrapper =
+    unsafe { wrap_instance(scope, AudioData::from_samples(built.0, built.1)) };
   ReadResult::Done(v8::Global::new(scope, wrapper))
 }
 
@@ -116,33 +273,86 @@ fn write_frame(
   let Some(frame) = (unsafe { host_ref::<VideoFrame>(scope, object) }) else {
     return WriteResult::Skip;
   };
-  let Some(data) = frame.get().snapshot() else {
+  let frame = frame.get();
+  if is_structured_transfer(scope, object) {
+    let Some(data) = frame.share() else {
+      reject_clone(scope);
+      return WriteResult::Failed;
+    };
+    if !planes_fit(&data) {
+      reject_clone(scope);
+      return WriteResult::Failed;
+    }
+    let id = park_frame(std::ptr::from_ref(frame) as usize, data);
+    helper.write_uint32(TAG_FRAME);
+    helper.write_uint32(1);
+    write_timing(helper, frame.timestamp_us(), frame.duration_us());
+    helper.write_uint64(id);
+    return WriteResult::Wrote;
+  }
+  let Some(data) = frame.snapshot() else {
     reject_clone(scope);
     return WriteResult::Failed;
   };
-  if data.planes.len() != data.format.plane_count()
-    || data
-      .planes
-      .iter()
-      .any(|plane| plane.len() > MAX_PLANE_BYTES)
-  {
+  if !planes_fit(&data) {
     reject_clone(scope);
     return WriteResult::Failed;
   }
   helper.write_uint32(TAG_FRAME);
-  helper.write_double(frame.get().timestamp_us());
-  match frame.get().duration_us() {
+  helper.write_uint32(0);
+  write_timing(helper, frame.timestamp_us(), frame.duration_us());
+  if !write_frame_body(helper, &data) {
+    reject_clone(scope);
+    return WriteResult::Failed;
+  }
+  WriteResult::Wrote
+}
+
+fn planes_fit(data: &FrameData) -> bool {
+  data.planes.len() == data.format.plane_count()
+    && data
+      .planes
+      .iter()
+      .all(|plane| plane.len() <= MAX_PLANE_BYTES)
+}
+
+fn write_timing(
+  helper: &dyn v8::ValueSerializerHelper,
+  timestamp: f64,
+  duration: Option<f64>,
+) {
+  helper.write_double(timestamp);
+  match duration {
     Some(duration) => {
       helper.write_uint32(1);
       helper.write_double(duration);
     }
     None => helper.write_uint32(0),
   }
-  if !write_frame_body(helper, &data) {
-    reject_clone(scope);
-    return WriteResult::Failed;
+}
+
+fn read_timing(
+  helper: &dyn v8::ValueDeserializerHelper,
+) -> Option<(f64, Option<f64>)> {
+  let mut timestamp = 0.0;
+  let mut duration_flag = 0u32;
+  if !helper.read_double(&mut timestamp)
+    || !helper.read_uint32(&mut duration_flag)
+  {
+    return None;
   }
-  WriteResult::Wrote
+  let duration = match duration_flag {
+    0 => None,
+    1 => {
+      let mut duration = 0.0;
+      if !helper.read_double(&mut duration) {
+        return None;
+      }
+      Some(duration)
+    }
+    _ => return None,
+  };
+  Some((timestamp, duration))
 }
 
 fn read_frame(
@@ -153,14 +363,38 @@ fn read_frame(
   if tag != TAG_FRAME {
     return ReadResult::Skip;
   }
-  let Some((data, timestamp, duration)) = read_frame_body(helper) else {
+  let mut mode = 0u32;
+  if !helper.read_uint32(&mut mode) {
+    reject_clone(scope);
+    return ReadResult::Failed;
+  }
+  let frame = if mode == 1 {
+    let Some((timestamp, duration)) = read_timing(helper) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    let mut id = 0u64;
+    if !helper.read_uint64(&mut id) {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    }
+    let Some(data) = recall_frame(id) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    VideoFrame::from_shared(data, timestamp, duration)
+  } else if mode == 0 {
+    let Some((data, timestamp, duration)) = read_frame_body(helper) else {
+      reject_clone(scope);
+      return ReadResult::Failed;
+    };
+    VideoFrame::from_data(data, timestamp, duration)
+  } else {
     reject_clone(scope);
     return ReadResult::Failed;
   };
   let _ = VideoFrame::template(scope);
-  let wrapper = unsafe {
-    wrap_instance(scope, VideoFrame::from_data(data, timestamp, duration))
-  };
+  let wrapper = unsafe { wrap_instance(scope, frame) };
   ReadResult::Done(v8::Global::new(scope, wrapper))
 }
 
@@ -197,24 +431,7 @@ fn write_frame_body(
 fn read_frame_body(
   helper: &dyn v8::ValueDeserializerHelper,
 ) -> Option<(FrameData, f64, Option<f64>)> {
-  let mut timestamp = 0.0;
-  let mut duration_flag = 0u32;
-  if !helper.read_double(&mut timestamp)
-    || !helper.read_uint32(&mut duration_flag)
-  {
-    return None;
-  }
-  let duration = match duration_flag {
-    0 => None,
-    1 => {
-      let mut duration = 0.0;
-      if !helper.read_double(&mut duration) {
-        return None;
-      }
-      Some(duration)
-    }
-    _ => return None,
-  };
+  let (timestamp, duration) = read_timing(helper)?;
   let mut format_code = 0u32;
   let mut coded_width = 0u32;
   let mut coded_height = 0u32;
@@ -545,4 +762,148 @@ fn read_limited(
     return Some(Vec::new());
   }
   Some(helper.read_raw_bytes(len)?.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::begin_seen;
+  use super::end_seen;
+  use super::park_audio;
+  use super::park_frame;
+  use super::recall_audio;
+  use super::recall_frame;
+  use crate::classes::AudioData;
+  use crate::classes::VideoFrame;
+  use crate::layout::frame_from_raster;
+  use crate::samples::AudioSamples;
+  use crate::samples::SampleKind;
+  use crate::store::ByteShare;
+  use std::sync::Arc;
+  use yuzuko_image::ColorSpace;
+  use yuzuko_image::Raster;
+  use yuzuko_image::SampleFormat;
+
+  fn owned(bytes: &ByteShare) -> &Arc<Vec<u8>> {
+    match bytes {
+      ByteShare::Owned(bytes) => bytes,
+      ByteShare::Shared { .. } => panic!("expected owned samples"),
+    }
+  }
+
+  fn red_frame() -> (VideoFrame, *const u8, *const u8) {
+    let mut raster =
+      Raster::new(1, 1, ColorSpace::Srgb, SampleFormat::Unorm8).unwrap();
+    raster.bytes[0] = 9;
+    let data = frame_from_raster(&raster);
+    let plane = data.planes[0].as_ptr();
+    let pixels = data.raster.bytes.as_ptr();
+    (VideoFrame::from_data(data, 3.0, None), plane, pixels)
+  }
+
+  #[test]
+  fn transferred_frame_shares_planes() {
+    let (frame, plane, pixels) = red_frame();
+    let shared = frame.share().unwrap();
+    assert_eq!(shared.planes[0].as_ptr(), plane);
+    assert_eq!(shared.raster.bytes.as_ptr(), pixels);
+    let copied = frame.snapshot().unwrap();
+    assert_ne!(copied.planes[0].as_ptr(), plane);
+    assert_ne!(copied.raster.bytes.as_ptr(), pixels);
+    assert_eq!(copied.planes[0][0], 9);
+    assert_eq!(copied.raster.bytes[0], 9);
+
+    begin_seen();
+    yuzuko_core::begin_resource_frame();
+    let key = std::ptr::from_ref(&frame) as usize;
+    let id = park_frame(key, Arc::clone(&shared));
+    assert_eq!(park_frame(key, Arc::clone(&shared)), id);
+    let taken = recall_frame(id).unwrap();
+    assert!(Arc::ptr_eq(&shared, &taken));
+    assert_eq!(Arc::strong_count(&taken), 4);
+    drop(shared);
+    frame.neuter();
+    assert!(frame.share().is_none());
+    yuzuko_core::end_resource_frame(true);
+    end_seen();
+    assert_eq!(Arc::strong_count(&taken), 1);
+    assert_eq!(taken.planes[0].as_ptr(), plane);
+    assert_eq!(taken.raster.bytes.as_ptr(), pixels);
+    assert_eq!(taken.planes[0][0], 9);
+    assert_eq!(taken.raster.bytes[0], 9);
+  }
+
+  #[test]
+  fn abandoned_frame_transfer_keeps_planes() {
+    let (frame, plane, pixels) = red_frame();
+    let shared = frame.share().unwrap();
+    yuzuko_core::begin_resource_frame();
+    let id =
+      park_frame(std::ptr::from_ref(&frame) as usize, Arc::clone(&shared));
+    yuzuko_core::end_resource_frame(true);
+    assert!(recall_frame(id).is_none());
+    assert!(!frame.is_closed());
+    assert_eq!(Arc::strong_count(&shared), 2);
+    let still = frame.share().unwrap();
+    assert!(Arc::ptr_eq(&shared, &still));
+    assert_eq!(still.planes[0].as_ptr(), plane);
+    assert_eq!(still.raster.bytes.as_ptr(), pixels);
+    assert_eq!(still.planes[0][0], 9);
+    assert_eq!(still.raster.bytes[0], 9);
+  }
+
+  fn pcm(bytes: &[u8], timestamp: f64) -> (AudioData, *const u8) {
+    let samples = AudioSamples::from_pcm(
+      SampleKind::U8,
+      false,
+      1,
+      u32::try_from(bytes.len()).unwrap(),
+      48_000.0,
+      bytes,
+    )
+    .unwrap();
+    let ptr = samples.bytes.as_slice().as_ptr();
+    (AudioData::from_samples(samples, timestamp), ptr)
+  }
+
+  #[test]
+  fn transferred_audio_shares_samples() {
+    let (data, ptr) = pcm(&[1, 2, 3, 4], 5.0);
+    let copied = data.samples().unwrap();
+    assert_ne!(copied.bytes.as_slice().as_ptr(), ptr);
+    assert_eq!(&copied.bytes[..], &[1, 2, 3, 4]);
+
+    begin_seen();
+    yuzuko_core::begin_resource_frame();
+    let key = std::ptr::from_ref(&data) as usize;
+    let id = park_audio(key, data.share_payload().unwrap());
+    assert_eq!(park_audio(key, data.share_payload().unwrap()), id);
+    let taken = recall_audio(id).unwrap();
+    assert_eq!(taken.bytes.as_ptr(), ptr);
+    assert_eq!(taken.timestamp, 5.0);
+    assert_eq!(Arc::strong_count(owned(&taken.bytes)), 3);
+    data.neuter();
+    assert!(data.share_payload().is_none());
+    yuzuko_core::end_resource_frame(true);
+    end_seen();
+    assert_eq!(Arc::strong_count(owned(&taken.bytes)), 1);
+    assert_eq!(owned(&taken.bytes).as_slice(), &[1, 2, 3, 4]);
+  }
+
+  #[test]
+  fn abandoned_audio_transfer_keeps_samples() {
+    let (data, ptr) = pcm(&[7, 8], 9.0);
+    let kept = data.share_payload().unwrap();
+    yuzuko_core::begin_resource_frame();
+    let id = park_audio(
+      std::ptr::from_ref(&data) as usize,
+      data.share_payload().unwrap(),
+    );
+    yuzuko_core::end_resource_frame(true);
+    assert!(recall_audio(id).is_none());
+    assert!(!data.is_closed());
+    assert_eq!(kept.bytes.as_ptr(), ptr);
+    assert_eq!(kept.timestamp, 9.0);
+    assert_eq!(owned(&kept.bytes).as_slice(), &[7, 8]);
+    assert_eq!(Arc::strong_count(owned(&kept.bytes)), 2);
+  }
 }

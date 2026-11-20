@@ -73,6 +73,20 @@ pub(crate) struct AudioSamples {
   pub bytes: ByteStore,
 }
 
+/// Sample metadata plus a shared byte allocation.
+///
+/// This is what a structured-clone transfer parks. `Owned` bytes are an
+/// `Arc`. A V8 backing store moves as [`crate::store::ByteShare`].
+pub(crate) struct SharedAudio {
+  pub kind: SampleKind,
+  pub planar: bool,
+  pub channels: u32,
+  pub frames: u32,
+  pub rate: f64,
+  pub timestamp: f64,
+  pub bytes: crate::store::ByteShare,
+}
+
 /// `copyTo` and `allocationSize` options after dictionary conversion.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CopyRequest {
@@ -152,6 +166,19 @@ impl AudioSamples {
       rate,
       bytes,
     })
+  }
+
+  /// A private copy. `AudioData.clone` and a non-transfer structured clone
+  /// leave both objects usable, so they do not share the allocation.
+  pub(crate) fn independent_copy(&self) -> Self {
+    Self {
+      kind: self.kind,
+      planar: self.planar,
+      channels: self.channels,
+      frames: self.frames,
+      rate: self.rate,
+      bytes: self.bytes.to_unique(),
+    }
   }
 
   /// Decoder output is planar `f32`. A short channel is padded with silence

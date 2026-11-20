@@ -60,10 +60,12 @@ pub use clone::{
   ReadResult, StructuredTransferGuard, TransferKind, TransferList,
   TransferReject, TransferStatus, WriteResult, add_clone_discard,
   add_clone_enter, add_clone_finisher, add_host_clone, add_host_detach,
-  add_host_transfer, blob_realm, clear_structured_transfer, collect_transfers,
-  cross_agent, cross_target, detach_structured_transfers,
-  is_structured_transfer, mark_blob_realm, read_bytes, read_text, reject_clone,
-  set_cross_agent, set_structured_transfer, write_bytes, write_text,
+  add_host_transfer, add_resource_frame_hooks, begin_resource_frame,
+  blob_realm, clear_structured_transfer, collect_transfers, cross_agent,
+  cross_target, detach_structured_transfers, end_resource_frame,
+  is_structured_transfer, mark_blob_realm, note_resource_release, read_bytes,
+  read_text, reject_clone, set_cross_agent, set_structured_transfer,
+  write_bytes, write_text,
 };
 pub use extensions::{
   add_extension, on_realm_drop, on_reload, on_reload_scope, on_reload_settled,

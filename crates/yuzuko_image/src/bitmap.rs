@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 use yuzuko_macros::op;
 
@@ -9,7 +10,7 @@ use crate::raster::Raster;
 
 pub struct ImageBitmap {
   detached: Cell<bool>,
-  raster: RefCell<Option<Raster>>,
+  raster: RefCell<Option<Arc<Raster>>>,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for ImageBitmap {
@@ -22,6 +23,10 @@ unsafe impl v8::cppgc::GarbageCollected for ImageBitmap {
 
 impl ImageBitmap {
   pub fn from_raster(raster: Raster) -> Self {
+    Self::from_shared(Arc::new(raster))
+  }
+
+  pub(crate) fn from_shared(raster: Arc<Raster>) -> Self {
     Self {
       detached: Cell::new(false),
       raster: RefCell::new(Some(raster)),
@@ -33,16 +38,30 @@ impl ImageBitmap {
   }
 
   pub fn copy_raster(&self) -> Option<Raster> {
+    self
+      .raster
+      .borrow()
+      .as_ref()
+      .map(|raster| Raster::clone(raster.as_ref()))
+  }
+
+  /// Another handle to the pixel allocation. A transfer parks this.
+  pub(crate) fn share_raster(&self) -> Option<Arc<Raster>> {
     self.raster.borrow().clone()
   }
 
   /// Detaches the bitmap and returns its pixels.
+  ///
+  /// A shared allocation is copied so the other handle keeps its bytes.
   pub fn take_raster(&self) -> Option<Raster> {
     if self.detached.get() {
       return None;
     }
     self.detached.set(true);
-    self.raster.borrow_mut().take()
+    let raster = self.raster.borrow_mut().take()?;
+    Some(
+      Arc::try_unwrap(raster).unwrap_or_else(|raster| Raster::clone(&raster)),
+    )
   }
 
   pub(crate) fn neuter(&self) {

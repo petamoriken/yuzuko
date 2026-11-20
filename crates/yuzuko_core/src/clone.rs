@@ -371,6 +371,80 @@ static ENTERS: Mutex<Vec<CloneEnterFn>> = Mutex::new(Vec::new());
 static DISCARDS: Mutex<Vec<CloneDiscardFn>> = Mutex::new(Vec::new());
 static FINISHERS: Mutex<Vec<CloneFinisher>> = Mutex::new(Vec::new());
 
+thread_local! {
+  /// Releases for allocations parked during the current serialize.
+  ///
+  /// A same-isolate clone reads those allocations before the session ends, so
+  /// ending the frame drops only handles the reader did not keep. A
+  /// cross-agent serialize moves the frame onto the parcel. The parcel drops
+  /// it after the other agent reads, or as soon as that parcel is discarded.
+  static RESOURCE_FRAMES: std::cell::RefCell<Vec<Vec<ResourceRelease>>> =
+    const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drops one parked transfer allocation.
+pub type ResourceRelease = Box<dyn FnOnce() + Send>;
+
+static RESOURCE_BEGINS: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
+static RESOURCE_ENDS: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
+
+/// Runs at the start and end of a resource frame. The end hook runs before
+/// the frame's releases, so identity maps do not outlive the serialize.
+pub fn add_resource_frame_hooks(begin: fn(), end: fn()) {
+  RESOURCE_BEGINS.lock().expect("resource begins").push(begin);
+  RESOURCE_ENDS.lock().expect("resource ends").push(end);
+}
+
+fn resource_begins() -> Vec<fn()> {
+  RESOURCE_BEGINS.lock().expect("resource begins").clone()
+}
+
+fn resource_ends() -> Vec<fn()> {
+  RESOURCE_ENDS.lock().expect("resource ends").clone()
+}
+
+/// Opens a frame for parked transfer allocations.
+pub fn begin_resource_frame() {
+  RESOURCE_FRAMES.with(|slot| slot.borrow_mut().push(Vec::new()));
+  for begin in resource_begins() {
+    begin();
+  }
+}
+
+/// Records a release for the current frame.
+///
+/// The frame must be open. A transfer writer runs inside one.
+pub fn note_resource_release(release: ResourceRelease) {
+  RESOURCE_FRAMES.with(|slot| {
+    slot
+      .borrow_mut()
+      .last_mut()
+      .expect("a clone frame is open")
+      .push(release);
+  });
+}
+
+/// Closes the current frame.
+///
+/// `release` runs each closure. Otherwise the caller keeps them, which is
+/// how a parcel outlives serialize. An empty stack is left alone.
+pub fn end_resource_frame(release: bool) -> Vec<ResourceRelease> {
+  let Some(frame) = RESOURCE_FRAMES.with(|slot| slot.borrow_mut().pop()) else {
+    return Vec::new();
+  };
+  for end in resource_ends() {
+    end();
+  }
+  if release {
+    for release in frame {
+      release();
+    }
+    Vec::new()
+  } else {
+    frame
+  }
+}
+
 pub fn add_clone_enter(enter: CloneEnterFn) {
   ENTERS.lock().expect("clone enters").push(enter);
 }
@@ -407,6 +481,7 @@ impl CloneSession {
     CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_add(1)));
     begin_wasm_transfer();
     begin_sab_transfer();
+    begin_resource_frame();
     for enter in enter_hooks() {
       enter();
     }
@@ -421,6 +496,9 @@ impl CloneSession {
     self.live = false;
     end_wasm_transfer();
     end_sab_transfer();
+    // The reader already kept every allocation it needed. This drops the
+    // rest, including a clone that failed before detach.
+    end_resource_frame(true);
     let depth = CLONE_DEPTH.with(|cell| {
       let next = cell.get().saturating_sub(1);
       cell.set(next);
@@ -442,6 +520,7 @@ impl Drop for CloneSession {
     self.live = false;
     end_wasm_transfer();
     end_sab_transfer();
+    end_resource_frame(true);
     CLONE_DEPTH.with(|cell| cell.set(cell.get().saturating_sub(1)));
     for discard in discard_hooks() {
       discard();

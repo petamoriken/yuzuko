@@ -223,6 +223,17 @@ Yuzuko.test("structuredClone copies ImageData and transfers its buffer", () => {
   }
 });
 
+function bitmapPixel(bitmap: ImageBitmap): string {
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("bitmap context");
+  }
+  context.drawImage(bitmap, 0, 0);
+  const data = context.getImageData(0, 0, 1, 1).data;
+  return data[0] + "," + data[1] + "," + data[2] + "," + data[3];
+}
+
 Yuzuko.test("structuredClone copies and transfers ImageBitmap", async () => {
   const bitmap = await createImageBitmap(
     new ImageData(new Uint8ClampedArray([9, 8, 7, 255]), 1, 1),
@@ -242,6 +253,8 @@ Yuzuko.test("structuredClone copies and transfers ImageBitmap", async () => {
     || moved.height !== 1
     || width !== 0
     || height !== 0
+    || bitmapPixel(cloned) !== "9,8,7,255"
+    || bitmapPixel(moved) !== "9,8,7,255"
   ) {
     throw new Error("bitmap transfer");
   }

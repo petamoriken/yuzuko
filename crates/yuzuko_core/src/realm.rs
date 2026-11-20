@@ -562,7 +562,8 @@ fn structured_clone(
 }
 
 /// `structuredClone`'s `transfer` list. Array buffers move with the clone.
-/// Host objects detach after that clone succeeds.
+/// `ImageBitmap`, `AudioData`, and `VideoFrame` move their pixels or samples
+/// and detach after that clone succeeds.
 fn transfer_list(
   scope: &mut v8::PinScope,
   options: v8::Local<v8::Value>,

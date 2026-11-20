@@ -6577,7 +6577,9 @@ declare function reportError(error: any): void;
  * @param options - `transfer` moves an `ArrayBuffer`, a `MessagePort`, an
  * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, a `VideoFrame`, a
  * `ReadableStream`, a `WritableStream`, or a `TransformStream`. A moved
- * `ArrayBuffer` keeps `byteLength`, `resizable`, and `maxByteLength`.
+ * `ArrayBuffer` keeps `byteLength`, `resizable`, and `maxByteLength`. A moved
+ * `ImageBitmap`, `AudioData`, or `VideoFrame` keeps the source pixels or
+ * samples.
  * @throws {@link DOMException} `DataCloneError` when `value` contains a host
  * object this runtime cannot clone, including a {@link SharedArrayBuffer},
  * a {@link Yuzuko.Window}, a {@link Yuzuko.WindowSurface}, a closed
@@ -12397,7 +12399,8 @@ declare var ImageData: {
  *
  * Animated images contribute the first frame. The longer edge is at most 16384
  * pixels and the bitmap is at most 100 million pixels. Listing it in a transfer
- * list detaches it.
+ * list moves the pixel allocation and detaches it. A clone that does not
+ * transfer copies the pixels.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link createImageBitmap}.
  * @throws {@link DOMException} `DataCloneError` when a detached bitmap is cloned.

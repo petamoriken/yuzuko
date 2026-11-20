@@ -516,7 +516,8 @@ impl MessagePort {
     // A transferred ArrayBuffer moves its backing store. Detach afterward
     // so the sender's buffer is empty and the peer keeps that allocation.
     // `MessagePort` and `OffscreenCanvas` move during that clone.
-    // `ImageBitmap`, `AudioData`, and `VideoFrame` close after it succeeds.
+    // `ImageBitmap`, `AudioData`, and `VideoFrame` move their pixels or
+    // samples and close after the clone succeeds.
     let cloned = {
       let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
       // Same-agent peers share a SharedArrayBuffer. `structuredClone` does not.
