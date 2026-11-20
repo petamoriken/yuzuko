@@ -1584,10 +1584,7 @@ fn queue_self_message(
   let (objects, buffers) = transfer_parts(scope, transfer)?;
   // `read_port_clone` records a `MessagePort` reached from the value, and
   // a stream's own channel port. The event lists the transfer list instead.
-  let listed = objects
-    .iter()
-    .map(|object| v8::Global::clone(object))
-    .collect::<Vec<_>>();
+  let listed = objects.iter().map(v8::Global::clone).collect::<Vec<_>>();
   capture_ports(true);
   let cloned = {
     let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
