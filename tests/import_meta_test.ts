@@ -231,6 +231,7 @@ Yuzuko.test("module workers expose import.meta paths", async () => {
 
 Yuzuko.test("import.meta.url keeps a specifier fragment", async () => {
   const plain = await import("./import_meta_fragment.ts");
+  // @ts-expect-error The fragment is part of the module key.
   const hashed = await import("./import_meta_fragment.ts#1");
   assert(plain.meta !== hashed.meta, `${plain.meta} vs ${hashed.meta}`);
   assert(plain.meta.endsWith("/import_meta_fragment.ts"), plain.meta);
