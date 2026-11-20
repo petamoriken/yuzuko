@@ -152,11 +152,10 @@ fn owner_site(
     return (site.filename, site.line, site.column);
   }
   let created = v8::Exception::create_message(scope, error);
-  let filename = created
-    .get_script_resource_name(scope)
-    .and_then(|value| value.to_string(scope))
-    .map(|value| value.to_rust_string_lossy(scope))
-    .unwrap_or_default();
+  let filename = match created.get_script_resource_name(scope) {
+    Some(value) => yuzuko_core::rust_string_or(scope, value, ""),
+    None => String::new(),
+  };
   let line = created
     .get_line_number(scope)
     .and_then(|number| u32::try_from(number).ok())

@@ -2286,13 +2286,7 @@ pub(crate) fn member<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let key = v8::String::new(scope, name)?;
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 /// Detach each `ArrayBuffer` in `init.transfer`.
@@ -2728,29 +2722,12 @@ fn support_error<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   error: OpError,
 ) -> v8::Local<'s, v8::Value> {
-  match error {
-    OpError::Type(message) => builtin_exception(scope, &message, false),
-    OpError::Range(message) => builtin_exception(scope, &message, true),
-    OpError::Dom { name, message } => new_dom_exception(scope, &name, &message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| v8::undefined(scope).into()),
-    OpError::Thrown(value) => v8::Local::new(scope, *value),
-  }
-}
-
-fn builtin_exception<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-  range: bool,
-) -> v8::Local<'s, v8::Value> {
-  let Some(text) = v8::String::new(scope, message) else {
-    return v8::undefined(scope).into();
-  };
-  if range {
-    v8::Exception::range_error(scope, text)
-  } else {
-    v8::Exception::type_error(scope, text)
-  }
+  yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Undefined,
+    yuzuko_core::StringFailure::Undefined,
+  )
 }
 
 fn set_string(

@@ -9,11 +9,12 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use yuzuko_core::call_method;
 use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
 use yuzuko_macros::op;
 use yuzuko_winter::{
-  AddressSpace, Command, Connection, Note, NoteQueue, PullGate, array_buffer,
-  buffer_source, connect, environment_origin, is_bad_port,
+  AddressSpace, Command, Connection, Note, NoteQueue, PullGate, buffer_source,
+  connect, environment_origin, is_bad_port,
 };
 
 use crate::abort::{self, AbortSignal};
@@ -1121,35 +1122,11 @@ fn set(
   let _ = object.set(scope, key(scope, name).into(), value);
 }
 
-fn call_method(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  args: &[v8::Local<v8::Value>],
-) {
-  v8::tc_scope!(let scope, scope);
-  let object = yuzuko_core::op::root(scope, object);
-  let Some(value) = object.get(scope, key(scope, name).into()) else {
-    return;
-  };
-  let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
-    return;
-  };
-  let function = yuzuko_core::op::root(scope, function);
-  let args = args
-    .iter()
-    .map(|arg| yuzuko_core::op::root(scope, *arg))
-    .collect::<Vec<_>>();
-  let _ = function.call(scope, object.into(), &args);
-}
-
 fn uint8_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> v8::Local<'s, v8::Uint8Array> {
-  let length = bytes.len();
-  let buffer = array_buffer(scope, bytes);
-  v8::Uint8Array::new(scope, buffer, 0, length).unwrap()
+  yuzuko_core::uint8_array(scope, bytes).unwrap()
 }
 
 fn resolved_promise<'s>(
@@ -1300,12 +1277,7 @@ fn defined<'s>(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let value = object.get(scope, key(scope, name).into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 fn checked_code(code: u16) -> Result<u16, OpError> {

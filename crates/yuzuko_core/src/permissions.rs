@@ -2255,14 +2255,7 @@ fn define(
   name: &str,
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
-  let function = v8::Function::builder(callback)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).unwrap();
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
+  crate::js::define_function(scope, object, name, 1, callback);
 }
 
 struct Desc {

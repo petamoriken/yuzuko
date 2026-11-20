@@ -12,15 +12,16 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use yuzuko_core::call_method;
 use yuzuko_core::op::{HostRef, Js, OpError, host_ref, traced, traced_local};
 use yuzuko_macros::op;
 use yuzuko_winter::{
   ByteWait, WebTransportCommand as Command,
   WebTransportCongestion as Congestion, WebTransportConnection as Connection,
   WebTransportNote as Note, WebTransportNotes as NoteQueue,
-  WebTransportOptions as Options, abort_web_transports, array_buffer,
-  buffer_source, byte_controller_enqueue, byte_controller_respond,
-  byte_controller_wait, connect_web_transport, next_web_transport_stream_id,
+  WebTransportOptions as Options, abort_web_transports, buffer_source,
+  byte_controller_enqueue, byte_controller_respond, byte_controller_wait,
+  connect_web_transport, next_web_transport_stream_id,
 };
 
 use crate::util::key;
@@ -2179,35 +2180,11 @@ fn set(
   let _ = object.set(scope, key(scope, name).into(), value);
 }
 
-fn call_method(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  args: &[v8::Local<v8::Value>],
-) {
-  v8::tc_scope!(let scope, scope);
-  let object = yuzuko_core::op::root(scope, object);
-  let Some(value) = object.get(scope, key(scope, name).into()) else {
-    return;
-  };
-  let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
-    return;
-  };
-  let function = yuzuko_core::op::root(scope, function);
-  let args = args
-    .iter()
-    .map(|arg| yuzuko_core::op::root(scope, *arg))
-    .collect::<Vec<_>>();
-  let _ = function.call(scope, object.into(), &args);
-}
-
 fn uint8_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> v8::Local<'s, v8::Uint8Array> {
-  let length = bytes.len();
-  let buffer = array_buffer(scope, bytes);
-  v8::Uint8Array::new(scope, buffer, 0, length).unwrap()
+  yuzuko_core::uint8_array(scope, bytes).unwrap()
 }
 
 fn property<'s>(
@@ -2225,12 +2202,7 @@ fn defined<'s>(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let value = object.get(scope, key(scope, name).into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 fn constructor_name(

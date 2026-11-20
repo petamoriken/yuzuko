@@ -663,10 +663,7 @@ fn read_groups(
     let group_value = object
       .get(scope, key)
       .ok_or_else(|| OpError::type_("The URL pattern groups are invalid"))?;
-    let name = key
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
+    let name = yuzuko_core::rust_string_or(scope, key, "");
     let text = group_value
       .to_string(scope)
       .map(|text| text.to_rust_string_lossy(scope))

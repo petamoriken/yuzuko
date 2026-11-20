@@ -1069,52 +1069,13 @@ fn string_primitive(
   value: v8::Local<v8::Value>,
   message: &'static str,
 ) -> Result<String, OpError> {
-  if !value.is_string() {
-    return Err(OpError::type_(message));
-  }
-  let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
-    return Err(OpError::type_(message));
-  };
-  Ok(text.to_rust_string_lossy(scope))
+  crate::js::string_primitive(scope, value)
+    .ok_or_else(|| OpError::type_(message))
 }
 
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
-}
-
-fn move_constructor(scope: &mut v8::PinScope, name: &str) {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = crate::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
-}
-
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).expect(name);
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
+use crate::js::relocate_constructor as move_constructor;
+use crate::js::thrown_error as plain_error;
 
 /// The path Unix checks and loads.
 ///

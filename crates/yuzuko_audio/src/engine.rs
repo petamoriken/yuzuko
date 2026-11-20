@@ -74,17 +74,12 @@ impl Fault {
     scope: &mut v8::PinScope,
     resolver: v8::Local<v8::PromiseResolver>,
   ) {
-    let error = match self {
-      Self::Type(message) => {
-        let text = v8::String::new(scope, &message).unwrap();
-        v8::Exception::type_error(scope, text)
-      }
-      Self::Range(message) => {
-        let text = v8::String::new(scope, &message).unwrap();
-        v8::Exception::range_error(scope, text)
-      }
-      Self::Dom(name, message) => util::dom_exception(scope, name, &message),
-    };
+    let error = yuzuko_core::exception_value(
+      scope,
+      self.op(),
+      yuzuko_core::DomFallback::Error,
+      yuzuko_core::StringFailure::Unwrap,
+    );
     resolver.reject(scope, error);
   }
 }
@@ -4268,11 +4263,10 @@ fn exception_message(
   scope: &mut v8::PinnedRef<v8::TryCatch<v8::HandleScope>>,
   fallback: &str,
 ) -> String {
-  scope
-    .exception()
-    .and_then(|exception| exception.to_string(scope))
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_else(|| fallback.to_string())
+  match scope.exception() {
+    Some(exception) => yuzuko_core::rust_string_or(scope, exception, fallback),
+    None => fallback.to_string(),
+  }
 }
 
 pub fn processor_templates(
@@ -4859,10 +4853,7 @@ fn clone_serialize_error(
   if exception_name(scope, local) == "DataCloneError" {
     return ConstructError::Thrown(thrown);
   }
-  let text = local
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default();
+  let text = yuzuko_core::rust_string_or(scope, local, "");
   if text.contains("SharedArrayBuffer") {
     return ConstructError::Fault(Fault::dom(
       "DataCloneError",
@@ -4879,11 +4870,9 @@ fn fault_from_thrown(
 ) -> ProcessorFault {
   let message = thrown
     .as_ref()
-    .and_then(|value| {
+    .map(|value| {
       let local = v8::Local::new(scope, value);
-      local
-        .to_string(scope)
-        .map(|text| text.to_rust_string_lossy(scope))
+      yuzuko_core::rust_string_or(scope, local, "")
     })
     .filter(|text| !text.is_empty())
     .unwrap_or_else(|| "The processor failed".to_string());

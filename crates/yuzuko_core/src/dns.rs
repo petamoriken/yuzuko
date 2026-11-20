@@ -326,29 +326,5 @@ fn string_array<'s>(
   Some(array.into())
 }
 
-fn error_value<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-) -> v8::Local<'s, v8::Value> {
-  let Some(text) = v8::String::new(scope, message) else {
-    return v8::undefined(scope).into();
-  };
-  v8::Exception::error(scope, text)
-}
-
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).unwrap();
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
+use crate::js::error_exception as error_value;

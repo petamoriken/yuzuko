@@ -8701,32 +8701,25 @@ fn install_stream_extras(scope: &mut v8::PinScope) {
   let prototype = ctor.get(scope, key.into()).unwrap();
   let prototype = v8::Local::<v8::Object>::try_from(prototype).unwrap();
   let prototype = yuzuko_core::op::root(scope, prototype);
-  let iterator = v8::Function::builder(stream_async_iterator)
-    .length(0)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap();
+  yuzuko_core::define_function(
+    scope,
+    prototype,
+    "values",
+    0,
+    stream_async_iterator,
+  );
   let values_name = v8::String::new(scope, "values").unwrap();
-  iterator.set_name(values_name);
-  prototype.set(scope, values_name.into(), iterator.into());
+  let iterator = prototype.get(scope, values_name.into()).unwrap();
   let symbol = v8::Symbol::get_async_iterator(scope);
-  prototype.set(scope, symbol.into(), iterator.into());
-  let pipe_to = v8::Function::builder(pipe_to_callback)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap();
-  let name = v8::String::new(scope, "pipeTo").unwrap();
-  pipe_to.set_name(name);
-  prototype.set(scope, name.into(), pipe_to.into());
-  let pipe_through = v8::Function::builder(pipe_through_callback)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap();
-  let name = v8::String::new(scope, "pipeThrough").unwrap();
-  pipe_through.set_name(name);
-  prototype.set(scope, name.into(), pipe_through.into());
+  prototype.set(scope, symbol.into(), iterator);
+  yuzuko_core::define_function(scope, prototype, "pipeTo", 1, pipe_to_callback);
+  yuzuko_core::define_function(
+    scope,
+    prototype,
+    "pipeThrough",
+    1,
+    pipe_through_callback,
+  );
   install_readable_stream_from(scope, ctor);
   fix_async_iterator_prototype(scope);
 }

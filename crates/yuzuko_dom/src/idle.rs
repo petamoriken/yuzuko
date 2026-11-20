@@ -301,14 +301,8 @@ fn define(
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
   length: i32,
 ) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).unwrap();
-  function.set_name(key);
-  yuzuko_core::global(scope).set(scope, key.into(), function.into());
+  let global = yuzuko_core::global(scope);
+  yuzuko_core::define_function(scope, global, name, length, callback);
 }
 
 fn request_idle_callback(

@@ -115,16 +115,7 @@ fn publish_class(
   install: fn(&mut v8::PinScope),
 ) {
   install(scope);
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = crate::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
+  crate::js::relocate_constructor(scope, name);
 }
 
 fn install_seek_mode(scope: &mut v8::PinScope) {
@@ -144,14 +135,22 @@ fn install_dispose(scope: &mut v8::PinScope) {
     return;
   };
   if let Some(symbol) = global_symbol(scope, "dispose") {
-    set_symbol_method(scope, proto, symbol, "dispose", file::dispose);
-  }
-  if let Some(symbol) = global_symbol(scope, "asyncDispose") {
-    set_symbol_method(
+    crate::js::define_function_key(
       scope,
       proto,
-      symbol,
+      "dispose",
+      symbol.into(),
+      0,
+      file::dispose,
+    );
+  }
+  if let Some(symbol) = global_symbol(scope, "asyncDispose") {
+    crate::js::define_function_key(
+      scope,
+      proto,
       "asyncDispose",
+      symbol.into(),
+      0,
       file::async_dispose,
     );
   }
@@ -162,11 +161,12 @@ fn install_async_iterator(scope: &mut v8::PinScope) {
     return;
   };
   if let Some(symbol) = global_symbol(scope, "asyncIterator") {
-    set_symbol_method(
+    crate::js::define_function_key(
       scope,
       proto,
-      symbol,
       "asyncIterator",
+      symbol.into(),
+      0,
       watch::async_iterator,
     );
   }
@@ -304,23 +304,6 @@ fn global_symbol<'s>(
     return None;
   }
   v8::Local::<v8::Symbol>::try_from(value).ok()
-}
-
-fn set_symbol_method(
-  scope: &mut v8::PinScope,
-  proto: v8::Local<v8::Object>,
-  symbol: v8::Local<v8::Symbol>,
-  name: &str,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(0)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let label = v8::String::new(scope, name).unwrap();
-  function.set_name(label);
-  proto.set(scope, symbol.into(), function.into());
 }
 
 /// `readable` and `writable` stay in JavaScript so this crate does not depend

@@ -2799,9 +2799,7 @@ pub fn byte_controller_enqueue(
 ) -> Result<(), OpError> {
   let id = controller_stream(scope, controller)
     .ok_or_else(|| OpError::type_("The controller is not a byte stream"))?;
-  let length = bytes.len();
-  let buffer = crate::bytes::array_buffer(scope, bytes.to_vec());
-  let view = v8::Uint8Array::new(scope, buffer, 0, length)
+  let view = yuzuko_core::uint8_array(scope, bytes.to_vec())
     .ok_or_else(|| OpError::type_("The view could not be created"))?;
   let view = yuzuko_core::op::root(scope, view);
   enqueue_view(scope, id, view.into(), true)

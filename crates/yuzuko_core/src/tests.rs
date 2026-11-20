@@ -1317,3 +1317,331 @@ fn classic_session_binds_interned_scripts_in_later_realms() {
     .expect("second realm");
   assert_eq!(second.value.as_deref(), Some("ok"));
 }
+
+fn probe_host(
+  _scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  _ret: v8::ReturnValue,
+) {
+}
+
+fn property_text(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  name: &str,
+) -> String {
+  let object = v8::Local::<v8::Object>::try_from(value).expect(name);
+  let field = crate::js::dictionary_member(scope, object, name).expect(name);
+  crate::js::rust_string(scope, field)
+}
+
+#[test]
+fn host_binding_helpers_follow_their_contract() {
+  crate::runtime::with_runtime(
+    false,
+    false,
+    |_| {},
+    |scope| {
+      let object = v8::Object::new(scope);
+      let yes = v8::String::new(scope, "yes").unwrap();
+      let present = v8::String::new(scope, "present").unwrap();
+      object.set(scope, yes.into(), present.into());
+      let no = v8::String::new(scope, "no").unwrap();
+      object.set(scope, no.into(), v8::undefined(scope).into());
+      let found = crate::js::dictionary_member(scope, object, "yes").unwrap();
+      assert_eq!(crate::js::rust_string(scope, found), "present");
+      assert!(crate::js::dictionary_member(scope, object, "no").is_none());
+
+      let text = v8::String::new(scope, "hello").unwrap();
+      assert_eq!(crate::js::rust_string(scope, text.into()), "hello");
+      let source =
+        v8::String::new(scope, "({ toString() { return 'custom'; } })")
+          .unwrap();
+      let custom = v8::Script::compile(scope, source, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      assert_eq!(crate::js::rust_string(scope, custom), "custom");
+      {
+        v8::tc_scope!(let tc, scope);
+        let source =
+          v8::String::new(tc, "({ toString() { throw new Error('no'); } })")
+            .unwrap();
+        let value = v8::Script::compile(tc, source, None)
+          .unwrap()
+          .run(tc)
+          .unwrap();
+        assert_eq!(crate::js::rust_string(tc, value), "undefined");
+        assert_eq!(crate::js::rust_string_or(tc, value, ""), "");
+      }
+
+      let reject = crate::js::NumberReject {
+        null_message: None,
+        not_number: "The provided value is not a number",
+        not_finite: "The provided value is not finite",
+      };
+      let finite = v8::Number::new(scope, 1.5);
+      assert_eq!(
+        crate::js::finite_number(scope, finite.into(), reject).unwrap(),
+        1.5
+      );
+      let nan = v8::Number::new(scope, f64::NAN);
+      assert!(crate::js::finite_number(scope, nan.into(), reject).is_err());
+      let infinity = v8::Number::new(scope, f64::INFINITY);
+      assert!(
+        crate::js::finite_number(scope, infinity.into(), reject).is_err()
+      );
+      let null = v8::null(scope);
+      assert_eq!(
+        crate::js::finite_number(scope, null.into(), reject).unwrap(),
+        0.0
+      );
+      let null_reject = crate::js::NumberReject {
+        null_message: Some("The value is null"),
+        not_number: "The value is not a number",
+        not_finite: "The value is not finite",
+      };
+      match crate::js::finite_number(scope, null.into(), null_reject) {
+        Err(crate::op::OpError::Type(message)) => {
+          assert_eq!(message, "The value is null");
+        }
+        other => panic!("null should be rejected: {other:?}"),
+      }
+
+      let view = crate::js::uint8_array(scope, vec![1, 2, 3, 4]).unwrap();
+      let mut bytes = [0u8; 4];
+      assert_eq!(view.copy_contents(&mut bytes), 4);
+      assert_eq!(bytes, [1, 2, 3, 4]);
+
+      let global = crate::js::global(scope);
+      crate::js::define_function(scope, global, "probeHost", 2, probe_host);
+      let probe =
+        v8::String::new(scope, "probeHost.length + ' ' + probeHost.name")
+          .unwrap();
+      let probe = v8::Script::compile(scope, probe, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      assert_eq!(crate::js::rust_string(scope, probe), "2 probeHost");
+
+      let holder = v8::Object::new(scope);
+      let description = v8::String::new(scope, "dispose").unwrap();
+      let symbol = v8::Symbol::new(scope, Some(description));
+      crate::js::define_function_key(
+        scope,
+        holder,
+        "dispose",
+        symbol.into(),
+        0,
+        probe_host,
+      );
+      assert!(crate::js::dictionary_member(scope, holder, "dispose").is_none());
+      let installed = holder.get(scope, symbol.into()).expect("symbol method");
+      assert_eq!(property_text(scope, installed, "name"), "dispose");
+      assert_eq!(property_text(scope, installed, "length"), "0");
+
+      let posted = v8::Object::new(scope);
+      assert!(crate::js::try_define_function(
+        scope,
+        posted,
+        "postMessage",
+        1,
+        probe_host,
+      ));
+      let posted_fn =
+        crate::js::dictionary_member(scope, posted, "postMessage").unwrap();
+      assert_eq!(property_text(scope, posted_fn, "name"), "postMessage");
+      assert_eq!(property_text(scope, posted_fn, "length"), "1");
+
+      let missing = crate::js::exception_value(
+        scope,
+        crate::op::OpError::dom("InvalidStateError", "gone"),
+        crate::js::DomFallback::Undefined,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert!(missing.is_undefined());
+      let type_fallback = crate::js::exception_value(
+        scope,
+        crate::op::OpError::dom("InvalidStateError", "gone"),
+        crate::js::DomFallback::Type,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert_eq!(property_text(scope, type_fallback, "name"), "TypeError");
+      assert_eq!(property_text(scope, type_fallback, "message"), "gone");
+      let error_fallback = crate::js::exception_value(
+        scope,
+        crate::op::OpError::dom("InvalidStateError", "gone"),
+        crate::js::DomFallback::Error,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert_eq!(property_text(scope, error_fallback, "name"), "Error");
+      assert_eq!(property_text(scope, error_fallback, "message"), "gone");
+
+      let source = v8::String::new(
+        scope,
+        concat!(
+          "function DOMException(message, name) { ",
+          "this.message = message; this.name = name; }\n",
+          "DOMException",
+        ),
+      )
+      .unwrap();
+      let constructor = v8::Script::compile(scope, source, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      let constructor =
+        v8::Local::<v8::Function>::try_from(constructor).unwrap();
+      crate::set_dom_exception(scope, constructor);
+      let dom = crate::js::exception_value(
+        scope,
+        crate::op::OpError::dom("InvalidStateError", "gone"),
+        crate::js::DomFallback::Type,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert_eq!(property_text(scope, dom, "name"), "InvalidStateError");
+      assert_eq!(property_text(scope, dom, "message"), "gone");
+      let type_error = crate::js::exception_value(
+        scope,
+        crate::op::OpError::type_("bad type"),
+        crate::js::DomFallback::Type,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert_eq!(property_text(scope, type_error, "name"), "TypeError");
+      assert_eq!(property_text(scope, type_error, "message"), "bad type");
+      let range_error = crate::js::exception_value(
+        scope,
+        crate::op::OpError::range("bad range"),
+        crate::js::DomFallback::Type,
+        crate::js::StringFailure::Unwrap,
+      );
+      assert_eq!(property_text(scope, range_error, "name"), "RangeError");
+      assert_eq!(property_text(scope, range_error, "message"), "bad range");
+      Ok(())
+    },
+  )
+  .expect("host binding helpers");
+}
+
+#[test]
+fn shared_buffer_and_exception_helpers_follow_their_contract() {
+  crate::runtime::with_runtime(
+    false,
+    false,
+    |_| {},
+    |scope| {
+      let limits = crate::js::BufferCopy::strict(
+        8,
+        "too large",
+        "detached",
+        "not a buffer",
+      );
+      let view = crate::js::uint8_array(scope, vec![9, 8, 7]).unwrap();
+      let copied =
+        crate::js::copy_buffer_source(scope, view.into(), limits).unwrap();
+      assert_eq!(copied, vec![9, 8, 7]);
+      let mut child_limits = limits;
+      child_limits.missing_view_buffer = crate::js::MissingViewBuffer::Detached;
+      let child_view = crate::js::uint8_array(scope, vec![4, 5]).unwrap();
+      let child_copied =
+        crate::js::copy_buffer_source(scope, child_view.into(), child_limits)
+          .unwrap();
+      assert_eq!(child_copied, vec![4, 5]);
+
+      let text = v8::String::new(scope, "no").unwrap();
+      match crate::js::copy_buffer_source(scope, text.into(), limits) {
+        Err(crate::op::OpError::Type(message)) => {
+          assert_eq!(message, "not a buffer");
+        }
+        other => panic!("expected a type error: {other:?}"),
+      }
+      let wide = crate::js::uint8_array(scope, vec![1, 2, 3]).unwrap();
+      let mut small = limits;
+      small.max_bytes = 2;
+      match crate::js::copy_buffer_source(scope, wide.into(), small) {
+        Err(crate::op::OpError::Type(message)) => {
+          assert_eq!(message, "too large");
+        }
+        other => panic!("expected a size error: {other:?}"),
+      }
+      let buffer = crate::js::array_buffer(scope, vec![1, 2, 3, 4]);
+      assert_eq!(buffer.byte_length(), 4);
+      let _ = buffer.detach(None);
+      match crate::js::copy_buffer_source(scope, buffer.into(), limits) {
+        Err(crate::op::OpError::Type(message)) => {
+          assert_eq!(message, "detached");
+        }
+        other => panic!("expected a detached error: {other:?}"),
+      }
+
+      let samples = 1.5f32.to_le_bytes();
+      let floats = crate::js::float32_array(scope, samples.to_vec()).unwrap();
+      let mut narrow = [0u8; 4];
+      assert_eq!(floats.copy_contents(&mut narrow), 4);
+      assert_eq!(narrow, samples);
+      let wide_bits = 2.5f64.to_le_bytes();
+      let doubles =
+        crate::js::float64_array(scope, wide_bits.to_vec()).unwrap();
+      let mut wide_bytes = [0u8; 8];
+      assert_eq!(doubles.copy_contents(&mut wide_bytes), 8);
+      assert_eq!(wide_bytes, wide_bits);
+      let clamped = crate::js::uint8_clamped_array(scope, vec![1, 2]).unwrap();
+      let mut bytes = [0u8; 2];
+      assert_eq!(clamped.copy_contents(&mut bytes), 2);
+      assert_eq!(bytes, [1, 2]);
+
+      let plain = crate::js::error_exception(scope, "plain");
+      assert_eq!(property_text(scope, plain, "name"), "Error");
+      assert_eq!(property_text(scope, plain, "message"), "plain");
+      let typed = crate::js::type_exception(scope, "typed");
+      assert_eq!(property_text(scope, typed, "name"), "TypeError");
+      assert_eq!(property_text(scope, typed, "message"), "typed");
+      match crate::js::thrown_error(scope, "thrown plain") {
+        crate::op::OpError::Thrown(value) => {
+          let value = v8::Local::new(scope, *value);
+          assert_eq!(property_text(scope, value, "name"), "Error");
+          assert_eq!(property_text(scope, value, "message"), "thrown plain");
+        }
+        other => panic!("expected a thrown error: {other:?}"),
+      }
+
+      let word = v8::String::new(scope, "abc").unwrap();
+      assert_eq!(
+        crate::js::string_primitive(scope, word.into()).as_deref(),
+        Some("abc")
+      );
+      let number = v8::Integer::new(scope, 1);
+      assert!(crate::js::string_primitive(scope, number.into()).is_none());
+
+      let global = crate::js::global(scope);
+      crate::js::define_function(scope, global, "ProbeCtor", 0, probe_host);
+      crate::js::relocate_constructor(scope, "ProbeCtor");
+      assert!(
+        crate::js::dictionary_member(scope, global, "ProbeCtor").is_none()
+      );
+      let yuzuko = crate::js::namespace(scope, "Yuzuko");
+      let moved =
+        crate::js::dictionary_member(scope, yuzuko, "ProbeCtor").unwrap();
+      assert_eq!(property_text(scope, moved, "name"), "ProbeCtor");
+
+      let source = v8::String::new(
+        scope,
+        "({ mark(value) { globalThis.marked = value; } })",
+      )
+      .unwrap();
+      let object = v8::Script::compile(scope, source, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      let object = v8::Local::<v8::Object>::try_from(object).unwrap();
+      let arg = v8::String::new(scope, "ping").unwrap();
+      crate::js::call_method(scope, object, "mark", &[arg.into()]);
+      let marked =
+        crate::js::dictionary_member(scope, global, "marked").unwrap();
+      assert_eq!(crate::js::rust_string(scope, marked), "ping");
+      crate::js::call_method(scope, object, "missing", &[]);
+      Ok(())
+    },
+  )
+  .expect("shared buffer helpers");
+}

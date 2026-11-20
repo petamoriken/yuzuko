@@ -1194,10 +1194,7 @@ fn css_number(scope: &mut v8::PinScope, value: f64) -> String {
     return "0".to_string();
   }
   let number = v8::Number::new(scope, value);
-  number
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_else(|| "0".to_string())
+  yuzuko_core::rust_string_or(scope, number.into(), "0")
 }
 
 fn matrix_string(
@@ -1410,17 +1407,10 @@ fn float_array(scope: &mut v8::PinScope, values: &[f64], narrow: bool) -> Js {
     }
     bytes
   };
-  let length = values.len();
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
   let array: v8::Local<v8::Value> = if narrow {
-    v8::Float32Array::new(scope, buffer, 0, length)
-      .unwrap()
-      .into()
+    yuzuko_core::float32_array(scope, bytes).unwrap().into()
   } else {
-    v8::Float64Array::new(scope, buffer, 0, length)
-      .unwrap()
-      .into()
+    yuzuko_core::float64_array(scope, bytes).unwrap().into()
   };
   Js(v8::Global::new(scope, array))
 }

@@ -207,11 +207,7 @@ fn uint8_array<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   bytes: &[u8],
 ) -> Option<v8::Local<'a, v8::Uint8Array>> {
-  let length = bytes.len();
-  let store =
-    v8::ArrayBuffer::new_backing_store_from_vec(bytes.to_vec()).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-  v8::Uint8Array::new(scope, buffer, 0, length)
+  crate::js::uint8_array(scope, bytes.to_vec())
 }
 
 fn cached<'a>(

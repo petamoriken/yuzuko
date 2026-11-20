@@ -322,28 +322,25 @@ fn host(
   }
 }
 
+fn clamped_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  bytes: Vec<u8>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let array = yuzuko_core::uint8_clamped_array(scope, bytes)
+    .ok_or_else(|| OpError::range("ImageData allocation failed"))?;
+  let value: v8::Local<v8::Value> = array.into();
+  v8::Local::<v8::Object>::try_from(value)
+    .map_err(|_| OpError::range("ImageData allocation failed"))
+}
+
 fn allocate_with<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   raster: &Raster,
 ) -> Result<v8::Local<'s, v8::Object>, OpError> {
   match raster.format {
-    SampleFormat::Unorm8 => {
-      let elements = raster.bytes.len();
-      let store =
-        v8::ArrayBuffer::new_backing_store_from_vec(raster.bytes.clone())
-          .make_shared();
-      let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-      let array = v8::Uint8ClampedArray::new(scope, buffer, 0, elements)
-        .ok_or_else(|| OpError::range("ImageData allocation failed"))?;
-      let value: v8::Local<v8::Value> = array.into();
-      v8::Local::<v8::Object>::try_from(value)
-        .map_err(|_| OpError::range("ImageData allocation failed"))
-    }
+    SampleFormat::Unorm8 => clamped_object(scope, raster.bytes.clone()),
     SampleFormat::Float16 => {
-      let store =
-        v8::ArrayBuffer::new_backing_store_from_vec(raster.bytes.clone())
-          .make_shared();
-      let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
+      let buffer = yuzuko_core::array_buffer(scope, raster.bytes.clone());
       let global = scope.get_current_context().global(scope);
       let key = v8::String::new(scope, "Float16Array").unwrap();
       let constructor = global
@@ -376,16 +373,7 @@ fn allocate<'s>(
     .map_err(|_| OpError::range("ImageData is too large"))?;
   let elements = (pixels * 4) as usize;
   match format {
-    SampleFormat::Unorm8 => {
-      let store =
-        v8::ArrayBuffer::new_backing_store_from_vec(vec![0; len]).make_shared();
-      let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-      let array = v8::Uint8ClampedArray::new(scope, buffer, 0, elements)
-        .ok_or_else(|| OpError::range("ImageData allocation failed"))?;
-      let value: v8::Local<v8::Value> = array.into();
-      v8::Local::<v8::Object>::try_from(value)
-        .map_err(|_| OpError::range("ImageData allocation failed"))
-    }
+    SampleFormat::Unorm8 => clamped_object(scope, vec![0; len]),
     SampleFormat::Float16 => {
       // `Local<Float16Array>` does not convert to `Local<Value>` in this
       // rusty_v8, so allocate through the JavaScript constructor.

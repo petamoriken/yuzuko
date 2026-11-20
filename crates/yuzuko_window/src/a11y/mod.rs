@@ -259,14 +259,13 @@ fn install_surface(scope: &mut v8::PinScope) {
   let Ok(proto) = v8::Local::<v8::Object>::try_from(proto) else {
     return;
   };
-  let attach = v8::Function::builder(attach_accessible_root)
-    .length(0)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .expect("attachAccessibleRoot");
-  let attach_name = v8::String::new(scope, "attachAccessibleRoot").unwrap();
-  attach.set_name(attach_name);
-  proto.set(scope, attach_name.into(), attach.into());
+  yuzuko_core::define_function(
+    scope,
+    proto,
+    "attachAccessibleRoot",
+    0,
+    attach_accessible_root,
+  );
 
   let getter = v8::Function::builder(accessible_root)
     .length(0)
@@ -411,14 +410,13 @@ fn install_window(scope: &mut v8::PinScope) {
   let Ok(proto) = v8::Local::<v8::Object>::try_from(proto) else {
     return;
   };
-  let method = v8::Function::builder(get_computed_accessible_node)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .expect("getComputedAccessibleNode");
-  let name = v8::String::new(scope, "getComputedAccessibleNode").unwrap();
-  method.set_name(name);
-  proto.set(scope, name.into(), method.into());
+  yuzuko_core::define_function(
+    scope,
+    proto,
+    "getComputedAccessibleNode",
+    1,
+    get_computed_accessible_node,
+  );
 }
 
 fn get_computed_accessible_node(

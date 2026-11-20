@@ -263,11 +263,7 @@ pub struct Bytes(pub Vec<u8>);
 impl ToV8 for Bytes {
   #[inline]
   fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {
-    let length = self.0.len();
-    let store =
-      v8::ArrayBuffer::new_backing_store_from_vec(self.0).make_shared();
-    let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-    if let Some(view) = v8::Uint8Array::new(scope, buffer, 0, length) {
+    if let Some(view) = crate::js::uint8_array(scope, self.0) {
       ret.set(view.into());
     }
   }

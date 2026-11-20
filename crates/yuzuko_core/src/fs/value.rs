@@ -351,23 +351,19 @@ pub(super) fn copy_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, FsError> {
-  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
-    return shared_copy(&buffer);
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    let length = capped_view(scope, view)?;
-    let mut bytes = vec![0u8; length];
-    if length == 0 {
-      return Ok(bytes);
-    }
-    let written = view.copy_contents(&mut bytes);
-    bytes.truncate(written);
-    return Ok(bytes);
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return array_copy(&buffer);
-  }
-  Err(FsError::type_("Data must be a BufferSource."))
+  let mut limits = crate::js::BufferCopy::strict(
+    io::MAX_BUFFER,
+    "The buffer is too large.",
+    "The buffer is detached.",
+    "Data must be a BufferSource.",
+  );
+  limits.short_copy = crate::js::ShortCopy::Truncate;
+  crate::js::copy_buffer_source(scope, value, limits).map_err(|error| {
+    let crate::op::OpError::Type(message) = error else {
+      return FsError::type_("Data must be a BufferSource.");
+    };
+    FsError::type_(message)
+  })
 }
 
 pub(super) fn require_view(
@@ -429,13 +425,10 @@ pub(super) fn bytes_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> Result<v8::Local<'s, v8::Value>, FsError> {
-  let length = bytes.len();
-  if length > i32::MAX as usize {
+  if bytes.len() > i32::MAX as usize {
     return Err(FsError::failed());
   }
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-  let Some(view) = v8::Uint8Array::new(scope, buffer, 0, length) else {
+  let Some(view) = crate::js::uint8_array(scope, bytes) else {
     return Err(FsError::failed());
   };
   Ok(view.into())
@@ -699,60 +692,6 @@ fn finite_number(
     }
   }?;
   number.is_finite().then_some(number)
-}
-
-fn shared_copy(buffer: &v8::SharedArrayBuffer) -> Result<Vec<u8>, FsError> {
-  let length = buffer.byte_length();
-  if length > io::MAX_BUFFER {
-    return Err(FsError::type_("The buffer is too large."));
-  }
-  let mut bytes = vec![0u8; length];
-  if length == 0 {
-    return Ok(bytes);
-  }
-  let store = buffer.get_backing_store();
-  let Some(data) = store.data() else {
-    return Err(FsError::type_("The buffer is detached."));
-  };
-  let count = length.min(store.byte_length());
-  // Safety: `count` fits the destination and the store. The shared
-  // reference keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      count,
-    );
-  }
-  bytes.truncate(count);
-  Ok(bytes)
-}
-
-fn array_copy(buffer: &v8::ArrayBuffer) -> Result<Vec<u8>, FsError> {
-  if buffer.was_detached() {
-    return Err(FsError::type_("The buffer is detached."));
-  }
-  let length = buffer.byte_length();
-  if length > io::MAX_BUFFER {
-    return Err(FsError::type_("The buffer is too large."));
-  }
-  let mut bytes = vec![0u8; length];
-  if length == 0 {
-    return Ok(bytes);
-  }
-  let Some(data) = buffer.data() else {
-    return Err(FsError::type_("The buffer is detached."));
-  };
-  // Safety: `length` is the buffer's byte length and the destination
-  // size. `buffer` keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      length,
-    );
-  }
-  Ok(bytes)
 }
 
 fn time_value<'s>(

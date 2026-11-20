@@ -451,10 +451,7 @@ fn result_value<'s>(
         .into()
     }
     Kind::Buffer => {
-      let store =
-        v8::ArrayBuffer::new_backing_store_from_vec(pending.bytes.clone())
-          .make_shared();
-      v8::ArrayBuffer::with_backing_store(scope, &store).into()
+      yuzuko_core::array_buffer(scope, pending.bytes.clone()).into()
     }
   }
 }

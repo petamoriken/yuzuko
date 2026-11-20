@@ -1444,10 +1444,7 @@ fn rejected(
 ) -> Result<(), RuntimeError> {
   let reason = promise.result(scope);
   let text = modules::exception_stack(scope, reason).unwrap_or_else(|| {
-    reason
-      .to_string(scope)
-      .map(|value| value.to_rust_string_lossy(scope))
-      .unwrap_or_else(|| "promise rejected".to_string())
+    crate::js::rust_string_or(scope, reason, "promise rejected")
   });
   Err(RuntimeError::message(text))
 }
@@ -3066,12 +3063,8 @@ pub(crate) fn flush_rejection_notifications(scope: &mut v8::PinScope) {
       .map(|value| v8::Local::new(scope, value));
     let text = reason
       .map(|value| {
-        modules::exception_stack(scope, value).unwrap_or_else(|| {
-          value
-            .to_string(scope)
-            .map(|text| text.to_rust_string_lossy(scope))
-            .unwrap_or_else(|| "undefined".to_string())
-        })
+        modules::exception_stack(scope, value)
+          .unwrap_or_else(|| crate::js::rust_string(scope, value))
       })
       .unwrap_or_else(|| "undefined".to_string());
     host::with_mut(|state| {

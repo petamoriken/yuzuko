@@ -502,18 +502,13 @@ fn install_global_post_message(
   scope: &mut v8::PinScope,
   proto: v8::Local<v8::Object>,
 ) {
-  let Some(function) = v8::Function::builder(global_post_message)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-  else {
-    return;
-  };
-  let Some(name) = v8::String::new(scope, "postMessage") else {
-    return;
-  };
-  function.set_name(name);
-  proto.set(scope, name.into(), function.into());
+  let _ = yuzuko_core::try_define_function(
+    scope,
+    proto,
+    "postMessage",
+    1,
+    global_post_message,
+  );
 }
 
 fn global_post_message(

@@ -1,7 +1,7 @@
 //! `createImageBitmap`.
 
+use yuzuko_core::op::OpError;
 use yuzuko_core::op::host_ref;
-use yuzuko_core::op::new_dom_exception;
 use yuzuko_core::op::wrap_instance;
 use yuzuko_winter::blob_parts;
 
@@ -696,43 +696,16 @@ fn exception_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   error: Reject,
 ) -> v8::Local<'s, v8::Value> {
-  match error {
-    Reject::Type(message) => {
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::type_error(scope, message)
-    }
-    Reject::Range(message) => {
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::range_error(scope, message)
-    }
-    Reject::Dom(name, message) => new_dom_exception(scope, &name, &message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| {
-        let message = v8::String::new(scope, &message).unwrap();
-        v8::Exception::error(scope, message)
-      }),
-    Reject::Thrown(error) => {
-      // Build the same exception `#[op]` would throw, then reject with it.
-      let message = match error {
-        yuzuko_core::op::OpError::Range(message) => {
-          let message = v8::String::new(scope, &message).unwrap();
-          return v8::Exception::range_error(scope, message);
-        }
-        yuzuko_core::op::OpError::Type(message) => message,
-        yuzuko_core::op::OpError::Dom { name, message } => {
-          return new_dom_exception(scope, &name, &message)
-            .map(v8::Local::<v8::Value>::from)
-            .unwrap_or_else(|| {
-              let message = v8::String::new(scope, &message).unwrap();
-              v8::Exception::error(scope, message)
-            });
-        }
-        yuzuko_core::op::OpError::Thrown(value) => {
-          return v8::Local::new(scope, *value);
-        }
-      };
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::type_error(scope, message)
-    }
-  }
+  let error = match error {
+    Reject::Type(message) => OpError::type_(message),
+    Reject::Range(message) => OpError::range(message),
+    Reject::Dom(name, message) => OpError::dom(name, message),
+    Reject::Thrown(error) => error,
+  };
+  yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Error,
+    yuzuko_core::StringFailure::Unwrap,
+  )
 }

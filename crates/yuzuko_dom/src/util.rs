@@ -13,10 +13,7 @@ pub(crate) fn string_value(
   scope: &v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> String {
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default()
+  yuzuko_core::rust_string_or(scope, value, "")
 }
 
 /// `ToString`, rethrowing the JavaScript exception unchanged.

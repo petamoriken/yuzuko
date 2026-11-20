@@ -519,25 +519,12 @@ fn exception_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   error: OpError,
 ) -> v8::Local<'s, v8::Value> {
-  match error {
-    OpError::Type(message) => {
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::type_error(scope, message)
-    }
-    OpError::Range(message) => {
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::range_error(scope, message)
-    }
-    OpError::Dom { name, message } => {
-      yuzuko_core::op::new_dom_exception(scope, &name, &message)
-        .map(v8::Local::<v8::Value>::from)
-        .unwrap_or_else(|| {
-          let message = v8::String::new(scope, &message).unwrap();
-          v8::Exception::type_error(scope, message)
-        })
-    }
-    OpError::Thrown(value) => v8::Local::new(scope, *value),
-  }
+  yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Type,
+    yuzuko_core::StringFailure::Unwrap,
+  )
 }
 
 #[cfg(target_os = "macos")]

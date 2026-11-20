@@ -27,13 +27,8 @@ pub fn get<'a>(
   object: v8::Local<'a, v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'a, v8::Value>> {
-  let key = v8::String::new(scope, name)?;
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    return None;
-  }
   // Detach the handle from this mutable borrow so callers can use `scope`.
-  Some(unsafe {
+  yuzuko_core::dictionary_member(scope, object, name).map(|value| unsafe {
     std::mem::transmute::<v8::Local<'_, v8::Value>, v8::Local<'a, v8::Value>>(
       value,
     )
@@ -91,13 +86,15 @@ pub fn finite_number(
   scope: &v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<f64, OpError> {
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("The provided value is not a number"))?;
-  if !number.is_finite() {
-    return Err(OpError::type_("The provided value is not finite"));
-  }
-  Ok(number)
+  yuzuko_core::finite_number(
+    scope,
+    value,
+    yuzuko_core::NumberReject {
+      null_message: None,
+      not_number: "The provided value is not a number",
+      not_finite: "The provided value is not finite",
+    },
+  )
 }
 
 pub fn u32_value(
@@ -181,23 +178,10 @@ fn exception_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   error: OpError,
 ) -> v8::Local<'s, v8::Value> {
-  match error {
-    OpError::Type(message) => {
-      let text = v8::String::new(scope, &message).unwrap();
-      v8::Exception::type_error(scope, text)
-    }
-    OpError::Range(message) => {
-      let text = v8::String::new(scope, &message).unwrap();
-      v8::Exception::range_error(scope, text)
-    }
-    OpError::Dom { name, message } => {
-      yuzuko_core::op::new_dom_exception(scope, &name, &message)
-        .map(v8::Local::<v8::Value>::from)
-        .unwrap_or_else(|| {
-          let text = v8::String::new(scope, &message).unwrap();
-          v8::Exception::type_error(scope, text)
-        })
-    }
-    OpError::Thrown(value) => v8::Local::new(scope, value.as_ref()),
-  }
+  yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Type,
+    yuzuko_core::StringFailure::Unwrap,
+  )
 }

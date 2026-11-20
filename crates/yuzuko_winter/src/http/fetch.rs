@@ -1418,14 +1418,7 @@ pub fn install(scope: &mut v8::PinScope) {
   Response::install(scope);
   crate::http::request::install(scope);
   let global = scope.get_current_context().global(scope);
-  let name = v8::String::new(scope, "fetch").unwrap();
-  let function = v8::Function::builder(fetch)
-    .length(1)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap();
-  function.set_name(name);
-  global.set(scope, name.into(), function.into());
+  yuzuko_core::define_function(scope, global, "fetch", 1, fetch);
 }
 
 fn fetch(
@@ -2511,10 +2504,7 @@ fn response_init(
   };
   let status_text = match init_property(scope, object, "statusText")? {
     Some(value) => {
-      let text = value
-        .to_string(scope)
-        .map(|text| text.to_rust_string_lossy(scope))
-        .unwrap_or_default();
+      let text = yuzuko_core::rust_string_or(scope, value, "");
       if text.chars().any(|ch| {
         let code = u32::from(ch);
         code == 0 || code == 0x0A || code == 0x0D || code > 0xFF
@@ -2556,10 +2546,7 @@ pub(crate) fn extract_body(
   }
   if let Ok(object) = v8::Local::<v8::Object>::try_from(body) {
     if string_tag(scope, object).as_deref() == Some("URLSearchParams") {
-      let text = object
-        .to_string(scope)
-        .map(|text| text.to_rust_string_lossy(scope))
-        .unwrap_or_default();
+      let text = yuzuko_core::rust_string_or(scope, object.into(), "");
       return Ok(Some(Extracted::Bytes(
         text.into_bytes(),
         Some("application/x-www-form-urlencoded;charset=UTF-8".to_string()),
@@ -2815,14 +2802,8 @@ fn read_header_pairs(
     let header_value = pair
       .get_index(scope, 1)
       .ok_or_else(|| OpError::type_("A header pair is required"))?;
-    let name = name
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
-    let header_value = header_value
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
+    let name = yuzuko_core::rust_string_or(scope, name, "");
+    let header_value = yuzuko_core::rust_string_or(scope, header_value, "");
     // Keep the caller’s spelling. `append` byte-lowercases the stored name.
     let _ = normalize_header(&name)?;
     pairs.push((name, normalize_value(&header_value)?));

@@ -506,14 +506,13 @@ impl FontData {
 pub(super) fn install(scope: &mut v8::PinScope) {
   FontData::install(scope);
   let global = scope.get_current_context().global(scope);
-  let function = v8::Function::builder(query_local_fonts)
-    .length(0)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap();
-  let name = v8::String::new(scope, "queryLocalFonts").unwrap();
-  function.set_name(name);
-  global.set(scope, name.into(), function.into());
+  yuzuko_core::define_function(
+    scope,
+    global,
+    "queryLocalFonts",
+    0,
+    query_local_fonts,
+  );
 }
 
 fn query_local_fonts(

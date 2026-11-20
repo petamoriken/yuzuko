@@ -308,10 +308,7 @@ fn read_part(
       });
     }
   }
-  let text = value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default();
+  let text = yuzuko_core::rust_string_or(scope, value, "");
   Ok(Part::Text(text))
 }
 

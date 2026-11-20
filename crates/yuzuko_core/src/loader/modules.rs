@@ -64,18 +64,17 @@ pub(crate) fn format_exception(
   {
     return text;
   }
-  let text = exception
-    .and_then(|value| value.to_string(scope))
-    .map(|value| value.to_rust_string_lossy(scope))
-    .unwrap_or_else(|| fallback.to_string());
+  let text = match exception {
+    Some(value) => crate::js::rust_string_or(scope, value, fallback),
+    None => fallback.to_string(),
+  };
   let Some(message) = message else {
     return text;
   };
-  let resource = message
-    .get_script_resource_name(scope)
-    .and_then(|value| value.to_string(scope))
-    .map(|value| value.to_rust_string_lossy(scope))
-    .unwrap_or_else(|| "(unknown)".to_string());
+  let resource = match message.get_script_resource_name(scope) {
+    Some(value) => crate::js::rust_string_or(scope, value, "(unknown)"),
+    None => "(unknown)".to_string(),
+  };
   match message.get_line_number(scope) {
     Some(line) => format!("{resource}:{line}: {text}"),
     None => format!("{resource}: {text}"),
@@ -1384,12 +1383,8 @@ fn thrown_text(
   exception: v8::Local<v8::Value>,
   fallback: &str,
 ) -> String {
-  exception_stack(scope, exception).unwrap_or_else(|| {
-    exception
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_else(|| fallback.to_string())
-  })
+  exception_stack(scope, exception)
+    .unwrap_or_else(|| crate::js::rust_string_or(scope, exception, fallback))
 }
 
 fn cached_source(path: &Path, source: &str) -> Result<String, RuntimeError> {

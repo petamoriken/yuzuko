@@ -868,11 +868,7 @@ fn bytes_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let length = bytes.len();
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-  let view = v8::Uint8Array::new(scope, buffer, 0, length)?;
-  Some(view.into())
+  crate::js::uint8_array(scope, bytes).map(|view| view.into())
 }
 
 fn stdout_slot(shared: &Shared) -> &Mutex<IoSlot<ChildStdout>> {
@@ -1910,88 +1906,10 @@ fn copy_bytes(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
-  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
-    return copy_shared(&buffer);
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    if view
-      .buffer(scope)
-      .is_none_or(|buffer| buffer.was_detached())
-    {
-      return Err(OpError::type_(DETACHED));
-    }
-    let length = view.byte_length();
-    if length > MAX_BUFFER {
-      return Err(OpError::type_(BUFFER_TOO_LARGE));
-    }
-    if length == 0 {
-      return Ok(Vec::new());
-    }
-    let mut bytes = vec![0u8; length];
-    if view.copy_contents(&mut bytes) != length {
-      return Err(OpError::type_(DETACHED));
-    }
-    return Ok(bytes);
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return copy_array(&buffer);
-  }
-  Err(OpError::type_(DATA))
-}
-
-fn copy_shared(buffer: &v8::SharedArrayBuffer) -> Result<Vec<u8>, OpError> {
-  let length = buffer.byte_length();
-  if length > MAX_BUFFER {
-    return Err(OpError::type_(BUFFER_TOO_LARGE));
-  }
-  if length == 0 {
-    return Ok(Vec::new());
-  }
-  let mut bytes = vec![0u8; length];
-  let store = buffer.get_backing_store();
-  let Some(data) = store.data() else {
-    return Err(OpError::type_(DETACHED));
-  };
-  if store.byte_length() < length {
-    return Err(OpError::type_(DETACHED));
-  }
-  // Safety: `length` fits the destination and the store. The shared
-  // reference keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      length,
-    );
-  }
-  Ok(bytes)
-}
-
-fn copy_array(buffer: &v8::ArrayBuffer) -> Result<Vec<u8>, OpError> {
-  if buffer.was_detached() {
-    return Err(OpError::type_(DETACHED));
-  }
-  let length = buffer.byte_length();
-  if length > MAX_BUFFER {
-    return Err(OpError::type_(BUFFER_TOO_LARGE));
-  }
-  if length == 0 {
-    return Ok(Vec::new());
-  }
-  let mut bytes = vec![0u8; length];
-  let Some(data) = buffer.data() else {
-    return Err(OpError::type_(DETACHED));
-  };
-  // Safety: `length` is the buffer's byte length and the destination
-  // size. `buffer` keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      length,
-    );
-  }
-  Ok(bytes)
+  let mut limits =
+    crate::js::BufferCopy::strict(MAX_BUFFER, BUFFER_TOO_LARGE, DETACHED, DATA);
+  limits.missing_view_buffer = crate::js::MissingViewBuffer::Detached;
+  crate::js::copy_buffer_source(scope, value, limits)
 }
 
 fn write_target(
@@ -2149,44 +2067,12 @@ fn string_primitive(
   value: v8::Local<v8::Value>,
   message: &'static str,
 ) -> Result<String, OpError> {
-  if !value.is_string() {
-    return Err(OpError::type_(message));
-  }
-  let Ok(text) = v8::Local::<v8::String>::try_from(value) else {
-    return Err(OpError::type_(message));
-  };
-  Ok(text.to_rust_string_lossy(scope))
+  crate::js::string_primitive(scope, value)
+    .ok_or_else(|| OpError::type_(message))
 }
 
-fn move_constructor(scope: &mut v8::PinScope, name: &str) {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = crate::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
-}
-
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).expect(name);
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
+use crate::js::relocate_constructor as move_constructor;
 
 fn install_streams(scope: &mut v8::PinScope) {
   let source = v8::String::new(scope, STREAMS).expect("child streams");

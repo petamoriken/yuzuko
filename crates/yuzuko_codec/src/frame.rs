@@ -1,6 +1,6 @@
 //! `VideoFrame` constructors, `allocationSize`, and `copyTo`.
 
-use yuzuko_core::op::{Js, OpError, host_ref, new_dom_exception};
+use yuzuko_core::op::{Js, OpError, host_ref};
 use yuzuko_core::rust_string;
 use yuzuko_image::{ColorSpace, ImageBitmap, Raster, SampleFormat};
 use yuzuko_window::{CanvasSnapshot, OffscreenCanvas, snapshot_canvas};
@@ -1202,29 +1202,12 @@ fn exception_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   error: OpError,
 ) -> v8::Local<'s, v8::Value> {
-  match error {
-    OpError::Type(message) => builtin_error(scope, &message, false),
-    OpError::Range(message) => builtin_error(scope, &message, true),
-    OpError::Dom { name, message } => new_dom_exception(scope, &name, &message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| v8::undefined(scope).into()),
-    OpError::Thrown(value) => v8::Local::new(scope, *value),
-  }
-}
-
-fn builtin_error<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-  range: bool,
-) -> v8::Local<'s, v8::Value> {
-  let Some(text) = v8::String::new(scope, message) else {
-    return v8::undefined(scope).into();
-  };
-  if range {
-    v8::Exception::range_error(scope, text)
-  } else {
-    v8::Exception::type_error(scope, text)
-  }
+  yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Undefined,
+    yuzuko_core::StringFailure::Undefined,
+  )
 }
 
 #[cfg(test)]

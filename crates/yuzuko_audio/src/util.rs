@@ -7,39 +7,29 @@ pub fn member<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let key = v8::String::new(scope, name)?;
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 pub fn rust_string(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> String {
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default()
+  yuzuko_core::rust_string_or(scope, value, "")
 }
 
 pub fn finite_number(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<f64, OpError> {
-  if value.is_null() {
-    return Err(OpError::type_("The value is null"));
-  }
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("The value is not a number"))?;
-  if !number.is_finite() {
-    return Err(OpError::type_("The value is not finite"));
-  }
-  Ok(number)
+  yuzuko_core::finite_number(
+    scope,
+    value,
+    yuzuko_core::NumberReject {
+      null_message: Some("The value is null"),
+      not_number: "The value is not a number",
+      not_finite: "The value is not finite",
+    },
+  )
 }
 
 pub fn dom_exception<'s>(
@@ -47,22 +37,19 @@ pub fn dom_exception<'s>(
   name: &str,
   message: &str,
 ) -> v8::Local<'s, v8::Value> {
-  yuzuko_core::op::new_dom_exception(scope, name, message)
-    .map(|error| error.into())
-    .unwrap_or_else(|| {
-      let text = v8::String::new(scope, message).unwrap();
-      v8::Exception::error(scope, text)
-    })
+  yuzuko_core::exception_value(
+    scope,
+    OpError::dom(name, message),
+    yuzuko_core::DomFallback::Error,
+    yuzuko_core::StringFailure::Unwrap,
+  )
 }
 
 pub fn f32_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   samples: &[f32],
 ) -> v8::Local<'s, v8::Float32Array> {
-  let bytes = f32_to_bytes(samples);
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-  v8::Float32Array::new(scope, buffer, 0, samples.len()).unwrap()
+  yuzuko_core::float32_array(scope, f32_to_bytes(samples)).unwrap()
 }
 
 pub fn read_f32_view(

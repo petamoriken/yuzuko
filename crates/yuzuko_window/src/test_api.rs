@@ -308,14 +308,7 @@ fn prop<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let key = v8::String::new(scope, name)?;
-  let object = yuzuko_core::op::root(scope, object);
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 fn prop_string(

@@ -120,10 +120,7 @@ fn apply_badge(
   let text = if value.is_null() || value.is_undefined() {
     String::new()
   } else if value.is_string() {
-    value
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default()
+    yuzuko_core::rust_string_or(scope, value, "")
   } else {
     return Err(OpError::type_("setBadge requires a string or null."));
   };

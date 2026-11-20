@@ -1107,90 +1107,11 @@ fn copy_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
-  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
-    return shared_copy(&buffer);
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    if view
-      .buffer(scope)
-      .is_some_and(|buffer| buffer.was_detached())
-    {
-      return Err(OpError::type_(DETACHED));
-    }
-    let length = view.byte_length();
-    if length > MAX_BODY {
-      return Err(OpError::type_(TOO_LARGE));
-    }
-    if length == 0 {
-      return Ok(Vec::new());
-    }
-    let mut bytes = vec![0u8; length];
-    let written = view.copy_contents(&mut bytes);
-    if written != length {
-      return Err(OpError::type_(DETACHED));
-    }
-    return Ok(bytes);
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return array_copy(&buffer);
-  }
-  Err(OpError::type_(DATA))
-}
-
-fn shared_copy(buffer: &v8::SharedArrayBuffer) -> Result<Vec<u8>, OpError> {
-  let length = buffer.byte_length();
-  if length > MAX_BODY {
-    return Err(OpError::type_(TOO_LARGE));
-  }
-  if length == 0 {
-    return Ok(Vec::new());
-  }
-  let mut bytes = vec![0u8; length];
-  let store = buffer.get_backing_store();
-  let Some(data) = store.data() else {
-    return Err(OpError::type_(DETACHED));
-  };
-  let count = length.min(store.byte_length());
-  if count != length {
-    return Err(OpError::type_(DETACHED));
-  }
-  // Safety: `count` fits the destination and the store. The shared
-  // reference keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      count,
-    );
-  }
-  Ok(bytes)
-}
-
-fn array_copy(buffer: &v8::ArrayBuffer) -> Result<Vec<u8>, OpError> {
-  if buffer.was_detached() {
-    return Err(OpError::type_(DETACHED));
-  }
-  let length = buffer.byte_length();
-  if length > MAX_BODY {
-    return Err(OpError::type_(TOO_LARGE));
-  }
-  if length == 0 {
-    return Ok(Vec::new());
-  }
-  let mut bytes = vec![0u8; length];
-  let Some(data) = buffer.data() else {
-    return Err(OpError::type_(DETACHED));
-  };
-  // Safety: `length` is the buffer's byte length and the destination
-  // size. `buffer` keeps the store alive for this copy.
-  unsafe {
-    std::ptr::copy_nonoverlapping(
-      data.as_ptr().cast::<u8>(),
-      bytes.as_mut_ptr(),
-      length,
-    );
-  }
-  Ok(bytes)
+  crate::js::copy_buffer_source(
+    scope,
+    value,
+    crate::js::BufferCopy::strict(MAX_BODY, TOO_LARGE, DETACHED, DATA),
+  )
 }
 
 fn address_value(
@@ -1226,11 +1147,7 @@ fn uint8_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let length = bytes.len();
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
-  let view = v8::Uint8Array::new(scope, buffer, 0, length)?;
-  Some(view.into())
+  crate::js::uint8_array(scope, bytes).map(|view| view.into())
 }
 
 fn request_value<'s>(
@@ -1372,53 +1289,10 @@ fn fail_value<'s>(
   }
 }
 
-fn error_value<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-) -> v8::Local<'s, v8::Value> {
-  let Some(text) = v8::String::new(scope, message) else {
-    return v8::undefined(scope).into();
-  };
-  v8::Exception::error(scope, text)
-}
-
-fn plain_error(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let Some(text) = v8::String::new(scope, message) else {
-    return OpError::type_(message);
-  };
-  let error = v8::Exception::error(scope, text);
-  OpError::thrown(scope, error)
-}
-
-fn move_constructor(scope: &mut v8::PinScope, name: &str) {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = crate::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
-}
-
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).unwrap();
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
+use crate::js::error_exception as error_value;
+use crate::js::relocate_constructor as move_constructor;
+use crate::js::thrown_error as plain_error;
 
 #[cfg(test)]
 mod tests {

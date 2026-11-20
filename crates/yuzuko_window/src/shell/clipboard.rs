@@ -1122,10 +1122,7 @@ fn read_item_record(
     let key = names
       .get_index(scope, index)
       .ok_or_else(|| OpError::type_("ClipboardItem data must be an object"))?;
-    let name = key
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
+    let name = yuzuko_core::rust_string_or(scope, key, "");
     let Some(parsed) = clipboard_type(&name) else {
       return Err(OpError::type_("The clipboard type is not valid"));
     };
@@ -1152,10 +1149,7 @@ fn read_part(
   value: v8::Local<v8::Value>,
 ) -> Result<Part, OpError> {
   if value.is_string() {
-    let text = value
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
+    let text = yuzuko_core::rust_string_or(scope, value, "");
     return Ok(Part::Text(text));
   }
   match yuzuko_winter::snapshot_blob(scope, value) {
@@ -1180,10 +1174,7 @@ fn presentation_style(
   let Some(value) = object.get(scope, key.into()) else {
     return "unspecified".to_string();
   };
-  let text = value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default();
+  let text = yuzuko_core::rust_string_or(scope, value, "");
   match text.as_str() {
     "inline" | "attachment" | "unspecified" => text,
     _ => "unspecified".to_string(),

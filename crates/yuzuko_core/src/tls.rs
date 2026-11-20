@@ -746,32 +746,5 @@ fn rejected_message(
   crate::errors::reject(scope, "Busy", message, NO_PROMISE)
 }
 
-fn move_constructor(scope: &mut v8::PinScope, name: &str) {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, name) else {
-    return;
-  };
-  let Some(constructor) = global.get(scope, key.into()) else {
-    return;
-  };
-  let _ = global.delete(scope, key.into());
-  let yuzuko = crate::namespace(scope, "Yuzuko");
-  yuzuko.set(scope, key.into(), constructor);
-}
-
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).unwrap();
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
+use crate::js::relocate_constructor as move_constructor;

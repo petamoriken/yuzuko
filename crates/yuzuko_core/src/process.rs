@@ -122,22 +122,7 @@ fn install_args(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
   yuzuko.set(scope, key.into(), array.into());
 }
 
-fn define_fn(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  length: i32,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let function = v8::Function::builder(callback)
-    .length(length)
-    .constructor_behavior(v8::ConstructorBehavior::Throw)
-    .build(scope)
-    .unwrap_or_else(|| panic!("create function {name}"));
-  let key = v8::String::new(scope, name).expect(name);
-  function.set_name(key);
-  object.set(scope, key.into(), function.into());
-}
+use crate::js::define_function as define_fn;
 
 fn exit(
   scope: &mut v8::PinScope,
@@ -349,12 +334,7 @@ fn string_primitive(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Option<String> {
-  if !value.is_string() {
-    return None;
-  }
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
+  crate::js::string_primitive(scope, value)
 }
 
 fn cwd(

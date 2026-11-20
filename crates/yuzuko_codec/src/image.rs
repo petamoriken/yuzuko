@@ -6,9 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use yuzuko_core::op::{
-  Js, OpError, OpException, host_ref, new_dom_exception, traced,
-};
+use yuzuko_core::op::{Js, OpError, OpException, host_ref, traced};
 use yuzuko_core::rust_string;
 use yuzuko_image::av1::Av1Picture;
 use yuzuko_image::{
@@ -1297,26 +1295,18 @@ fn reject_with(
   resolver: v8::Local<v8::PromiseResolver>,
   error: OpError,
 ) {
-  let value = match &error {
-    OpError::Type(message) => {
-      let message = v8::String::new(scope, message).unwrap();
-      v8::Exception::type_error(scope, message)
-    }
-    OpError::Range(message) => {
-      let message = v8::String::new(scope, message).unwrap();
-      v8::Exception::range_error(scope, message)
-    }
-    OpError::Dom { name, message } => new_dom_exception(scope, name, message)
-      .map(|object| object.into())
-      .unwrap_or_else(|| {
-        let message = v8::String::new(scope, message).unwrap();
-        v8::Exception::type_error(scope, message)
-      }),
+  let value = match error {
     OpError::Thrown(_) => {
       let message =
         v8::String::new(scope, "The image data could not be read").unwrap();
       v8::Exception::type_error(scope, message)
     }
+    other => yuzuko_core::exception_value(
+      scope,
+      other,
+      yuzuko_core::DomFallback::Type,
+      yuzuko_core::StringFailure::Unwrap,
+    ),
   };
   resolver.reject(scope, value);
 }
@@ -1478,13 +1468,7 @@ fn member<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let key = v8::String::new(scope, name)?;
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
-  }
+  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 fn required_string(

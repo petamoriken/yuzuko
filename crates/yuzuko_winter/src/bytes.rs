@@ -3,8 +3,7 @@ pub fn array_buffer<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> v8::Local<'s, v8::ArrayBuffer> {
-  let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
-  v8::ArrayBuffer::with_backing_store(scope, &store)
+  yuzuko_core::array_buffer(scope, bytes)
 }
 
 #[inline]
@@ -12,9 +11,7 @@ pub fn uint8_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   bytes: Vec<u8>,
 ) -> v8::Local<'s, v8::Uint8Array> {
-  let length = bytes.len();
-  let buffer = array_buffer(scope, bytes);
-  v8::Uint8Array::new(scope, buffer, 0, length).unwrap()
+  yuzuko_core::uint8_array(scope, bytes).unwrap()
 }
 
 #[inline]
@@ -85,8 +82,5 @@ pub fn string_value(
   scope: &v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> String {
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .unwrap_or_default()
+  yuzuko_core::rust_string_or(scope, value, "")
 }

@@ -2123,11 +2123,7 @@ impl Context2D {
     if args.length() < 3 {
       return Err(OpError::type_("The text position is missing"));
     }
-    let text = args
-      .get(0)
-      .to_string(scope)
-      .map(|text| text.to_rust_string_lossy(scope))
-      .unwrap_or_default();
+    let text = yuzuko_core::rust_string_or(scope, args.get(0), "");
     let x = objects::number(scope, args.get(1))?;
     let y = objects::number(scope, args.get(2))?;
     let max_width = if args.length() >= 4 && !args.get(3).is_undefined() {

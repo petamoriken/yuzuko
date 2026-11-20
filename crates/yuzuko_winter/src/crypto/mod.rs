@@ -3087,29 +3087,17 @@ fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
 
 fn reject(scope: &mut v8::PinScope, error: OpError) -> Js {
   let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let message = match &error {
-    OpError::Type(message) | OpError::Range(message) => message.clone(),
-    OpError::Dom { message, .. } => message.clone(),
-    OpError::Thrown(_) => "The operation failed".to_string(),
-  };
-  let name = match &error {
-    OpError::Dom { name, .. } => name.clone(),
-    OpError::Range(_) => "RangeError".to_string(),
-    _ => "TypeError".to_string(),
-  };
-  let exception = if name == "TypeError" {
-    let text = v8::String::new(scope, &message).unwrap();
-    v8::Exception::type_error(scope, text)
-  } else if name == "RangeError" {
-    let text = v8::String::new(scope, &message).unwrap();
-    v8::Exception::range_error(scope, text)
-  } else {
-    yuzuko_core::op::new_dom_exception(scope, &name, &message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| {
-        let text = v8::String::new(scope, &message).unwrap();
-        v8::Exception::error(scope, text)
-      })
+  let exception = match error {
+    OpError::Thrown(_) => {
+      let text = v8::String::new(scope, "The operation failed").unwrap();
+      v8::Exception::type_error(scope, text)
+    }
+    other => yuzuko_core::exception_value(
+      scope,
+      other,
+      yuzuko_core::DomFallback::Error,
+      yuzuko_core::StringFailure::Unwrap,
+    ),
   };
   resolver.reject(scope, exception);
   let promise = resolver.get_promise(scope);
