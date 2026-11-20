@@ -15666,8 +15666,9 @@ interface EncodedVideoChunkInit {
   duration?: number;
   data: AllowSharedBufferSource;
   /**
-   * The constructor copies the bytes and then detaches each buffer. An omitted
-   * list detaches nothing.
+   * When this list contains the `ArrayBuffer` that `data` views, the chunk
+   * keeps that backing store. Otherwise the constructor copies the bytes. It
+   * then detaches each buffer. An omitted list detaches nothing.
    */
   transfer?: ArrayBuffer[];
 }
@@ -15808,9 +15809,11 @@ interface VideoDecoderConfig {
 /**
  * The **`AudioData`** interface of the WebCodecs API represents an audio sample.
  *
- * Copies `u8`, `s16`, `s32`, or `f32` samples, at most 32 channels and
- * 16,777,216 frames. `duration` is `numberOfFrames / sampleRate * 1_000_000`,
- * truncated toward 0.
+ * Stores `u8`, `s16`, `s32`, or `f32` samples, at most 32 channels and
+ * 16,777,216 frames. When `transfer` contains the `ArrayBuffer` that `data`
+ * views, the samples keep that backing store. Otherwise the constructor copies
+ * them. `duration` is `numberOfFrames / sampleRate * 1_000_000`, truncated
+ * toward 0.
  *
  * @throws {@link TypeError} when an argument is missing or invalid.
  * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned, or
@@ -15887,8 +15890,9 @@ interface AudioDataInit {
   timestamp: number;
   data: AllowSharedBufferSource;
   /**
-   * The constructor copies the samples and then detaches each buffer. An
-   * omitted list detaches nothing.
+   * When this list contains the `ArrayBuffer` that `data` views, the samples
+   * keep that backing store. Otherwise the constructor copies them. It then
+   * detaches each buffer. An omitted list detaches nothing.
    */
   transfer?: ArrayBuffer[];
 }
@@ -15961,8 +15965,9 @@ interface EncodedAudioChunkInit {
   duration?: number;
   data: AllowSharedBufferSource;
   /**
-   * The constructor copies the bytes and then detaches each buffer. An omitted
-   * list detaches nothing.
+   * When this list contains the `ArrayBuffer` that `data` views, the chunk
+   * keeps that backing store. Otherwise the constructor copies the bytes. It
+   * then detaches each buffer. An omitted list detaches nothing.
    */
   transfer?: ArrayBuffer[];
 }

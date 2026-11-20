@@ -21,11 +21,11 @@ fn webcodecs_passes_under_yuzuko_test() {
   // The AV1 tests run on every host, using rav1d when the session does
   // not open. macOS always has a VideoToolbox H.264 decoder.
   let summary = if cfg!(target_os = "macos") {
-    vec!["ok | 24 passed | 0 failed | 0 ignored"]
+    vec!["ok | 25 passed | 0 failed | 0 ignored"]
   } else {
     vec![
-      "ok | 24 passed | 0 failed | 0 ignored",
-      "ok | 19 passed | 0 failed | 5 ignored",
+      "ok | 25 passed | 0 failed | 0 ignored",
+      "ok | 20 passed | 0 failed | 5 ignored",
     ]
   };
   assert!(

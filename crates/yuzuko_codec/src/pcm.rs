@@ -2,10 +2,10 @@
 
 use yuzuko_core::op::OpError;
 use yuzuko_core::rust_string;
-use yuzuko_winter::buffer_source;
 
 use crate::classes::{
-  detach_transfer_list, dictionary, long_long, member, unsigned,
+  bytes_from_source, detach_buffers, dictionary, long_long, member,
+  source_byte_len, transfer_buffers, unsigned,
 };
 use crate::samples::{
   AudioSamples, BuildError, CopyError, CopyRequest, parse_format,
@@ -32,13 +32,17 @@ pub(crate) fn construct(
   let Some(data_value) = member(scope, object, "data") else {
     return Err(OpError::type_("data is required"));
   };
-  let Some(data) = buffer_source(scope, data_value) else {
+  let Some(len) = source_byte_len(scope, data_value) else {
     return Err(OpError::type_("data is not a BufferSource"));
   };
+  AudioSamples::check(kind, channels, frames, rate, len)
+    .map_err(build_error)?;
+  let buffers = transfer_buffers(scope, object)?;
+  let data = bytes_from_source(scope, data_value, &buffers)?;
   let samples =
-    AudioSamples::from_pcm(kind, planar, channels, frames, rate, &data)
+    AudioSamples::from_store(kind, planar, channels, frames, rate, data)
       .map_err(build_error)?;
-  detach_transfer_list(scope, object)?;
+  detach_buffers(scope, buffers);
   Ok(BuiltAudio {
     samples,
     timestamp: timestamp as f64,

@@ -1,10 +1,16 @@
-//! PCM layout and sample conversion for `AudioData`. No V8.
+//! PCM layout and sample conversion for `AudioData`.
+//!
+//! Sample bytes are an owned copy, or the backing store of an `ArrayBuffer`
+//! listed in `transfer`. Conversion reads that slice and does not enter an
+//! isolate.
 //!
 //! Integer and float formats convert through the unit interval with the same
 //! scales as Chromium's `FixedSampleTypeTraits`: unsigned 8-bit is centered
 //! at 128, and the positive and negative sides use different divisors so the
 //! extreme samples stay inside the destination type. Same-format copies move
 //! the stored bytes and do not pass through that conversion.
+
+use crate::store::ByteStore;
 
 /// WebCodecs allows at most 32 channels.
 pub(crate) const MAX_CHANNELS: u32 = 32;
@@ -64,7 +70,7 @@ pub(crate) struct AudioSamples {
   pub channels: u32,
   pub frames: u32,
   pub rate: f64,
-  pub bytes: Vec<u8>,
+  pub bytes: ByteStore,
 }
 
 /// `copyTo` and `allocationSize` options after dictionary conversion.
@@ -92,6 +98,19 @@ pub(crate) fn parse_format(name: &str) -> Option<(SampleKind, bool)> {
 }
 
 impl AudioSamples {
+  /// Reject a dictionary before `transfer` is detached.
+  pub(crate) fn check(
+    kind: SampleKind,
+    channels: u32,
+    frames: u32,
+    rate: f64,
+    data_len: usize,
+  ) -> Result<(), BuildError> {
+    let _ = needed(kind, channels, frames, rate, data_len)?;
+    Ok(())
+  }
+
+  #[cfg(test)]
   pub(crate) fn from_pcm(
     kind: SampleKind,
     planar: bool,
@@ -100,29 +119,38 @@ impl AudioSamples {
     rate: f64,
     data: &[u8],
   ) -> Result<Self, BuildError> {
-    if !rate.is_finite() || rate <= 0.0 {
-      return Err(BuildError::Rate);
-    }
-    if frames == 0 {
-      return Err(BuildError::Frames);
-    }
-    if channels == 0 {
-      return Err(BuildError::Channels);
-    }
-    if frames > MAX_FRAMES || channels > MAX_CHANNELS {
-      return Err(BuildError::Limits);
-    }
-    let needed = byte_len(kind, channels, frames).ok_or(BuildError::Limits)?;
-    if data.len() < needed {
+    let count = needed(kind, channels, frames, rate, data.len())?;
+    Self::from_store(
+      kind,
+      planar,
+      channels,
+      frames,
+      rate,
+      ByteStore::owned(data[..count].to_vec()),
+    )
+  }
+
+  /// `data` is the view, or the prefix of it when the view is longer than
+  /// the samples. A shared store is not copied again.
+  pub(crate) fn from_store(
+    kind: SampleKind,
+    planar: bool,
+    channels: u32,
+    frames: u32,
+    rate: f64,
+    data: ByteStore,
+  ) -> Result<Self, BuildError> {
+    let count = needed(kind, channels, frames, rate, data.len())?;
+    let Some(bytes) = data.prefix(count) else {
       return Err(BuildError::TooSmall);
-    }
+    };
     Ok(Self {
       kind,
       planar,
       channels,
       frames,
       rate,
-      bytes: data[..needed].to_vec(),
+      bytes,
     })
   }
 
@@ -152,7 +180,7 @@ impl AudioSamples {
       channels: count,
       frames: u32::try_from(frames).unwrap_or(0),
       rate,
-      bytes,
+      bytes: ByteStore::owned(bytes),
     }
   }
 
@@ -177,7 +205,7 @@ impl AudioSamples {
       channels,
       frames,
       rate,
-      bytes,
+      bytes: ByteStore::owned(bytes),
     })
   }
 
@@ -391,6 +419,32 @@ pub(crate) fn kind_from_code(code: u32) -> Option<(SampleKind, bool)> {
     _ => return None,
   };
   Some((kind, planar))
+}
+
+fn needed(
+  kind: SampleKind,
+  channels: u32,
+  frames: u32,
+  rate: f64,
+  data_len: usize,
+) -> Result<usize, BuildError> {
+  if !rate.is_finite() || rate <= 0.0 {
+    return Err(BuildError::Rate);
+  }
+  if frames == 0 {
+    return Err(BuildError::Frames);
+  }
+  if channels == 0 {
+    return Err(BuildError::Channels);
+  }
+  if frames > MAX_FRAMES || channels > MAX_CHANNELS {
+    return Err(BuildError::Limits);
+  }
+  let count = byte_len(kind, channels, frames).ok_or(BuildError::Limits)?;
+  if data_len < count {
+    return Err(BuildError::TooSmall);
+  }
+  Ok(count)
 }
 
 fn byte_len(kind: SampleKind, channels: u32, frames: u32) -> Option<usize> {

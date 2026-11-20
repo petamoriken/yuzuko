@@ -1352,6 +1352,79 @@ Yuzuko.test("AudioData constructs, copies, and closes", async () => {
   );
 });
 
+Yuzuko.test("transferred codec bytes stay readable after detach", () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5, 6]);
+  const view = bytes.subarray(1, 5);
+  const chunk = new EncodedAudioChunk({
+    type: "key",
+    timestamp: 0,
+    data: view,
+    transfer: [bytes.buffer],
+  });
+  assert(bytes.byteLength === 0, "view buffer detached");
+  const kept = new Uint8Array(chunk.byteLength);
+  chunk.copyTo(kept);
+  assert(kept[0] === 2 && kept[3] === 5, "view bytes");
+
+  const live = new Uint8Array([7, 8, 9]);
+  const other = new ArrayBuffer(2);
+  const copied = new EncodedVideoChunk({
+    type: "key",
+    timestamp: 1,
+    data: live,
+    transfer: [other],
+  });
+  assert(live.byteLength === 3, "unlisted buffer stays");
+  assert(other.byteLength === 0, "other buffer detached");
+  live[0] = 0;
+  const snap = new Uint8Array(copied.byteLength);
+  copied.copyTo(snap);
+  assert(snap[0] === 7 && snap[2] === 9, "chunk snapshot");
+
+  const samples = new Uint8Array([9, 8, 7, 6]);
+  const unused = new ArrayBuffer(4);
+  const audio = new AudioData({
+    format: "u8",
+    sampleRate: 8000,
+    numberOfFrames: 2,
+    numberOfChannels: 1,
+    timestamp: 0,
+    data: samples,
+    transfer: [samples.buffer, unused],
+  });
+  assert(samples.byteLength === 0 && unused.byteLength === 0, "audio detached");
+  const head = new Uint8Array(2);
+  audio.copyTo(head, { planeIndex: 0 });
+  assert(head[0] === 9 && head[1] === 8, "sample prefix");
+  audio.close();
+
+  const stay = new ArrayBuffer(8);
+  assertTypeError(
+    () => new AudioData({
+      format: "u8",
+      sampleRate: 8000,
+      numberOfFrames: 4,
+      numberOfChannels: 1,
+      timestamp: 0,
+      data: new Uint8Array([1]),
+      transfer: [stay],
+    }),
+    "short transfer",
+  );
+  assert(stay.byteLength === 8, "short constructor detaches nothing");
+  const chunkStay = new ArrayBuffer(4);
+  assertTypeError(() => {
+    new EncodedAudioChunk({
+      // @ts-expect-error "nope" is not a chunk type.
+      type: "nope",
+      timestamp: 0,
+      data: new Uint8Array([1]),
+      transfer: [chunkStay],
+    });
+  }, "chunk type");
+  assert(chunkStay.byteLength === 4, "invalid chunk detaches nothing");
+});
+
 async function assertRejectsType(
   run: () => Promise<unknown>,
   message: string,

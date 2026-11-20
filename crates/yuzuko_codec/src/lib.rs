@@ -20,6 +20,7 @@ mod mp4;
 mod pcm;
 mod platform;
 mod samples;
+mod store;
 
 use std::sync::Once;
 

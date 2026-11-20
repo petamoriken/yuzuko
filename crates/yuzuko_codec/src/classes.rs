@@ -18,6 +18,7 @@ use crate::audio::{AudioBackend, AudioCodec};
 use crate::backend::{Acceleration, Codec, Picture, VideoBackend, VideoConfig};
 use crate::error::DecodeError;
 use crate::layout::{FrameColor, FrameData, frame_from_av1, frame_from_raster};
+use crate::store::ByteStore;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -40,7 +41,7 @@ struct ChunkParts {
   key: bool,
   timestamp: i64,
   duration: Option<f64>,
-  data: Vec<u8>,
+  data: ByteStore,
 }
 
 pub struct VideoFrame {
@@ -444,7 +445,7 @@ pub struct EncodedVideoChunk {
   key: bool,
   timestamp: i64,
   duration: Option<f64>,
-  data: Vec<u8>,
+  data: ByteStore,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for EncodedVideoChunk {
@@ -509,7 +510,12 @@ impl EncodedVideoChunk {
 
 impl EncodedVideoChunk {
   pub(crate) fn copy_parts(&self) -> (bool, i64, Option<f64>, Vec<u8>) {
-    (self.key, self.timestamp, self.duration, self.data.clone())
+    (
+      self.key,
+      self.timestamp,
+      self.duration,
+      self.data.as_slice().to_vec(),
+    )
   }
 
   pub(crate) fn from_parts(
@@ -522,13 +528,13 @@ impl EncodedVideoChunk {
       key,
       timestamp,
       duration,
-      data,
+      data: ByteStore::owned(data),
     }
   }
 }
 
 struct QueuedChunk {
-  bytes: Vec<u8>,
+  bytes: ByteStore,
   timestamp: f64,
   duration: Option<f64>,
 }
@@ -1329,7 +1335,7 @@ pub struct EncodedAudioChunk {
   key: bool,
   timestamp: i64,
   duration: Option<f64>,
-  data: Vec<u8>,
+  data: ByteStore,
 }
 
 unsafe impl v8::cppgc::GarbageCollected for EncodedAudioChunk {
@@ -1394,7 +1400,12 @@ impl EncodedAudioChunk {
 
 impl EncodedAudioChunk {
   pub(crate) fn copy_parts(&self) -> (bool, i64, Option<f64>, Vec<u8>) {
-    (self.key, self.timestamp, self.duration, self.data.clone())
+    (
+      self.key,
+      self.timestamp,
+      self.duration,
+      self.data.as_slice().to_vec(),
+    )
   }
 
   pub(crate) fn from_parts(
@@ -1407,13 +1418,13 @@ impl EncodedAudioChunk {
       key,
       timestamp,
       duration,
-      data,
+      data: ByteStore::owned(data),
     }
   }
 }
 
 struct AudioQueued {
-  bytes: Vec<u8>,
+  bytes: ByteStore,
   timestamp: f64,
 }
 
@@ -2122,7 +2133,7 @@ fn audio_codec(codec: &str) -> Option<AudioCodec> {
 fn video_chunk(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(bool, Vec<u8>, f64, Option<f64>), OpError> {
+) -> Result<(bool, ByteStore, f64, Option<f64>), OpError> {
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("The chunk is not an EncodedVideoChunk"))?;
   let Some(host) = (unsafe { host_ref::<EncodedVideoChunk>(scope, object) })
@@ -2141,7 +2152,7 @@ fn video_chunk(
 fn audio_chunk(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(Vec<u8>, f64), OpError> {
+) -> Result<(ByteStore, f64), OpError> {
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("The chunk is not an EncodedAudioChunk"))?;
   let Some(host) = (unsafe { host_ref::<EncodedAudioChunk>(scope, object) })
@@ -2169,17 +2180,20 @@ fn chunk_parts(
   let Some(data) = member(scope, object, "data") else {
     return Err(OpError::type_("data is required"));
   };
-  let Some(data) = buffer_source(scope, data) else {
+  if source_byte_len(scope, data).is_none() {
     return Err(OpError::type_("data is not a BufferSource"));
-  };
-  let parts = ChunkParts {
+  }
+  let timestamp = long_long(scope, timestamp)?;
+  let duration = chunk_duration(scope, object)?;
+  let buffers = transfer_buffers(scope, object)?;
+  let data = bytes_from_source(scope, data, &buffers)?;
+  detach_buffers(scope, buffers);
+  Ok(ChunkParts {
     key,
-    timestamp: long_long(scope, timestamp)?,
-    duration: chunk_duration(scope, object)?,
+    timestamp,
+    duration,
     data,
-  };
-  detach_transfer_list(scope, object)?;
-  Ok(parts)
+  })
 }
 
 fn chunk_duration(
@@ -2239,7 +2253,7 @@ pub(crate) fn member<'s>(
   }
 }
 
-/// Detach each `ArrayBuffer` in `init.transfer` after the bytes are copied.
+/// Detach each `ArrayBuffer` in `init.transfer`.
 ///
 /// Validation finishes before any detach, so a thrown constructor leaves
 /// every listed buffer attached. An omitted member detaches nothing.
@@ -2247,8 +2261,18 @@ pub(crate) fn detach_transfer_list(
   scope: &mut v8::PinScope,
   init: v8::Local<v8::Object>,
 ) -> Result<(), OpError> {
+  let buffers = transfer_buffers(scope, init)?;
+  detach_buffers(scope, buffers);
+  Ok(())
+}
+
+/// Validate `init.transfer` without detaching it.
+pub(crate) fn transfer_buffers(
+  scope: &mut v8::PinScope,
+  init: v8::Local<v8::Object>,
+) -> Result<Vec<v8::Global<v8::ArrayBuffer>>, OpError> {
   let Some(value) = member(scope, init, "transfer") else {
-    return Ok(());
+    return Ok(Vec::new());
   };
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("transfer is not a sequence"))?;
@@ -2288,11 +2312,107 @@ pub(crate) fn detach_transfer_list(
       ));
     }
   }
+  Ok(buffers)
+}
+
+pub(crate) fn detach_buffers(
+  scope: &mut v8::PinScope,
+  buffers: Vec<v8::Global<v8::ArrayBuffer>>,
+) {
   for buffer in buffers {
     let buffer = v8::Local::new(scope, buffer);
     let _ = buffer.detach(None);
   }
-  Ok(())
+}
+
+/// Byte length of a `BufferSource`, or `None` when `value` is not one.
+/// A detached view or buffer reports `0`.
+pub(crate) fn source_byte_len(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Option<usize> {
+  if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
+    return Some(buffer.byte_length());
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    if view
+      .buffer(scope)
+      .is_some_and(|buffer| buffer.was_detached())
+    {
+      return Some(0);
+    }
+    return Some(view.byte_length());
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    if buffer.was_detached() {
+      return Some(0);
+    }
+    return Some(buffer.byte_length());
+  }
+  None
+}
+
+/// Keep `value`'s backing store when `buffers` contains its `ArrayBuffer`.
+/// Otherwise copy the bytes. The caller detaches `buffers` after this returns.
+pub(crate) fn bytes_from_source<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+) -> Result<ByteStore, OpError> {
+  if let Some(store) = adopted_store(scope, value, buffers) {
+    return Ok(store);
+  }
+  let Some(bytes) = buffer_source(scope, value) else {
+    return Err(OpError::type_("data is not a BufferSource"));
+  };
+  Ok(ByteStore::owned(bytes))
+}
+
+fn adopted_store<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+) -> Option<ByteStore> {
+  let (buffer, offset, len) = array_buffer_range(scope, value)?;
+  if !transfer_contains(scope, buffers, buffer) {
+    return None;
+  }
+  let store = buffer.get_backing_store();
+  ByteStore::shared(store, offset, len)
+}
+
+fn array_buffer_range<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> Option<(v8::Local<'s, v8::ArrayBuffer>, usize, usize)> {
+  if v8::Local::<v8::SharedArrayBuffer>::try_from(value).is_ok() {
+    return None;
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    let buffer = view.buffer(scope)?;
+    if buffer.was_detached() {
+      return None;
+    }
+    return Some((buffer, view.byte_offset(), view.byte_length()));
+  }
+  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    if buffer.was_detached() {
+      return None;
+    }
+    return Some((buffer, 0, buffer.byte_length()));
+  }
+  None
+}
+
+fn transfer_contains(
+  scope: &mut v8::PinScope,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+  buffer: v8::Local<v8::ArrayBuffer>,
+) -> bool {
+  buffers.iter().any(|existing| {
+    let existing: v8::Local<v8::ArrayBuffer> = v8::Local::new(scope, existing);
+    existing.strict_equals(buffer.into())
+  })
 }
 
 fn required_string(
