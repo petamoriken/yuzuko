@@ -84,6 +84,10 @@ pub struct RuntimeError {
   pub reload_path: Option<PathBuf>,
   /// DOMException name when the failure is a web exception.
   pub dom_name: Option<String>,
+  /// The script failed to parse. The owner receives a plain `error` event.
+  pub parse_error: bool,
+  /// `Worker.terminate` aborted the script. The owner does not get an error.
+  pub(crate) terminated: bool,
 }
 
 impl RuntimeError {
@@ -93,6 +97,8 @@ impl RuntimeError {
       exit_code: None,
       reload_path: None,
       dom_name: None,
+      parse_error: false,
+      terminated: false,
     }
   }
 
@@ -102,6 +108,8 @@ impl RuntimeError {
       exit_code: None,
       reload_path: None,
       dom_name: Some(name.into()),
+      parse_error: false,
+      terminated: false,
     }
   }
 
@@ -111,6 +119,8 @@ impl RuntimeError {
       exit_code: Some(code),
       reload_path: None,
       dom_name: None,
+      parse_error: false,
+      terminated: false,
     }
   }
 
@@ -121,6 +131,30 @@ impl RuntimeError {
       exit_code: None,
       reload_path: Some(path),
       dom_name: None,
+      parse_error: false,
+      terminated: false,
+    }
+  }
+
+  pub(crate) fn parse(message: impl Into<String>) -> Self {
+    Self {
+      message: message.into(),
+      exit_code: None,
+      reload_path: None,
+      dom_name: None,
+      parse_error: true,
+      terminated: false,
+    }
+  }
+
+  pub(crate) fn terminated() -> Self {
+    Self {
+      message: String::new(),
+      exit_code: None,
+      reload_path: None,
+      dom_name: None,
+      parse_error: false,
+      terminated: true,
     }
   }
 }
@@ -885,26 +919,81 @@ pub(crate) fn run_scripts_after(
   run_script_list(sources, prepare)
 }
 
-pub(crate) fn eval_classic(
+/// Runs one classic `importScripts` body.
+///
+/// A parse failure stays a string. A runtime throw is put back on `scope`
+/// so the caller can propagate that value.
+pub(crate) fn eval_classic_import(
   scope: &mut v8::PinScope,
   url: &str,
   source: &str,
-) -> Result<(), RuntimeError> {
-  v8::tc_scope!(let tc, scope);
-  let Some(code) = v8::String::new(tc, source) else {
-    return Err(RuntimeError::message("script is too large".to_string()));
+) -> Result<(), crate::worker::ImportScriptError> {
+  let failed: Result<(), (v8::Global<v8::Value>, u32, u32)> = {
+    v8::tc_scope!(let tc, scope);
+    let Some(code) = v8::String::new(tc, source) else {
+      return Err(crate::worker::ImportScriptError::Parse {
+        message: "script is too large".to_string(),
+        line: 0,
+        column: 0,
+      });
+    };
+    let origin = script_origin(tc, Some(url));
+    let Some(compiled) = v8::Script::compile(tc, code, origin.as_ref()) else {
+      let message = tc.message();
+      let (line, column) = site_from_message(tc, message);
+      let text = modules::exception_text!(tc, "failed to compile script");
+      return Err(crate::worker::ImportScriptError::Parse {
+        message: text,
+        line,
+        column,
+      });
+    };
+    if compiled.run(tc).is_some() {
+      return Ok(());
+    }
+    if exiting() {
+      return Err(crate::worker::ImportScriptError::Exit);
+    }
+    // Leave the termination exception in place. When this script was entered
+    // from JavaScript, dropping the TryCatch rethrows it into the caller.
+    if tc.has_terminated() {
+      return Err(crate::worker::ImportScriptError::Terminated);
+    }
+    let message = tc.message();
+    let (line, column) = site_from_message(tc, message);
+    let exception = tc
+      .exception()
+      .map(|value| v8::Global::new(tc, value))
+      .unwrap_or_else(|| {
+        let undefined: v8::Local<v8::Value> = v8::undefined(tc).into();
+        v8::Global::new(tc, undefined)
+      });
+    tc.reset();
+    Err((exception, line, column))
   };
-  let origin = script_origin(tc, Some(url));
-  let Some(compiled) = v8::Script::compile(tc, code, origin.as_ref()) else {
-    let text = modules::exception_text!(tc, "failed to compile script");
-    return Err(RuntimeError::message(text));
+  let Err((exception, line, column)) = failed else {
+    return Ok(());
   };
-  if compiled.run(tc).is_none() {
-    bail_if_exit()?;
-    let text = modules::exception_text!(tc, "failed to run script");
-    return Err(RuntimeError::message(text));
-  }
-  Ok(())
+  Err(crate::worker::ImportScriptError::Thrown {
+    error: exception,
+    line,
+    column,
+  })
+}
+
+fn site_from_message(
+  scope: &mut v8::PinScope,
+  message: Option<v8::Local<v8::Message>>,
+) -> (u32, u32) {
+  let Some(message) = message else {
+    return (0, 0);
+  };
+  let line = message
+    .get_line_number(scope)
+    .and_then(|number| u32::try_from(number).ok())
+    .unwrap_or(0);
+  let column = u32::try_from(message.get_start_column()).unwrap_or(0);
+  (line, column)
 }
 
 /// Boots a dedicated worker isolate and runs `body` on its thread.
@@ -946,28 +1035,63 @@ pub(crate) fn run_worker_isolate(
           RuntimeError::dom(name, message)
         }
       })?;
+      crate::worker::clear_script_site();
       if script.kind == crate::worker::ScriptKind::Module {
         let path = loaded.path.ok_or_else(|| {
           RuntimeError::message("A module worker needs a file path".to_string())
         })?;
         let module = modules::compile_entry(scope, &path)?;
         let module = v8::Local::new(scope, module);
-        let value = instantiate_and_evaluate(scope, module)?;
-        let _ = value;
+        match instantiate_and_evaluate(scope, module) {
+          Ok(value) => report_rejected_module(scope, value),
+          Err(error) if error.terminated => return Err(error),
+          Err(error)
+            if error.parse_error
+              || error.dom_name.is_some()
+              || error.exit_code.is_some() =>
+          {
+            return Err(error);
+          }
+          Err(error) => {
+            let text = v8::String::new(scope, &error.message)
+              .unwrap_or_else(|| v8::String::new(scope, "").unwrap());
+            let created = v8::Exception::error(scope, text);
+            report_worker_exception(scope, created);
+          }
+        }
       } else {
-        eval_classic(scope, &script.url, &loaded.text)?;
+        match eval_classic_import(scope, &script.url, &loaded.text) {
+          Ok(()) => {}
+          Err(crate::worker::ImportScriptError::Parse { message, .. }) => {
+            return Err(RuntimeError::parse(message));
+          }
+          Err(crate::worker::ImportScriptError::Exit) => {
+            return Err(RuntimeError::exit(
+              crate::process::exit_code().unwrap_or(0),
+            ));
+          }
+          Err(crate::worker::ImportScriptError::Terminated) => {
+            return Err(RuntimeError::terminated());
+          }
+          Err(crate::worker::ImportScriptError::Thrown { error, .. }) => {
+            let error = v8::Local::new(scope, error);
+            report_worker_exception(scope, error);
+          }
+        }
       }
       Ok(())
     })();
     if let Err(error) = result {
       // `Yuzuko.exit` from this worker is process shutdown, not an error
-      // event on the parent.
-      if !exiting() && crate::worker::agent_alive(id) {
+      // event on the parent. `terminate()` aborts the script and does not
+      // report that abort.
+      if !error.terminated && !exiting() && crate::worker::agent_alive(id) {
         report_worker_failure(id, &script.url, error);
       }
     } else {
       while crate::worker::agent_alive(id) && !crate::worker::worker_closing(id)
       {
+        crate::worker::clear_script_site();
         if exiting() {
           break;
         }
@@ -993,6 +1117,50 @@ pub(crate) fn run_worker_isolate(
   host::exit();
 }
 
+/// A module evaluation returns a promise. A top-level throw rejects that
+/// promise instead of throwing out of `evaluate`. Report the reason once.
+fn report_rejected_module(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
+    return;
+  };
+  if promise.state() != v8::PromiseState::Rejected {
+    return;
+  }
+  promise.mark_as_handled();
+  if let Some(swallow) = v8::Function::new(scope, swallow_module_rejection) {
+    let _ = promise.catch(scope, swallow);
+  }
+  let reason = promise.result(scope);
+  report_worker_exception(scope, reason);
+}
+
+fn swallow_module_rejection(
+  _scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+}
+
+fn report_worker_exception(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) {
+  let global = crate::js::global(scope);
+  let Some(name) = v8::String::new(scope, "reportError") else {
+    return;
+  };
+  let Some(report) = global
+    .get(scope, name.into())
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let _ = report.call(scope, global.into(), &[error]);
+}
+
 fn report_worker_failure(id: u64, url: &str, error: RuntimeError) {
   let Some(parent) = crate::worker::parent_agent(id) else {
     crate::worker::mark_dead(id);
@@ -1002,14 +1170,20 @@ fn report_worker_failure(id: u64, url: &str, error: RuntimeError) {
     Some(name) => format!("{name}: {}", error.message),
     None => error.message,
   };
+  let site = crate::worker::take_script_site();
+  let (filename, line, column) = match site {
+    Some(site) => (site.filename, site.line, site.column),
+    None => (url.to_string(), 0, 0),
+  };
   crate::worker::post_inbound(
     parent,
     crate::worker::Inbound::Failed {
       worker: id,
       message,
-      filename: url.to_string(),
-      line: 0,
-      column: 0,
+      filename,
+      line,
+      column,
+      parse: error.parse_error,
     },
   );
   crate::worker::mark_dead(id);

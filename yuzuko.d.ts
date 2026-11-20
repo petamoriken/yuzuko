@@ -7117,8 +7117,9 @@ declare var PerformanceObserver: {
  * on some activities.
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
- * `"Win32"`, `"MacIntel"`, or `"Linux"`. A worker navigator has `userAgent`,
- * `platform`, `hardwareConcurrency`, `language`, and `languages`.
+ * `"Win32"`, `"MacIntel"`, or `"Linux"`. `appCodeName` is `"Mozilla"`,
+ * `appName` is `"Netscape"`, `appVersion` is `"5.0"`, `product` is `"Gecko"`,
+ * and `onLine` is `true`. A worker navigator has the same values.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -7164,6 +7165,41 @@ interface Navigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/languages)
    */
   readonly languages: ReadonlyArray<string>;
+
+  /**
+   * The value is `"Mozilla"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/appCodeName)
+   */
+  readonly appCodeName: string;
+
+  /**
+   * The value is `"Netscape"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/appName)
+   */
+  readonly appName: string;
+
+  /**
+   * The value is `"5.0"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/appVersion)
+   */
+  readonly appVersion: string;
+
+  /**
+   * The value is `"Gecko"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/product)
+   */
+  readonly product: string;
+
+  /**
+   * The value is `true`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/onLine)
+   */
+  readonly onLine: boolean;
 
   /**
    * The **`maxTouchPoints`** read-only property of the Navigator interface returns
@@ -8694,8 +8730,13 @@ interface MessageEvent<T = any> extends Event {
   readonly source: Window | MessagePort | null;
 
   /**
-   * Frozen array of transferred {@link MessagePort} s that were reachable from the
-   * message. Each read returns that same array.
+   * The **`ports`** read-only property of the MessageEvent interface is an
+   * array of MessagePort objects containing all MessagePort objects sent with
+   * the message, in order.
+   *
+   * On the main global, a port the message does not refer to is that same
+   * object and stays open. Each read returns that same frozen array. A port
+   * created to carry a transferred stream is not in that array.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageEvent/ports)
    */
@@ -16612,8 +16653,9 @@ declare class WebTransportError extends DOMException {
  * does not throw. That agent dispatches `messageerror` and does not dispatch
  * `error`.
  *
- * @throws {@link TypeError} When the URL or `type` is invalid, or when
- * `type` is `"classic"` with a source-phase import.
+ * @throws {@link TypeError} When the URL is omitted, when `type` is invalid,
+ * or when `type` is `"classic"` with a source-phase import.
+ * @throws {@link DOMException} `SyntaxError` when the URL does not parse.
  * @throws {@link DOMException} `DataCloneError` when `postMessage` carries a
  * value that cannot be cloned, including a {@link Yuzuko.Window}.
  *
@@ -16671,14 +16713,18 @@ declare class WorkerGlobalScope extends EventTarget {
    * (a worker constructed from a classic script).
    *
    * A `file:` URL requires read access and an `http:` or `https:` URL requires net
-   * access. A missing grant throws `NotCapable`.
+   * access. A missing grant throws `NotCapable`. A script that does not parse
+   * throws `SyntaxError` after earlier scripts in that call have run. A value
+   * thrown while an imported script runs propagates from this call.
    *
    * @throws {@link errors.NotCapable} when a `file:` URL is
    * not granted, or when an `http:` or `https:` URL or a followed redirect
    * is not granted.
-   * @throws {@link DOMException} `NetworkError` when a script cannot be loaded,
-   * or when an `http:` or `https:` response is not a JavaScript MIME type.
-   * @throws {@link TypeError} In a module worker, or when a script throws.
+   * @throws {@link DOMException} `SyntaxError` when a URL does not parse.
+   * `NetworkError` when a script cannot be loaded, or when an `http:` or
+   * `https:` response is not a JavaScript MIME type.
+   * @throws {@link SyntaxError} When an imported script does not parse.
+   * @throws {@link TypeError} In a module worker.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerGlobalScope/importScripts)
    */
@@ -16693,8 +16739,11 @@ declare class WorkerGlobalScope extends EventTarget {
  * also: Functions available to workers.
  *
  * The worker does not have `requestIdleCallback`, `Yuzuko.Window`,
- * `Yuzuko.Menu`, `navigator.clipboard`, or `navigator.getGamepads`. It has
- * `requestAnimationFrame`, `FileReaderSync`, and `self.fonts`.
+ * `Yuzuko.Menu`, `navigator.clipboard`, `navigator.getGamepads`, or the
+ * window input constructors `UIEvent`, `FocusEvent`, `MouseEvent`,
+ * `WheelEvent`, `DragEvent`, `KeyboardEvent`, `CompositionEvent`,
+ * `InputEvent`, `PointerEvent`, `Touch`, `TouchList`, and `TouchEvent`.
+ * It has `requestAnimationFrame`, `FileReaderSync`, and `self.fonts`.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -16795,6 +16844,11 @@ declare class WorkerNavigator {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/userAgent) */
   readonly userAgent: string;
 
+  /**
+   * Historical platform token: `"Win32"`, `"MacIntel"`, or `"Linux"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/platform)
+   */
   readonly platform: string;
 
   /**
@@ -16823,6 +16877,41 @@ declare class WorkerNavigator {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/languages)
    */
   readonly languages: ReadonlyArray<string>;
+
+  /**
+   * The value is `"Mozilla"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/appCodeName)
+   */
+  readonly appCodeName: string;
+
+  /**
+   * The value is `"Netscape"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/appName)
+   */
+  readonly appName: string;
+
+  /**
+   * The value is `"5.0"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/appVersion)
+   */
+  readonly appVersion: string;
+
+  /**
+   * The value is `"Gecko"`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/product)
+   */
+  readonly product: string;
+
+  /**
+   * The value is `true`.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/onLine)
+   */
+  readonly onLine: boolean;
 }
 
 /**
@@ -17503,11 +17592,12 @@ interface GamepadEventInit extends EventInit {
 interface ImportMeta {
   /**
    * Absolute `file:` URL of this module, including a `.ts` or `.mts` URL.
+   * A fragment on the specifier stays on this URL.
    */
   url: string;
 
   /**
-   * File-system path of `url`.
+   * File-system path of `url`. A fragment is omitted.
    */
   filename: string;
 
@@ -17517,7 +17607,7 @@ interface ImportMeta {
   dirname: string;
 
   /**
-   * Resolves `specifier` with the same loader as `import()`, relative to this module, and returns the absolute `file:` URL.
+   * Resolves `specifier` with the same loader as `import()`, relative to this module, and returns the absolute `file:` URL. A fragment on `specifier` stays on that URL.
    *
    * `parent`, when it is not `undefined`, is the parent module's `file:` URL. A `file:` specifier is normalized even when that file is absent. Any other specifier that does not resolve throws `TypeError`.
    *

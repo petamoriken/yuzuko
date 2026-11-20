@@ -1261,7 +1261,7 @@ Yuzuko.test("postMessage ports lists a transferred MessagePort", async () => {
     { targetOrigin: "*", transfer: [readable, channel.port1] },
   );
   const event = await pending;
-  if (event.ports.length !== 1 || !(event.ports[0] instanceof MessagePort)) {
+  if (event.ports.length !== 1 || event.ports[0] !== event.data.port) {
     throw new Error("ports");
   }
   if (Object.isFrozen(event.ports) !== true) {
@@ -1269,6 +1269,20 @@ Yuzuko.test("postMessage ports lists a transferred MessagePort", async () => {
   }
   if (!(event.data.stream instanceof ReadableStream)) {
     throw new Error("stream");
+  }
+  const spare = new MessageChannel();
+  const again = nextSelfMessage();
+  postMessage({}, "*", [spare.port1]);
+  const second = await again;
+  if (second.ports.length !== 1 || second.ports[0] !== spare.port1) {
+    throw new Error("unreferenced port");
+  }
+  const heard = new Promise((resolve) => {
+    spare.port2.onmessage = (event) => resolve(event.data);
+  });
+  spare.port1.postMessage("open");
+  if ((await heard) !== "open") {
+    throw new Error("unreferenced still open");
   }
   const reader = event.data.stream.getReader();
   const first = await reader.read();

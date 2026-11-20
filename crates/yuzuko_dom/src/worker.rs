@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 use yuzuko_core::op::{Js, OpError, OpException};
 use yuzuko_core::{
-  Inbound, ScriptKind, WorkerScript, agent_alive, agent_id,
+  ImportScriptError, Inbound, ScriptKind, WorkerScript, agent_alive, agent_id,
   eval_classic_in_worker, is_dedicated_worker, load_worker_source,
-  module_source_url, parent_agent, post_inbound, resolve_specifier,
-  rust_string, spawn_worker, take_inbox, terminate_worker, worker_is_module,
-  worker_location, worker_name,
+  module_source_url, note_script_site, parent_agent, post_inbound,
+  resolve_specifier, rust_string, spawn_worker, take_inbox, terminate_worker,
+  worker_is_module, worker_location, worker_name,
 };
 use yuzuko_macros::op;
 
@@ -17,7 +17,7 @@ use crate::animation;
 use crate::event::{ErrorEvent, define_is_trusted};
 use crate::message::{
   capture_ports, fail_port_message, message_error_event, message_event_for,
-  receive_port_message, take_captured_ports,
+  receive_port_message, receive_transferred_port, take_captured_ports,
 };
 use crate::target::{self, EventTarget};
 
@@ -50,7 +50,7 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
     yuzuko_core::set_function(scope, proto, "importScripts", import_scripts);
   }
   if let Some(proto) = prototype(scope, "DedicatedWorkerGlobalScope") {
-    yuzuko_core::set_function(scope, proto, "postMessage", global_post_message);
+    install_global_post_message(scope, proto);
     yuzuko_core::set_function(scope, proto, "close", close_worker);
   }
   install_location(scope, global);
@@ -84,11 +84,21 @@ pub(crate) fn drain(scope: &mut v8::PinScope) {
   // never get a turn (`terminate.html` flooded the heap that way).
   // Microtasks still run between items so a promise reaction can replace
   // `onmessage` before the next event already in this batch.
-  let items = take_inbox(agent_id());
+  let id = agent_id();
+  let items = take_inbox(id);
   for item in items {
+    // `close()` has already taken this batch out of the inbox. Tasks after
+    // the one that closed are discarded. The running script can still post.
+    if yuzuko_core::worker_closing(id) {
+      break;
+    }
     match item {
-      Inbound::Script { worker, parcel } => {
-        deliver_script(scope, worker, parcel);
+      Inbound::Script {
+        worker,
+        parcel,
+        ports,
+      } => {
+        deliver_script(scope, worker, parcel, ports);
       }
       Inbound::Port { port, parcel } => deliver_port(scope, port, parcel),
       Inbound::Failed {
@@ -97,7 +107,10 @@ pub(crate) fn drain(scope: &mut v8::PinScope) {
         filename,
         line,
         column,
-      } => deliver_failure(scope, worker, message, filename, line, column),
+        parse,
+      } => {
+        deliver_failure(scope, worker, message, filename, line, column, parse)
+      }
     }
     scope.perform_microtask_checkpoint();
   }
@@ -107,6 +120,7 @@ fn deliver_script(
   scope: &mut v8::PinScope,
   worker: u64,
   parcel: yuzuko_core::Parcel,
+  ports: Vec<u64>,
 ) {
   capture_ports(true);
   let value = match yuzuko_core::deserialize_parcel(scope, parcel) {
@@ -117,8 +131,22 @@ fn deliver_script(
       return;
     }
   };
-  let _ports = take_captured_ports();
-  let event = message_event_for(scope, value);
+  // Deserialization records every port it installed, including a stream's
+  // own channel. `ports` is only the caller's transfer list. A port that
+  // was inside the value is already installed, and the second lookup
+  // returns that wrapper.
+  let _installed = take_captured_ports();
+  let mut listed = Vec::with_capacity(ports.len());
+  for id in ports {
+    match receive_transferred_port(scope, id) {
+      Ok(wrapper) => listed.push(wrapper),
+      Err(()) => {
+        deliver_message_error(scope, worker);
+        return;
+      }
+    }
+  }
+  let event = message_event_for(scope, value, &listed);
   if worker == agent_id() {
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
@@ -172,8 +200,13 @@ fn deliver_failure(
   filename: String,
   line: u32,
   column: u32,
+  parse: bool,
 ) {
-  let event = error_event(scope, message, filename, line, column);
+  let event = if parse {
+    plain_error_event(scope)
+  } else {
+    error_event(scope, message, filename, line, column)
+  };
   if worker == agent_id() {
     let global = yuzuko_core::global(scope);
     let _ = target::dispatch(scope, global, event);
@@ -185,6 +218,15 @@ fn deliver_failure(
   };
   let target = v8::Local::new(scope, wrapper);
   let _ = target::dispatch(scope, target, event);
+}
+
+fn plain_error_event<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let built = crate::event::Event::new("error", false, true, false, true);
+  let event = unsafe { yuzuko_core::op::wrap_instance(scope, built) };
+  define_is_trusted(scope, event);
+  event
 }
 
 fn error_event<'s>(
@@ -247,7 +289,15 @@ fn set_string(
   let Some(text) = v8::String::new(scope, value) else {
     return;
   };
-  yuzuko_core::set_value(scope, object, name, text.into());
+  let Some(key) = v8::String::new(scope, name) else {
+    return;
+  };
+  // Sloppy assignment leaves the value in place and does not throw.
+  let mut descriptor =
+    v8::PropertyDescriptor::new_from_value_writable(text.into(), false);
+  descriptor.set_enumerable(true);
+  descriptor.set_configurable(true);
+  let _ = object.define_property(scope, key.into(), &descriptor);
 }
 
 fn import_scripts(
@@ -274,8 +324,8 @@ fn import_scripts(
     let spec = rust_string(scope, args.get(index));
     let url = match resolve_specifier(&spec) {
       Ok(url) => url,
-      Err(message) => {
-        yuzuko_core::throw_type(scope, &message);
+      Err(error) => {
+        error.into_op().throw(scope);
         return;
       }
     };
@@ -317,8 +367,33 @@ fn import_scripts(
         }
       }
     };
-    if let Err(message) = eval_classic_in_worker(scope, &url, &text) {
-      yuzuko_core::throw_type(scope, &message);
+    if let Err(error) = eval_classic_in_worker(scope, &url, &text) {
+      match error {
+        ImportScriptError::Parse {
+          message,
+          line,
+          column,
+        } => {
+          note_script_site(url, line, column);
+          throw_syntax(scope, &syntax_detail(&message));
+        }
+        ImportScriptError::Thrown {
+          error,
+          line,
+          column,
+        } => {
+          // A nested `importScripts` already recorded the script that failed.
+          if !yuzuko_core::has_script_site() {
+            note_script_site(url, line, column);
+          }
+          let error = v8::Local::new(scope, error);
+          scope.throw_exception(error);
+        }
+        // The TryCatch in the script evaluation rethrows this into the
+        // caller. Do not report it and do not enter V8 again.
+        ImportScriptError::Terminated => {}
+        ImportScriptError::Exit => {}
+      }
       return;
     }
   }
@@ -338,6 +413,27 @@ fn script_error(error: yuzuko_core::WorkerLoadError) -> ScriptError {
       ScriptError::Denied { name, message }
     }
   }
+}
+
+fn syntax_detail(text: &str) -> String {
+  let line = text.lines().next().unwrap_or(text).trim();
+  let detail = line
+    .split_once("SyntaxError:")
+    .map(|(_, rest)| rest.trim())
+    .unwrap_or(line);
+  if detail.is_empty() {
+    "The script could not be parsed".to_string()
+  } else {
+    detail.to_string()
+  }
+}
+
+fn throw_syntax(scope: &mut v8::PinScope, message: &str) {
+  let Some(message) = v8::String::new(scope, message) else {
+    return;
+  };
+  let error = v8::Exception::syntax_error(scope, message);
+  scope.throw_exception(error);
 }
 
 fn throw_script(scope: &mut v8::PinScope, error: ScriptError) {
@@ -402,16 +498,34 @@ fn fetch_import_script(url: &str) -> Result<String, ScriptError> {
     .map_err(|error| ScriptError::Network(error.to_string()))
 }
 
+fn install_global_post_message(
+  scope: &mut v8::PinScope,
+  proto: v8::Local<v8::Object>,
+) {
+  let Some(function) = v8::Function::builder(global_post_message)
+    .length(1)
+    .constructor_behavior(v8::ConstructorBehavior::Throw)
+    .build(scope)
+  else {
+    return;
+  };
+  let Some(name) = v8::String::new(scope, "postMessage") else {
+    return;
+  };
+  function.set_name(name);
+  proto.set(scope, name.into(), function.into());
+}
+
 fn global_post_message(
   scope: &mut v8::PinScope,
   args: v8::FunctionCallbackArguments,
   mut _ret: v8::ReturnValue,
 ) {
-  let message = if args.length() == 0 {
-    v8::undefined(scope).into()
-  } else {
-    args.get(0)
-  };
+  if args.length() == 0 {
+    yuzuko_core::throw_type(scope, "Not enough arguments");
+    return;
+  }
+  let message = args.get(0);
   let transfer = if args.length() > 1 {
     args.get(1)
   } else {
@@ -423,14 +537,22 @@ fn global_post_message(
   };
   let message = rooted(scope, message);
   let transfer = rooted(scope, transfer);
-  let parcel = match prepare_message(scope, message, transfer, parent) {
-    Ok(parcel) => parcel,
+  let (parcel, ports) = match prepare_message(scope, message, transfer, parent)
+  {
+    Ok(prepared) => prepared,
     Err(error) => {
       error.throw(scope);
       return;
     }
   };
-  post_inbound(parent, Inbound::Script { worker: id, parcel });
+  post_inbound(
+    parent,
+    Inbound::Script {
+      worker: id,
+      parcel,
+      ports,
+    },
+  );
 }
 
 fn close_worker(
@@ -449,23 +571,53 @@ fn rooted<'s>(
   v8::Local::new(scope, global)
 }
 
+/// Restores the cross-agent flag around a transfer that follows serialization.
+struct CrossAgentRestore {
+  enabled: bool,
+  target: u64,
+}
+
+impl CrossAgentRestore {
+  fn enter(enabled: bool, target: u64) -> Self {
+    let previous = Self {
+      enabled: yuzuko_core::cross_agent(),
+      target: yuzuko_core::cross_target(),
+    };
+    yuzuko_core::set_cross_agent(enabled, target);
+    previous
+  }
+}
+
+impl Drop for CrossAgentRestore {
+  fn drop(&mut self) {
+    yuzuko_core::set_cross_agent(self.enabled, self.target);
+  }
+}
+
 fn prepare_message<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   transfer: v8::Local<'s, v8::Value>,
   target: u64,
-) -> Result<yuzuko_core::Parcel, OpError> {
+) -> Result<(yuzuko_core::Parcel, Vec<u64>), OpError> {
   let (objects, buffers) = crate::message::transfer_parts(scope, transfer)?;
-  match yuzuko_core::serialize_parcel(
+  let parcel = match yuzuko_core::serialize_parcel(
     scope, message, &objects, &buffers, target,
   ) {
-    Ok(parcel) => Ok(parcel),
-    Err(Some(thrown)) => Err(OpError::Thrown(Box::new(thrown))),
-    Err(None) => Err(OpError::dom(
-      "DataCloneError",
-      "The object could not be cloned.",
-    )),
-  }
+    Ok(parcel) => parcel,
+    Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
+    Err(None) => {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The object could not be cloned.",
+      ));
+    }
+  };
+  // Serialization restores the previous cross-agent flag. A port the value
+  // did not reach is still open, and moving it has to target this agent.
+  let _restore = CrossAgentRestore::enter(true, target);
+  let ports = crate::message::transfer_listed_ports(scope, &objects)?;
+  Ok((parcel, ports))
 }
 
 #[repr(C)]
@@ -552,6 +704,31 @@ impl WorkerNavigator {
   // The dedicated-worker navigator is a plain object. These getters stay on
   // the prototype and accept that object, so they do not brand-check `this`.
   #[getter]
+  fn app_code_name(#[this] _navigator: v8::Local<v8::Object>) -> &'static str {
+    "Mozilla"
+  }
+
+  #[getter]
+  fn app_name(#[this] _navigator: v8::Local<v8::Object>) -> &'static str {
+    "Netscape"
+  }
+
+  #[getter]
+  fn app_version(#[this] _navigator: v8::Local<v8::Object>) -> &'static str {
+    "5.0"
+  }
+
+  #[getter]
+  fn product(#[this] _navigator: v8::Local<v8::Object>) -> &'static str {
+    "Gecko"
+  }
+
+  #[getter]
+  fn on_line(#[this] _navigator: v8::Local<v8::Object>) -> bool {
+    true
+  }
+
+  #[getter]
   fn language(#[this] _navigator: v8::Local<v8::Object>) -> String {
     yuzuko_core::primary_language()
   }
@@ -593,7 +770,7 @@ impl Worker {
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
   ) -> Result<Worker, OpError> {
-    if args.length() < 1 || args.get(0).is_undefined() {
+    if args.length() < 1 {
       return Err(OpError::type_("Worker requires a URL"));
     }
     let options = if args.length() > 1 {
@@ -621,7 +798,7 @@ impl Worker {
       ));
     } else {
       let spec = rust_string(scope, first);
-      let url = resolve_specifier(&spec).map_err(OpError::type_)?;
+      let url = resolve_specifier(&spec).map_err(|error| error.into_op())?;
       WorkerScript {
         url,
         kind: if kind == WorkerKind::Module {
@@ -655,22 +832,22 @@ impl Worker {
   fn post_message(
     &self,
     scope: &mut v8::PinScope,
-    message: Option<v8::Local<v8::Value>>,
+    message: v8::Local<v8::Value>,
     transfer: Option<v8::Local<v8::Value>>,
   ) -> Result<(), OpError> {
     if !agent_alive(self.id) {
       return Ok(());
     }
-    let message = message.unwrap_or_else(|| v8::undefined(scope).into());
     let transfer = transfer.unwrap_or_else(|| v8::undefined(scope).into());
     let message = rooted(scope, message);
     let transfer = rooted(scope, transfer);
-    let parcel = prepare_message(scope, message, transfer, self.id)?;
+    let (parcel, ports) = prepare_message(scope, message, transfer, self.id)?;
     post_inbound(
       self.id,
       Inbound::Script {
         worker: self.id,
         parcel,
+        ports,
       },
     );
     Ok(())

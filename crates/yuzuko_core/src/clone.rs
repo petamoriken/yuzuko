@@ -65,6 +65,7 @@ pub enum TransferReject {
   /// The runtime already has a pending exception.
   Pending,
   DataClone(&'static str),
+  Type(&'static str),
 }
 
 pub struct TransferList {
@@ -550,7 +551,9 @@ pub fn collect_transfers(
       return Err(TransferReject::Pending);
     };
     if item.is_null_or_undefined() {
-      return Err(TransferReject::DataClone("The value cannot be transferred"));
+      return Err(TransferReject::Type(
+        "The transfer list cannot contain null or undefined",
+      ));
     }
     if item.is_shared_array_buffer() {
       let message = match kind {

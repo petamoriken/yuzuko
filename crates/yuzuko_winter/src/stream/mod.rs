@@ -6078,6 +6078,9 @@ fn enqueue_transfers(
     Err(yuzuko_core::TransferReject::DataClone(message)) => {
       Err(OpError::dom("DataCloneError", message))
     }
+    Err(yuzuko_core::TransferReject::Type(message)) => {
+      Err(OpError::type_(message))
+    }
   }
 }
 

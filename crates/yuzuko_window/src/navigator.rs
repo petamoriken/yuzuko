@@ -2,7 +2,8 @@
 //!
 //! The core runtime installs a plain object with `userAgent`, `platform`,
 //! and `hardwareConcurrency`. This replaces it with a `Navigator` and copies
-//! those values. `language` and `languages` stay getters.
+//! those values. `language`, `languages`, and the compatibility getters stay
+//! on the prototype.
 
 use yuzuko_core::op::Js;
 use yuzuko_core::op::OpError;
@@ -80,6 +81,36 @@ impl Navigator {
     let array = yuzuko_core::languages_array(scope);
     let value: v8::Local<v8::Value> = array.into();
     Js(v8::Global::new(scope, value))
+  }
+
+  #[getter]
+  fn app_code_name(&self) -> &'static str {
+    let _ = self;
+    "Mozilla"
+  }
+
+  #[getter]
+  fn app_name(&self) -> &'static str {
+    let _ = self;
+    "Netscape"
+  }
+
+  #[getter]
+  fn app_version(&self) -> &'static str {
+    let _ = self;
+    "5.0"
+  }
+
+  #[getter]
+  fn product(&self) -> &'static str {
+    let _ = self;
+    "Gecko"
+  }
+
+  #[getter]
+  fn on_line(&self) -> bool {
+    let _ = self;
+    true
   }
 
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {

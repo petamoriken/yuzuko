@@ -11,6 +11,17 @@ function script(name: string): string {
   return new URL(`./workers/${name}`, import.meta.url).href;
 }
 
+function thrown(run: () => void): { name: string; message: string } {
+  try {
+    run();
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    const message = error instanceof Error ? error.message : "";
+    return { name, message };
+  }
+  throw new Error("expected a throw");
+}
+
 function nextMessage(worker: Worker): Promise<unknown> {
   return new Promise((resolve, reject) => {
     worker.onmessage = (event: MessageEvent) => resolve(event.data);
@@ -55,6 +66,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
     webkit: boolean;
     imported: number;
     encoded: string;
+    performanceNow: boolean;
   } = await pending;
   assert(reply.selfIsGlobal, "self");
   assert(reply.dedicated && reply.workerScope, "scope");
@@ -71,6 +83,7 @@ Yuzuko.test("dedicated workers stay off the window global", async () => {
   assert(reply.webkit === false, "webkit");
   assert(reply.imported === 7, "importScripts");
   assert(reply.encoded === btoa("hi"), "btoa");
+  assert(reply.performanceNow, "performance.now");
   worker.terminate();
 });
 
@@ -156,6 +169,46 @@ Yuzuko.test("postMessage transfers buffers, ports, and canvases", async () => {
   const painted: { width: number; pixel: number[] } = await canvasReply;
   assert(painted.width === 4, String(painted.width));
   assert(painted.pixel.join() === "255,0,0,255", painted.pixel.join());
+  worker.terminate();
+});
+
+Yuzuko.test("postMessage delivers transfer-list ports and rejects a bad call", async () => {
+  const worker = new Worker(script("classic.js"));
+  const missing = thrown(() => {
+    // @ts-expect-error postMessage requires a message.
+    worker.postMessage();
+  });
+  assert(missing.name === "TypeError", missing.name);
+  assert(missing.message === "Not enough arguments", missing.message);
+
+  const rejected = new MessageChannel();
+  const nullList = thrown(() => {
+    // @ts-expect-error A transfer list cannot contain null.
+    worker.postMessage("null", [rejected.port1, null, rejected.port2]);
+  });
+  assert(nullList.name === "TypeError", nullList.name);
+  assert(
+    nullList.message === "The transfer list cannot contain null or undefined",
+    nullList.message,
+  );
+
+  const channel = new MessageChannel();
+  const extra = new MessageChannel();
+  const reply = nextMessage(worker);
+  worker.postMessage("ports", [channel.port1, extra.port1]);
+  channel.port2.postMessage("ping");
+  // @ts-expect-error The worker replies with the port count.
+  const body: { kind: string; count: number; ping: string } = await reply;
+  assert(body.kind === "ports", body.kind);
+  assert(body.count === 2, String(body.count));
+  assert(body.ping === "ping", body.ping);
+
+  const arity = nextMessage(worker);
+  worker.postMessage("no-args");
+  // @ts-expect-error The worker replies with the arity check.
+  const noArgs: { kind: string; thrown: boolean } = await arity;
+  assert(noArgs.kind === "no-args", noArgs.kind);
+  assert(noArgs.thrown, "worker postMessage()");
   worker.terminate();
 });
 
@@ -483,4 +536,164 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
   assert(parentMessageError === false, "function messageerror");
   assert(parentError === false, "function error");
   worker.terminate();
+});
+
+Yuzuko.test("worker URLs, decoding, and parse errors", async () => {
+  // @ts-expect-error The constructor requires a URL.
+  const missing = thrown(() => new Worker());
+  assert(missing.name === "TypeError", missing.name);
+
+  const invalid = thrown(() => new Worker("http://invalid:123$"));
+  assert(invalid.name === "SyntaxError", invalid.name);
+
+  const named = new Worker(undefined as unknown as string);
+  const namedData = await nextMessage(named);
+  assert(namedData === "undefined", String(namedData));
+  named.terminate();
+
+  const empty = new Worker("");
+  const emptyKind = await new Promise<string>((resolve, reject) => {
+    empty.onerror = (event: Event) => resolve(event.constructor.name);
+    setTimeout(() => reject(new Error("empty worker timed out")), 5000);
+  });
+  assert(emptyKind === "Event", emptyKind);
+  empty.terminate();
+
+  const decoded = new Worker('data:text/javascript,postMessage("%FF")');
+  const character = await nextMessage(decoded);
+  assert(character === "\uFFFD", JSON.stringify(character));
+  decoded.terminate();
+
+  const parsed = new Worker("data:text/javascript,function(");
+  const parsedKind = await new Promise<string>((resolve, reject) => {
+    parsed.onerror = (event: Event) => resolve(event.constructor.name);
+    setTimeout(() => reject(new Error("parse error timed out")), 5000);
+  });
+  assert(parsedKind === "Event", parsedKind);
+  parsed.terminate();
+
+  const body = [
+    "var name = 'missing';",
+    "var first = false;",
+    "try {",
+    "  importScripts('data:text/javascript,self.__y=1', 'data:text/javascript,for(;)break;');",
+    "} catch (error) {",
+    "  name = error instanceof SyntaxError ? error.name : String(error);",
+    "  first = self.__y === 1;",
+    "}",
+    "postMessage({ name: name, first: first });",
+  ].join("\n");
+  const importer = new Worker(
+    `data:text/javascript,${encodeURIComponent(body)}`,
+  );
+  const imported = (await nextMessage(importer)) as {
+    name: string;
+    first: boolean;
+  };
+  assert(imported.name === "SyntaxError", imported.name);
+  assert(imported.first === true, "first script ran");
+  importer.terminate();
+
+  const thrownBody = [
+    "var thrown = 'missing';",
+    "var first = false;",
+    "try {",
+    "  importScripts('data:text/javascript,self.__y=1', 'data:text/javascript,throw 2');",
+    "} catch (error) {",
+    "  thrown = error;",
+    "  first = self.__y === 1;",
+    "}",
+    "postMessage({ thrown: thrown, first: first });",
+  ].join("\n");
+  const throwing = new Worker(
+    `data:text/javascript,${encodeURIComponent(thrownBody)}`,
+  );
+  const propagated = (await nextMessage(throwing)) as {
+    thrown: unknown;
+    first: boolean;
+  };
+  assert(propagated.thrown === 2, String(propagated.thrown));
+  assert(propagated.first === true, "first script ran before the throw");
+  throwing.terminate();
+
+  const nested = new Worker(
+    "data:text/javascript,importScripts('data:text/javascript,function(')",
+  );
+  const nestedFile = await new Promise<string>((resolve, reject) => {
+    nested.onerror = (event: Event) => {
+      const filename =
+        "filename" in event ? String((event as ErrorEvent).filename) : "";
+      resolve(filename);
+    };
+    setTimeout(() => reject(new Error("nested import timed out")), 5000);
+  });
+  assert(nestedFile.includes("function("), nestedFile);
+  nested.terminate();
+
+  const late = new Worker(
+    "data:text/javascript,setTimeout(() => { throw new Error('Throw in timeout'); }, 0)",
+  );
+  const lateMessage = await new Promise<string>((resolve, reject) => {
+    late.onerror = (event: Event) => {
+      const message =
+        "message" in event ? String((event as ErrorEvent).message) : "";
+      resolve(message);
+    };
+    setTimeout(() => reject(new Error("timeout error timed out")), 5000);
+  });
+  assert(lateMessage.includes("Throw in timeout"), lateMessage);
+  late.terminate();
+
+  const inner = "data:text/javascript,function(";
+  const middle = `data:text/javascript,${encodeURIComponent(
+    `importScripts(${JSON.stringify(inner)})`,
+  )}`;
+  const chain = new Worker(
+    `data:text/javascript,${encodeURIComponent(
+      `importScripts(${JSON.stringify(middle)})`,
+    )}`,
+  );
+  const chainFile = await new Promise<string>((resolve, reject) => {
+    chain.onerror = (event: Event) => {
+      const filename =
+        "filename" in event ? String((event as ErrorEvent).filename) : "";
+      resolve(filename);
+    };
+    setTimeout(() => reject(new Error("nested chain timed out")), 5000);
+  });
+  assert(
+    chainFile.includes("function(") && !chainFile.includes("importScripts"),
+    chainFile,
+  );
+  chain.terminate();
+
+  const closeBody = [
+    "onmessage = function (event) {",
+    "  if (event.data === 'close') {",
+    "    close();",
+    "    postMessage('after');",
+    "  } else {",
+    "    postMessage('pong');",
+    "  }",
+    "};",
+  ].join("\n");
+  const closer = new Worker(
+    `data:text/javascript,${encodeURIComponent(closeBody)}`,
+  );
+  const closed: string[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("close timed out")), 5000);
+    closer.onmessage = (event: MessageEvent) => {
+      closed.push(String(event.data));
+      if (closed.length === 1) {
+        clearTimeout(timer);
+        setTimeout(resolve, 200);
+      }
+    };
+    closer.onerror = () => reject(new Error("close worker errored"));
+    closer.postMessage("close");
+    closer.postMessage("ping");
+  });
+  assert(closed.length === 1 && closed[0] === "after", closed.join(","));
+  closer.terminate();
 });

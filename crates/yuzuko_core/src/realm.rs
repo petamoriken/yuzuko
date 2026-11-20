@@ -182,18 +182,48 @@ fn install_navigator(scope: &mut v8::PinScope, global: v8::Local<v8::Object>) {
   let agent =
     v8::String::new(scope, concat!("Yuzuko/", env!("CARGO_PKG_VERSION")))
       .unwrap();
-  js::set_value(scope, navigator, "userAgent", agent.into());
+  define_readonly_data(scope, navigator, "userAgent", agent.into());
   let platform = v8::String::new(scope, navigator_platform()).unwrap();
-  js::set_value(scope, navigator, "platform", platform.into());
+  define_readonly_data(scope, navigator, "platform", platform.into());
   let cores = v8::Integer::new_from_unsigned(scope, hardware_concurrency());
-  js::set_value(scope, navigator, "hardwareConcurrency", cores.into());
+  define_readonly_data(scope, navigator, "hardwareConcurrency", cores.into());
   // A dedicated worker installs these on `WorkerNavigator.prototype`. An own
   // accessor would shadow that and fail the IDL harness.
   if !host::is_dedicated_worker() {
     define_navigator_getter(scope, navigator, "language", navigator_language);
     define_navigator_getter(scope, navigator, "languages", navigator_languages);
+    define_navigator_getter(
+      scope,
+      navigator,
+      "appCodeName",
+      navigator_app_code_name,
+    );
+    define_navigator_getter(scope, navigator, "appName", navigator_app_name);
+    define_navigator_getter(
+      scope,
+      navigator,
+      "appVersion",
+      navigator_app_version,
+    );
+    define_navigator_getter(scope, navigator, "product", navigator_product);
+    define_navigator_getter(scope, navigator, "onLine", navigator_on_line);
   }
   js::set_value(scope, global, "navigator", navigator.into());
+}
+
+/// Own data. Strict assignment throws. Enumerable so `for-in` sees it.
+fn define_readonly_data(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let mut descriptor =
+    v8::PropertyDescriptor::new_from_value_writable(value, false);
+  descriptor.set_enumerable(true);
+  descriptor.set_configurable(true);
+  let _ = object.define_property(scope, key.into(), &descriptor);
 }
 
 fn define_navigator_getter(
@@ -234,6 +264,46 @@ fn navigator_languages(
   mut ret: v8::ReturnValue,
 ) {
   ret.set(crate::languages_array(scope).into());
+}
+
+fn navigator_app_code_name(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(v8::String::new(scope, "Mozilla").unwrap().into());
+}
+
+fn navigator_app_name(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(v8::String::new(scope, "Netscape").unwrap().into());
+}
+
+fn navigator_app_version(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(v8::String::new(scope, "5.0").unwrap().into());
+}
+
+fn navigator_product(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(v8::String::new(scope, "Gecko").unwrap().into());
+}
+
+fn navigator_on_line(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  ret.set(v8::Boolean::new(scope, true).into());
 }
 
 /// Logical processors available to this process.
@@ -468,6 +538,10 @@ fn transfer_list(
     Err(clone::TransferReject::Pending) => Err(()),
     Err(clone::TransferReject::DataClone(message)) => {
       clone::throw_data_clone(scope, message);
+      Err(())
+    }
+    Err(clone::TransferReject::Type(message)) => {
+      js::throw_type(scope, message);
       Err(())
     }
   }

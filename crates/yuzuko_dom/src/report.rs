@@ -21,17 +21,19 @@ impl Handler {
 }
 
 thread_local! {
-  static REPORTING: Cell<bool> = const { Cell::new(false) };
+  static REPORTING: Cell<u8> = const { Cell::new(0) };
   static CONSOLE: RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>> =
     const { RefCell::new(None) };
   static ONERROR: RefCell<Handler> = const { RefCell::new(Handler::empty()) };
 }
 
-struct ReportingGuard;
+struct ReportingGuard {
+  previous: u8,
+}
 
 impl Drop for ReportingGuard {
   fn drop(&mut self) {
-    REPORTING.with(|flag| flag.set(false));
+    REPORTING.with(|flag| flag.set(self.previous));
   }
 }
 
@@ -60,27 +62,107 @@ pub(crate) fn install(scope: &mut v8::PinScope) {
 }
 
 pub(crate) fn clear() {
-  REPORTING.with(|flag| flag.set(false));
+  REPORTING.with(|flag| flag.set(0));
   CONSOLE.with(|slot| *slot.borrow_mut() = None);
   ONERROR.with(|slot| *slot.borrow_mut() = Handler::empty());
 }
 
 pub fn report_error(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
-  if REPORTING.with(|flag| flag.get()) {
+  let depth = REPORTING.with(|flag| flag.get());
+  // One nested report covers an `onerror` handler that throws. A further
+  // throw is logged so the handler cannot recurse.
+  if depth >= 2 {
     console_error(scope, error);
     return;
   }
-  REPORTING.with(|flag| flag.set(true));
-  let _guard = ReportingGuard;
+  REPORTING.with(|flag| flag.set(depth + 1));
+  let _guard = ReportingGuard { previous: depth };
   let message = error_message(scope, error);
-  let event = ErrorEvent::trusted(scope, message, error);
+  let event = ErrorEvent::trusted(scope, message.clone(), error);
   let event = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   event::define_is_trusted(scope, event);
   let global = scope.get_current_context().global(scope);
   let log = target::dispatch(scope, global, event).unwrap_or(true);
   if log {
     console_error(scope, error);
+    if yuzuko_core::is_dedicated_worker() {
+      forward_worker_error(scope, error);
+    }
   }
+}
+
+fn forward_worker_error(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
+  let id = yuzuko_core::agent_id();
+  let Some(parent) = yuzuko_core::parent_agent(id) else {
+    return;
+  };
+  let message = owner_message(scope, error);
+  let (filename, line, column) = owner_site(scope, error);
+  yuzuko_core::post_inbound(
+    parent,
+    yuzuko_core::Inbound::Failed {
+      worker: id,
+      message,
+      filename,
+      line,
+      column,
+      parse: false,
+    },
+  );
+}
+
+fn owner_message(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) -> String {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(error) else {
+    return util::string_value(scope, error);
+  };
+  let name = string_property(scope, object, "name");
+  let message = string_property(scope, object, "message");
+  match (name, message) {
+    (Some(name), Some(message))
+      if !name.is_empty() && name != "Error" && !message.is_empty() =>
+    {
+      format!("{name}: {message}")
+    }
+    (_, Some(message)) if !message.is_empty() => message,
+    (Some(name), _) if !name.is_empty() && name != "Error" => name,
+    _ => util::string_value(scope, error),
+  }
+}
+
+fn string_property(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Option<String> {
+  let value = object.get(scope, key(scope, name).into())?;
+  if !value.is_string() {
+    return None;
+  }
+  Some(util::string_value(scope, value))
+}
+
+fn owner_site(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) -> (String, u32, u32) {
+  if let Some(site) = yuzuko_core::take_script_site() {
+    return (site.filename, site.line, site.column);
+  }
+  let created = v8::Exception::create_message(scope, error);
+  let filename = created
+    .get_script_resource_name(scope)
+    .and_then(|value| value.to_string(scope))
+    .map(|value| value.to_rust_string_lossy(scope))
+    .unwrap_or_default();
+  let line = created
+    .get_line_number(scope)
+    .and_then(|number| u32::try_from(number).ok())
+    .unwrap_or(0);
+  let column = u32::try_from(created.get_start_column()).unwrap_or(0);
+  (filename, line, column)
 }
 
 /// Logs `error` without dispatching `error` on the main realm.

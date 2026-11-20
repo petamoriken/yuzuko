@@ -111,9 +111,10 @@ pub(crate) fn clear() {
 pub(crate) fn message_event_for<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   data: v8::Local<v8::Value>,
+  ports: &[v8::Global<v8::Object>],
 ) -> v8::Local<'s, v8::Object> {
   let data = v8::Global::new(scope, data);
-  message_event(scope, "message", &data, &[], "")
+  message_event(scope, "message", &data, ports, "")
 }
 
 const TAG_PORT: u32 = 12;
@@ -172,7 +173,9 @@ pub(crate) fn transfer_port(
 
 /// Installs a port moved by [`transfer_port`].
 ///
-/// The wrapper is not recorded for `MessageEvent.ports`.
+/// A second call returns the wrapper already installed for this id. The
+/// caller records that wrapper on `MessageEvent.ports` when the id came
+/// from the caller's transfer list.
 pub(crate) fn receive_transferred_port(
   scope: &mut v8::PinScope,
   id: u64,
@@ -486,10 +489,9 @@ impl MessagePort {
   fn post_message(
     &self,
     scope: &mut v8::PinScope,
-    message: Option<v8::Local<v8::Value>>,
+    message: v8::Local<v8::Value>,
     transfer: Option<v8::Local<v8::Value>>,
   ) -> Result<(), OpError> {
-    let message = message.unwrap_or_else(|| v8::undefined(scope).into());
     let transfer = transfer.unwrap_or_else(|| v8::undefined(scope).into());
     let message = v8::Local::new(scope, v8::Global::new(scope, message));
     let transfer = v8::Local::new(scope, v8::Global::new(scope, transfer));
@@ -614,7 +616,8 @@ impl MessageChannel {
 pub struct MessageEvent {
   base: Event,
   data: RefCell<Option<v8::TracedReference<v8::Value>>>,
-  /// Frozen array. A posted message lists only ports reached from the value.
+  /// Frozen array of the transfer-list `MessagePort`s, in list order.
+  /// On the main global, a port the value did not reach is that same object.
   ports: RefCell<v8::TracedReference<v8::Object>>,
   origin: RefCell<String>,
   last_event_id: RefCell<String>,
@@ -801,7 +804,101 @@ pub(crate) fn transfer_parts<'s>(
     Err(yuzuko_core::TransferReject::DataClone(message)) => {
       Err(OpError::dom("DataCloneError", message))
     }
+    Err(yuzuko_core::TransferReject::Type(message)) => {
+      Err(OpError::type_(message))
+    }
   }
+}
+
+/// Moves `MessagePort` entries the value serializer left open.
+///
+/// A port the value reached is already closed and keeps its id. The returned
+/// ids follow the transfer list. Other host objects are left to their own
+/// writers.
+pub(crate) fn transfer_listed_ports(
+  scope: &mut v8::PinScope,
+  objects: &[v8::Global<v8::Object>],
+) -> Result<Vec<u64>, OpError> {
+  let mut ids = Vec::new();
+  for object in objects {
+    let object = v8::Local::new(scope, object);
+    let id = {
+      let Some(port) =
+        (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) })
+      else {
+        continue;
+      };
+      port.get().id
+    };
+    let open =
+      PORTS.with(|slot| slot.borrow().get(&id).map(|state| !state.closed));
+    match open {
+      Some(true) => {
+        transfer_port(scope, object).map_err(|()| {
+          OpError::dom("DataCloneError", "The object could not be cloned.")
+        })?;
+      }
+      Some(false) => {}
+      None => {
+        return Err(OpError::dom(
+          "DataCloneError",
+          "The object could not be cloned.",
+        ));
+      }
+    }
+    ids.push(id);
+  }
+  Ok(ids)
+}
+
+/// `MessagePort`s from the caller's transfer list, in that list's order.
+///
+/// A port the value reached was moved to a new id, and the event holds that
+/// wrapper. A port the value did not reach stays the original object and
+/// stays open. A stream's own channel port is not in `objects`.
+fn port_wrappers_for_transfer(
+  scope: &mut v8::PinScope,
+  objects: &[v8::Global<v8::Object>],
+) -> Result<Vec<v8::Global<v8::Object>>, OpError> {
+  let mut ports = Vec::new();
+  for object in objects {
+    let object = v8::Local::new(scope, object);
+    let old_id = {
+      let Some(port) =
+        (unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) })
+      else {
+        continue;
+      };
+      port.get().id
+    };
+    let closed =
+      PORTS.with(|slot| slot.borrow().get(&old_id).map(|state| state.closed));
+    match closed {
+      Some(true) => {
+        let Some(new_id) =
+          MOVED_PORTS.with(|slot| slot.borrow().get(&old_id).copied())
+        else {
+          return Err(OpError::dom(
+            "DataCloneError",
+            "The object could not be cloned.",
+          ));
+        };
+        let wrapper =
+          receive_transferred_port(scope, new_id).map_err(|()| {
+            OpError::dom("DataCloneError", "The object could not be cloned.")
+          })?;
+        ports.push(wrapper);
+      }
+      Some(false) => ports.push(v8::Global::new(scope, object)),
+      None => {
+        return Err(OpError::dom(
+          "DataCloneError",
+          "The object could not be cloned.",
+        ));
+      }
+    }
+  }
+  Ok(ports)
 }
 
 fn transfer_array<'s>(
@@ -1485,8 +1582,12 @@ fn queue_self_message(
     None => v8::undefined(scope).into(),
   };
   let (objects, buffers) = transfer_parts(scope, transfer)?;
-  // `read_port_clone` records a `MessagePort` reached from the value.
-  // A stream's own channel port is moved without that record.
+  // `read_port_clone` records a `MessagePort` reached from the value, and
+  // a stream's own channel port. The event lists the transfer list instead.
+  let listed = objects
+    .iter()
+    .map(|object| v8::Global::clone(object))
+    .collect::<Vec<_>>();
   capture_ports(true);
   let cloned = {
     let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
@@ -1498,7 +1599,7 @@ fn queue_self_message(
       Err(error) => Err(error),
     }
   };
-  let ports = take_captured_ports();
+  let _reached = take_captured_ports();
   let cloned = match cloned {
     Ok(cloned) => cloned,
     Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
@@ -1509,6 +1610,7 @@ fn queue_self_message(
       ));
     }
   };
+  let ports = port_wrappers_for_transfer(scope, &listed)?;
   for buffer in &buffers {
     let buffer = v8::Local::new(scope, buffer);
     let _ = buffer.detach(None);

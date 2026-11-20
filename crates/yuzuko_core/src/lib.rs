@@ -63,7 +63,7 @@ pub use clone::{
   add_host_transfer, blob_realm, clear_structured_transfer, collect_transfers,
   cross_agent, cross_target, detach_structured_transfers,
   is_structured_transfer, mark_blob_realm, read_bytes, read_text, reject_clone,
-  set_structured_transfer, write_bytes, write_text,
+  set_cross_agent, set_structured_transfer, write_bytes, write_text,
 };
 pub use extensions::{
   add_extension, on_realm_drop, on_reload, on_reload_scope, on_reload_settled,
@@ -115,12 +115,14 @@ pub use timers::{
   cancel_host, schedule_animation_callback, schedule_callback, schedule_host,
 };
 pub use worker::{
-  Inbound, LocationParts, ScriptKind, WorkerLoadError, WorkerScript,
-  agent_alive, close_worker, drain_inbound, eval_classic_in_worker,
-  keeps_alive, load_worker_source, parent_agent, poke_agent, post_inbound,
-  resolve_specifier, run_worker_frame_hook, set_blob_script_loader,
-  set_classic_worker_source, set_inbound_handler, set_worker_frame_hook,
-  set_worker_owner, spawn_worker, take_inbox, terminate_worker,
+  ImportScriptError, Inbound, LocationParts, ScriptKind, ScriptSite,
+  WorkerLoadError, WorkerScript, WorkerUrlError, agent_alive,
+  clear_script_site, close_worker, drain_inbound, eval_classic_in_worker,
+  has_script_site, keeps_alive, load_worker_source, note_script_site,
+  parent_agent, poke_agent, post_inbound, resolve_specifier,
+  run_worker_frame_hook, set_blob_script_loader, set_classic_worker_source,
+  set_inbound_handler, set_worker_frame_hook, set_worker_owner, spawn_worker,
+  take_inbox, take_script_site, terminate_worker, worker_closing,
   worker_is_module, worker_location, worker_name,
 };
 

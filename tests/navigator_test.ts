@@ -19,6 +19,22 @@ Yuzuko.test("navigator.hardwareConcurrency is a positive integer", async () => {
   assert(languages !== again, "new languages array");
   assert(Object.isFrozen(languages), "frozen languages");
   assert(languages[0] === navigator.language, "first language");
+  assert(navigator.appCodeName === "Mozilla", "main appCodeName");
+  assert(navigator.appName === "Netscape", "main appName");
+  assert(navigator.appVersion === "5.0", "main appVersion");
+  assert(navigator.product === "Gecko", "main product");
+  assert(navigator.onLine === true, "main onLine");
+  assert(
+    (() => {
+      try {
+        (navigator as { appName: string }).appName = "x";
+        return false;
+      } catch (error) {
+        return error instanceof TypeError;
+      }
+    })(),
+    "main appName readonly",
+  );
   assert(
     !Object.prototype.hasOwnProperty.call(navigator, "language"),
     "language is not an own property",
@@ -37,6 +53,16 @@ Yuzuko.test("navigator.hardwareConcurrency is a positive integer", async () => {
     languages: string[];
     frozen: boolean;
     ownLanguage: boolean;
+    appCodeName: string;
+    appName: string;
+    appVersion: string;
+    product: string;
+    onLine: boolean;
+    userAgentReadonly: boolean;
+    platformReadonly: boolean;
+    coresReadonly: boolean;
+    appNameReadonly: boolean;
+    gpuReadonly: boolean;
   }>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent) => resolve(event.data);
     worker.onerror = (event: ErrorEvent) => {
@@ -56,4 +82,14 @@ Yuzuko.test("navigator.hardwareConcurrency is a positive integer", async () => {
   );
   assert(report.frozen, "worker languages frozen");
   assert(!report.ownLanguage, "worker language is not an own property");
+  assert(report.appCodeName === "Mozilla", report.appCodeName);
+  assert(report.appName === "Netscape", report.appName);
+  assert(report.appVersion === "5.0", report.appVersion);
+  assert(report.product === "Gecko", report.product);
+  assert(report.onLine === true, "onLine");
+  assert(report.userAgentReadonly, "userAgent");
+  assert(report.platformReadonly, "platform");
+  assert(report.coresReadonly, "hardwareConcurrency");
+  assert(report.appNameReadonly, "appName");
+  assert(report.gpuReadonly, "gpu");
 });

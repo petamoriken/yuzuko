@@ -228,3 +228,15 @@ Yuzuko.test("module workers expose import.meta paths", async () => {
   assert(reply.length === 1, String(reply.length));
   assert(reply.name === "resolve", reply.name);
 });
+
+Yuzuko.test("import.meta.url keeps a specifier fragment", async () => {
+  const plain = await import("./import_meta_fragment.ts");
+  const hashed = await import("./import_meta_fragment.ts#1");
+  assert(plain.meta !== hashed.meta, `${plain.meta} vs ${hashed.meta}`);
+  assert(plain.meta.endsWith("/import_meta_fragment.ts"), plain.meta);
+  assert(hashed.meta.endsWith("/import_meta_fragment.ts#1"), hashed.meta);
+  assert(plain.file === hashed.file, hashed.file);
+  assert(plain.file.includes("#") === false, plain.file);
+  const resolved = import.meta.resolve("./import_meta_fragment.ts#1");
+  assert(resolved === hashed.meta, resolved);
+});

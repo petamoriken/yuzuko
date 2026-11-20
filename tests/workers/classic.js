@@ -27,6 +27,28 @@ self.onmessage = (event) => {
     data.postMessage("port-ok");
     return;
   }
+  if (data === "ports") {
+    const count = event.ports.length;
+    const port = event.ports[0];
+    if (!port) {
+      self.postMessage({ kind: "ports", count, ping: "" });
+      return;
+    }
+    port.onmessage = (inner) => {
+      self.postMessage({ kind: "ports", count, ping: inner.data });
+    };
+    return;
+  }
+  if (data === "no-args") {
+    let thrown = false;
+    try {
+      self.postMessage();
+    } catch (error) {
+      thrown = error instanceof TypeError && error.message === "Not enough arguments";
+    }
+    self.postMessage({ kind: "no-args", thrown });
+    return;
+  }
   if (typeof OffscreenCanvas !== "undefined" && data instanceof OffscreenCanvas) {
     const context = data.getContext("2d");
     const pixel = context.getImageData(0, 0, 1, 1).data;
@@ -59,5 +81,6 @@ self.onmessage = (event) => {
     webkit: typeof WebKitCSSMatrix !== "undefined",
     imported: self.workerLib,
     encoded: btoa("hi"),
+    performanceNow: typeof performance.now === "function" && performance.now() >= 0,
   });
 };

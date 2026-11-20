@@ -681,7 +681,11 @@ fn install_navigator(scope: &mut v8::PinScope) {
     return;
   };
   let key = v8::String::new(scope, "gpu").unwrap();
-  navigator.set(scope, key.into(), gpu.into());
+  let mut descriptor =
+    v8::PropertyDescriptor::new_from_value_writable(gpu.into(), false);
+  descriptor.set_enumerable(true);
+  descriptor.set_configurable(true);
+  let _ = navigator.define_property(scope, key.into(), &descriptor);
 }
 
 fn install_flags(scope: &mut v8::PinScope) {

@@ -155,6 +155,9 @@ fn run_module(
       if let Some(code) = crate::process::exit_code() {
         return Err(RuntimeError::exit(code));
       }
+      if tc.has_terminated() {
+        return Err(RuntimeError::terminated());
+      }
       if let Some(exception) = tc.exception() {
         return Ok(ModuleRun::Thrown(v8::Global::new(tc, exception)));
       }
@@ -166,6 +169,9 @@ fn run_module(
       None => {
         if let Some(code) = crate::process::exit_code() {
           return Err(RuntimeError::exit(code));
+        }
+        if tc.has_terminated() {
+          return Err(RuntimeError::terminated());
         }
         if let Some(exception) = tc.exception() {
           ModuleRun::Thrown(v8::Global::new(tc, exception))
@@ -508,7 +514,7 @@ fn compile_prepared<'a>(
       Some(module) => v8::Global::new(tc, module),
       None => {
         let text = exception_text!(tc, &format!("failed to compile {url}"));
-        return Err(RuntimeError::message(text));
+        return Err(RuntimeError::parse(text));
       }
     }
   };
@@ -823,19 +829,23 @@ fn locate(
       "node: imports are not supported ({specifier})"
     )));
   }
-  if specifier.starts_with("file:") {
-    let path = url_to_path(specifier)?;
-    let url = file_url(&path)?;
+  // A fragment is part of the module map key and `import.meta.url`.
+  // The file path omits it. A query stays in the specifier.
+  let (bare, fragment) = split_fragment(specifier);
+  if bare.starts_with("file:") {
+    let path = url_to_path(bare)?;
+    let url = url_with_fragment(&file_url(&path)?, fragment)?;
     return Ok((path, url));
   }
   let resolved =
-    host::with(|state| state.resolver.resolve_file(referrer, specifier))
-      .map_err(|error| {
+    host::with(|state| state.resolver.resolve_file(referrer, bare)).map_err(
+      |error| {
         RuntimeError::message(format!(
           "failed to resolve \"{specifier}\" from {}: {error}",
           referrer.display()
         ))
-      })?;
+      },
+    )?;
   if matches!(
     resolved.module_type(),
     Some(ModuleType::CommonJs | ModuleType::Addon)
@@ -846,8 +856,29 @@ fn locate(
     )));
   }
   let path = resolved.path().to_path_buf();
-  let url = file_url(&path)?;
+  let url = url_with_fragment(&file_url(&path)?, fragment)?;
   Ok((path, url))
+}
+
+fn split_fragment(specifier: &str) -> (&str, Option<&str>) {
+  match specifier.split_once('#') {
+    Some((bare, fragment)) => (bare, Some(fragment)),
+    None => (specifier, None),
+  }
+}
+
+fn url_with_fragment(
+  url: &str,
+  fragment: Option<&str>,
+) -> Result<String, RuntimeError> {
+  let Some(fragment) = fragment else {
+    return Ok(url.to_string());
+  };
+  let mut parsed = Url::parse(url).map_err(|error| {
+    RuntimeError::message(format!("invalid module URL {url}: {error}"))
+  })?;
+  parsed.set_fragment(Some(fragment));
+  Ok(parsed.to_string())
 }
 
 /// Absolute `file:` URL `import()` would load for `specifier`.

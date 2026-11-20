@@ -4,6 +4,7 @@
 //! does not take the process runtime lock on behalf of that thread, so the
 //! worker keeps running while the owner is busy.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,6 +37,8 @@ pub enum Inbound {
   Script {
     worker: u64,
     parcel: Parcel,
+    /// `MessagePort` ids from the caller's transfer list, in list order.
+    ports: Vec<u64>,
   },
   Port {
     port: u64,
@@ -47,6 +50,8 @@ pub enum Inbound {
     filename: String,
     line: u32,
     column: u32,
+    /// The worker script failed to parse. The owner gets a plain `error` event.
+    parse: bool,
   },
 }
 
@@ -274,32 +279,52 @@ pub(crate) fn interrupt_agents() {
 }
 
 pub fn terminate_worker(id: u64) {
-  let agent = {
-    let agents = agents();
-    agents.as_ref().and_then(|map| map.get(&id).cloned())
-  };
-  let Some(agent) = agent else {
+  let Some(agent) = agent_by_id(id) else {
     return;
   };
-  if !agent.alive.swap(false, Ordering::SeqCst) {
-    return;
-  }
+  let parent = agent_by_id(agent.parent);
   let children = agent.children.lock().expect("worker children").clone();
   for child in children {
     terminate_worker(child);
   }
-  agent.inbox.lock().expect("worker inbox").clear();
+  {
+    // Same lock `post_inbound` holds across the sender's alive check and the
+    // parent push. A post either lands before the retain or sees `alive` false.
+    let mut inbox = agent.inbox.lock().expect("worker inbox");
+    if !agent.alive.swap(false, Ordering::SeqCst) {
+      return;
+    }
+    inbox.clear();
+    if agent.parent != id
+      && let Some(parent) = parent.as_ref()
+    {
+      parent
+        .inbox
+        .lock()
+        .expect("worker inbox")
+        .retain(|item| match item {
+          Inbound::Script { worker: from, .. } => *from != id,
+          _ => true,
+        });
+    }
+  }
   if let Some(isolate) = agent.isolate.lock().expect("worker isolate").clone() {
     isolate.terminate_execution();
   }
   agent.queue.poke();
 }
 
+fn agent_by_id(id: u64) -> Option<Arc<Agent>> {
+  let agents = agents();
+  agents.as_ref().and_then(|map| map.get(&id).cloned())
+}
+
 /// `DedicatedWorkerGlobalScope.close`.
 ///
-/// The running script finishes. Further tasks on this worker do not run.
-/// Unlike [`terminate_worker`], this does not abort the isolate, and the
-/// agent stays alive until that script returns.
+/// The running script finishes. Tasks already queued, and later tasks, do
+/// not run. A `postMessage` in the script that called `close()` still
+/// reaches the owner. Unlike [`terminate_worker`], this does not abort the
+/// isolate, and the agent stays alive until that script returns.
 pub fn close_worker(id: u64) {
   let agent = {
     let agents = agents();
@@ -376,18 +401,37 @@ pub fn poke_agent(id: u64) {
 }
 
 pub fn post_inbound(agent: u64, inbound: Inbound) {
-  let slot = {
-    let agents = agents();
-    agents.as_ref().and_then(|map| map.get(&agent).cloned())
-  };
-  let Some(slot) = slot else {
+  // Outbound `postMessage` names the sender in `Script.worker` and the parent
+  // as the target. Hold the sender lock, the same one `terminate_worker`
+  // holds while it clears that queue, so the post cannot land after the drop.
+  if let Inbound::Script { worker, .. } = &inbound
+    && *worker != agent
+    && let Some(sender) = agent_by_id(*worker)
+  {
+    let _sender = sender.inbox.lock().expect("worker inbox");
+    if !sender.alive.load(Ordering::SeqCst) {
+      return;
+    }
+    enqueue_inbound(agent, inbound);
+    return;
+  }
+  enqueue_inbound(agent, inbound);
+}
+
+fn enqueue_inbound(agent: u64, inbound: Inbound) {
+  let Some(slot) = agent_by_id(agent) else {
     return;
   };
   let deliver_failure = matches!(inbound, Inbound::Failed { .. });
-  if !slot.alive.load(Ordering::SeqCst) && !deliver_failure {
-    return;
+  {
+    // The alive check shares the inbox lock with `terminate_worker`'s clear,
+    // so a post that lost the race is not queued after the inbox was emptied.
+    let mut inbox = slot.inbox.lock().expect("worker inbox");
+    if !slot.alive.load(Ordering::SeqCst) && !deliver_failure {
+      return;
+    }
+    inbox.push_back(inbound);
   }
-  slot.inbox.lock().expect("worker inbox").push_back(inbound);
   slot.queue.poke();
 }
 
@@ -534,14 +578,32 @@ pub fn drain_inbound(scope: &mut v8::PinScope) -> bool {
   true
 }
 
-pub fn resolve_specifier(spec: &str) -> Result<String, String> {
-  if spec.is_empty() {
-    return Err("The worker URL is empty".to_string());
+/// Why a worker or `importScripts` URL was rejected.
+pub enum WorkerUrlError {
+  /// `TypeError`. The entry URL is missing.
+  Type(String),
+  /// `DOMException` `SyntaxError`. The URL did not parse.
+  Syntax(String),
+}
+
+impl WorkerUrlError {
+  pub fn into_op(self) -> crate::op::OpError {
+    match self {
+      Self::Type(message) => crate::op::OpError::type_(message),
+      Self::Syntax(message) => crate::op::OpError::dom("SyntaxError", message),
+    }
   }
-  let base = host::entry_url()
-    .ok_or_else(|| "The worker URL has no base".to_string())?;
-  let base = Url::parse(&base).map_err(|error| error.to_string())?;
-  let url = base.join(spec).map_err(|error| error.to_string())?;
+}
+
+pub fn resolve_specifier(spec: &str) -> Result<String, WorkerUrlError> {
+  let base = host::entry_url().ok_or_else(|| {
+    WorkerUrlError::Type("The worker URL has no base".to_string())
+  })?;
+  let base = Url::parse(&base)
+    .map_err(|error| WorkerUrlError::Syntax(error.to_string()))?;
+  let url = base
+    .join(spec)
+    .map_err(|error| WorkerUrlError::Syntax(error.to_string()))?;
   Ok(url.to_string())
 }
 
@@ -562,13 +624,65 @@ impl From<String> for WorkerLoadError {
   }
 }
 
+/// Why `importScripts` stopped on one script.
+pub enum ImportScriptError {
+  /// The script did not parse. `line` and `column` are zero-based when known.
+  Parse {
+    message: String,
+    line: u32,
+    column: u32,
+  },
+  /// The script threw. The caller rethrows `error` or reports it.
+  Thrown {
+    error: v8::Global<v8::Value>,
+    line: u32,
+    column: u32,
+  },
+  /// `Yuzuko.exit` ran inside the script.
+  Exit,
+  /// `Worker.terminate` aborted the script. The caller must not report it.
+  Terminated,
+}
+
+/// Where an `importScripts` failure should be reported.
+pub struct ScriptSite {
+  pub filename: String,
+  pub line: u32,
+  pub column: u32,
+}
+
+thread_local! {
+  static SCRIPT_SITE: RefCell<Option<ScriptSite>> = const { RefCell::new(None) };
+}
+
+pub fn note_script_site(filename: impl Into<String>, line: u32, column: u32) {
+  SCRIPT_SITE.with(|slot| {
+    *slot.borrow_mut() = Some(ScriptSite {
+      filename: filename.into(),
+      line,
+      column,
+    });
+  });
+}
+
+pub fn has_script_site() -> bool {
+  SCRIPT_SITE.with(|slot| slot.borrow().is_some())
+}
+
+pub fn take_script_site() -> Option<ScriptSite> {
+  SCRIPT_SITE.with(|slot| slot.borrow_mut().take())
+}
+
+pub fn clear_script_site() {
+  SCRIPT_SITE.with(|slot| *slot.borrow_mut() = None);
+}
+
 pub fn eval_classic_in_worker(
   scope: &mut v8::PinScope,
   url: &str,
   source: &str,
-) -> Result<(), String> {
-  crate::runtime::eval_classic(scope, url, source)
-    .map_err(|error| error.message)
+) -> Result<(), ImportScriptError> {
+  crate::runtime::eval_classic_import(scope, url, source)
 }
 
 pub fn load_worker_source(
@@ -594,7 +708,7 @@ pub fn load_worker_source(
     if let Err(error) = crate::permissions::check_read(&path) {
       return Err(worker_permission(error));
     }
-    let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let text = read_script_text(&path)?;
     return Ok(LoadedSource {
       path: Some(path),
       text,
@@ -610,8 +724,7 @@ pub fn load_worker_source(
       return Err(worker_permission(error));
     }
     if path.is_file() {
-      let text =
-        fs::read_to_string(&path).map_err(|error| error.to_string())?;
+      let text = read_script_text(&path)?;
       return Ok(LoadedSource {
         path: Some(path),
         text,
@@ -698,7 +811,13 @@ fn decode_data_url(url: &str) -> Result<String, String> {
   }
   // HTML data URLs percent-decode, then forgiving-base64-decode.
   let bytes = forgiving_base64(&decoded)?;
-  String::from_utf8(bytes).map_err(|error| error.to_string())
+  Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Classic scripts use UTF-8 decode with U+FFFD for an invalid byte.
+fn read_script_text(path: &Path) -> Result<String, String> {
+  let bytes = fs::read(path).map_err(|error| error.to_string())?;
+  Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn meta_is_base64(meta: &str) -> bool {
@@ -775,7 +894,7 @@ fn percent_decode(input: &str) -> Result<String, String> {
       index += 1;
     }
   }
-  String::from_utf8(out).map_err(|error| error.to_string())
+  Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
 fn sandbox_file(url: &Url, sandbox: &Path) -> Option<PathBuf> {
@@ -822,6 +941,32 @@ mod tests {
   #[test]
   fn invalid_base64_data_url_fails() {
     assert!(decode_data_url("data:;base64,****").is_err());
+  }
+
+  #[test]
+  fn invalid_utf8_data_url_uses_the_replacement_character() {
+    let text = decode_data_url("data:text/javascript,%FF").unwrap();
+    assert_eq!(text, "\u{FFFD}");
+    let base64 = decode_data_url("data:text/javascript;base64,/w==").unwrap();
+    assert_eq!(base64, "\u{FFFD}");
+  }
+
+  #[test]
+  fn empty_worker_url_keeps_the_base() {
+    let base = Url::parse("file:///tmp/page.html").unwrap();
+    assert_eq!(base.join("").unwrap().as_str(), "file:///tmp/page.html");
+    assert!(base.join("http://invalid:123$").is_err());
+  }
+
+  #[test]
+  fn classic_file_replaces_invalid_utf8() {
+    let path = std::env::temp_dir()
+      .join(format!("yuzuko-worker-utf8-{}", std::process::id()));
+    std::fs::write(&path, b"postMessage(\"\xff\")").unwrap();
+    let url = Url::from_file_path(&path).unwrap();
+    let loaded = load_worker_source(url.as_str(), None).unwrap();
+    assert_eq!(loaded.text, "postMessage(\"\u{FFFD}\")");
+    let _ = std::fs::remove_file(&path);
   }
 
   #[test]
