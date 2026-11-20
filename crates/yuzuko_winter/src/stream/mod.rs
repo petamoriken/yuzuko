@@ -6091,7 +6091,8 @@ fn clone_for_owning<'s>(
 ) -> Result<v8::Local<'s, v8::Value>, OpError> {
   let cloned = {
     let _guard = yuzuko_core::StructuredTransferGuard::install(transfer.hosts);
-    match yuzuko_core::clone_value(scope, chunk) {
+    match yuzuko_core::clone_value_with_buffers(scope, chunk, &transfer.buffers)
+    {
       Ok(cloned) => {
         yuzuko_core::detach_structured_transfers(scope);
         cloned

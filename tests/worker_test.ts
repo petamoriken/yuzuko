@@ -169,6 +169,73 @@ Yuzuko.test("postMessage transfers buffers, ports, and canvases", async () => {
   const painted: { width: number; pixel: number[] } = await canvasReply;
   assert(painted.width === 4, String(painted.width));
   assert(painted.pixel.join() === "255,0,0,255", painted.pixel.join());
+
+  const growable = new ArrayBuffer(4, { maxByteLength: 16 });
+  new Uint8Array(growable).set([1, 2, 3, 4]);
+  const slice = new Uint8Array(growable, 1, 2);
+  const described = nextMessage(worker);
+  worker.postMessage({ kind: "buffer", buffer: growable, view: slice }, [growable]);
+  // @ts-expect-error The worker replies with the moved buffer.
+  const info: {
+    kind: string;
+    byteLength: number;
+    resized: number;
+    maxByteLength: number;
+    resizable: boolean;
+    detached: boolean;
+    bytes: number[];
+    offset: number;
+    viewLength: number;
+    viewBytes: number[];
+  } = await described;
+  assert(growable.detached === true, "sender detached");
+  assert(info.kind === "buffer", info.kind);
+  assert(info.byteLength === 4, String(info.byteLength));
+  assert(info.resized === 16, String(info.resized));
+  assert(info.maxByteLength === 16, String(info.maxByteLength));
+  assert(info.resizable === true, "resizable");
+  assert(info.detached === false, "receiver attached");
+  assert(info.bytes.join() === "1,2,3,4", info.bytes.join());
+  assert(info.offset === 1 && info.viewLength === 2, "view range");
+  assert(info.viewBytes.join() === "2,3", info.viewBytes.join());
+
+  const empty = new ArrayBuffer(0);
+  const emptyReply = nextMessage(worker);
+  worker.postMessage(
+    { kind: "buffer", buffer: empty, view: new Uint8Array(empty) },
+    [empty],
+  );
+  // @ts-expect-error The worker replies with the empty buffer.
+  const emptyInfo: { byteLength: number; detached: boolean; resizable: boolean } =
+    await emptyReply;
+  assert(empty.detached === true, "empty sender");
+  assert(emptyInfo.byteLength === 0 && emptyInfo.detached === false, "empty receiver");
+  assert(emptyInfo.resizable === false, "empty fixed");
+
+  const returned = nextMessage(worker);
+  worker.postMessage({ kind: "return-buffer" });
+  const sentBack: unknown = await returned;
+  assert(sentBack instanceof ArrayBuffer, "returned type");
+  assert(sentBack.resizable === true && sentBack.maxByteLength === 16, "returned size");
+  assert(sentBack.byteLength === 4, "returned length");
+  assert(new Uint8Array(sentBack).join() === "1,2,3,4", "returned bytes");
+
+  const viaView = new Uint8Array([7, 8, 9]);
+  const viaReply = nextMessage(worker);
+  // @ts-expect-error A view in a postMessage transfer list moves its buffer.
+  worker.postMessage(viaView.buffer, [viaView]);
+  // @ts-expect-error The worker replies with the copied bytes.
+  const viaBytes: number[] = await viaReply;
+  assert(viaView.buffer.detached === true, "view list detaches");
+  assert(viaBytes.join() === "7,8,9", viaBytes.join());
+
+  const stay = new Uint8Array([4, 5, 6]);
+  const failure = thrown(() => {
+    worker.postMessage({ bad: globalThis, buffer: stay.buffer }, [stay.buffer]);
+  });
+  assert(failure.name === "DataCloneError", failure.name);
+  assert(stay.buffer.detached === false, "failed transfer stays");
+  assert(stay[0] === 4 && stay.buffer.byteLength === 3, "failed bytes");
   worker.terminate();
 });
 

@@ -451,6 +451,185 @@ Yuzuko.test("a transfer list rejects values that cannot move", async () => {
   }
 });
 
+Yuzuko.test("structuredClone moves an ArrayBuffer", () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  const copied = structuredClone(bytes);
+  copied[0] = 0;
+  if (bytes[0] !== 1 || bytes.buffer.detached || copied.buffer === bytes.buffer) {
+    throw new Error("plain copy");
+  }
+
+  const raw = new Uint8Array([9, 8, 7, 6, 5]).buffer;
+  const view = new DataView(raw, 1, 3);
+  const movedView = structuredClone(view, { transfer: [raw] });
+  if (
+    raw.detached !== true
+    || raw.byteLength !== 0
+    || !(movedView instanceof DataView)
+    || movedView.buffer === raw
+    || movedView.byteOffset !== 1
+    || movedView.byteLength !== 3
+    || movedView.getUint8(0) !== 8
+    || movedView.getUint8(2) !== 6
+    || movedView.buffer.byteLength !== 5
+  ) {
+    throw new Error("view range");
+  }
+
+  const source = new Uint8Array([1, 2, 3, 4, 5, 6]);
+  const slice = source.subarray(2, 5);
+  const movedSlice = structuredClone(slice, { transfer: [source.buffer] });
+  if (
+    source.buffer.detached !== true
+    || !(movedSlice instanceof Uint8Array)
+    || movedSlice.byteOffset !== 2
+    || movedSlice.length !== 3
+    || movedSlice[0] !== 3
+    || movedSlice[2] !== 5
+    || movedSlice.buffer.byteLength !== 6
+  ) {
+    throw new Error("typed view");
+  }
+
+  const growable = new ArrayBuffer(4, { maxByteLength: 16 });
+  new Uint8Array(growable).set([1, 2, 3, 4]);
+  const movedGrowable = structuredClone(growable, { transfer: [growable] });
+  if (
+    growable.detached !== true
+    || growable.byteLength !== 0
+    || movedGrowable === growable
+    || movedGrowable.resizable !== true
+    || movedGrowable.maxByteLength !== 16
+    || movedGrowable.byteLength !== 4
+    || new Uint8Array(movedGrowable)[3] !== 4
+  ) {
+    throw new Error("resizable");
+  }
+  movedGrowable.resize(8);
+  const grownLength: number = movedGrowable.byteLength;
+  if (grownLength !== 8 || new Uint8Array(movedGrowable)[0] !== 1) {
+    throw new Error("resize");
+  }
+  if (cloneError(() => growable.resize(8)) !== "TypeError") {
+    throw new Error("detached resize");
+  }
+
+  const empty = new ArrayBuffer(0);
+  const movedEmpty = structuredClone(empty, { transfer: [empty] });
+  if (empty.detached !== true || movedEmpty === empty || movedEmpty.byteLength !== 0) {
+    throw new Error("empty");
+  }
+
+  const left = new Uint8Array([1, 2]).buffer;
+  const right = new Uint8Array([3]).buffer;
+  const pair = structuredClone(
+    { left, right, again: left },
+    { transfer: [left, right] },
+  );
+  if (
+    left.detached !== true
+    || right.detached !== true
+    || pair.left !== pair.again
+    || pair.left === pair.right
+    || new Uint8Array(pair.left)[1] !== 2
+    || new Uint8Array(pair.right)[0] !== 3
+  ) {
+    throw new Error("pair");
+  }
+
+  const extra = new Uint8Array([9]).buffer;
+  if (structuredClone(1, { transfer: [extra] }) !== 1 || extra.detached !== true) {
+    throw new Error("unreferenced buffer");
+  }
+
+  const stay = new Uint8Array([7, 6, 5]);
+  if (
+    cloneError(() => structuredClone(globalThis, { transfer: [stay.buffer] }))
+      !== "DataCloneError"
+    || stay.buffer.detached
+    || stay.buffer.byteLength !== 3
+    || stay[0] !== 7
+  ) {
+    throw new Error("failed transfer");
+  }
+});
+
+Yuzuko.test("postMessage and an owning stream move an ArrayBuffer", async () => {
+  const channel = new MessageChannel();
+  const received = new Promise<ArrayBuffer>((resolve, reject) => {
+    channel.port2.onmessage = (event: MessageEvent) => {
+      if (event.data instanceof ArrayBuffer) {
+        resolve(event.data);
+      } else {
+        reject(new Error("port type"));
+      }
+    };
+  });
+  const portBuffer = new ArrayBuffer(4, { maxByteLength: 32 });
+  new Uint8Array(portBuffer)[0] = 9;
+  channel.port1.postMessage(portBuffer, [portBuffer]);
+  const arrived = await received;
+  if (
+    portBuffer.detached !== true
+    || arrived === portBuffer
+    || arrived.resizable !== true
+    || arrived.maxByteLength !== 32
+    || arrived.byteLength !== 4
+    || new Uint8Array(arrived)[0] !== 9
+  ) {
+    throw new Error("port");
+  }
+
+  const pending = nextSelfMessage();
+  const selfBytes = new Uint8Array([4, 5, 6]);
+  postMessage(selfBytes.subarray(1, 3), "*", [selfBytes.buffer]);
+  const event = await pending;
+  const posted = event.data;
+  if (
+    selfBytes.buffer.detached !== true
+    || !(posted instanceof Uint8Array)
+    || posted.byteOffset !== 1
+    || posted.length !== 2
+    || posted[0] !== 5
+    || posted[1] !== 6
+    || posted.buffer.byteLength !== 3
+  ) {
+    throw new Error("self message");
+  }
+
+  const listed = new Uint8Array([7, 8, 9]);
+  const listedPending = nextSelfMessage();
+  // @ts-expect-error A view in a postMessage transfer list moves its buffer.
+  postMessage(listed.buffer, "*", [listed]);
+  const listedEvent = await listedPending;
+  if (
+    listed.buffer.detached !== true
+    || !(listedEvent.data instanceof ArrayBuffer)
+    || new Uint8Array(listedEvent.data).join(",") !== "7,8,9"
+  ) {
+    throw new Error("view in the transfer list");
+  }
+
+  const owned = new Uint8Array([8, 7, 6, 5]).buffer;
+  const stream = new ReadableStream({
+    start(controller) {
+      // @ts-expect-error An owning controller enqueues with a transfer list.
+      controller.enqueue(owned, { transfer: [owned] });
+    },
+    type: "owning",
+  });
+  if (owned.detached !== true) {
+    throw new Error("owning detached");
+  }
+  const chunk = await stream.getReader().read();
+  if (
+    !(chunk.value instanceof ArrayBuffer)
+    || new Uint8Array(chunk.value).join(",") !== "8,7,6,5"
+  ) {
+    throw new Error("owning bytes");
+  }
+});
+
 function delay(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);

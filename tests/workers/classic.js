@@ -23,6 +23,33 @@ self.onmessage = (event) => {
     self.postMessage(Array.from(new Uint8Array(data)));
     return;
   }
+  if (data && data.kind === "buffer") {
+    const buffer = data.buffer;
+    const view = data.view;
+    const before = buffer.byteLength;
+    if (buffer.resizable) {
+      buffer.resize(buffer.maxByteLength);
+    }
+    self.postMessage({
+      kind: "buffer",
+      byteLength: before,
+      resized: buffer.byteLength,
+      maxByteLength: buffer.maxByteLength,
+      resizable: buffer.resizable,
+      detached: buffer.detached,
+      bytes: Array.from(new Uint8Array(buffer, 0, before)),
+      offset: view.byteOffset,
+      viewLength: view.byteLength,
+      viewBytes: Array.from(view),
+    });
+    return;
+  }
+  if (data && data.kind === "return-buffer") {
+    const buffer = new ArrayBuffer(4, { maxByteLength: 16 });
+    new Uint8Array(buffer).set([1, 2, 3, 4]);
+    self.postMessage(buffer, [buffer]);
+    return;
+  }
   if (typeof MessagePort !== "undefined" && data instanceof MessagePort) {
     data.postMessage("port-ok");
     return;

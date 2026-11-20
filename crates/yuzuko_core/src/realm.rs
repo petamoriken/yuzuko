@@ -420,6 +420,20 @@ pub fn clone_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'s, v8::Value>, Option<v8::Global<v8::Value>>> {
+  clone_value_with_buffers(scope, value, &[])
+}
+
+/// Structured-clones `value` in this realm.
+///
+/// `buffers` move. The serializer records each id, and the clone receives a
+/// new `ArrayBuffer` over that backing store, so `resizable` and
+/// `maxByteLength` stay. The caller detaches the sources after `Ok`. A
+/// failure leaves them attached.
+pub fn clone_value_with_buffers<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+) -> Result<v8::Local<'s, v8::Value>, Option<v8::Global<v8::Value>>> {
   // Finish outside this block. `ReadHostObject` rejects JavaScript, and the
   // deserializer has to be gone before a finisher runs.
   let session = clone::CloneSession::enter();
@@ -427,27 +441,35 @@ pub fn clone_value<'s>(
     v8::tc_scope!(let tc, scope);
     let serializer = v8::ValueSerializer::new(tc, Box::new(CloneHost));
     serializer.write_header();
-    let context = tc.get_current_context();
-    if serializer.write_value(context, value).is_none() {
-      promote_shared_array_buffer_error!(tc);
-      Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
-    } else {
-      let bytes = serializer.release();
-      let deserializer =
-        v8::ValueDeserializer::new(tc, Box::new(CloneHost), &bytes);
-      let context = tc.get_current_context();
-      if deserializer.read_header(context).is_none() {
-        Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
-      } else {
-        match clone::read_host_value(tc, |_| deserializer.read_value(context)) {
-          clone::HostRead::Done(cloned) => Ok(v8::Global::new(tc, cloned)),
-          clone::HostRead::Rejected(message) => {
-            tc.reset();
-            clone::throw_data_clone(tc, &message);
+    match moved_array_buffers(tc, &serializer, buffers) {
+      Err(()) => Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown))),
+      Ok(stores) => {
+        let context = tc.get_current_context();
+        if serializer.write_value(context, value).is_none() {
+          promote_shared_array_buffer_error!(tc);
+          Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+        } else {
+          let bytes = serializer.release();
+          let deserializer =
+            v8::ValueDeserializer::new(tc, Box::new(CloneHost), &bytes);
+          install_moved_array_buffers(tc, &deserializer, &stores);
+          let context = tc.get_current_context();
+          if deserializer.read_header(context).is_none() {
             Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
-          }
-          clone::HostRead::Failed => {
-            Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+          } else {
+            match clone::read_host_value(tc, |_| {
+              deserializer.read_value(context)
+            }) {
+              clone::HostRead::Done(cloned) => Ok(v8::Global::new(tc, cloned)),
+              clone::HostRead::Rejected(message) => {
+                tc.reset();
+                clone::throw_data_clone(tc, &message);
+                Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+              }
+              clone::HostRead::Failed => {
+                Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+              }
+            }
           }
         }
       }
@@ -458,6 +480,46 @@ pub fn clone_value<'s>(
   match cloned {
     Ok(value) => Ok(v8::Local::new(scope, value)),
     Err(error) => Err(error),
+  }
+}
+
+/// Registers `buffers` for transfer and keeps their backing stores.
+///
+/// The store is taken before `detach`. A detached or non-detachable buffer
+/// throws `DataCloneError` and registers nothing further.
+fn moved_array_buffers(
+  scope: &mut v8::PinScope,
+  serializer: &v8::ValueSerializer,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+) -> Result<Vec<v8::SharedRef<v8::BackingStore>>, ()> {
+  let mut stores = Vec::with_capacity(buffers.len());
+  for (index, buffer) in buffers.iter().enumerate() {
+    let buffer = v8::Local::new(scope, buffer);
+    if buffer.was_detached() || !buffer.is_detachable() {
+      clone::throw_data_clone(scope, "The ArrayBuffer cannot be transferred");
+      return Err(());
+    }
+    let Ok(id) = u32::try_from(index) else {
+      clone::throw_data_clone(scope, "The ArrayBuffer cannot be transferred");
+      return Err(());
+    };
+    stores.push(buffer.get_backing_store());
+    serializer.transfer_array_buffer(id, buffer);
+  }
+  Ok(stores)
+}
+
+fn install_moved_array_buffers(
+  scope: &mut v8::PinScope,
+  deserializer: &v8::ValueDeserializer,
+  stores: &[v8::SharedRef<v8::BackingStore>],
+) {
+  for (index, store) in stores.iter().enumerate() {
+    let Ok(id) = u32::try_from(index) else {
+      break;
+    };
+    let buffer = v8::ArrayBuffer::with_backing_store(scope, store);
+    deserializer.transfer_array_buffer(id, buffer);
   }
 }
 
@@ -476,7 +538,7 @@ fn structured_clone(
   };
   let cloned = {
     let _guard = clone::StructuredTransferGuard::install(transfers.objects);
-    match clone_value(scope, args.get(0)) {
+    match clone_value_with_buffers(scope, args.get(0), &transfers.buffers) {
       Ok(cloned) => {
         clone::detach_structured_transfers(scope);
         cloned
@@ -499,8 +561,8 @@ fn structured_clone(
   ret.set(cloned);
 }
 
-/// `structuredClone`'s `transfer` list. Buffers and host objects detach after
-/// a successful copy.
+/// `structuredClone`'s `transfer` list. Array buffers move with the clone.
+/// Host objects detach after that clone succeeds.
 fn transfer_list(
   scope: &mut v8::PinScope,
   options: v8::Local<v8::Value>,

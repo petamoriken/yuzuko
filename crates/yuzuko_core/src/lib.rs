@@ -90,7 +90,7 @@ pub use js::{
 pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};
 pub use locale::{languages_array, preferred_languages, primary_language};
-pub use parcel::{Parcel, deserialize_parcel, serialize_parcel};
+pub use parcel::{Parcel, SharedStore, deserialize_parcel, serialize_parcel};
 pub use permissions::{
   PermissionRules, PermissionSpec, authorize_url, check_env, check_env_all,
   check_ffi, check_net, check_net_host, check_read, check_run, check_write,
@@ -100,8 +100,9 @@ pub use permissions::{
 pub use process::{set_args, with_env};
 pub use reach::walk_objects;
 pub use realm::{
-  ClonePhase, clone_into_context, clone_value, delete_intl_v8_break_iterator,
-  delete_object_prototype_proto, performance_now_ms, time_origin_ms,
+  ClonePhase, clone_into_context, clone_value, clone_value_with_buffers,
+  delete_intl_v8_break_iterator, delete_object_prototype_proto,
+  performance_now_ms, time_origin_ms,
 };
 pub use repl::run_repl;
 pub use runtime::{

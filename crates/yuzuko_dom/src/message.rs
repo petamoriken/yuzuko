@@ -513,15 +513,15 @@ impl MessagePort {
     if port_agent(peer) != yuzuko_core::agent_id() {
       return post_port_remote(scope, peer, message, &objects, &buffers);
     }
-    // `clone_value` copies an ArrayBuffer. Detach afterward so the sender's
-    // buffer is empty and the peer keeps the bytes. `MessagePort` and
-    // `OffscreenCanvas` move during that clone. `ImageBitmap`, `AudioData`,
-    // and `VideoFrame` close after it succeeds.
+    // A transferred ArrayBuffer moves its backing store. Detach afterward
+    // so the sender's buffer is empty and the peer keeps that allocation.
+    // `MessagePort` and `OffscreenCanvas` move during that clone.
+    // `ImageBitmap`, `AudioData`, and `VideoFrame` close after it succeeds.
     let cloned = {
       let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
-      // Same-agent peers share the buffer. `structuredClone` does not.
+      // Same-agent peers share a SharedArrayBuffer. `structuredClone` does not.
       let _share = yuzuko_core::AllowSharedArrayBufferClone::enter();
-      match yuzuko_core::clone_value(scope, message) {
+      match yuzuko_core::clone_value_with_buffers(scope, message, &buffers) {
         Ok(cloned) => {
           yuzuko_core::detach_structured_transfers(scope);
           cloned
@@ -1588,7 +1588,7 @@ fn queue_self_message(
   capture_ports(true);
   let cloned = {
     let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
-    match yuzuko_core::clone_value(scope, message) {
+    match yuzuko_core::clone_value_with_buffers(scope, message, &buffers) {
       Ok(cloned) => {
         yuzuko_core::detach_structured_transfers(scope);
         Ok(cloned)

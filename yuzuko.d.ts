@@ -6576,7 +6576,8 @@ declare function reportError(error: any): void;
  * @param value - The value to clone.
  * @param options - `transfer` moves an `ArrayBuffer`, a `MessagePort`, an
  * `OffscreenCanvas`, an `ImageBitmap`, an `AudioData`, a `VideoFrame`, a
- * `ReadableStream`, a `WritableStream`, or a `TransformStream`.
+ * `ReadableStream`, a `WritableStream`, or a `TransformStream`. A moved
+ * `ArrayBuffer` keeps `byteLength`, `resizable`, and `maxByteLength`.
  * @throws {@link DOMException} `DataCloneError` when `value` contains a host
  * object this runtime cannot clone, including a {@link SharedArrayBuffer},
  * a {@link Yuzuko.Window}, a {@link Yuzuko.WindowSurface}, a closed
