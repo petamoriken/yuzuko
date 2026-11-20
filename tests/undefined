@@ -1,0 +1,2 @@
+// `new Worker(undefined)` stringifies the URL to this path.
+postMessage("undefined");
