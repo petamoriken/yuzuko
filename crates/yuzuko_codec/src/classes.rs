@@ -2172,12 +2172,14 @@ fn chunk_parts(
   let Some(data) = buffer_source(scope, data) else {
     return Err(OpError::type_("data is not a BufferSource"));
   };
-  Ok(ChunkParts {
+  let parts = ChunkParts {
     key,
     timestamp: long_long(scope, timestamp)?,
     duration: chunk_duration(scope, object)?,
     data,
-  })
+  };
+  detach_transfer_list(scope, object)?;
+  Ok(parts)
 }
 
 fn chunk_duration(
@@ -2235,6 +2237,62 @@ pub(crate) fn member<'s>(
   } else {
     Some(value)
   }
+}
+
+/// Detach each `ArrayBuffer` in `init.transfer` after the bytes are copied.
+///
+/// Validation finishes before any detach, so a thrown constructor leaves
+/// every listed buffer attached. An omitted member detaches nothing.
+pub(crate) fn detach_transfer_list(
+  scope: &mut v8::PinScope,
+  init: v8::Local<v8::Object>,
+) -> Result<(), OpError> {
+  let Some(value) = member(scope, init, "transfer") else {
+    return Ok(());
+  };
+  let array = v8::Local::<v8::Array>::try_from(value)
+    .map_err(|_| OpError::type_("transfer is not a sequence"))?;
+  let mut buffers = Vec::new();
+  for index in 0..array.length() {
+    let Some(item) = array.get_index(scope, index) else {
+      continue;
+    };
+    let buffer =
+      v8::Local::<v8::ArrayBuffer>::try_from(item).map_err(|_| {
+        OpError::type_("A transfer list entry is not an ArrayBuffer")
+      })?;
+    if buffers.iter().any(|existing| {
+      let existing: v8::Local<v8::ArrayBuffer> =
+        v8::Local::new(scope, existing);
+      existing.strict_equals(buffer.into())
+    }) {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The ArrayBuffer is already in the transfer list",
+      ));
+    }
+    buffers.push(v8::Global::new(scope, buffer));
+  }
+  for buffer in &buffers {
+    let buffer = v8::Local::new(scope, buffer);
+    if buffer.was_detached() {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The ArrayBuffer is detached",
+      ));
+    }
+    if !buffer.is_detachable() {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The ArrayBuffer cannot be detached",
+      ));
+    }
+  }
+  for buffer in buffers {
+    let buffer = v8::Local::new(scope, buffer);
+    let _ = buffer.detach(None);
+  }
+  Ok(())
 }
 
 fn required_string(

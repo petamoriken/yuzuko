@@ -17,7 +17,7 @@ use yuzuko_image::{
 use yuzuko_macros::op;
 use yuzuko_winter::buffer_source;
 
-use crate::classes::VideoFrame;
+use crate::classes::{VideoFrame, detach_transfer_list};
 
 pub struct ImageDecoder {
   mime: String,
@@ -145,7 +145,10 @@ impl ImageDecoder {
     } else {
       None
     };
-    transfer_buffers(scope, init)?;
+    if bytes.as_ref().is_some_and(|bytes| bytes.is_empty()) {
+      return Err(OpError::type_("data is empty"));
+    }
+    detach_transfer_list(scope, init)?;
     let supported = supported_type(&mime);
     Ok(Self {
       mime,
@@ -1377,60 +1380,6 @@ fn detached_source(
       .is_some_and(|buffer| buffer.was_detached());
   }
   false
-}
-
-fn transfer_buffers(
-  scope: &mut v8::PinScope,
-  init: v8::Local<v8::Object>,
-) -> Result<(), OpError> {
-  let Some(value) = member(scope, init, "transfer") else {
-    return Ok(());
-  };
-  let array = v8::Local::<v8::Array>::try_from(value)
-    .map_err(|_| OpError::type_("transfer is not a sequence"))?;
-  // Reject a repeated ArrayBuffer before any detach. A later failure also
-  // leaves every listed buffer attached.
-  let mut buffers = Vec::new();
-  for index in 0..array.length() {
-    let Some(item) = array.get_index(scope, index) else {
-      continue;
-    };
-    let buffer =
-      v8::Local::<v8::ArrayBuffer>::try_from(item).map_err(|_| {
-        OpError::type_("A transfer list entry is not an ArrayBuffer")
-      })?;
-    if buffers.iter().any(|existing| {
-      let existing: v8::Local<v8::ArrayBuffer> =
-        v8::Local::new(scope, existing);
-      existing.strict_equals(buffer.into())
-    }) {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The ArrayBuffer is already in the transfer list",
-      ));
-    }
-    buffers.push(v8::Global::new(scope, buffer));
-  }
-  for buffer in &buffers {
-    let buffer = v8::Local::new(scope, buffer);
-    if buffer.was_detached() {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The ArrayBuffer is detached",
-      ));
-    }
-    if !buffer.is_detachable() {
-      return Err(OpError::dom(
-        "DataCloneError",
-        "The ArrayBuffer cannot be detached",
-      ));
-    }
-  }
-  for buffer in buffers {
-    let buffer = v8::Local::new(scope, buffer);
-    let _ = buffer.detach(None);
-  }
-  Ok(())
 }
 
 fn color_space_conversion(

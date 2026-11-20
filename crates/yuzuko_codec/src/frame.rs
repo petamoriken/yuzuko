@@ -8,7 +8,7 @@ use yuzuko_winter::buffer_source;
 
 use crate::classes::{
   COLOR_MATRIX, COLOR_PRIMARIES, COLOR_TRANSFER, VideoFrame, closed_frame,
-  color_bool, color_enum, dictionary, long_long, member,
+  color_bool, color_enum, detach_transfer_list, dictionary, long_long, member,
 };
 use crate::layout::{
   FormatClass, FrameColor, FrameData, LayoutError, PixelFormat, PlaneLayoutIn,
@@ -181,7 +181,7 @@ fn construct_buffer(
     None => (pixels.coded_width, pixels.coded_height),
   };
   let display = oriented_display(display, explicit.is_some(), 0, rotation);
-  assemble(
+  let frame = assemble(
     format,
     pixels.coded_width,
     pixels.coded_height,
@@ -193,7 +193,9 @@ fn construct_buffer(
     pixels.planes,
     timestamp,
     duration,
-  )
+  )?;
+  detach_transfer_list(scope, object)?;
+  Ok(frame)
 }
 
 fn construct_from_bitmap(

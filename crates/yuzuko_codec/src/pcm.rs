@@ -4,7 +4,9 @@ use yuzuko_core::op::OpError;
 use yuzuko_core::rust_string;
 use yuzuko_winter::buffer_source;
 
-use crate::classes::{dictionary, long_long, member, unsigned};
+use crate::classes::{
+  detach_transfer_list, dictionary, long_long, member, unsigned,
+};
 use crate::samples::{
   AudioSamples, BuildError, CopyError, CopyRequest, parse_format,
 };
@@ -36,6 +38,7 @@ pub(crate) fn construct(
   let samples =
     AudioSamples::from_pcm(kind, planar, channels, frames, rate, &data)
       .map_err(build_error)?;
+  detach_transfer_list(scope, object)?;
   Ok(BuiltAudio {
     samples,
     timestamp: timestamp as f64,

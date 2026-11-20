@@ -15470,6 +15470,11 @@ interface VideoFrameBufferInit {
    * Mirrors the frame horizontally after `rotation`.
    */
   flip?: boolean;
+  /**
+   * The constructor copies the pixels and then detaches each buffer. An
+   * omitted list detaches nothing.
+   */
+  transfer?: ArrayBuffer[];
 }
 
 /**
@@ -15515,7 +15520,10 @@ interface VideoFrameMetadata {}
  * TypeScript's DOM alias and does not list those stored names yet.
  * @throws {@link DOMException} `InvalidStateError` when the source image or
  * canvas is closed or has no pixels.
- * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned.
+ * @throws {@link DOMException} `DataCloneError` when a closed frame is cloned, or
+ * when `transfer` lists the same buffer twice, a buffer that is already
+ * detached, or a buffer that cannot be detached. A thrown constructor detaches
+ * nothing.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/VideoFrame)
  */
@@ -15657,6 +15665,11 @@ interface EncodedVideoChunkInit {
   timestamp: number;
   duration?: number;
   data: AllowSharedBufferSource;
+  /**
+   * The constructor copies the bytes and then detaches each buffer. An omitted
+   * list detaches nothing.
+   */
+  transfer?: ArrayBuffer[];
 }
 
 /**
@@ -15800,7 +15813,10 @@ interface VideoDecoderConfig {
  * truncated toward 0.
  *
  * @throws {@link TypeError} when an argument is missing or invalid.
- * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned.
+ * @throws {@link DOMException} `DataCloneError` when closed audio data is cloned, or
+ * when `transfer` lists the same buffer twice, a buffer that is already
+ * detached, or a buffer that cannot be detached. A thrown constructor detaches
+ * nothing.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/AudioData)
  */
@@ -15871,8 +15887,8 @@ interface AudioDataInit {
   timestamp: number;
   data: AllowSharedBufferSource;
   /**
-   * Listed buffers stay attached. The constructor copies `data` and ignores this
-   * list.
+   * The constructor copies the samples and then detaches each buffer. An
+   * omitted list detaches nothing.
    */
   transfer?: ArrayBuffer[];
 }
@@ -15944,6 +15960,11 @@ interface EncodedAudioChunkInit {
   timestamp: number;
   duration?: number;
   data: AllowSharedBufferSource;
+  /**
+   * The constructor copies the bytes and then detaches each buffer. An omitted
+   * list detaches nothing.
+   */
+  transfer?: ArrayBuffer[];
 }
 
 /**
@@ -16061,7 +16082,7 @@ interface AudioDecoderConfig {
  * Decodes PNG, JPEG, WebP, JPEG XL, GIF, BMP, and one still AVIF frame (profiles
  * 0–2 at 8, 10, or 12 bits). An animated AVIF (`avis`) is rejected. GIF delays
  * below 2 centiseconds become 100 ms. This decoder does not advance frames by
- * itself.
+ * itself. An empty `data` buffer throws `TypeError` and detaches nothing.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ImageDecoder)
  */
