@@ -169,7 +169,7 @@ fn cts_expectations_match() {
   let observed = run_cases(&workspace, &queries, &skipped);
 
   if update {
-    for (name, status) in &observed {
+    for (name, ran) in &observed {
       let suite = suite_name(name).to_string();
       if !saved.contains_key(&suite) {
         let path = expectations.join(format!("{suite}.json"));
@@ -179,7 +179,8 @@ fn cts_expectations_match() {
       apply_observation(
         saved.get_mut(&suite).expect("suite"),
         name,
-        status,
+        &ran.status,
+        &ran.reason,
         no_ignore,
         host,
       );
@@ -195,15 +196,17 @@ fn cts_expectations_match() {
   }
 
   let mut mismatches = Vec::new();
-  for (name, status) in &observed {
+  for (name, ran) in &observed {
     let suite = suite_name(name);
     match saved.get(suite).and_then(|cases| cases.get(name)) {
       Some(expect) => {
-        if let Some(message) = mismatches_for(name, status, expect, host) {
+        if let Some(message) = mismatches_for(name, &ran.status, expect, host) {
           mismatches.push(message);
         }
       }
-      None => mismatches.push(format!("{name}: unexpected case ({status})")),
+      None => {
+        mismatches.push(format!("{name}: unexpected case ({})", ran.status))
+      }
     }
   }
   if filter.is_none() {
@@ -263,6 +266,19 @@ import { DefaultTestFileLoader } from "YUZUKO_CTS_OUT/common/internal/file_loade
 import { Logger } from "YUZUKO_CTS_OUT/common/internal/logging/logger.js";
 import { parseQuery } from "YUZUKO_CTS_OUT/common/internal/query/parseQuery.js";
 
+function skipReason(result) {
+  const logs = result.logs || [];
+  for (const entry of logs) {
+    const message = entry && typeof entry.message === "string"
+      ? entry.message.trim()
+      : "";
+    if (message && message !== "all subcases were skipped") {
+      return message;
+    }
+  }
+  return "";
+}
+
 const args = Array.from(Yuzuko.args);
 const split = args.indexOf("--");
 const queryArgs = split === -1 ? args : args.slice(0, split);
@@ -292,7 +308,11 @@ try {
       ) {
         throw new Error(`${name} ended as ${status}`);
       }
-      cases.push({ name, status });
+      cases.push({
+        name,
+        status,
+        reason: status === "skip" ? skipReason(result) : "",
+      });
     }
   }
   if (cases.length === 0) {
@@ -330,11 +350,16 @@ impl Drop for RunnerFile {
   }
 }
 
+struct Ran {
+  status: String,
+  reason: String,
+}
+
 fn run_cases(
   workspace: &Path,
   queries: &[String],
   skipped: &[String],
-) -> BTreeMap<String, String> {
+) -> BTreeMap<String, Ran> {
   let runner = RunnerFile::create(&workspace.join("tests/webgpu/suite/out"));
   let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
   command
@@ -365,6 +390,7 @@ fn apply_observation(
   saved: &mut BTreeMap<String, Expect>,
   name: &str,
   status: &str,
+  reason: &str,
   no_ignore: bool,
   host: Platform,
 ) {
@@ -375,7 +401,7 @@ fn apply_observation(
       }
     }
     Observed::Skip => {
-      let next = record_skip(saved.get(name), name);
+      let next = record_skip(saved.get(name), name, reason);
       saved.insert(name.to_string(), next);
     }
     kind @ (Observed::Pass | Observed::Fail) => {
@@ -386,11 +412,23 @@ fn apply_observation(
 }
 
 /// A CTS `skip` is not `true` or `false`. Keep a reason that is already
-/// written. Otherwise the update stops so a person can write one.
-fn record_skip(previous: Option<&Expect>, name: &str) -> Expect {
+/// written. Otherwise record the CTS message as an all-host ignore. The
+/// generic "all subcases were skipped" line is not that message.
+fn record_skip(previous: Option<&Expect>, name: &str, reason: &str) -> Expect {
   match previous {
     Some(expect) if !matches!(expect.ignore, Note::No) => expect.clone(),
-    _ => panic!("{name}: the case skipped. Write {{\"ignore\": \"reason\"}}."),
+    _ => {
+      let reason = reason.trim();
+      if reason.is_empty() || reason == "all subcases were skipped" {
+        panic!("{name}: the case skipped. Write {{\"ignore\": \"reason\"}}.");
+      }
+      Expect {
+        pass: true,
+        ignore: Note::All {
+          reason: reason.to_string(),
+        },
+      }
+    }
   }
 }
 
@@ -435,7 +473,7 @@ fn is_legacy(map: &serde_json::Map<String, Value>) -> bool {
     && matches!(map.get("cases"), Some(Value::Object(_)))
 }
 
-fn parse_results(stdout: &str) -> BTreeMap<String, String> {
+fn parse_results(stdout: &str) -> BTreeMap<String, Ran> {
   let line = stdout
     .lines()
     .rev()
@@ -455,8 +493,16 @@ fn parse_results(stdout: &str) -> BTreeMap<String, String> {
       .and_then(Value::as_str)
       .unwrap_or_else(|| panic!("{name} has no status"))
       .to_string();
+    let reason = case
+      .get("reason")
+      .and_then(Value::as_str)
+      .unwrap_or("")
+      .to_string();
     classify(&name, &status);
-    if observed.insert(name.clone(), status).is_some() {
+    if observed
+      .insert(name.clone(), Ran { status, reason })
+      .is_some()
+    {
       panic!("duplicate CTS case {name}");
     }
   }
@@ -1036,15 +1082,30 @@ fn update_keeps_ignore_for_a_host_that_did_not_run() {
 fn update_preserves_an_ignore_when_the_case_skips() {
   let previous = parse_expect("case", json!({"ignore": "No GPU."}));
   assert_eq!(
-    expect_json(&record_skip(Some(&previous), "case")),
+    expect_json(&record_skip(Some(&previous), "case", "unused")),
     json!({"ignore": "No GPU."})
   );
 }
 
 #[test]
+fn update_records_a_skip_message_as_an_ignore() {
+  let reason = "texture format 'bc1-rgba-unorm' requires feature: 'texture-compression-bc'";
+  let next = record_skip(None, "case", reason);
+  assert_eq!(expect_json(&next), json!({ "ignore": reason }));
+  let kept = record_skip(Some(&next), "case", "another");
+  assert_eq!(expect_json(&kept), json!({ "ignore": reason }));
+}
+
+#[test]
 #[should_panic(expected = "the case skipped. Write {\"ignore\": \"reason\"}.")]
 fn update_rejects_a_skip_without_a_reason() {
-  record_skip(None, "case");
+  record_skip(None, "case", "  ");
+}
+
+#[test]
+#[should_panic(expected = "the case skipped. Write {\"ignore\": \"reason\"}.")]
+fn update_rejects_the_generic_skip_message() {
+  record_skip(None, "case", "all subcases were skipped");
 }
 
 #[test]
