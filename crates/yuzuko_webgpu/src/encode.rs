@@ -375,14 +375,6 @@ impl GpuCommandEncoder {
       alive_buffer(scope, source, "The copy source is not a buffer")?;
     let destination =
       alive_buffer(scope, destination, "The copy destination is not a buffer")?;
-    if !range_inside(&source, source_offset.0, size.0)
-      || !range_inside(&destination, destination_offset.0, size.0)
-    {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
     with_idle_encoder(self.id, |encoder| {
       encoder.copy_buffer_to_buffer(
         &source,
@@ -417,12 +409,6 @@ impl GpuCommandEncoder {
       .ok_or_else(|| OpError::type_("The copy destination is not a buffer"))?;
     let buffer = buffer.alive()?;
     let offset = js::field_u64(scope, destination, "offset")?.unwrap_or(0);
-    if offset > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
     let bytes_per_row = js::field_u32(scope, destination, "bytesPerRow")?;
     let (width, height) = copy_size(scope, size)?;
     with_idle_encoder(self.id, |encoder| {
@@ -2301,10 +2287,6 @@ fn buffer_span(
     ));
   }
   Ok((buffer, offset, size))
-}
-
-fn range_inside(buffer: &wgpu::Buffer, offset: u64, size: u64) -> bool {
-  offset <= buffer.size() && size <= buffer.size() - offset
 }
 
 fn bind_group(
