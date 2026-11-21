@@ -16,10 +16,26 @@ pub struct Handle {
 }
 
 pub struct ErrorScope {
-  pub guard: wgpu::ErrorScopeGuard,
   /// This scope's filter includes validation errors.
   pub validation: bool,
   pub synthetic: Option<String>,
+}
+
+/// Guards for every JavaScript device, in the order they were pushed.
+///
+/// The process has one wgpu device, so a scope has to be popped newest
+/// first even when several JavaScript devices still hold scopes. Dropping a
+/// device's guard vector oldest-first panics inside wgpu.
+struct ScopeStack {
+  guards: Vec<(u64, wgpu::ErrorScopeGuard)>,
+}
+
+impl Drop for ScopeStack {
+  fn drop(&mut self) {
+    while let Some((_, guard)) = self.guards.pop() {
+      drop(guard.pop());
+    }
+  }
 }
 
 pub struct PoppedScope {
@@ -41,6 +57,8 @@ pub struct LiveDevice {
 thread_local! {
   static DEVICES: RefCell<HashMap<u64, LiveDevice>> =
     RefCell::new(HashMap::new());
+  static SCOPES: RefCell<ScopeStack> =
+    const { RefCell::new(ScopeStack { guards: Vec::new() }) };
 }
 
 static NEXT_DEVICE: AtomicU64 = AtomicU64::new(1);
@@ -119,32 +137,57 @@ pub fn push_scope(
 ) -> Result<(), OpError> {
   with_mut(id, |live| {
     live.scopes.push(ErrorScope {
-      guard,
       validation,
       synthetic: None,
     });
     Ok(())
-  })
+  })?;
+  SCOPES.with(|scopes| {
+    scopes.borrow_mut().guards.push((id, guard));
+  });
+  Ok(())
 }
 
 pub fn pop_scope(id: u64) -> Result<PoppedScope, OpError> {
+  let none =
+    || OpError::dom("OperationError", "There is no error scope on the stack");
   DEVICES.with(|devices| {
-    let mut devices = devices.borrow_mut();
-    let live = devices.get_mut(&id).ok_or_else(lost_error)?;
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
     if live.lost.load(Ordering::SeqCst) {
       return Err(lost_error());
     }
-    live
-      .scopes
-      .pop()
-      .map(|scope| PoppedScope {
-        guard: scope.guard,
-        synthetic: scope.synthetic,
-      })
-      .ok_or_else(|| {
-        OpError::dom("OperationError", "There is no error scope on the stack")
-      })
-  })
+    if live.scopes.is_empty() {
+      return Err(none());
+    }
+    Ok(())
+  })?;
+  let guard = SCOPES.with(|scopes| {
+    let mut scopes = scopes.borrow_mut();
+    let Some((owner, _)) = scopes.guards.last() else {
+      return Err(none());
+    };
+    if *owner != id {
+      return Err(OpError::dom(
+        "OperationError",
+        "The error scope belongs to another device",
+      ));
+    }
+    let Some((_, guard)) = scopes.guards.pop() else {
+      return Err(none());
+    };
+    Ok(guard)
+  })?;
+  let synthetic = DEVICES
+    .with(|devices| {
+      devices
+        .borrow_mut()
+        .get_mut(&id)
+        .and_then(|live| live.scopes.pop())
+        .map(|scope| scope.synthetic)
+    })
+    .ok_or_else(none)?;
+  Ok(PoppedScope { guard, synthetic })
 }
 
 /// Record one validation error on the device timeline.
@@ -189,6 +232,12 @@ pub fn queue_object(id: u64) -> Result<v8::Global<v8::Object>, OpError> {
 }
 
 pub fn clear() {
+  SCOPES.with(|scopes| {
+    let mut scopes = scopes.borrow_mut();
+    while let Some((_, guard)) = scopes.guards.pop() {
+      drop(guard.pop());
+    }
+  });
   DEVICES.with(|devices| devices.borrow_mut().clear());
   WRAPPERS.with(|wrappers| wrappers.borrow_mut().clear());
   pending_errors().clear();
