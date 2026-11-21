@@ -91,6 +91,23 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
   device.destroy();
 });
 
+Yuzuko.test("requestDevice accepts every advertised feature and limit", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const requiredFeatures = [...adapter.features] as GPUFeatureName[];
+  const requiredLimits: Record<string, number> = { ...adapter.limits };
+  const device = await adapter.requestDevice({
+    requiredFeatures,
+    requiredLimits,
+  });
+  for (const feature of requiredFeatures) {
+    assert(device.features.has(feature), feature);
+  }
+  device.destroy();
+});
+
 Yuzuko.test("a triangle readback and the same current texture", async () => {
   const adapter = await adapterOrSkip();
   if (!adapter) {

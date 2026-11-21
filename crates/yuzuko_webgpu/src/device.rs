@@ -90,13 +90,15 @@ unsafe impl v8::cppgc::GarbageCollected for GpuAdapter {
 impl GpuAdapter {
   #[getter]
   fn features(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let features = gpu_parts()?.0.features();
+    // The process has one device. `requestDevice` can enable only the
+    // features that device already has, so the adapter lists that set.
+    let features = gpu_parts()?.1.features();
     Ok(features_js(scope, features))
   }
 
   #[getter]
   fn limits(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let limits = gpu_parts()?.0.limits();
+    let limits = gpu_parts()?.1.limits();
     Ok(limits_js(scope, &limits))
   }
 
