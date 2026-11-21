@@ -7,11 +7,13 @@
 //! npm ci --ignore-scripts && npx grunt standalone
 //! ```
 //!
-//! `tests/webgpu/expectations/cts.json` uses the WPT leaf schema: `true`,
-//! `false`, or `{"ignore": ...}`. `false` means the case did not pass.
-//! `YUZUKO_CTS_UPDATE=1` rewrites that file.
+//! `tests/webgpu/expectations/<suite>.json` uses the WPT leaf schema:
+//! `true`, `false`, or `{"ignore": ...}`. The file name is the component
+//! before the first colon, so `unittests:` lands in `unittests.json` and
+//! `webgpu:` lands in `webgpu.json`. `false` means the case did not pass.
+//! `YUZUKO_CTS_UPDATE=1` rewrites the suite files that ran.
 //! `YUZUKO_CTS_FILTER` runs that one query instead of the enrolled queries.
-//! A filtered update keeps cases that did not run.
+//! A filtered update keeps cases in that suite file that did not run.
 //! `YUZUKO_CTS_NO_IGNORE=1` runs ignored cases. With update, it records this
 //! host and drops this host's ignore when the case passes or does not pass.
 //!
@@ -29,7 +31,52 @@ use serde_json::json;
 const MARKER: &str = "YUZUKO_CTS_JSON ";
 
 /// Queries this cargo test runs unless `YUZUKO_CTS_FILTER` is set.
-const ENROLLED: &[&str] = &["unittests:*"];
+///
+/// `unittests:*` exercises the harness. The `webgpu:` queries cover
+/// validation and operation of the implemented buffer, sampler, texture,
+/// texture view, bind-group layout, pipeline layout, error scope, query set,
+/// shader module, compute pipeline, queue, and command encoding, plus
+/// sampling, vertex formats, device loss, labels, and the IDL surface.
+/// Shader execution, compatibility mode, capability-limit sweeps, and the
+/// HTML canvas reftests stay out.
+const ENROLLED: &[&str] = &[
+  "unittests:*",
+  "webgpu:api,validation,createSampler:*",
+  "webgpu:api,validation,createTexture:*",
+  "webgpu:api,validation,createView:*",
+  "webgpu:api,validation,buffer,create:*",
+  "webgpu:api,validation,buffer,destroy:*",
+  "webgpu:api,validation,buffer,mapping:*",
+  "webgpu:api,validation,createBindGroupLayout:*",
+  "webgpu:api,validation,createPipelineLayout:*",
+  "webgpu:api,validation,error_scope:*",
+  "webgpu:api,validation,query_set,create:*",
+  "webgpu:api,validation,query_set,destroy:*",
+  "webgpu:api,validation,compute_pipeline:*",
+  "webgpu:api,validation,shader_module,*",
+  "webgpu:api,validation,queue,writeBuffer:*",
+  "webgpu:api,validation,queue,submit:*",
+  "webgpu:api,validation,queue,destroyed,buffer:*",
+  "webgpu:api,validation,encoding,cmds,copyBufferToBuffer:*",
+  "webgpu:api,validation,encoding,cmds,render,setVertexBuffer:*",
+  "webgpu:api,validation,encoding,cmds,render,setIndexBuffer:*",
+  "webgpu:api,operation,sampling,*",
+  "webgpu:api,operation,buffers,map:*",
+  "webgpu:api,operation,buffers,map_ArrayBuffer:*",
+  "webgpu:api,operation,buffers,map_detach:*",
+  "webgpu:api,operation,buffers,map_oom:*",
+  "webgpu:api,operation,buffers,createBindGroup:*",
+  "webgpu:api,operation,vertex_state,*",
+  "webgpu:api,operation,command_buffer,copyBufferToBuffer:*",
+  "webgpu:api,operation,command_buffer,basic:*",
+  "webgpu:api,operation,device,*",
+  "webgpu:api,operation,uncapturederror:*",
+  "webgpu:api,operation,labels:*",
+  "webgpu:api,operation,queue,writeBuffer:*",
+  "webgpu:idl,constants,flags:*",
+  "webgpu:idl,constructable:*",
+  "webgpu:idl,javascript:*",
+];
 
 const PLATFORMS: [Platform; 3] =
   [Platform::Linux, Platform::Macos, Platform::Windows];
@@ -92,17 +139,29 @@ fn cts_expectations_match() {
     built.display()
   );
 
-  let path = workspace.join("tests/webgpu/expectations/cts.json");
-  let mut saved = read_expectations(&path, update, filter.is_some());
+  let expectations = workspace.join("tests/webgpu/expectations");
   let queries: Vec<String> = match &filter {
     Some(query) => vec![query.clone()],
     None => ENROLLED.iter().copied().map(str::to_string).collect(),
   };
+  let mut saved: BTreeMap<String, BTreeMap<String, Expect>> = BTreeMap::new();
+  for query in &queries {
+    let suite = suite_name(query).to_string();
+    if saved.contains_key(&suite) {
+      continue;
+    }
+    let path = expectations.join(format!("{suite}.json"));
+    saved.insert(
+      suite.clone(),
+      read_expectations(&path, update, filter.is_some(), &suite),
+    );
+  }
   let skipped = if no_ignore {
     Vec::new()
   } else {
     saved
-      .iter()
+      .values()
+      .flat_map(|cases| cases.iter())
       .filter(|(_, expect)| noted_on(&expect.ignore, host))
       .map(|(name, _)| name.clone())
       .collect::<Vec<_>>()
@@ -111,18 +170,34 @@ fn cts_expectations_match() {
 
   if update {
     for (name, status) in &observed {
-      apply_observation(&mut saved, name, status, no_ignore, host);
+      let suite = suite_name(name).to_string();
+      if !saved.contains_key(&suite) {
+        let path = expectations.join(format!("{suite}.json"));
+        saved
+          .insert(suite.clone(), read_expectations(&path, true, true, &suite));
+      }
+      apply_observation(
+        saved.get_mut(&suite).expect("suite"),
+        name,
+        status,
+        no_ignore,
+        host,
+      );
     }
-    if filter.is_none() {
-      saved.retain(|name, _| observed.contains_key(name));
+    for (suite, cases) in &mut saved {
+      if filter.is_none() {
+        cases.retain(|name, _| observed.contains_key(name));
+      }
+      let path = expectations.join(format!("{suite}.json"));
+      write_expectations(&path, cases);
     }
-    write_expectations(&path, &saved);
     return;
   }
 
   let mut mismatches = Vec::new();
   for (name, status) in &observed {
-    match saved.get(name) {
+    let suite = suite_name(name);
+    match saved.get(suite).and_then(|cases| cases.get(name)) {
       Some(expect) => {
         if let Some(message) = mismatches_for(name, status, expect, host) {
           mismatches.push(message);
@@ -132,17 +207,43 @@ fn cts_expectations_match() {
     }
   }
   if filter.is_none() {
-    for name in saved.keys() {
-      if !observed.contains_key(name) {
-        mismatches.push(format!("{name}: expected case did not run"));
+    for cases in saved.values() {
+      for name in cases.keys() {
+        if !observed.contains_key(name) {
+          mismatches.push(format!("{name}: expected case did not run"));
+        }
       }
     }
   }
+  let shown = mismatches.len().min(40);
   assert!(
     mismatches.is_empty(),
-    "CTS expectations differ:\n{}",
-    mismatches.join("\n")
+    "{} CTS expectation mismatch(es)\n{}{}",
+    mismatches.len(),
+    mismatches[..shown].join("\n"),
+    if mismatches.len() > shown {
+      format!("\n... and {} more", mismatches.len() - shown)
+    } else {
+      String::new()
+    }
   );
+}
+
+/// The file name is the component before the first colon.
+/// `unittests:basic:test,sync:` is `unittests`. `webgpu:api,...` is `webgpu`.
+fn suite_name(name: &str) -> &str {
+  let Some((suite, rest)) = name.split_once(':') else {
+    panic!("{name}: a CTS name has a suite before the first colon");
+  };
+  let file_name = !suite.is_empty()
+    && !rest.is_empty()
+    && suite.chars().all(|character| {
+      character.is_ascii_alphanumeric() || character == '_' || character == '-'
+    });
+  if !file_name {
+    panic!("{name}: the suite is not a file name");
+  }
+  suite
 }
 
 fn env_flag(name: &str) -> bool {
@@ -297,6 +398,7 @@ fn read_expectations(
   path: &Path,
   update: bool,
   filtered: bool,
+  suite: &str,
 ) -> BTreeMap<String, Expect> {
   if !path.exists() {
     if update {
@@ -319,6 +421,10 @@ fn read_expectations(
   }
   let mut expectations = BTreeMap::new();
   for (key, value) in map {
+    let key_suite = suite_name(&key);
+    if key_suite != suite {
+      panic!("{key}: this case belongs in {key_suite}.json");
+    }
     expectations.insert(key.clone(), parse_expect(&key, value));
   }
   expectations
@@ -786,6 +892,27 @@ fn push_indent(out: &mut String, level: usize) {
 #[test]
 fn platform_names_match_the_host() {
   assert_eq!(Platform::host().as_str(), std::env::consts::OS);
+}
+
+#[test]
+fn suite_name_is_the_leading_component() {
+  assert_eq!(suite_name("unittests:basic:test,sync:"), "unittests");
+  assert_eq!(
+    suite_name("webgpu:api,validation,createSampler:*"),
+    "webgpu"
+  );
+}
+
+#[test]
+#[should_panic(expected = "a CTS name has a suite before the first colon")]
+fn suite_name_rejects_a_name_without_a_colon() {
+  suite_name("unittests");
+}
+
+#[test]
+#[should_panic(expected = "the suite is not a file name")]
+fn suite_name_rejects_a_path_separator() {
+  suite_name("web/gpu:api:*");
 }
 
 #[test]
