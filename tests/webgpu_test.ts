@@ -108,6 +108,22 @@ Yuzuko.test("requestDevice accepts every advertised feature and limit", async ()
   device.destroy();
 });
 
+Yuzuko.test("too many bind group layouts is a validation error", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const layout = device.createBindGroupLayout({ entries: [] });
+  const bindGroupLayouts = Array.from({ length: 9 }, () => layout);
+  device.pushErrorScope("validation");
+  const pipeline = device.createPipelineLayout({ bindGroupLayouts });
+  assert(pipeline instanceof GPUPipelineLayout, "layout");
+  const error = await device.popErrorScope();
+  assert(error instanceof GPUValidationError, "too many groups");
+  device.destroy();
+});
+
 Yuzuko.test("a triangle readback and the same current texture", async () => {
   const adapter = await adapterOrSkip();
   if (!adapter) {

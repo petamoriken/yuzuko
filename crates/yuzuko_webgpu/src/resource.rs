@@ -1137,6 +1137,7 @@ pub fn create_bind_group_layout(
 
 pub fn create_pipeline_layout(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuPipelineLayout>, OpError> {
@@ -1144,8 +1145,6 @@ pub fn create_pipeline_layout(
     OpError::type_("createPipelineLayout requires a descriptor")
   })?;
   let layouts = layout_list(scope, object)?;
-  let refs: Vec<Option<&wgpu::BindGroupLayout>> =
-    layouts.iter().map(|layout| Some(layout.layout())).collect();
   let label = optional_label(scope, object)?;
   let immediate = js::field_u32(scope, object, "immediateSize")?.unwrap_or(0);
   if immediate != 0 {
@@ -1154,6 +1153,14 @@ pub fn create_pipeline_layout(
       "immediates are not enabled",
     ));
   }
+  // wgpu asserts when the list is longer than its compile-time cap of 8.
+  // A longer list is still a validation error, and the layout is returned.
+  let over_cap = layouts.len() > 8;
+  let refs: Vec<Option<&wgpu::BindGroupLayout>> = if over_cap {
+    Vec::new()
+  } else {
+    layouts.iter().map(|layout| Some(layout.layout())).collect()
+  };
   let layout =
     handle
       .device
@@ -1162,6 +1169,12 @@ pub fn create_pipeline_layout(
         bind_group_layouts: &refs,
         immediate_size: 0,
       });
+  if over_cap {
+    crate::state::report_validation(
+      device_id,
+      "The number of bind group layouts exceeds maxBindGroups",
+    );
+  }
   Ok(New(GpuPipelineLayout {
     layout,
     label: ObjectLabel::new(label),

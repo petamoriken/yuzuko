@@ -272,7 +272,12 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuPipelineLayout>, OpError> {
-    resource::create_pipeline_layout(scope, &self.require()?, descriptor)
+    resource::create_pipeline_layout(
+      scope,
+      self.id,
+      &self.require()?,
+      descriptor,
+    )
   }
 
   fn create_bind_group(
