@@ -10,21 +10,11 @@ function detach(): ArrayBuffer {
   return buffer;
 }
 
-async function capture(run: () => unknown): Promise<unknown> {
-  try {
-    await run();
-  } catch (error) {
-    return error;
-  }
-  return undefined;
-}
-
 function assertType(error: unknown, message: string, label: string): void {
   assert(error instanceof TypeError, `${label}: ${String(error)}`);
   assert(error.message === message, `${label}: ${error.message}`);
 }
 
-const DETACHED = "The buffer is detached.";
 const OUT_OF_RANGE = "The provided value is out of range";
 const data = new Uint8Array([1]);
 
@@ -206,23 +196,34 @@ Yuzuko.test("VideoFrameInit uses modulo and buffer init uses EnforceRange", () =
   assertType(error, "The timestamp is out of range", "buffer timestamp");
 });
 
-Yuzuko.test("a detached buffer throws TypeError", async () => {
-  const decoded = await capture(() => new TextDecoder().decode(detach()));
-  assertType(decoded, DETACHED, "TextDecoder");
+Yuzuko.test("a detached buffer copies as empty", async () => {
+  assert(new TextDecoder().decode(detach()) === "", "TextDecoder");
 
   const viewBuffer = new ArrayBuffer(4);
   const view = new Uint8Array(viewBuffer);
+  view[0] = 65;
   structuredClone(view, { transfer: [viewBuffer] });
-  const decodedView = await capture(() => new TextDecoder().decode(view));
-  assertType(decodedView, DETACHED, "TextDecoder view");
+  assert(new TextDecoder().decode(view) === "", "TextDecoder view");
 
-  const digested = await capture(() => crypto.subtle.digest("SHA-256", detach()));
-  assertType(digested, DETACHED, "digest");
-
-  const posted = await capture(
-    () => new Request("http://127.0.0.1/", { method: "POST", body: detach() }),
+  const empty = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new Uint8Array()),
   );
-  assertType(posted, DETACHED, "Request body");
+  const hashed = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", detach()),
+  );
+  assert(empty.length === hashed.length, "digest length");
+  for (let index = 0; index < empty.length; index += 1) {
+    assert(empty[index] === hashed[index], "digest");
+  }
+
+  const posted = new Request("http://127.0.0.1/", {
+    method: "POST",
+    body: detach(),
+  });
+  assert(await posted.text() === "", "Request body");
+
+  const blob = new Blob([detach()]);
+  assert(await blob.text() === "", "Blob");
 });
 
 Yuzuko.test("OscillatorNode.start accepts null", () => {

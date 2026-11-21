@@ -25,11 +25,12 @@ pub fn buffer_source(
     return Ok(Some(shared_bytes(&buffer)));
   }
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+    // A detached view copies as the empty byte sequence.
     if view
       .buffer(scope)
       .is_none_or(|buffer| buffer.was_detached())
     {
-      return Err(detached_buffer());
+      return Ok(Some(Vec::new()));
     }
     let mut bytes = vec![0u8; view.byte_length()];
     let written = view.copy_contents(&mut bytes);
@@ -38,7 +39,7 @@ pub fn buffer_source(
   }
   if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
     if buffer.was_detached() {
-      return Err(detached_buffer());
+      return Ok(Some(Vec::new()));
     }
     let length = buffer.byte_length();
     let mut bytes = vec![0u8; length];
@@ -54,10 +55,6 @@ pub fn buffer_source(
     return Ok(Some(bytes));
   }
   Ok(None)
-}
-
-fn detached_buffer() -> yuzuko_core::op::OpError {
-  yuzuko_core::op::OpError::type_("The buffer is detached.")
 }
 
 #[inline]
