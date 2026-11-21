@@ -1,5 +1,12 @@
 {
-  "webgpu:api,operation,buffers,createBindGroup:buffer_binding_resource:": true,
+  "webgpu:api,operation,buffers,createBindGroup:buffer_binding_resource:": {
+    "ignore": {
+      "reason": "A storage buffer binding fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,buffers,map:mapAsync,mapState:usageType=\"invalid\";mapModeType=\"READ\";beforeUnmap=false;beforeDestroy=false;afterUnmap=false;afterDestroy=false": false,
   "webgpu:api,operation,buffers,map:mapAsync,mapState:usageType=\"invalid\";mapModeType=\"READ\";beforeUnmap=false;beforeDestroy=false;afterUnmap=false;afterDestroy=true": false,
   "webgpu:api,operation,buffers,map:mapAsync,mapState:usageType=\"invalid\";mapModeType=\"READ\";beforeUnmap=false;beforeDestroy=false;afterUnmap=true;afterDestroy=false": false,
@@ -171,8 +178,22 @@
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createBindGroupLayout\"": true,
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createBuffer\"": true,
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createCommandEncoder\"": true,
-  "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createComputePipeline\"": true,
-  "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createComputePipelineAsync\"": true,
+  "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createComputePipeline\"": {
+    "ignore": {
+      "reason": "Labeling a compute pipeline fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createComputePipelineAsync\"": {
+    "ignore": {
+      "reason": "Labeling a compute pipeline fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createPipelineLayout\"": true,
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createQuerySet\"": true,
   "webgpu:api,operation,labels:object_has_descriptor_label:name=\"createRenderBundleEncoder\"": true,
@@ -2641,80 +2662,598 @@
   "webgpu:api,validation,compute_pipeline:overrides,workgroup_size:isAsync=true;type=\"u32\";constants={\"x\":16,\"y\":1,\"z\":1}": true,
   "webgpu:api,validation,compute_pipeline:overrides,workgroup_size:isAsync=true;type=\"u32\";constants={}": true,
   "webgpu:api,validation,compute_pipeline:pipeline_layout,device_mismatch:": false,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"comparison_sampler\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"filtering_sampler\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"non-filtering_sampler\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"read-only-storage_buffer\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_buffer\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_read-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_read-write\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_write-only\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d_true\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_cube-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_cube_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_1d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_2d-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_2d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_3d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_cube-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_cube_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_1d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d_true\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_3d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_cube-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_cube_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_1d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d_true\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_3d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_cube-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_cube_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_1d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d_true\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_3d_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_cube-array_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_cube_false\"": true,
-  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"uniform_buffer\"": true,
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"comparison_sampler\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"filtering_sampler\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"non-filtering_sampler\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"read-only-storage_buffer\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_buffer\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32float_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32sint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_1d_r32uint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32float_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32sint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d-array_r32uint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32float_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32sint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_2d_r32uint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32float_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32sint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_read-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_read-write\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"storage_texture_3d_r32uint_write-only\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_2d_true\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_cube-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_depth_cube_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_1d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_2d-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_2d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_3d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_cube-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_float_cube_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_1d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_2d_true\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_3d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_cube-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_sint_cube_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_1d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_2d_true\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_3d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_cube-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_uint_cube_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_1d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_2d_true\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_3d_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_cube-array_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"texture_unfilterable-float_cube_false\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:resource_compatibility:apiResource=\"uniform_buffer\"": {
+    "ignore": {
+      "reason": "Compute resource compatibility fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,compute_pipeline:shader_module,compute:isAsync=false;shaderModuleStage=\"compute\"": true,
   "webgpu:api,validation,compute_pipeline:shader_module,compute:isAsync=false;shaderModuleStage=\"fragment\"": true,
   "webgpu:api,validation,compute_pipeline:shader_module,compute:isAsync=false;shaderModuleStage=\"vertex\"": true,
@@ -2734,9 +3273,30 @@
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r16unorm\"": {
     "ignore": "texture format 'r16unorm' requires feature: 'texture-formats-tier1'"
   },
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32float\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32sint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32uint\"": true,
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32float\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32sint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r32uint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r8sint\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r8snorm\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"r8uint\"": true,
@@ -2751,31 +3311,122 @@
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg16unorm\"": {
     "ignore": "texture format 'rg16unorm' requires feature: 'texture-formats-tier1'"
   },
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32float\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32sint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32uint\"": true,
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32float\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32sint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg32uint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg8sint\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg8snorm\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg8uint\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rg8unorm\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgb10a2uint\"": true,
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgb10a2unorm\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16float\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16sint\"": true,
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16float\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16sint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16snorm\"": {
     "ignore": "texture format 'rgba16snorm' requires feature: 'texture-formats-tier1'"
   },
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16uint\"": true,
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16uint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba16unorm\"": {
     "ignore": "texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'"
   },
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32float\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32sint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32uint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8sint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8snorm\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8uint\"": true,
-  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8unorm\"": true,
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32float\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32sint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba32uint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8sint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8snorm\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8uint\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,compute_pipeline:storage_texture,format:format=\"rgba8unorm\"": {
+    "ignore": {
+      "reason": "A usable storage texture format fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,createBindGroupLayout:binding_type:entry1={\"buffer\":{\"type\":\"uniform\"}};entry2={\"buffer\":{\"type\":\"uniform\"}}": true,
   "webgpu:api,validation,createBindGroupLayout:binding_type:entry1={\"buffer\":{\"type\":\"uniform\"}};entry2={\"sampler\":{\"type\":\"comparison\"}}": false,
   "webgpu:api,validation,createBindGroupLayout:binding_type:entry1={\"buffer\":{\"type\":\"uniform\"}};entry2={\"storageTexture\":{\"access\":\"read-only\",\"format\":\"r32uint\"}}": false,
@@ -12484,7 +13135,9 @@
   "webgpu:api,validation,error_scope:simple:errorType=\"validation\";errorFilter=\"out-of-memory\"": false,
   "webgpu:api,validation,error_scope:simple:errorType=\"validation\";errorFilter=\"validation\"": true,
   "webgpu:api,validation,query_set,create:count:type=\"occlusion\"": false,
-  "webgpu:api,validation,query_set,create:count:type=\"timestamp\"": false,
+  "webgpu:api,validation,query_set,create:count:type=\"timestamp\"": {
+    "ignore": "Timestamp query sets fail where timestamp-query exists, and adapters without that feature skip the case."
+  },
   "webgpu:api,validation,query_set,destroy:invalid_queryset:": true,
   "webgpu:api,validation,query_set,destroy:twice:": true,
   "webgpu:api,validation,queue,destroyed,buffer:copyBufferToBuffer:": true,
@@ -12505,18 +13158,60 @@
   "webgpu:api,validation,queue,writeBuffer:buffer_state:bufferState=\"valid\"": true,
   "webgpu:api,validation,queue,writeBuffer:ranges:": true,
   "webgpu:api,validation,queue,writeBuffer:usages:": true,
-  "webgpu:api,validation,shader_module,entry_point:compute:isAsync=false;shaderModuleStage=\"compute\"": true,
+  "webgpu:api,validation,shader_module,entry_point:compute:isAsync=false;shaderModuleStage=\"compute\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,shader_module,entry_point:compute:isAsync=false;shaderModuleStage=\"fragment\"": true,
   "webgpu:api,validation,shader_module,entry_point:compute:isAsync=false;shaderModuleStage=\"vertex\"": true,
-  "webgpu:api,validation,shader_module,entry_point:compute:isAsync=true;shaderModuleStage=\"compute\"": true,
+  "webgpu:api,validation,shader_module,entry_point:compute:isAsync=true;shaderModuleStage=\"compute\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,shader_module,entry_point:compute:isAsync=true;shaderModuleStage=\"fragment\"": true,
   "webgpu:api,validation,shader_module,entry_point:compute:isAsync=true;shaderModuleStage=\"vertex\"": true,
   "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=false;extraShaderModuleStage=\"compute\"": true,
-  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=false;extraShaderModuleStage=\"fragment\"": true,
-  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=false;extraShaderModuleStage=\"vertex\"": true,
+  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=false;extraShaderModuleStage=\"fragment\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=false;extraShaderModuleStage=\"vertex\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"compute\"": true,
-  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"fragment\"": true,
-  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"vertex\"": true,
+  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"fragment\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,validation,shader_module,entry_point:compute_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"vertex\"": {
+    "ignore": {
+      "reason": "This compute entry point fails on some macOS GPUs.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,validation,shader_module,entry_point:fragment:isAsync=false;shaderModuleStage=\"compute\"": true,
   "webgpu:api,validation,shader_module,entry_point:fragment:isAsync=false;shaderModuleStage=\"fragment\"": true,
   "webgpu:api,validation,shader_module,entry_point:fragment:isAsync=false;shaderModuleStage=\"vertex\"": true,
