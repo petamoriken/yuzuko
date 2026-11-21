@@ -479,36 +479,35 @@ impl GpuTexture {
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuTextureView>, OpError> {
-    let texture = self.texture()?;
-    if let Some(value) = descriptor
-      && let Some(object) = js::object(scope, value)
-    {
-      if let Some(swizzle) = js::get(scope, object, "swizzle")?
-        && !swizzle.is_null()
-      {
-        let text = js::string(scope, swizzle)?;
-        if text != "rgba" {
-          return Err(js::unsupported("GPUTextureViewDescriptor.swizzle"));
-        }
-      }
-      if js::get(scope, object, "usage")?.is_some() {
-        return Err(js::unsupported("GPUTextureViewDescriptor.usage"));
-      }
-    }
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let label = match descriptor {
+    let parts = match descriptor {
       Some(value) if !value.is_null_or_undefined() => {
-        match js::object(scope, value) {
-          Some(object) => optional_label(scope, object)?,
-          None => None,
-        }
+        texture_view_parts(scope, value)?
       }
-      _ => None,
+      _ => TextureViewParts::default(),
     };
+    let texture = self.texture()?;
+    let format = match parts.format {
+      Some(view_format) => {
+        let features = device_of(&self.lost)?.device.features();
+        require_texture_format(features, view_format)?
+      }
+      None => self.format,
+    };
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+      label: parts.label.as_deref(),
+      format: parts.format.map(|_| format),
+      dimension: parts.dimension,
+      usage: None,
+      aspect: parts.aspect,
+      base_mip_level: parts.base_mip_level,
+      mip_level_count: parts.mip_level_count,
+      base_array_layer: parts.base_array_layer,
+      array_layer_count: parts.array_layer_count,
+    });
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
-      format: self.format,
-      label: ObjectLabel::new(label),
+      format,
+      label: ObjectLabel::new(parts.label),
     }))
   }
 
@@ -997,8 +996,10 @@ pub fn create_texture(
   let object = js::object(scope, descriptor)
     .ok_or_else(|| OpError::type_("createTexture requires a descriptor"))?;
   let (width, height) = texture_size(scope, object)?;
+  let features = handle.device.features();
   let format = texture_format(&required_string(scope, object, "format")?)?;
-  let format = require_texture_format(handle.device.features(), format)?;
+  let format = require_texture_format(features, format)?;
+  let view_formats = view_format_list(scope, object, features)?;
   let usage = wgpu::TextureUsages::from_bits_truncate(js::required_u32(
     scope, object, "usage",
   )?);
@@ -1018,7 +1019,7 @@ pub fn create_texture(
     dimension: wgpu::TextureDimension::D2,
     format,
     usage,
-    view_formats: &[],
+    view_formats: &view_formats,
   });
   Ok(New(GpuTexture::from_parts(
     texture,
@@ -1038,30 +1039,42 @@ pub fn create_sampler(
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuSampler>, OpError> {
+  if !descriptor.is_null_or_undefined()
+    && js::object(scope, descriptor).is_none()
+  {
+    return Err(OpError::type_("GPUSamplerDescriptor must be an object"));
+  }
   let object = js::object(scope, descriptor);
+  let mag = filter_of(scope, object, "magFilter")?;
+  let min = filter_of(scope, object, "minFilter")?;
+  let mipmap = mipmap_filter_of(scope, object)?;
+  let address_u = address_mode_of(scope, object, "addressModeU")?;
+  let address_v = address_mode_of(scope, object, "addressModeV")?;
+  let address_w = address_mode_of(scope, object, "addressModeW")?;
+  let lod_min = lod_clamp_of(scope, object, "lodMinClamp", 0.0)?;
+  let lod_max = lod_clamp_of(scope, object, "lodMaxClamp", 32.0)?;
+  let anisotropy = anisotropy_of(scope, object)?;
   if let Some(object) = object
     && js::get(scope, object, "compare")?.is_some_and(|value| !value.is_null())
   {
     return Err(js::unsupported("GPUSamplerDescriptor.compare"));
   }
-  let mag = filter_of(scope, object, "magFilter")?;
-  let min = filter_of(scope, object, "minFilter")?;
   let label = match object {
     Some(object) => optional_label(scope, object)?,
     None => None,
   };
   let sampler = handle.device.create_sampler(&wgpu::SamplerDescriptor {
     label: label.as_deref(),
-    address_mode_u: wgpu::AddressMode::ClampToEdge,
-    address_mode_v: wgpu::AddressMode::ClampToEdge,
-    address_mode_w: wgpu::AddressMode::ClampToEdge,
+    address_mode_u: address_u,
+    address_mode_v: address_v,
+    address_mode_w: address_w,
     mag_filter: mag,
     min_filter: min,
-    mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-    lod_min_clamp: 0.0,
-    lod_max_clamp: 32.0,
+    mipmap_filter: mipmap,
+    lod_min_clamp: lod_min,
+    lod_max_clamp: lod_max,
     compare: None,
-    anisotropy_clamp: 1,
+    anisotropy_clamp: anisotropy,
     border_color: None,
   });
   Ok(New(GpuSampler {
@@ -1984,6 +1997,7 @@ fn stencil_op(
   }
 }
 
+/// `[EnforceRange] long` (`GPUDepthBias`).
 fn field_i32(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
@@ -1992,16 +2006,12 @@ fn field_i32(
   let Some(value) = js::get(scope, object, name)? else {
     return Ok(0);
   };
-  if value.is_null_or_undefined() {
-    return Ok(0);
-  }
-  let number = js::finite_number(scope, value)?;
-  if number < f64::from(i32::MIN) || number > f64::from(i32::MAX) {
-    return Err(OpError::range("The provided value is out of range"));
-  }
-  Ok(number as i32)
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_i32(number)
+    .ok_or_else(|| OpError::type_("The provided value is out of range"))
 }
 
+/// WebIDL `float`. Absent is `0`.
 fn field_f32(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
@@ -2010,11 +2020,7 @@ fn field_f32(
   let Some(value) = js::get(scope, object, name)? else {
     return Ok(0.0);
   };
-  if value.is_null_or_undefined() {
-    return Ok(0.0);
-  }
-  let number = js::finite_number(scope, value)?;
-  Ok(number as f32)
+  js::f32_value(scope, value)
 }
 
 fn present_object<'a>(
@@ -2147,14 +2153,119 @@ fn view_dimension(
     .transpose()?
     .as_deref()
   {
-    None | Some("2d") => Ok(wgpu::TextureViewDimension::D2),
-    Some("1d") => Ok(wgpu::TextureViewDimension::D1),
-    Some("2d-array") => Ok(wgpu::TextureViewDimension::D2Array),
-    Some("cube") => Ok(wgpu::TextureViewDimension::Cube),
-    Some("cube-array") => Ok(wgpu::TextureViewDimension::CubeArray),
-    Some("3d") => Ok(wgpu::TextureViewDimension::D3),
+    None => Ok(wgpu::TextureViewDimension::D2),
+    Some(name) => texture_view_dimension(name),
+  }
+}
+
+fn texture_view_dimension(
+  name: &str,
+) -> Result<wgpu::TextureViewDimension, OpError> {
+  match name {
+    "1d" => Ok(wgpu::TextureViewDimension::D1),
+    "2d" => Ok(wgpu::TextureViewDimension::D2),
+    "2d-array" => Ok(wgpu::TextureViewDimension::D2Array),
+    "cube" => Ok(wgpu::TextureViewDimension::Cube),
+    "cube-array" => Ok(wgpu::TextureViewDimension::CubeArray),
+    "3d" => Ok(wgpu::TextureViewDimension::D3),
     _ => Err(OpError::type_("The texture view dimension is invalid")),
   }
+}
+
+fn texture_aspect(name: &str) -> Result<wgpu::TextureAspect, OpError> {
+  match name {
+    "all" => Ok(wgpu::TextureAspect::All),
+    "depth-only" => Ok(wgpu::TextureAspect::DepthOnly),
+    "stencil-only" => Ok(wgpu::TextureAspect::StencilOnly),
+    _ => Err(OpError::type_("The texture aspect is invalid")),
+  }
+}
+
+#[derive(Default)]
+struct TextureViewParts {
+  label: Option<String>,
+  format: Option<wgpu::TextureFormat>,
+  dimension: Option<wgpu::TextureViewDimension>,
+  aspect: wgpu::TextureAspect,
+  base_mip_level: u32,
+  mip_level_count: Option<u32>,
+  base_array_layer: u32,
+  array_layer_count: Option<u32>,
+}
+
+/// WebIDL members of `GPUTextureViewDescriptor`, before the texture is used.
+fn texture_view_parts(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<TextureViewParts, OpError> {
+  let object = js::object(scope, value).ok_or_else(|| {
+    OpError::type_("GPUTextureViewDescriptor must be an object")
+  })?;
+  if let Some(swizzle) = js::get(scope, object, "swizzle")?
+    && !swizzle.is_null()
+  {
+    let text = js::string(scope, swizzle)?;
+    if text != "rgba" {
+      return Err(js::unsupported("GPUTextureViewDescriptor.swizzle"));
+    }
+  }
+  if js::get(scope, object, "usage")?.is_some() {
+    return Err(js::unsupported("GPUTextureViewDescriptor.usage"));
+  }
+  let format = match js::get(scope, object, "format")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None => None,
+    Some(name) => Some(texture_format(name)?),
+  };
+  let dimension = match js::get(scope, object, "dimension")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None => None,
+    Some(name) => Some(texture_view_dimension(name)?),
+  };
+  let aspect = match js::get(scope, object, "aspect")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None => wgpu::TextureAspect::All,
+    Some(name) => texture_aspect(name)?,
+  };
+  Ok(TextureViewParts {
+    label: optional_label(scope, object)?,
+    format,
+    dimension,
+    aspect,
+    base_mip_level: js::field_u32(scope, object, "baseMipLevel")?.unwrap_or(0),
+    mip_level_count: js::field_u32(scope, object, "mipLevelCount")?,
+    base_array_layer: js::field_u32(scope, object, "baseArrayLayer")?
+      .unwrap_or(0),
+    array_layer_count: js::field_u32(scope, object, "arrayLayerCount")?,
+  })
+}
+
+fn view_format_list(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  features: wgpu::Features,
+) -> Result<Vec<wgpu::TextureFormat>, OpError> {
+  let Some(list) = js::get(scope, object, "viewFormats")? else {
+    return Ok(Vec::new());
+  };
+  let array = v8::Local::<v8::Array>::try_from(list)
+    .map_err(|_| OpError::type_("viewFormats must be an array"))?;
+  let mut formats = Vec::with_capacity(array.length() as usize);
+  for index in 0..array.length() {
+    let item = js::read_index(scope, array, index)?;
+    let name = js::string(scope, item)?;
+    formats.push(require_texture_format(features, texture_format(&name)?)?);
+  }
+  Ok(formats)
 }
 
 fn explicit_layout(
@@ -2291,12 +2402,49 @@ pub(crate) fn format_name(format: wgpu::TextureFormat) -> &'static str {
 
 fn vertex_format(name: &str) -> Result<wgpu::VertexFormat, OpError> {
   match name {
+    "uint8" => Ok(wgpu::VertexFormat::Uint8),
+    "uint8x2" => Ok(wgpu::VertexFormat::Uint8x2),
+    "uint8x4" => Ok(wgpu::VertexFormat::Uint8x4),
+    "sint8" => Ok(wgpu::VertexFormat::Sint8),
+    "sint8x2" => Ok(wgpu::VertexFormat::Sint8x2),
+    "sint8x4" => Ok(wgpu::VertexFormat::Sint8x4),
+    "unorm8" => Ok(wgpu::VertexFormat::Unorm8),
+    "unorm8x2" => Ok(wgpu::VertexFormat::Unorm8x2),
+    "unorm8x4" => Ok(wgpu::VertexFormat::Unorm8x4),
+    "snorm8" => Ok(wgpu::VertexFormat::Snorm8),
+    "snorm8x2" => Ok(wgpu::VertexFormat::Snorm8x2),
+    "snorm8x4" => Ok(wgpu::VertexFormat::Snorm8x4),
+    "uint16" => Ok(wgpu::VertexFormat::Uint16),
+    "uint16x2" => Ok(wgpu::VertexFormat::Uint16x2),
+    "uint16x4" => Ok(wgpu::VertexFormat::Uint16x4),
+    "sint16" => Ok(wgpu::VertexFormat::Sint16),
+    "sint16x2" => Ok(wgpu::VertexFormat::Sint16x2),
+    "sint16x4" => Ok(wgpu::VertexFormat::Sint16x4),
+    "unorm16" => Ok(wgpu::VertexFormat::Unorm16),
+    "unorm16x2" => Ok(wgpu::VertexFormat::Unorm16x2),
+    "unorm16x4" => Ok(wgpu::VertexFormat::Unorm16x4),
+    "snorm16" => Ok(wgpu::VertexFormat::Snorm16),
+    "snorm16x2" => Ok(wgpu::VertexFormat::Snorm16x2),
+    "snorm16x4" => Ok(wgpu::VertexFormat::Snorm16x4),
+    "float16" => Ok(wgpu::VertexFormat::Float16),
+    "float16x2" => Ok(wgpu::VertexFormat::Float16x2),
+    "float16x4" => Ok(wgpu::VertexFormat::Float16x4),
     "float32" => Ok(wgpu::VertexFormat::Float32),
     "float32x2" => Ok(wgpu::VertexFormat::Float32x2),
     "float32x3" => Ok(wgpu::VertexFormat::Float32x3),
     "float32x4" => Ok(wgpu::VertexFormat::Float32x4),
     "uint32" => Ok(wgpu::VertexFormat::Uint32),
-    "unorm8x4" => Ok(wgpu::VertexFormat::Unorm8x4),
+    "uint32x2" => Ok(wgpu::VertexFormat::Uint32x2),
+    "uint32x3" => Ok(wgpu::VertexFormat::Uint32x3),
+    "uint32x4" => Ok(wgpu::VertexFormat::Uint32x4),
+    "sint32" => Ok(wgpu::VertexFormat::Sint32),
+    "sint32x2" => Ok(wgpu::VertexFormat::Sint32x2),
+    "sint32x3" => Ok(wgpu::VertexFormat::Sint32x3),
+    "sint32x4" => Ok(wgpu::VertexFormat::Sint32x4),
+    "unorm10-10-10-2" => Ok(wgpu::VertexFormat::Unorm10_10_10_2),
+    "unorm8x4-bgra" => Ok(wgpu::VertexFormat::Unorm8x4Bgra),
+    // wgpu 30 has no packed signed 10-10-10-2 vertex format.
+    "snorm10-10-10-2" => Err(js::unsupported("snorm10-10-10-2")),
     _ => Err(OpError::type_("The vertex format is invalid")),
   }
 }
@@ -2306,18 +2454,73 @@ fn filter_of(
   object: Option<v8::Local<v8::Object>>,
   name: &str,
 ) -> Result<wgpu::FilterMode, OpError> {
-  let Some(object) = object else {
-    return Ok(wgpu::FilterMode::Nearest);
-  };
-  match js::get(scope, object, name)?
-    .map(|value| js::string(scope, value))
-    .transpose()?
-    .as_deref()
-  {
+  match sampler_string(scope, object, name)?.as_deref() {
     None | Some("nearest") => Ok(wgpu::FilterMode::Nearest),
     Some("linear") => Ok(wgpu::FilterMode::Linear),
     _ => Err(OpError::type_("The sampler filter is invalid")),
   }
+}
+
+fn mipmap_filter_of(
+  scope: &mut v8::PinScope,
+  object: Option<v8::Local<v8::Object>>,
+) -> Result<wgpu::MipmapFilterMode, OpError> {
+  match sampler_string(scope, object, "mipmapFilter")?.as_deref() {
+    None | Some("nearest") => Ok(wgpu::MipmapFilterMode::Nearest),
+    Some("linear") => Ok(wgpu::MipmapFilterMode::Linear),
+    _ => Err(OpError::type_("The sampler filter is invalid")),
+  }
+}
+
+fn address_mode_of(
+  scope: &mut v8::PinScope,
+  object: Option<v8::Local<v8::Object>>,
+  name: &str,
+) -> Result<wgpu::AddressMode, OpError> {
+  match sampler_string(scope, object, name)?.as_deref() {
+    None | Some("clamp-to-edge") => Ok(wgpu::AddressMode::ClampToEdge),
+    Some("repeat") => Ok(wgpu::AddressMode::Repeat),
+    Some("mirror-repeat") => Ok(wgpu::AddressMode::MirrorRepeat),
+    _ => Err(OpError::type_("The address mode is invalid")),
+  }
+}
+
+fn lod_clamp_of(
+  scope: &mut v8::PinScope,
+  object: Option<v8::Local<v8::Object>>,
+  name: &str,
+  default: f32,
+) -> Result<f32, OpError> {
+  let Some(object) = object else {
+    return Ok(default);
+  };
+  Ok(js::field_f32(scope, object, name)?.unwrap_or(default))
+}
+
+fn anisotropy_of(
+  scope: &mut v8::PinScope,
+  object: Option<v8::Local<v8::Object>>,
+) -> Result<u16, OpError> {
+  let Some(object) = object else {
+    return Ok(1);
+  };
+  let Some(value) = js::get(scope, object, "maxAnisotropy")? else {
+    return Ok(1);
+  };
+  js::clamp_u16(scope, value)
+}
+
+fn sampler_string(
+  scope: &mut v8::PinScope,
+  object: Option<v8::Local<v8::Object>>,
+  name: &str,
+) -> Result<Option<String>, OpError> {
+  let Some(object) = object else {
+    return Ok(None);
+  };
+  js::get(scope, object, name)?
+    .map(|value| js::string(scope, value))
+    .transpose()
 }
 
 const MAP_READ_BIT: u32 = 0x0001;

@@ -107,6 +107,43 @@ pub fn u64_value(
     .ok_or_else(|| OpError::type_("The provided value is out of range"))
 }
 
+/// WebIDL `float`. Non-finite values and magnitudes outside `f32` throw `TypeError`.
+pub fn f32_value(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<f32, OpError> {
+  let number = yuzuko_core::to_number(scope, value)?;
+  let limit = f64::from(f32::MAX);
+  if !number.is_finite() || number < -limit || number > limit {
+    return Err(OpError::type_("The provided value is out of range"));
+  }
+  Ok(number as f32)
+}
+
+pub fn field_f32(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<f32>, OpError> {
+  let Some(value) = get(scope, object, name)? else {
+    return Ok(None);
+  };
+  f32_value(scope, value).map(Some)
+}
+
+/// WebIDL `[Clamp] unsigned short`. Non-finite values throw `TypeError`.
+pub fn clamp_u16(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u16, OpError> {
+  let number = yuzuko_core::to_number(scope, value)?;
+  if !number.is_finite() {
+    return Err(OpError::type_("The provided value is out of range"));
+  }
+  let number = number.clamp(0.0, f64::from(u16::MAX));
+  Ok(number.round_ties_even() as u16)
+}
+
 pub fn field_u32(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,

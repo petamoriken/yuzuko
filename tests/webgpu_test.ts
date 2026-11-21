@@ -2088,6 +2088,106 @@ Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
   device.destroy();
 });
 
+function colorModule(device: GPUDevice): GPUShaderModule {
+  return device.createShaderModule({
+    code: `
+      @vertex
+      fn vs(@location(0) color: vec4f) -> @builtin(position) vec4f {
+        return vec4f(color.xy, 0.0, 1.0);
+      }
+
+      @fragment
+      fn fs() -> @location(0) vec4f {
+        return vec4f(1.0, 0.0, 0.0, 1.0);
+      }
+    `,
+  });
+}
+
+function sampleAddress(
+  device: GPUDevice,
+  addressMode: GPUAddressMode,
+): GPUTexture {
+  const image = device.createTexture({
+    size: [2, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  const data = new ImageData(
+    new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]),
+    2,
+    1,
+  );
+  device.queue.copyExternalImageToTexture(
+    { source: data },
+    { texture: image },
+    [2, 1],
+  );
+  const module = device.createShaderModule({
+    code: `
+      @group(0) @binding(0) var samp: sampler;
+      @group(0) @binding(1) var tex: texture_2d<f32>;
+
+      @vertex
+      fn vs(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+        const positions = array<vec2f, 3>(
+          vec2f(-1.0, -1.0),
+          vec2f(3.0, -1.0),
+          vec2f(-1.0, 3.0),
+        );
+        return vec4f(positions[vertexIndex], 0.0, 1.0);
+      }
+
+      @fragment
+      fn fs() -> @location(0) vec4f {
+        return textureSample(tex, samp, vec2f(1.2, 0.5));
+      }
+    `,
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs" },
+    fragment: {
+      module,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  const sampler = device.createSampler({
+    addressModeU: addressMode,
+    magFilter: "nearest",
+    minFilter: "nearest",
+    mipmapFilter: "nearest",
+  });
+  const group = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: image.createView() },
+    ],
+  });
+  const target = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: target.createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, group);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  return target;
+}
+
 function colorPass(device: GPUDevice): {
   encoder: GPUCommandEncoder;
   pass: GPURenderPassEncoder;
@@ -2322,6 +2422,323 @@ Yuzuko.test("device-timeline validation follows the WebGPU spec", async () => {
   assert(
     (await device.popErrorScope()) instanceof GPUValidationError,
     "resolve past the end",
+  );
+
+  device.pushErrorScope("validation");
+  const anisotropy = device.createSampler({ maxAnisotropy: 0 });
+  assert(anisotropy instanceof GPUSampler, "anisotropy sampler");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "anisotropy below 1",
+  );
+  device.pushErrorScope("validation");
+  device.createSampler({ maxAnisotropy: 1.5 });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "anisotropy rounds away from 1",
+  );
+  device.pushErrorScope("validation");
+  device.createSampler({ lodMinClamp: -1 });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "negative lod",
+  );
+  device.pushErrorScope("validation");
+  device.createSampler({ lodMinClamp: 2, lodMaxClamp: 1 });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "lod order",
+  );
+  device.pushErrorScope("validation");
+  device.createSampler({
+    maxAnisotropy: 4,
+    magFilter: "nearest",
+    minFilter: "nearest",
+    mipmapFilter: "nearest",
+  });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "anisotropy filter",
+  );
+  device.pushErrorScope("validation");
+  device.createSampler({
+    addressModeU: "repeat",
+    magFilter: "linear",
+    minFilter: "linear",
+    mipmapFilter: "linear",
+    maxAnisotropy: 4,
+  });
+  assert(await device.popErrorScope() === null, "linear anisotropy");
+  assert(
+    throwName(() => {
+      device.createSampler({
+        // @ts-expect-error the address mode is not a GPUAddressMode.
+        addressModeU: "nope",
+        compare: "less",
+      });
+    }) === "TypeError",
+    "address before compare",
+  );
+  assert(
+    throwName(() => device.createSampler({ lodMinClamp: Number.NaN })) === "TypeError",
+    "lod nan",
+  );
+  assert(
+    throwName(() => device.createSampler({ lodMinClamp: 1e40 })) === "TypeError",
+    "lod range",
+  );
+  assert(
+    throwName(() => device.createSampler({ maxAnisotropy: Number.POSITIVE_INFINITY }))
+      === "TypeError",
+    "anisotropy infinite",
+  );
+  assert(
+    throwName(() => {
+      // @ts-expect-error a sampler descriptor is an object.
+      device.createSampler(1);
+    }) === "TypeError",
+    "sampler descriptor",
+  );
+  assert(
+    device.createSampler(
+      // @ts-expect-error null is not a sampler descriptor.
+      null,
+    ) instanceof GPUSampler,
+    "null sampler",
+  );
+  const repeated = channels(
+    await readPixel(device, sampleAddress(device, "repeat"), 0, 0),
+    "rgba8unorm",
+  );
+  assert(repeated.r === 255 && repeated.g === 0, `repeat ${repeated.r},${repeated.g}`);
+  const clamped = channels(
+    await readPixel(device, sampleAddress(device, "clamp-to-edge"), 0, 0),
+    "rgba8unorm",
+  );
+  assert(clamped.r === 0 && clamped.g === 255, `clamp ${clamped.r},${clamped.g}`);
+
+  const attributes = colorModule(device);
+  device.pushErrorScope("validation");
+  const formatted = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: attributes,
+      entryPoint: "vs",
+      buffers: [{
+        arrayStride: 4,
+        attributes: [{ shaderLocation: 0, offset: 0, format: "unorm8x4" }],
+      }],
+    },
+    fragment: {
+      module: attributes,
+      entryPoint: "fs",
+      targets: [{ format: "rgba8unorm" }],
+    },
+  });
+  assert(formatted instanceof GPURenderPipeline, "unorm8x4 pipeline");
+  assert(await device.popErrorScope() === null, "unorm8x4");
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: {
+          module: attributes,
+          entryPoint: "vs",
+          buffers: [{
+            arrayStride: 4,
+            attributes: [{
+              shaderLocation: 0,
+              offset: 0,
+              format: "snorm10-10-10-2",
+            }],
+          }],
+        },
+      });
+    }) === "NotSupportedError",
+    "snorm10-10-10-2",
+  );
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: {
+          module: attributes,
+          entryPoint: "vs",
+          buffers: [{
+            arrayStride: 4,
+            attributes: [{
+              shaderLocation: 0,
+              offset: 0,
+              // @ts-expect-error the vertex format is not a GPUVertexFormat.
+              format: "nope",
+            }],
+          }],
+        },
+      });
+    }) === "TypeError",
+    "vertex format",
+  );
+
+  device.pushErrorScope("validation");
+  const viewTexture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+    viewFormats: ["rgba8unorm-srgb"],
+  });
+  assert(await device.popErrorScope() === null, "view formats");
+  device.pushErrorScope("validation");
+  const srgb = viewTexture.createView({ format: "rgba8unorm-srgb" });
+  assert(srgb instanceof GPUTextureView, "srgb view");
+  assert(await device.popErrorScope() === null, "listed view format");
+  device.pushErrorScope("validation");
+  viewTexture.createView({ format: "rgba8unorm" });
+  assert(await device.popErrorScope() === null, "same view format");
+  device.pushErrorScope("validation");
+  const plain = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  plain.createView({ format: "rgba8unorm-srgb" });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "unlisted view format",
+  );
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+    viewFormats: ["r8unorm"],
+  });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "incompatible view format",
+  );
+  device.pushErrorScope("validation");
+  const depth = device.createTexture({
+    size: [1, 1],
+    format: "depth24plus",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  depth.createView({ aspect: "depth-only" });
+  assert(await device.popErrorScope() === null, "depth view");
+  device.pushErrorScope("validation");
+  plain.createView({ aspect: "depth-only" });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "color aspect",
+  );
+  device.pushErrorScope("validation");
+  plain.createView({ dimension: "1d" });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "1d view",
+  );
+  device.pushErrorScope("validation");
+  plain.createView({ baseMipLevel: 1 });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "mip level",
+  );
+  device.pushErrorScope("validation");
+  plain.createView({
+    dimension: "2d",
+    aspect: "all",
+    baseMipLevel: 0,
+    mipLevelCount: 1,
+    baseArrayLayer: 0,
+    arrayLayerCount: 1,
+  });
+  assert(await device.popErrorScope() === null, "explicit view");
+  assert(
+    throwName(() => {
+      plain.createView({
+        // @ts-expect-error the aspect is not a GPUTextureAspect.
+        aspect: "nope",
+      });
+    }) === "TypeError",
+    "aspect",
+  );
+  assert(
+    throwName(() => {
+      // @ts-expect-error a view descriptor is an object.
+      plain.createView(1);
+    }) === "TypeError",
+    "view descriptor",
+  );
+  plain.destroy();
+  assert(
+    throwName(() => {
+      plain.createView({
+        // @ts-expect-error the aspect is not a GPUTextureAspect.
+        aspect: "nope",
+      });
+    }) === "TypeError",
+    "destroyed aspect",
+  );
+  assert(throwName(() => plain.createView()) === "InvalidStateError", "destroyed view");
+  assert(
+    throwName(() => plain.createView({ baseMipLevel: -1 })) === "TypeError",
+    "mip range",
+  );
+
+  const positioned = device.createShaderModule({ code: triangleShader });
+  device.pushErrorScope("validation");
+  const biased = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: positioned, entryPoint: "vs" },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled: true,
+      depthCompare: "less",
+      depthBias: 3,
+      depthBiasSlopeScale: 0.5,
+      depthBiasClamp: 1,
+    },
+  });
+  assert(biased instanceof GPURenderPipeline, "depth bias pipeline");
+  assert(await device.popErrorScope() === null, "depth bias");
+  device.pushErrorScope("validation");
+  const vertexOnly = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: positioned, entryPoint: "vs" },
+  });
+  assert(vertexOnly instanceof GPURenderPipeline, "vertex-only pipeline");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "vertex-only target",
+  );
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: { module: positioned, entryPoint: "vs" },
+        depthStencil: {
+          format: "depth24plus",
+          depthWriteEnabled: true,
+          depthCompare: "less",
+          depthBias: 2 ** 31,
+        },
+      });
+    }) === "TypeError",
+    "depth bias range",
+  );
+  assert(
+    throwName(() => {
+      device.createRenderPipeline({
+        layout: "auto",
+        vertex: { module: positioned, entryPoint: "vs" },
+        depthStencil: {
+          format: "depth24plus",
+          depthWriteEnabled: true,
+          depthCompare: "less",
+          depthBiasSlopeScale: 1e40,
+        },
+      });
+    }) === "TypeError",
+    "depth bias slope",
   );
 
   device.destroy();
