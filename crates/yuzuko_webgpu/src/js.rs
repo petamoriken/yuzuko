@@ -215,6 +215,57 @@ impl yuzuko_core::op::FromV8 for GpuSize64 {
   }
 }
 
+/// `[EnforceRange] unsigned long` (`GPUSize32`).
+pub struct GpuSize32(pub u32);
+
+impl yuzuko_core::op::FromV8 for GpuSize32 {
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    u32_value(scope, value).map(GpuSize32)
+  }
+}
+
+/// `[EnforceRange] unsigned long` (`GPUIndex32`).
+pub struct GpuIndex32(pub u32);
+
+impl yuzuko_core::op::FromV8 for GpuIndex32 {
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    u32_value(scope, value).map(GpuIndex32)
+  }
+}
+
+/// `[EnforceRange] unsigned long` (`GPUIntegerCoordinate`).
+pub struct GpuIntegerCoordinate(pub u32);
+
+impl yuzuko_core::op::FromV8 for GpuIntegerCoordinate {
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    u32_value(scope, value).map(GpuIntegerCoordinate)
+  }
+}
+
+/// `[EnforceRange] long` (`GPUSignedOffset32`).
+pub struct GpuSignedOffset32(pub i32);
+
+impl yuzuko_core::op::FromV8 for GpuSignedOffset32 {
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    let number = yuzuko_core::to_number(scope, value)?;
+    yuzuko_core::enforce_range_i32(number)
+      .map(GpuSignedOffset32)
+      .ok_or_else(|| OpError::type_("The provided value is out of range"))
+  }
+}
+
 pub fn set_u32(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,

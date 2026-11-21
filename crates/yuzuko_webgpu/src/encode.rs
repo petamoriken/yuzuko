@@ -20,6 +20,11 @@ struct EncoderSlot {
   encoder: Option<wgpu::CommandEncoder>,
   pass: Option<OpenPass>,
   features: wgpu::Features,
+  device_id: u64,
+  invalid: bool,
+  submit_destroyed: bool,
+  max_texture_dimension_2d: u32,
+  max_vertex_buffers: u32,
 }
 
 enum OpenPass {
@@ -37,6 +42,7 @@ struct PassRecord {
   max_draws: u64,
   draws: u64,
   draws_exceeded: bool,
+  invalid: bool,
 }
 
 struct ColorTarget {
@@ -62,7 +68,7 @@ enum PassCommand {
   Pipeline(wgpu::RenderPipeline),
   Vertex {
     slot: u32,
-    buffer: wgpu::Buffer,
+    buffer: Option<wgpu::Buffer>,
     offset: u64,
     size: Option<u64>,
   },
@@ -127,6 +133,7 @@ enum PassCommand {
 struct ComputeRecord {
   timestamps: Option<TimestampWrite>,
   commands: Vec<ComputeCommand>,
+  invalid: bool,
 }
 
 enum ComputeCommand {
@@ -156,17 +163,20 @@ enum ComputeCommand {
 
 struct BundleSlot {
   device: wgpu::Device,
+  device_id: u64,
   colors: Vec<Option<wgpu::TextureFormat>>,
   depth: Option<wgpu::RenderBundleDepthStencil>,
   sample_count: u32,
   commands: Vec<BundleCommand>,
+  invalid: bool,
+  max_vertex_buffers: u32,
 }
 
 enum BundleCommand {
   Pipeline(wgpu::RenderPipeline),
   Vertex {
     slot: u32,
-    buffer: wgpu::Buffer,
+    buffer: Option<wgpu::Buffer>,
     offset: u64,
     size: Option<u64>,
   },
@@ -233,13 +243,18 @@ impl Drop for GpuCommandEncoder {
 }
 
 impl GpuCommandEncoder {
-  pub fn create(handle: &Handle, label: Option<String>) -> Self {
+  pub fn create(
+    device_id: u64,
+    handle: &Handle,
+    label: Option<String>,
+  ) -> Self {
     let encoder =
       handle
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
           label: label.as_deref(),
         });
+    let limits = handle.device.limits();
     let id = NEXT_ENCODER.fetch_add(1, Ordering::Relaxed);
     ENCODERS.with(|encoders| {
       encoders.borrow_mut().insert(
@@ -248,6 +263,11 @@ impl GpuCommandEncoder {
           encoder: Some(encoder),
           pass: None,
           features: handle.device.features(),
+          device_id,
+          invalid: false,
+          submit_destroyed: false,
+          max_texture_dimension_2d: limits.max_texture_dimension_2d,
+          max_vertex_buffers: limits.max_vertex_buffers,
         },
       );
     });
@@ -308,6 +328,7 @@ impl GpuCommandEncoder {
         max_draws,
         draws: 0,
         draws_exceeded: false,
+        invalid: false,
       }));
       Ok(())
     })?;
@@ -349,6 +370,7 @@ impl GpuCommandEncoder {
       slot.pass = Some(OpenPass::Compute(ComputeRecord {
         timestamps,
         commands: Vec::new(),
+        invalid: false,
       }));
       Ok(())
     })?;
@@ -359,29 +381,58 @@ impl GpuCommandEncoder {
     }))
   }
 
+  #[length(2)]
   fn copy_buffer_to_buffer(
     &self,
     scope: &mut v8::PinScope,
-    source: v8::Local<v8::Value>,
-    source_offset: js::GpuSize64,
-    destination: v8::Local<v8::Value>,
-    destination_offset: js::GpuSize64,
-    size: js::GpuSize64,
+    args: &v8::FunctionCallbackArguments,
   ) -> Result<(), OpError> {
-    if size.0 == 0 {
-      return Err(OpError::range("The copy size must be non-zero"));
+    let argc = args.length();
+    if argc < 2 {
+      return Err(OpError::type_("Not enough arguments"));
     }
     let source =
-      alive_buffer(scope, source, "The copy source is not a buffer")?;
-    let destination =
-      alive_buffer(scope, destination, "The copy destination is not a buffer")?;
+      host_gpu_buffer(scope, args.get(0), "The copy source is not a buffer")?;
+    let second = args.get(1);
+    let (source_offset, destination, destination_offset, size) =
+      if resource::host_buffer(scope, second).is_some() {
+        let size = if argc >= 3 && !args.get(2).is_undefined() {
+          Some(js::u64_value(scope, args.get(2))?)
+        } else {
+          None
+        };
+        (0, second, 0, size)
+      } else {
+        if argc < 4 {
+          return Err(OpError::type_("Not enough arguments"));
+        }
+        let source_offset = js::u64_value(scope, second)?;
+        let destination_offset = js::u64_value(scope, args.get(3))?;
+        let size = if argc >= 5 && !args.get(4).is_undefined() {
+          Some(js::u64_value(scope, args.get(4))?)
+        } else {
+          None
+        };
+        (source_offset, args.get(2), destination_offset, size)
+      };
+    let destination = host_gpu_buffer(
+      scope,
+      destination,
+      "The copy destination is not a buffer",
+    )?;
+    source.alive()?;
+    let destination_buffer = destination.alive()?;
+    let source_buffer = source.alive()?;
+    if source.is_destroyed() || destination.is_destroyed() {
+      return note_submit_destroyed(self.id);
+    }
     with_idle_encoder(self.id, |encoder| {
       encoder.copy_buffer_to_buffer(
-        &source,
-        source_offset.0,
-        &destination,
-        destination_offset.0,
-        size.0,
+        &source_buffer,
+        source_offset,
+        &destination_buffer,
+        destination_offset,
+        size,
       );
       Ok(())
     })
@@ -474,41 +525,60 @@ impl GpuCommandEncoder {
     &self,
     scope: &mut v8::PinScope,
     query_set: v8::Local<v8::Value>,
-    first_query: u32,
-    query_count: u32,
+    first_query: js::GpuSize32,
+    query_count: js::GpuSize32,
     destination: v8::Local<v8::Value>,
     destination_offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    if query_count == 0 {
-      return Err(OpError::range("The query count must be non-zero"));
-    }
     let query_set =
       resource::host_query_set(scope, query_set).ok_or_else(|| {
         OpError::type_("resolveQuerySet requires a GPUQuerySet")
       })?;
-    let destroyed = query_set.is_destroyed();
-    let stored = query_set.query_count();
-    let query_set = query_set.query_set();
-    let destination = alive_buffer(
+    let destination = host_gpu_buffer(
       scope,
       destination,
       "The query destination is not a buffer",
     )?;
-    let end = first_query
-      .checked_add(query_count)
-      .ok_or_else(|| OpError::range("The query range is out of range"))?;
-    // wgpu 29 has no `QuerySet::destroy`. An empty range does not overrun, so
-    // a destroyed set resolves one index past the end. `u32::MAX` cannot, and
-    // a misaligned offset is still a validation error.
-    let (start, end, offset) = if !destroyed {
-      (first_query, end, destination_offset.0)
-    } else if stored < u32::MAX {
-      (stored, stored + 1, destination_offset.0)
-    } else {
-      (first_query, end, 1)
-    };
+    destination.alive()?;
+    let first = first_query.0;
+    let count = query_count.0;
+    if query_set.is_destroyed() {
+      let stored = query_set.query_count();
+      let query_set = query_set.query_set();
+      let destination = destination.alive()?;
+      // wgpu has no `QuerySet::destroy`. An empty range does not overrun, so
+      // a destroyed set resolves one index past the end. `u32::MAX` cannot.
+      let (start, end, offset) = if stored < u32::MAX {
+        (stored, stored + 1, destination_offset.0)
+      } else {
+        (first, first.saturating_add(count), 1)
+      };
+      return with_idle_encoder(self.id, |encoder| {
+        encoder.resolve_query_set(&query_set, start..end, &destination, offset);
+        Ok(())
+      });
+    }
+    let stored = query_set.query_count();
+    let end = first.checked_add(count);
+    let range_ok = end.is_some_and(|end| first < stored && end <= stored);
+    let bytes = u64::from(count).saturating_mul(8);
+    let offset = destination_offset.0;
+    let fits = offset.is_multiple_of(256)
+      && offset.saturating_add(bytes) <= destination.byte_size();
+    let usage_ok = destination.is_valid()
+      && destination.usage_bits() & wgpu::BufferUsages::QUERY_RESOLVE.bits()
+        != 0;
+    if range_ok && fits && usage_ok && destination.is_destroyed() {
+      return note_submit_destroyed(self.id);
+    }
+    if !range_ok || !fits || !usage_ok {
+      return invalidate_encoder(self.id);
+    }
+    let query_set = query_set.query_set();
+    let destination = destination.alive()?;
+    let end = first + count;
     with_idle_encoder(self.id, |encoder| {
-      encoder.resolve_query_set(&query_set, start..end, &destination, offset);
+      encoder.resolve_query_set(&query_set, first..end, &destination, offset);
       Ok(())
     })
   }
@@ -538,13 +608,13 @@ impl GpuCommandEncoder {
     &self,
     scope: &mut v8::PinScope,
     query_set: v8::Local<v8::Value>,
-    query_index: u32,
+    query_index: js::GpuSize32,
   ) -> Result<(), OpError> {
     require_timestamp_write(
       encoder_features(self.id)?,
       wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
     )?;
-    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    let (set, index) = timestamp_query(scope, query_set, query_index.0)?;
     with_idle_encoder(self.id, |encoder| {
       encoder.write_timestamp(&set, index);
       Ok(())
@@ -556,20 +626,29 @@ impl GpuCommandEncoder {
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuCommandBuffer>, OpError> {
-    let encoder = ENCODERS.with(|encoders| {
-      let mut encoders = encoders.borrow_mut();
-      let slot = encoders.get_mut(&self.id).ok_or_else(|| {
-        OpError::dom("InvalidStateError", "The command encoder is finished")
+    let (encoder, invalid, device_id, submit_destroyed) =
+      ENCODERS.with(|encoders| {
+        let mut encoders = encoders.borrow_mut();
+        let slot = encoders.get_mut(&self.id).ok_or_else(|| {
+          OpError::dom("InvalidStateError", "The command encoder is finished")
+        })?;
+        if slot.pass.is_some() {
+          return Err(OpError::dom("InvalidStateError", "A pass is open"));
+        }
+        let encoder = slot.encoder.take().ok_or_else(|| {
+          OpError::dom("InvalidStateError", "The command encoder is finished")
+        })?;
+        Ok((encoder, slot.invalid, slot.device_id, slot.submit_destroyed))
       })?;
-      if slot.pass.is_some() {
-        return Err(OpError::dom("InvalidStateError", "A pass is open"));
-      }
-      slot.encoder.take().ok_or_else(|| {
-        OpError::dom("InvalidStateError", "The command encoder is finished")
-      })
-    })?;
+    if invalid {
+      crate::state::report_validation(
+        device_id,
+        "The command encoder is invalid",
+      );
+    }
     Ok(New(GpuCommandBuffer {
       buffer: RefCell::new(Some(encoder.finish())),
+      submit_destroyed: Cell::new(submit_destroyed),
       label: ObjectLabel::new(descriptor_label(scope, descriptor)?),
     }))
   }
@@ -577,6 +656,7 @@ impl GpuCommandEncoder {
 
 pub struct GpuCommandBuffer {
   buffer: RefCell<Option<wgpu::CommandBuffer>>,
+  submit_destroyed: Cell<bool>,
   label: ObjectLabel,
 }
 
@@ -589,8 +669,9 @@ unsafe impl v8::cppgc::GarbageCollected for GpuCommandBuffer {
 }
 
 impl GpuCommandBuffer {
-  pub fn take(&self) -> Option<wgpu::CommandBuffer> {
-    self.buffer.borrow_mut().take()
+  pub fn take(&self) -> Option<(wgpu::CommandBuffer, bool)> {
+    let buffer = self.buffer.borrow_mut().take()?;
+    Some((buffer, self.submit_destroyed.get()))
   }
 }
 
@@ -642,30 +723,38 @@ impl GpuRenderPass {
     min_depth: f64,
     max_depth: f64,
   ) -> Result<(), OpError> {
-    let (x, y, width, height, min_depth, max_depth) =
-      viewport_args(x, y, width, height, min_depth, max_depth)?;
-    self.push(PassCommand::Viewport {
-      x,
-      y,
-      width,
-      height,
-      min_depth,
-      max_depth,
+    let values = viewport_finite(x, y, width, height, min_depth, max_depth)?;
+    let max_dimension = encoder_limits(self.encoder)?.0;
+    self.with_render(|record| {
+      match viewport_cast(values, max_dimension) {
+        Some((x, y, width, height, min_depth, max_depth)) => {
+          record.commands.push(PassCommand::Viewport {
+            x,
+            y,
+            width,
+            height,
+            min_depth,
+            max_depth,
+          });
+        }
+        None => record.invalid = true,
+      }
+      Ok(())
     })
   }
 
   fn set_scissor_rect(
     &self,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+    x: js::GpuIntegerCoordinate,
+    y: js::GpuIntegerCoordinate,
+    width: js::GpuIntegerCoordinate,
+    height: js::GpuIntegerCoordinate,
   ) -> Result<(), OpError> {
     self.push(PassCommand::Scissor {
-      x,
-      y,
-      width,
-      height,
+      x: x.0,
+      y: y.0,
+      width: width.0,
+      height: height.0,
     })
   }
 
@@ -684,17 +773,17 @@ impl GpuRenderPass {
   fn set_vertex_buffer(
     &self,
     scope: &mut v8::PinScope,
-    slot: u32,
+    slot: js::GpuIndex32,
     buffer: v8::Local<v8::Value>,
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
-    self.push(PassCommand::Vertex {
-      slot,
-      buffer,
-      offset,
-      size,
+    let max_vertex_buffers = encoder_limits(self.encoder)?.1;
+    let bind =
+      vertex_bind(scope, slot.0, buffer, offset, size, max_vertex_buffers)?;
+    self.with_render(|record| {
+      push_vertex(record, bind);
+      Ok(())
     })
   }
 
@@ -706,28 +795,31 @@ impl GpuRenderPass {
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let format = resource::index_format(&format)?;
-    let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
-    self.push(PassCommand::Index {
-      buffer,
-      format,
-      offset,
-      size,
+    let bind = index_bind(scope, buffer, &format, offset, size)?;
+    self.with_render(|record| {
+      push_index(record, bind);
+      Ok(())
     })
   }
 
   fn set_bind_group(
     &self,
     scope: &mut v8::PinScope,
-    index: u32,
+    index: js::GpuIndex32,
     group: v8::Local<v8::Value>,
     offsets: Option<v8::Local<v8::Value>>,
-    start: Option<u32>,
-    length: Option<u32>,
+    start: Option<js::GpuSize64>,
+    length: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
-    let (group, offsets) = bind_group(scope, group, offsets, start, length)?;
+    let (group, offsets) = bind_group(
+      scope,
+      group,
+      offsets,
+      start.map(|value| value.0),
+      length.map(|value| value.0),
+    )?;
     self.push(PassCommand::Bind {
-      index,
+      index: index.0,
       group,
       offsets,
     })
@@ -735,33 +827,33 @@ impl GpuRenderPass {
 
   fn draw(
     &self,
-    vertices: u32,
-    instances: Option<u32>,
-    first_vertex: Option<u32>,
-    first_instance: Option<u32>,
+    vertices: js::GpuSize32,
+    instances: Option<js::GpuSize32>,
+    first_vertex: Option<js::GpuSize32>,
+    first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
     self.push_draw(PassCommand::Draw {
-      vertices,
-      instances: instances.unwrap_or(1),
-      first_vertex: first_vertex.unwrap_or(0),
-      first_instance: first_instance.unwrap_or(0),
+      vertices: vertices.0,
+      instances: instances.map(|value| value.0).unwrap_or(1),
+      first_vertex: first_vertex.map(|value| value.0).unwrap_or(0),
+      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
     })
   }
 
   fn draw_indexed(
     &self,
-    indices: u32,
-    instances: Option<u32>,
-    first_index: Option<u32>,
-    base_vertex: Option<i32>,
-    first_instance: Option<u32>,
+    indices: js::GpuSize32,
+    instances: Option<js::GpuSize32>,
+    first_index: Option<js::GpuSize32>,
+    base_vertex: Option<js::GpuSignedOffset32>,
+    first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
     self.push_draw(PassCommand::DrawIndexed {
-      indices,
-      instances: instances.unwrap_or(1),
-      first_index: first_index.unwrap_or(0),
-      base_vertex: base_vertex.unwrap_or(0),
-      first_instance: first_instance.unwrap_or(0),
+      indices: indices.0,
+      instances: instances.map(|value| value.0).unwrap_or(1),
+      first_index: first_index.map(|value| value.0).unwrap_or(0),
+      base_vertex: base_vertex.map(|value| value.0).unwrap_or(0),
+      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
     })
   }
 
@@ -771,17 +863,24 @@ impl GpuRenderPass {
     buffer: v8::Local<v8::Value>,
     offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    let buffer =
-      alive_buffer(scope, buffer, "drawIndirect requires a GPUBuffer")?;
-    if offset.0 > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
-    self.push_draw(PassCommand::DrawIndirect {
+    let bind = indirect_bind(
+      scope,
       buffer,
-      offset: offset.0,
+      offset.0,
+      16,
+      "drawIndirect requires a GPUBuffer",
+    )?;
+    self.with_render(|record| {
+      match bind {
+        Some((buffer, offset)) => {
+          note_draws(record, 1);
+          record
+            .commands
+            .push(PassCommand::DrawIndirect { buffer, offset });
+        }
+        None => record.invalid = true,
+      }
+      Ok(())
     })
   }
 
@@ -791,21 +890,31 @@ impl GpuRenderPass {
     buffer: v8::Local<v8::Value>,
     offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    let buffer =
-      alive_buffer(scope, buffer, "drawIndexedIndirect requires a GPUBuffer")?;
-    if offset.0 > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
-    self.push_draw(PassCommand::DrawIndexedIndirect {
+    let bind = indirect_bind(
+      scope,
       buffer,
-      offset: offset.0,
+      offset.0,
+      20,
+      "drawIndexedIndirect requires a GPUBuffer",
+    )?;
+    self.with_render(|record| {
+      match bind {
+        Some((buffer, offset)) => {
+          note_draws(record, 1);
+          record
+            .commands
+            .push(PassCommand::DrawIndexedIndirect { buffer, offset });
+        }
+        None => record.invalid = true,
+      }
+      Ok(())
     })
   }
 
-  fn begin_occlusion_query(&self, query_index: u32) -> Result<(), OpError> {
+  fn begin_occlusion_query(
+    &self,
+    query_index: js::GpuSize32,
+  ) -> Result<(), OpError> {
     self.with_render(|record| {
       if record.occlusion.is_none() {
         return Err(OpError::dom(
@@ -822,7 +931,7 @@ impl GpuRenderPass {
       record.occlusion_open = true;
       record
         .commands
-        .push(PassCommand::BeginOcclusion(query_index));
+        .push(PassCommand::BeginOcclusion(query_index.0));
       Ok(())
     })
   }
@@ -881,13 +990,13 @@ impl GpuRenderPass {
     &self,
     scope: &mut v8::PinScope,
     query_set: v8::Local<v8::Value>,
-    query_index: u32,
+    query_index: js::GpuSize32,
   ) -> Result<(), OpError> {
     require_timestamp_write(
       encoder_features(self.encoder)?,
       wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
     )?;
-    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    let (set, index) = timestamp_query(scope, query_set, query_index.0)?;
     self.push(PassCommand::WriteTimestamp {
       query_set: set,
       index,
@@ -936,6 +1045,9 @@ impl GpuRenderPass {
           "InvalidStateError",
           "An occlusion query is still open",
         ));
+      }
+      if record.invalid {
+        slot.invalid = true;
       }
       let encoder = slot.encoder.as_mut().ok_or_else(|| {
         OpError::dom("InvalidStateError", "The command encoder is finished")
@@ -1034,15 +1146,21 @@ impl GpuComputePass {
   fn set_bind_group(
     &self,
     scope: &mut v8::PinScope,
-    index: u32,
+    index: js::GpuIndex32,
     group: v8::Local<v8::Value>,
     offsets: Option<v8::Local<v8::Value>>,
-    start: Option<u32>,
-    length: Option<u32>,
+    start: Option<js::GpuSize64>,
+    length: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
-    let (group, offsets) = bind_group(scope, group, offsets, start, length)?;
+    let (group, offsets) = bind_group(
+      scope,
+      group,
+      offsets,
+      start.map(|value| value.0),
+      length.map(|value| value.0),
+    )?;
     self.push(ComputeCommand::Bind {
-      index,
+      index: index.0,
       group,
       offsets,
     })
@@ -1050,14 +1168,14 @@ impl GpuComputePass {
 
   fn dispatch_workgroups(
     &self,
-    x: u32,
-    y: Option<u32>,
-    z: Option<u32>,
+    x: js::GpuSize32,
+    y: Option<js::GpuSize32>,
+    z: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
     self.push(ComputeCommand::Dispatch {
-      x,
-      y: y.unwrap_or(1),
-      z: z.unwrap_or(1),
+      x: x.0,
+      y: y.map(|value| value.0).unwrap_or(1),
+      z: z.map(|value| value.0).unwrap_or(1),
     })
   }
 
@@ -1067,20 +1185,23 @@ impl GpuComputePass {
     buffer: v8::Local<v8::Value>,
     offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    let buffer = alive_buffer(
+    let bind = indirect_bind(
       scope,
       buffer,
+      offset.0,
+      12,
       "dispatchWorkgroupsIndirect requires a GPUBuffer",
     )?;
-    if offset.0 > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
-    self.push(ComputeCommand::DispatchIndirect {
-      buffer,
-      offset: offset.0,
+    self.with_compute(|record| {
+      match bind {
+        Some((buffer, offset)) => {
+          record
+            .commands
+            .push(ComputeCommand::DispatchIndirect { buffer, offset });
+        }
+        None => record.invalid = true,
+      }
+      Ok(())
     })
   }
 
@@ -1100,13 +1221,13 @@ impl GpuComputePass {
     &self,
     scope: &mut v8::PinScope,
     query_set: v8::Local<v8::Value>,
-    query_index: u32,
+    query_index: js::GpuSize32,
   ) -> Result<(), OpError> {
     require_timestamp_write(
       encoder_features(self.encoder)?,
       wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
     )?;
-    let (set, index) = timestamp_query(scope, query_set, query_index)?;
+    let (set, index) = timestamp_query(scope, query_set, query_index.0)?;
     self.push(ComputeCommand::WriteTimestamp {
       query_set: set,
       index,
@@ -1135,6 +1256,9 @@ impl GpuComputePass {
           ));
         }
       };
+      if record.invalid {
+        slot.invalid = true;
+      }
       let encoder = slot.encoder.as_mut().ok_or_else(|| {
         OpError::dom("InvalidStateError", "The command encoder is finished")
       })?;
@@ -1151,6 +1275,16 @@ impl GpuComputePass {
 
 impl GpuComputePass {
   fn push(&self, command: ComputeCommand) -> Result<(), OpError> {
+    self.with_compute(|record| {
+      record.commands.push(command);
+      Ok(())
+    })
+  }
+
+  fn with_compute(
+    &self,
+    body: impl FnOnce(&mut ComputeRecord) -> Result<(), OpError>,
+  ) -> Result<(), OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
         "InvalidStateError",
@@ -1163,10 +1297,7 @@ impl GpuComputePass {
         OpError::dom("InvalidStateError", "The command encoder is finished")
       })?;
       match slot.pass.as_mut() {
-        Some(OpenPass::Compute(record)) => {
-          record.commands.push(command);
-          Ok(())
-        }
+        Some(OpenPass::Compute(record)) => body(record),
         _ => Err(OpError::dom(
           "InvalidStateError",
           "The compute pass has ended",
@@ -1200,6 +1331,7 @@ impl Drop for GpuRenderBundleEncoder {
 
 pub fn create_bundle_encoder(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuRenderBundleEncoder>, OpError> {
@@ -1223,10 +1355,13 @@ pub fn create_bundle_encoder(
       id,
       BundleSlot {
         device: handle.device.clone(),
+        device_id,
         colors,
         depth,
         sample_count,
         commands: Vec::new(),
+        invalid: false,
+        max_vertex_buffers: handle.device.limits().max_vertex_buffers,
       },
     );
   });
@@ -1264,17 +1399,39 @@ impl GpuRenderBundleEncoder {
   fn set_vertex_buffer(
     &self,
     scope: &mut v8::PinScope,
-    slot: u32,
+    slot: js::GpuIndex32,
     buffer: v8::Local<v8::Value>,
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
-    self.push(BundleCommand::Vertex {
-      slot,
-      buffer,
-      offset,
-      size,
+    let max_vertex_buffers = self.limits()?;
+    let bind =
+      vertex_bind(scope, slot.0, buffer, offset, size, max_vertex_buffers)?;
+    self.with_slot(|slot| {
+      match bind {
+        VertexBind::Invalid => slot.invalid = true,
+        VertexBind::Skip => {}
+        VertexBind::Unset { slot: index } => {
+          slot.commands.push(BundleCommand::Vertex {
+            slot: index,
+            buffer: None,
+            offset: 0,
+            size: None,
+          });
+        }
+        VertexBind::Bind {
+          slot: index,
+          buffer,
+          offset,
+          size,
+        } => slot.commands.push(BundleCommand::Vertex {
+          slot: index,
+          buffer: Some(buffer),
+          offset,
+          size,
+        }),
+      }
+      Ok(())
     })
   }
 
@@ -1286,28 +1443,45 @@ impl GpuRenderBundleEncoder {
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let format = resource::index_format(&format)?;
-    let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
-    self.push(BundleCommand::Index {
-      buffer,
-      format,
-      offset,
-      size,
+    let bind = index_bind(scope, buffer, &format, offset, size)?;
+    self.with_slot(|slot| {
+      match bind {
+        IndexBind::Invalid => slot.invalid = true,
+        IndexBind::Skip => {}
+        IndexBind::Bind {
+          buffer,
+          format,
+          offset,
+          size,
+        } => slot.commands.push(BundleCommand::Index {
+          buffer,
+          format,
+          offset,
+          size,
+        }),
+      }
+      Ok(())
     })
   }
 
   fn set_bind_group(
     &self,
     scope: &mut v8::PinScope,
-    index: u32,
+    index: js::GpuIndex32,
     group: v8::Local<v8::Value>,
     offsets: Option<v8::Local<v8::Value>>,
-    start: Option<u32>,
-    length: Option<u32>,
+    start: Option<js::GpuSize64>,
+    length: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
-    let (group, offsets) = bind_group(scope, group, offsets, start, length)?;
+    let (group, offsets) = bind_group(
+      scope,
+      group,
+      offsets,
+      start.map(|value| value.0),
+      length.map(|value| value.0),
+    )?;
     self.push(BundleCommand::Bind {
-      index,
+      index: index.0,
       group,
       offsets,
     })
@@ -1315,33 +1489,33 @@ impl GpuRenderBundleEncoder {
 
   fn draw(
     &self,
-    vertices: u32,
-    instances: Option<u32>,
-    first_vertex: Option<u32>,
-    first_instance: Option<u32>,
+    vertices: js::GpuSize32,
+    instances: Option<js::GpuSize32>,
+    first_vertex: Option<js::GpuSize32>,
+    first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
     self.push(BundleCommand::Draw {
-      vertices,
-      instances: instances.unwrap_or(1),
-      first_vertex: first_vertex.unwrap_or(0),
-      first_instance: first_instance.unwrap_or(0),
+      vertices: vertices.0,
+      instances: instances.map(|value| value.0).unwrap_or(1),
+      first_vertex: first_vertex.map(|value| value.0).unwrap_or(0),
+      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
     })
   }
 
   fn draw_indexed(
     &self,
-    indices: u32,
-    instances: Option<u32>,
-    first_index: Option<u32>,
-    base_vertex: Option<i32>,
-    first_instance: Option<u32>,
+    indices: js::GpuSize32,
+    instances: Option<js::GpuSize32>,
+    first_index: Option<js::GpuSize32>,
+    base_vertex: Option<js::GpuSignedOffset32>,
+    first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
     self.push(BundleCommand::DrawIndexed {
-      indices,
-      instances: instances.unwrap_or(1),
-      first_index: first_index.unwrap_or(0),
-      base_vertex: base_vertex.unwrap_or(0),
-      first_instance: first_instance.unwrap_or(0),
+      indices: indices.0,
+      instances: instances.map(|value| value.0).unwrap_or(1),
+      first_index: first_index.map(|value| value.0).unwrap_or(0),
+      base_vertex: base_vertex.map(|value| value.0).unwrap_or(0),
+      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
     })
   }
 
@@ -1351,17 +1525,23 @@ impl GpuRenderBundleEncoder {
     buffer: v8::Local<v8::Value>,
     offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    let buffer =
-      alive_buffer(scope, buffer, "drawIndirect requires a GPUBuffer")?;
-    if offset.0 > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
-    self.push(BundleCommand::DrawIndirect {
+    let bind = indirect_bind(
+      scope,
       buffer,
-      offset: offset.0,
+      offset.0,
+      16,
+      "drawIndirect requires a GPUBuffer",
+    )?;
+    self.with_slot(|slot| {
+      match bind {
+        Some((buffer, offset)) => {
+          slot
+            .commands
+            .push(BundleCommand::DrawIndirect { buffer, offset });
+        }
+        None => slot.invalid = true,
+      }
+      Ok(())
     })
   }
 
@@ -1371,17 +1551,23 @@ impl GpuRenderBundleEncoder {
     buffer: v8::Local<v8::Value>,
     offset: js::GpuSize64,
   ) -> Result<(), OpError> {
-    let buffer =
-      alive_buffer(scope, buffer, "drawIndexedIndirect requires a GPUBuffer")?;
-    if offset.0 > buffer.size() {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
-    }
-    self.push(BundleCommand::DrawIndexedIndirect {
+    let bind = indirect_bind(
+      scope,
       buffer,
-      offset: offset.0,
+      offset.0,
+      20,
+      "drawIndexedIndirect requires a GPUBuffer",
+    )?;
+    self.with_slot(|slot| {
+      match bind {
+        Some((buffer, offset)) => {
+          slot
+            .commands
+            .push(BundleCommand::DrawIndexedIndirect { buffer, offset });
+        }
+        None => slot.invalid = true,
+      }
+      Ok(())
     })
   }
 
@@ -1411,17 +1597,17 @@ impl GpuRenderBundleEncoder {
     min_depth: f64,
     max_depth: f64,
   ) -> Result<(), OpError> {
-    let _ = viewport_args(x, y, width, height, min_depth, max_depth)?;
+    viewport_finite(x, y, width, height, min_depth, max_depth)?;
     self.ensure_recording()?;
     Err(js::unsupported("GPURenderBundleEncoder.setViewport"))
   }
 
   fn set_scissor_rect(
     &self,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+    x: js::GpuIntegerCoordinate,
+    y: js::GpuIntegerCoordinate,
+    width: js::GpuIntegerCoordinate,
+    height: js::GpuIntegerCoordinate,
   ) -> Result<(), OpError> {
     let _ = (x, y, width, height);
     self.ensure_recording()?;
@@ -1449,6 +1635,12 @@ impl GpuRenderBundleEncoder {
       })
     })?;
     let draws = bundle_draw_count(&slot);
+    if slot.invalid {
+      crate::state::report_validation(
+        slot.device_id,
+        "The render bundle encoder is invalid",
+      );
+    }
     let bundle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       finish_bundle(slot)
     }));
@@ -1483,7 +1675,32 @@ impl GpuRenderBundleEncoder {
     })
   }
 
+  fn limits(&self) -> Result<u32, OpError> {
+    BUNDLES.with(|bundles| {
+      bundles
+        .borrow()
+        .get(&self.id)
+        .map(|slot| slot.max_vertex_buffers)
+        .ok_or_else(|| {
+          OpError::dom(
+            "InvalidStateError",
+            "The render bundle encoder has finished",
+          )
+        })
+    })
+  }
+
   fn push(&self, command: BundleCommand) -> Result<(), OpError> {
+    self.with_slot(|slot| {
+      slot.commands.push(command);
+      Ok(())
+    })
+  }
+
+  fn with_slot(
+    &self,
+    body: impl FnOnce(&mut BundleSlot) -> Result<(), OpError>,
+  ) -> Result<(), OpError> {
     if self.ended.get() {
       return Err(OpError::dom(
         "InvalidStateError",
@@ -1498,8 +1715,7 @@ impl GpuRenderBundleEncoder {
           "The render bundle encoder has finished",
         )
       })?;
-      slot.commands.push(command);
-      Ok(())
+      body(slot)
     })
   }
 }
@@ -1616,7 +1832,12 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
         buffer,
         offset,
         size,
-      } => pass.set_vertex_buffer(*slot, buffer_slice(buffer, *offset, *size)),
+      } => match buffer {
+        Some(buffer) => {
+          pass.set_vertex_buffer(*slot, buffer_slice(buffer, *offset, *size))
+        }
+        None => pass.set_vertex_buffer(*slot, None),
+      },
       PassCommand::Index {
         buffer,
         format,
@@ -1742,9 +1963,12 @@ fn finish_bundle(slot: BundleSlot) -> wgpu::RenderBundle {
         buffer,
         offset,
         size,
-      } => {
-        encoder.set_vertex_buffer(*slot, buffer_slice(buffer, *offset, *size))
-      }
+      } => match buffer {
+        Some(buffer) => {
+          encoder.set_vertex_buffer(*slot, buffer_slice(buffer, *offset, *size))
+        }
+        None => encoder.set_vertex_buffer(*slot, None),
+      },
       BundleCommand::Index {
         buffer,
         format,
@@ -1906,25 +2130,39 @@ fn max_draw_count(
   js::u64_value(scope, value)
 }
 
-fn viewport_args(
+fn viewport_finite(
   x: f64,
   y: f64,
   width: f64,
   height: f64,
   min_depth: f64,
   max_depth: f64,
-) -> Result<(f32, f32, f32, f32, f32, f32), OpError> {
+) -> Result<[f64; 6], OpError> {
   let values = [x, y, width, height, min_depth, max_depth];
   if values.iter().any(|value| !value.is_finite()) {
     return Err(OpError::type_("setViewport arguments must be finite"));
   }
-  if width < 0.0
-    || height < 0.0
-    || !(0.0..=1.0).contains(&min_depth)
-    || !(0.0..=1.0).contains(&max_depth)
-    || min_depth > max_depth
-  {
-    return Err(OpError::range("The viewport is out of range"));
+  Ok(values)
+}
+
+fn viewport_cast(
+  values: [f64; 6],
+  max_texture_dimension_2d: u32,
+) -> Option<(f32, f32, f32, f32, f32, f32)> {
+  let max_dimension = f64::from(max_texture_dimension_2d);
+  let max_range = max_dimension * 2.0;
+  let [x, y, width, height, min_depth, max_depth] = values;
+  let inside = x >= -max_range
+    && y >= -max_range
+    && (0.0..=max_dimension).contains(&width)
+    && (0.0..=max_dimension).contains(&height)
+    && x + width <= max_range - 1.0
+    && y + height <= max_range - 1.0
+    && (0.0..=1.0).contains(&min_depth)
+    && (0.0..=1.0).contains(&max_depth)
+    && min_depth <= max_depth;
+  if !inside {
+    return None;
   }
   let cast = [
     x as f32,
@@ -1935,9 +2173,9 @@ fn viewport_args(
     max_depth as f32,
   ];
   if cast.iter().any(|value| !value.is_finite()) {
-    return Err(OpError::range("The viewport is out of range"));
+    return None;
   }
-  Ok((cast[0], cast[1], cast[2], cast[3], cast[4], cast[5]))
+  Some((cast[0], cast[1], cast[2], cast[3], cast[4], cast[5]))
 }
 
 fn color_targets(
@@ -2265,35 +2503,231 @@ fn alive_buffer(
   buffer.alive()
 }
 
-fn buffer_span(
+fn host_gpu_buffer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<v8::Value>,
+  message: &str,
+) -> Result<&'s resource::GpuBuffer, OpError> {
+  resource::host_buffer(scope, value).ok_or_else(|| OpError::type_(message))
+}
+
+fn encoder_limits(id: u64) -> Result<(u32, u32), OpError> {
+  ENCODERS.with(|encoders| {
+    encoders
+      .borrow()
+      .get(&id)
+      .map(|slot| (slot.max_texture_dimension_2d, slot.max_vertex_buffers))
+      .ok_or_else(|| {
+        OpError::dom("InvalidStateError", "The command encoder is finished")
+      })
+  })
+}
+
+fn invalidate_encoder(id: u64) -> Result<(), OpError> {
+  ENCODERS.with(|encoders| {
+    let mut encoders = encoders.borrow_mut();
+    let slot = encoders.get_mut(&id).ok_or_else(|| {
+      OpError::dom("InvalidStateError", "The command encoder is finished")
+    })?;
+    if slot.pass.is_some() {
+      return Err(OpError::dom("InvalidStateError", "A pass is open"));
+    }
+    slot.invalid = true;
+    Ok(())
+  })
+}
+
+fn note_submit_destroyed(id: u64) -> Result<(), OpError> {
+  ENCODERS.with(|encoders| {
+    let mut encoders = encoders.borrow_mut();
+    let slot = encoders.get_mut(&id).ok_or_else(|| {
+      OpError::dom("InvalidStateError", "The command encoder is finished")
+    })?;
+    if slot.pass.is_some() {
+      return Err(OpError::dom("InvalidStateError", "A pass is open"));
+    }
+    slot.submit_destroyed = true;
+    Ok(())
+  })
+}
+
+enum VertexBind {
+  Invalid,
+  /// wgpu panics on a zero-length slice. Offset 0 unsets the slot. A non-zero
+  /// offset leaves the previous binding in place.
+  Skip,
+  Unset {
+    slot: u32,
+  },
+  Bind {
+    slot: u32,
+    buffer: wgpu::Buffer,
+    offset: u64,
+    size: Option<u64>,
+  },
+}
+
+enum IndexBind {
+  Invalid,
+  Skip,
+  Bind {
+    buffer: wgpu::Buffer,
+    format: wgpu::IndexFormat,
+    offset: u64,
+    size: Option<u64>,
+  },
+}
+
+fn vertex_bind(
   scope: &mut v8::PinScope,
+  slot: u32,
   value: v8::Local<v8::Value>,
   offset: Option<js::GpuSize64>,
   size: Option<js::GpuSize64>,
-) -> Result<(wgpu::Buffer, u64, Option<u64>), OpError> {
-  let buffer = alive_buffer(scope, value, "A GPUBuffer is required")?;
+  max_vertex_buffers: u32,
+) -> Result<VertexBind, OpError> {
   let offset = offset.map(|value| value.0).unwrap_or(0);
-  let size = size.map(|value| value.0);
-  let end = match size {
-    Some(size) => offset.checked_add(size).ok_or_else(|| {
-      OpError::dom("OperationError", "The buffer offset is out of range")
-    })?,
-    None => buffer.size(),
-  };
-  if offset > buffer.size() || end > buffer.size() {
-    return Err(OpError::dom(
-      "OperationError",
-      "The buffer offset is out of range",
-    ));
+  if value.is_null() {
+    let size = size.map(|value| value.0).unwrap_or(0);
+    if !offset.is_multiple_of(4)
+      || offset.saturating_add(size) > 0
+      || slot >= max_vertex_buffers
+    {
+      return Ok(VertexBind::Invalid);
+    }
+    return Ok(VertexBind::Unset { slot });
   }
-  Ok((buffer, offset, size))
+  let host = host_gpu_buffer(scope, value, "A GPUBuffer is required")?;
+  let buffer = host.alive()?;
+  let buffer_size = host.byte_size();
+  let requested = size.as_ref().map(|value| value.0);
+  let size_value =
+    requested.unwrap_or_else(|| buffer_size.saturating_sub(offset));
+  let in_range = offset.is_multiple_of(4)
+    && offset.saturating_add(size_value) <= buffer_size
+    && slot < max_vertex_buffers;
+  let usable = host.is_valid()
+    && host.usage_bits() & wgpu::BufferUsages::VERTEX.bits() != 0;
+  if !in_range || !usable {
+    return Ok(VertexBind::Invalid);
+  }
+  if size_value == 0 {
+    if offset == 0 {
+      return Ok(VertexBind::Unset { slot });
+    }
+    return Ok(VertexBind::Skip);
+  }
+  Ok(VertexBind::Bind {
+    slot,
+    buffer,
+    offset,
+    size: requested,
+  })
+}
+
+fn push_vertex(record: &mut PassRecord, bind: VertexBind) {
+  match bind {
+    VertexBind::Invalid => record.invalid = true,
+    VertexBind::Skip => {}
+    VertexBind::Unset { slot } => record.commands.push(PassCommand::Vertex {
+      slot,
+      buffer: None,
+      offset: 0,
+      size: None,
+    }),
+    VertexBind::Bind {
+      slot,
+      buffer,
+      offset,
+      size,
+    } => record.commands.push(PassCommand::Vertex {
+      slot,
+      buffer: Some(buffer),
+      offset,
+      size,
+    }),
+  }
+}
+
+fn index_bind(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  format: &str,
+  offset: Option<js::GpuSize64>,
+  size: Option<js::GpuSize64>,
+) -> Result<IndexBind, OpError> {
+  let format = resource::index_format(format)?;
+  let host = host_gpu_buffer(scope, value, "A GPUBuffer is required")?;
+  let buffer = host.alive()?;
+  let offset = offset.map(|value| value.0).unwrap_or(0);
+  let buffer_size = host.byte_size();
+  let requested = size.as_ref().map(|value| value.0);
+  let size_value =
+    requested.unwrap_or_else(|| buffer_size.saturating_sub(offset));
+  let align = match format {
+    wgpu::IndexFormat::Uint16 => 2,
+    wgpu::IndexFormat::Uint32 => 4,
+  };
+  let in_range = offset.is_multiple_of(align)
+    && offset.saturating_add(size_value) <= buffer_size;
+  let usable = host.is_valid()
+    && host.usage_bits() & wgpu::BufferUsages::INDEX.bits() != 0;
+  if !in_range || !usable {
+    return Ok(IndexBind::Invalid);
+  }
+  if size_value == 0 {
+    return Ok(IndexBind::Skip);
+  }
+  Ok(IndexBind::Bind {
+    buffer,
+    format,
+    offset,
+    size: requested,
+  })
+}
+
+fn push_index(record: &mut PassRecord, bind: IndexBind) {
+  match bind {
+    IndexBind::Invalid => record.invalid = true,
+    IndexBind::Skip => {}
+    IndexBind::Bind {
+      buffer,
+      format,
+      offset,
+      size,
+    } => record.commands.push(PassCommand::Index {
+      buffer,
+      format,
+      offset,
+      size,
+    }),
+  }
+}
+
+fn indirect_bind(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  offset: u64,
+  bytes: u64,
+  message: &str,
+) -> Result<Option<(wgpu::Buffer, u64)>, OpError> {
+  let host = host_gpu_buffer(scope, value, message)?;
+  let buffer = host.alive()?;
+  let in_range = offset.is_multiple_of(4)
+    && offset.saturating_add(bytes) <= host.byte_size();
+  let usable = host.is_valid()
+    && host.usage_bits() & wgpu::BufferUsages::INDIRECT.bits() != 0;
+  if !in_range || !usable {
+    return Ok(None);
+  }
+  Ok(Some((buffer, offset)))
 }
 
 fn bind_group(
   scope: &mut v8::PinScope,
   group: v8::Local<v8::Value>,
   offsets: Option<v8::Local<v8::Value>>,
-  start: Option<u32>,
+  start: Option<u64>,
   length: Option<u32>,
 ) -> Result<(Option<wgpu::BindGroup>, Vec<u32>), OpError> {
   let offsets = match offsets {
@@ -2318,7 +2752,7 @@ fn bind_group(
 fn offset_list(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-  start: Option<u32>,
+  start: Option<u64>,
   length: Option<u32>,
 ) -> Result<Vec<u32>, OpError> {
   let object = js::object(scope, value)
@@ -2328,6 +2762,11 @@ fn offset_list(
   let total =
     yuzuko_core::modulo_u32(yuzuko_core::to_number(scope, total_value)?);
   let start = start.unwrap_or(0);
+  if start > u64::from(total) {
+    return Err(OpError::range("The dynamic offset range is out of range"));
+  }
+  let start = u32::try_from(start)
+    .map_err(|_| OpError::range("The dynamic offset range is out of range"))?;
   let length = length.unwrap_or(total.saturating_sub(start));
   if start.saturating_add(length) > total {
     return Err(OpError::range("The dynamic offset range is out of range"));
@@ -2343,11 +2782,12 @@ fn offset_list(
 pub fn command_buffers(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<Vec<wgpu::CommandBuffer>, OpError> {
+) -> Result<(Vec<wgpu::CommandBuffer>, bool), OpError> {
   let array = v8::Local::<v8::Array>::try_from(value).map_err(|_| {
     OpError::type_("submit requires a sequence of command buffers")
   })?;
   let mut buffers = Vec::new();
+  let mut destroyed = false;
   for index in 0..array.length() {
     let value = js::read_index(scope, array, index)?;
     let object = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
@@ -2358,13 +2798,14 @@ pub fn command_buffers(
         .ok_or_else(|| {
         OpError::type_("submit requires GPUCommandBuffer objects")
       })?;
-    let buffer = host.get().take().ok_or_else(|| {
+    let (buffer, submit_destroyed) = host.get().take().ok_or_else(|| {
       OpError::dom(
         "InvalidStateError",
         "The command buffer was already submitted",
       )
     })?;
+    destroyed |= submit_destroyed;
     buffers.push(buffer);
   }
-  Ok(buffers)
+  Ok((buffers, destroyed))
 }

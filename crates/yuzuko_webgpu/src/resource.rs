@@ -27,14 +27,19 @@ struct Mapped {
   mode: u32,
   bytes: Vec<u8>,
   views: Vec<MappedView>,
+  /// The wgpu buffer is mapped, so `unmap` must call `Buffer::unmap`.
+  gpu_mapped: bool,
 }
 
 pub struct GpuBuffer {
   buffer: RefCell<Option<wgpu::Buffer>>,
   lost: Arc<AtomicBool>,
+  device_id: u64,
   size: u64,
   /// Usage bits passed to `createBuffer`, kept after `destroy`.
   usage: u32,
+  valid: bool,
+  destroyed: Cell<bool>,
   mapped: RefCell<Option<Mapped>>,
   label: ObjectLabel,
 }
@@ -51,15 +56,20 @@ impl GpuBuffer {
   fn new(
     buffer: wgpu::Buffer,
     lost: Arc<AtomicBool>,
+    device_id: u64,
     size: u64,
     label: Option<String>,
     usage: u32,
+    valid: bool,
   ) -> Self {
     Self {
       buffer: RefCell::new(Some(buffer)),
       lost,
+      device_id,
       size,
       usage,
+      valid,
+      destroyed: Cell::new(false),
       mapped: RefCell::new(None),
       label: ObjectLabel::new(label),
     }
@@ -76,28 +86,29 @@ impl GpuBuffer {
       detach_views(scope, &mapped);
       return;
     };
-    let end = mapped.offset + mapped.size;
     let read = (mapped.mode & MAP_READ_BIT) != 0;
     let write = (mapped.mode & MAP_WRITE_BIT) != 0;
-    if writeback && write && !read {
+    if writeback && write && !read && mapped.size > 0 {
+      let end = mapped.offset + mapped.size;
       if let Ok(mut view) =
         buffer.slice(mapped.offset..end).get_mapped_range_mut()
       {
         view.copy_from_slice(&mapped.bytes);
       }
+    }
+    if mapped.gpu_mapped {
       buffer.unmap();
-    } else {
-      buffer.unmap();
-      if writeback
-        && read
-        && write
-        && buffer.usage().contains(wgpu::BufferUsages::COPY_DST)
-        && let Ok(handle) = device_of(&self.lost)
-      {
-        handle
-          .queue
-          .write_buffer(&buffer, mapped.offset, &mapped.bytes);
-      }
+    }
+    if writeback
+      && read
+      && write
+      && mapped.size > 0
+      && buffer.usage().contains(wgpu::BufferUsages::COPY_DST)
+      && let Ok(handle) = device_of(&self.lost)
+    {
+      handle
+        .queue
+        .write_buffer(&buffer, mapped.offset, &mapped.bytes);
     }
     detach_views(scope, &mapped);
   }
@@ -109,6 +120,31 @@ impl GpuBuffer {
     self.buffer.borrow().clone().ok_or_else(|| {
       OpError::dom("InvalidStateError", "The buffer is destroyed")
     })
+  }
+
+  pub(crate) fn is_destroyed(&self) -> bool {
+    self.destroyed.get()
+  }
+
+  pub(crate) fn is_valid(&self) -> bool {
+    self.valid
+  }
+
+  pub(crate) fn byte_size(&self) -> u64 {
+    self.size
+  }
+
+  pub(crate) fn usage_bits(&self) -> u32 {
+    self.usage
+  }
+
+  pub(crate) fn device_id(&self) -> u64 {
+    self.device_id
+  }
+
+  fn fail_map(&self, message: &str) -> OpError {
+    crate::state::report_validation(self.device_id, message);
+    OpError::dom("OperationError", message.to_string())
   }
 }
 
@@ -145,7 +181,11 @@ impl GpuBuffer {
 
   fn destroy(&self, scope: &mut v8::PinScope) {
     self.release_mapping(scope, false);
-    *self.buffer.borrow_mut() = None;
+    if !self.destroyed.replace(true)
+      && let Some(buffer) = self.buffer.borrow().as_ref()
+    {
+      buffer.destroy();
+    }
   }
 
   fn map_async(
@@ -156,36 +196,41 @@ impl GpuBuffer {
     size: Option<js::GpuSize64>,
   ) -> Js {
     let mapped = (|| {
-      let buffer = self.alive()?;
-      if self.mapped.borrow().is_some() {
-        return Err(OpError::dom(
-          "InvalidStateError",
-          "The buffer is already mapped",
-        ));
+      if self.lost.load(Ordering::SeqCst) {
+        return Err(OpError::dom("AbortError", "The GPU device is lost"));
       }
       if (mode & !MAP_MODE_MASK) != 0 || (mode & MAP_MODE_MASK) == 0 {
         return Err(OpError::type_("GPUMapMode is invalid"));
       }
-      let usage = buffer.usage();
-      if (mode & MAP_READ_BIT) != 0
-        && !usage.contains(wgpu::BufferUsages::MAP_READ)
-      {
-        return Err(OpError::dom(
-          "OperationError",
-          "The buffer is not mappable for reading",
-        ));
+      if self.destroyed.get() {
+        return Err(self.fail_map("The buffer is destroyed"));
       }
-      if (mode & MAP_WRITE_BIT) != 0
-        && !usage.contains(wgpu::BufferUsages::MAP_WRITE)
-      {
-        return Err(OpError::dom(
-          "OperationError",
-          "The buffer is not mappable for writing",
-        ));
+      if self.mapped.borrow().is_some() {
+        return Err(self.fail_map("The buffer is already mapped"));
+      }
+      if !self.valid {
+        return Err(self.fail_map("The buffer is invalid"));
+      }
+      let buffer = self.alive()?;
+      let usage = self.usage;
+      if (mode & MAP_READ_BIT) != 0 && (usage & MAP_READ_BIT) == 0 {
+        return Err(self.fail_map("The buffer is not mappable for reading"));
+      }
+      if (mode & MAP_WRITE_BIT) != 0 && (usage & MAP_WRITE_BIT) == 0 {
+        return Err(self.fail_map("The buffer is not mappable for writing"));
       }
       let offset = offset.map(|value| value.0).unwrap_or(0);
       let size =
-        checked_map_size(self.size, offset, size.map(|value| value.0))?;
+        match checked_map_size(self.size, offset, size.map(|value| value.0)) {
+          Ok(size) => size,
+          Err(error) => {
+            crate::state::report_validation(
+              self.device_id,
+              "The map range is outside the buffer",
+            );
+            return Err(error);
+          }
+        };
       let end = offset + size;
       let host_mode = if (mode & MAP_READ_BIT) != 0 {
         wgpu::MapMode::Read
@@ -208,7 +253,7 @@ impl GpuBuffer {
             Ok(view) => view.to_vec(),
             Err(_) => {
               buffer.unmap();
-              return Err(OpError::dom("OperationError", "mapAsync failed"));
+              return Err(self.fail_map("mapAsync failed"));
             }
           };
           *self.mapped.borrow_mut() = Some(Mapped {
@@ -217,10 +262,11 @@ impl GpuBuffer {
             mode,
             bytes,
             views: Vec::new(),
+            gpu_mapped: true,
           });
           Ok(())
         }
-        _ => Err(OpError::dom("OperationError", "mapAsync failed")),
+        _ => Err(self.fail_map("mapAsync failed")),
       }
     })();
     match mapped {
@@ -240,10 +286,7 @@ impl GpuBuffer {
   ) -> Result<Js, OpError> {
     let mut slot = self.mapped.borrow_mut();
     let Some(mapped) = slot.as_mut() else {
-      return Err(OpError::dom(
-        "InvalidStateError",
-        "The buffer is not mapped",
-      ));
+      return Err(OpError::dom("OperationError", "The buffer is not mapped"));
     };
     let offset = offset.map(|value| value.0).unwrap_or(0);
     if !offset.is_multiple_of(8) {
@@ -263,7 +306,7 @@ impl GpuBuffer {
       None => mapped.size - offset,
     };
     let end = offset.saturating_add(size);
-    if size == 0 || !size.is_multiple_of(4) || end > mapped.size {
+    if !size.is_multiple_of(4) || end > mapped.size {
       return Err(OpError::dom(
         "OperationError",
         "The mapped range is outside the mapping",
@@ -278,8 +321,12 @@ impl GpuBuffer {
         ));
       }
     }
-    let start = offset as usize;
-    let bytes = mapped.bytes[start..start + size as usize].to_vec();
+    let bytes = if size == 0 {
+      Vec::new()
+    } else {
+      let start = offset as usize;
+      mapped.bytes[start..start + size as usize].to_vec()
+    };
     let buffer = yuzuko_winter::array_buffer(scope, bytes);
     mapped.views.push(MappedView {
       offset,
@@ -299,7 +346,7 @@ impl GpuBuffer {
 impl Drop for GpuBuffer {
   fn drop(&mut self) {
     let mapped = self.mapped.borrow_mut().take();
-    if mapped.is_some()
+    if mapped.is_some_and(|mapped| mapped.gpu_mapped)
       && let Some(buffer) = self.buffer.borrow().as_ref()
     {
       buffer.unmap();
@@ -882,35 +929,64 @@ impl GpuExternalTexture {
 
 pub fn create_buffer(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuBuffer>, OpError> {
   let object = js::object(scope, descriptor)
     .ok_or_else(|| OpError::type_("createBuffer requires a descriptor"))?;
   let size = js::required_u64(scope, object, "size")?;
-  let usage = wgpu::BufferUsages::from_bits_truncate(js::required_u32(
-    scope, object, "usage",
-  )?);
-  if size == 0 {
-    return Err(OpError::range("GPUBuffer size must be non-zero"));
+  let raw_usage = js::required_u32(scope, object, "usage")?;
+  let mapped_at_creation = match js::get(scope, object, "mappedAtCreation")? {
+    Some(value) => value.boolean_value(scope),
+    None => false,
+  };
+  if mapped_at_creation && !size.is_multiple_of(4) {
+    return Err(OpError::range(
+      "GPUBuffer size must be a multiple of 4 when mappedAtCreation is true",
+    ));
   }
-  if size > handle.device.limits().max_buffer_size {
-    return Err(OpError::range("GPUBuffer size exceeds maxBufferSize"));
-  }
+  let unknown = raw_usage & !BUFFER_USAGE_MASK != 0;
+  let usage = if raw_usage == 0 || unknown {
+    wgpu::BufferUsages::empty()
+  } else {
+    wgpu::BufferUsages::from_bits_truncate(raw_usage)
+  };
+  let over_max = size > handle.device.limits().max_buffer_size;
+  let valid = raw_usage != 0
+    && !unknown
+    && !buffer_usage_mismatch(raw_usage)
+    && !over_max;
   let label = optional_label(scope, object)?;
+  // A buffer above `maxBufferSize` is invalid. Do not ask wgpu to map it.
+  let host_map = mapped_at_creation && !over_max;
   let buffer = handle.device.create_buffer(&wgpu::BufferDescriptor {
     label: label.as_deref(),
     size,
     usage,
-    mapped_at_creation: false,
+    mapped_at_creation: host_map,
   });
-  Ok(New(GpuBuffer::new(
+  let gpu = GpuBuffer::new(
     buffer,
     Arc::clone(&handle.lost),
+    device_id,
     size,
     label,
-    usage.bits(),
-  )))
+    raw_usage,
+    valid,
+  );
+  if host_map && let Some(buffer) = gpu.buffer.borrow().clone() {
+    let (bytes, gpu_mapped) = mapped_creation_bytes(&buffer, size);
+    *gpu.mapped.borrow_mut() = Some(Mapped {
+      offset: 0,
+      size,
+      mode: MAP_WRITE_BIT,
+      bytes,
+      views: Vec::new(),
+      gpu_mapped,
+    });
+  }
+  Ok(New(gpu))
 }
 
 pub fn create_texture(
@@ -1283,9 +1359,6 @@ pub fn create_query_set(
     ));
   }
   let count = js::required_u32(scope, object, "count")?;
-  if count == 0 {
-    return Err(OpError::range("The query count must be non-zero"));
-  }
   let label = optional_label(scope, object)?;
   let ty = match kind {
     QueryKind::Occlusion => wgpu::QueryType::Occlusion,
@@ -2110,7 +2183,7 @@ fn texture_size(
     } else {
       1
     };
-    return Ok((width.max(1), height.max(1)));
+    return Ok((width, height));
   }
   let object = js::object(scope, size)
     .ok_or_else(|| OpError::type_("GPUTextureDescriptor.size is invalid"))?;
@@ -2249,7 +2322,34 @@ fn filter_of(
 
 const MAP_READ_BIT: u32 = 0x0001;
 const MAP_WRITE_BIT: u32 = 0x0002;
+const COPY_SRC_BIT: u32 = 0x0004;
+const COPY_DST_BIT: u32 = 0x0008;
 const MAP_MODE_MASK: u32 = MAP_READ_BIT | MAP_WRITE_BIT;
+const BUFFER_USAGE_MASK: u32 = 0x03FF;
+
+fn buffer_usage_mismatch(usage: u32) -> bool {
+  let read = (usage & MAP_READ_BIT) != 0
+    && (usage & !(MAP_READ_BIT | COPY_DST_BIT)) != 0;
+  let write = (usage & MAP_WRITE_BIT) != 0
+    && (usage & !(MAP_WRITE_BIT | COPY_SRC_BIT)) != 0;
+  read || write
+}
+
+/// Bytes of a `mappedAtCreation` buffer. Size 0 is mapped and is not sliced.
+/// An error buffer that wgpu did not map still exposes a zeroed range.
+fn mapped_creation_bytes(buffer: &wgpu::Buffer, size: u64) -> (Vec<u8>, bool) {
+  if size == 0 {
+    return (Vec::new(), true);
+  }
+  match buffer.slice(0..size).get_mapped_range() {
+    Ok(view) => (view.to_vec(), true),
+    Err(_) => {
+      buffer.unmap();
+      let len = usize::try_from(size).unwrap_or(0);
+      (vec![0; len], false)
+    }
+  }
+}
 
 fn checked_map_size(
   buffer_size: u64,

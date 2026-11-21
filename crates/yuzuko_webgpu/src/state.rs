@@ -15,13 +15,25 @@ pub struct Handle {
   pub lost: Arc<AtomicBool>,
 }
 
+pub struct ErrorScope {
+  pub guard: wgpu::ErrorScopeGuard,
+  /// This scope's filter includes validation errors.
+  pub validation: bool,
+  pub synthetic: Option<String>,
+}
+
+pub struct PoppedScope {
+  pub guard: wgpu::ErrorScopeGuard,
+  pub synthetic: Option<String>,
+}
+
 pub struct LiveDevice {
   pub device: wgpu::Device,
   pub queue: wgpu::Queue,
   pub lost: Arc<AtomicBool>,
   pub lost_promise: v8::Global<v8::Promise>,
   pub lost_resolver: v8::Global<v8::PromiseResolver>,
-  pub scopes: Vec<wgpu::ErrorScopeGuard>,
+  pub scopes: Vec<ErrorScope>,
   pub queue_object: Option<v8::Global<v8::Object>>,
   pub owner: Option<String>,
 }
@@ -103,24 +115,66 @@ pub fn destroy(scope: &mut v8::PinScope, id: u64) {
 pub fn push_scope(
   id: u64,
   guard: wgpu::ErrorScopeGuard,
+  validation: bool,
 ) -> Result<(), OpError> {
   with_mut(id, |live| {
-    live.scopes.push(guard);
+    live.scopes.push(ErrorScope {
+      guard,
+      validation,
+      synthetic: None,
+    });
     Ok(())
   })
 }
 
-pub fn pop_scope(id: u64) -> Result<wgpu::ErrorScopeGuard, OpError> {
+pub fn pop_scope(id: u64) -> Result<PoppedScope, OpError> {
   DEVICES.with(|devices| {
     let mut devices = devices.borrow_mut();
     let live = devices.get_mut(&id).ok_or_else(lost_error)?;
     if live.lost.load(Ordering::SeqCst) {
       return Err(lost_error());
     }
-    live.scopes.pop().ok_or_else(|| {
-      OpError::dom("OperationError", "There is no error scope on the stack")
-    })
+    live
+      .scopes
+      .pop()
+      .map(|scope| PoppedScope {
+        guard: scope.guard,
+        synthetic: scope.synthetic,
+      })
+      .ok_or_else(|| {
+        OpError::dom("OperationError", "There is no error scope on the stack")
+      })
   })
+}
+
+/// Record one validation error on the device timeline.
+///
+/// The innermost validation scope keeps the first synthetic message. A later
+/// error for that scope is dropped. With no matching scope, the error is
+/// uncaptured.
+pub fn report_validation(id: u64, message: &str) {
+  let captured = DEVICES.with(|devices| {
+    let mut devices = devices.borrow_mut();
+    let Some(live) = devices.get_mut(&id) else {
+      return false;
+    };
+    if live.lost.load(Ordering::SeqCst) {
+      return false;
+    }
+    for scope in live.scopes.iter_mut().rev() {
+      if !scope.validation {
+        continue;
+      }
+      if scope.synthetic.is_none() {
+        scope.synthetic = Some(message.to_string());
+      }
+      return true;
+    }
+    false
+  });
+  if !captured {
+    queue_uncaptured(UncapturedKind::Validation, message.to_string());
+  }
 }
 
 pub fn queue_object(id: u64) -> Result<v8::Global<v8::Object>, OpError> {
@@ -263,6 +317,10 @@ fn record_uncaptured(error: wgpu::Error) {
     wgpu::Error::Internal { .. } => UncapturedKind::Internal,
     wgpu::Error::Validation { .. } => UncapturedKind::Validation,
   };
+  queue_uncaptured(kind, message);
+}
+
+fn queue_uncaptured(kind: UncapturedKind, message: String) {
   pending_errors().push(PendingError { kind, message });
   if on_isolate_thread() {
     schedule_drain();

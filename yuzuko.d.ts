@@ -183,7 +183,7 @@ type GPUQueryType = "occlusion" | "timestamp";
  * `pushDebugGroup`, `popDebugGroup`, `insertDebugMarker`, `setViewport`, and
  * `setScissorRect` throw `NotSupportedError`. wgpu's `RenderBundleEncoder` does
  * not record them. A finished encoder throws `InvalidStateError` before that.
- * `setViewport` uses the render pass argument checks.
+ * A non-finite `setViewport` argument throws `TypeError` before `NotSupportedError`.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderBundleEncoder)
  */
@@ -216,8 +216,6 @@ interface GPURenderBundleEncoder extends GPUBindingCommandsMixin, GPUObjectBase,
 
   /**
    * @throws {@link TypeError} When an argument is not finite.
-   * @throws {@link RangeError} When `width` or `height` is negative, a depth
-   * is outside 0 through 1, or `minDepth` is greater than `maxDepth`.
    * @throws {@link DOMException} `NotSupportedError` wgpu does not record this on a render bundle.
    * @throws {@link DOMException} `InvalidStateError` The encoder has finished.
    *
@@ -13542,16 +13540,15 @@ interface GPUCommandEncoder {
   beginComputePass(descriptor?: GPUComputePassDescriptor): GPUComputePassEncoder;
 
   /**
-   * A size of 0 throws `RangeError`.
-   *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyBufferToBuffer)
    */
+  copyBufferToBuffer(source: GPUBuffer, destination: GPUBuffer, size?: GPUSize64): void;
   copyBufferToBuffer(
     source: GPUBuffer,
-    sourceOffset: number,
+    sourceOffset: GPUSize64,
     destination: GPUBuffer,
-    destinationOffset: number,
-    size: number,
+    destinationOffset: GPUSize64,
+    size?: GPUSize64,
   ): void;
 
   /**
@@ -13720,8 +13717,6 @@ interface GPURenderPassEncoder {
 
   /**
    * @throws {@link TypeError} When an argument is not finite.
-   * @throws {@link RangeError} When `width` or `height` is negative, a depth
-   * is outside 0 through 1, or `minDepth` is greater than `maxDepth`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setViewport)
    */

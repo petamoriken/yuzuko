@@ -271,6 +271,19 @@ pub fn enforce_range_u32(number: f64) -> Option<u32> {
   Some(number as u32)
 }
 
+/// WebIDL `[EnforceRange] long`. Truncate toward zero, then range-check.
+#[inline]
+pub fn enforce_range_i32(number: f64) -> Option<i32> {
+  if !number.is_finite() {
+    return None;
+  }
+  let number = number.trunc();
+  if number < f64::from(i32::MIN) || number > f64::from(i32::MAX) {
+    return None;
+  }
+  Some(number as i32)
+}
+
 /// WebIDL `[EnforceRange] unsigned long long`. The upper bound is `2^53 − 1`.
 #[inline]
 pub fn enforce_range_u64(number: f64) -> Option<u64> {

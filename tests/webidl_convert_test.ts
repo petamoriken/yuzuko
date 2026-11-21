@@ -261,26 +261,15 @@ Yuzuko.test("WebGPU sizes are EnforceRange", async () => {
   }
   assertType(usageError, OUT_OF_RANGE, "usage");
 
-  let zero: unknown;
-  try {
-    device.createBuffer({ size: -0.9, usage });
-  } catch (error) {
-    zero = error;
-  }
-  assert(zero instanceof RangeError, `zero size ${String(zero)}`);
-  assert(zero.message === "GPUBuffer size must be non-zero", zero.message);
+  const truncated = device.createBuffer({ size: -0.9, usage });
+  assert(truncated.size === 0, `truncated size ${truncated.size}`);
 
-  let absent: unknown;
-  try {
-    device.createBuffer({
-      // @ts-expect-error null converts with ToNumber.
-      size: null,
-      usage,
-    });
-  } catch (error) {
-    absent = error;
-  }
-  assert(absent instanceof RangeError, `null size ${String(absent)}`);
+  const fromNull = device.createBuffer({
+    // @ts-expect-error null converts with ToNumber.
+    size: null,
+    usage,
+  });
+  assert(fromNull.size === 0, `null size ${fromNull.size}`);
 
   const buffer = device.createBuffer({ size: 4.9, usage });
   assert(buffer.size === 4, `size ${buffer.size}`);
@@ -298,11 +287,6 @@ Yuzuko.test("WebGPU sizes are EnforceRange", async () => {
     { offset: NaN, message: OUT_OF_RANGE, name: "TypeError" },
     { offset: -1, message: OUT_OF_RANGE, name: "TypeError" },
     { offset: 2 ** 53, message: OUT_OF_RANGE, name: "TypeError" },
-    {
-      offset: Number.MAX_SAFE_INTEGER,
-      message: "The buffer offset is out of range",
-      name: "OperationError",
-    },
   ];
   for (const item of offsets) {
     let error: unknown;
@@ -315,6 +299,11 @@ Yuzuko.test("WebGPU sizes are EnforceRange", async () => {
     assert(error.name === item.name, `${item.offset}: ${error.name}`);
     assert(error.message === item.message, `${item.offset}: ${error.message}`);
   }
+
+  device.pushErrorScope("validation");
+  device.queue.writeBuffer(buffer, Number.MAX_SAFE_INTEGER, bytes);
+  const offsetError = await device.popErrorScope();
+  assert(offsetError instanceof GPUValidationError, "offset validation");
 
   buffer.destroy();
   device.destroy();

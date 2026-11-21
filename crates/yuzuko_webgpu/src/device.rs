@@ -229,7 +229,7 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<GpuBuffer>, OpError> {
-    resource::create_buffer(scope, &self.require()?, descriptor)
+    resource::create_buffer(scope, self.id, &self.require()?, descriptor)
   }
 
   fn create_texture(
@@ -304,7 +304,7 @@ impl GpuDevice {
       }
       _ => None,
     };
-    Ok(New(GpuCommandEncoder::create(&handle, label)))
+    Ok(New(GpuCommandEncoder::create(self.id, &handle, label)))
   }
 
   fn create_render_bundle_encoder(
@@ -312,7 +312,7 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<encode::GpuRenderBundleEncoder>, OpError> {
-    encode::create_bundle_encoder(scope, &self.require()?, descriptor)
+    encode::create_bundle_encoder(scope, self.id, &self.require()?, descriptor)
   }
 
   fn create_compute_pipeline(
@@ -384,9 +384,10 @@ impl GpuDevice {
       "internal" => wgpu::ErrorFilter::Internal,
       _ => return Err(OpError::type_("The error filter is invalid")),
     };
+    let validation = matches!(filter, wgpu::ErrorFilter::Validation);
     let handle = self.require()?;
     let guard = handle.device.push_error_scope(filter);
-    state::push_scope(self.id, guard)
+    state::push_scope(self.id, guard, validation)
   }
 
   fn pop_error_scope(&self, scope: &mut v8::PinScope) -> Js {
@@ -433,41 +434,19 @@ impl GpuQueue {
   ) -> Result<(), OpError> {
     let buffer = resource::host_buffer(scope, buffer)
       .ok_or_else(|| OpError::type_("writeBuffer requires a GPUBuffer"))?;
-    let buffer = buffer.alive()?;
-    let bytes =
-      yuzuko_winter::buffer_source(scope, data)?.ok_or_else(|| {
-        OpError::type_("writeBuffer data must be an AllowSharedBufferSource")
-      })?;
-    let start = usize::try_from(data_offset.map(|value| value.0).unwrap_or(0))
-      .map_err(|_| OpError::range("The buffer offset is out of range"))?;
-    if start > bytes.len() {
-      return Err(OpError::range("The buffer offset is out of range"));
-    }
-    let end = match size {
-      Some(size) => {
-        let size = usize::try_from(size.0)
-          .map_err(|_| OpError::range("The buffer size is out of range"))?;
-        start
-          .checked_add(size)
-          .ok_or_else(|| OpError::range("The buffer size is out of range"))?
-      }
-      None => bytes.len(),
-    };
-    if end > bytes.len() {
-      return Err(OpError::range("The buffer size is out of range"));
-    }
-    let offset = offset.0;
-    let data_len = (end - start) as u64;
-    if offset > buffer.size() || data_len > buffer.size() - offset {
-      return Err(OpError::dom(
-        "OperationError",
-        "The buffer offset is out of range",
-      ));
+    let bytes = write_contents(
+      scope,
+      data,
+      data_offset.map(|value| value.0),
+      size.map(|value| value.0),
+    )?;
+    let gpu = buffer.alive()?;
+    if buffer.is_destroyed() {
+      state::report_validation(buffer.device_id(), "The buffer is destroyed");
+      return Ok(());
     }
     let handle = state::handle(self.device_id)?;
-    handle
-      .queue
-      .write_buffer(&buffer, offset, &bytes[start..end]);
+    handle.queue.write_buffer(&gpu, offset.0, &bytes);
     Ok(())
   }
 
@@ -476,8 +455,14 @@ impl GpuQueue {
     scope: &mut v8::PinScope,
     buffers: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let buffers = encode::command_buffers(scope, buffers)?;
+    let (buffers, destroyed) = encode::command_buffers(scope, buffers)?;
     let handle = state::handle(self.device_id)?;
+    if destroyed {
+      state::report_validation(
+        self.device_id,
+        "A submitted command uses a destroyed buffer",
+      );
+    }
     handle.queue.submit(buffers);
     Ok(())
   }
@@ -863,29 +848,95 @@ fn pop_scope<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   id: u64,
 ) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  let guard = state::pop_scope(id)?;
+  let popped = state::pop_scope(id)?;
   let handle = state::handle(id)?;
   let _ = handle.device.poll(wgpu::PollType::Wait {
     submission_index: None,
     timeout: Some(std::time::Duration::from_secs(5)),
   });
-  let error = pollster::block_on(guard.pop());
-  let Some(error) = error else {
-    return Ok(v8::null(scope).into());
-  };
-  let message = error.to_string();
-  let object = match error {
-    wgpu::Error::OutOfMemory { .. } => unsafe {
-      yuzuko_core::op::wrap_instance(scope, GpuOutOfMemoryError { message })
-    },
-    wgpu::Error::Internal { .. } => unsafe {
-      yuzuko_core::op::wrap_instance(scope, GpuInternalError { message })
-    },
-    wgpu::Error::Validation { .. } => unsafe {
+  let error = pollster::block_on(popped.guard.pop());
+  if let Some(error) = error {
+    let message = error.to_string();
+    let object = match error {
+      wgpu::Error::OutOfMemory { .. } => unsafe {
+        yuzuko_core::op::wrap_instance(scope, GpuOutOfMemoryError { message })
+      },
+      wgpu::Error::Internal { .. } => unsafe {
+        yuzuko_core::op::wrap_instance(scope, GpuInternalError { message })
+      },
+      wgpu::Error::Validation { .. } => unsafe {
+        yuzuko_core::op::wrap_instance(scope, GpuValidationError { message })
+      },
+    };
+    return Ok(object.into());
+  }
+  if let Some(message) = popped.synthetic {
+    let object = unsafe {
       yuzuko_core::op::wrap_instance(scope, GpuValidationError { message })
-    },
-  };
-  Ok(object.into())
+    };
+    return Ok(object.into());
+  }
+  Ok(v8::null(scope).into())
+}
+
+fn write_contents(
+  scope: &mut v8::PinScope,
+  data: v8::Local<v8::Value>,
+  data_offset: Option<u64>,
+  size: Option<u64>,
+) -> Result<Vec<u8>, OpError> {
+  let bytes = yuzuko_winter::buffer_source(scope, data)?.ok_or_else(|| {
+    OpError::type_("writeBuffer data must be an AllowSharedBufferSource")
+  })?;
+  let element = source_element_size(data);
+  let elements = (bytes.len() / element) as u64;
+  let data_offset = data_offset.unwrap_or(0);
+  if data_offset > elements {
+    return Err(OpError::dom(
+      "OperationError",
+      "The write is outside the data",
+    ));
+  }
+  let count = size.unwrap_or(elements - data_offset);
+  let end = data_offset.checked_add(count).ok_or_else(|| {
+    OpError::dom("OperationError", "The write is outside the data")
+  })?;
+  if end > elements {
+    return Err(OpError::dom(
+      "OperationError",
+      "The write is outside the data",
+    ));
+  }
+  let byte_len = (count as usize).saturating_mul(element);
+  if !byte_len.is_multiple_of(4) {
+    return Err(OpError::dom(
+      "OperationError",
+      "The write is outside the data",
+    ));
+  }
+  let start = (data_offset as usize).saturating_mul(element);
+  Ok(bytes[start..start + byte_len].to_vec())
+}
+
+fn source_element_size(value: v8::Local<v8::Value>) -> usize {
+  if value.is_float64_array()
+    || value.is_big_int64_array()
+    || value.is_big_uint64_array()
+  {
+    8
+  } else if value.is_float32_array()
+    || value.is_uint32_array()
+    || value.is_int32_array()
+  {
+    4
+  } else if value.is_float16_array()
+    || value.is_uint16_array()
+    || value.is_int16_array()
+  {
+    2
+  } else {
+    1
+  }
 }
 
 fn adapter_info_js(scope: &mut v8::PinScope) -> Result<Js, OpError> {

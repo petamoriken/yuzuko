@@ -2087,3 +2087,242 @@ Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
   assert((await drawCount(0, [bundle, bundle])) instanceof GPUValidationError, "two bundles");
   device.destroy();
 });
+
+function colorPass(device: GPUDevice): {
+  encoder: GPUCommandEncoder;
+  pass: GPURenderPassEncoder;
+} {
+  const color = device.createTexture({
+    size: [4, 4],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: color.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  return { encoder, pass };
+}
+
+Yuzuko.test("device-timeline validation follows the WebGPU spec", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+
+  device.pushErrorScope("validation");
+  const empty = device.createBuffer({
+    size: 0,
+    usage: GPUBufferUsage.COPY_SRC,
+  });
+  assert(empty.size === 0, `empty size ${empty.size}`);
+  assert(await device.popErrorScope() === null, "empty buffer");
+
+  device.pushErrorScope("validation");
+  const oversized = device.createBuffer({
+    size: device.limits.maxBufferSize + 1,
+    usage: GPUBufferUsage.COPY_SRC,
+  });
+  assert(
+    oversized.size === device.limits.maxBufferSize + 1,
+    `oversized ${oversized.size}`,
+  );
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "oversized buffer",
+  );
+
+  const mapped = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+    mappedAtCreation: true,
+  });
+  assert(mapped.mapState === "mapped", "mapped at creation");
+  new Uint8Array(mapped.getMappedRange()).set([9, 8, 7, 6]);
+  mapped.unmap();
+  const readback = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  device.pushErrorScope("validation");
+  const copy = device.createCommandEncoder();
+  copy.copyBufferToBuffer(mapped, readback, 4);
+  device.queue.submit([copy.finish()]);
+  assert(await device.popErrorScope() === null, "mapped copy");
+  await readback.mapAsync(GPUMapMode.READ);
+  const mappedBytes = new Uint8Array(readback.getMappedRange());
+  assert(
+    mappedBytes[0] === 9 && mappedBytes[3] === 6,
+    `mapped bytes ${mappedBytes[0]},${mappedBytes[3]}`,
+  );
+  readback.unmap();
+
+  assert(
+    throwName(() => {
+      device.createBuffer({
+        size: 2,
+        usage: GPUBufferUsage.MAP_WRITE,
+        mappedAtCreation: true,
+      });
+    }) === "RangeError",
+    "mapped alignment",
+  );
+
+  device.pushErrorScope("validation");
+  const invalidMap = device.createBuffer({
+    size: 16,
+    usage: 0xffffffff,
+    mappedAtCreation: true,
+  });
+  assert(invalidMap.mapState === "mapped", "invalid mapped");
+  assert(invalidMap.getMappedRange().byteLength === 16, "invalid range");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "invalid usage",
+  );
+  invalidMap.unmap();
+
+  const words = new Uint32Array([0x11223344, 0xaabbccdd]);
+  const element = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  device.queue.writeBuffer(element, 0, words, 1, 1);
+  await element.mapAsync(GPUMapMode.READ);
+  const written = new Uint8Array(element.getMappedRange());
+  const expected = new Uint8Array(words.buffer, 4, 4);
+  assert(
+    written[0] === expected[0] &&
+      written[1] === expected[1] &&
+      written[2] === expected[2] &&
+      written[3] === expected[3],
+    "typed array element",
+  );
+  element.unmap();
+  let writeData = "";
+  try {
+    device.queue.writeBuffer(element, 0, new Uint8Array(4), 0, 8);
+  } catch (error) {
+    writeData = error instanceof Error ? error.message : "";
+  }
+  assert(writeData === "The write is outside the data", writeData);
+  device.pushErrorScope("validation");
+  device.queue.writeBuffer(element, 8, new Uint8Array(4));
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "write range",
+  );
+
+  const source = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_SRC,
+  });
+  const destination = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_DST,
+  });
+  device.pushErrorScope("validation");
+  const copies = device.createCommandEncoder();
+  copies.copyBufferToBuffer(source, 0, destination, 0, 0);
+  copies.copyBufferToBuffer(source, destination, 0);
+  copies.copyBufferToBuffer(source, 0, destination, 0);
+  device.queue.submit([copies.finish()]);
+  assert(await device.popErrorScope() === null, "empty copy");
+
+  const unset = colorPass(device);
+  unset.pass.setVertexBuffer(0, null);
+  unset.pass.end();
+  device.pushErrorScope("validation");
+  unset.encoder.finish();
+  assert(await device.popErrorScope() === null, "unset vertex");
+
+  const viewport = colorPass(device);
+  assert(throwName(() => viewport.pass.draw(-1)) === "TypeError", "draw range");
+  assert(
+    throwName(() => viewport.pass.drawIndexed(1, 1, 0, 2 ** 31)) === "TypeError",
+    "base vertex",
+  );
+  viewport.pass.setViewport(0, 0, -1, 1, 0, 1);
+  viewport.pass.end();
+  device.pushErrorScope("validation");
+  viewport.encoder.finish();
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "viewport range",
+  );
+
+  const vertex = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.VERTEX,
+  });
+  const outOfRange = colorPass(device);
+  outOfRange.pass.setVertexBuffer(0, vertex, 8, 16);
+  outOfRange.pass.end();
+  device.pushErrorScope("validation");
+  outOfRange.encoder.finish();
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "vertex range",
+  );
+
+  const kept = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.VERTEX,
+  });
+  const destroyed = colorPass(device);
+  destroyed.pass.setVertexBuffer(0, kept);
+  destroyed.pass.end();
+  const commands = destroyed.encoder.finish();
+  kept.destroy();
+  device.pushErrorScope("validation");
+  device.queue.submit([commands]);
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "destroyed vertex submit",
+  );
+
+  device.pushErrorScope("validation");
+  const texture = device.createTexture({
+    size: [0, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  assert(texture.width === 0 && texture.height === 1, "zero texture");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "zero texture validation",
+  );
+
+  device.pushErrorScope("validation");
+  const emptyQueries = device.createQuerySet({ type: "occlusion", count: 0 });
+  assert(emptyQueries.count === 0, `query count ${emptyQueries.count}`);
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "zero query set",
+  );
+  const queries = device.createQuerySet({ type: "occlusion", count: 1 });
+  const resolved = device.createBuffer({
+    size: 256,
+    usage: GPUBufferUsage.QUERY_RESOLVE,
+  });
+  device.pushErrorScope("validation");
+  const fitting = device.createCommandEncoder();
+  fitting.resolveQuerySet(queries, 0, 0, resolved, 0);
+  fitting.finish();
+  assert(await device.popErrorScope() === null, "empty resolve");
+  device.pushErrorScope("validation");
+  const overrun = device.createCommandEncoder();
+  overrun.resolveQuerySet(queries, 1, 0, resolved, 0);
+  overrun.finish();
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "resolve past the end",
+  );
+
+  device.destroy();
+});
