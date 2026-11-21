@@ -218,17 +218,11 @@ fn cts_expectations_match() {
       }
     }
   }
-  let shown = mismatches.len().min(40);
   assert!(
     mismatches.is_empty(),
-    "{} CTS expectation mismatch(es)\n{}{}",
+    "{} CTS expectation mismatch(es)\n{}",
     mismatches.len(),
-    mismatches[..shown].join("\n"),
-    if mismatches.len() > shown {
-      format!("\n... and {} more", mismatches.len() - shown)
-    } else {
-      String::new()
-    }
+    mismatches.join("\n"),
   );
 }
 
@@ -258,9 +252,10 @@ fn env_flag(name: &str) -> bool {
 const RUNNER: &str = r#"
 // Runs enrolled gpuweb/cts queries inside yuzuko and prints one JSON line.
 // The CTS is the compiled standalone build at tests/webgpu/suite/out.
-// Arguments are CTS queries, then an optional `--`, then case names to skip.
-// A skipped case is recorded as "ignore" and is not run.
-// With no arguments the query is unittests:*.
+// Arguments are CTS queries. With no arguments the query is unittests:*.
+// The set below is the JSON array of case names to skip. A skipped case
+// is recorded as "ignore" and is not run. The names stay in this file:
+// the Windows command line cannot hold every ignored case.
 
 import { DefaultTestFileLoader } from "YUZUKO_CTS_OUT/common/internal/file_loader.js";
 import { Logger } from "YUZUKO_CTS_OUT/common/internal/logging/logger.js";
@@ -280,10 +275,8 @@ function skipReason(result) {
 }
 
 const args = Array.from(Yuzuko.args);
-const split = args.indexOf("--");
-const queryArgs = split === -1 ? args : args.slice(0, split);
-const ignored = new Set(split === -1 ? [] : args.slice(split + 1));
-const queries = queryArgs.length > 0 ? queryArgs : ["unittests:*"];
+const ignored = new Set(YUZUKO_CTS_IGNORED);
+const queries = args.length > 0 ? args : ["unittests:*"];
 const loader = new DefaultTestFileLoader();
 const log = new Logger();
 const cases = [];
@@ -333,10 +326,23 @@ struct RunnerFile {
   path: PathBuf,
 }
 
+fn runner_source(out_url: &str, skipped: &[String]) -> String {
+  let ignored = serde_json::to_string(skipped).expect("ignored cases");
+  let source = RUNNER
+    .replace("YUZUKO_CTS_OUT", out_url)
+    .replace("YUZUKO_CTS_IGNORED", &ignored);
+  assert!(
+    !source.contains("YUZUKO_CTS_OUT")
+      && !source.contains("YUZUKO_CTS_IGNORED"),
+    "the runner still has a placeholder"
+  );
+  source
+}
+
 impl RunnerFile {
-  fn create(out_dir: &Path) -> Self {
+  fn create(out_dir: &Path, skipped: &[String]) -> Self {
     let url = yuzuko_core::file_url(out_dir).expect("cts output url");
-    let source = RUNNER.replace("YUZUKO_CTS_OUT", &url);
+    let source = runner_source(&url, skipped);
     let path = std::env::temp_dir()
       .join(format!("yuzuko-cts-runner-{}.js", std::process::id()));
     fs::write(&path, source).expect("write cts runner");
@@ -360,7 +366,8 @@ fn run_cases(
   queries: &[String],
   skipped: &[String],
 ) -> BTreeMap<String, Ran> {
-  let runner = RunnerFile::create(&workspace.join("tests/webgpu/suite/out"));
+  let runner =
+    RunnerFile::create(&workspace.join("tests/webgpu/suite/out"), skipped);
   let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
   command
     .current_dir(workspace)
@@ -368,9 +375,6 @@ fn run_cases(
     .arg(&runner.path)
     .arg("--")
     .args(queries);
-  if !skipped.is_empty() {
-    command.arg("--").args(skipped);
-  }
   let output = command.output().expect("spawn yuzuko");
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
@@ -959,6 +963,25 @@ fn suite_name_rejects_a_name_without_a_colon() {
 #[should_panic(expected = "the suite is not a file name")]
 fn suite_name_rejects_a_path_separator() {
   suite_name("web/gpu:api:*");
+}
+
+#[test]
+fn runner_embeds_ignored_case_names() {
+  let name = r#"webgpu:api:format="snorm8x2""#;
+  let source = runner_source("file:///cts/out", &[name.to_string()]);
+  assert!(
+    source.contains("from \"file:///cts/out/common/internal/file_loader.js\"")
+  );
+  assert!(!source.contains("YUZUKO_CTS_OUT"));
+  assert!(!source.contains("YUZUKO_CTS_IGNORED"));
+  let marker = "const ignored = new Set(";
+  let start = source.find(marker).expect("ignored set") + marker.len();
+  let rest = &source[start..];
+  let end = rest.find(");").expect("end of ignored set");
+  let parsed: Vec<String> =
+    serde_json::from_str(&rest[..end]).expect("ignored json");
+  assert_eq!(parsed, vec![name]);
+  assert!(runner_source("file:///cts/out", &[]).contains("new Set([])"));
 }
 
 #[test]
