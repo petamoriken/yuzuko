@@ -1189,12 +1189,20 @@ fn body_on_read(
     finish_body(scope, job, Err(error));
     return;
   }
-  if let Some(bytes) = bytes::buffer_source(scope, chunk) {
-    BODY_READS.with(|slot| {
-      if let Some(state) = slot.borrow_mut().get_mut(&job) {
-        state.output.extend(bytes);
-      }
-    });
+  match bytes::buffer_source(scope, chunk) {
+    Ok(Some(bytes)) => {
+      BODY_READS.with(|slot| {
+        if let Some(state) = slot.borrow_mut().get_mut(&job) {
+          state.output.extend(bytes);
+        }
+      });
+    }
+    Ok(None) => {}
+    Err(error) => {
+      let thrown = error_value(scope, &error);
+      finish_body(scope, job, Err(thrown));
+      return;
+    }
   }
   pull_body(scope, job);
 }
@@ -1251,10 +1259,14 @@ fn body_on_wait(
     return;
   };
   match result {
-    Ok(value) => {
-      let bytes = bytes::buffer_source(scope, value).unwrap_or_default();
-      finish(scope, Ok(bytes));
-    }
+    Ok(value) => match bytes::buffer_source(scope, value) {
+      Ok(bytes) => finish(scope, Ok(bytes.unwrap_or_default())),
+      Err(error) => {
+        let thrown = error_value(scope, &error);
+        let thrown = v8::Global::new(scope, thrown);
+        finish(scope, Err(thrown));
+      }
+    },
     Err(error) => {
       let error = v8::Global::new(scope, error);
       finish(scope, Err(error));
@@ -1299,7 +1311,7 @@ pub fn consume_buffered(
     if v8::Local::<v8::Uint8Array>::try_from(value).is_err() {
       return Err(OpError::type_("The chunk is not a Uint8Array"));
     }
-    if let Some(bytes) = bytes::buffer_source(scope, value) {
+    if let Some(bytes) = bytes::buffer_source(scope, value)? {
       output.extend(bytes);
     }
   }
@@ -5421,7 +5433,7 @@ fn utf8_decode_now<'s>(
     Vec::new()
   } else {
     // Text decode accepts a shared buffer. Compression does not.
-    bytes::buffer_source(scope, chunk)
+    bytes::buffer_source(scope, chunk)?
       .ok_or_else(|| OpError::type_("The chunk is not a BufferSource"))?
   };
   let decoded = WRITES.with(|slot| {
@@ -5928,7 +5940,7 @@ fn buffer_bytes(
   {
     return Err(OpError::type_("The buffer is shared"));
   }
-  bytes::buffer_source(scope, value)
+  bytes::buffer_source(scope, value)?
     .ok_or_else(|| OpError::type_("A compression chunk must be a BufferSource"))
 }
 

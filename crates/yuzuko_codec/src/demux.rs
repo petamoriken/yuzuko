@@ -27,7 +27,7 @@ fn movie_value<'s>(
   if detached(scope, value) {
     return Err(OpError::type_("The MP4 data is detached"));
   }
-  let Some(bytes) = yuzuko_winter::buffer_source(scope, value) else {
+  let Some(bytes) = yuzuko_winter::buffer_source(scope, value)? else {
     return Err(OpError::type_("The MP4 data is not a BufferSource"));
   };
   let movie = crate::mp4::parse(&bytes)

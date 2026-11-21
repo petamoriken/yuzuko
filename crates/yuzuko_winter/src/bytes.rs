@@ -18,26 +18,27 @@ pub fn uint8_array<'s>(
 pub fn buffer_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Option<Vec<u8>> {
+) -> Result<Option<Vec<u8>>, yuzuko_core::op::OpError> {
   // Snapshot shared memory before later writes can change it.
+  // A SharedArrayBuffer cannot be detached.
   if let Ok(buffer) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
-    return Some(shared_bytes(&buffer));
+    return Ok(Some(shared_bytes(&buffer)));
   }
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
     if view
       .buffer(scope)
-      .is_some_and(|buffer| buffer.was_detached())
+      .is_none_or(|buffer| buffer.was_detached())
     {
-      return Some(Vec::new());
+      return Err(detached_buffer());
     }
     let mut bytes = vec![0u8; view.byte_length()];
     let written = view.copy_contents(&mut bytes);
     bytes.truncate(written);
-    return Some(bytes);
+    return Ok(Some(bytes));
   }
   if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
     if buffer.was_detached() {
-      return Some(Vec::new());
+      return Err(detached_buffer());
     }
     let length = buffer.byte_length();
     let mut bytes = vec![0u8; length];
@@ -50,9 +51,13 @@ pub fn buffer_source(
         );
       }
     }
-    return Some(bytes);
+    return Ok(Some(bytes));
   }
-  None
+  Ok(None)
+}
+
+fn detached_buffer() -> yuzuko_core::op::OpError {
+  yuzuko_core::op::OpError::type_("The buffer is detached.")
 }
 
 #[inline]

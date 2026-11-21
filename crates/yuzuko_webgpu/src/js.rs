@@ -26,25 +26,23 @@ pub fn get<'a>(
   scope: &mut v8::PinScope,
   object: v8::Local<'a, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'a, v8::Value>> {
+) -> Result<Option<v8::Local<'a, v8::Value>>, OpError> {
   // Detach the handle from this mutable borrow so callers can use `scope`.
-  yuzuko_core::dictionary_member(scope, object, name).map(|value| unsafe {
-    std::mem::transmute::<v8::Local<'_, v8::Value>, v8::Local<'a, v8::Value>>(
-      value,
-    )
+  yuzuko_core::dictionary_member(scope, object, name).map(|value| {
+    value.map(|value| unsafe {
+      std::mem::transmute::<v8::Local<'_, v8::Value>, v8::Local<'a, v8::Value>>(
+        value,
+      )
+    })
   })
 }
 
+/// WebIDL `DOMString`. `null` converts to `"null"`. A throwing `toString` is returned.
 pub fn string(
-  scope: &v8::PinScope,
+  scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Option<String> {
-  if value.is_null_or_undefined() {
-    return None;
-  }
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
+) -> Result<String, OpError> {
+  try_string(scope, value)
 }
 
 /// `ToString`, keeping a throw from `toString` as the rejection.
@@ -83,29 +81,30 @@ pub fn try_get(
 }
 
 pub fn finite_number(
-  scope: &v8::PinScope,
+  scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<f64, OpError> {
-  yuzuko_core::finite_number(
-    scope,
-    value,
-    yuzuko_core::NumberReject {
-      null_message: None,
-      not_number: "The provided value is not a number",
-      not_finite: "The provided value is not finite",
-    },
-  )
+  yuzuko_core::finite_number(scope, value, "The provided value is not finite")
 }
 
+/// `[EnforceRange] unsigned long`, after `ToNumber`.
 pub fn u32_value(
-  scope: &v8::PinScope,
+  scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<u32, OpError> {
-  let number = finite_number(scope, value)?;
-  if number < 0.0 || number > f64::from(u32::MAX) {
-    return Err(OpError::range("The provided value is out of range"));
-  }
-  Ok(number as u32)
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_u32(number)
+    .ok_or_else(|| OpError::type_("The provided value is out of range"))
+}
+
+/// `[EnforceRange] unsigned long long` (`GPUSize64`). The upper bound is `2^53 − 1`.
+pub fn u64_value(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<u64, OpError> {
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_u64(number)
+    .ok_or_else(|| OpError::type_("The provided value is out of range"))
 }
 
 pub fn field_u32(
@@ -113,7 +112,7 @@ pub fn field_u32(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<u32>, OpError> {
-  let Some(value) = get(scope, object, name) else {
+  let Some(value) = get(scope, object, name)? else {
     return Ok(None);
   };
   u32_value(scope, value).map(Some)
@@ -128,15 +127,92 @@ pub fn required_u32(
     .ok_or_else(|| OpError::type_(format!("{name} is required")))
 }
 
+pub fn field_u64(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<Option<u64>, OpError> {
+  let Some(value) = get(scope, object, name)? else {
+    return Ok(None);
+  };
+  u64_value(scope, value).map(Some)
+}
+
+pub fn required_u64(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<u64, OpError> {
+  field_u64(scope, object, name)?
+    .ok_or_else(|| OpError::type_(format!("{name} is required")))
+}
+
 pub fn index_u32(
   scope: &mut v8::PinScope,
   array: v8::Local<v8::Array>,
   index: u32,
 ) -> Result<u32, OpError> {
-  let Some(value) = array.get_index(scope, index) else {
-    return Ok(0);
-  };
+  let value = read_index(scope, array, index)?;
   u32_value(scope, value)
+}
+
+pub trait GetIndex {
+  fn get_at<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    index: u32,
+  ) -> Option<v8::Local<'s, v8::Value>>;
+}
+
+impl GetIndex for v8::Local<'_, v8::Object> {
+  fn get_at<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    index: u32,
+  ) -> Option<v8::Local<'s, v8::Value>> {
+    self.get_index(scope, index)
+  }
+}
+
+impl GetIndex for v8::Local<'_, v8::Array> {
+  fn get_at<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    index: u32,
+  ) -> Option<v8::Local<'s, v8::Value>> {
+    self.get_index(scope, index)
+  }
+}
+
+/// Array element. A throwing getter is returned. A hole is `undefined`.
+pub fn read_index<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: impl GetIndex,
+  index: u32,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match object.get_at(tc, index) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => Err(match tc.exception() {
+        Some(thrown) => OpError::thrown(tc, thrown),
+        None => OpError::type_("The provided value is not readable"),
+      }),
+    }
+  };
+  captured.map(|value| v8::Local::new(scope, value))
+}
+
+/// `[EnforceRange] unsigned long long` for an `#[op]` argument.
+pub struct GpuSize64(pub u64);
+
+impl yuzuko_core::op::FromV8 for GpuSize64 {
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    u64_value(scope, value).map(GpuSize64)
+  }
 }
 
 pub fn set_u32(

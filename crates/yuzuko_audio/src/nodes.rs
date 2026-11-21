@@ -41,7 +41,7 @@ fn dictionary<'s>(
   }
   let object = v8::Local::<v8::Object>::try_from(options)
     .map_err(|_| OpError::type_("AudioNode options are not an object"))?;
-  Ok(util::member(scope, object, name))
+  util::member(scope, object, name)
 }
 
 fn member_u32(
@@ -65,7 +65,7 @@ fn member_choice(
   let Some(raw) = dictionary(scope, options, name)? else {
     return Ok(None);
   };
-  parse(util::rust_string(scope, raw).as_str())
+  parse(util::rust_string(scope, raw)?.as_str())
     .map(Some)
     .ok_or_else(|| OpError::type_(invalid))
 }
@@ -499,7 +499,7 @@ pub(crate) fn build_biquad(
 ) -> Result<BiquadFilterNode, OpError> {
   let opts = node_options(scope, options, 2, "max", "speakers")?;
   let kind = match dictionary(scope, options, "type")? {
-    Some(value) => biquad_kind(&util::rust_string(scope, value))?,
+    Some(value) => biquad_kind(&util::rust_string(scope, value)?)?,
     None => BiquadKind::Lowpass,
   };
   let rate = engine::context_rate(context).unwrap_or(48000.0);
@@ -812,7 +812,7 @@ pub(crate) fn build_wave_shaper(
 ) -> Result<WaveShaperNode, OpError> {
   let opts = node_options(scope, options, 2, "max", "speakers")?;
   let oversample = match dictionary(scope, options, "oversample")? {
-    Some(value) => oversample_factor(&util::rust_string(scope, value))?,
+    Some(value) => oversample_factor(&util::rust_string(scope, value)?)?,
     None => 1,
   };
   let curve = optional_curve(scope, options)?;
@@ -997,11 +997,11 @@ pub(crate) fn build_panner(
   options: v8::Local<v8::Value>,
 ) -> Result<PannerNode, OpError> {
   let model = match dictionary(scope, options, "panningModel")? {
-    Some(value) => check_panning(&util::rust_string(scope, value))?,
+    Some(value) => check_panning(&util::rust_string(scope, value)?)?,
     None => PanningModel::EqualPower,
   };
   let distance = match dictionary(scope, options, "distanceModel")? {
-    Some(value) => distance_model(&util::rust_string(scope, value))?,
+    Some(value) => distance_model(&util::rust_string(scope, value)?)?,
     None => DistanceModel::Inverse,
   };
   let ref_distance =
@@ -1265,7 +1265,7 @@ pub(crate) fn build_convolver(
   options: v8::Local<v8::Value>,
 ) -> Result<ConvolverNode, OpError> {
   let opts = stereo_shell(scope, options)?;
-  let normalize = !option_bool(scope, options, "disableNormalization");
+  let normalize = !option_bool(scope, options, "disableNormalization")?;
   let buffer = convolver_buffer(scope, options)?;
   if let Some((buffer, _)) = &buffer {
     convolver_channels(scope, *buffer)?;
@@ -1360,7 +1360,7 @@ fn makeup_option(
     return Ok(Makeup::Automatic);
   };
   if raw.is_string() {
-    return match util::rust_string(scope, raw).as_str() {
+    return match util::rust_string(scope, raw)?.as_str() {
       "automatic" => Ok(Makeup::Automatic),
       _ => Err(OpError::type_("The makeup gain is invalid")),
     };

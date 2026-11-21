@@ -6,30 +6,22 @@ pub fn member<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
 pub fn rust_string(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> String {
-  yuzuko_core::rust_string_or(scope, value, "")
+) -> Result<String, OpError> {
+  yuzuko_core::op::FromV8::from_v8(scope, value)
 }
 
 pub fn finite_number(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<f64, OpError> {
-  yuzuko_core::finite_number(
-    scope,
-    value,
-    yuzuko_core::NumberReject {
-      null_message: Some("The value is null"),
-      not_number: "The value is not a number",
-      not_finite: "The value is not finite",
-    },
-  )
+  yuzuko_core::finite_number(scope, value, "The value is not finite")
 }
 
 pub fn dom_exception<'s>(

@@ -2541,7 +2541,7 @@ pub(crate) fn extract_body(
     let mime = (!mime.is_empty()).then_some(mime);
     return Ok(Some(Extracted::Bytes(bytes, mime)));
   }
-  if let Some(bytes) = crate::bytes::buffer_source(scope, body) {
+  if let Some(bytes) = crate::bytes::buffer_source(scope, body)? {
     return Ok(Some(Extracted::Bytes(bytes, None)));
   }
   if let Ok(object) = v8::Local::<v8::Object>::try_from(body) {

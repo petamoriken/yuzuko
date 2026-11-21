@@ -683,7 +683,7 @@ pub fn extract_xhr_body(
   if detached_buffer(scope, body) {
     return Err(OpError::type_("The buffer is detached."));
   }
-  if let Some(bytes) = crate::bytes::buffer_source(scope, body) {
+  if let Some(bytes) = crate::bytes::buffer_source(scope, body)? {
     return Ok(Some(XhrBody {
       bytes,
       content_type: None,

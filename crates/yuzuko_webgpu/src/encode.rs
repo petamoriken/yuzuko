@@ -314,7 +314,7 @@ impl GpuCommandEncoder {
     Ok(New(GpuRenderPass {
       encoder: self.id,
       ended: Cell::new(false),
-      label: ObjectLabel::new(resource::optional_label(scope, object)),
+      label: ObjectLabel::new(resource::optional_label(scope, object)?),
     }))
   }
 
@@ -330,7 +330,7 @@ impl GpuCommandEncoder {
         })?;
         (
           timestamp_writes(scope, object)?,
-          resource::optional_label(scope, object),
+          resource::optional_label(scope, object)?,
         )
       }
       _ => (None, None),
@@ -363,25 +363,33 @@ impl GpuCommandEncoder {
     &self,
     scope: &mut v8::PinScope,
     source: v8::Local<v8::Value>,
-    source_offset: u32,
+    source_offset: js::GpuSize64,
     destination: v8::Local<v8::Value>,
-    destination_offset: u32,
-    size: u32,
+    destination_offset: js::GpuSize64,
+    size: js::GpuSize64,
   ) -> Result<(), OpError> {
-    if size == 0 {
+    if size.0 == 0 {
       return Err(OpError::range("The copy size must be non-zero"));
     }
     let source =
       alive_buffer(scope, source, "The copy source is not a buffer")?;
     let destination =
       alive_buffer(scope, destination, "The copy destination is not a buffer")?;
+    if !range_inside(&source, source_offset.0, size.0)
+      || !range_inside(&destination, destination_offset.0, size.0)
+    {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     with_idle_encoder(self.id, |encoder| {
       encoder.copy_buffer_to_buffer(
         &source,
-        u64::from(source_offset),
+        source_offset.0,
         &destination,
-        u64::from(destination_offset),
-        u64::from(size),
+        destination_offset.0,
+        size.0,
       );
       Ok(())
     })
@@ -397,19 +405,24 @@ impl GpuCommandEncoder {
     let source = js::object(scope, source).ok_or_else(|| {
       OpError::type_("copyTextureToBuffer source must be an object")
     })?;
-    let texture = js::get(scope, source, "texture")
+    let texture = js::get(scope, source, "texture")?
       .and_then(|value| resource::host_texture(scope, value))
       .ok_or_else(|| OpError::type_("The copy source is not a texture"))?;
     let texture = texture.texture()?;
     let destination = js::object(scope, destination).ok_or_else(|| {
       OpError::type_("copyTextureToBuffer destination must be an object")
     })?;
-    let buffer = js::get(scope, destination, "buffer")
+    let buffer = js::get(scope, destination, "buffer")?
       .and_then(|value| resource::host_buffer(scope, value))
       .ok_or_else(|| OpError::type_("The copy destination is not a buffer"))?;
     let buffer = buffer.alive()?;
-    let offset =
-      u64::from(js::field_u32(scope, destination, "offset")?.unwrap_or(0));
+    let offset = js::field_u64(scope, destination, "offset")?.unwrap_or(0);
+    if offset > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     let bytes_per_row = js::field_u32(scope, destination, "bytesPerRow")?;
     let (width, height) = copy_size(scope, size)?;
     with_idle_encoder(self.id, |encoder| {
@@ -437,8 +450,8 @@ impl GpuCommandEncoder {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: Option<u32>,
-    size: Option<u32>,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let _ = (offset, size);
     let _ = alive_buffer(scope, buffer, "clearBuffer requires a GPUBuffer")?;
@@ -478,7 +491,7 @@ impl GpuCommandEncoder {
     first_query: u32,
     query_count: u32,
     destination: v8::Local<v8::Value>,
-    destination_offset: u32,
+    destination_offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     if query_count == 0 {
       return Err(OpError::range("The query count must be non-zero"));
@@ -502,9 +515,9 @@ impl GpuCommandEncoder {
     // a destroyed set resolves one index past the end. `u32::MAX` cannot, and
     // a misaligned offset is still a validation error.
     let (start, end, offset) = if !destroyed {
-      (first_query, end, u64::from(destination_offset))
+      (first_query, end, destination_offset.0)
     } else if stored < u32::MAX {
-      (stored, stored + 1, u64::from(destination_offset))
+      (stored, stored + 1, destination_offset.0)
     } else {
       (first_query, end, 1)
     };
@@ -571,7 +584,7 @@ impl GpuCommandEncoder {
     })?;
     Ok(New(GpuCommandBuffer {
       buffer: RefCell::new(Some(encoder.finish())),
-      label: ObjectLabel::new(descriptor_label(scope, descriptor)),
+      label: ObjectLabel::new(descriptor_label(scope, descriptor)?),
     }))
   }
 }
@@ -687,8 +700,8 @@ impl GpuRenderPass {
     scope: &mut v8::PinScope,
     slot: u32,
     buffer: v8::Local<v8::Value>,
-    offset: Option<u32>,
-    size: Option<u32>,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
     self.push(PassCommand::Vertex {
@@ -704,8 +717,8 @@ impl GpuRenderPass {
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
     format: String,
-    offset: Option<u32>,
-    size: Option<u32>,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let format = resource::index_format(&format)?;
     let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
@@ -770,13 +783,19 @@ impl GpuRenderPass {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndirect requires a GPUBuffer")?;
+    if offset.0 > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     self.push_draw(PassCommand::DrawIndirect {
       buffer,
-      offset: u64::from(offset),
+      offset: offset.0,
     })
   }
 
@@ -784,13 +803,19 @@ impl GpuRenderPass {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndexedIndirect requires a GPUBuffer")?;
+    if offset.0 > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     self.push_draw(PassCommand::DrawIndexedIndirect {
       buffer,
-      offset: u64::from(offset),
+      offset: offset.0,
     })
   }
 
@@ -840,7 +865,7 @@ impl GpuRenderPass {
     let mut recorded = Vec::new();
     let mut draws = 0u64;
     for index in 0..array.length() {
-      let value = array.get_index(scope, index).unwrap();
+      let value = js::read_index(scope, array, index)?;
       let bundle = host_bundle(scope, value).ok_or_else(|| {
         OpError::type_("executeBundles requires GPURenderBundle objects")
       })?;
@@ -1054,16 +1079,22 @@ impl GpuComputePass {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     let buffer = alive_buffer(
       scope,
       buffer,
       "dispatchWorkgroupsIndirect requires a GPUBuffer",
     )?;
+    if offset.0 > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     self.push(ComputeCommand::DispatchIndirect {
       buffer,
-      offset: u64::from(offset),
+      offset: offset.0,
     })
   }
 
@@ -1216,7 +1247,7 @@ pub fn create_bundle_encoder(
   Ok(New(GpuRenderBundleEncoder {
     id,
     ended: Cell::new(false),
-    label: ObjectLabel::new(resource::optional_label(scope, object)),
+    label: ObjectLabel::new(resource::optional_label(scope, object)?),
   }))
 }
 
@@ -1249,8 +1280,8 @@ impl GpuRenderBundleEncoder {
     scope: &mut v8::PinScope,
     slot: u32,
     buffer: v8::Local<v8::Value>,
-    offset: Option<u32>,
-    size: Option<u32>,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
     self.push(BundleCommand::Vertex {
@@ -1266,8 +1297,8 @@ impl GpuRenderBundleEncoder {
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
     format: String,
-    offset: Option<u32>,
-    size: Option<u32>,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let format = resource::index_format(&format)?;
     let (buffer, offset, size) = buffer_span(scope, buffer, offset, size)?;
@@ -1332,13 +1363,19 @@ impl GpuRenderBundleEncoder {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndirect requires a GPUBuffer")?;
+    if offset.0 > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     self.push(BundleCommand::DrawIndirect {
       buffer,
-      offset: u64::from(offset),
+      offset: offset.0,
     })
   }
 
@@ -1346,13 +1383,19 @@ impl GpuRenderBundleEncoder {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
   ) -> Result<(), OpError> {
     let buffer =
       alive_buffer(scope, buffer, "drawIndexedIndirect requires a GPUBuffer")?;
+    if offset.0 > buffer.size() {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     self.push(BundleCommand::DrawIndexedIndirect {
       buffer,
-      offset: u64::from(offset),
+      offset: offset.0,
     })
   }
 
@@ -1429,7 +1472,7 @@ impl GpuRenderBundleEncoder {
     Ok(New(GpuRenderBundle {
       bundle,
       draws,
-      label: ObjectLabel::new(descriptor_label(scope, descriptor)),
+      label: ObjectLabel::new(descriptor_label(scope, descriptor)?),
     }))
   }
 }
@@ -1505,12 +1548,16 @@ impl GpuRenderBundle {
 fn descriptor_label(
   scope: &mut v8::PinScope,
   descriptor: Option<v8::Local<v8::Value>>,
-) -> Option<String> {
-  let value = descriptor?;
+) -> Result<Option<String>, OpError> {
+  let Some(value) = descriptor else {
+    return Ok(None);
+  };
   if value.is_null_or_undefined() {
-    return None;
+    return Ok(None);
   }
-  let object = js::object(scope, value)?;
+  let Some(object) = js::object(scope, value) else {
+    return Ok(None);
+  };
   resource::optional_label(scope, object)
 }
 
@@ -1862,20 +1909,15 @@ fn bundle_draw_count(slot: &BundleSlot) -> u64 {
 }
 
 const DEFAULT_MAX_DRAWS: u64 = 50_000_000;
-const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 fn max_draw_count(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
 ) -> Result<u64, OpError> {
-  let Some(value) = js::get(scope, descriptor, "maxDrawCount") else {
+  let Some(value) = js::get(scope, descriptor, "maxDrawCount")? else {
     return Ok(DEFAULT_MAX_DRAWS);
   };
-  let number = js::finite_number(scope, value)?;
-  if !(0.0..=MAX_SAFE_INTEGER).contains(&number) {
-    return Err(OpError::range("maxDrawCount is out of range"));
-  }
-  Ok(number.trunc() as u64)
+  js::u64_value(scope, value)
 }
 
 fn viewport_args(
@@ -1916,44 +1958,46 @@ fn color_targets(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
 ) -> Result<Vec<Option<ColorTarget>>, OpError> {
-  let value = js::get(scope, descriptor, "colorAttachments")
+  let value = js::get(scope, descriptor, "colorAttachments")?
     .ok_or_else(|| OpError::type_("colorAttachments is required"))?;
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("colorAttachments must be an array"))?;
   let mut colors = Vec::new();
   for index in 0..array.length() {
-    let value = array.get_index(scope, index).unwrap();
+    let value = js::read_index(scope, array, index)?;
     if value.is_null() {
       colors.push(None);
       continue;
     }
     let attachment = js::object(scope, value)
       .ok_or_else(|| OpError::type_("A color attachment must be an object"))?;
-    if js::get(scope, attachment, "depthSlice")
+    if js::get(scope, attachment, "depthSlice")?
       .is_some_and(|value| !value.is_null())
     {
       return Err(js::unsupported("GPURenderPassColorAttachment.depthSlice"));
     }
-    let resolve = match js::get(scope, attachment, "resolveTarget") {
+    let resolve = match js::get(scope, attachment, "resolveTarget")? {
       Some(value) if !value.is_null_or_undefined() => {
         Some(resource::attachment_view(scope, value)?.0)
       }
       _ => None,
     };
-    let view = js::get(scope, attachment, "view")
+    let view = js::get(scope, attachment, "view")?
       .ok_or_else(|| OpError::type_("A color attachment view is required"))?;
     let (view, _) = resource::attachment_view(scope, view)?;
-    let load = js::get(scope, attachment, "loadOp")
-      .and_then(|value| js::string(scope, value))
+    let load = js::get(scope, attachment, "loadOp")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
       .unwrap_or_else(|| "load".to_string());
     let clear = if load == "clear" {
-      let clear_value = js::get(scope, attachment, "clearValue");
-      Some(clear_color(scope, clear_value))
+      let clear_value = js::get(scope, attachment, "clearValue")?;
+      Some(clear_color(scope, clear_value)?)
     } else {
       None
     };
-    let store = js::get(scope, attachment, "storeOp")
-      .and_then(|value| js::string(scope, value))
+    let store = js::get(scope, attachment, "storeOp")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
       .as_deref()
       != Some("discard");
     colors.push(Some(ColorTarget {
@@ -1970,7 +2014,8 @@ fn depth_target(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
 ) -> Result<Option<DepthTarget>, OpError> {
-  let Some(value) = js::get(scope, descriptor, "depthStencilAttachment") else {
+  let Some(value) = js::get(scope, descriptor, "depthStencilAttachment")?
+  else {
     return Ok(None);
   };
   if value.is_null_or_undefined() {
@@ -1978,7 +2023,7 @@ fn depth_target(
   }
   let attachment = js::object(scope, value)
     .ok_or_else(|| OpError::type_("A depth attachment must be an object"))?;
-  let view = js::get(scope, attachment, "view")
+  let view = js::get(scope, attachment, "view")?
     .filter(|value| !value.is_null_or_undefined())
     .ok_or_else(|| OpError::type_("A depth attachment view is required"))?;
   let (view, format) = resource::attachment_view(scope, view)?;
@@ -1988,9 +2033,12 @@ fn depth_target(
     format.has_depth_aspect(),
     "depth",
     |scope, attachment| {
-      js::get(scope, attachment, "depthClearValue")
-        .and_then(|value| value.number_value(scope))
-        .unwrap_or(0.0) as f32
+      let value = js::get(scope, attachment, "depthClearValue")?;
+      Ok(
+        value
+          .and_then(|item| item.number_value(scope))
+          .unwrap_or(0.0) as f32,
+      )
     },
   )?;
   let stencil_ops = aspect_ops(
@@ -1999,10 +2047,7 @@ fn depth_target(
     format.has_stencil_aspect(),
     "stencil",
     |scope, attachment| {
-      js::field_u32(scope, attachment, "stencilClearValue")
-        .ok()
-        .flatten()
-        .unwrap_or(0)
+      Ok(js::field_u32(scope, attachment, "stencilClearValue")?.unwrap_or(0))
     },
   )?;
   Ok(Some(DepthTarget {
@@ -2017,19 +2062,22 @@ fn aspect_ops<T: Copy>(
   attachment: v8::Local<v8::Object>,
   has_aspect: bool,
   prefix: &str,
-  clear_value: impl FnOnce(&mut v8::PinScope, v8::Local<v8::Object>) -> T,
+  clear_value: impl FnOnce(
+    &mut v8::PinScope,
+    v8::Local<v8::Object>,
+  ) -> Result<T, OpError>,
 ) -> Result<Option<wgpu::Operations<T>>, OpError> {
   let read_only_name = format!("{prefix}ReadOnly");
   let load_name = format!("{prefix}LoadOp");
   let store_name = format!("{prefix}StoreOp");
-  let read_only = js::get(scope, attachment, &read_only_name)
+  let read_only = js::get(scope, attachment, &read_only_name)?
     .is_some_and(|value| value.boolean_value(scope));
-  let load = js::get(scope, attachment, &load_name)
-    .filter(|value| !value.is_null_or_undefined())
-    .and_then(|value| js::string(scope, value));
-  let store = js::get(scope, attachment, &store_name)
-    .filter(|value| !value.is_null_or_undefined())
-    .and_then(|value| js::string(scope, value));
+  let load = js::get(scope, attachment, &load_name)?
+    .map(|value| js::string(scope, value))
+    .transpose()?;
+  let store = js::get(scope, attachment, &store_name)?
+    .map(|value| js::string(scope, value))
+    .transpose()?;
   if !has_aspect {
     if read_only || load.is_some() || store.is_some() {
       return Err(OpError::type_(format!(
@@ -2052,7 +2100,7 @@ fn aspect_ops<T: Copy>(
     store.ok_or_else(|| OpError::type_(format!("{store_name} is required")))?;
   let load = match load.as_str() {
     "load" => wgpu::LoadOp::Load,
-    "clear" => wgpu::LoadOp::Clear(clear_value(scope, attachment)),
+    "clear" => wgpu::LoadOp::Clear(clear_value(scope, attachment)?),
     _ => return Err(OpError::type_(format!("{load_name} is invalid"))),
   };
   let store = match store.as_str() {
@@ -2067,7 +2115,7 @@ fn occlusion_query_set(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
 ) -> Result<Option<wgpu::QuerySet>, OpError> {
-  let Some(value) = js::get(scope, descriptor, "occlusionQuerySet") else {
+  let Some(value) = js::get(scope, descriptor, "occlusionQuerySet")? else {
     return Ok(None);
   };
   if value.is_null_or_undefined() {
@@ -2087,7 +2135,7 @@ fn timestamp_writes(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
 ) -> Result<Option<TimestampWrite>, OpError> {
-  let Some(value) = js::get(scope, descriptor, "timestampWrites") else {
+  let Some(value) = js::get(scope, descriptor, "timestampWrites")? else {
     return Ok(None);
   };
   if value.is_null_or_undefined() {
@@ -2095,7 +2143,7 @@ fn timestamp_writes(
   }
   let writes = js::object(scope, value)
     .ok_or_else(|| OpError::type_("timestampWrites must be an object"))?;
-  let query_value = js::get(scope, writes, "querySet")
+  let query_value = js::get(scope, writes, "querySet")?
     .ok_or_else(|| OpError::type_("timestampWrites.querySet is required"))?;
   let query =
     resource::host_query_set(scope, query_value).ok_or_else(|| {
@@ -2126,19 +2174,18 @@ fn bundle_color_formats(
   descriptor: v8::Local<v8::Object>,
   features: wgpu::Features,
 ) -> Result<Vec<Option<wgpu::TextureFormat>>, OpError> {
-  let value = js::get(scope, descriptor, "colorFormats")
+  let value = js::get(scope, descriptor, "colorFormats")?
     .ok_or_else(|| OpError::type_("colorFormats is required"))?;
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("colorFormats must be an array"))?;
   let mut formats = Vec::new();
   for index in 0..array.length() {
-    let value = array.get_index(scope, index).unwrap();
+    let value = js::read_index(scope, array, index)?;
     if value.is_null() {
       formats.push(None);
       continue;
     }
-    let name = js::string(scope, value)
-      .ok_or_else(|| OpError::type_("A color format is required"))?;
+    let name = js::string(scope, value)?;
     let format = resource::texture_format(&name)?;
     formats.push(Some(resource::require_texture_format(features, format)?));
   }
@@ -2150,21 +2197,20 @@ fn bundle_depth(
   descriptor: v8::Local<v8::Object>,
   features: wgpu::Features,
 ) -> Result<Option<wgpu::RenderBundleDepthStencil>, OpError> {
-  let Some(value) = js::get(scope, descriptor, "depthStencilFormat") else {
+  let Some(value) = js::get(scope, descriptor, "depthStencilFormat")? else {
     return Ok(None);
   };
   if value.is_null_or_undefined() {
     return Ok(None);
   }
-  let name = js::string(scope, value)
-    .ok_or_else(|| OpError::type_("depthStencilFormat is invalid"))?;
+  let name = js::string(scope, value)?;
   let format = resource::require_texture_format(
     features,
     resource::texture_format(&name)?,
   )?;
-  let depth_read_only = js::get(scope, descriptor, "depthReadOnly")
+  let depth_read_only = js::get(scope, descriptor, "depthReadOnly")?
     .is_some_and(|value| value.boolean_value(scope));
-  let stencil_read_only = js::get(scope, descriptor, "stencilReadOnly")
+  let stencil_read_only = js::get(scope, descriptor, "stencilReadOnly")?
     .is_some_and(|value| value.boolean_value(scope));
   Ok(Some(wgpu::RenderBundleDepthStencil {
     format,
@@ -2176,24 +2222,31 @@ fn bundle_depth(
 fn clear_color(
   scope: &mut v8::PinScope,
   value: Option<v8::Local<v8::Value>>,
-) -> wgpu::Color {
+) -> Result<wgpu::Color, OpError> {
   let Some(value) = value else {
-    return wgpu::Color::TRANSPARENT;
+    return Ok(wgpu::Color::TRANSPARENT);
   };
   if let Some(object) = js::object(scope, value) {
-    let mut channel = |name, default| {
-      js::get(scope, object, name)
-        .and_then(|value| value.number_value(scope))
-        .unwrap_or(default)
-    };
-    return wgpu::Color {
-      r: channel("r", 0.0),
-      g: channel("g", 0.0),
-      b: channel("b", 0.0),
-      a: channel("a", 1.0),
-    };
+    return Ok(wgpu::Color {
+      r: color_channel(scope, object, "r", 0.0)?,
+      g: color_channel(scope, object, "g", 0.0)?,
+      b: color_channel(scope, object, "b", 0.0)?,
+      a: color_channel(scope, object, "a", 1.0)?,
+    });
   }
-  wgpu::Color::TRANSPARENT
+  Ok(wgpu::Color::TRANSPARENT)
+}
+
+fn color_channel(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  default: f64,
+) -> Result<f64, OpError> {
+  let Some(value) = js::get(scope, object, name)? else {
+    return Ok(default);
+  };
+  js::finite_number(scope, value)
 }
 
 fn copy_size(
@@ -2229,11 +2282,29 @@ fn alive_buffer(
 fn buffer_span(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-  offset: Option<u32>,
-  size: Option<u32>,
+  offset: Option<js::GpuSize64>,
+  size: Option<js::GpuSize64>,
 ) -> Result<(wgpu::Buffer, u64, Option<u64>), OpError> {
   let buffer = alive_buffer(scope, value, "A GPUBuffer is required")?;
-  Ok((buffer, u64::from(offset.unwrap_or(0)), size.map(u64::from)))
+  let offset = offset.map(|value| value.0).unwrap_or(0);
+  let size = size.map(|value| value.0);
+  let end = match size {
+    Some(size) => offset.checked_add(size).ok_or_else(|| {
+      OpError::dom("OperationError", "The buffer offset is out of range")
+    })?,
+    None => buffer.size(),
+  };
+  if offset > buffer.size() || end > buffer.size() {
+    return Err(OpError::dom(
+      "OperationError",
+      "The buffer offset is out of range",
+    ));
+  }
+  Ok((buffer, offset, size))
+}
+
+fn range_inside(buffer: &wgpu::Buffer, offset: u64, size: u64) -> bool {
+  offset <= buffer.size() && size <= buffer.size() - offset
 }
 
 fn bind_group(
@@ -2270,9 +2341,10 @@ fn offset_list(
 ) -> Result<Vec<u32>, OpError> {
   let object = js::object(scope, value)
     .ok_or_else(|| OpError::type_("Dynamic offsets must be a sequence"))?;
-  let total = js::get(scope, object, "length")
-    .and_then(|value| value.uint32_value(scope))
+  let total_value = js::get(scope, object, "length")?
     .ok_or_else(|| OpError::type_("Dynamic offsets must be a sequence"))?;
+  let total =
+    yuzuko_core::modulo_u32(yuzuko_core::to_number(scope, total_value)?);
   let start = start.unwrap_or(0);
   let length = length.unwrap_or(total.saturating_sub(start));
   if start.saturating_add(length) > total {
@@ -2280,7 +2352,7 @@ fn offset_list(
   }
   let mut offsets = Vec::with_capacity(length as usize);
   for index in start..start + length {
-    let item = object.get_index(scope, index).unwrap();
+    let item = js::read_index(scope, object, index)?;
     offsets.push(js::u32_value(scope, item)?);
   }
   Ok(offsets)
@@ -2295,7 +2367,7 @@ pub fn command_buffers(
   })?;
   let mut buffers = Vec::new();
   for index in 0..array.length() {
-    let value = array.get_index(scope, index).unwrap();
+    let value = js::read_index(scope, array, index)?;
     let object = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
       OpError::type_("submit requires GPUCommandBuffer objects")
     })?;

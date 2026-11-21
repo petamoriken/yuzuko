@@ -3032,7 +3032,7 @@ fn buffer(
   {
     return Err(OpError::type_("The buffer is shared"));
   }
-  bytes::buffer_source(scope, value)
+  bytes::buffer_source(scope, value)?
     .ok_or_else(|| OpError::type_("The value is not a BufferSource"))
 }
 

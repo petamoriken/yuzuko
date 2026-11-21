@@ -843,7 +843,7 @@ fn object_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
@@ -894,19 +894,19 @@ fn parse_options(
   let Ok(object) = v8::Local::<v8::Object>::try_from(args.get(0)) else {
     return Err(OpError::type_("Window options must be an object"));
   };
-  let width = match object_value(scope, object, "width") {
+  let width = match object_value(scope, object, "width")? {
     Some(value) => {
       css_length(<f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)?)?
     }
     None => default_width,
   };
-  let height = match object_value(scope, object, "height") {
+  let height = match object_value(scope, object, "height")? {
     Some(value) => {
       css_length(<f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)?)?
     }
     None => default_height,
   };
-  let title = match object_value(scope, object, "title") {
+  let title = match object_value(scope, object, "title")? {
     Some(value) => <String as yuzuko_core::op::FromV8>::from_v8(scope, value)?,
     None => default_title(),
   };
@@ -950,7 +950,7 @@ fn option_length(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Result<Option<f64>, OpError> {
-  match object_value(scope, object, name) {
+  match object_value(scope, object, name)? {
     Some(value) => {
       let number = <f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)?;
       Ok(Some(css_length(number)?))
@@ -999,7 +999,7 @@ fn option_bool(
   name: &str,
   default: bool,
 ) -> Result<bool, OpError> {
-  match object_value(scope, object, name) {
+  match object_value(scope, object, name)? {
     Some(value) => <bool as yuzuko_core::op::FromV8>::from_v8(scope, value),
     None => Ok(default),
   }
@@ -1010,7 +1010,7 @@ fn option_coord(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Result<Option<f64>, OpError> {
-  match object_value(scope, object, name) {
+  match object_value(scope, object, name)? {
     Some(value) => {
       let number = <f64 as yuzuko_core::op::FromV8>::from_v8(scope, value)?;
       Ok(Some(finite_coord(number)?))

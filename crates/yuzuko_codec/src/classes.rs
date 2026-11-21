@@ -9,7 +9,6 @@ use yuzuko_core::op::{
   Js, New, OpError, host_ref, new_dom_exception, traced, traced_local,
   wrap_instance,
 };
-use yuzuko_core::rust_string;
 use yuzuko_dom::EventTarget;
 use yuzuko_image::{FramePixels, Raster};
 use yuzuko_macros::op;
@@ -2048,13 +2047,13 @@ fn check_video(
   let height = optional_positive(scope, object, "codedHeight")?;
   let display_width = optional_positive(scope, object, "displayAspectWidth")?;
   let display_height = optional_positive(scope, object, "displayAspectHeight")?;
-  let acceleration = match member(scope, object, "hardwareAcceleration") {
+  let acceleration = match member(scope, object, "hardwareAcceleration")? {
     Some(hint) => Some(acceleration_hint(scope, hint)?),
     None => None,
   };
   let color_space = optional_color_space(scope, object)?;
   let rotation = config_rotation(scope, object)?;
-  let flip = member(scope, object, "flip")
+  let flip = member(scope, object, "flip")?
     .is_some_and(|value| value.boolean_value(scope));
   let kind = video_codec(&codec);
   let supported = match kind {
@@ -2085,7 +2084,7 @@ fn config_rotation(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<u16, OpError> {
-  let Some(value) = member(scope, object, "rotation") else {
+  let Some(value) = member(scope, object, "rotation")? else {
     return Ok(0);
   };
   let number = value
@@ -2117,7 +2116,7 @@ fn optional_color_space(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Option<VideoColorInit>, OpError> {
-  let Some(value) = member(scope, object, "colorSpace") else {
+  let Some(value) = member(scope, object, "colorSpace")? else {
     return Ok(None);
   };
   if value.is_null() {
@@ -2216,10 +2215,10 @@ fn chunk_parts(
     "delta" => false,
     _ => return Err(OpError::type_("The chunk type is invalid")),
   };
-  let Some(timestamp) = member(scope, object, "timestamp") else {
+  let Some(timestamp) = member(scope, object, "timestamp")? else {
     return Err(OpError::type_("timestamp is required"));
   };
-  let Some(data) = member(scope, object, "data") else {
+  let Some(data) = member(scope, object, "data")? else {
     return Err(OpError::type_("data is required"));
   };
   if source_byte_len(scope, data).is_none() {
@@ -2242,19 +2241,11 @@ fn chunk_duration(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Option<f64>, OpError> {
-  let Some(value) = member(scope, object, "duration") else {
+  let Some(value) = member(scope, object, "duration")? else {
     return Ok(None);
   };
-  if value.is_null() {
-    return Ok(None);
-  }
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("duration is not a number"))?;
-  if !number.is_finite() || number < 0.0 || number > u64::MAX as f64 {
-    return Err(OpError::type_("duration is out of range"));
-  }
-  Ok(Some(number.trunc()))
+  // A present `null` converts to `0`. An omitted member stays absent.
+  Ok(Some(enforce_u64(scope, value, "duration")? as f64))
 }
 
 fn decoder_init<'s>(
@@ -2285,7 +2276,7 @@ pub(crate) fn member<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
@@ -2307,16 +2298,24 @@ pub(crate) fn transfer_buffers(
   scope: &mut v8::PinScope,
   init: v8::Local<v8::Object>,
 ) -> Result<Vec<v8::Global<v8::ArrayBuffer>>, OpError> {
-  let Some(value) = member(scope, init, "transfer") else {
+  let Some(value) = member(scope, init, "transfer")? else {
     return Ok(Vec::new());
   };
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("transfer is not a sequence"))?;
   let mut buffers = Vec::new();
   for index in 0..array.length() {
-    let Some(item) = array.get_index(scope, index) else {
-      continue;
-    };
+    let item = {
+      v8::tc_scope!(let tc, scope);
+      match array.get_index(tc, index) {
+        Some(value) => Ok(v8::Global::new(tc, value)),
+        None => Err(match tc.exception() {
+          Some(thrown) => OpError::thrown(tc, thrown),
+          None => OpError::type_("transfer is not a sequence"),
+        }),
+      }
+    }?;
+    let item = v8::Local::new(scope, item);
     let buffer =
       v8::Local::<v8::ArrayBuffer>::try_from(item).map_err(|_| {
         OpError::type_("A transfer list entry is not an ArrayBuffer")
@@ -2398,7 +2397,7 @@ pub(crate) fn bytes_from_source<'s>(
   if let Some(store) = adopted_store(scope, value, buffers) {
     return Ok(store);
   }
-  let Some(bytes) = buffer_source(scope, value) else {
+  let Some(bytes) = buffer_source(scope, value)? else {
     return Err(OpError::type_("data is not a BufferSource"));
   };
   Ok(ByteStore::owned(bytes))
@@ -2456,10 +2455,10 @@ fn required_string(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<String, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
-  Ok(rust_string(scope, value))
+  idl_string(scope, value)
 }
 
 fn required_function<'s>(
@@ -2467,7 +2466,7 @@ fn required_function<'s>(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<v8::Local<'s, v8::Function>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
   v8::Local::<v8::Function>::try_from(value)
@@ -2479,7 +2478,7 @@ fn required_u32(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
   unsigned(scope, value, name)
@@ -2490,13 +2489,13 @@ fn optional_buffer(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<Vec<u8>>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(None);
   };
   if detached_buffer(scope, value) {
     return Err(OpError::type_(format!("{name} is detached")));
   }
-  buffer_source(scope, value)
+  buffer_source(scope, value)?
     .map(Some)
     .ok_or_else(|| OpError::type_(format!("{name} is not a BufferSource")))
 }
@@ -2535,7 +2534,7 @@ fn optional_positive(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<u32>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(None);
   };
   let number = unsigned(scope, value, name)?;
@@ -2562,34 +2561,44 @@ pub(crate) fn unsigned(
   value: v8::Local<v8::Value>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_(format!("{name} is not a number")))?;
-  if !number.is_finite() || number < 0.0 || number > f64::from(u32::MAX) {
-    return Err(OpError::type_(format!("{name} is out of range")));
-  }
-  Ok(number as u32)
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_u32(number)
+    .ok_or_else(|| OpError::type_(format!("{name} is out of range")))
 }
 
+/// `[EnforceRange] unsigned long long`. The upper bound is `2^53 − 1`.
+pub(crate) fn enforce_u64(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  name: &str,
+) -> Result<u64, OpError> {
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_u64(number)
+    .ok_or_else(|| OpError::type_(format!("{name} is out of range")))
+}
+
+/// `[EnforceRange] long long`. The range is `±(2^53 − 1)`.
 pub(crate) fn long_long(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<i64, OpError> {
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("The timestamp is not a number"))?;
-  if !number.is_finite() || number < i64::MIN as f64 || number > i64::MAX as f64
-  {
-    return Err(OpError::type_("The timestamp is out of range"));
-  }
-  Ok(number as i64)
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_i64(number)
+    .ok_or_else(|| OpError::type_("The timestamp is out of range"))
+}
+
+pub(crate) fn idl_string(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<String, OpError> {
+  yuzuko_core::op::FromV8::from_v8(scope, value)
 }
 
 fn acceleration_hint(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<String, OpError> {
-  let text = rust_string(scope, value);
+  let text = idl_string(scope, value)?;
   match text.as_str() {
     "no-preference" | "prefer-hardware" | "prefer-software" => Ok(text),
     _ => Err(OpError::type_("hardwareAcceleration is not supported")),

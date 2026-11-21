@@ -295,11 +295,15 @@ impl GpuDevice {
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuCommandEncoder>, OpError> {
     let handle = self.require()?;
-    let label = descriptor.and_then(|value| {
-      js::object(scope, value)
-        .and_then(|object| js::get(scope, object, "label"))
-        .and_then(|value| js::string(scope, value))
-    });
+    let label = match descriptor {
+      Some(value) if !value.is_null_or_undefined() => {
+        match js::object(scope, value) {
+          Some(object) => resource::optional_label(scope, object)?,
+          None => None,
+        }
+      }
+      _ => None,
+    };
     Ok(New(GpuCommandEncoder::create(&handle, label)))
   }
 
@@ -422,32 +426,48 @@ impl GpuQueue {
     &self,
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Value>,
-    offset: u32,
+    offset: js::GpuSize64,
     data: v8::Local<v8::Value>,
-    data_offset: Option<u32>,
-    size: Option<u32>,
+    data_offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let buffer = resource::host_buffer(scope, buffer)
       .ok_or_else(|| OpError::type_("writeBuffer requires a GPUBuffer"))?;
     let buffer = buffer.alive()?;
-    let bytes = yuzuko_winter::buffer_source(scope, data).ok_or_else(|| {
-      OpError::type_("writeBuffer data must be an AllowSharedBufferSource")
-    })?;
-    let start = data_offset.unwrap_or(0) as usize;
+    let bytes =
+      yuzuko_winter::buffer_source(scope, data)?.ok_or_else(|| {
+        OpError::type_("writeBuffer data must be an AllowSharedBufferSource")
+      })?;
+    let start = usize::try_from(data_offset.map(|value| value.0).unwrap_or(0))
+      .map_err(|_| OpError::range("The buffer offset is out of range"))?;
     if start > bytes.len() {
       return Err(OpError::range("The buffer offset is out of range"));
     }
     let end = match size {
-      Some(size) => start.saturating_add(size as usize),
+      Some(size) => {
+        let size = usize::try_from(size.0)
+          .map_err(|_| OpError::range("The buffer size is out of range"))?;
+        start
+          .checked_add(size)
+          .ok_or_else(|| OpError::range("The buffer size is out of range"))?
+      }
       None => bytes.len(),
     };
     if end > bytes.len() {
       return Err(OpError::range("The buffer size is out of range"));
     }
+    let offset = offset.0;
+    let data_len = (end - start) as u64;
+    if offset > buffer.size() || data_len > buffer.size() - offset {
+      return Err(OpError::dom(
+        "OperationError",
+        "The buffer offset is out of range",
+      ));
+    }
     let handle = state::handle(self.device_id)?;
     handle
       .queue
-      .write_buffer(&buffer, u64::from(offset), &bytes[start..end]);
+      .write_buffer(&buffer, offset, &bytes[start..end]);
     Ok(())
   }
 
@@ -801,8 +821,9 @@ fn open_device(
   if let Some(object) = dictionary(scope, descriptor) {
     reject_features(scope, object, features)?;
     check_required_limits(scope, object, &limits)?;
-    device_label = js::get(scope, object, "label")
-      .and_then(|value| js::string(scope, value));
+    device_label = js::get(scope, object, "label")?
+      .map(|value| js::string(scope, value))
+      .transpose()?;
     queue_label = queue_label_of(scope, object)?;
   }
   let id = state::alloc_id();
@@ -1000,7 +1021,7 @@ fn reject_features(
   descriptor: v8::Local<v8::Object>,
   enabled: wgpu::Features,
 ) -> Result<(), OpError> {
-  let Some(value) = js::get(scope, descriptor, "requiredFeatures") else {
+  let Some(value) = js::get(scope, descriptor, "requiredFeatures")? else {
     return Ok(());
   };
   if value.is_null() {
@@ -1009,9 +1030,8 @@ fn reject_features(
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("requiredFeatures must be a sequence"))?;
   for index in 0..array.length() {
-    let item = array.get_index(scope, index).unwrap();
-    let name = js::string(scope, item)
-      .ok_or_else(|| OpError::type_("The feature name is invalid"))?;
+    let item = js::read_index(scope, array, index)?;
+    let name = js::string(scope, item)?;
     let feature = name
       .parse::<wgpu::Features>()
       .map_err(|_| OpError::type_("The feature name is invalid"))?;
@@ -1034,14 +1054,14 @@ fn check_required_limits(
   descriptor: v8::Local<v8::Object>,
   limits: &wgpu::Limits,
 ) -> Result<(), OpError> {
-  let Some(value) = js::get(scope, descriptor, "requiredLimits") else {
+  let Some(value) = js::get(scope, descriptor, "requiredLimits")? else {
     return Ok(());
   };
   let Some(requested) = js::object(scope, value) else {
     return Err(OpError::type_("requiredLimits must be an object"));
   };
   for (name, actual, lower_is_better) in limit_table(limits) {
-    let Some(value) = js::get(scope, requested, name) else {
+    let Some(value) = js::get(scope, requested, name)? else {
       continue;
     };
     let number = js::finite_number(scope, value)?;
@@ -1326,7 +1346,7 @@ fn gpu_error_argument<'s>(
   let Ok(init) = v8::Local::<v8::Object>::try_from(init) else {
     return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
   };
-  let Some(error) = js::get(scope, init, "error") else {
+  let Some(error) = js::get(scope, init, "error")? else {
     return Err(OpError::type_("GPUUncapturedErrorEvent requires an error"));
   };
   if error.is_null_or_undefined() {

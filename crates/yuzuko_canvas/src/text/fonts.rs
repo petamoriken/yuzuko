@@ -986,7 +986,7 @@ fn read_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Source, OpError> {
-  if let Some(bytes) = yuzuko_winter::buffer_source(scope, value) {
+  if let Some(bytes) = yuzuko_winter::buffer_source(scope, value)? {
     return Ok(Source::Bytes(bytes));
   }
   if value.is_string() {
@@ -1365,9 +1365,24 @@ fn bytes_fulfilled(
   mut _ret: v8::ReturnValue,
 ) {
   let id = job_id(scope, &args);
-  let Some(bytes) = yuzuko_winter::buffer_source(scope, args.get(0)) else {
-    fail_job(scope, id, "NetworkError", "The font body could not be read");
-    return;
+  let bytes = match yuzuko_winter::buffer_source(scope, args.get(0)) {
+    Ok(Some(bytes)) => bytes,
+    Ok(None) => {
+      fail_job(scope, id, "NetworkError", "The font body could not be read");
+      return;
+    }
+    Err(error) => {
+      let message = match error {
+        yuzuko_core::op::OpError::Type(message)
+        | yuzuko_core::op::OpError::Range(message)
+        | yuzuko_core::op::OpError::Dom { message, .. } => message,
+        yuzuko_core::op::OpError::Thrown(_) => {
+          "The font body could not be read".to_string()
+        }
+      };
+      fail_job(scope, id, "TypeError", &message);
+      return;
+    }
   };
   let Some(job) = JOBS.with(|slot| slot.borrow_mut().remove(&id)) else {
     return;

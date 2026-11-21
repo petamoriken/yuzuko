@@ -15,7 +15,7 @@ use yuzuko_image::{
 use yuzuko_macros::op;
 use yuzuko_winter::buffer_source;
 
-use crate::classes::{VideoFrame, detach_transfer_list};
+use crate::classes::{VideoFrame, detach_transfer_list, idl_string};
 
 pub struct ImageDecoder {
   mime: String,
@@ -114,7 +114,7 @@ impl ImageDecoder {
   ) -> Result<Self, OpError> {
     let init = dictionary(scope, args.get(0))?;
     let mime = required_string(scope, init, "type")?;
-    let Some(data) = member(scope, init, "data") else {
+    let Some(data) = member(scope, init, "data")? else {
       return Err(OpError::type_("data is required"));
     };
     let data = yuzuko_core::op::root(scope, data);
@@ -131,7 +131,7 @@ impl ImageDecoder {
     if detached_source(scope, data) {
       return Err(OpError::type_("data is detached"));
     }
-    let bytes = buffer_source(scope, data);
+    let bytes = buffer_source(scope, data)?;
     let stream = if bytes.is_none() && is_readable_stream(scope, data) {
       let object = v8::Local::<v8::Object>::try_from(data)
         .map_err(|_| OpError::type_("data is not a ReadableStream"))?;
@@ -1081,12 +1081,24 @@ fn on_chunk(
     host.get().settle_metadata(scope);
     return;
   };
-  let done = member(scope, result, "done").is_some_and(|value| value.is_true());
+  let done = match member(scope, result, "done") {
+    Ok(value) => value.is_some_and(|item| item.is_true()),
+    Err(error) => {
+      abort_read(scope, host.get(), error);
+      return;
+    }
+  };
   if done {
     host.get().note_complete(scope, decoder);
     return;
   }
-  let Some(value) = member(scope, result, "value") else {
+  let Some(value) = (match member(scope, result, "value") {
+    Ok(value) => value,
+    Err(error) => {
+      abort_read(scope, host.get(), error);
+      return;
+    }
+  }) else {
     host
       .get()
       .fail("TypeError", "A stream chunk is not a BufferSource");
@@ -1097,7 +1109,13 @@ fn on_chunk(
     );
     return;
   };
-  let Some(bytes) = buffer_source(scope, value) else {
+  let Some(bytes) = (match buffer_source(scope, value) {
+    Ok(bytes) => bytes,
+    Err(error) => {
+      abort_read(scope, host.get(), error);
+      return;
+    }
+  }) else {
     host
       .get()
       .fail("TypeError", "A stream chunk is not a BufferSource");
@@ -1290,24 +1308,35 @@ fn rejected_error(scope: &mut v8::PinScope, error: OpError) -> Js {
   Js(v8::Global::new(scope, promise))
 }
 
+fn abort_read(
+  scope: &mut v8::PinScope,
+  decoder: &ImageDecoder,
+  error: OpError,
+) {
+  let (name, message) = match &error {
+    OpError::Type(message) => ("TypeError", message.clone()),
+    OpError::Range(message) => ("RangeError", message.clone()),
+    OpError::Dom { message, .. } => ("TypeError", message.clone()),
+    OpError::Thrown(_) => {
+      ("TypeError", "The image data could not be read".to_string())
+    }
+  };
+  decoder.fail(name, &message);
+  decoder.settle_metadata(scope);
+  decoder.reject_waiters(scope, error);
+}
+
 fn reject_with(
   scope: &mut v8::PinScope,
   resolver: v8::Local<v8::PromiseResolver>,
   error: OpError,
 ) {
-  let value = match error {
-    OpError::Thrown(_) => {
-      let message =
-        v8::String::new(scope, "The image data could not be read").unwrap();
-      v8::Exception::type_error(scope, message)
-    }
-    other => yuzuko_core::exception_value(
-      scope,
-      other,
-      yuzuko_core::DomFallback::Type,
-      yuzuko_core::StringFailure::Unwrap,
-    ),
-  };
+  let value = yuzuko_core::exception_value(
+    scope,
+    error,
+    yuzuko_core::DomFallback::Type,
+    yuzuko_core::StringFailure::Unwrap,
+  );
   resolver.reject(scope, value);
 }
 
@@ -1324,7 +1353,7 @@ impl CloneError for OpError {
         name: name.clone(),
         message: message.clone(),
       },
-      Self::Thrown(_) => Self::type_("The image data could not be read"),
+      Self::Thrown(value) => Self::Thrown(Box::new(value.as_ref().clone())),
     }
   }
 }
@@ -1376,10 +1405,10 @@ fn color_space_conversion(
   scope: &mut v8::PinScope,
   init: v8::Local<v8::Object>,
 ) -> Result<bool, OpError> {
-  let Some(value) = member(scope, init, "colorSpaceConversion") else {
+  let Some(value) = member(scope, init, "colorSpaceConversion")? else {
     return Ok(true);
   };
-  match rust_string(scope, value).as_str() {
+  match idl_string(scope, value)?.as_str() {
     "default" => Ok(true),
     "none" => Ok(false),
     _ => Err(OpError::type_("colorSpaceConversion is not supported")),
@@ -1405,7 +1434,7 @@ fn optional_ulong(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<u32>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(None);
   };
   let number = value
@@ -1422,7 +1451,7 @@ fn optional_bool(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<bool>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(None);
   };
   if !value.is_boolean() {
@@ -1467,7 +1496,7 @@ fn member<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
@@ -1476,10 +1505,10 @@ fn required_string(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<String, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
-  Ok(rust_string(scope, value))
+  idl_string(scope, value)
 }
 
 fn trace_promise(

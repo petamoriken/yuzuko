@@ -106,7 +106,7 @@ impl GpuCanvasContext {
   ) -> Result<(), OpError> {
     let object = js::object(scope, descriptor)
       .ok_or_else(|| OpError::type_("configure requires a descriptor"))?;
-    let device = js::get(scope, object, "device").ok_or_else(|| {
+    let device = js::get(scope, object, "device")?.ok_or_else(|| {
       OpError::type_("GPUCanvasConfiguration.device is required")
     })?;
     let device_id = crate::device_id(scope, device).ok_or_else(|| {
@@ -118,8 +118,9 @@ impl GpuCanvasContext {
       })?;
     let device_global = v8::Global::new(scope, device_object);
     let features = state::handle(device_id)?.device.features();
-    let format_name = js::get(scope, object, "format")
-      .and_then(|value| js::string(scope, value))
+    let format_name = js::get(scope, object, "format")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
       .ok_or_else(|| {
         OpError::type_("GPUCanvasConfiguration.format is required")
       })?;
@@ -129,8 +130,9 @@ impl GpuCanvasContext {
     )?;
     let usage = js::field_u32(scope, object, "usage")?
       .unwrap_or(wgpu::TextureUsages::RENDER_ATTACHMENT.bits());
-    let alpha = js::get(scope, object, "alphaMode")
-      .and_then(|value| js::string(scope, value))
+    let alpha = js::get(scope, object, "alphaMode")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
       .unwrap_or_else(|| "opaque".to_string());
     let alpha_opaque = match alpha.as_str() {
       "opaque" => true,
@@ -139,8 +141,9 @@ impl GpuCanvasContext {
         return Err(OpError::type_("The canvas alpha mode is invalid"));
       }
     };
-    let color_space = js::get(scope, object, "colorSpace")
-      .and_then(|value| js::string(scope, value))
+    let color_space = js::get(scope, object, "colorSpace")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
       .unwrap_or_else(|| "srgb".to_string());
     let color_space = match color_space.as_str() {
       "srgb" => ColorSpace::Srgb,
@@ -151,12 +154,12 @@ impl GpuCanvasContext {
     };
     require_tone_mapping(scope, object)?;
     let mut view_formats = Vec::new();
-    if let Some(list) = js::get(scope, object, "viewFormats") {
+    if let Some(list) = js::get(scope, object, "viewFormats")? {
       let array = v8::Local::<v8::Array>::try_from(list)
         .map_err(|_| OpError::type_("viewFormats must be an array"))?;
       for index in 0..array.length() {
-        let name = js::string(scope, array.get_index(scope, index).unwrap())
-          .unwrap_or_default();
+        let item = js::read_index(scope, array, index)?;
+        let name = js::string(scope, item)?;
         let format = resource::texture_format(&name)?;
         view_formats.push(resource::require_texture_format(features, format)?);
       }
@@ -340,18 +343,16 @@ fn require_tone_mapping(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<(), OpError> {
-  let Some(value) = js::get(scope, object, "toneMapping") else {
+  let Some(value) = js::get(scope, object, "toneMapping")? else {
     return Ok(());
   };
   let mapping = js::object(scope, value).ok_or_else(|| {
     OpError::type_("GPUCanvasConfiguration.toneMapping must be an object")
   })?;
-  let Some(mode) = js::get(scope, mapping, "mode") else {
+  let Some(mode) = js::get(scope, mapping, "mode")? else {
     return Ok(());
   };
-  let Some(mode) = js::string(scope, mode) else {
-    return Err(OpError::type_("The canvas tone mapping mode is invalid"));
-  };
+  let mode = js::string(scope, mode)?;
   match mode.as_str() {
     "standard" => Ok(()),
     "extended" => {
@@ -746,18 +747,19 @@ pub fn copy_external_image(
   let source = js::object(scope, source).ok_or_else(|| {
     OpError::type_("copyExternalImageToTexture source must be an object")
   })?;
-  let image = js::get(scope, source, "source")
+  let image = js::get(scope, source, "source")?
     .ok_or_else(|| OpError::type_("The external image source is required"))?;
   let mut raster = raster_of(scope, image)?;
   let destination = js::object(scope, destination).ok_or_else(|| {
     OpError::type_("copyExternalImageToTexture destination must be an object")
   })?;
-  let texture = js::get(scope, destination, "texture")
+  let texture = js::get(scope, destination, "texture")?
     .and_then(|value| resource::host_texture(scope, value))
     .ok_or_else(|| OpError::type_("The destination is not a GPUTexture"))?;
   let texture = texture.texture()?;
-  let color_space = js::get(scope, destination, "colorSpace")
-    .and_then(|value| js::string(scope, value))
+  let color_space = js::get(scope, destination, "colorSpace")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
     .unwrap_or_else(|| "srgb".to_string());
   let color_space = match color_space.as_str() {
     "srgb" => ColorSpace::Srgb,
@@ -765,7 +767,7 @@ pub fn copy_external_image(
     _ => return Err(OpError::type_("The destination color space is invalid")),
   };
   convert(&mut raster, color_space);
-  let premultiply = js::get(scope, destination, "premultipliedAlpha")
+  let premultiply = js::get(scope, destination, "premultipliedAlpha")?
     .is_some_and(|value| value.boolean_value(scope));
   if premultiply {
     yuzuko_image::premultiply(&mut raster);
@@ -824,10 +826,11 @@ pub fn import_external_texture(
   let object = js::object(scope, descriptor).ok_or_else(|| {
     OpError::type_("importExternalTexture requires a descriptor")
   })?;
-  let source = js::get(scope, object, "source")
+  let source = js::get(scope, object, "source")?
     .ok_or_else(|| OpError::type_("The external texture source is required"))?;
-  let color_space = js::get(scope, object, "colorSpace")
-    .and_then(|value| js::string(scope, value))
+  let color_space = js::get(scope, object, "colorSpace")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
     .unwrap_or_else(|| "srgb".to_string());
   let color_space = match color_space.as_str() {
     "srgb" => ColorSpace::Srgb,
@@ -862,7 +865,7 @@ pub fn import_external_texture(
     .checked_mul(4)
     .ok_or_else(|| OpError::range("The frame is too wide"))?;
   let (bytes, stride) = pad_rows(&tight, row, raster.height);
-  let label = resource::optional_label(scope, object);
+  let label = resource::optional_label(scope, object)?;
   let texture = handle.device.create_texture(&wgpu::TextureDescriptor {
     label: label.as_deref(),
     size: wgpu::Extent3d {
@@ -1113,7 +1116,7 @@ fn origin_of(
   scope: &mut v8::PinScope,
   destination: v8::Local<v8::Object>,
 ) -> Result<(u32, u32), OpError> {
-  let Some(origin) = js::get(scope, destination, "origin") else {
+  let Some(origin) = js::get(scope, destination, "origin")? else {
     return Ok((0, 0));
   };
   if let Ok(array) = v8::Local::<v8::Array>::try_from(origin) {

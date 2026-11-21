@@ -176,10 +176,10 @@ fn read_attributes(
   let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
     return Ok(attrs);
   };
-  if let Some(alpha) = dictionary(scope, object, "alpha") {
+  if let Some(alpha) = dictionary(scope, object, "alpha")? {
     attrs.alpha = alpha.boolean_value(scope);
   }
-  if let Some(color_space) = dictionary(scope, object, "colorSpace") {
+  if let Some(color_space) = dictionary(scope, object, "colorSpace")? {
     let text = color_space.to_rust_string_lossy(scope);
     attrs.color_space = match text.as_str() {
       "srgb" => ColorSpace::Srgb,
@@ -191,13 +191,13 @@ fn read_attributes(
       }
     };
   }
-  if let Some(desynchronized) = dictionary(scope, object, "desynchronized") {
+  if let Some(desynchronized) = dictionary(scope, object, "desynchronized")? {
     attrs.desynchronized = desynchronized.boolean_value(scope);
   }
-  if let Some(will_read) = dictionary(scope, object, "willReadFrequently") {
+  if let Some(will_read) = dictionary(scope, object, "willReadFrequently")? {
     attrs.will_read_frequently = will_read.boolean_value(scope);
   }
-  if let Some(color_type) = dictionary(scope, object, "colorType") {
+  if let Some(color_type) = dictionary(scope, object, "colorType")? {
     let text = color_type.to_rust_string_lossy(scope);
     attrs.format = match text.as_str() {
       "unorm8" => SampleFormat::Unorm8,
@@ -209,7 +209,7 @@ fn read_attributes(
       }
     };
   }
-  if let Some(tone) = dictionary(scope, object, "toneMapping") {
+  if let Some(tone) = dictionary(scope, object, "toneMapping")? {
     attrs.tone_mapping = tone_mapping(scope, tone)?;
   }
   Ok(attrs)
@@ -224,7 +224,7 @@ fn tone_mapping(
       "The provided value is not of type 'CanvasToneMapping'",
     ));
   };
-  let Some(mode) = dictionary(scope, object, "mode") else {
+  let Some(mode) = dictionary(scope, object, "mode")? else {
     return Ok(ToneMapping::Standard);
   };
   match mode.to_rust_string_lossy(scope).as_str() {
@@ -240,7 +240,7 @@ fn dictionary<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
@@ -290,13 +290,13 @@ fn blob_options(
   let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
     return Ok((mime, quality));
   };
-  if let Some(kind) = dictionary(scope, object, "type") {
+  if let Some(kind) = dictionary(scope, object, "type")? {
     let text = kind.to_rust_string_lossy(scope).to_ascii_lowercase();
     if text == "image/jpeg" || text == "image/webp" || text == "image/png" {
       mime = text;
     }
   }
-  if let Some(value) = dictionary(scope, object, "quality")
+  if let Some(value) = dictionary(scope, object, "quality")?
     && let Some(number) = value.number_value(scope)
     && number.is_finite()
   {

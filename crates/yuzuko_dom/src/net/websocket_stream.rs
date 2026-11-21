@@ -914,7 +914,7 @@ fn write_chunk<'s>(
     resolver.reject(scope, error);
     return Ok(promise);
   }
-  let command = if let Some(bytes) = buffer_source(scope, chunk) {
+  let command = if let Some(bytes) = buffer_source(scope, chunk)? {
     Command::Binary(bytes)
   } else {
     Command::Text(stringify(scope, chunk)?)
@@ -1256,10 +1256,10 @@ fn close_info(
   let object = init
     .to_object(scope)
     .ok_or_else(|| OpError::type_("WebSocketCloseInfo must be an object"))?;
-  let code = defined(scope, object, "closeCode")
+  let code = defined(scope, object, "closeCode")?
     .map(|value| checked_code(clamp_unsigned_short(scope, value)))
     .transpose()?;
-  let reason = if let Some(value) = defined(scope, object, "reason") {
+  let reason = if let Some(value) = defined(scope, object, "reason")? {
     checked_reason(yuzuko_core::rust_string(scope, value))?
   } else {
     String::new()
@@ -1276,7 +1276,7 @@ fn defined<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 

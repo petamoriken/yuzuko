@@ -1,10 +1,9 @@
 //! `AudioData` construction and `copyTo`.
 
 use yuzuko_core::op::OpError;
-use yuzuko_core::rust_string;
 
 use crate::classes::{
-  bytes_from_source, detach_buffers, dictionary, long_long, member,
+  bytes_from_source, detach_buffers, dictionary, idl_string, long_long, member,
   source_byte_len, transfer_buffers, unsigned,
 };
 use crate::samples::{
@@ -29,7 +28,7 @@ pub(crate) fn construct(
   let frames = unsigned_member(scope, object, "numberOfFrames")?;
   let channels = unsigned_member(scope, object, "numberOfChannels")?;
   let timestamp = timestamp(scope, object)?;
-  let Some(data_value) = member(scope, object, "data") else {
+  let Some(data_value) = member(scope, object, "data")? else {
     return Err(OpError::type_("data is required"));
   };
   let Some(len) = source_byte_len(scope, data_value) else {
@@ -55,21 +54,21 @@ pub(crate) fn copy_request(
   index: i32,
 ) -> Result<CopyRequest, OpError> {
   let object = dictionary(scope, args.get(index), "AudioDataCopyToOptions")?;
-  let Some(plane) = member(scope, object, "planeIndex") else {
+  let Some(plane) = member(scope, object, "planeIndex")? else {
     return Err(OpError::type_("planeIndex is required"));
   };
   let plane = unsigned(scope, plane, "planeIndex")?;
-  let frame_offset = match member(scope, object, "frameOffset") {
+  let frame_offset = match member(scope, object, "frameOffset")? {
     Some(value) => unsigned(scope, value, "frameOffset")?,
     None => 0,
   };
-  let frame_count = match member(scope, object, "frameCount") {
+  let frame_count = match member(scope, object, "frameCount")? {
     Some(value) => Some(unsigned(scope, value, "frameCount")?),
     None => None,
   };
-  let format = match member(scope, object, "format") {
+  let format = match member(scope, object, "format")? {
     Some(value) => {
-      let name = rust_string(scope, value);
+      let name = idl_string(scope, value)?;
       let Some(parsed) = parse_format(&name) else {
         return Err(OpError::type_("The format is invalid"));
       };
@@ -143,12 +142,10 @@ fn sample_rate(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<f64, OpError> {
-  let Some(value) = member(scope, object, "sampleRate") else {
+  let Some(value) = member(scope, object, "sampleRate")? else {
     return Err(OpError::type_("sampleRate is required"));
   };
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("sampleRate is not a number"))?;
+  let number = yuzuko_core::to_number(scope, value)?;
   if !number.is_finite() {
     return Err(OpError::type_("sampleRate is out of range"));
   }
@@ -163,7 +160,7 @@ fn timestamp(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<i64, OpError> {
-  let Some(value) = member(scope, object, "timestamp") else {
+  let Some(value) = member(scope, object, "timestamp")? else {
     return Err(OpError::type_("timestamp is required"));
   };
   long_long(scope, value)
@@ -174,7 +171,7 @@ fn unsigned_member(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
   unsigned(scope, value, name)
@@ -185,10 +182,10 @@ fn required_string(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<String, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
-  Ok(rust_string(scope, value))
+  idl_string(scope, value)
 }
 
 fn build_error(error: BuildError) -> OpError {

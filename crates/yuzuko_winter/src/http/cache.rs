@@ -626,8 +626,13 @@ fn put_body_ok(
   if !same_storage(job.storage_generation) {
     return;
   }
-  let bytes =
-    crate::bytes::buffer_source(scope, args.get(0)).unwrap_or_default();
+  let bytes = match crate::bytes::buffer_source(scope, args.get(0)) {
+    Ok(bytes) => bytes.unwrap_or_default(),
+    Err(error) => {
+      reject_resolver(scope, job.resolver, error);
+      return;
+    }
+  };
   finish_put(scope, job, CacheBody::Bytes(bytes));
 }
 
@@ -897,8 +902,13 @@ fn add_body_ok(
   let Some(pending) = job.waiting.take() else {
     return;
   };
-  let bytes =
-    crate::bytes::buffer_source(scope, args.get(0)).unwrap_or_default();
+  let bytes = match crate::bytes::buffer_source(scope, args.get(0)) {
+    Ok(bytes) => bytes.unwrap_or_default(),
+    Err(error) => {
+      reject_resolver(scope, job.resolver, error);
+      return;
+    }
+  };
   job.done.push(ReadyRecord {
     url: pending.url,
     stored: StoredResponse {

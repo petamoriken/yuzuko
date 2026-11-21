@@ -197,52 +197,161 @@ fn host_function_failed(name: &str, failure: InstallFailure) -> bool {
 }
 
 /// Own or inherited dictionary member. `undefined` is absent.
+///
+/// A throwing getter is returned. WebIDL does not treat that as a missing member.
 #[inline]
 pub fn dictionary_member<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, crate::op::OpError> {
   let object = crate::op::root(scope, object);
-  let key = v8::String::new(scope, name)?;
-  let value = object.get(scope, key.into())?;
-  if value.is_undefined() {
-    None
-  } else {
-    Some(value)
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    let Some(key) = v8::String::new(tc, name) else {
+      return Err(crate::op::OpError::type_(
+        "The provided value is not readable",
+      ));
+    };
+    match object.get(tc, key.into()) {
+      Some(value) if value.is_undefined() => Ok(None),
+      Some(value) => Ok(Some(v8::Global::new(tc, value))),
+      None => Err(match tc.exception() {
+        Some(thrown) => crate::op::OpError::thrown(tc, thrown),
+        None => crate::op::OpError::type_("The provided value is not readable"),
+      }),
+    }
+  };
+  captured.map(|value| value.map(|value| v8::Local::new(scope, value)))
+}
+
+/// WebIDL `ToNumber`. `null` is `+0`. A thrown `valueOf` is returned.
+#[inline]
+pub fn to_number(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<f64, crate::op::OpError> {
+  v8::tc_scope!(let tc, scope);
+  match value.number_value(tc) {
+    Some(number) => Ok(number),
+    None => Err(match tc.exception() {
+      Some(thrown) => crate::op::OpError::thrown(tc, thrown),
+      None => crate::op::OpError::type_("The provided value is not a number"),
+    }),
   }
 }
 
-/// Messages for [`finite_number`].
-///
-/// `null_message` rejects `null` before `ToNumber` when it is set. Without
-/// it, `null` converts to `0`.
-#[derive(Clone, Copy)]
-pub struct NumberReject {
-  pub null_message: Option<&'static str>,
-  pub not_number: &'static str,
-  pub not_finite: &'static str,
-}
-
-/// `ToNumber`, rejecting `NaN` and infinities.
+/// WebIDL `double`: `ToNumber`, then reject a non-finite result.
 #[inline]
 pub fn finite_number(
-  scope: &v8::PinScope,
+  scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-  reject: NumberReject,
+  not_finite: &'static str,
 ) -> Result<f64, crate::op::OpError> {
-  if let Some(message) = reject.null_message
-    && value.is_null()
-  {
-    return Err(crate::op::OpError::type_(message));
-  }
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| crate::op::OpError::type_(reject.not_number))?;
+  let number = to_number(scope, value)?;
   if !number.is_finite() {
-    return Err(crate::op::OpError::type_(reject.not_finite));
+    return Err(crate::op::OpError::type_(not_finite));
   }
   Ok(number)
+}
+
+/// Exact integer span of a JavaScript number, `2^53 − 1`.
+pub const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// WebIDL `[EnforceRange] unsigned long`. Truncate toward zero, then range-check.
+#[inline]
+pub fn enforce_range_u32(number: f64) -> Option<u32> {
+  if !number.is_finite() {
+    return None;
+  }
+  let number = number.trunc();
+  if number < 0.0 || number > f64::from(u32::MAX) {
+    return None;
+  }
+  Some(number as u32)
+}
+
+/// WebIDL `[EnforceRange] unsigned long long`. The upper bound is `2^53 − 1`.
+#[inline]
+pub fn enforce_range_u64(number: f64) -> Option<u64> {
+  if !number.is_finite() {
+    return None;
+  }
+  let number = number.trunc();
+  if number < 0.0 || number > MAX_SAFE_INTEGER {
+    return None;
+  }
+  Some(number as u64)
+}
+
+/// WebIDL `[EnforceRange] long long`. The range is `±(2^53 − 1)`.
+#[inline]
+pub fn enforce_range_i64(number: f64) -> Option<i64> {
+  if !number.is_finite() {
+    return None;
+  }
+  let number = number.trunc();
+  if number < -MAX_SAFE_INTEGER || number > MAX_SAFE_INTEGER {
+    return None;
+  }
+  Some(number as i64)
+}
+
+/// WebIDL `unsigned long`: non-finite values become `0`, then modulo `2^32`.
+#[inline]
+pub fn modulo_u32(number: f64) -> u32 {
+  if !number.is_finite() || number == 0.0 {
+    return 0;
+  }
+  let modulo = number.trunc() % 4_294_967_296.0;
+  let positive = if modulo < 0.0 {
+    modulo + 4_294_967_296.0
+  } else {
+    modulo
+  };
+  positive as u32
+}
+
+/// WebIDL `unsigned long long` without `[EnforceRange]`.
+///
+/// The residue is the low 64 bits of the truncated integer. A float cast
+/// saturates at `2^64`, so the bits come from the IEEE representation.
+#[inline]
+pub fn modulo_u64(number: f64) -> u64 {
+  if !number.is_finite() {
+    return 0;
+  }
+  let number = number.trunc();
+  if number == 0.0 {
+    return 0;
+  }
+  let bits = number.to_bits();
+  let negative = bits >> 63 != 0;
+  let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023;
+  let significand = (bits & ((1_u64 << 52) - 1)) | (1_u64 << 52);
+  if exponent < 0 {
+    return 0;
+  }
+  if exponent < 52 {
+    let magnitude = significand >> (52 - exponent);
+    return if negative {
+      magnitude.wrapping_neg()
+    } else {
+      magnitude
+    };
+  }
+  let shift = exponent - 52;
+  if shift >= 64 {
+    return 0;
+  }
+  let low = significand.wrapping_shl(shift as u32);
+  if negative { low.wrapping_neg() } else { low }
+}
+
+/// WebIDL `long long` without `[EnforceRange]`.
+#[inline]
+pub fn modulo_i64(number: f64) -> i64 {
+  modulo_u64(number) as i64
 }
 
 /// Owned bytes as an `ArrayBuffer`.

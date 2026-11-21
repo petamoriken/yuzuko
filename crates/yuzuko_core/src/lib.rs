@@ -86,11 +86,12 @@ pub use idle::{
 pub use inspect::{InspectFields, register_inspect};
 pub use jobs::{Listen, enqueue, listen, pending as jobs_pending, spawn};
 pub use js::{
-  DomFallback, NumberReject, StringFailure, array_buffer, call_method,
-  caller_module_url, define_function, define_function_key, dictionary_member,
-  exception_value, finite_number, float32_array, float64_array, global,
+  DomFallback, StringFailure, array_buffer, call_method, caller_module_url,
+  define_function, define_function_key, dictionary_member, enforce_range_i64,
+  enforce_range_u32, enforce_range_u64, exception_value, finite_number,
+  float32_array, float64_array, global, modulo_i64, modulo_u32, modulo_u64,
   namespace, rust_string, rust_string_or, set_function, set_value, throw_type,
-  try_define_function, uint8_array, uint8_clamped_array,
+  to_number, try_define_function, uint8_array, uint8_clamped_array,
 };
 pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};

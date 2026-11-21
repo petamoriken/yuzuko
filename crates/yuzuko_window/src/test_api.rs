@@ -55,12 +55,12 @@ fn inject_events(
     let Ok(record) = v8::Local::<v8::Object>::try_from(item) else {
       return Err(OpError::type_("inject events must be objects"));
     };
-    if prop_string(scope, record, "kind").as_deref() == Some("trayclick") {
+    if prop_string(scope, record, "kind")?.as_deref() == Some("trayclick") {
       crate::shell::tray::dispatch_primary_click(scope)?;
       continue;
     }
     if let Some(phase) =
-      file_phase(prop_string(scope, record, "kind").as_deref())
+      file_phase(prop_string(scope, record, "kind")?.as_deref())
     {
       for path in read_paths(scope, record)? {
         inbox::push(id, Raw::File { phase, path });
@@ -68,12 +68,12 @@ fn inject_events(
       continue;
     }
     // The injected operating-system leave. It dispatches `dragleave`.
-    if prop_string(scope, record, "kind").as_deref() == Some("filehovercancel")
+    if prop_string(scope, record, "kind")?.as_deref() == Some("filehovercancel")
     {
       inbox::push(id, Raw::FileCancel);
       continue;
     }
-    if prop_string(scope, record, "kind").as_deref() == Some("accessible") {
+    if prop_string(scope, record, "kind")?.as_deref() == Some("accessible") {
       #[cfg(feature = "accessibility")]
       {
         read_accessible(scope, record)?;
@@ -95,7 +95,7 @@ fn read_accessible(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<(), OpError> {
-  let type_name = prop_string(scope, record, "type").unwrap_or_default();
+  let type_name = prop_string(scope, record, "type")?.unwrap_or_default();
   let kind = match type_name.as_str() {
     "click" => crate::a11y::ActionKind::Click,
     "contextmenu" => crate::a11y::ActionKind::ContextMenu,
@@ -106,7 +106,7 @@ fn read_accessible(
     "setvalue" => crate::a11y::ActionKind::SetValue,
     _ => return Err(OpError::type_("The value is not a valid token.")),
   };
-  let Some(node) = prop(scope, record, "node") else {
+  let Some(node) = prop(scope, record, "node")? else {
     return Err(OpError::type_("The node must be an AccessibleNode."));
   };
   let id = crate::a11y::node_id(scope, node)?;
@@ -134,7 +134,7 @@ fn read_paths(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<Vec<String>, OpError> {
-  let Some(value) = prop(scope, record, "paths") else {
+  let Some(value) = prop(scope, record, "paths")? else {
     return Err(OpError::type_("A file event requires paths"));
   };
   let Ok(list) = v8::Local::<v8::Array>::try_from(value) else {
@@ -168,7 +168,7 @@ fn read_event(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<Raw, OpError> {
-  let kind = prop_string(scope, record, "kind").unwrap_or_default();
+  let kind = prop_string(scope, record, "kind")?.unwrap_or_default();
   match kind.as_str() {
     "pointer" => Ok(Raw::Pointer(read_pointer(scope, record)?)),
     "key" => Ok(Raw::Key(read_key(scope, record)?)),
@@ -178,7 +178,7 @@ fn read_event(
     "blur" => Ok(Raw::Blur),
     "resize" => Ok(Raw::Resize),
     "visibility" => {
-      let state = prop_string(scope, record, "state").unwrap_or_default();
+      let state = prop_string(scope, record, "state")?.unwrap_or_default();
       match state.as_str() {
         "visible" => Ok(Raw::Visibility(true)),
         "hidden" => Ok(Raw::Visibility(false)),
@@ -186,7 +186,7 @@ fn read_event(
       }
     }
     "menu" => {
-      let Some(action) = prop_string(scope, record, "action") else {
+      let Some(action) = prop_string(scope, record, "action")? else {
         return Err(OpError::type_("menu inject requires an action"));
       };
       if !crate::shell::menu::known(&action) {
@@ -202,7 +202,7 @@ fn read_pointer(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<RawPointer, OpError> {
-  let type_name = prop_string(scope, record, "type")
+  let type_name = prop_string(scope, record, "type")?
     .unwrap_or_else(|| "pointermove".to_string());
   let kind = match type_name.as_str() {
     "pointerdown" => PointerKind::Down,
@@ -220,9 +220,9 @@ fn read_pointer(
     pointer_id: prop_number(scope, record, "pointerId")?
       .map(|value| value as i32)
       .unwrap_or(1),
-    pointer_type: prop_string(scope, record, "pointerType")
+    pointer_type: prop_string(scope, record, "pointerType")?
       .unwrap_or_else(|| "mouse".to_string()),
-    is_primary: prop_bool(scope, record, "isPrimary").unwrap_or(true),
+    is_primary: prop_bool(scope, record, "isPrimary")?.unwrap_or(true),
     x,
     y,
     screen_x: prop_number(scope, record, "screenX")?.unwrap_or(x),
@@ -231,10 +231,10 @@ fn read_pointer(
     pressure: prop_number(scope, record, "pressure")?,
     movement_x: prop_number(scope, record, "movementX")?,
     movement_y: prop_number(scope, record, "movementY")?,
-    ctrl: prop_bool(scope, record, "ctrlKey").unwrap_or(false),
-    shift: prop_bool(scope, record, "shiftKey").unwrap_or(false),
-    alt: prop_bool(scope, record, "altKey").unwrap_or(false),
-    meta: prop_bool(scope, record, "metaKey").unwrap_or(false),
+    ctrl: prop_bool(scope, record, "ctrlKey")?.unwrap_or(false),
+    shift: prop_bool(scope, record, "shiftKey")?.unwrap_or(false),
+    alt: prop_bool(scope, record, "altKey")?.unwrap_or(false),
+    meta: prop_bool(scope, record, "metaKey")?.unwrap_or(false),
     tilt_x: prop_number(scope, record, "tiltX")?.unwrap_or(0.0) as i32,
     tilt_y: prop_number(scope, record, "tiltY")?.unwrap_or(0.0) as i32,
     twist: prop_number(scope, record, "twist")?.unwrap_or(0.0) as i32,
@@ -249,20 +249,20 @@ fn read_key(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<RawKey, OpError> {
-  let type_name =
-    prop_string(scope, record, "type").unwrap_or_else(|| "keydown".to_string());
+  let type_name = prop_string(scope, record, "type")?
+    .unwrap_or_else(|| "keydown".to_string());
   Ok(RawKey {
     down: type_name != "keyup",
-    key: prop_string(scope, record, "key").unwrap_or_default(),
-    code: prop_string(scope, record, "code")
+    key: prop_string(scope, record, "key")?.unwrap_or_default(),
+    code: prop_string(scope, record, "code")?
       .unwrap_or_else(|| "Unidentified".to_string()),
     location: prop_number(scope, record, "location")?.unwrap_or(0.0) as u32,
-    repeat: prop_bool(scope, record, "repeat").unwrap_or(false),
-    text: prop_string(scope, record, "text"),
-    ctrl: prop_bool(scope, record, "ctrlKey").unwrap_or(false),
-    shift: prop_bool(scope, record, "shiftKey").unwrap_or(false),
-    alt: prop_bool(scope, record, "altKey").unwrap_or(false),
-    meta: prop_bool(scope, record, "metaKey").unwrap_or(false),
+    repeat: prop_bool(scope, record, "repeat")?.unwrap_or(false),
+    text: prop_string(scope, record, "text")?,
+    ctrl: prop_bool(scope, record, "ctrlKey")?.unwrap_or(false),
+    shift: prop_bool(scope, record, "shiftKey")?.unwrap_or(false),
+    alt: prop_bool(scope, record, "altKey")?.unwrap_or(false),
+    meta: prop_bool(scope, record, "metaKey")?.unwrap_or(false),
   })
 }
 
@@ -270,8 +270,8 @@ fn read_ime(
   scope: &mut v8::PinScope,
   record: v8::Local<v8::Object>,
 ) -> Result<RawIme, OpError> {
-  let action = prop_string(scope, record, "action").unwrap_or_default();
-  let data = prop_string(scope, record, "data").unwrap_or_default();
+  let action = prop_string(scope, record, "action")?.unwrap_or_default();
+  let data = prop_string(scope, record, "data")?.unwrap_or_default();
   match action.as_str() {
     "enabled" => Ok(RawIme::Enabled),
     "preedit" => Ok(RawIme::Preedit(data)),
@@ -296,10 +296,10 @@ fn read_wheel(
     delta_y: prop_number(scope, record, "deltaY")?.unwrap_or(0.0),
     delta_z: prop_number(scope, record, "deltaZ")?.unwrap_or(0.0),
     delta_mode: prop_number(scope, record, "deltaMode")?.unwrap_or(0.0) as u32,
-    ctrl: prop_bool(scope, record, "ctrlKey").unwrap_or(false),
-    shift: prop_bool(scope, record, "shiftKey").unwrap_or(false),
-    alt: prop_bool(scope, record, "altKey").unwrap_or(false),
-    meta: prop_bool(scope, record, "metaKey").unwrap_or(false),
+    ctrl: prop_bool(scope, record, "ctrlKey")?.unwrap_or(false),
+    shift: prop_bool(scope, record, "shiftKey")?.unwrap_or(false),
+    alt: prop_bool(scope, record, "altKey")?.unwrap_or(false),
+    meta: prop_bool(scope, record, "metaKey")?.unwrap_or(false),
   })
 }
 
@@ -307,7 +307,7 @@ fn prop<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<'_, v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
@@ -315,12 +315,14 @@ fn prop_string(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Option<String> {
-  let value = prop(scope, object, name)?;
+) -> Result<Option<String>, OpError> {
+  let Some(value) = prop(scope, object, name)? else {
+    return Ok(None);
+  };
   if value.is_null() {
-    return None;
+    return Ok(None);
   }
-  Some(value.to_rust_string_lossy(scope))
+  <String as yuzuko_core::op::FromV8>::from_v8(scope, value).map(Some)
 }
 
 fn prop_number(
@@ -328,7 +330,7 @@ fn prop_number(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<f64>, OpError> {
-  let Some(value) = prop(scope, object, name) else {
+  let Some(value) = prop(scope, object, name)? else {
     return Ok(None);
   };
   if value.is_null() {
@@ -341,6 +343,6 @@ fn prop_bool(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Option<bool> {
-  prop(scope, object, name).map(|value| value.boolean_value(scope))
+) -> Result<Option<bool>, OpError> {
+  Ok(prop(scope, object, name)?.map(|value| value.boolean_value(scope)))
 }

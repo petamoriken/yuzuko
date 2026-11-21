@@ -1118,7 +1118,7 @@ fn read_piece(
   {
     return Ok(Piece::Source(blob.get().source.clone()));
   }
-  if let Some(bytes) = bytes::buffer_source(scope, value) {
+  if let Some(bytes) = bytes::buffer_source(scope, value)? {
     return Ok(Piece::Source(BlobSource::from_vec(bytes)));
   }
   Ok(Piece::Text(try_text(scope, value)?))

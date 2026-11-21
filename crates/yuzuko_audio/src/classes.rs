@@ -27,9 +27,10 @@ pub(crate) fn as_u32(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<u32, OpError> {
-  value
-    .uint32_value(scope)
-    .ok_or_else(|| OpError::type_("The value is not an unsigned integer"))
+  // `channelCount` is a plain `unsigned long`: `ToNumber`, then modulo `2^32`.
+  Ok(yuzuko_core::modulo_u32(yuzuko_core::to_number(
+    scope, value,
+  )?))
 }
 
 fn promise_of(
@@ -61,18 +62,18 @@ fn parse_sink(
   if value.is_object() {
     let object = v8::Local::<v8::Object>::try_from(value)
       .map_err(|_| Fault::type_("The audio sink is invalid"))?;
-    let Some(kind) = util::member(scope, object, "type") else {
+    let Some(kind) = util::member(scope, object, "type")? else {
       return Err(Fault::type_("The audio sink type is missing"));
     };
     if !kind.is_string() {
       return Err(Fault::type_("The audio sink type is invalid"));
     }
-    return match util::rust_string(scope, kind).as_str() {
+    return match util::rust_string(scope, kind)?.as_str() {
       "none" => Ok(AudioSink::None),
       _ => Err(Fault::type_("The audio sink type is invalid")),
     };
   }
-  Ok(AudioSink::Device(util::rust_string(scope, value)))
+  Ok(AudioSink::Device(util::rust_string(scope, value)?))
 }
 
 fn require_sink(
@@ -144,7 +145,7 @@ fn parse_hint(
     return Ok(RenderHint::Frames(size));
   }
   if value.is_string() {
-    return match util::rust_string(scope, value).as_str() {
+    return match util::rust_string(scope, value)?.as_str() {
       "default" => Ok(RenderHint::Default),
       "hardware" => Ok(RenderHint::Hardware),
       _ => Err(OpError::type_("renderSizeHint is not supported")),
@@ -167,7 +168,7 @@ fn check_latency(
     return Ok(());
   }
   if value.is_string() {
-    return match util::rust_string(scope, value).as_str() {
+    return match util::rust_string(scope, value)?.as_str() {
       "interactive" | "balanced" | "playback" => Ok(()),
       _ => Err(OpError::type_("latencyHint is invalid")),
     };
@@ -203,7 +204,7 @@ pub(crate) fn node_options(
   let mut count = count;
   let mut mode = mode;
   let mut interpretation = interpretation;
-  if let Some(raw) = util::member(scope, object, "channelCount") {
+  if let Some(raw) = util::member(scope, object, "channelCount")? {
     let next = as_u32(scope, raw)?;
     if next == 0 || next > 32 {
       return Err(OpError::dom(
@@ -213,16 +214,16 @@ pub(crate) fn node_options(
     }
     count = next;
   }
-  if let Some(raw) = util::member(scope, object, "channelCountMode") {
-    mode = match util::rust_string(scope, raw).as_str() {
+  if let Some(raw) = util::member(scope, object, "channelCountMode")? {
+    mode = match util::rust_string(scope, raw)?.as_str() {
       "max" => "max",
       "clamped-max" => "clamped-max",
       "explicit" => "explicit",
       _ => return Err(OpError::type_("The channel count mode is invalid")),
     };
   }
-  if let Some(raw) = util::member(scope, object, "channelInterpretation") {
-    interpretation = match util::rust_string(scope, raw).as_str() {
+  if let Some(raw) = util::member(scope, object, "channelInterpretation")? {
+    interpretation = match util::rust_string(scope, raw)?.as_str() {
       "speakers" => "speakers",
       "discrete" => "discrete",
       _ => {
@@ -248,7 +249,7 @@ pub(crate) fn option_number(
   let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
     return Ok(None);
   };
-  let Some(raw) = util::member(scope, object, name) else {
+  let Some(raw) = util::member(scope, object, name)? else {
     return Ok(None);
   };
   Ok(Some(util::finite_number(scope, raw)?))
@@ -333,13 +334,13 @@ impl AudioBuffer {
     }
     let object = v8::Local::<v8::Object>::try_from(init)
       .map_err(|_| OpError::type_("AudioBuffer options are not an object"))?;
-    let Some(length) = util::member(scope, object, "length") else {
+    let Some(length) = util::member(scope, object, "length")? else {
       return Err(OpError::type_("length is required"));
     };
-    let Some(rate) = util::member(scope, object, "sampleRate") else {
+    let Some(rate) = util::member(scope, object, "sampleRate")? else {
       return Err(OpError::type_("sampleRate is required"));
     };
-    let channels = util::member(scope, object, "numberOfChannels")
+    let channels = util::member(scope, object, "numberOfChannels")?
       .map(|value| as_u32(scope, value))
       .transpose()?
       .unwrap_or(1);
@@ -1283,7 +1284,7 @@ fn oscillator_wave(
     None
   };
   if let Some(object) = object
-    && let Some(raw) = util::member(scope, object, "periodicWave")
+    && let Some(raw) = util::member(scope, object, "periodicWave")?
   {
     if raw.is_null() {
       return Err(OpError::type_("periodicWave is null"));
@@ -1300,10 +1301,13 @@ fn oscillator_wave(
     }
     return Ok(wave);
   }
-  let name = object
-    .and_then(|object| util::member(scope, object, "type"))
-    .map(|value| util::rust_string(scope, value))
-    .unwrap_or_else(|| "sine".to_string());
+  let name = match object {
+    Some(object) => match util::member(scope, object, "type")? {
+      Some(value) => util::rust_string(scope, value)?,
+      None => "sine".to_string(),
+    },
+    None => "sine".to_string(),
+  };
   match name.as_str() {
     "sine" => Ok(Wave::Sine),
     "square" => Ok(Wave::Square),
@@ -1404,7 +1408,7 @@ fn build_buffer_source(
   engine::set_k_rate_only(rate_id);
   engine::set_k_rate_only(detune_id);
   let buffer = source_buffer_option(scope, options)?;
-  let looped = option_bool(scope, options, "loop");
+  let looped = option_bool(scope, options, "loop")?;
   let loop_start = option_number(scope, options, "loopStart")?.unwrap_or(0.0);
   let loop_end = option_number(scope, options, "loopEnd")?.unwrap_or(0.0);
   let id = engine::alloc();
@@ -1439,15 +1443,17 @@ pub(crate) fn option_bool(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
   name: &str,
-) -> bool {
+) -> Result<bool, OpError> {
   if !value.is_object() || value.is_null() {
-    return false;
+    return Ok(false);
   }
   let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
-    return false;
+    return Ok(false);
   };
-  util::member(scope, object, name)
-    .is_some_and(|value| value.boolean_value(scope))
+  Ok(
+    util::member(scope, object, name)?
+      .is_some_and(|value| value.boolean_value(scope)),
+  )
 }
 
 fn source_buffer_option(
@@ -1460,7 +1466,7 @@ fn source_buffer_option(
   let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
     return Ok(None);
   };
-  let Some(raw) = util::member(scope, object, "buffer") else {
+  let Some(raw) = util::member(scope, object, "buffer")? else {
     return Ok(None);
   };
   if raw.is_null() {
@@ -1639,7 +1645,7 @@ fn coefficient_list(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<Vec<f32>>, OpError> {
-  let Some(value) = util::member(scope, object, name) else {
+  let Some(value) = util::member(scope, object, name)? else {
     return Ok(None);
   };
   Ok(Some(util::read_f32_sequence(scope, value)?))
@@ -1707,7 +1713,7 @@ impl PeriodicWave {
     let real = coefficient_list(scope, object, "real")?;
     let imag = coefficient_list(scope, object, "imag")?;
     let (real, imag) = pair_coefficients(real, imag);
-    let disable = util::member(scope, object, "disableNormalization")
+    let disable = util::member(scope, object, "disableNormalization")?
       .is_some_and(|value| value.boolean_value(scope));
     build_wave(scope, context, real, imag, disable)
   }
@@ -1906,9 +1912,11 @@ impl BaseAudioContext {
     let imag = util::read_f32_sequence(scope, args.get(1))?;
     let disable = if args.length() > 2 && args.get(2).is_object() {
       let object = v8::Local::<v8::Object>::try_from(args.get(2)).ok();
-      object
-        .and_then(|object| util::member(scope, object, "disableNormalization"))
-        .is_some_and(|value| value.boolean_value(scope))
+      match object {
+        Some(object) => util::member(scope, object, "disableNormalization")?
+          .is_some_and(|value| value.boolean_value(scope)),
+        None => false,
+      }
     } else {
       false
     };
@@ -2189,17 +2197,17 @@ impl AudioContext {
       let object = v8::Local::<v8::Object>::try_from(init).map_err(|_| {
         OpError::type_("AudioContext options are not an object")
       })?;
-      if let Some(value) = util::member(scope, object, "sampleRate") {
+      if let Some(value) = util::member(scope, object, "sampleRate")? {
         rate = engine::check_rate(util::finite_number(scope, value)?)
           .map_err(op_fault)?;
       }
-      if let Some(value) = util::member(scope, object, "renderSizeHint") {
+      if let Some(value) = util::member(scope, object, "renderSizeHint")? {
         hint = parse_hint(scope, value)?;
       }
-      if let Some(value) = util::member(scope, object, "latencyHint") {
+      if let Some(value) = util::member(scope, object, "latencyHint")? {
         check_latency(scope, value)?;
       }
-      if let Some(value) = util::member(scope, object, "sinkId") {
+      if let Some(value) = util::member(scope, object, "sinkId")? {
         sink = require_sink(scope, value)?;
       }
     }
@@ -2353,7 +2361,7 @@ fn completion_buffer<'s>(
   }
   let init = v8::Local::<v8::Object>::try_from(args.get(1))
     .map_err(|_| OpError::type_("renderedBuffer is required"))?;
-  let Some(raw) = util::member(scope, init, "renderedBuffer") else {
+  let Some(raw) = util::member(scope, init, "renderedBuffer")? else {
     return Err(OpError::type_("renderedBuffer is required"));
   };
   if raw.is_null_or_undefined() {
@@ -2466,24 +2474,24 @@ impl OfflineAudioContext {
       let object = v8::Local::<v8::Object>::try_from(first).map_err(|_| {
         OpError::type_("OfflineAudioContext options are not an object")
       })?;
-      let Some(rate) = util::member(scope, object, "sampleRate") else {
+      let Some(rate) = util::member(scope, object, "sampleRate")? else {
         return Err(OpError::type_("sampleRate is required"));
       };
       let rate = engine::check_rate(util::finite_number(scope, rate)?)
         .map_err(op_fault)?;
-      let channels = util::member(scope, object, "numberOfChannels")
+      let channels = util::member(scope, object, "numberOfChannels")?
         .map(|value| as_u32(scope, value))
         .transpose()?
         .unwrap_or(1);
       let channels = engine::check_channels(channels).map_err(op_fault)?;
-      let length = match util::member(scope, object, "length") {
+      let length = match util::member(scope, object, "length")? {
         None => None,
         Some(value) if value.is_null() => None,
         Some(value) => {
           Some(engine::check_length(as_u32(scope, value)?).map_err(op_fault)?)
         }
       };
-      let hint = util::member(scope, object, "renderSizeHint")
+      let hint = util::member(scope, object, "renderSizeHint")?
         .map(|value| parse_hint(scope, value))
         .transpose()?
         .unwrap_or(RenderHint::Default);
@@ -2576,13 +2584,7 @@ impl OfflineAudioContext {
     let id = self.base.id;
     let time = args.get(0);
     promise_of(scope, move |scope, resolver| {
-      match util::finite_number(scope, time).map_err(|error| {
-        Fault::Type(match error {
-          OpError::Type(message) | OpError::Range(message) => message,
-          OpError::Dom { message, .. } => message,
-          OpError::Thrown(_) => "The suspend time is invalid".to_string(),
-        })
-      }) {
+      match util::finite_number(scope, time).map_err(Fault::from) {
         Ok(time) => match engine::suspend_frame(id, time) {
           Ok(frame) => {
             engine::push_suspend(id, frame, v8::Global::new(scope, resolver));
@@ -2673,7 +2675,20 @@ impl AudioWorklet {
     scope: &mut v8::PinScope,
     args: &v8::FunctionCallbackArguments,
   ) -> Js {
-    let url = util::rust_string(scope, args.get(0));
+    let url = match util::rust_string(scope, args.get(0)) {
+      Ok(url) => url,
+      Err(error) => {
+        return promise_of(scope, move |scope, resolver| {
+          let thrown = yuzuko_core::exception_value(
+            scope,
+            error,
+            yuzuko_core::DomFallback::Error,
+            yuzuko_core::StringFailure::Unwrap,
+          );
+          resolver.reject(scope, thrown);
+        });
+      }
+    };
     let context = self.id;
     promise_of(scope, move |scope, resolver| {
       let id = engine::alloc();
@@ -2731,13 +2746,19 @@ fn module_fetched(
     fail_job(scope, id);
     return;
   };
-  let ok = util::member(scope, response, "ok")
-    .is_some_and(|value| value.boolean_value(scope));
-  if !ok {
+  let Ok(ok) = util::member(scope, response, "ok") else {
+    fail_job(scope, id);
+    return;
+  };
+  if !ok.is_some_and(|value| value.boolean_value(scope)) {
     fail_job(scope, id);
     return;
   }
-  let Some(text) = util::member(scope, response, "text") else {
+  let Ok(text) = util::member(scope, response, "text") else {
+    fail_job(scope, id);
+    return;
+  };
+  let Some(text) = text else {
     fail_job(scope, id);
     return;
   };
@@ -2776,7 +2797,20 @@ fn module_text(
   let Some(job) = take_job(id) else {
     return;
   };
-  let source = util::rust_string(scope, args.get(0));
+  let source = match util::rust_string(scope, args.get(0)) {
+    Ok(source) => source,
+    Err(error) => {
+      let resolver = v8::Local::new(scope, &job.resolver);
+      let thrown = yuzuko_core::exception_value(
+        scope,
+        error,
+        yuzuko_core::DomFallback::Error,
+        yuzuko_core::StringFailure::Unwrap,
+      );
+      resolver.reject(scope, thrown);
+      return;
+    }
+  };
   let resolver = v8::Local::new(scope, &job.resolver);
   match engine::eval_module(scope, job.context, &source, &job.url) {
     Ok(()) => resolve_undefined(scope, resolver),
@@ -2834,7 +2868,7 @@ impl AudioWorkletNode {
     args: &v8::FunctionCallbackArguments,
   ) -> Result<AudioWorkletNode, OpError> {
     let context = require_context(scope, args.get(0))?;
-    let name = util::rust_string(scope, args.get(1));
+    let name = util::rust_string(scope, args.get(1))?;
     if name.is_empty() {
       return Err(OpError::dom(
         "NotSupportedError",
@@ -2871,13 +2905,13 @@ impl AudioWorkletNode {
     }
     if options.is_object()
       && let Ok(object) = v8::Local::<v8::Object>::try_from(options)
-      && let Some(data) = util::member(scope, object, "parameterData")
+      && let Some(data) = util::member(scope, object, "parameterData")?
       && data.is_object()
     {
       let data = v8::Local::<v8::Object>::try_from(data)
         .map_err(|_| OpError::type_("parameterData is not an object"))?;
       for param in &params {
-        if let Some(value) = util::member(scope, data, &param.name) {
+        if let Some(value) = util::member(scope, data, &param.name)? {
           let number = util::finite_number(scope, value)?;
           engine::set_param_value(param.id, number).map_err(op_fault)?;
         }
@@ -2885,8 +2919,9 @@ impl AudioWorkletNode {
     }
     let (port, processor_port) = engine::create_port_pair(scope);
     let script = engine::processor_script(context, &name);
-    let parameter_data = supplied_global(scope, options, "parameterData");
-    let processor_options = supplied_global(scope, options, "processorOptions");
+    let parameter_data = supplied_global(scope, options, "parameterData")?;
+    let processor_options =
+      supplied_global(scope, options, "processorOptions")?;
     let constructed = engine::construct_processor(
       scope,
       context,
@@ -2980,13 +3015,13 @@ fn worklet_counts(
     let object = v8::Local::<v8::Object>::try_from(options).map_err(|_| {
       OpError::type_("AudioWorkletNode options are not an object")
     })?;
-    if let Some(value) = util::member(scope, object, "numberOfInputs") {
+    if let Some(value) = util::member(scope, object, "numberOfInputs")? {
       inputs = as_u32(scope, value)?;
     }
-    if let Some(value) = util::member(scope, object, "numberOfOutputs") {
+    if let Some(value) = util::member(scope, object, "numberOfOutputs")? {
       outputs = as_u32(scope, value)?;
     }
-    if let Some(value) = util::member(scope, object, "outputChannelCount") {
+    if let Some(value) = util::member(scope, object, "outputChannelCount")? {
       let list = v8::Local::<v8::Array>::try_from(value)
         .map_err(|_| OpError::type_("outputChannelCount is not a sequence"))?;
       if list.length() != outputs {
@@ -3019,14 +3054,17 @@ fn supplied_global(
   scope: &mut v8::PinScope,
   options: v8::Local<v8::Value>,
   name: &str,
-) -> Option<v8::Global<v8::Value>> {
+) -> Result<Option<v8::Global<v8::Value>>, OpError> {
   if !options.is_object() {
-    return None;
+    return Ok(None);
   }
   let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
-    return None;
+    return Ok(None);
   };
-  util::member(scope, object, name).map(|value| v8::Global::new(scope, value))
+  Ok(
+    util::member(scope, object, name)?
+      .map(|value| v8::Global::new(scope, value)),
+  )
 }
 
 pub fn install(scope: &mut v8::PinScope) {

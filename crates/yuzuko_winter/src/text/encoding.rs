@@ -165,10 +165,10 @@ impl TextDecoder {
     options: Option<v8::Local<v8::Value>>,
   ) -> Result<String, OpError> {
     // Dictionary conversion runs before the bytes are copied. A `stream`
-    // getter can detach the input, and that detached buffer decodes as empty.
+    // getter can detach the input, and a detached buffer throws TypeError.
     let stream = options.is_some_and(|options| stream_option(scope, options));
     let bytes = match input {
-      Some(value) => bytes::buffer_source(scope, value).unwrap_or_default(),
+      Some(value) => bytes::buffer_source(scope, value)?.unwrap_or_default(),
       None => Vec::new(),
     };
     // Reset when the previous call flushed. `stream` on this call is stored

@@ -163,23 +163,8 @@ impl FromV8 for u32 {
     scope: &mut v8::PinScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, OpError> {
-    Ok(to_uint32(f64::from_v8(scope, value)?))
+    Ok(crate::js::modulo_u32(f64::from_v8(scope, value)?))
   }
-}
-
-/// WebIDL `unsigned long`: `ToNumber`, truncate, then modulo 2^32.
-#[inline]
-fn to_uint32(number: f64) -> u32 {
-  if !number.is_finite() || number == 0.0 {
-    return 0;
-  }
-  let modulo = number.trunc() % 4_294_967_296.0;
-  let positive = if modulo < 0.0 {
-    modulo + 4_294_967_296.0
-  } else {
-    modulo
-  };
-  positive as u32
 }
 
 impl FromV8 for bool {

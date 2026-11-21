@@ -219,7 +219,7 @@ impl WebSocket {
     if self.ready.get() != OPEN {
       return Err(OpError::dom("InvalidStateError", "WebSocket is not open"));
     }
-    if let Some(bytes) = buffer_source(scope, value) {
+    if let Some(bytes) = buffer_source(scope, value)? {
       self.queue_binary(bytes);
       return Ok(());
     }

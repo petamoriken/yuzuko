@@ -41,11 +41,33 @@ enum OverMax {
   IndexSize,
 }
 
-#[derive(Debug)]
 pub enum Fault {
   Type(String),
   Range(String),
-  Dom(&'static str, String),
+  Dom(String, String),
+  Thrown(Box<v8::Global<v8::Value>>),
+}
+
+impl std::fmt::Debug for Fault {
+  fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Type(message) => write!(formatter, "Type({message})"),
+      Self::Range(message) => write!(formatter, "Range({message})"),
+      Self::Dom(name, message) => write!(formatter, "Dom({name}, {message})"),
+      Self::Thrown(_) => write!(formatter, "Thrown(..)"),
+    }
+  }
+}
+
+impl From<OpError> for Fault {
+  fn from(error: OpError) -> Self {
+    match error {
+      OpError::Type(message) => Self::Type(message),
+      OpError::Range(message) => Self::Range(message),
+      OpError::Dom { name, message } => Self::Dom(name, message),
+      OpError::Thrown(value) => Self::Thrown(value),
+    }
+  }
 }
 
 impl Fault {
@@ -57,8 +79,11 @@ impl Fault {
     Self::Range(message.to_string())
   }
 
-  pub(crate) fn dom(name: &'static str, message: &str) -> Self {
-    Self::Dom(name, message.to_string())
+  pub(crate) fn dom(
+    name: impl Into<String>,
+    message: impl Into<String>,
+  ) -> Self {
+    Self::Dom(name.into(), message.into())
   }
 
   pub fn op(self) -> OpError {
@@ -66,6 +91,7 @@ impl Fault {
       Self::Type(message) => OpError::type_(message),
       Self::Range(message) => OpError::range(message),
       Self::Dom(name, message) => OpError::dom(name, message),
+      Self::Thrown(value) => OpError::Thrown(value),
     }
   }
 
@@ -3963,7 +3989,7 @@ fn register_from_js(
       "registerProcessor requires a name and a constructor",
     ));
   }
-  let name = util::rust_string(scope, args.get(0));
+  let name = util::rust_string(scope, args.get(0))?;
   if name.is_empty() {
     return Err(Fault::dom(
       "NotSupportedError",
@@ -4023,9 +4049,10 @@ fn parse_descriptors(
   for item in items {
     let object = v8::Local::<v8::Object>::try_from(item)
       .map_err(|_| Fault::type_("A parameter descriptor is not an object"))?;
-    let name = util::member(scope, object, "name")
-      .map(|value| util::rust_string(scope, value))
-      .unwrap_or_default();
+    let name = match util::member(scope, object, "name")? {
+      Some(value) => util::rust_string(scope, value)?,
+      None => String::new(),
+    };
     if name.is_empty() {
       return Err(Fault::dom(
         "NotSupportedError",
@@ -4038,19 +4065,16 @@ fn parse_descriptors(
         "A parameter name is duplicated",
       ));
     }
-    let default = match util::member(scope, object, "defaultValue") {
-      Some(value) => util::finite_number(scope, value)
-        .map_err(|error| Fault::type_(&error_text(error)))?,
+    let default = match util::member(scope, object, "defaultValue")? {
+      Some(value) => util::finite_number(scope, value)?,
       None => 0.0,
     };
-    let min = match util::member(scope, object, "minValue") {
-      Some(value) => util::finite_number(scope, value)
-        .map_err(|error| Fault::type_(&error_text(error)))?,
+    let min = match util::member(scope, object, "minValue")? {
+      Some(value) => util::finite_number(scope, value)?,
       None => min_default,
     };
-    let max = match util::member(scope, object, "maxValue") {
-      Some(value) => util::finite_number(scope, value)
-        .map_err(|error| Fault::type_(&error_text(error)))?,
+    let max = match util::member(scope, object, "maxValue")? {
+      Some(value) => util::finite_number(scope, value)?,
       None => max_default,
     };
     if default < min || default > max {
@@ -4059,9 +4083,10 @@ fn parse_descriptors(
         "The default value is outside minValue and maxValue",
       ));
     }
-    let rate = util::member(scope, object, "automationRate")
-      .map(|value| util::rust_string(scope, value))
-      .unwrap_or_else(|| "a-rate".to_string());
+    let rate = match util::member(scope, object, "automationRate")? {
+      Some(value) => util::rust_string(scope, value)?,
+      None => "a-rate".to_string(),
+    };
     let a_rate = match rate.as_str() {
       "a-rate" => true,
       "k-rate" => false,
@@ -4078,14 +4103,6 @@ fn parse_descriptors(
     });
   }
   Ok(templates)
-}
-
-fn error_text(error: OpError) -> String {
-  match error {
-    OpError::Type(message) | OpError::Range(message) => message,
-    OpError::Dom { message, .. } => message,
-    OpError::Thrown(_) => "The value is invalid".to_string(),
-  }
 }
 
 fn descriptor_items<'s>(
@@ -4891,9 +4908,10 @@ fn exception_name(
   let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
     return String::new();
   };
-  util::member(scope, object, "name")
-    .map(|value| util::rust_string(scope, value))
-    .unwrap_or_default()
+  let Ok(Some(value)) = util::member(scope, object, "name") else {
+    return String::new();
+  };
+  util::rust_string(scope, value).unwrap_or_default()
 }
 
 fn fault_from_trycatch(
@@ -6328,12 +6346,13 @@ mod tests {
     value_at(intrinsic, &events, time)
   }
 
-  fn fault_name(result: Result<(), Fault>) -> &'static str {
+  fn fault_name(result: Result<(), Fault>) -> String {
     match result {
-      Ok(()) => "ok",
-      Err(Fault::Type(_)) => "TypeError",
-      Err(Fault::Range(_)) => "RangeError",
+      Ok(()) => "ok".to_string(),
+      Err(Fault::Type(_)) => "TypeError".to_string(),
+      Err(Fault::Range(_)) => "RangeError".to_string(),
       Err(Fault::Dom(name, _)) => name,
+      Err(Fault::Thrown(_)) => "thrown".to_string(),
     }
   }
 

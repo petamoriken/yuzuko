@@ -1331,7 +1331,9 @@ fn property_text(
   name: &str,
 ) -> String {
   let object = v8::Local::<v8::Object>::try_from(value).expect(name);
-  let field = crate::js::dictionary_member(scope, object, name).expect(name);
+  let field = crate::js::dictionary_member(scope, object, name)
+    .expect(name)
+    .expect(name);
   crate::js::rust_string(scope, field)
 }
 
@@ -1348,9 +1350,27 @@ fn host_binding_helpers_follow_their_contract() {
       object.set(scope, yes.into(), present.into());
       let no = v8::String::new(scope, "no").unwrap();
       object.set(scope, no.into(), v8::undefined(scope).into());
-      let found = crate::js::dictionary_member(scope, object, "yes").unwrap();
+      let found = crate::js::dictionary_member(scope, object, "yes")
+        .unwrap()
+        .unwrap();
       assert_eq!(crate::js::rust_string(scope, found), "present");
-      assert!(crate::js::dictionary_member(scope, object, "no").is_none());
+      assert!(
+        crate::js::dictionary_member(scope, object, "no")
+          .unwrap()
+          .is_none()
+      );
+      let throwing =
+        v8::String::new(scope, "({ get yes() { throw new Error('nope'); } })")
+          .unwrap();
+      let throwing = v8::Script::compile(scope, throwing, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      let throwing = v8::Local::<v8::Object>::try_from(throwing).unwrap();
+      assert!(matches!(
+        crate::js::dictionary_member(scope, throwing, "yes"),
+        Err(crate::op::OpError::Thrown(_))
+      ));
 
       let text = v8::String::new(scope, "hello").unwrap();
       assert_eq!(crate::js::rust_string(scope, text.into()), "hello");
@@ -1375,38 +1395,69 @@ fn host_binding_helpers_follow_their_contract() {
         assert_eq!(crate::js::rust_string_or(tc, value, ""), "");
       }
 
-      let reject = crate::js::NumberReject {
-        null_message: None,
-        not_number: "The provided value is not a number",
-        not_finite: "The provided value is not finite",
-      };
       let finite = v8::Number::new(scope, 1.5);
       assert_eq!(
-        crate::js::finite_number(scope, finite.into(), reject).unwrap(),
+        crate::js::finite_number(scope, finite.into(), "not finite").unwrap(),
         1.5
       );
       let nan = v8::Number::new(scope, f64::NAN);
-      assert!(crate::js::finite_number(scope, nan.into(), reject).is_err());
+      assert!(
+        crate::js::finite_number(scope, nan.into(), "not finite").is_err()
+      );
       let infinity = v8::Number::new(scope, f64::INFINITY);
       assert!(
-        crate::js::finite_number(scope, infinity.into(), reject).is_err()
+        crate::js::finite_number(scope, infinity.into(), "not finite").is_err()
       );
       let null = v8::null(scope);
       assert_eq!(
-        crate::js::finite_number(scope, null.into(), reject).unwrap(),
+        crate::js::finite_number(scope, null.into(), "not finite").unwrap(),
         0.0
       );
-      let null_reject = crate::js::NumberReject {
-        null_message: Some("The value is null"),
-        not_number: "The value is not a number",
-        not_finite: "The value is not finite",
-      };
-      match crate::js::finite_number(scope, null.into(), null_reject) {
-        Err(crate::op::OpError::Type(message)) => {
-          assert_eq!(message, "The value is null");
-        }
-        other => panic!("null should be rejected: {other:?}"),
-      }
+      let value_of = v8::String::new(
+        scope,
+        "({ valueOf() { throw new Error('valueOf'); } })",
+      )
+      .unwrap();
+      let value_of = v8::Script::compile(scope, value_of, None)
+        .unwrap()
+        .run(scope)
+        .unwrap();
+      assert!(matches!(
+        crate::js::to_number(scope, value_of),
+        Err(crate::op::OpError::Thrown(_))
+      ));
+      assert_eq!(crate::js::enforce_range_u32(-0.9), Some(0));
+      assert_eq!(
+        crate::js::enforce_range_u32(4_294_967_295.9),
+        Some(u32::MAX)
+      );
+      assert_eq!(crate::js::enforce_range_u32(-1.0), None);
+      assert_eq!(crate::js::enforce_range_u32(f64::NAN), None);
+      assert_eq!(
+        crate::js::enforce_range_u64(crate::js::MAX_SAFE_INTEGER),
+        Some(9_007_199_254_740_991)
+      );
+      assert_eq!(
+        crate::js::enforce_range_u64(crate::js::MAX_SAFE_INTEGER + 1.0),
+        None
+      );
+      assert_eq!(crate::js::enforce_range_u64(-0.9), Some(0));
+      assert_eq!(
+        crate::js::enforce_range_i64(-crate::js::MAX_SAFE_INTEGER),
+        Some(-9_007_199_254_740_991)
+      );
+      assert_eq!(
+        crate::js::enforce_range_i64(-(crate::js::MAX_SAFE_INTEGER + 1.0)),
+        None
+      );
+      assert_eq!(crate::js::modulo_u32(-1.0), u32::MAX);
+      assert_eq!(crate::js::modulo_u32(f64::NAN), 0);
+      assert_eq!(crate::js::modulo_i64(-1.9), -1);
+      assert_eq!(crate::js::modulo_i64(f64::NAN), 0);
+      assert_eq!(crate::js::modulo_i64(9_223_372_036_854_775_808.0), i64::MIN);
+      assert_eq!(crate::js::modulo_u64(-1.0), u64::MAX);
+      assert_eq!(crate::js::modulo_u64(18_446_744_073_709_551_616.0), 0);
+      assert_eq!(crate::js::modulo_u64(18_446_744_073_709_555_712.0), 4096);
 
       let view = crate::js::uint8_array(scope, vec![1, 2, 3, 4]).unwrap();
       let mut bytes = [0u8; 4];
@@ -1435,7 +1486,11 @@ fn host_binding_helpers_follow_their_contract() {
         0,
         probe_host,
       );
-      assert!(crate::js::dictionary_member(scope, holder, "dispose").is_none());
+      assert!(
+        crate::js::dictionary_member(scope, holder, "dispose")
+          .unwrap()
+          .is_none()
+      );
       let installed = holder.get(scope, symbol.into()).expect("symbol method");
       assert_eq!(property_text(scope, installed, "name"), "dispose");
       assert_eq!(property_text(scope, installed, "length"), "0");
@@ -1449,7 +1504,9 @@ fn host_binding_helpers_follow_their_contract() {
         probe_host,
       ));
       let posted_fn =
-        crate::js::dictionary_member(scope, posted, "postMessage").unwrap();
+        crate::js::dictionary_member(scope, posted, "postMessage")
+          .unwrap()
+          .unwrap();
       assert_eq!(property_text(scope, posted_fn, "name"), "postMessage");
       assert_eq!(property_text(scope, posted_fn, "length"), "1");
 
@@ -1617,11 +1674,14 @@ fn shared_buffer_and_exception_helpers_follow_their_contract() {
       crate::js::define_function(scope, global, "ProbeCtor", 0, probe_host);
       crate::js::relocate_constructor(scope, "ProbeCtor");
       assert!(
-        crate::js::dictionary_member(scope, global, "ProbeCtor").is_none()
+        crate::js::dictionary_member(scope, global, "ProbeCtor")
+          .unwrap()
+          .is_none()
       );
       let yuzuko = crate::js::namespace(scope, "Yuzuko");
-      let moved =
-        crate::js::dictionary_member(scope, yuzuko, "ProbeCtor").unwrap();
+      let moved = crate::js::dictionary_member(scope, yuzuko, "ProbeCtor")
+        .unwrap()
+        .unwrap();
       assert_eq!(property_text(scope, moved, "name"), "ProbeCtor");
 
       let source = v8::String::new(
@@ -1636,8 +1696,9 @@ fn shared_buffer_and_exception_helpers_follow_their_contract() {
       let object = v8::Local::<v8::Object>::try_from(object).unwrap();
       let arg = v8::String::new(scope, "ping").unwrap();
       crate::js::call_method(scope, object, "mark", &[arg.into()]);
-      let marked =
-        crate::js::dictionary_member(scope, global, "marked").unwrap();
+      let marked = crate::js::dictionary_member(scope, global, "marked")
+        .unwrap()
+        .unwrap();
       assert_eq!(crate::js::rust_string(scope, marked), "ping");
       crate::js::call_method(scope, object, "missing", &[]);
       Ok(())

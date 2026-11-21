@@ -15637,8 +15637,8 @@ interface EncodedVideoChunk {
   readonly timestamp: number;
 
   /**
-   * Microseconds. Missing or null is null. A non-negative finite number is
-   * truncated toward 0.
+   * Microseconds. An omitted value is null. A present value, including
+   * `null`, is `[EnforceRange] unsigned long long`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedVideoChunk/duration)
    */
@@ -15936,8 +15936,8 @@ interface EncodedAudioChunk {
   readonly timestamp: number;
 
   /**
-   * Microseconds. Missing or null is null. A non-negative finite number is
-   * truncated toward 0.
+   * Microseconds. An omitted value is null. A present value, including
+   * `null`, is `[EnforceRange] unsigned long long`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/EncodedAudioChunk/duration)
    */

@@ -1,14 +1,14 @@
 //! `VideoFrame` constructors, `allocationSize`, and `copyTo`.
 
 use yuzuko_core::op::{Js, OpError, host_ref};
-use yuzuko_core::rust_string;
 use yuzuko_image::{ColorSpace, ImageBitmap, Raster, SampleFormat};
 use yuzuko_window::{CanvasSnapshot, OffscreenCanvas, snapshot_canvas};
 use yuzuko_winter::buffer_source;
 
 use crate::classes::{
   COLOR_MATRIX, COLOR_PRIMARIES, COLOR_TRANSFER, VideoFrame, closed_frame,
-  color_bool, color_enum, detach_transfer_list, dictionary, long_long, member,
+  color_bool, color_enum, detach_transfer_list, dictionary, enforce_u64,
+  idl_string, long_long, member,
 };
 use crate::layout::{
   FormatClass, FrameColor, FrameData, LayoutError, PixelFormat, PlaneLayoutIn,
@@ -150,8 +150,8 @@ fn construct_buffer(
   let coded_width = required_size(scope, object, "codedWidth")?;
   let coded_height = required_size(scope, object, "codedHeight")?;
   ensure_size(coded_width, coded_height)?;
-  let timestamp = required_timestamp(scope, object, None)?;
-  let duration = optional_duration(scope, object)?;
+  let timestamp = required_timestamp(scope, object)?;
+  let duration = enforced_duration(scope, object)?;
   let color = color_of(scope, object, format)?;
   let visible = optional_rect(scope, object, "visibleRect")?;
   let visible = parse_visible(
@@ -163,7 +163,7 @@ fn construct_buffer(
   )
   .map_err(|error| layout_error(error, true))?;
   let layout = optional_layout(scope, object)?;
-  let bytes = buffer_source(scope, source)
+  let bytes = buffer_source(scope, source)?
     .ok_or_else(|| OpError::type_("data is not a BufferSource"))?;
   let pixels = read_buffer(
     &bytes,
@@ -457,7 +457,7 @@ fn image_init(
   let (rotation, flip) = read_orientation(scope, object)?;
   let (duration_set, duration) = duration_member(scope, object)?;
   Ok(ImageInit {
-    timestamp: optional_timestamp(scope, object, timestamp_fallback)?,
+    timestamp: modulo_timestamp(scope, object, timestamp_fallback)?,
     duration,
     duration_set,
     discard: alpha_discard(scope, object)?,
@@ -492,17 +492,17 @@ fn copy_options(
     });
   }
   let object = dictionary(scope, args.get(index), "VideoFrameCopyToOptions")?;
-  let color_space = match member(scope, object, "colorSpace") {
+  let color_space = match member(scope, object, "colorSpace")? {
     None => None,
-    Some(value) => match rust_string(scope, value).as_str() {
+    Some(value) => match idl_string(scope, value)?.as_str() {
       "srgb" => Some(ColorSpace::Srgb),
       "display-p3" => Some(ColorSpace::DisplayP3),
       _ => return Err(OpError::type_("colorSpace is invalid")),
     },
   };
-  let format = match member(scope, object, "format") {
+  let format = match member(scope, object, "format")? {
     None => None,
-    Some(value) => Some(require_format(&rust_string(scope, value))?),
+    Some(value) => Some(require_format(&idl_string(scope, value)?)?),
   };
   Ok(CopyOptions {
     rect: optional_rect(scope, object, "rect")?,
@@ -528,10 +528,10 @@ fn pixel_format(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<PixelFormat, OpError> {
-  let Some(value) = member(scope, object, "format") else {
+  let Some(value) = member(scope, object, "format")? else {
     return Err(OpError::type_("format is required"));
   };
-  require_format(&rust_string(scope, value))
+  require_format(&idl_string(scope, value)?)
 }
 
 fn require_format(name: &str) -> Result<PixelFormat, OpError> {
@@ -550,13 +550,19 @@ fn optional_rect(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<Option<RectD>, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(None);
   };
+  // `null` converts to an empty dictionary, whose defaults are all `0`.
   if value.is_null() {
-    return Ok(None);
+    return Ok(Some(RectD {
+      x: 0.0,
+      y: 0.0,
+      width: 0.0,
+      height: 0.0,
+    }));
   }
-  let rect = dictionary(scope, value, "visibleRect")?;
+  let rect = dictionary(scope, value, name)?;
   Ok(Some(RectD {
     x: finite_member(scope, rect, "x")?,
     y: finite_member(scope, rect, "y")?,
@@ -569,19 +575,24 @@ fn optional_layout(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Option<Vec<PlaneLayoutIn>>, OpError> {
-  let Some(value) = member(scope, object, "layout") else {
+  let Some(value) = member(scope, object, "layout")? else {
     return Ok(None);
   };
-  if value.is_null() {
-    return Ok(None);
-  }
   let array = v8::Local::<v8::Array>::try_from(value)
     .map_err(|_| OpError::type_("layout is not a sequence"))?;
   let mut layouts = Vec::with_capacity(array.length() as usize);
   for index in 0..array.length() {
-    let item = array
-      .get_index(scope, index)
-      .ok_or_else(|| OpError::type_("layout is not a sequence"))?;
+    let item = {
+      v8::tc_scope!(let tc, scope);
+      match array.get_index(tc, index) {
+        Some(value) => Ok(v8::Global::new(tc, value)),
+        None => Err(match tc.exception() {
+          Some(thrown) => OpError::thrown(tc, thrown),
+          None => OpError::type_("layout is not a sequence"),
+        }),
+      }
+    }?;
+    let item = v8::Local::new(scope, item);
     let plane = dictionary(scope, item, "PlaneLayout")?;
     let offset = required_enforce(scope, plane, "offset")?;
     let stride = required_enforce(scope, plane, "stride")?;
@@ -597,8 +608,8 @@ fn display_pair(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Option<(u32, u32)>, OpError> {
-  let width = member(scope, object, "displayWidth");
-  let height = member(scope, object, "displayHeight");
+  let width = member(scope, object, "displayWidth")?;
+  let height = member(scope, object, "displayHeight")?;
   match (width, height) {
     (None, None) => Ok(None),
     (Some(width), Some(height)) => {
@@ -618,62 +629,57 @@ fn display_pair(
 fn required_timestamp(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-  fallback: Option<f64>,
 ) -> Result<f64, OpError> {
-  match optional_timestamp(scope, object, fallback)? {
-    Some(timestamp) => Ok(timestamp),
-    None => Err(OpError::type_("timestamp is required")),
-  }
+  let Some(value) = member(scope, object, "timestamp")? else {
+    return Err(OpError::type_("timestamp is required"));
+  };
+  Ok(long_long(scope, value)? as f64)
 }
 
-fn optional_timestamp(
+/// `VideoFrameInit.timestamp` is a plain `long long`.
+fn modulo_timestamp(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   fallback: Option<f64>,
 ) -> Result<Option<f64>, OpError> {
-  let Some(value) = member(scope, object, "timestamp") else {
+  let Some(value) = member(scope, object, "timestamp")? else {
     return Ok(fallback);
   };
-  if value.is_null() {
-    return Err(OpError::type_("timestamp is required"));
-  }
-  Ok(Some(long_long(scope, value)? as f64))
+  let number = yuzuko_core::to_number(scope, value)?;
+  Ok(Some(yuzuko_core::modulo_i64(number) as f64))
 }
 
+/// `VideoFrameInit.duration` is a plain `unsigned long long`.
 fn duration_member(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<(bool, Option<f64>), OpError> {
-  let Some(value) = member(scope, object, "duration") else {
+  let Some(value) = member(scope, object, "duration")? else {
     return Ok((false, None));
   };
-  if value.is_null() {
-    return Ok((true, None));
-  }
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_("duration is not a number"))?;
-  if !number.is_finite() || number < 0.0 || number > u64::MAX as f64 {
-    return Err(OpError::type_("duration is out of range"));
-  }
-  Ok((true, Some(number.trunc())))
+  let number = yuzuko_core::to_number(scope, value)?;
+  Ok((true, Some(yuzuko_core::modulo_u64(number) as f64)))
 }
 
-fn optional_duration(
+/// `VideoFrameBufferInit.duration` is `[EnforceRange] unsigned long long`.
+fn enforced_duration(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Option<f64>, OpError> {
-  Ok(duration_member(scope, object)?.1)
+  let Some(value) = member(scope, object, "duration")? else {
+    return Ok(None);
+  };
+  Ok(Some(enforce_u64(scope, value, "duration")? as f64))
 }
 
 fn alpha_discard(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<bool, OpError> {
-  let Some(value) = member(scope, object, "alpha") else {
+  let Some(value) = member(scope, object, "alpha")? else {
     return Ok(false);
   };
-  match rust_string(scope, value).as_str() {
+  match idl_string(scope, value)?.as_str() {
     "keep" => Ok(false),
     "discard" => Ok(true),
     _ => Err(OpError::type_("alpha is invalid")),
@@ -685,7 +691,7 @@ fn color_of(
   object: v8::Local<v8::Object>,
   format: PixelFormat,
 ) -> Result<FrameColor, OpError> {
-  let Some(value) = member(scope, object, "colorSpace") else {
+  let Some(value) = member(scope, object, "colorSpace")? else {
     return Ok(if format.is_rgb() {
       FrameColor::srgb()
     } else {
@@ -708,12 +714,8 @@ fn read_orientation(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<(u16, bool), OpError> {
-  let rotation = if let Some(value) = member(scope, object, "rotation")
-    && !value.is_null()
-  {
-    let number = value
-      .number_value(scope)
-      .ok_or_else(|| OpError::type_("rotation is invalid"))?;
+  let rotation = if let Some(value) = member(scope, object, "rotation")? {
+    let number = yuzuko_core::to_number(scope, value)?;
     if !number.is_finite() {
       return Err(OpError::type_("rotation is invalid"));
     }
@@ -721,7 +723,7 @@ fn read_orientation(
   } else {
     0
   };
-  let flip = member(scope, object, "flip")
+  let flip = member(scope, object, "flip")?
     .is_some_and(|value| value.boolean_value(scope));
   Ok((rotation, flip))
 }
@@ -852,7 +854,7 @@ fn required_size(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
   let size = enforce_u32(scope, value, name)?;
@@ -867,7 +869,7 @@ fn required_enforce(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<u32, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Err(OpError::type_(format!("{name} is required")));
   };
   enforce_u32(scope, value, name)
@@ -878,20 +880,9 @@ fn enforce_u32(
   value: v8::Local<v8::Value>,
   name: &str,
 ) -> Result<u32, OpError> {
-  if value.is_null() {
-    return Err(OpError::type_(format!("{name} is out of range")));
-  }
-  let number = value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_(format!("{name} is not a number")))?;
-  if !number.is_finite()
-    || number < 0.0
-    || number > f64::from(u32::MAX)
-    || number.fract() != 0.0
-  {
-    return Err(OpError::type_(format!("{name} is out of range")));
-  }
-  Ok(number as u32)
+  let number = yuzuko_core::to_number(scope, value)?;
+  yuzuko_core::enforce_range_u32(number)
+    .ok_or_else(|| OpError::type_(format!("{name} is out of range")))
 }
 
 fn finite_member(
@@ -899,15 +890,10 @@ fn finite_member(
   object: v8::Local<v8::Object>,
   name: &str,
 ) -> Result<f64, OpError> {
-  let Some(value) = member(scope, object, name) else {
+  let Some(value) = member(scope, object, name)? else {
     return Ok(0.0);
   };
-  if value.is_null() {
-    return Ok(0.0);
-  }
-  value
-    .number_value(scope)
-    .ok_or_else(|| OpError::type_(format!("{name} is not a number")))
+  yuzuko_core::to_number(scope, value)
 }
 
 fn ensure_size(width: u32, height: u32) -> Result<(), OpError> {

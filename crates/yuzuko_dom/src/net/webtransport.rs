@@ -1588,7 +1588,7 @@ fn chunk_bytes(
       "A shared or resizable buffer cannot be written",
     ));
   }
-  buffer_source(scope, chunk)
+  buffer_source(scope, chunk)?
     .ok_or_else(|| OpError::type_("The chunk must be a BufferSource"))
 }
 
@@ -1700,9 +1700,9 @@ fn certificate_hashes(
       .ok_or_else(|| OpError::type_("A certificate hash must be an object"))?;
     let object = v8::Local::<v8::Object>::try_from(element)
       .map_err(|_| OpError::type_("A certificate hash must be an object"))?;
-    let algorithm = defined(scope, object, "algorithm")
+    let algorithm = defined(scope, object, "algorithm")?
       .ok_or_else(|| OpError::type_("A certificate hash needs an algorithm"))?;
-    let hash_value = defined(scope, object, "value")
+    let hash_value = defined(scope, object, "value")?
       .ok_or_else(|| OpError::type_("A certificate hash needs a value"))?;
     let algorithm = yuzuko_core::rust_string(scope, algorithm);
     if algorithm != "sha-256" {
@@ -1714,7 +1714,7 @@ fn certificate_hashes(
         "A certificate hash value must be a BufferSource",
       ));
     }
-    let bytes = buffer_source(scope, hash_value).ok_or_else(|| {
+    let bytes = buffer_source(scope, hash_value)?.ok_or_else(|| {
       OpError::type_("A certificate hash value must be a BufferSource")
     })?;
     if bytes.len() != 32 {
@@ -1821,7 +1821,7 @@ fn reject_send_group(
   let object = value.to_object(scope).ok_or_else(|| {
     OpError::type_("WebTransport stream options must be an object")
   })?;
-  if let Some(group) = defined(scope, object, "sendGroup")
+  if let Some(group) = defined(scope, object, "sendGroup")?
     && !group.is_null()
   {
     return Err(OpError::dom(
@@ -1842,7 +1842,7 @@ fn error_options(
   let object = value.to_object(scope).ok_or_else(|| {
     OpError::type_("WebTransportErrorOptions must be an object")
   })?;
-  let source = if let Some(value) = defined(scope, object, "source") {
+  let source = if let Some(value) = defined(scope, object, "source")? {
     let text = yuzuko_core::rust_string(scope, value);
     if text != "stream" && text != "session" {
       return Err(OpError::type_("The error source is invalid"));
@@ -1851,7 +1851,7 @@ fn error_options(
   } else {
     "stream".to_string()
   };
-  let code = match defined(scope, object, "streamErrorCode") {
+  let code = match defined(scope, object, "streamErrorCode")? {
     None => None,
     Some(value) if value.is_null() => None,
     Some(value) => Some(clamp_unsigned_long(scope, value)),
@@ -1873,12 +1873,12 @@ fn close_arguments(
   let object = value
     .to_object(scope)
     .ok_or_else(|| OpError::type_("WebTransportCloseInfo must be an object"))?;
-  let code = if let Some(value) = defined(scope, object, "closeCode") {
+  let code = if let Some(value) = defined(scope, object, "closeCode")? {
     value.uint32_value(scope).unwrap_or(0)
   } else {
     0
   };
-  let reason = if let Some(value) = defined(scope, object, "reason") {
+  let reason = if let Some(value) = defined(scope, object, "reason")? {
     yuzuko_core::rust_string(scope, value)
   } else {
     String::new()
@@ -2201,7 +2201,7 @@ fn defined<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<v8::Object>,
   name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
+) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   yuzuko_core::dictionary_member(scope, object, name)
 }
 
