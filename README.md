@@ -135,6 +135,7 @@ A Linux machine that runs a published binary needs the GTK 3, libxdo, libudev, l
 cargo run -p yuzuko -- run examples/hello.ts
 cargo run -p yuzuko -- test tests/pass_test.ts
 cargo test -p yuzuko --test wpt
+cargo test -p yuzuko --test cts
 ```
 
 `cargo build -p yuzuko` is the full runtime. `cargo build -p yuzuko --no-default-features` is the JavaScript runtime alone. `yuzuko package` copies the executable that invoked it and does not rebuild it. Cargo features are listed under Build features in [docs/spec.md](docs/spec.md#build-features).
@@ -146,5 +147,7 @@ sudo apt-get install libgtk-3-dev libxdo-dev libudev-dev libayatana-appindicator
 ```
 
 `cargo test -p yuzuko --test wpt` starts the WPT server with Python 3.9 or later and expects the `web-platform.test` names from `./wpt make-hosts-file` in the hosts file. There is no `yuzuko wpt` subcommand. Rust unit tests use `cargo test`. Script tests use `yuzuko test`.
+
+`cargo test -p yuzuko --test cts` runs the WebGPU CTS pin in `tests/webgpu/suite`. From that directory, `npm ci --ignore-scripts` and `npx grunt standalone` compile `out/` first. There is no `yuzuko cts` subcommand. The enrolled query is `unittests:*`. `YUZUKO_CTS_FILTER` selects one other query.
 
 The manual Release workflow builds the default release binary for every supported triple. It uploads those binaries and `yuzuko.d.ts` to the GitHub release for the tag, and it can publish `@yuzuko/cli`, the platform packages, and `@yuzuko/types`.

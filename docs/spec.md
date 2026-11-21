@@ -85,6 +85,7 @@ The default Cargo features include every surface below. Build features lists the
 - [Tests](#tests)
   - [Yuzuko.test](#yuzukotest)
   - [WPT](#wpt)
+  - [WebGPU CTS](#webgpu-cts)
 
 **Packaging**
 
@@ -1205,7 +1206,7 @@ An unclosed `(`, `{`, `[`, string, template literal, or block comment keeps the 
 
 On a terminal, the line editor uses the Node.js readline emacs bindings. Left and Right, or Ctrl-B and Ctrl-F, move one character. Up and Down, or Ctrl-P and Ctrl-N, recall chunks submitted in this session. Ctrl-A and Home move to the start of the current line. Ctrl-E and End move to the end of that line. Ctrl-Left and Escape then B move one word left. Ctrl-Right and Escape then F move one word right. Backspace deletes the character on the left. Ctrl-D and Delete delete the character on the right, and Ctrl-D on an empty buffer ends the session. Ctrl-U deletes back to the start of the line. Ctrl-K deletes through the end of the line. Ctrl-W deletes the word on the left. Escape then D deletes the word on the right. Ctrl-Y inserts the text last removed by Ctrl-U or Ctrl-K. Ctrl-L clears the screen and redraws the buffer. History ends when the process exits. Tab completes names from this realm. `Ma` offers `Math`. `Math.` offers properties including `abs`. A binding created by an earlier chunk in the same session is offered. A name that does not exist is not invented. A pipe reads complete lines and treats EOF as the end of the session. While a Unix terminal or a Windows console waits for the next key, the event loop still runs. Timers, host tasks, and open windows keep receiving turns, so `requestAnimationFrame`, input, and drawing continue, and a key still interrupts that wait. A host job that has already finished runs before the editor blocks, and a job that finishes during the wait interrupts it. The Windows console runs with virtual terminal input, so the keys above arrive as the same sequences a Unix terminal sends. The same switch colors the input line. The cursor column counts the input characters and ignores color codes. A string or template is green. A number, a bigint, `true`, `false`, and `null` are yellow. A keyword is cyan. `undefined` and a comment are grey. `Infinity` and `NaN` are yellow. An identifier before `(` is intense blue. A regular expression is red. `from` is cyan only when a string literal follows it. A Unix pipe also runs the loop while it waits for the next line. A Windows pipe blocks until the next line arrives. REPL chunks are not ES modules. See `docs/deviations.md`.
 
-Rust unit tests use `cargo test`. Script tests use `Yuzuko.test`. Web-platform behavior uses upstream WPT, also under `cargo test`. There is no `yuzuko wpt` subcommand. WPT is a test of this runtime, not a product command.
+Rust unit tests use `cargo test`. Script tests use `Yuzuko.test`. Web-platform behavior uses upstream WPT, also under `cargo test`. There is no `yuzuko wpt` subcommand. WPT is a test of this runtime, not a product command. WebGPU conformance uses the upstream WebGPU CTS, also under `cargo test`. There is no `yuzuko cts` subcommand.
 
 ## Tests
 
@@ -1283,6 +1284,27 @@ The enrolled upstream directories are `url`, `encoding`, `hr-time`, `html/webapp
 Pixel comparisons for Canvas 2D use the CPU renderer. Unorm8 sRGB pixels that did not cross a color-space boundary match exactly. A conversion from that output into another color space may differ by one unorm8 code point. `putImageData` and `ImageBitmap` float16 samples may differ by one float16 ulp. Where WPT has no reference, a `Yuzuko.test` golden image covers the case. The GPU renderer has a smoke test that one frame reaches a surface. Test both `YUZUKO_CANVAS=cpu` and the `"cpu"` fallback when the GPU is unavailable. WebGPU tests may skip when `YUZUKO_SKIP_GPU=1` and no GPU is available. A skip is not a failure.
 
 Event order, the key map, and the IME state machine are `Yuzuko.test` tests. Decoders also have golden files, corrupt input, and limit checks beside the WPT cases.
+
+### WebGPU CTS
+
+WebGPU is tested with the [WebGPU Conformance Test Suite](https://github.com/gpuweb/cts), upstream, not with copies of those tests.
+
+`tests/webgpu/suite` is a git submodule pinned to one upstream commit. Upgrading the pin is its own change, separate from a feature change. `tests/webgpu/expectations/cts.json` records the result of each enrolled case. The WPT `webgpu` directory stays the empty placeholder from upstream web-platform-tests. These cases run from this pin.
+
+The suite is TypeScript. From `tests/webgpu/suite`, `npm ci --ignore-scripts` and `npx grunt standalone` compile the standalone build into `out/`. That directory is not committed. `cargo test -p yuzuko --test cts` loads `out/` in one yuzuko process and runs the enrolled queries. There is no `yuzuko cts` subcommand.
+
+The enrolled query is `unittests:*`. Those cases exercise the CTS harness. They do not create a GPU device. `YUZUKO_CTS_FILTER` runs one query in place of the enrolled queries, for example `YUZUKO_CTS_FILTER='webgpu:api,operation,buffers,create:*'`. The expectation file does not list queries.
+
+`tests/webgpu/expectations/cts.json` is one JSON object. Each key is a CTS case name. Leaves use these values:
+
+| Value | Meaning |
+| --- | --- |
+| `true` | The case passes |
+| `false` | The case does not pass. The CTS reports that as `fail` or `warn` |
+| `{"ignore": "text"}` | Skip the case on every host before it runs. `text` is a non-empty reason. `YUZUKO_CTS_NO_IGNORE=1` runs it anyway |
+| `{"ignore": {"reason": "text", "os": ["windows"]}}` | Skip on `windows`. `os` lists `linux`, `macos`, and `windows` in that order. One object is one reason. On the other hosts the case passes |
+
+`ignore` is one reason. A string covers every host. An object has `reason` and `os`. When `os` lists all three operating systems, write the reason string. `false` stands alone and does not keep `ignore`. An all-host `ignore` does not combine with another result. A host is an operating system: `linux`, `macos`, or `windows`. A CTS `skip` is the case calling skip. It is not `true` or `false`. The cargo test fails when a result differs from the expectation, including a case that starts passing, a new case, or an enrolled case that did not run. An `ignore` skips the case before it runs. `YUZUKO_CTS_UPDATE=1 cargo test -p yuzuko --test cts` rewrites the expectation file to the results just observed. It keeps an all-host reason when that case still does not run. It keeps an `ignore` for a host that did not run. A case that does not pass is written as `false`. With `YUZUKO_CTS_FILTER` set, the update keeps cases that did not run. `YUZUKO_CTS_NO_IGNORE=1` together with update records this host and drops the `ignore` that covered this host when the case passes or does not pass. A CTS `skip` keeps an existing ignore reason. Update does not invent a reason for a skip.
 
 ## Packaging
 

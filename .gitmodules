@@ -1,3 +1,6 @@
 [submodule "tests/wpt/suite"]
 	path = tests/wpt/suite
 	url = https://github.com/web-platform-tests/wpt.git
+[submodule "tests/webgpu/suite"]
+	path = tests/webgpu/suite
+	url = https://github.com/gpuweb/cts.git

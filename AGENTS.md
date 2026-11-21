@@ -69,6 +69,8 @@ package.json              npm workspace for tools/types
 tools/types/              yuzuko.d.ts follow-up and test typecheck
 tests/wpt/suite/          web-platform-tests submodule
 tests/wpt/expectations/
+tests/webgpu/suite/       gpuweb/cts submodule
+tests/webgpu/expectations/
 tests/fixtures/images/
 ```
 
@@ -93,6 +95,7 @@ Identifiers, comments, commit messages, JavaScript exception messages, and docs 
 A behavior change includes its test in the same change.
 
 - Web-platform behavior is an upstream WPT file under `tests/wpt/suite`, run with `cargo test -p yuzuko --test wpt`. There is no `yuzuko wpt` subcommand. Update `tests/wpt/expectations` in the same change when results change, including newly passing subtests.
+- WebGPU conformance is the upstream gpuweb/cts pin at `tests/webgpu/suite`, run with `cargo test -p yuzuko --test cts`. There is no `yuzuko cts` subcommand. Build `out/` with `npm ci --ignore-scripts` and `npx grunt standalone` in that directory before the cargo test. Update `tests/webgpu/expectations` in the same change when results change, including newly passing cases. Do not copy CTS cases into the repository.
 - Behavior WPT does not cover is a `Yuzuko.test` in a `*_test.js`, `*.test.js`, `*_test.ts`, or `*.test.ts` file, run with `yuzuko test`. `Yuzuko.test` exists only in that command.
 - Resolve imports with `oxc_resolver` and erase TypeScript with `oxc_transformer`. Do not shell out to `tsc`, and do not typecheck during `run` or `test`. Type errors in the root `tsconfig.json` program are `node tools/types/lint-types.mjs`. `node tools/types/lint-web-types.mjs` compares `yuzuko.d.ts` with the pinned `@types/web`.
 - Do not copy WPT cases into the repository.

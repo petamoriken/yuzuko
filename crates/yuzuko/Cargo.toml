@@ -251,3 +251,7 @@ required-features = ["canvas", "webgpu"]
 name = "wpt"
 required-features = ["fetch", "socket", "window", "image", "canvas", "webgpu", "audio", "codec"]
 
+[[test]]
+name = "cts"
+required-features = ["webgpu"]
+
