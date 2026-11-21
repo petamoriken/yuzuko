@@ -3,10 +3,11 @@
 //! Every JavaScript device clones the process wgpu device. `destroy` loses
 //! that JavaScript device and leaves the process device in place.
 
+use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use yuzuko_core::op::{Js, New, OpError};
+use yuzuko_core::op::{Js, New, OpError, OpException};
 use yuzuko_dom::{Event, EventTarget, define_is_trusted, dispatch};
 use yuzuko_macros::op;
 
@@ -16,13 +17,25 @@ use crate::label::ObjectLabel;
 use crate::resource::{self, GpuBuffer, GpuTexture};
 use crate::state::{self, Handle};
 
-pub struct Gpu;
+pub struct Gpu {
+  language_features: RefCell<Option<v8::TracedReference<v8::Object>>>,
+}
 
 unsafe impl v8::cppgc::GarbageCollected for Gpu {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    trace_slot(&self.language_features, visitor);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPU"
+  }
+}
+
+impl Gpu {
+  fn new() -> Self {
+    Self {
+      language_features: RefCell::new(None),
+    }
   }
 }
 
@@ -45,7 +58,7 @@ impl Gpu {
     match adapter_choice(scope, options) {
       Ok(true) => {
         let adapter =
-          unsafe { yuzuko_core::op::wrap_instance(scope, GpuAdapter) };
+          unsafe { yuzuko_core::op::wrap_instance(scope, GpuAdapter::new()) };
         let value: v8::Local<v8::Value> = adapter.into();
         js::promise(scope, value)
       }
@@ -60,29 +73,39 @@ impl Gpu {
 
   #[getter]
   fn wgsl_language_features(&self, scope: &mut v8::PinScope) -> Js {
-    let set = v8::Set::new(scope);
-    for name in [
-      "readonly_and_readwrite_storage_textures",
-      "packed_4x8_integer_dot_product",
-      "pointer_composite_access",
-    ] {
-      let Some(text) = v8::String::new(scope, name) else {
-        continue;
-      };
-      set.add(scope, text.into());
+    if let Some(cached) = recalled_js(scope, &self.language_features) {
+      return cached;
     }
-    let value: v8::Local<v8::Value> = set.into();
-    Js(v8::Global::new(scope, value))
+    let object = language_features(scope);
+    remember_js(scope, &self.language_features, object)
   }
 }
 
-pub struct GpuAdapter;
+pub struct GpuAdapter {
+  features: RefCell<Option<v8::TracedReference<v8::Object>>>,
+  limits: RefCell<Option<v8::TracedReference<v8::Object>>>,
+  info: RefCell<Option<v8::TracedReference<v8::Object>>>,
+}
 
 unsafe impl v8::cppgc::GarbageCollected for GpuAdapter {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    trace_slot(&self.features, visitor);
+    trace_slot(&self.limits, visitor);
+    trace_slot(&self.info, visitor);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapter"
+  }
+}
+
+impl GpuAdapter {
+  fn new() -> Self {
+    Self {
+      features: RefCell::new(None),
+      limits: RefCell::new(None),
+      info: RefCell::new(None),
+    }
   }
 }
 
@@ -90,16 +113,24 @@ unsafe impl v8::cppgc::GarbageCollected for GpuAdapter {
 impl GpuAdapter {
   #[getter]
   fn features(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
+    if let Some(cached) = recalled_js(scope, &self.features) {
+      return Ok(cached);
+    }
     // The process has one device. `requestDevice` can enable only the
     // features that device already has, so the adapter lists that set.
     let features = gpu_parts()?.1.features();
-    Ok(features_js(scope, features))
+    let object = features_object(scope, features);
+    Ok(remember_js(scope, &self.features, object))
   }
 
   #[getter]
   fn limits(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let limits = gpu_parts()?.1.limits();
-    Ok(limits_js(scope, &limits))
+    if let Some(cached) = recalled_js(scope, &self.limits) {
+      return Ok(cached);
+    }
+    let _ = gpu_parts()?;
+    let object = limits_object(scope);
+    Ok(remember_js(scope, &self.limits, object))
   }
 
   #[getter]
@@ -109,7 +140,11 @@ impl GpuAdapter {
 
   #[getter]
   fn info(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    adapter_info_js(scope)
+    if let Some(cached) = recalled_js(scope, &self.info) {
+      return Ok(cached);
+    }
+    let object = adapter_info_object(scope)?;
+    Ok(remember_js(scope, &self.info, object))
   }
 
   fn request_device(
@@ -192,19 +227,25 @@ impl GpuDevice {
 
   #[getter]
   fn features(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let features = self.require()?.device.features();
-    Ok(features_js(scope, features))
+    device_member(scope, self.id, state::CachedObject::Features, |scope| {
+      let features = self.require()?.device.features();
+      Ok(features_object(scope, features))
+    })
   }
 
   #[getter]
   fn limits(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    let limits = self.require()?.device.limits();
-    Ok(limits_js(scope, &limits))
+    device_member(scope, self.id, state::CachedObject::Limits, |scope| {
+      let _ = self.require()?;
+      Ok(limits_object(scope))
+    })
   }
 
   #[getter]
   fn adapter_info(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
-    adapter_info_js(scope)
+    device_member(scope, self.id, state::CachedObject::AdapterInfo, |scope| {
+      adapter_info_object(scope)
+    })
   }
 
   #[getter]
@@ -264,7 +305,12 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuBindGroupLayout>, OpError> {
-    resource::create_bind_group_layout(scope, &self.require()?, descriptor)
+    resource::create_bind_group_layout(
+      scope,
+      self.id,
+      &self.require()?,
+      descriptor,
+    )
   }
 
   fn create_pipeline_layout(
@@ -672,9 +718,22 @@ pub fn install(scope: &mut v8::PinScope) {
 
 /// `GPUPipelineError` is a `DOMException`, so it is installed as a script
 /// after that constructor exists. `GPUSupportedLimits` is an interface object
-/// with an illegal constructor and no `maxImmediateSize`.
+/// with an illegal constructor and no `maxImmediateSize`. `GPUError` is an
+/// illegal constructor. The three error interfaces inherit from it.
 const WEBGPU_GLOBALS: &str = r#"
 (() => {
+  function GPUError() {
+    throw new TypeError("Illegal constructor");
+  }
+  Object.defineProperty(globalThis, "GPUError", {
+    value: GPUError,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  Object.setPrototypeOf(GPUValidationError.prototype, GPUError.prototype);
+  Object.setPrototypeOf(GPUOutOfMemoryError.prototype, GPUError.prototype);
+  Object.setPrototypeOf(GPUInternalError.prototype, GPUError.prototype);
   class GPUPipelineError extends DOMException {
     constructor(message = "", options) {
       if (typeof options !== "object" || options === null) {
@@ -717,10 +776,11 @@ fn install_webgpu_globals(scope: &mut v8::PinScope) {
   let script =
     v8::Script::compile(scope, source, None).expect("webgpu globals");
   script.run(scope).expect("webgpu globals");
+  install_limit_getters(scope);
 }
 
 fn install_navigator(scope: &mut v8::PinScope) {
-  let gpu = unsafe { yuzuko_core::op::wrap_instance(scope, Gpu) };
+  let gpu = unsafe { yuzuko_core::op::wrap_instance(scope, Gpu::new()) };
   let global = scope.get_current_context().global(scope);
   let nav_key = v8::String::new(scope, "navigator").unwrap();
   let Some(navigator) = global.get(scope, nav_key.into()) else {
@@ -878,6 +938,9 @@ fn open_device(
       lost_resolver: v8::Global::new(scope, resolver),
       scopes: Vec::new(),
       queue_object: Some(v8::Global::new(scope, queue_object)),
+      features_object: None,
+      limits_object: None,
+      adapter_info: None,
       owner: yuzuko_core::caller_module_url(scope),
     },
   );
@@ -1141,7 +1204,9 @@ fn source_element_size(value: v8::Local<v8::Value>) -> usize {
   }
 }
 
-fn adapter_info_js(scope: &mut v8::PinScope) -> Result<Js, OpError> {
+fn adapter_info_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
   let info = gpu_parts()?.0.get_info();
   let object = v8::Object::new(scope);
   let set = |name: &str, value: v8::Local<v8::Value>| {
@@ -1178,8 +1243,7 @@ fn adapter_info_js(scope: &mut v8::PinScope) -> Result<Js, OpError> {
   );
   let vendor = hex(info.vendor);
   set("vendor", v8::String::new(scope, &vendor).unwrap().into());
-  let value: v8::Local<v8::Value> = object.into();
-  Ok(Js(v8::Global::new(scope, value)))
+  Ok(object)
 }
 
 fn gpu_parts() -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), OpError> {
@@ -1280,11 +1344,7 @@ fn reject_features(
   if value.is_null() {
     return Ok(());
   }
-  let array = v8::Local::<v8::Array>::try_from(value)
-    .map_err(|_| OpError::type_("requiredFeatures must be a sequence"))?;
-  for index in 0..array.length() {
-    let item = js::read_index(scope, array, index)?;
-    let name = js::string(scope, item)?;
+  for name in feature_sequence(scope, value)? {
     let feature = name
       .parse::<wgpu::Features>()
       .map_err(|_| OpError::type_("The feature name is invalid"))?;
@@ -1505,14 +1565,8 @@ fn limit_table(limits: &wgpu::Limits) -> Vec<(&'static str, f64, bool)> {
 
 fn limits_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  limits: &wgpu::Limits,
 ) -> v8::Local<'s, v8::Object> {
   let object = v8::Object::new(scope);
-  for (name, value, _) in limit_table(limits) {
-    let key = v8::String::new(scope, name).unwrap();
-    let number = v8::Number::new(scope, value);
-    object.set(scope, key.into(), number.into());
-  }
   if let Some(prototype) = limits_prototype(scope) {
     let _ = object.set_prototype(scope, prototype.into());
   }
@@ -1532,7 +1586,10 @@ fn limits_prototype<'s>(
     .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
 }
 
-fn features_js(scope: &mut v8::PinScope, features: wgpu::Features) -> Js {
+fn features_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  features: wgpu::Features,
+) -> v8::Local<'s, v8::Object> {
   let set = v8::Set::new(scope);
   let web = features & wgpu::Features::all_webgpu_mask();
   for feature in web.iter() {
@@ -1544,14 +1601,187 @@ fn features_js(scope: &mut v8::PinScope, features: wgpu::Features) -> Js {
     };
     set.add(scope, text.into());
   }
-  let value: v8::Local<v8::Value> = set.into();
+  set.into()
+}
+
+/// Limit attributes are prototype getters. Their values stay the shared
+/// device's limits. `maxBindGroupsPlusVertexBuffers` is the sum of the
+/// bind-group and vertex-buffer limits.
+fn install_limit_getters(scope: &mut v8::PinScope) {
+  let Some(proto) = limits_prototype(scope) else {
+    return;
+  };
+  for (name, _, _) in limit_table(&wgpu::Limits::default()) {
+    let Some(key) = v8::String::new(scope, name) else {
+      continue;
+    };
+    let Some(getter) = v8::Function::builder(limit_getter)
+      .length(0)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .data(key.into())
+      .build(scope)
+    else {
+      continue;
+    };
+    let Some(label) = v8::String::new(scope, &format!("get {name}")) else {
+      continue;
+    };
+    getter.set_name(label);
+    let get: v8::Local<v8::Value> = getter.into();
+    let set: v8::Local<v8::Value> = v8::undefined(scope).into();
+    let mut descriptor = v8::PropertyDescriptor::new_from_get_set(get, set);
+    descriptor.set_enumerable(true);
+    descriptor.set_configurable(true);
+    let _ = proto.define_property(scope, key.into(), &descriptor);
+  }
+}
+
+fn limit_getter(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let name = args.data().to_rust_string_lossy(scope);
+  match limit_value(&name) {
+    Ok(value) => ret.set(v8::Number::new(scope, value).into()),
+    Err(error) => OpException::throw(error, scope),
+  }
+}
+
+fn limit_value(name: &str) -> Result<f64, OpError> {
+  let (_, device, _) = gpu_parts()?;
+  let limits = device.limits();
+  limit_table(&limits)
+    .into_iter()
+    .find(|(limit, _, _)| *limit == name)
+    .map(|(_, value, _)| value)
+    .ok_or_else(|| OpError::type_("The limit is unknown"))
+}
+
+fn language_features<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let set = v8::Set::new(scope);
+  for name in [
+    "readonly_and_readwrite_storage_textures",
+    "packed_4x8_integer_dot_product",
+    "pointer_composite_access",
+  ] {
+    let Some(text) = v8::String::new(scope, name) else {
+      continue;
+    };
+    set.add(scope, text.into());
+  }
+  set.into()
+}
+
+fn device_member<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u64,
+  kind: state::CachedObject,
+  create: impl FnOnce(
+    &mut v8::PinScope<'s, '_>,
+  ) -> Result<v8::Local<'s, v8::Object>, OpError>,
+) -> Result<Js, OpError> {
+  if let Some(cached) = state::cached_object(id, kind)? {
+    return Ok(object_js(scope, &cached));
+  }
+  let object = create(scope)?;
+  let stored = state::store_cached(id, kind, v8::Global::new(scope, object))?;
+  Ok(object_js(scope, &stored))
+}
+
+fn object_js(scope: &mut v8::PinScope, object: &v8::Global<v8::Object>) -> Js {
+  let local = v8::Local::new(scope, object);
+  let value: v8::Local<v8::Value> = local.into();
   Js(v8::Global::new(scope, value))
 }
 
-fn limits_js(scope: &mut v8::PinScope, limits: &wgpu::Limits) -> Js {
-  let object = limits_object(scope, limits);
+fn recalled_js(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
+) -> Option<Js> {
+  let local = {
+    let borrowed = slot.borrow();
+    let reference = borrowed.as_ref()?;
+    yuzuko_core::op::traced_local(scope, reference)?
+  };
+  let value: v8::Local<v8::Value> = local.into();
+  Some(Js(v8::Global::new(scope, value)))
+}
+
+fn remember_js(
+  scope: &mut v8::PinScope,
+  slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
+  object: v8::Local<v8::Object>,
+) -> Js {
+  *slot.borrow_mut() = Some(yuzuko_core::op::traced(scope, object));
   let value: v8::Local<v8::Value> = object.into();
   Js(v8::Global::new(scope, value))
+}
+
+fn trace_slot(
+  slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
+  visitor: &mut v8::cppgc::Visitor,
+) {
+  if let Ok(slot) = slot.try_borrow()
+    && let Some(reference) = slot.as_ref()
+  {
+    visitor.trace(reference);
+  }
+}
+
+fn feature_sequence(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<Vec<String>, OpError> {
+  let Some(object) = value.to_object(scope) else {
+    return Err(OpError::type_("requiredFeatures must be a sequence"));
+  };
+  let symbol = v8::Symbol::get_iterator(scope);
+  let Some(method) = object.get(scope, symbol.into()) else {
+    return Err(OpError::type_("requiredFeatures must be a sequence"));
+  };
+  let Ok(method) = v8::Local::<v8::Function>::try_from(method) else {
+    return Err(OpError::type_("requiredFeatures must be a sequence"));
+  };
+  let Some(iterator) = method.call(scope, object.into(), &[]) else {
+    return Err(OpError::type_("requiredFeatures must be a sequence"));
+  };
+  let Ok(iterator) = v8::Local::<v8::Object>::try_from(iterator) else {
+    return Err(OpError::type_("requiredFeatures must be a sequence"));
+  };
+  let next_key = v8::String::new(scope, "next").unwrap();
+  let done_key = v8::String::new(scope, "done").unwrap();
+  let value_key = v8::String::new(scope, "value").unwrap();
+  let mut names = Vec::new();
+  loop {
+    let Some(next) = iterator.get(scope, next_key.into()) else {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    };
+    let Ok(next) = v8::Local::<v8::Function>::try_from(next) else {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    };
+    let Some(step) = next.call(scope, iterator.into(), &[]) else {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    };
+    let Ok(step) = v8::Local::<v8::Object>::try_from(step) else {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    };
+    let done = step
+      .get(scope, done_key.into())
+      .is_some_and(|done| done.boolean_value(scope));
+    if done {
+      return Ok(names);
+    }
+    if names.len() == 1024 {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    }
+    let Some(item) = step.get(scope, value_key.into()) else {
+      return Err(OpError::type_("requiredFeatures must be a sequence"));
+    };
+    names.push(js::string(scope, item)?);
+  }
 }
 
 pub(crate) fn dispatch_uncaptured(

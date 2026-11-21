@@ -313,6 +313,7 @@ impl GpuCanvasContext {
       texture,
       Arc::new(AtomicBool::new(false)),
       Arc::clone(&handle.lost),
+      device_id,
       width,
       height,
       format,

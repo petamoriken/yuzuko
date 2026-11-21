@@ -1638,6 +1638,57 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     !("maxImmediateSize" in GPUSupportedLimits.prototype),
     "immediate size",
   );
+  assert(adapter.features === adapter.features, "adapter features");
+  assert(adapter.limits === adapter.limits, "adapter limits");
+  assert(adapter.info === adapter.info, "adapter info");
+  assert(device.features === device.features, "device features");
+  assert(device.limits === device.limits, "device limits");
+  assert(device.adapterInfo === device.adapterInfo, "device adapter info");
+  assert(device.queue === device.queue, "device queue");
+  assert(
+    navigator.gpu.wgslLanguageFeatures === navigator.gpu.wgslLanguageFeatures,
+    "wgsl features",
+  );
+  assert(Object.keys(adapter.limits).length === 0, "limit keys");
+  assert(adapter.limits.maxTextureDimension2D > 0, "limit value");
+  assert(
+    adapter.limits.maxBindGroupsPlusVertexBuffers
+      === adapter.limits.maxBindGroups + adapter.limits.maxVertexBuffers,
+    "bind groups plus vertex buffers",
+  );
+  assert(
+    Object.getOwnPropertyDescriptor(
+      GPUSupportedLimits.prototype,
+      "maxTextureDimension2D",
+    )?.get !== undefined,
+    "limit getter",
+  );
+  const limitRecord = adapter.limits as unknown as {
+    maxTextureDimension2D: number;
+  };
+  assert(
+    throwName(() => {
+      limitRecord.maxTextureDimension2D = 1;
+    }) === "TypeError",
+    "limit assign",
+  );
+  assert(throwName(() => new GPUError()) === "TypeError", "GPUError");
+  assert(new GPUValidationError("broken").message === "broken", "validation message");
+  assert(new GPUValidationError("x") instanceof GPUError, "validation parent");
+  assert(new GPUOutOfMemoryError("x") instanceof GPUError, "oom parent");
+  assert(new GPUInternalError("x") instanceof GPUError, "internal parent");
+  const requested = await adapter.requestDevice({
+    requiredFeatures: adapter.features as unknown as GPUFeatureName[],
+  });
+  for (const name of adapter.features) {
+    assert(requested.features.has(name), name);
+  }
+  assert(
+    await rejectionName(adapter.requestDevice({
+      requiredFeatures: {} as GPUFeatureName[],
+    })) === "TypeError",
+    "features sequence",
+  );
 
   const usage = GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST;
   const buffer = device.createBuffer({ size: 16, usage });
@@ -1666,10 +1717,48 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     throwName(() => texture.createView({ swizzle: "bgra" })) === "NotSupportedError",
     "swizzle",
   );
+  device.pushErrorScope("validation");
+  texture.createView({ usage: 0 });
+  assert((await device.popErrorScope()) === null, "view usage zero");
+  device.pushErrorScope("validation");
+  texture.createView({ usage: GPUTextureUsage.TEXTURE_BINDING });
+  assert((await device.popErrorScope()) === null, "view usage subset");
+  device.pushErrorScope("validation");
+  texture.createView({ usage: GPUTextureUsage.STORAGE_BINDING });
   assert(
-    throwName(() => texture.createView({ usage: 0 })) === "NotSupportedError",
+    (await device.popErrorScope()) instanceof GPUValidationError,
     "view usage",
   );
+  device.pushErrorScope("validation");
+  device.createBindGroupLayout({
+    entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX }],
+  });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "layout entry",
+  );
+  device.pushErrorScope("validation");
+  device.createBindGroupLayout({
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX,
+      buffer: { type: "uniform" },
+      sampler: { type: "filtering" },
+    }],
+  });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "layout types",
+  );
+  device.pushErrorScope("validation");
+  device.createBindGroupLayout({
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX,
+      buffer: { type: "uniform" },
+    }],
+  });
+  assert((await device.popErrorScope()) === null, "layout buffer");
   assert(throwName(() => device.createSampler({ compare: "less" })) === "NotSupportedError", "compare");
   device.createSampler();
 

@@ -51,7 +51,17 @@ pub struct LiveDevice {
   pub lost_resolver: v8::Global<v8::PromiseResolver>,
   pub scopes: Vec<ErrorScope>,
   pub queue_object: Option<v8::Global<v8::Object>>,
+  pub features_object: Option<v8::Global<v8::Object>>,
+  pub limits_object: Option<v8::Global<v8::Object>>,
+  pub adapter_info: Option<v8::Global<v8::Object>>,
   pub owner: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+pub enum CachedObject {
+  Features,
+  Limits,
+  AdapterInfo,
 }
 
 thread_local! {
@@ -228,6 +238,49 @@ pub fn queue_object(id: u64) -> Result<v8::Global<v8::Object>, OpError> {
       .queue_object
       .clone()
       .ok_or_else(|| OpError::dom("InvalidStateError", "The GPU queue is gone"))
+  })
+}
+
+pub fn cached_object(
+  id: u64,
+  kind: CachedObject,
+) -> Result<Option<v8::Global<v8::Object>>, OpError> {
+  DEVICES.with(|devices| {
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
+    if live.lost.load(Ordering::SeqCst) {
+      return Err(lost_error());
+    }
+    let slot = match kind {
+      CachedObject::Features => &live.features_object,
+      CachedObject::Limits => &live.limits_object,
+      CachedObject::AdapterInfo => &live.adapter_info,
+    };
+    Ok(slot.clone())
+  })
+}
+
+/// Stores `object` the first time. A later call returns the stored object.
+pub fn store_cached(
+  id: u64,
+  kind: CachedObject,
+  object: v8::Global<v8::Object>,
+) -> Result<v8::Global<v8::Object>, OpError> {
+  DEVICES.with(|devices| {
+    let mut devices = devices.borrow_mut();
+    let live = devices.get_mut(&id).ok_or_else(lost_error)?;
+    if live.lost.load(Ordering::SeqCst) {
+      return Err(lost_error());
+    }
+    let slot = match kind {
+      CachedObject::Features => &mut live.features_object,
+      CachedObject::Limits => &mut live.limits_object,
+      CachedObject::AdapterInfo => &mut live.adapter_info,
+    };
+    if slot.is_none() {
+      *slot = Some(object);
+    }
+    slot.clone().ok_or_else(lost_error)
   })
 }
 

@@ -130,6 +130,10 @@ interface GPUError {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError/message) */
   readonly message: string;
 }
+declare var GPUError: {
+  prototype: GPUError;
+  new(): GPUError;
+};
 
 type GPUErrorFilter = "internal" | "out-of-memory" | "validation";
 type GPUPipelineErrorReason = "internal" | "validation";
@@ -12709,8 +12713,9 @@ interface GPUDevice extends EventTarget {
    * template when creating GPUBindGroups.
    *
    * Storage texture `access` may be `"write-only"`, `"read-only"`, `"read-write"`,
-   * or `"atomic"`. `externalTexture` requires wgpu external textures on the
-   * process device.
+   * or `"atomic"`. An entry with no binding type, or with more than one, is a
+   * validation error. The layout is still returned, with no entries.
+   * `externalTexture` requires wgpu external textures on the process device.
    *
    * @throws {@link DOMException} `NotSupportedError` when `externalTexture` is
    * set and the process device has no wgpu external textures.
@@ -13193,8 +13198,17 @@ interface GPUTexture {
   readonly usage: number;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` when `usage` is set, or
-   * when `swizzle` is not `"rgba"`.
+   * The **`createView()`** method of the GPUTexture interface creates a
+   * GPUTextureView representing a specific view of the GPUTexture.
+   *
+   * An omitted `usage`, or a `usage` of 0, inherits the texture's usage. A usage the view format
+   * does not allow, a usage that is not a subset of the texture usage, or a
+   * non-zero usage other than the texture usage when the texture includes
+   * `TRANSIENT_ATTACHMENT`, records a validation error. The view is still
+   * returned.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when `swizzle` is not
+   * `"rgba"`.
    * @throws {@link DOMException} `InvalidStateError` when the texture is
    * destroyed.
    *

@@ -358,6 +358,7 @@ pub struct GpuTexture {
   texture: Rc<RefCell<Option<wgpu::Texture>>>,
   destroyed: Arc<AtomicBool>,
   lost: Arc<AtomicBool>,
+  device_id: u64,
   width: u32,
   height: u32,
   format: wgpu::TextureFormat,
@@ -380,6 +381,7 @@ impl GpuTexture {
     texture: wgpu::Texture,
     destroyed: Arc<AtomicBool>,
     lost: Arc<AtomicBool>,
+    device_id: u64,
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
@@ -391,6 +393,7 @@ impl GpuTexture {
       texture: Rc::new(RefCell::new(Some(texture))),
       destroyed,
       lost,
+      device_id,
       width,
       height,
       format,
@@ -486,24 +489,37 @@ impl GpuTexture {
       _ => TextureViewParts::default(),
     };
     let texture = self.texture()?;
+    let features = device_of(&self.lost)?.device.features();
     let format = match parts.format {
-      Some(view_format) => {
-        let features = device_of(&self.lost)?.device.features();
-        require_texture_format(features, view_format)?
-      }
+      Some(view_format) => require_texture_format(features, view_format)?,
       None => self.format,
     };
-    let view = texture.create_view(&wgpu::TextureViewDescriptor {
-      label: parts.label.as_deref(),
-      format: parts.format.map(|_| format),
-      dimension: parts.dimension,
-      usage: None,
-      aspect: parts.aspect,
-      base_mip_level: parts.base_mip_level,
-      mip_level_count: parts.mip_level_count,
-      base_array_layer: parts.base_array_layer,
-      array_layer_count: parts.array_layer_count,
-    });
+    // A bad usage or view format must not reach wgpu. Its error would be
+    // uncaptured when no scope is open, and the caller still receives a view.
+    let descriptor =
+      if view_usage_invalid(self.usage, parts.usage, format, features) {
+        crate::state::report_validation(
+          self.device_id,
+          "The texture view descriptor is invalid",
+        );
+        wgpu::TextureViewDescriptor {
+          label: parts.label.as_deref(),
+          ..Default::default()
+        }
+      } else {
+        wgpu::TextureViewDescriptor {
+          label: parts.label.as_deref(),
+          format: parts.format.map(|_| format),
+          dimension: parts.dimension,
+          usage: parts.usage.map(wgpu::TextureUsages::from_bits_truncate),
+          aspect: parts.aspect,
+          base_mip_level: parts.base_mip_level,
+          mip_level_count: parts.mip_level_count,
+          base_array_layer: parts.base_array_layer,
+          array_layer_count: parts.array_layer_count,
+        }
+      };
+    let view = texture.create_view(&descriptor);
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
       format,
@@ -1098,6 +1114,7 @@ pub fn create_texture(
     texture,
     Arc::new(AtomicBool::new(false)),
     Arc::clone(&handle.lost),
+    device_id,
     extent.width,
     extent.height,
     format,
@@ -1186,14 +1203,19 @@ pub fn create_shader(
 
 pub fn create_bind_group_layout(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuBindGroupLayout>, OpError> {
   let object = js::object(scope, descriptor).ok_or_else(|| {
     OpError::type_("createBindGroupLayout requires a descriptor")
   })?;
-  let entries =
+  let (mut entries, invalid) =
     binding_layout_entries(scope, object, handle.device.features())?;
+  // An invalid entry is not passed to wgpu. The returned layout is empty.
+  if invalid {
+    entries.clear();
+  }
   let label = optional_label(scope, object)?;
   let layout =
     handle
@@ -1202,6 +1224,12 @@ pub fn create_bind_group_layout(
         label: label.as_deref(),
         entries: &entries,
       });
+  if invalid {
+    crate::state::report_validation(
+      device_id,
+      "The bind group layout entry is invalid",
+    );
+  }
   Ok(New(GpuBindGroupLayout {
     layout,
     label: ObjectLabel::new(label),
@@ -1537,16 +1565,20 @@ fn binding_layout_entries(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
   features: wgpu::Features,
-) -> Result<Vec<wgpu::BindGroupLayoutEntry>, OpError> {
+) -> Result<(Vec<wgpu::BindGroupLayoutEntry>, bool), OpError> {
   let list = array_of(scope, object, "entries")?;
   let mut entries = Vec::new();
+  let mut invalid = false;
   for value in list {
     let entry = js::object(scope, value).ok_or_else(|| {
       OpError::type_("A bind group layout entry must be an object")
     })?;
     let binding = js::required_u32(scope, entry, "binding")?;
     let visibility = js::required_u32(scope, entry, "visibility")?;
-    let ty = layout_binding_type(scope, entry, features)?;
+    let Some(ty) = layout_binding_type(scope, entry, features)? else {
+      invalid = true;
+      continue;
+    };
     entries.push(wgpu::BindGroupLayoutEntry {
       binding,
       visibility: wgpu::ShaderStages::from_bits_truncate(visibility),
@@ -1554,14 +1586,14 @@ fn binding_layout_entries(
       count: None,
     });
   }
-  Ok(entries)
+  Ok((entries, invalid))
 }
 
 fn layout_binding_type(
   scope: &mut v8::PinScope,
   entry: v8::Local<v8::Object>,
   features: wgpu::Features,
-) -> Result<wgpu::BindingType, OpError> {
+) -> Result<Option<wgpu::BindingType>, OpError> {
   let buffer = present_object(scope, entry, "buffer")?;
   let sampler = present_object(scope, entry, "sampler")?;
   let texture = present_object(scope, entry, "texture")?;
@@ -1578,27 +1610,29 @@ fn layout_binding_type(
   .into_iter()
   .filter(|present| *present)
   .count();
+  // Zero types, or more than one, invalidates the layout. The call still
+  // returns the layout.
   if chosen != 1 {
-    return Err(OpError::type_(
-      "A bind group layout entry needs one binding type",
-    ));
+    return Ok(None);
   }
   if external {
     if !features.contains(wgpu::Features::EXTERNAL_TEXTURE) {
       return Err(js::unsupported("externalTexture"));
     }
-    return Ok(wgpu::BindingType::ExternalTexture);
+    return Ok(Some(wgpu::BindingType::ExternalTexture));
   }
   if let Some(buffer) = buffer {
-    return buffer_binding(scope, buffer);
+    return Ok(Some(buffer_binding(scope, buffer)?));
   }
   if let Some(sampler) = sampler {
-    return Ok(wgpu::BindingType::Sampler(sampler_binding(scope, sampler)?));
+    return Ok(Some(wgpu::BindingType::Sampler(sampler_binding(
+      scope, sampler,
+    )?)));
   }
   if let Some(texture) = texture {
-    return texture_binding(scope, texture);
+    return Ok(Some(texture_binding(scope, texture)?));
   }
-  storage_binding(scope, storage.unwrap(), features)
+  Ok(Some(storage_binding(scope, storage.unwrap(), features)?))
 }
 
 fn bind_entries(
@@ -2279,6 +2313,7 @@ struct TextureViewParts {
   mip_level_count: Option<u32>,
   base_array_layer: u32,
   array_layer_count: Option<u32>,
+  usage: Option<u32>,
 }
 
 /// WebIDL members of `GPUTextureViewDescriptor`, before the texture is used.
@@ -2297,9 +2332,7 @@ fn texture_view_parts(
       return Err(js::unsupported("GPUTextureViewDescriptor.swizzle"));
     }
   }
-  if js::get(scope, object, "usage")?.is_some() {
-    return Err(js::unsupported("GPUTextureViewDescriptor.usage"));
-  }
+  let usage = js::field_u32(scope, object, "usage")?;
   let format = match js::get(scope, object, "format")?
     .map(|value| js::string(scope, value))
     .transpose()?
@@ -2334,7 +2367,41 @@ fn texture_view_parts(
     base_array_layer: js::field_u32(scope, object, "baseArrayLayer")?
       .unwrap_or(0),
     array_layer_count: js::field_u32(scope, object, "arrayLayerCount")?,
+    usage,
   })
+}
+
+/// `usage` 0 and an omitted `usage` both inherit the texture usage.
+/// A non-zero usage must be a subset. A transient texture allows only that
+/// full usage. Render and storage bits must be legal for the view format.
+fn view_usage_invalid(
+  texture_usage: u32,
+  view_usage: Option<u32>,
+  format: wgpu::TextureFormat,
+  features: wgpu::Features,
+) -> bool {
+  let resolved = match view_usage {
+    None | Some(0) => texture_usage,
+    Some(bits) => bits,
+  };
+  let Some(usage) = wgpu::TextureUsages::from_bits(resolved) else {
+    return true;
+  };
+  if resolved & !texture_usage != 0 {
+    return true;
+  }
+  let transient = wgpu::TextureUsages::TRANSIENT_ATTACHMENT.bits();
+  if texture_usage & transient != 0 && resolved != texture_usage {
+    return true;
+  }
+  let allowed = format.guaranteed_format_features(features).allowed_usages;
+  if usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+    && !allowed.contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+  {
+    return true;
+  }
+  usage.contains(wgpu::TextureUsages::STORAGE_BINDING)
+    && !allowed.contains(wgpu::TextureUsages::STORAGE_BINDING)
 }
 
 fn view_format_list(
