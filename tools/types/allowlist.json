@@ -4,11 +4,6 @@
   ],
   "skipOverloads": [
     {
-      "member": "GPUCommandEncoder.copyBufferToBuffer",
-      "params": 3,
-      "reason": "The runtime requires five arguments and a non-zero size."
-    },
-    {
       "member": "Console.dir",
       "params": 2,
       "reason": "dir is the inspector rest form, not the DOM item and options pair."
@@ -180,6 +175,23 @@
         "XMLHttpRequest.responseXML",
         "XMLHttpRequest.upload",
         "XMLHttpRequest.withCredentials"
+      ]
+    },
+    {
+      "reason": "setImmediates is not implemented. immediateSize other than 0 throws NotSupportedError.",
+      "members": [
+        "GPUBindingCommandsMixin.setImmediates",
+        "GPUComputePassEncoder.setImmediates",
+        "GPURenderBundleEncoder.setImmediates",
+        "GPURenderPassEncoder.setImmediates",
+        "GPUSupportedLimits.maxImmediateSize"
+      ]
+    },
+    {
+      "reason": "textureBindingViewDimension is not implemented.",
+      "members": [
+        "GPUTexture.textureBindingViewDimension",
+        "GPUTextureDescriptor.textureBindingViewDimension"
       ]
     }
   ]

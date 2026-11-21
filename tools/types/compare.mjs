@@ -1,18 +1,24 @@
 /**
- * Compare yuzuko.d.ts with an @types/web index.d.ts.
+ * Compare yuzuko.d.ts with a reference declaration file.
  *
  * Shared types, values, and functions are compared after interface heritage is
- * flattened. A finding means @types/web has a member yuzuko.d.ts lacks, or its
+ * flattened. A finding means the reference has a member yuzuko.d.ts lacks, or its
  * spelling is more specific: AllowSharedBufferSource, a TypeScript 7 typed-array
  * argument, or a tighter generic constraint. Yuzuko stays quiet when it is
  * already more specific (a string literal for `string`, an extra union member,
  * Float32Array<ArrayBufferLike> for a bare Float32Array). Number aliases,
  * ReadonlyArray, Array<T>, union order, and Iterable-versus-array spellings
- * match. A DOM union member whose type this file does not declare is ignored.
- * Iterator aliases with the same type arguments match. AlgorithmIdentifier
- * covers a more specific algorithm union. Types that exist on only one side
- * are not findings. Window is skipped because the Yuzuko declaration is an
- * empty stub.
+ * match. An extra `undefined` on a reference union is wider, so it is quiet.
+ * A type alias of a local interface keeps that alias name and still matches a
+ * use of the target interface. An interface that extends the reference type is
+ * more specific. A reference name the reference file does not declare matches
+ * this file's definition of that name. `GPUAllowSharedBufferSource` matches
+ * `AllowSharedBufferSource`. A DOM union member whose type this file does not
+ * declare is ignored. Iterator aliases with the same type arguments match.
+ * AlgorithmIdentifier covers a more specific algorithm union. Types that exist
+ * on only one side are not findings. Window is skipped because the Yuzuko
+ * declaration is an empty stub. The `@webgpu/types` pass skips nominal
+ * `__brand` members and `new (): never` constructors.
  *
  * Parsing uses the TypeScript 7 IPC client. `typescript/sync` keeps one
  * compiler process for the run; each comparison builds a program over an
@@ -44,27 +50,40 @@ const EMPTY_ALLOW = {
   skipMembers: new Set(),
   skipMismatches: new Set(),
   skipOverloads: [],
+  skipBrand: false,
+  skipNeverNew: false,
 };
 
 // compareTexts is synchronous, so this context stays stable for one comparison.
-let active = { yuzukoNames: new Set(), web: null, yuzuko: null };
+let active = { yuzukoNames: new Set(), web: null, yuzuko: null, label: "@types/web" };
 
 /**
  * @param {string} text
- * @param {{ skipTypes?: string[], groups?: { members?: string[], mismatches?: string[] }[], members?: string[], mismatches?: string[], skipOverloads?: { member: string, params: number, contains?: string }[] }} json
+ * @param {{ skipTypes?: string[], groups?: { members?: string[], mismatches?: string[] }[], members?: string[], mismatches?: string[], skipOverloads?: { member: string, params: number, contains?: string }[], webgpu?: { groups?: { members?: string[], mismatches?: string[] }[], members?: string[], mismatches?: string[], skipOverloads?: { member: string, params: number, contains?: string }[] } }} json
+ * @param {{ webgpu?: boolean }} [options]
  */
-export function allowFromJson(json) {
+export function allowFromJson(json, options = {}) {
   const skipMembers = new Set(json.members ?? []);
   const skipMismatches = new Set(json.mismatches ?? []);
-  for (const group of json.groups ?? []) {
+  const skipOverloads = [...(json.skipOverloads ?? [])];
+  const groups = [...(json.groups ?? [])];
+  if (options.webgpu) groups.push(...(json.webgpu?.groups ?? []));
+  for (const group of groups) {
     for (const name of group.members ?? []) skipMembers.add(name);
     for (const name of group.mismatches ?? []) skipMismatches.add(name);
+  }
+  if (options.webgpu) {
+    for (const name of json.webgpu?.members ?? []) skipMembers.add(name);
+    for (const name of json.webgpu?.mismatches ?? []) skipMismatches.add(name);
+    skipOverloads.push(...(json.webgpu?.skipOverloads ?? []));
   }
   return {
     skipTypes: new Set(json.skipTypes ?? []),
     skipMembers,
     skipMismatches,
-    skipOverloads: json.skipOverloads ?? [],
+    skipOverloads,
+    skipBrand: Boolean(options.webgpu),
+    skipNeverNew: Boolean(options.webgpu),
   };
 }
 
@@ -72,13 +91,14 @@ export function allowFromJson(json) {
  * @param {string} yuzukoText
  * @param {string} webText
  * @param {ReturnType<typeof allowFromJson>} [allow]
+ * @param {string} [label] Reference name used in finding notes.
  */
-export function compareTexts(yuzukoText, webText, allow = EMPTY_ALLOW) {
+export function compareTexts(yuzukoText, webText, allow = EMPTY_ALLOW, label = "@types/web") {
   const yuzuko = parse(yuzukoText, "yuzuko.d.ts");
   let web;
   try {
     web = parse(webText, "web.d.ts");
-    return diff(yuzuko, web, allow);
+    return diff(yuzuko, web, allow, label);
   } finally {
     yuzuko.release();
     web?.release();
@@ -668,6 +688,8 @@ function canonReference(node, env) {
   if (callback) return callback;
   const alias = env.surface.aliases.get(name);
   if (!alias || env.stack.has(name)) return { k: "ref", v: name, a: args };
+  const interfaceTarget = localInterfaceAlias(env.surface, alias, new Set(env.stack));
+  if (interfaceTarget && args.length === 0) return { k: "ref", v: name, a: [], aliasOf: interfaceTarget };
   const params = new Map(env.params);
   alias.typeParams.forEach((param, index) => {
     if (args[index]) params.set(param.name, args[index]);
@@ -733,7 +755,18 @@ function intersectionOf(parts) {
 }
 
 function sortKey(type) {
-  return JSON.stringify(type);
+  return JSON.stringify(type, (key, value) => (key === "aliasOf" ? undefined : value));
+}
+
+function localInterfaceAlias(surface, alias, stack) {
+  if (!alias || stack.has(alias.name) || alias.typeParams.length > 0) return null;
+  const body = alias.body;
+  if (!ts.isTypeReferenceNode(body) || (body.typeArguments?.length ?? 0) > 0) return null;
+  stack.add(alias.name);
+  const target = entityName(body.typeName);
+  const decl = surface.types.get(target);
+  if (decl?.kind === "object") return target;
+  return localInterfaceAlias(surface, surface.aliases.get(target), stack);
 }
 
 function flatten(surface, name, stack) {
@@ -787,9 +820,9 @@ function substitute(type, args) {
   return next;
 }
 
-function diff(yuzuko, web, allow) {
+function diff(yuzuko, web, allow, label) {
   const previous = active;
-  active = { yuzukoNames: new Set(yuzuko.types.keys()), web, yuzuko };
+  active = { yuzukoNames: new Set(yuzuko.types.keys()), web, yuzuko, label };
   try {
     return diffSurfaces(yuzuko, web, allow);
   } finally {
@@ -816,6 +849,9 @@ function diffSurfaces(yuzuko, web, allow) {
     const webShape = shapeOf(webDecl);
     const yuzukoShape = shapeOf(yuzukoDecl);
     if (webShape && yuzukoShape && (relateObject(webShape, yuzukoShape, 0) === "equal" || relateObject(webShape, yuzukoShape, 0) === "yuzuko")) {
+      continue;
+    }
+    if (webDecl.kind === "alias" && yuzukoDecl.kind === "object" && interfaceExtendsType(yuzuko, yuzukoDecl, webDecl.canon)) {
       continue;
     }
     if (allow.skipMismatches.has(name)) continue;
@@ -908,6 +944,7 @@ function relateOptional(web, yuzuko) {
 function compareMemberLists(owner, webMembers, yuzukoMembers, web, yuzuko, webDecl, yuzukoDecl, allow, findings) {
   const yuzukoByName = new Map(yuzukoMembers.map((member) => [member.name, member]));
   for (const webMember of webMembers) {
+    if (allow.skipBrand && webMember.name === "__brand") continue;
     const path = `${owner}.${webMember.name}`;
     const yuzukoMember = yuzukoByName.get(webMember.name);
     if (!yuzukoMember) {
@@ -936,7 +973,7 @@ function compareMemberLists(owner, webMembers, yuzukoMembers, web, yuzuko, webDe
           kind: "type",
           web: webMember.text,
           yuzuko: yuzukoMember.text,
-          note: "The @types/web member is required.",
+          note: `The ${active.label} member is required.`,
         });
       }
       compareOverloads(path, webSignatures, yuzukoSignatures, allow, findings);
@@ -1001,6 +1038,7 @@ function compareOverloads(path, webSignatures, yuzukoSignatures, allow, findings
   const yuzukoNorm = yuzukoSignatures.map((signature) => normalizeListener(path, signature));
   for (const signature of webSignatures) {
     if (isEventMapOverload(path, signature)) continue;
+    if (allow.skipNeverNew && path.endsWith(".new") && signature.returnType?.k === "kw" && signature.returnType.v === "never") continue;
     if (covers(normalizeListener(path, signature), yuzukoNorm)) continue;
     if (overloadSkipped(allow, path, signature)) continue;
     if (allow.skipMismatches.has(path)) continue;
@@ -1173,15 +1211,15 @@ function noteFor(web, yuzuko) {
     return "AllowSharedBufferSource accepts a SharedArrayBuffer. BufferSource does not.";
   }
   if (web.k === "ref" && yuzuko.k === "ref" && web.v === yuzuko.v && web.a.length > 0 && yuzuko.a.length === 0) {
-    return "The @types/web type argument is the TypeScript 7 spelling.";
+    return `The ${active.label} type argument is the TypeScript 7 spelling.`;
   }
   const webArg = bufferArgKind(web);
   const yuzukoArg = bufferArgKind(yuzuko);
   if (webArg === "ab" && yuzukoArg === "like") {
-    return "The @types/web type argument is ArrayBuffer, which excludes a SharedArrayBuffer.";
+    return `The ${active.label} type argument is ArrayBuffer, which excludes a SharedArrayBuffer.`;
   }
   if (constraintText(web).includes("Exclude<BufferSource, ArrayBuffer>") && !constraintText(yuzuko).includes("Exclude<BufferSource, ArrayBuffer>")) {
-    return "The @types/web constraint uses Exclude<BufferSource, ArrayBuffer>.";
+    return `The ${active.label} constraint uses Exclude<BufferSource, ArrayBuffer>.`;
   }
   return null;
 }
@@ -1250,6 +1288,12 @@ function relate(web, yuzuko, depth = 0) {
   if (coefficients) return coefficients;
   const iterators = iteratorRelation(web, yuzuko, depth);
   if (iterators) return iterators;
+  const refs = refRelation(web, yuzuko);
+  if (refs) return refs;
+  if (web.k === "ref") {
+    const unresolved = unresolvedRelation(web, yuzuko);
+    if (unresolved) return unresolved;
+  }
   if ((web.k === "ref" && yuzuko.k === "obj") || (web.k === "obj" && yuzuko.k === "ref")) {
     const webShape = web.k === "obj" ? web : interfaceShape(web, active.web);
     const yuzukoShape = yuzuko.k === "obj" ? yuzuko : interfaceShape(yuzuko, active.yuzuko);
@@ -1302,7 +1346,16 @@ function bufferRelation(web, yuzuko) {
 }
 
 function bufferKind(type) {
+  if (type?.k === "ref" && (type.v === "AllowSharedBufferSource" || type.v === "GPUAllowSharedBufferSource")) return "allow";
+  if (type?.k === "ref" && type.v === "BufferSource") return "buffer";
   const parts = asParts(type);
+  const shared = parts.filter((part) => part.k === "ref" && part.v === "SharedArrayBuffer");
+  if (shared.length > 0) {
+    const rest = parts.filter((part) => !(part.k === "ref" && part.v === "SharedArrayBuffer"));
+    const restType = rest.length === 1 ? rest[0] : { k: "union", a: rest };
+    const restKind = bufferKind(restType);
+    if (restKind === "buffer" || restKind === "allow") return "allow";
+  }
   const kinds = parts.map(partKind);
   if (kinds.some((kind) => kind === "other")) return null;
   const set = new Set(kinds);
@@ -1484,7 +1537,42 @@ function iteratorRelation(web, yuzuko, depth) {
   return combine(...web.a.map((arg, index) => relate(arg, yuzuko.a[index], depth + 1)));
 }
 
+function refRelation(web, yuzuko) {
+  if (web.k !== "ref" || yuzuko.k !== "ref") return null;
+  if (web.aliasOf && web.aliasOf === yuzuko.v && yuzuko.a.length === 0) return "equal";
+  if (yuzuko.aliasOf && yuzuko.aliasOf === web.v && web.a.length === 0) return "yuzuko";
+  if (web.aliasOf && yuzuko.aliasOf && web.aliasOf === yuzuko.aliasOf && web.a.length === yuzuko.a.length) return "equal";
+  if (interfaceExtendsType(active.yuzuko, active.yuzuko?.types.get(yuzuko.v), web)) return "yuzuko";
+  if (interfaceExtendsType(active.web, active.web?.types.get(web.v), yuzuko)) return "dom";
+  return null;
+}
+
+function interfaceExtendsType(surface, decl, type) {
+  if (!surface || !decl || decl.kind !== "object" || type?.k !== "ref") return false;
+  return decl.heritage.some((base) => sortKey(heritageCanon(surface, decl, base)) === sortKey(type));
+}
+
+function heritageCanon(surface, decl, base) {
+  const args = base.args.map((arg) => canonType(arg, envFor(surface, decl.typeParams, new Set())));
+  return { k: "ref", v: base.name, a: args };
+}
+
+function unresolvedRelation(web, yuzuko) {
+  const surface = active.web;
+  if (!surface || surface.types.has(web.v) || surface.aliases.has(web.v) || LIB_NAMES.has(web.v)) return null;
+  const decl = active.yuzuko?.types.get(web.v);
+  if (!decl) return null;
+  if (yuzuko.v === web.v && sortKey(yuzuko.a) === sortKey(web.a)) return "equal";
+  if (decl.kind === "alias" && sortKey(decl.canon) === sortKey(yuzuko)) return "yuzuko";
+  return null;
+}
+
 function relateUnion(webParts, yuzukoParts, depth) {
+  if (webParts.some(isVoidKeyword) && !yuzukoParts.some(isVoidKeyword)) {
+    const rest = webParts.filter((part) => !isVoidKeyword(part));
+    if (rest.length === 0) return "yuzuko";
+    return combine(relateUnion(rest, yuzukoParts, depth), "yuzuko");
+  }
   if (!(webParts.every(isLiteral) && yuzukoParts.every(isLiteral))) {
     webParts = webParts.filter((part) => !isUnknown(part, active.yuzukoNames));
     if (webParts.length === 0) return yuzukoParts.length === 0 ? "equal" : "yuzuko";

@@ -2,7 +2,7 @@
   "name": "types",
   "private": true,
   "type": "module",
-  "description": "Compare yuzuko.d.ts with @types/web, and typecheck tests and examples. Parsing uses the TypeScript 7.1 IPC client (typescript/sync). TypeScript 7.0 only publishes that client under typescript/unstable.",
+  "description": "Compare yuzuko.d.ts with @types/web and @webgpu/types, and typecheck tests and examples. Parsing uses the TypeScript 7.1 IPC client (typescript/sync). TypeScript 7.0 only publishes that client under typescript/unstable.",
   "scripts": {
     "lint:web-types": "node lint-web-types.mjs",
     "lint:types": "node lint-types.mjs",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@types/web": "0.0.367",
+    "@webgpu/types": "0.1.74",
     "typescript": "7.1.0-dev.20261117.1"
   }
 }

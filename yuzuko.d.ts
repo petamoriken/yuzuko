@@ -139,7 +139,7 @@ interface GPUExtent3DDict {
   height?: GPUIntegerCoordinate;
   width: GPUIntegerCoordinate;
 }
-type GPUFeatureName = "bgra8unorm-storage" | "clip-distances" | "core-features-and-limits" | "depth-clip-control" | "depth32float-stencil8" | "dual-source-blending" | "float32-blendable" | "float32-filterable" | "indirect-first-instance" | "primitive-index" | "rg11b10ufloat-renderable" | "shader-f16" | "subgroups" | "texture-component-swizzle" | "texture-compression-astc" | "texture-compression-astc-sliced-3d" | "texture-compression-bc" | "texture-compression-bc-sliced-3d" | "texture-compression-etc2" | "texture-formats-tier1" | "texture-formats-tier2" | "timestamp-query";
+type GPUFeatureName = "atomic-vec2u-min-max" | "bgra8unorm-storage" | "clip-distances" | "core-features-and-limits" | "depth-clip-control" | "depth32float-stencil8" | "dual-source-blending" | "float32-blendable" | "float32-filterable" | "indirect-first-instance" | "primitive-index" | "rg11b10ufloat-renderable" | "shader-f16" | "subgroup-size-control" | "subgroups" | "texture-component-swizzle" | "texture-compression-astc" | "texture-compression-astc-sliced-3d" | "texture-compression-bc" | "texture-compression-bc-sliced-3d" | "texture-compression-etc2" | "texture-compression-unaligned" | "texture-formats-tier1" | "texture-formats-tier2" | "timestamp-query";
 type GPUFilterMode = "linear" | "nearest";
 type GPUFrontFace = "ccw" | "cw";
 type GPUIndexFormat = "uint16" | "uint32";
@@ -7259,7 +7259,7 @@ interface Navigator {
   readonly keyboard: Keyboard;
 
   /**
-   * The process WebGPU entry. Main global only.
+   * The process WebGPU entry. A dedicated worker has it on `navigator` too.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/gpu)
    */
@@ -16886,6 +16886,13 @@ declare class WorkerLocation {
  */
 declare class WorkerNavigator {
   constructor();
+
+  /**
+   * The process WebGPU entry.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/gpu)
+   */
+  readonly gpu: GPU;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/userAgent) */
   readonly userAgent: string;

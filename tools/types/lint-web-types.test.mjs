@@ -316,3 +316,59 @@ test("treats optional undefined and split export overloads as covered", () => {
     [],
   );
 });
+
+test("ignores an extra undefined on a reference union", () => {
+  assert.deepEqual(
+    paths(
+      "interface GPUBindGroup {} interface GPU { setBindGroup(bindGroup: GPUBindGroup | null): void; }",
+      "interface GPUBindGroup {} interface GPU { setBindGroup(bindGroup: GPUBindGroup | null | undefined): undefined; }",
+    ),
+    [],
+  );
+});
+
+test("matches a descriptor interface to a type alias of its base", () => {
+  const yuzuko = `
+    interface GPUObjectDescriptorBase { label?: string; }
+    interface GPUCommandBufferDescriptor { label?: string; }
+    interface GPUCommandEncoder { finish(descriptor?: GPUCommandBufferDescriptor): void; }
+  `;
+  const web = `
+    interface GPUObjectDescriptorBase { label?: string; }
+    type GPUCommandBufferDescriptor = GPUObjectDescriptorBase;
+    interface GPUCommandEncoder { finish(descriptor?: GPUCommandBufferDescriptor): void; }
+  `;
+  assert.deepEqual(paths(yuzuko, web), []);
+  assert.deepEqual(
+    paths(
+      "interface GPU { readonly features: GPUSupportedFeatures; } interface GPUSupportedFeatures extends ReadonlySet<string> {}",
+      "interface GPU { readonly features: GPUSupportedFeatures; } type GPUSupportedFeatures = ReadonlySet<string>;",
+    ),
+    [],
+  );
+});
+
+test("matches a reference name that only yuzuko defines", () => {
+  assert.deepEqual(
+    paths(
+      'type PredefinedColorSpace = "display-p3" | "srgb"; interface Config { colorSpace?: PredefinedColorSpace; }',
+      "interface Config { colorSpace?: PredefinedColorSpace; }",
+    ),
+    [],
+  );
+});
+
+test("matches GPUAllowSharedBufferSource to AllowSharedBufferSource", () => {
+  const yuzuko = "type AllowSharedBufferSource = ArrayBufferLike | ArrayBufferView<ArrayBufferLike>; interface GPUQueue { writeBuffer(data: AllowSharedBufferSource): void; }";
+  const web = "type GPUAllowSharedBufferSource = BufferSource | SharedArrayBuffer; interface GPUQueue { writeBuffer(data: GPUAllowSharedBufferSource): void; }";
+  assert.deepEqual(paths(yuzuko, web), []);
+});
+
+test("skips nominal brands and never constructors for the WebGPU pass", () => {
+  const yuzuko = "interface GPUBuffer { label: string; } declare var GPUBuffer: { new(): GPUBuffer };";
+  const web = 'interface GPUBuffer { label: string; readonly __brand: "GPUBuffer"; } declare var GPUBuffer: { new(): never };';
+  const open = compareTexts(yuzuko, web, allowFromJson({})).findings.map((finding) => finding.path);
+  assert.deepEqual(open, ["GPUBuffer.__brand", "GPUBuffer.new"]);
+  const closed = compareTexts(yuzuko, web, allowFromJson({}, { webgpu: true })).findings;
+  assert.deepEqual(closed, []);
+});
