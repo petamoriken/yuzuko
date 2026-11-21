@@ -330,9 +330,16 @@ pub fn unsupported(what: &str) -> OpError {
 }
 
 pub fn promise_rejected(scope: &mut v8::PinScope, error: OpError) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
   let exception = exception_value(scope, error);
-  resolver.reject(scope, exception);
+  promise_rejected_value(scope, exception)
+}
+
+pub fn promise_rejected_value(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) -> Js {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  resolver.reject(scope, error);
   let promise = resolver.get_promise(scope);
   let promise: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, promise))

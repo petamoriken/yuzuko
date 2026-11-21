@@ -990,47 +990,120 @@ pub fn create_buffer(
 
 pub fn create_texture(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuTexture>, OpError> {
   let object = js::object(scope, descriptor)
     .ok_or_else(|| OpError::type_("createTexture requires a descriptor"))?;
-  let (width, height) = texture_size(scope, object)?;
+  let extent = texture_extent(scope, object)?;
+  let dimension = texture_dimension(scope, object)?;
   let features = handle.device.features();
+  let limits = handle.device.limits();
   let format = texture_format(&required_string(scope, object, "format")?)?;
   let format = require_texture_format(features, format)?;
   let view_formats = view_format_list(scope, object, features)?;
-  let usage = wgpu::TextureUsages::from_bits_truncate(js::required_u32(
-    scope, object, "usage",
-  )?);
+  let usage_bits = js::required_u32(scope, object, "usage")?;
   let sample_count = allowed_sample_count(
     js::field_u32(scope, object, "sampleCount")?.unwrap_or(1),
   )?;
+  let mip_level_count =
+    js::field_u32(scope, object, "mipLevelCount")?.unwrap_or(1);
   let label = optional_label(scope, object)?;
-  let texture = handle.device.create_texture(&wgpu::TextureDescriptor {
+  let invalid = texture_invalid(
+    &extent,
+    dimension,
+    format,
+    usage_bits,
+    sample_count,
+    mip_level_count,
+    features,
+    &limits,
+  );
+  if let Some(message) = invalid {
+    crate::state::report_validation(device_id, message);
+  }
+  // The JavaScript texture stays 2D, one mip, and one layer. A spec-valid
+  // request for another shape still succeeds. An invalid descriptor records
+  // a validation error and returns a 1×1 stand-in.
+  let max_2d = limits.max_texture_dimension_2d.max(1);
+  let stand_in = wgpu::TextureUsages::COPY_SRC
+    | wgpu::TextureUsages::COPY_DST
+    | wgpu::TextureUsages::TEXTURE_BINDING
+    | wgpu::TextureUsages::RENDER_ATTACHMENT;
+  let (
+    create_width,
+    create_height,
+    create_format,
+    create_usage,
+    create_samples,
+  ) = if invalid.is_some() {
+    (1, 1, wgpu::TextureFormat::Rgba8Unorm, stand_in, 1)
+  } else {
+    (
+      extent.width.min(max_2d).max(1),
+      extent.height.min(max_2d).max(1),
+      format,
+      wgpu::TextureUsages::from_bits_truncate(usage_bits),
+      sample_count,
+    )
+  };
+  let empty_views = Vec::new();
+  let create_views = if invalid.is_some() {
+    empty_views.as_slice()
+  } else {
+    view_formats.as_slice()
+  };
+  let descriptor = wgpu::TextureDescriptor {
     label: label.as_deref(),
     size: wgpu::Extent3d {
-      width,
-      height,
+      width: create_width,
+      height: create_height,
       depth_or_array_layers: 1,
     },
     mip_level_count: 1,
-    sample_count,
+    sample_count: create_samples,
     dimension: wgpu::TextureDimension::D2,
-    format,
-    usage,
-    view_formats: &view_formats,
-  });
+    format: create_format,
+    usage: create_usage,
+    view_formats: create_views,
+  };
+  let texture = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    handle.device.create_texture(&descriptor)
+  }));
+  let texture = match texture {
+    Ok(texture) => texture,
+    Err(_) => {
+      crate::state::report_validation(
+        device_id,
+        "The texture descriptor is invalid",
+      );
+      handle.device.create_texture(&wgpu::TextureDescriptor {
+        label: label.as_deref(),
+        size: wgpu::Extent3d {
+          width: 1,
+          height: 1,
+          depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: stand_in,
+        view_formats: &[],
+      })
+    }
+  };
   Ok(New(GpuTexture::from_parts(
     texture,
     Arc::new(AtomicBool::new(false)),
     Arc::clone(&handle.lost),
-    width,
-    height,
+    extent.width,
+    extent.height,
     format,
     label,
     sample_count,
-    usage.bits(),
+    usage_bits,
   )))
 }
 
@@ -2185,7 +2258,9 @@ fn texture_view_dimension(
   }
 }
 
-fn texture_aspect(name: &str) -> Result<wgpu::TextureAspect, OpError> {
+pub(crate) fn texture_aspect(
+  name: &str,
+) -> Result<wgpu::TextureAspect, OpError> {
   match name {
     "all" => Ok(wgpu::TextureAspect::All),
     "depth-only" => Ok(wgpu::TextureAspect::DepthOnly),
@@ -2294,10 +2369,16 @@ fn explicit_layout(
   host_pipeline_layout(scope, layout).map(Some)
 }
 
-fn texture_size(
+struct TextureExtent {
+  width: u32,
+  height: u32,
+  depth_or_array_layers: u32,
+}
+
+fn texture_extent(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<(u32, u32), OpError> {
+) -> Result<TextureExtent, OpError> {
   let size = js::get(scope, object, "size")?
     .ok_or_else(|| OpError::type_("GPUTextureDescriptor.size is required"))?;
   if let Ok(array) = v8::Local::<v8::Array>::try_from(size) {
@@ -2307,16 +2388,306 @@ fn texture_size(
     } else {
       1
     };
-    return Ok((width, height));
+    let depth = if array.length() > 2 {
+      js::index_u32(scope, array, 2)?
+    } else {
+      1
+    };
+    return Ok(TextureExtent {
+      width,
+      height,
+      depth_or_array_layers: depth,
+    });
   }
   let object = js::object(scope, size)
     .ok_or_else(|| OpError::type_("GPUTextureDescriptor.size is invalid"))?;
-  let width = js::required_u32(scope, object, "width")?;
-  let height = js::field_u32(scope, object, "height")?.unwrap_or(1);
-  Ok((width, height))
+  Ok(TextureExtent {
+    width: js::required_u32(scope, object, "width")?,
+    height: js::field_u32(scope, object, "height")?.unwrap_or(1),
+    depth_or_array_layers: js::field_u32(scope, object, "depthOrArrayLayers")?
+      .unwrap_or(1),
+  })
+}
+
+fn texture_dimension(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<wgpu::TextureDimension, OpError> {
+  match js::get(scope, object, "dimension")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None | Some("2d") => Ok(wgpu::TextureDimension::D2),
+    Some("1d") => Ok(wgpu::TextureDimension::D1),
+    Some("3d") => Ok(wgpu::TextureDimension::D3),
+    _ => Err(OpError::type_("The texture dimension is invalid")),
+  }
+}
+
+/// One message covers every spec-invalid descriptor. `TypeError` and
+/// `depth32float-stencil8` are rejected before this runs.
+fn texture_invalid(
+  extent: &TextureExtent,
+  dimension: wgpu::TextureDimension,
+  format: wgpu::TextureFormat,
+  usage_bits: u32,
+  sample_count: u32,
+  mip_level_count: u32,
+  features: wgpu::Features,
+  limits: &wgpu::Limits,
+) -> Option<&'static str> {
+  let invalid = "The texture descriptor is invalid";
+  let Some(usage) = wgpu::TextureUsages::from_bits(usage_bits) else {
+    return Some(invalid);
+  };
+  if usage.is_empty()
+    || extent.width == 0
+    || extent.height == 0
+    || extent.depth_or_array_layers == 0
+    || mip_level_count == 0
+    || !features.contains(format.required_features())
+  {
+    return Some(invalid);
+  }
+  let guaranteed = format.guaranteed_format_features(features);
+  if !guaranteed.allowed_usages.contains(usage)
+    || !guaranteed.flags.sample_count_supported(sample_count)
+    || (sample_count > 1
+      && !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT))
+  {
+    return Some(invalid);
+  }
+  let width = extent.width;
+  let height = extent.height;
+  let depth = extent.depth_or_array_layers;
+  match dimension {
+    wgpu::TextureDimension::D1 => {
+      if height != 1
+        || depth != 1
+        || sample_count != 1
+        || mip_level_count != 1
+        || format.is_compressed()
+        || format.is_depth_stencil_format()
+        || width > limits.max_texture_dimension_1d
+      {
+        return Some(invalid);
+      }
+    }
+    wgpu::TextureDimension::D2 => {
+      if width > limits.max_texture_dimension_2d
+        || height > limits.max_texture_dimension_2d
+        || depth > limits.max_texture_array_layers
+        || (sample_count > 1 && (mip_level_count != 1 || depth != 1))
+      {
+        return Some(invalid);
+      }
+    }
+    wgpu::TextureDimension::D3 => {
+      if sample_count != 1
+        || format.is_depth_stencil_format()
+        || width > limits.max_texture_dimension_3d
+        || height > limits.max_texture_dimension_3d
+        || depth > limits.max_texture_dimension_3d
+        || (format.is_compressed() && !sliced_3d(format, features))
+      {
+        return Some(invalid);
+      }
+    }
+  }
+  if format.is_compressed() {
+    let (block_width, block_height) = format.block_dimensions();
+    if !width.is_multiple_of(block_width)
+      || !height.is_multiple_of(block_height)
+    {
+      return Some(invalid);
+    }
+  }
+  let edge = match dimension {
+    wgpu::TextureDimension::D1 => width,
+    wgpu::TextureDimension::D2 => width.max(height),
+    wgpu::TextureDimension::D3 => width.max(height).max(depth),
+  };
+  let max_mips = u32::BITS - edge.leading_zeros();
+  if mip_level_count > max_mips {
+    return Some(invalid);
+  }
+  None
+}
+
+fn sliced_3d(format: wgpu::TextureFormat, features: wgpu::Features) -> bool {
+  if format.is_astc() {
+    features.contains(wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D)
+  } else if format.is_bcn() {
+    features.contains(wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D)
+  } else {
+    false
+  }
+}
+
+fn extended_format(name: &str) -> Option<wgpu::TextureFormat> {
+  if let Some(format) = astc_format(name) {
+    return Some(format);
+  }
+  Some(match name {
+    "r8snorm" => wgpu::TextureFormat::R8Snorm,
+    "rg8snorm" => wgpu::TextureFormat::Rg8Snorm,
+    "rgba8snorm" => wgpu::TextureFormat::Rgba8Snorm,
+    "rgb10a2uint" => wgpu::TextureFormat::Rgb10a2Uint,
+    "rgb10a2unorm" => wgpu::TextureFormat::Rgb10a2Unorm,
+    "rg11b10ufloat" => wgpu::TextureFormat::Rg11b10Ufloat,
+    "rgb9e5ufloat" => wgpu::TextureFormat::Rgb9e5Ufloat,
+    "r16unorm" => wgpu::TextureFormat::R16Unorm,
+    "r16snorm" => wgpu::TextureFormat::R16Snorm,
+    "rg16unorm" => wgpu::TextureFormat::Rg16Unorm,
+    "rg16snorm" => wgpu::TextureFormat::Rg16Snorm,
+    "rgba16unorm" => wgpu::TextureFormat::Rgba16Unorm,
+    "rgba16snorm" => wgpu::TextureFormat::Rgba16Snorm,
+    "bc1-rgba-unorm" => wgpu::TextureFormat::Bc1RgbaUnorm,
+    "bc1-rgba-unorm-srgb" => wgpu::TextureFormat::Bc1RgbaUnormSrgb,
+    "bc2-rgba-unorm" => wgpu::TextureFormat::Bc2RgbaUnorm,
+    "bc2-rgba-unorm-srgb" => wgpu::TextureFormat::Bc2RgbaUnormSrgb,
+    "bc3-rgba-unorm" => wgpu::TextureFormat::Bc3RgbaUnorm,
+    "bc3-rgba-unorm-srgb" => wgpu::TextureFormat::Bc3RgbaUnormSrgb,
+    "bc4-r-unorm" => wgpu::TextureFormat::Bc4RUnorm,
+    "bc4-r-snorm" => wgpu::TextureFormat::Bc4RSnorm,
+    "bc5-rg-unorm" => wgpu::TextureFormat::Bc5RgUnorm,
+    "bc5-rg-snorm" => wgpu::TextureFormat::Bc5RgSnorm,
+    "bc6h-rgb-ufloat" => wgpu::TextureFormat::Bc6hRgbUfloat,
+    "bc6h-rgb-float" => wgpu::TextureFormat::Bc6hRgbFloat,
+    "bc7-rgba-unorm" => wgpu::TextureFormat::Bc7RgbaUnorm,
+    "bc7-rgba-unorm-srgb" => wgpu::TextureFormat::Bc7RgbaUnormSrgb,
+    "etc2-rgb8unorm" => wgpu::TextureFormat::Etc2Rgb8Unorm,
+    "etc2-rgb8unorm-srgb" => wgpu::TextureFormat::Etc2Rgb8UnormSrgb,
+    "etc2-rgb8a1unorm" => wgpu::TextureFormat::Etc2Rgb8A1Unorm,
+    "etc2-rgb8a1unorm-srgb" => wgpu::TextureFormat::Etc2Rgb8A1UnormSrgb,
+    "etc2-rgba8unorm" => wgpu::TextureFormat::Etc2Rgba8Unorm,
+    "etc2-rgba8unorm-srgb" => wgpu::TextureFormat::Etc2Rgba8UnormSrgb,
+    "eac-r11unorm" => wgpu::TextureFormat::EacR11Unorm,
+    "eac-r11snorm" => wgpu::TextureFormat::EacR11Snorm,
+    "eac-rg11unorm" => wgpu::TextureFormat::EacRg11Unorm,
+    "eac-rg11snorm" => wgpu::TextureFormat::EacRg11Snorm,
+    _ => return None,
+  })
+}
+
+fn astc_format(name: &str) -> Option<wgpu::TextureFormat> {
+  let rest = name.strip_prefix("astc-")?;
+  let (block, channel) = if let Some(block) = rest.strip_suffix("-unorm-srgb") {
+    (block, wgpu::AstcChannel::UnormSrgb)
+  } else {
+    let block = rest.strip_suffix("-unorm")?;
+    (block, wgpu::AstcChannel::Unorm)
+  };
+  let block = match block {
+    "4x4" => wgpu::AstcBlock::B4x4,
+    "5x4" => wgpu::AstcBlock::B5x4,
+    "5x5" => wgpu::AstcBlock::B5x5,
+    "6x5" => wgpu::AstcBlock::B6x5,
+    "6x6" => wgpu::AstcBlock::B6x6,
+    "8x5" => wgpu::AstcBlock::B8x5,
+    "8x6" => wgpu::AstcBlock::B8x6,
+    "8x8" => wgpu::AstcBlock::B8x8,
+    "10x5" => wgpu::AstcBlock::B10x5,
+    "10x6" => wgpu::AstcBlock::B10x6,
+    "10x8" => wgpu::AstcBlock::B10x8,
+    "10x10" => wgpu::AstcBlock::B10x10,
+    "12x10" => wgpu::AstcBlock::B12x10,
+    "12x12" => wgpu::AstcBlock::B12x12,
+    _ => return None,
+  };
+  Some(wgpu::TextureFormat::Astc { block, channel })
+}
+
+fn extended_format_name(format: wgpu::TextureFormat) -> Option<&'static str> {
+  if let wgpu::TextureFormat::Astc { block, channel } = format {
+    return astc_format_name(block, channel);
+  }
+  Some(match format {
+    wgpu::TextureFormat::R8Snorm => "r8snorm",
+    wgpu::TextureFormat::Rg8Snorm => "rg8snorm",
+    wgpu::TextureFormat::Rgba8Snorm => "rgba8snorm",
+    wgpu::TextureFormat::Rgb10a2Uint => "rgb10a2uint",
+    wgpu::TextureFormat::Rgb10a2Unorm => "rgb10a2unorm",
+    wgpu::TextureFormat::Rg11b10Ufloat => "rg11b10ufloat",
+    wgpu::TextureFormat::Rgb9e5Ufloat => "rgb9e5ufloat",
+    wgpu::TextureFormat::R16Unorm => "r16unorm",
+    wgpu::TextureFormat::R16Snorm => "r16snorm",
+    wgpu::TextureFormat::Rg16Unorm => "rg16unorm",
+    wgpu::TextureFormat::Rg16Snorm => "rg16snorm",
+    wgpu::TextureFormat::Rgba16Unorm => "rgba16unorm",
+    wgpu::TextureFormat::Rgba16Snorm => "rgba16snorm",
+    wgpu::TextureFormat::Bc1RgbaUnorm => "bc1-rgba-unorm",
+    wgpu::TextureFormat::Bc1RgbaUnormSrgb => "bc1-rgba-unorm-srgb",
+    wgpu::TextureFormat::Bc2RgbaUnorm => "bc2-rgba-unorm",
+    wgpu::TextureFormat::Bc2RgbaUnormSrgb => "bc2-rgba-unorm-srgb",
+    wgpu::TextureFormat::Bc3RgbaUnorm => "bc3-rgba-unorm",
+    wgpu::TextureFormat::Bc3RgbaUnormSrgb => "bc3-rgba-unorm-srgb",
+    wgpu::TextureFormat::Bc4RUnorm => "bc4-r-unorm",
+    wgpu::TextureFormat::Bc4RSnorm => "bc4-r-snorm",
+    wgpu::TextureFormat::Bc5RgUnorm => "bc5-rg-unorm",
+    wgpu::TextureFormat::Bc5RgSnorm => "bc5-rg-snorm",
+    wgpu::TextureFormat::Bc6hRgbUfloat => "bc6h-rgb-ufloat",
+    wgpu::TextureFormat::Bc6hRgbFloat => "bc6h-rgb-float",
+    wgpu::TextureFormat::Bc7RgbaUnorm => "bc7-rgba-unorm",
+    wgpu::TextureFormat::Bc7RgbaUnormSrgb => "bc7-rgba-unorm-srgb",
+    wgpu::TextureFormat::Etc2Rgb8Unorm => "etc2-rgb8unorm",
+    wgpu::TextureFormat::Etc2Rgb8UnormSrgb => "etc2-rgb8unorm-srgb",
+    wgpu::TextureFormat::Etc2Rgb8A1Unorm => "etc2-rgb8a1unorm",
+    wgpu::TextureFormat::Etc2Rgb8A1UnormSrgb => "etc2-rgb8a1unorm-srgb",
+    wgpu::TextureFormat::Etc2Rgba8Unorm => "etc2-rgba8unorm",
+    wgpu::TextureFormat::Etc2Rgba8UnormSrgb => "etc2-rgba8unorm-srgb",
+    wgpu::TextureFormat::EacR11Unorm => "eac-r11unorm",
+    wgpu::TextureFormat::EacR11Snorm => "eac-r11snorm",
+    wgpu::TextureFormat::EacRg11Unorm => "eac-rg11unorm",
+    wgpu::TextureFormat::EacRg11Snorm => "eac-rg11snorm",
+    _ => return None,
+  })
+}
+
+fn astc_format_name(
+  block: wgpu::AstcBlock,
+  channel: wgpu::AstcChannel,
+) -> Option<&'static str> {
+  use wgpu::AstcBlock::*;
+  use wgpu::AstcChannel::*;
+  Some(match (block, channel) {
+    (B4x4, Unorm) => "astc-4x4-unorm",
+    (B4x4, UnormSrgb) => "astc-4x4-unorm-srgb",
+    (B5x4, Unorm) => "astc-5x4-unorm",
+    (B5x4, UnormSrgb) => "astc-5x4-unorm-srgb",
+    (B5x5, Unorm) => "astc-5x5-unorm",
+    (B5x5, UnormSrgb) => "astc-5x5-unorm-srgb",
+    (B6x5, Unorm) => "astc-6x5-unorm",
+    (B6x5, UnormSrgb) => "astc-6x5-unorm-srgb",
+    (B6x6, Unorm) => "astc-6x6-unorm",
+    (B6x6, UnormSrgb) => "astc-6x6-unorm-srgb",
+    (B8x5, Unorm) => "astc-8x5-unorm",
+    (B8x5, UnormSrgb) => "astc-8x5-unorm-srgb",
+    (B8x6, Unorm) => "astc-8x6-unorm",
+    (B8x6, UnormSrgb) => "astc-8x6-unorm-srgb",
+    (B8x8, Unorm) => "astc-8x8-unorm",
+    (B8x8, UnormSrgb) => "astc-8x8-unorm-srgb",
+    (B10x5, Unorm) => "astc-10x5-unorm",
+    (B10x5, UnormSrgb) => "astc-10x5-unorm-srgb",
+    (B10x6, Unorm) => "astc-10x6-unorm",
+    (B10x6, UnormSrgb) => "astc-10x6-unorm-srgb",
+    (B10x8, Unorm) => "astc-10x8-unorm",
+    (B10x8, UnormSrgb) => "astc-10x8-unorm-srgb",
+    (B10x10, Unorm) => "astc-10x10-unorm",
+    (B10x10, UnormSrgb) => "astc-10x10-unorm-srgb",
+    (B12x10, Unorm) => "astc-12x10-unorm",
+    (B12x10, UnormSrgb) => "astc-12x10-unorm-srgb",
+    (B12x12, Unorm) => "astc-12x12-unorm",
+    (B12x12, UnormSrgb) => "astc-12x12-unorm-srgb",
+    (_, Hdr) => return None,
+  })
 }
 
 pub fn texture_format(name: &str) -> Result<wgpu::TextureFormat, OpError> {
+  if let Some(format) = extended_format(name) {
+    return Ok(format);
+  }
   match name {
     "bgra8unorm" => Ok(wgpu::TextureFormat::Bgra8Unorm),
     "rgba8unorm" => Ok(wgpu::TextureFormat::Rgba8Unorm),
@@ -2372,6 +2743,9 @@ pub fn require_texture_format(
 }
 
 pub(crate) fn format_name(format: wgpu::TextureFormat) -> &'static str {
+  if let Some(name) = extended_format_name(format) {
+    return name;
+  }
   match format {
     wgpu::TextureFormat::Bgra8Unorm => "bgra8unorm",
     wgpu::TextureFormat::Rgba8Unorm => "rgba8unorm",

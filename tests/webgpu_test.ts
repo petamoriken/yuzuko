@@ -1633,6 +1633,11 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
       === device.limits.maxStorageTexturesPerShaderStage,
     "device fragment textures",
   );
+  assert(limits instanceof GPUSupportedLimits, "limits class");
+  assert(
+    !("maxImmediateSize" in GPUSupportedLimits.prototype),
+    "immediate size",
+  );
 
   const usage = GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST;
   const buffer = device.createBuffer({ size: 16, usage });
@@ -1692,9 +1697,31 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
       {},
       {},
       [1, 1],
-    )) === "NotSupportedError",
+    )) === "TypeError",
     "copyBufferToTexture",
   );
+  const pixels = new Uint8Array([9, 8, 7, 6]);
+  const upload = device.createBuffer({
+    size: 256,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+    mappedAtCreation: true,
+  });
+  new Uint8Array(upload.getMappedRange()).set(pixels);
+  upload.unmap();
+  const copied = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  const copy = device.createCommandEncoder();
+  copy.copyBufferToTexture(
+    { buffer: upload, bytesPerRow: 256 },
+    { texture: copied },
+    [1, 1],
+  );
+  device.queue.submit([copy.finish()]);
+  const pixel = await readPixel(device, copied, 0, 0);
+  assert(pixel.join() === "9,8,7,6", `copied ${pixel}`);
   assert(
     throwName(() => encoder.copyTextureToTexture(
       // @ts-expect-error the copy source requires a texture.
@@ -1737,13 +1764,65 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     await rejectionName(device.createRenderPipelineAsync(
       // @ts-expect-error layout and vertex are required.
       {},
-    )) === "NotSupportedError",
+    )) === "TypeError",
     "render pipeline async",
   );
+  let pipelineError: unknown = null;
+  try {
+    await device.createRenderPipelineAsync({
+      layout: "auto",
+      vertex: { module: shader, entryPoint: "missing" },
+    });
+  } catch (error) {
+    pipelineError = error;
+  }
+  if (!(pipelineError instanceof GPUPipelineError)) {
+    throw new Error(`pipeline error ${errorName(pipelineError)}`);
+  }
+  assert(pipelineError instanceof DOMException, "pipeline exception");
+  assert(pipelineError.reason === "validation", "pipeline reason");
+  assert(GPUPipelineError.prototype instanceof DOMException, "pipeline prototype");
+  const constructed = new GPUPipelineError("nope", { reason: "validation" });
+  assert(constructed.message === "nope", "pipeline message");
+  assert(constructed.reason === "validation", "constructed reason");
+  assert(constructed instanceof DOMException, "constructed exception");
   assert(
-    await rejectionName(device.queue.onSubmittedWorkDone()) === "NotSupportedError",
+    await rejectionName(device.queue.onSubmittedWorkDone()) === "",
     "submitted work",
   );
+  const gone = await adapter.requestDevice();
+  gone.destroy();
+  assert(
+    await rejectionName(gone.queue.onSubmittedWorkDone()) === "InvalidStateError",
+    "submitted work lost",
+  );
+  device.pushErrorScope("validation");
+  const zero = device.createTexture({
+    size: [0, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST,
+  });
+  const zeroError = await device.popErrorScope();
+  assert(zeroError instanceof GPUValidationError, "zero size");
+  assert(zero instanceof GPUTexture, "zero texture");
+  device.pushErrorScope("validation");
+  const snorm = device.createTexture({
+    size: [1, 1],
+    format: "r8snorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const snormError = await device.popErrorScope();
+  assert(snormError === null, "r8snorm");
+  assert(snorm.format === "r8snorm", "r8snorm format");
+  device.pushErrorScope("validation");
+  const compressed = device.createTexture({
+    size: [4, 4],
+    format: "bc1-rgba-unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const compressedError = await device.popErrorScope();
+  assert(compressedError instanceof GPUValidationError, "bc");
+  assert(compressed.format === "bc1-rgba-unorm", "bc format");
 
   const canvas = new OffscreenCanvas(4, 4);
   const context = canvas.getContext("webgpu")!;

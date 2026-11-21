@@ -499,13 +499,58 @@ impl GpuCommandEncoder {
 
   fn copy_buffer_to_texture(
     &self,
+    scope: &mut v8::PinScope,
     source: v8::Local<v8::Value>,
     destination: v8::Local<v8::Value>,
-    copy_size: v8::Local<v8::Value>,
+    size: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let _ = (source, destination, copy_size);
-    with_idle_encoder(self.id, |_| {
-      Err(js::unsupported("GPUCommandEncoder.copyBufferToTexture"))
+    let source = js::object(scope, source).ok_or_else(|| {
+      OpError::type_("copyBufferToTexture source must be an object")
+    })?;
+    let buffer = js::get(scope, source, "buffer")?
+      .and_then(|value| resource::host_buffer(scope, value))
+      .ok_or_else(|| OpError::type_("The copy source is not a buffer"))?;
+    let buffer = buffer.alive()?;
+    let offset = js::field_u64(scope, source, "offset")?.unwrap_or(0);
+    let bytes_per_row = js::field_u32(scope, source, "bytesPerRow")?;
+    let rows_per_image = js::field_u32(scope, source, "rowsPerImage")?;
+    let destination = js::object(scope, destination).ok_or_else(|| {
+      OpError::type_("copyBufferToTexture destination must be an object")
+    })?;
+    let texture = js::get(scope, destination, "texture")?
+      .and_then(|value| resource::host_texture(scope, value))
+      .ok_or_else(|| OpError::type_("The copy destination is not a texture"))?;
+    let texture = texture.texture()?;
+    let mip_level = js::field_u32(scope, destination, "mipLevel")?.unwrap_or(0);
+    let origin = copy_origin(scope, destination)?;
+    let aspect = match js::get(scope, destination, "aspect")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
+      .as_deref()
+    {
+      None => wgpu::TextureAspect::All,
+      Some(name) => resource::texture_aspect(name)?,
+    };
+    let extent = copy_extent(scope, size)?;
+    with_idle_encoder(self.id, |encoder| {
+      encoder.copy_buffer_to_texture(
+        wgpu::TexelCopyBufferInfo {
+          buffer: &buffer,
+          layout: wgpu::TexelCopyBufferLayout {
+            offset,
+            bytes_per_row,
+            rows_per_image,
+          },
+        },
+        wgpu::TexelCopyTextureInfo {
+          texture: &texture,
+          mip_level,
+          origin,
+          aspect,
+        },
+        extent,
+      );
+      Ok(())
     })
   }
 
@@ -2471,6 +2516,71 @@ fn color_channel(
     return Ok(default);
   };
   js::finite_number(scope, value)
+}
+
+fn copy_origin(
+  scope: &mut v8::PinScope,
+  copy: v8::Local<v8::Object>,
+) -> Result<wgpu::Origin3d, OpError> {
+  let Some(origin) = js::get(scope, copy, "origin")? else {
+    return Ok(wgpu::Origin3d::ZERO);
+  };
+  if origin.is_null_or_undefined() {
+    return Ok(wgpu::Origin3d::ZERO);
+  }
+  if let Ok(array) = v8::Local::<v8::Array>::try_from(origin) {
+    let x = js::index_u32(scope, array, 0)?;
+    let y = if array.length() > 1 {
+      js::index_u32(scope, array, 1)?
+    } else {
+      0
+    };
+    let z = if array.length() > 2 {
+      js::index_u32(scope, array, 2)?
+    } else {
+      0
+    };
+    return Ok(wgpu::Origin3d { x, y, z });
+  }
+  let object = js::object(scope, origin)
+    .ok_or_else(|| OpError::type_("The copy origin is invalid"))?;
+  Ok(wgpu::Origin3d {
+    x: js::field_u32(scope, object, "x")?.unwrap_or(0),
+    y: js::field_u32(scope, object, "y")?.unwrap_or(0),
+    z: js::field_u32(scope, object, "z")?.unwrap_or(0),
+  })
+}
+
+fn copy_extent(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<wgpu::Extent3d, OpError> {
+  if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
+    let width = js::index_u32(scope, array, 0)?;
+    let height = if array.length() > 1 {
+      js::index_u32(scope, array, 1)?
+    } else {
+      1
+    };
+    let depth = if array.length() > 2 {
+      js::index_u32(scope, array, 2)?
+    } else {
+      1
+    };
+    return Ok(wgpu::Extent3d {
+      width,
+      height,
+      depth_or_array_layers: depth,
+    });
+  }
+  let object = js::object(scope, value)
+    .ok_or_else(|| OpError::type_("The copy size is invalid"))?;
+  Ok(wgpu::Extent3d {
+    width: js::required_u32(scope, object, "width")?,
+    height: js::field_u32(scope, object, "height")?.unwrap_or(1),
+    depth_or_array_layers: js::field_u32(scope, object, "depthOrArrayLayers")?
+      .unwrap_or(1),
+  })
 }
 
 fn copy_size(

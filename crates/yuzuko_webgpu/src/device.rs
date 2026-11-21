@@ -239,7 +239,7 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<GpuTexture>, OpError> {
-    resource::create_texture(scope, &self.require()?, descriptor)
+    resource::create_texture(scope, self.id, &self.require()?, descriptor)
   }
 
   fn create_sampler(
@@ -334,34 +334,16 @@ impl GpuDevice {
     &self,
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
-  ) -> Result<Js, OpError> {
-    let handle = self.require()?;
-    match resource::create_compute_pipeline(scope, &handle, descriptor) {
-      Ok(New(pipeline)) => {
-        let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };
-        Ok(js::promise(scope, object.into()))
-      }
-      Err(OpError::Dom { name, .. }) if name == "OperationError" => {
-        Ok(js::promise_rejected(
-          scope,
-          OpError::dom("OperationError", "The compute pipeline is invalid"),
-        ))
-      }
-      Err(error) => Err(error),
-    }
+  ) -> Js {
+    async_pipeline(scope, self.id, descriptor, AsyncPipeline::Compute)
   }
 
   fn create_render_pipeline_async(
     &self,
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
-  ) -> Result<Js, OpError> {
-    let _ = descriptor;
-    self.require()?;
-    Ok(js::promise_rejected(
-      scope,
-      js::unsupported("GPUDevice.createRenderPipelineAsync"),
-    ))
+  ) -> Js {
+    async_pipeline(scope, self.id, descriptor, AsyncPipeline::Render)
   }
 
   fn create_query_set(
@@ -504,15 +486,20 @@ impl GpuQueue {
     Err(js::unsupported("GPUQueue.writeTexture"))
   }
 
-  fn on_submitted_work_done(
-    &self,
-    scope: &mut v8::PinScope,
-  ) -> Result<Js, OpError> {
-    let _ = state::handle(self.device_id)?;
-    Ok(js::promise_rejected(
-      scope,
-      js::unsupported("GPUQueue.onSubmittedWorkDone"),
-    ))
+  fn on_submitted_work_done(&self, scope: &mut v8::PinScope) -> Js {
+    let handle = match state::handle(self.device_id) {
+      Ok(handle) => handle,
+      Err(error) => return js::promise_rejected(scope, error),
+    };
+    // The callback runs on the polling thread, before `poll` returns.
+    // Resolve after the wait even when it did not run, so the promise
+    // cannot stay pending.
+    handle.queue.on_submitted_work_done(|| {});
+    let _ = handle.device.poll(wgpu::PollType::Wait {
+      submission_index: None,
+      timeout: Some(std::time::Duration::from_secs(5)),
+    });
+    js::promise(scope, v8::undefined(scope).into())
   }
 }
 
@@ -680,6 +667,56 @@ pub fn install(scope: &mut v8::PinScope) {
   crate::canvas::GpuCanvasContext::install(scope);
   install_flags(scope);
   install_navigator(scope);
+  install_webgpu_globals(scope);
+}
+
+/// `GPUPipelineError` is a `DOMException`, so it is installed as a script
+/// after that constructor exists. `GPUSupportedLimits` is an interface object
+/// with an illegal constructor and no `maxImmediateSize`.
+const WEBGPU_GLOBALS: &str = r#"
+(() => {
+  class GPUPipelineError extends DOMException {
+    constructor(message = "", options) {
+      if (typeof options !== "object" || options === null) {
+        throw new TypeError("GPUPipelineError options are required");
+      }
+      const reason = options.reason;
+      if (reason !== "validation" && reason !== "internal") {
+        throw new TypeError("The pipeline error reason is invalid");
+      }
+      const text = message === undefined ? "" : String(message);
+      super(text, "GPUPipelineError");
+      Object.defineProperty(this, "reason", {
+        value: reason,
+        enumerable: true,
+        configurable: true,
+        writable: false,
+      });
+    }
+  }
+  function GPUSupportedLimits() {
+    throw new TypeError("Illegal constructor");
+  }
+  Object.defineProperty(globalThis, "GPUPipelineError", {
+    value: GPUPipelineError,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "GPUSupportedLimits", {
+    value: GPUSupportedLimits,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+})();
+"#;
+
+fn install_webgpu_globals(scope: &mut v8::PinScope) {
+  let source = v8::String::new(scope, WEBGPU_GLOBALS).expect("webgpu globals");
+  let script =
+    v8::Script::compile(scope, source, None).expect("webgpu globals");
+  script.run(scope).expect("webgpu globals");
 }
 
 fn install_navigator(scope: &mut v8::PinScope) {
@@ -851,12 +888,38 @@ fn open_device(
   })
 }
 
-fn pop_scope<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  id: u64,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
+enum ScopeFailure {
+  Validation(String),
+  OutOfMemory(String),
+  Internal(String),
+}
+
+impl ScopeFailure {
+  fn reason(&self) -> &'static str {
+    match self {
+      Self::Validation(_) => "validation",
+      Self::OutOfMemory(_) | Self::Internal(_) => "internal",
+    }
+  }
+
+  fn message(&self) -> &str {
+    match self {
+      Self::Validation(message)
+      | Self::OutOfMemory(message)
+      | Self::Internal(message) => message,
+    }
+  }
+}
+
+fn finish_scope(id: u64) -> Result<Option<ScopeFailure>, OpError> {
   let popped = state::pop_scope(id)?;
-  let handle = state::handle(id)?;
+  let handle = match state::handle(id) {
+    Ok(handle) => handle,
+    Err(error) => {
+      let _ = pollster::block_on(popped.guard.pop());
+      return Err(error);
+    }
+  };
   let _ = handle.device.poll(wgpu::PollType::Wait {
     submission_index: None,
     timeout: Some(std::time::Duration::from_secs(5)),
@@ -864,26 +927,158 @@ fn pop_scope<'s>(
   let error = pollster::block_on(popped.guard.pop());
   if let Some(error) = error {
     let message = error.to_string();
-    let object = match error {
-      wgpu::Error::OutOfMemory { .. } => unsafe {
-        yuzuko_core::op::wrap_instance(scope, GpuOutOfMemoryError { message })
-      },
-      wgpu::Error::Internal { .. } => unsafe {
-        yuzuko_core::op::wrap_instance(scope, GpuInternalError { message })
-      },
-      wgpu::Error::Validation { .. } => unsafe {
-        yuzuko_core::op::wrap_instance(scope, GpuValidationError { message })
-      },
+    let failure = match error {
+      wgpu::Error::OutOfMemory { .. } => ScopeFailure::OutOfMemory(message),
+      wgpu::Error::Internal { .. } => ScopeFailure::Internal(message),
+      wgpu::Error::Validation { .. } => ScopeFailure::Validation(message),
     };
-    return Ok(object.into());
+    return Ok(Some(failure));
   }
-  if let Some(message) = popped.synthetic {
-    let object = unsafe {
+  Ok(popped.synthetic.map(ScopeFailure::Validation))
+}
+
+fn pop_scope<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u64,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let Some(failure) = finish_scope(id)? else {
+    return Ok(v8::null(scope).into());
+  };
+  let message = failure.message().to_string();
+  let object = match failure {
+    ScopeFailure::OutOfMemory(_) => unsafe {
+      yuzuko_core::op::wrap_instance(scope, GpuOutOfMemoryError { message })
+    },
+    ScopeFailure::Internal(_) => unsafe {
+      yuzuko_core::op::wrap_instance(scope, GpuInternalError { message })
+    },
+    ScopeFailure::Validation(_) => unsafe {
       yuzuko_core::op::wrap_instance(scope, GpuValidationError { message })
-    };
-    return Ok(object.into());
+    },
+  };
+  Ok(object.into())
+}
+
+enum AsyncPipeline {
+  Compute,
+  Render,
+}
+
+/// Push a validation scope, create the pipeline, and pop that scope.
+/// The promise is already settled. A validation or internal error from the
+/// scope rejects `GPUPipelineError`. `TypeError` rejects the original error.
+fn async_pipeline(
+  scope: &mut v8::PinScope,
+  id: u64,
+  descriptor: v8::Local<v8::Value>,
+  kind: AsyncPipeline,
+) -> Js {
+  let handle = match state::handle(id) {
+    Ok(handle) => handle,
+    Err(error) => return js::promise_rejected(scope, error),
+  };
+  let guard = handle
+    .device
+    .push_error_scope(wgpu::ErrorFilter::Validation);
+  if let Err(error) = state::push_scope(id, guard, true) {
+    return js::promise_rejected(scope, error);
   }
-  Ok(v8::null(scope).into())
+  let created = match kind {
+    AsyncPipeline::Compute => resource::create_compute_pipeline(
+      scope, &handle, descriptor,
+    )
+    .map(|New(pipeline)| {
+      let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };
+      v8::Local::<v8::Value>::from(object)
+    }),
+    AsyncPipeline::Render => resource::create_render_pipeline(
+      scope, &handle, descriptor,
+    )
+    .map(|New(pipeline)| {
+      let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };
+      object.into()
+    }),
+  };
+  let failure = match finish_scope(id) {
+    Ok(failure) => failure,
+    Err(error) => {
+      if let Err(created) = created
+        && !is_operation_error(&created)
+      {
+        return js::promise_rejected(scope, created);
+      }
+      return js::promise_rejected(scope, error);
+    }
+  };
+  match created {
+    Err(error) if !is_operation_error(&error) => {
+      js::promise_rejected(scope, error)
+    }
+    Err(error) => {
+      let (message, reason) = pipeline_rejection(&error, failure.as_ref());
+      reject_pipeline(scope, &message, reason)
+    }
+    Ok(value) => match failure {
+      Some(failure) => {
+        let message = failure.message().to_string();
+        reject_pipeline(scope, &message, failure.reason())
+      }
+      None => js::promise(scope, value),
+    },
+  }
+}
+
+fn is_operation_error(error: &OpError) -> bool {
+  matches!(error, OpError::Dom { name, .. } if name == "OperationError")
+}
+
+fn pipeline_rejection(
+  error: &OpError,
+  failure: Option<&ScopeFailure>,
+) -> (String, &'static str) {
+  if let Some(failure) = failure {
+    return (failure.message().to_string(), failure.reason());
+  }
+  let message = match error {
+    OpError::Dom { message, .. } => message.clone(),
+    OpError::Type(message) | OpError::Range(message) => message.clone(),
+    OpError::Thrown(_) => "The pipeline is invalid".to_string(),
+  };
+  (message, "validation")
+}
+
+fn reject_pipeline(
+  scope: &mut v8::PinScope,
+  message: &str,
+  reason: &str,
+) -> Js {
+  match pipeline_error_value(scope, message, reason) {
+    Some(error) => js::promise_rejected_value(scope, error),
+    None => js::promise_rejected(
+      scope,
+      OpError::dom("OperationError", message.to_string()),
+    ),
+  }
+}
+
+fn pipeline_error_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  message: &str,
+  reason: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let global = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "GPUPipelineError")?;
+  let constructor = global.get(scope, key.into())?;
+  let constructor = v8::Local::<v8::Function>::try_from(constructor).ok()?;
+  let message = v8::String::new(scope, message)?;
+  let options = v8::Object::new(scope);
+  let reason_key = v8::String::new(scope, "reason")?;
+  let reason_value = v8::String::new(scope, reason)?;
+  let _ = options.set(scope, reason_key.into(), reason_value.into());
+  let arguments = [v8::Local::<v8::Value>::from(message), options.into()];
+  constructor
+    .new_instance(scope, &arguments)
+    .map(v8::Local::from)
 }
 
 fn write_contents(
@@ -1318,7 +1513,23 @@ fn limits_object<'s>(
     let number = v8::Number::new(scope, value);
     object.set(scope, key.into(), number.into());
   }
+  if let Some(prototype) = limits_prototype(scope) {
+    let _ = object.set_prototype(scope, prototype.into());
+  }
   object
+}
+
+fn limits_prototype<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let global = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "GPUSupportedLimits")?;
+  let constructor = global.get(scope, key.into())?;
+  let constructor = v8::Local::<v8::Object>::try_from(constructor).ok()?;
+  let prototype_key = v8::String::new(scope, "prototype")?;
+  constructor
+    .get(scope, prototype_key.into())
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
 }
 
 fn features_js(scope: &mut v8::PinScope, features: wgpu::Features) -> Js {

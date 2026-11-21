@@ -132,6 +132,7 @@ interface GPUError {
 }
 
 type GPUErrorFilter = "internal" | "out-of-memory" | "validation";
+type GPUPipelineErrorReason = "internal" | "validation";
 type GPUExtent3D = GPUIntegerCoordinate[] | GPUExtent3DDict;
 type GPUIntegerCoordinate = number;
 interface GPUExtent3DDict {
@@ -322,6 +323,10 @@ interface GPUSupportedLimits {
   readonly minStorageBufferOffsetAlignment: number;
   readonly minUniformBufferOffsetAlignment: number;
 }
+declare var GPUSupportedLimits: {
+  prototype: GPUSupportedLimits;
+  new(): GPUSupportedLimits;
+};
 type GPUTextureAspect = "all" | "depth-only" | "stencil-only";
 type GPUTextureDimension = "1d" | "2d" | "3d";
 type GPUTextureFormat = "astc-10x10-unorm" | "astc-10x10-unorm-srgb" | "astc-10x5-unorm" | "astc-10x5-unorm-srgb" | "astc-10x6-unorm" | "astc-10x6-unorm-srgb" | "astc-10x8-unorm" | "astc-10x8-unorm-srgb" | "astc-12x10-unorm" | "astc-12x10-unorm-srgb" | "astc-12x12-unorm" | "astc-12x12-unorm-srgb" | "astc-4x4-unorm" | "astc-4x4-unorm-srgb" | "astc-5x4-unorm" | "astc-5x4-unorm-srgb" | "astc-5x5-unorm" | "astc-5x5-unorm-srgb" | "astc-6x5-unorm" | "astc-6x5-unorm-srgb" | "astc-6x6-unorm" | "astc-6x6-unorm-srgb" | "astc-8x5-unorm" | "astc-8x5-unorm-srgb" | "astc-8x6-unorm" | "astc-8x6-unorm-srgb" | "astc-8x8-unorm" | "astc-8x8-unorm-srgb" | "bc1-rgba-unorm" | "bc1-rgba-unorm-srgb" | "bc2-rgba-unorm" | "bc2-rgba-unorm-srgb" | "bc3-rgba-unorm" | "bc3-rgba-unorm-srgb" | "bc4-r-snorm" | "bc4-r-unorm" | "bc5-rg-snorm" | "bc5-rg-unorm" | "bc6h-rgb-float" | "bc6h-rgb-ufloat" | "bc7-rgba-unorm" | "bc7-rgba-unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" | "depth16unorm" | "depth24plus" | "depth24plus-stencil8" | "depth32float" | "depth32float-stencil8" | "eac-r11snorm" | "eac-r11unorm" | "eac-rg11snorm" | "eac-rg11unorm" | "etc2-rgb8a1unorm" | "etc2-rgb8a1unorm-srgb" | "etc2-rgb8unorm" | "etc2-rgb8unorm-srgb" | "etc2-rgba8unorm" | "etc2-rgba8unorm-srgb" | "r16float" | "r16sint" | "r16snorm" | "r16uint" | "r16unorm" | "r32float" | "r32sint" | "r32uint" | "r8sint" | "r8snorm" | "r8uint" | "r8unorm" | "rg11b10ufloat" | "rg16float" | "rg16sint" | "rg16snorm" | "rg16uint" | "rg16unorm" | "rg32float" | "rg32sint" | "rg32uint" | "rg8sint" | "rg8snorm" | "rg8uint" | "rg8unorm" | "rgb10a2uint" | "rgb10a2unorm" | "rgb9e5ufloat" | "rgba16float" | "rgba16sint" | "rgba16snorm" | "rgba16uint" | "rgba16unorm" | "rgba32float" | "rgba32sint" | "rgba32uint" | "rgba8sint" | "rgba8snorm" | "rgba8uint" | "rgba8unorm" | "rgba8unorm-srgb" | "stencil8";
@@ -12665,13 +12670,23 @@ interface GPUDevice extends EventTarget {
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
 
   /**
-   * `sampleCount` is 1 or 4. The texture is 2D, with one mip level and one
-   * array layer. `depth32float-stencil8` throws `NotSupportedError` when that
-   * feature is not enabled.
+   * The **`createTexture()`** method of the GPUDevice interface creates a
+   * GPUTexture in which to store 1D, 2D, or 3D arrays of data, such as images,
+   * to use in GPU rendering operations.
    *
-   * @throws {@link TypeError} When `sampleCount` is not 1 or 4.
-   * @throws {@link DOMException} `NotSupportedError` when the format needs a
-   * feature the process device does not have.
+   * The texture is 2D, with one mip level and one array layer. A valid request
+   * for another dimension, mip count, or layer count still returns that
+   * texture. A zero size, a zero `mipLevelCount`, a zero usage, a usage the
+   * format does not allow, a size past the device limit, a mip count the size
+   * cannot hold, `sampleCount` 4 on a format that cannot be multisampled, a
+   * dimension the format cannot use, or a format whose feature is not enabled
+   * records a validation error. `depth32float-stencil8` throws
+   * `NotSupportedError` when that feature is not enabled.
+   *
+   * @throws {@link TypeError} When `sampleCount` is not 1 or 4, or the format
+   * name is unknown.
+   * @throws {@link DOMException} `NotSupportedError` when the format is
+   * `depth32float-stencil8` and that feature is not enabled.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createTexture)
    */
@@ -12727,7 +12742,15 @@ interface GPUDevice extends EventTarget {
   createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   * The **`createRenderPipelineAsync()`** method of the GPUDevice interface
+   * returns a Promise that fulfills with a GPURenderPipeline, which can
+   * control the vertex and fragment shader stages and be used in a
+   * GPURenderPassEncoder or GPURenderBundleEncoder, once the pipeline can be
+   * used without any stalling.
+   *
+   * The promise is already settled. Compilation runs on the calling thread. A
+   * pipeline validation error rejects `GPUPipelineError` with reason
+   * `"validation"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createRenderPipelineAsync)
    */
@@ -12752,8 +12775,14 @@ interface GPUDevice extends EventTarget {
   createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline;
 
   /**
+   * The **`createComputePipelineAsync()`** method of the GPUDevice interface
+   * returns a Promise that fulfills with a GPUComputePipeline, which can
+   * control the compute shader stage and be used in a GPUComputePassEncoder,
+   * once the pipeline can be used without any stalling.
+   *
    * The promise is already settled. Compilation runs on the calling thread. A
-   * pipeline error rejects `OperationError`.
+   * pipeline validation error rejects `GPUPipelineError` with reason
+   * `"validation"`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createComputePipelineAsync)
    */
@@ -12891,6 +12920,32 @@ declare var GPUInternalError: {
   new(message: string): GPUInternalError;
 };
 
+interface GPUPipelineErrorInit {
+  reason: GPUPipelineErrorReason;
+}
+
+/**
+ * The **`GPUPipelineError`** interface of the WebGPU API describes a pipeline
+ * failure. This is the value received when a Promise returned by a
+ * GPUDevice.createComputePipelineAsync() or GPUDevice.createRenderPipelineAsync()
+ * call rejects. Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError)
+ */
+interface GPUPipelineError extends DOMException {
+  /**
+   * The **`reason`** read-only property of the GPUPipelineError interface
+   * defines the reason the pipeline creation failed in a machine-readable way.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError/reason)
+   */
+  readonly reason: GPUPipelineErrorReason;
+}
+declare var GPUPipelineError: {
+  prototype: GPUPipelineError;
+  new(message: string, options: GPUPipelineErrorInit): GPUPipelineError;
+};
+
 
 /**
  * A trusted host event. A script-constructed event is not trusted.
@@ -12938,7 +12993,12 @@ interface GPUQueue {
   ): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   * The **`onSubmittedWorkDone()`** method of the GPUQueue interface returns a
+   * Promise that resolves when all the work submitted to the GPU via this
+   * GPUQueue at the point the method is called has been processed.
+   *
+   * The promise is already settled. The calling thread polls until that work
+   * finishes. The promise resolves `undefined`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/onSubmittedWorkDone)
    */
@@ -13571,9 +13631,17 @@ interface GPUCommandEncoder {
   clearBuffer(buffer: GPUBuffer, offset?: number, size?: number): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
-   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
-   * or a pass is already open.
+   * The **`copyBufferToTexture()`** method of the GPUCommandEncoder interface
+   * encodes a command that copies data from a GPUBuffer to a GPUTexture.
+   *
+   * The destination is the 2D texture. `bytesPerRow`, `rowsPerImage`,
+   * `mipLevel`, `origin`, and `aspect` are applied. An invalid copy is a
+   * validation error.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is
+   * finished, a pass is open, or the buffer or texture is destroyed.
+   * @throws {@link TypeError} When the source is not a buffer or the
+   * destination is not a texture.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyBufferToTexture)
    */
