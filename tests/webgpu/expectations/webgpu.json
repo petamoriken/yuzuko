@@ -202,7 +202,14 @@
   "webgpu:api,operation,queue,writeBuffer:array_types:arrayType=\"Uint8Array\";useArrayBuffer=false": true,
   "webgpu:api,operation,queue,writeBuffer:array_types:arrayType=\"Uint8Array\";useArrayBuffer=true": true,
   "webgpu:api,operation,queue,writeBuffer:multiple_writes_at_different_offsets_and_sizes:": false,
-  "webgpu:api,operation,sampling,anisotropy:anisotropic_filter_checkerboard:": true,
+  "webgpu:api,operation,sampling,anisotropy:anisotropic_filter_checkerboard:": {
+    "ignore": {
+      "reason": "Anisotropic filtering warns on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,sampling,anisotropy:anisotropic_filter_mipmap_color:maxAnisotropy=1": false,
   "webgpu:api,operation,sampling,anisotropy:anisotropic_filter_mipmap_color:maxAnisotropy=4": false,
   "webgpu:api,operation,sampling,filter_mode:magFilter,linear:format=\"bgra8unorm\"": true,
@@ -426,11 +433,39 @@
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"sint8x4\"": true,
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm10-10-10-2\"": false,
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm16\"": true,
-  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm16x2\"": true,
-  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm16x4\"": true,
+  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm16x2\"": {
+    "ignore": {
+      "reason": "arrayStride 0 for this snorm format fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm16x4\"": {
+    "ignore": {
+      "reason": "arrayStride 0 for this snorm format fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm8\"": true,
-  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm8x2\"": true,
-  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm8x4\"": true,
+  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm8x2\"": {
+    "ignore": {
+      "reason": "arrayStride 0 for this snorm format fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"snorm8x4\"": {
+    "ignore": {
+      "reason": "arrayStride 0 for this snorm format fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"uint16\"": true,
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"uint16x2\"": true,
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"uint16x4\"": true,
@@ -450,7 +485,14 @@
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"unorm8x4\"": true,
   "webgpu:api,operation,vertex_state,correctness:array_stride_zero:format=\"unorm8x4-bgra\"": true,
   "webgpu:api,operation,vertex_state,correctness:buffers_with_varying_step_mode:": true,
-  "webgpu:api,operation,vertex_state,correctness:discontiguous_location_and_attribs:": true,
+  "webgpu:api,operation,vertex_state,correctness:discontiguous_location_and_attribs:": {
+    "ignore": {
+      "reason": "Discontiguous vertex attribute locations fail on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:max_buffers_and_attribs:format=\"float16\"": true,
   "webgpu:api,operation,vertex_state,correctness:max_buffers_and_attribs:format=\"float16x2\"": true,
   "webgpu:api,operation,vertex_state,correctness:max_buffers_and_attribs:format=\"float16x4\"": true,
@@ -619,48 +661,300 @@
   "webgpu:api,operation,vertex_state,correctness:setVertexBuffer_offset_and_attribute_offset:format=\"unorm8x2\"": true,
   "webgpu:api,operation,vertex_state,correctness:setVertexBuffer_offset_and_attribute_offset:format=\"unorm8x4\"": true,
   "webgpu:api,operation,vertex_state,correctness:setVertexBuffer_offset_and_attribute_offset:format=\"unorm8x4-bgra\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x3\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x3\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8x4\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float16x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x3\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"float32x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint16x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x3\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint32x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"sint8x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm10-10-10-2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8x4\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm16x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"snorm8x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint16\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint16x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint16x4\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint16x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint16x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x3\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x4\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x3\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint32x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint8\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint8x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint8x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm10-10-10-2\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint8x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"uint8x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm10-10-10-2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm16\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm16x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm16x4\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm16x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm16x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x2\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x4\"": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x4-bgra\"": false,
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x2\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x4\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_interleaved:format=\"unorm8x4-bgra\"": {
+    "ignore": {
+      "reason": "An interleaved vertex buffer fails on macOS.",
+      "os": [
+        "macos"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"float16\"": true,
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"float16x2\"": true,
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"float16x4\"": true,
@@ -703,174 +997,1322 @@
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"unorm8x2\"": true,
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"unorm8x4\"": true,
   "webgpu:api,operation,vertex_state,correctness:vertex_buffer_used_multiple_times_overlapped:format=\"unorm8x4-bgra\"": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=4": true,
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float16x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x3\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"float32x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint16x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x3\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint32x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"sint8x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm10-10-10-2\";shaderComponentCount=1": false,
   "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm10-10-10-2\";shaderComponentCount=2": false,
   "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm10-10-10-2\";shaderComponentCount=3": false,
   "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm10-10-10-2\";shaderComponentCount=4": false,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=4": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=1": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=2": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=3": true,
-  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=4": true,
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm16x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"snorm8x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint16x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x3\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint32x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"uint8x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm10-10-10-2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm16x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x2\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=1": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=2": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=3": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:api,operation,vertex_state,correctness:vertex_format_to_shader_format_conversion:format=\"unorm8x4-bgra\";shaderComponentCount=4": {
+    "ignore": {
+      "reason": "Vertex format conversion fails on Linux.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,vertex_state,index_format:index_format,change_pipeline_after_setIndexBuffer:setPipelineBeforeSetIndexBuffer=false": true,
   "webgpu:api,operation,vertex_state,index_format:index_format,change_pipeline_after_setIndexBuffer:setPipelineBeforeSetIndexBuffer=true": true,
   "webgpu:api,operation,vertex_state,index_format:index_format,setIndexBuffer_before_setPipeline:setIndexBufferBeforeSetPipeline=false": true,
@@ -10936,27 +12378,107 @@
   "webgpu:api,validation,error_scope:balanced_siblings:errorFilter=\"validation\";numErrors=10": true,
   "webgpu:api,validation,error_scope:balanced_siblings:errorFilter=\"validation\";numErrors=100": true,
   "webgpu:api,validation,error_scope:balanced_siblings:errorFilter=\"validation\";numErrors=1000": true,
-  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=1": false,
-  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=10": false,
-  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=100": false,
-  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=1000": false,
-  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=100000": false,
+  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=1": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=10": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=100": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=1000": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:current_scope:errorFilter=\"out-of-memory\";stackDepth=100000": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
   "webgpu:api,validation,error_scope:current_scope:errorFilter=\"validation\";stackDepth=1": true,
   "webgpu:api,validation,error_scope:current_scope:errorFilter=\"validation\";stackDepth=10": true,
   "webgpu:api,validation,error_scope:current_scope:errorFilter=\"validation\";stackDepth=100": true,
   "webgpu:api,validation,error_scope:current_scope:errorFilter=\"validation\";stackDepth=1000": true,
   "webgpu:api,validation,error_scope:current_scope:errorFilter=\"validation\";stackDepth=100000": true,
   "webgpu:api,validation,error_scope:empty:": true,
-  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=1": false,
-  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=10": false,
-  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=100": false,
-  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=1000": false,
+  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=1": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=10": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=100": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"out-of-memory\";stackDepth=1000": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
   "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"validation\";stackDepth=1": true,
   "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"validation\";stackDepth=10": true,
   "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"validation\";stackDepth=100": true,
   "webgpu:api,validation,error_scope:parent_scope:errorFilter=\"validation\";stackDepth=1000": true,
   "webgpu:api,validation,error_scope:simple:errorType=\"out-of-memory\";errorFilter=\"internal\"": false,
-  "webgpu:api,validation,error_scope:simple:errorType=\"out-of-memory\";errorFilter=\"out-of-memory\"": false,
+  "webgpu:api,validation,error_scope:simple:errorType=\"out-of-memory\";errorFilter=\"out-of-memory\"": {
+    "ignore": {
+      "reason": "The out-of-memory scope fails on macOS and Windows.",
+      "os": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
   "webgpu:api,validation,error_scope:simple:errorType=\"out-of-memory\";errorFilter=\"validation\"": false,
   "webgpu:api,validation,error_scope:simple:errorType=\"validation\";errorFilter=\"internal\"": false,
   "webgpu:api,validation,error_scope:simple:errorType=\"validation\";errorFilter=\"out-of-memory\"": false,
