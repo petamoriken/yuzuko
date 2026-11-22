@@ -12664,13 +12664,19 @@ interface GPUDevice extends EventTarget {
     | null;
 
   /**
-   * Loses this JavaScript device. The shared wgpu device stays.
+   * Loses this JavaScript device and detaches `ArrayBuffer`s mapped on it.
+   * The shared wgpu device stays.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/destroy)
    */
   destroy(): void;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBuffer) */
+  /**
+   * `mappedAtCreation` throws `RangeError` when `size` is not a multiple of 4
+   * or is above 4 GiB.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBuffer)
+   */
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
 
   /**
@@ -13015,7 +13021,13 @@ interface GPUQueue {
    */
   onSubmittedWorkDone(): Promise<void>;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/submit) */
+  /**
+   * A command buffer that was already submitted, is listed twice, belongs to
+   * another device, or was finished from an invalid encoder records a
+   * validation error. Every buffer in the call becomes invalid.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/submit)
+   */
   submit(commandBuffers: Iterable<GPUCommandBuffer>): void;
 
   /**
@@ -13121,12 +13133,14 @@ interface GPUBuffer {
    */
   mapAsync(mode: GPUMapModeFlags, offset?: number, size?: number): Promise<void>;
   /**
-   * Copies bytes from the mapping. `unmap` and `destroy` detach the returned
-   * `ArrayBuffer`.
+   * Copies bytes from the mapping. `offset` is measured from the start of the
+   * buffer and must fall inside the mapping. An omitted `size` is the rest of
+   * the buffer. `unmap`, `destroy`, and `GPUDevice.destroy` detach the returned
+   * `ArrayBuffer`. A mapped buffer cannot be transferred.
    *
-   * @throws {@link DOMException} `InvalidStateError` when the buffer is not
-   * mapped. `OperationError` when the range is outside the mapping, is not
-   * aligned, or overlaps a range already returned.
+   * @throws {@link DOMException} `OperationError` when the buffer is not
+   * mapped, or when the range is outside the mapping, is not aligned, or
+   * overlaps a range already returned.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/getMappedRange)
    */

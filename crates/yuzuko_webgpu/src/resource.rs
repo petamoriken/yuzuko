@@ -15,9 +15,12 @@ use crate::label::ObjectLabel;
 use crate::state::Handle;
 
 struct MappedView {
+  /// Offset from the start of the buffer.
   offset: u64,
   size: u64,
   buffer: v8::Global<v8::ArrayBuffer>,
+  /// Matches `[[ArrayBufferDetachKey]]`. `unmap` detaches with this key.
+  key: v8::Global<v8::Value>,
 }
 
 struct Mapped {
@@ -429,29 +432,19 @@ impl GpuBuffer {
       return Err(OpError::dom("OperationError", "The buffer is not mapped"));
     };
     let offset = offset.map(|value| value.0).unwrap_or(0);
-    if !offset.is_multiple_of(8) {
-      return Err(OpError::dom(
-        "OperationError",
-        "The mapped range offset must be a multiple of 8",
-      ));
-    }
-    if offset > mapped.size {
-      return Err(OpError::dom(
-        "OperationError",
-        "The mapped range is outside the mapping",
-      ));
-    }
-    let size = match size {
-      Some(size) => size.0,
-      None => mapped.size - offset,
+    let size = match mapped_subrange(
+      self.size,
+      mapped.offset,
+      mapped.size,
+      offset,
+      size.map(|value| value.0),
+    ) {
+      Ok(size) => size,
+      Err(message) => {
+        return Err(OpError::dom("OperationError", message));
+      }
     };
-    let end = offset.saturating_add(size);
-    if !size.is_multiple_of(4) || end > mapped.size {
-      return Err(OpError::dom(
-        "OperationError",
-        "The mapped range is outside the mapping",
-      ));
-    }
+    let end = offset + size;
     for view in &mapped.views {
       let view_end = view.offset + view.size;
       if offset < view_end && view.offset < end {
@@ -464,14 +457,19 @@ impl GpuBuffer {
     let bytes = if size == 0 {
       Vec::new()
     } else {
-      let start = offset as usize;
+      let start = (offset - mapped.offset) as usize;
       mapped.bytes[start..start + size as usize].to_vec()
     };
     let buffer = yuzuko_winter::array_buffer(scope, bytes);
+    let key_object = v8::Object::new(scope);
+    let key: v8::Local<v8::Value> = key_object.into();
+    buffer.set_detach_key(key);
+    track_mapping(scope, self.device_id, buffer, key);
     mapped.views.push(MappedView {
       offset,
       size,
       buffer: v8::Global::new(scope, buffer),
+      key: v8::Global::new(scope, key),
     });
     let value: v8::Local<v8::Value> = buffer.into();
     Ok(Js(v8::Global::new(scope, value)))
@@ -791,6 +789,7 @@ impl GpuSampler {
 
 pub struct GpuShaderModule {
   module: wgpu::ShaderModule,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -830,6 +829,7 @@ impl GpuShaderModule {
 
 pub struct GpuBindGroupLayout {
   layout: wgpu::BindGroupLayout,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -894,6 +894,7 @@ impl GpuBindGroup {
 
 pub struct GpuPipelineLayout {
   layout: wgpu::PipelineLayout,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -926,6 +927,7 @@ impl GpuPipelineLayout {
 
 pub struct GpuRenderPipeline {
   pipeline: wgpu::RenderPipeline,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -959,6 +961,7 @@ impl GpuRenderPipeline {
     let layout = self.pipeline.get_bind_group_layout(index);
     New(GpuBindGroupLayout {
       layout,
+      device_id: self.device_id,
       label: ObjectLabel::new(None),
     })
   }
@@ -966,6 +969,7 @@ impl GpuRenderPipeline {
 
 pub struct GpuComputePipeline {
   pipeline: wgpu::ComputePipeline,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -999,6 +1003,7 @@ impl GpuComputePipeline {
     let layout = self.pipeline.get_bind_group_layout(index);
     New(GpuBindGroupLayout {
       layout,
+      device_id: self.device_id,
       label: ObjectLabel::new(None),
     })
   }
@@ -1145,6 +1150,11 @@ pub fn create_buffer(
     return Err(OpError::range(
       "GPUBuffer size must be a multiple of 4 when mappedAtCreation is true",
     ));
+  }
+  // The mapping is exposed as an ArrayBuffer. A size V8 cannot allocate
+  // throws RangeError from createBuffer instead of returning the buffer.
+  if mapped_at_creation && size > MAX_MAPPED_CREATION_BYTES {
+    return Err(OpError::range("The mapped buffer is too large to create"));
   }
   let unknown = raw_usage & !BUFFER_USAGE_MASK != 0;
   let usage = if raw_usage == 0 || unknown {
@@ -1378,6 +1388,7 @@ pub fn create_sampler(
 
 pub fn create_shader(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuShaderModule>, OpError> {
@@ -1400,6 +1411,7 @@ pub fn create_shader(
   })?;
   Ok(New(GpuShaderModule {
     module,
+    device_id,
     label: ObjectLabel::new(label),
   }))
 }
@@ -1435,6 +1447,7 @@ pub fn create_bind_group_layout(
   }
   Ok(New(GpuBindGroupLayout {
     layout,
+    device_id,
     label: ObjectLabel::new(label),
   }))
 }
@@ -1449,6 +1462,16 @@ pub fn create_pipeline_layout(
     OpError::type_("createPipelineLayout requires a descriptor")
   })?;
   let layouts = layout_list(scope, object)?;
+  if layouts
+    .iter()
+    .flatten()
+    .any(|layout| layout.device_id != device_id)
+  {
+    crate::state::report_validation(
+      device_id,
+      "A bind group layout belongs to another device",
+    );
+  }
   let label = optional_label(scope, object)?;
   let immediate = js::field_u32(scope, object, "immediateSize")?.unwrap_or(0);
   if immediate != 0 {
@@ -1484,6 +1507,7 @@ pub fn create_pipeline_layout(
   }
   Ok(New(GpuPipelineLayout {
     layout,
+    device_id,
     label: ObjectLabel::new(label),
   }))
 }
@@ -1521,6 +1545,7 @@ pub fn create_bind_group(
 
 pub fn create_render_pipeline(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuRenderPipeline>, OpError> {
@@ -1591,6 +1616,16 @@ pub fn create_render_pipeline(
   let multisample = multisample_state(scope, object)?;
   let label = optional_label(scope, object)?;
   let explicit = explicit_layout(scope, object)?;
+  if module.device_id != device_id
+    || explicit
+      .as_ref()
+      .is_some_and(|layout| layout.device_id != device_id)
+  {
+    crate::state::report_validation(
+      device_id,
+      "The pipeline object belongs to another device",
+    );
+  }
   let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     handle
       .device
@@ -1619,12 +1654,14 @@ pub fn create_render_pipeline(
   })?;
   Ok(New(GpuRenderPipeline {
     pipeline,
+    device_id,
     label: ObjectLabel::new(label),
   }))
 }
 
 pub fn create_compute_pipeline(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuComputePipeline>, OpError> {
@@ -1644,6 +1681,16 @@ pub fn create_compute_pipeline(
   let pairs = constant_pairs(&constants);
   let label = optional_label(scope, object)?;
   let explicit = explicit_layout(scope, object)?;
+  if module.device_id != device_id
+    || explicit
+      .as_ref()
+      .is_some_and(|layout| layout.device_id != device_id)
+  {
+    crate::state::report_validation(
+      device_id,
+      "The pipeline object belongs to another device",
+    );
+  }
   let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     handle
       .device
@@ -1664,6 +1711,7 @@ pub fn create_compute_pipeline(
   })?;
   Ok(New(GpuComputePipeline {
     pipeline,
+    device_id,
     label: ObjectLabel::new(label),
   }))
 }
@@ -3360,6 +3408,10 @@ fn sampler_string(
     .transpose()
 }
 
+/// `mappedAtCreation` builds an `ArrayBuffer` for the mapping. Above 4 GiB
+/// that allocation cannot be created.
+const MAX_MAPPED_CREATION_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
 const MAP_READ_BIT: u32 = 0x0001;
 const MAP_WRITE_BIT: u32 = 0x0002;
 const COPY_SRC_BIT: u32 = 0x0004;
@@ -3408,6 +3460,35 @@ fn checked_map_size(
   Ok(size)
 }
 
+/// `offset` is from the start of the buffer. An omitted size is the rest of
+/// the buffer, and the range must lie inside the mapping.
+fn mapped_subrange(
+  buffer_size: u64,
+  map_offset: u64,
+  map_size: u64,
+  offset: u64,
+  size: Option<u64>,
+) -> Result<u64, &'static str> {
+  if !offset.is_multiple_of(8) {
+    return Err("The mapped range offset must be a multiple of 8");
+  }
+  if offset > buffer_size {
+    return Err("The mapped range is outside the mapping");
+  }
+  let size = size.unwrap_or(buffer_size - offset);
+  if !size.is_multiple_of(4) {
+    return Err("The mapped range is outside the mapping");
+  }
+  let Some(end) = offset.checked_add(size) else {
+    return Err("The mapped range is outside the mapping");
+  };
+  let map_end = map_offset + map_size;
+  if offset < map_offset || end > map_end {
+    return Err("The mapped range is outside the mapping");
+  }
+  Ok(size)
+}
+
 fn absorb_views(scope: &mut v8::PinScope, mapped: &mut Mapped) {
   for view in &mapped.views {
     let local = v8::Local::new(scope, &view.buffer);
@@ -3415,7 +3496,10 @@ fn absorb_views(scope: &mut v8::PinScope, mapped: &mut Mapped) {
       continue;
     }
     let length = local.byte_length();
-    let start = view.offset as usize;
+    let Some(start) = view.offset.checked_sub(mapped.offset) else {
+      continue;
+    };
+    let start = start as usize;
     let end = start.saturating_add(length);
     if length != view.size as usize || end > mapped.bytes.len() {
       continue;
@@ -3437,7 +3521,83 @@ fn detach_views(scope: &mut v8::PinScope, mapped: &Mapped) {
   for view in &mapped.views {
     let local = v8::Local::new(scope, &view.buffer);
     if !local.was_detached() {
-      let _ = local.detach(None);
+      let key = v8::Local::new(scope, &view.key);
+      let _ = local.detach(Some(key));
+    }
+  }
+  forget_mappings(scope, mapped);
+}
+
+struct LiveMapping {
+  device_id: u64,
+  buffer: v8::Global<v8::ArrayBuffer>,
+  key: v8::Global<v8::Value>,
+}
+
+thread_local! {
+  static LIVE_MAPPINGS: RefCell<Vec<LiveMapping>> =
+    const { RefCell::new(Vec::new()) };
+}
+
+fn track_mapping(
+  scope: &mut v8::PinScope,
+  device_id: u64,
+  buffer: v8::Local<v8::ArrayBuffer>,
+  key: v8::Local<v8::Value>,
+) {
+  LIVE_MAPPINGS.with(|list| {
+    list.borrow_mut().push(LiveMapping {
+      device_id,
+      buffer: v8::Global::new(scope, buffer),
+      key: v8::Global::new(scope, key),
+    });
+  });
+}
+
+fn forget_mappings(scope: &mut v8::PinScope, mapped: &Mapped) {
+  LIVE_MAPPINGS.with(|list| {
+    list.borrow_mut().retain(|entry| {
+      let local = v8::Local::new(scope, &entry.buffer);
+      !mapped.views.iter().any(|view| {
+        let view_buffer = v8::Local::new(scope, &view.buffer);
+        local.strict_equals(view_buffer.into())
+      })
+    });
+  });
+}
+
+pub(crate) fn mapping_blocks_transfer(
+  scope: &mut v8::PinScope,
+  buffer: v8::Local<v8::ArrayBuffer>,
+) -> bool {
+  LIVE_MAPPINGS.with(|list| {
+    list.borrow().iter().any(|entry| {
+      let local = v8::Local::new(scope, &entry.buffer);
+      local.strict_equals(buffer.into()) && !local.was_detached()
+    })
+  })
+}
+
+pub(crate) fn detach_device_mappings(scope: &mut v8::PinScope, device_id: u64) {
+  let entries = LIVE_MAPPINGS.with(|list| {
+    let mut list = list.borrow_mut();
+    let mut kept = Vec::new();
+    let mut taken = Vec::new();
+    for entry in list.drain(..) {
+      if entry.device_id == device_id {
+        taken.push(entry);
+      } else {
+        kept.push(entry);
+      }
+    }
+    *list = kept;
+    taken
+  });
+  for entry in entries {
+    let buffer = v8::Local::new(scope, &entry.buffer);
+    if !buffer.was_detached() {
+      let key = v8::Local::new(scope, &entry.key);
+      let _ = buffer.detach(Some(key));
     }
   }
 }
@@ -3696,6 +3856,7 @@ fn host_shader(
       })?;
   Ok(GpuShaderModule {
     module: host.get().module().clone(),
+    device_id: host.get().device_id,
     label: ObjectLabel::new(None),
   })
 }
@@ -3714,6 +3875,7 @@ fn host_layout(
     })?;
   Ok(GpuBindGroupLayout {
     layout: host.get().layout().clone(),
+    device_id: host.get().device_id,
     label: ObjectLabel::new(None),
   })
 }
@@ -3732,6 +3894,7 @@ fn host_pipeline_layout(
       })?;
   Ok(GpuPipelineLayout {
     layout: host.get().layout().clone(),
+    device_id: host.get().device_id,
     label: ObjectLabel::new(None),
   })
 }

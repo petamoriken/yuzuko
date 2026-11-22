@@ -263,6 +263,7 @@ impl GpuDevice {
         "The GPU device belongs to another thread",
       ));
     }
+    resource::detach_device_mappings(scope, self.id);
     state::destroy(scope, self.id);
     Ok(())
   }
@@ -297,7 +298,7 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuShaderModule>, OpError> {
-    resource::create_shader(scope, &self.require()?, descriptor)
+    resource::create_shader(scope, self.id, &self.require()?, descriptor)
   }
 
   fn create_bind_group_layout(
@@ -339,7 +340,12 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuRenderPipeline>, OpError> {
-    resource::create_render_pipeline(scope, &self.require()?, descriptor)
+    resource::create_render_pipeline(
+      scope,
+      self.id,
+      &self.require()?,
+      descriptor,
+    )
   }
 
   fn create_command_encoder(
@@ -373,7 +379,12 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuComputePipeline>, OpError> {
-    resource::create_compute_pipeline(scope, &self.require()?, descriptor)
+    resource::create_compute_pipeline(
+      scope,
+      self.id,
+      &self.require()?,
+      descriptor,
+    )
   }
 
   fn create_compute_pipeline_async(
@@ -474,6 +485,13 @@ impl GpuQueue {
       data_offset.map(|value| value.0),
       size.map(|value| value.0),
     )?;
+    if buffer.device_id() != self.device_id {
+      state::report_validation(
+        self.device_id,
+        "The buffer belongs to another device",
+      );
+      return Ok(());
+    }
     let gpu = buffer.alive()?;
     if buffer.is_destroyed() {
       state::report_validation(buffer.device_id(), "The buffer is destroyed");
@@ -489,13 +507,24 @@ impl GpuQueue {
     scope: &mut v8::PinScope,
     buffers: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let (buffers, destroyed) = encode::command_buffers(scope, buffers)?;
+    let commands = encode::command_buffers(scope, buffers)?;
     let handle = state::handle(self.device_id)?;
-    if destroyed {
+    let mut rejected = false;
+    let mut buffers = Vec::new();
+    for command in commands {
+      if command.device_id != self.device_id || command.rejected {
+        rejected = true;
+      }
+      if let Some(buffer) = command.buffer {
+        buffers.push(buffer);
+      }
+    }
+    if rejected {
       state::report_validation(
         self.device_id,
-        "A submitted command uses a destroyed buffer",
+        "The command buffer submission is invalid",
       );
+      return Ok(());
     }
     handle.queue.submit(buffers);
     Ok(())
@@ -680,6 +709,9 @@ impl GpuUncapturedErrorEvent {
 }
 
 pub fn install(scope: &mut v8::PinScope) {
+  yuzuko_core::add_array_buffer_transfer_block(
+    resource::mapping_blocks_transfer,
+  );
   Gpu::install(scope);
   GpuAdapter::install(scope);
   GpuDevice::install(scope);
@@ -1111,14 +1143,14 @@ fn async_pipeline(
   }
   let created = match kind {
     AsyncPipeline::Compute => resource::create_compute_pipeline(
-      scope, &handle, descriptor,
+      scope, id, &handle, descriptor,
     )
     .map(|New(pipeline)| {
       let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };
       v8::Local::<v8::Value>::from(object)
     }),
     AsyncPipeline::Render => resource::create_render_pipeline(
-      scope, &handle, descriptor,
+      scope, id, &handle, descriptor,
     )
     .map(|New(pipeline)| {
       let object = unsafe { yuzuko_core::op::wrap_instance(scope, pipeline) };

@@ -129,6 +129,78 @@ Yuzuko.test("too many bind group layouts is a validation error", async () => {
   const nestedError = await device.popErrorScope();
   assert(nestedError instanceof GPUValidationError, "scope under another device");
   assert(await other.popErrorScope() === null, "displaced scope");
+
+  const foreignLayout = other.createBindGroupLayout({ entries: [] });
+  device.pushErrorScope("validation");
+  const mixed = device.createPipelineLayout({
+    bindGroupLayouts: [layout, foreignLayout],
+  });
+  assert(mixed instanceof GPUPipelineLayout, "mismatched layout");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "layout device",
+  );
+  const foreignBuffer = other.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.COPY_DST,
+  });
+  device.pushErrorScope("validation");
+  device.queue.writeBuffer(foreignBuffer, 0, new Uint8Array(16));
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "writeBuffer device",
+  );
+  const source = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+  const copyEncoder = device.createCommandEncoder();
+  copyEncoder.copyBufferToBuffer(source, 0, foreignBuffer, 0, 4);
+  device.pushErrorScope("validation");
+  copyEncoder.finish();
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "copy device",
+  );
+  device.pushErrorScope("validation");
+  const invalidBuffer = device.createBuffer({
+    size: 16,
+    usage:
+      GPUBufferUsage.COPY_SRC |
+      GPUBufferUsage.COPY_DST |
+      GPUBufferUsage.MAP_READ,
+  });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "invalid usage",
+  );
+  const destroyedBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+  destroyedBuffer.destroy();
+  const stateEncoder = device.createCommandEncoder();
+  stateEncoder.copyBufferToBuffer(destroyedBuffer, 0, invalidBuffer, 0, 4);
+  device.pushErrorScope("validation");
+  stateEncoder.finish();
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "invalid wins over destroyed",
+  );
+  const submitted = device.createCommandEncoder().finish();
+  device.pushErrorScope("validation");
+  device.queue.submit([submitted, submitted]);
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "duplicate submit",
+  );
+  device.pushErrorScope("validation");
+  device.queue.submit([submitted]);
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "resubmit",
+  );
+
   other.destroy();
   device.pushErrorScope("validation");
   device.destroy();
@@ -1469,7 +1541,41 @@ Yuzuko.test("mapAsync writes back and detaches the range", async () => {
     badOffset = errorName(caught) === "OperationError";
   }
   assert(badOffset, "map offset");
+
+  await buffer.mapAsync(GPUMapMode.WRITE, 8, 8);
+  const subrange = buffer.getMappedRange(8);
+  assert(subrange.byteLength === 8, "absolute subrange");
+  new Uint8Array(subrange).set([4, 4, 4, 4, 3, 3, 3, 3]);
+  let transferred = "";
+  try {
+    const channel = new MessageChannel();
+    channel.port1.postMessage(subrange, [subrange]);
+  } catch (caught) {
+    transferred = errorName(caught);
+  }
+  assert(transferred === "TypeError", "mapped transfer");
+  assert(subrange.byteLength === 8, "transfer left the range");
+  buffer.unmap();
+  assert(subrange.byteLength === 0, "subrange detached");
+  const subBytes = await readBytes(device, buffer, 16);
+  assert(subBytes[8] === 4 && subBytes[15] === 3, `sub written ${subBytes}`);
+
+  let huge = "";
+  try {
+    device.createBuffer({
+      size: 9007199254740984,
+      usage: GPUBufferUsage.MAP_WRITE,
+      mappedAtCreation: true,
+    });
+  } catch (caught) {
+    huge = errorName(caught);
+  }
+  assert(huge === "RangeError", "mapped creation size");
+
+  await buffer.mapAsync(GPUMapMode.WRITE);
+  const held = buffer.getMappedRange();
   device.destroy();
+  assert(held.byteLength === 0, "device destroy detaches");
 });
 
 Yuzuko.test("writeTimestamp follows the timestamp feature", async () => {

@@ -76,6 +76,30 @@ pub struct TransferList {
 pub type TransferProbeFn =
   fn(&mut v8::PinScope, v8::Local<v8::Object>) -> TransferStatus;
 
+/// `true` when this `ArrayBuffer` must not be transferred. The caller throws
+/// `TypeError` and leaves the buffer attached.
+pub type ArrayBufferTransferBlock =
+  fn(&mut v8::PinScope, v8::Local<v8::ArrayBuffer>) -> bool;
+
+static BUFFER_TRANSFER_BLOCK: Mutex<Option<ArrayBufferTransferBlock>> =
+  Mutex::new(None);
+
+pub fn add_array_buffer_transfer_block(probe: ArrayBufferTransferBlock) {
+  *BUFFER_TRANSFER_BLOCK
+    .lock()
+    .expect("array buffer transfer block") = Some(probe);
+}
+
+fn array_buffer_transfer_blocked(
+  scope: &mut v8::PinScope,
+  buffer: v8::Local<v8::ArrayBuffer>,
+) -> bool {
+  BUFFER_TRANSFER_BLOCK
+    .lock()
+    .expect("array buffer transfer block")
+    .is_some_and(|probe| probe(scope, buffer))
+}
+
 pub type HostDetachFn = fn(&mut v8::PinScope, v8::Local<v8::Object>);
 
 static PROBES: Mutex<Vec<TransferProbeFn>> = Mutex::new(Vec::new());
@@ -712,6 +736,11 @@ fn push_buffer(
   buffer: v8::Local<v8::ArrayBuffer>,
   kind: TransferKind,
 ) -> Result<(), TransferReject> {
+  if array_buffer_transfer_blocked(scope, buffer) {
+    return Err(TransferReject::Type(
+      "The ArrayBuffer is mapped and cannot be detached",
+    ));
+  }
   if buffer.was_detached() || !buffer.is_detachable() {
     return Err(TransferReject::DataClone(
       "The ArrayBuffer cannot be transferred",

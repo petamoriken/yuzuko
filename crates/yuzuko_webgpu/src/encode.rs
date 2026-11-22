@@ -23,6 +23,8 @@ struct EncoderSlot {
   device_id: u64,
   invalid: bool,
   submit_destroyed: bool,
+  /// `pushDebugGroup` depth. An empty `popDebugGroup` invalidates the encoder.
+  debug_depth: u32,
   max_texture_dimension_2d: u32,
   max_vertex_buffers: u32,
 }
@@ -266,6 +268,7 @@ impl GpuCommandEncoder {
           device_id,
           invalid: false,
           submit_destroyed: false,
+          debug_depth: 0,
           max_texture_dimension_2d: limits.max_texture_dimension_2d,
           max_vertex_buffers: limits.max_vertex_buffers,
         },
@@ -421,11 +424,20 @@ impl GpuCommandEncoder {
       "The copy destination is not a buffer",
     )?;
     source.alive()?;
-    let destination_buffer = destination.alive()?;
-    let source_buffer = source.alive()?;
+    destination.alive()?;
+    let encoder_device = encoder_device(self.id)?;
+    let mismatch = source.device_id() != encoder_device
+      || destination.device_id() != encoder_device;
+    // An invalid buffer fails at finish, including when the other buffer is
+    // destroyed. A destroyed buffer alone fails at submit.
+    if mismatch || !source.is_valid() || !destination.is_valid() {
+      return invalidate_encoder(self.id);
+    }
     if source.is_destroyed() || destination.is_destroyed() {
       return note_submit_destroyed(self.id);
     }
+    let destination_buffer = destination.alive()?;
+    let source_buffer = source.alive()?;
     with_idle_encoder(self.id, |encoder| {
       encoder.copy_buffer_to_buffer(
         &source_buffer,
@@ -632,10 +644,41 @@ impl GpuCommandEncoder {
     with_idle_encoder(self.id, |encoder| {
       encoder.push_debug_group(&label);
       Ok(())
-    })
+    })?;
+    ENCODERS.with(|encoders| {
+      if let Some(slot) = encoders.borrow_mut().get_mut(&self.id) {
+        slot.debug_depth = slot.debug_depth.saturating_add(1);
+      }
+    });
+    Ok(())
   }
 
   fn pop_debug_group(&self) -> Result<(), OpError> {
+    let skip_wgpu = ENCODERS.with(|encoders| {
+      let mut encoders = encoders.borrow_mut();
+      let slot = encoders.get_mut(&self.id).ok_or_else(|| {
+        OpError::dom("InvalidStateError", "The command encoder is finished")
+      })?;
+      if slot.pass.is_some() {
+        return Err(OpError::dom("InvalidStateError", "A pass is open"));
+      }
+      if slot.encoder.is_none() {
+        return Err(OpError::dom(
+          "InvalidStateError",
+          "The command encoder is finished",
+        ));
+      }
+      if slot.debug_depth == 0 {
+        slot.invalid = true;
+        Ok(true)
+      } else {
+        slot.debug_depth -= 1;
+        Ok(false)
+      }
+    })?;
+    if skip_wgpu {
+      return Ok(());
+    }
     with_idle_encoder(self.id, |encoder| {
       encoder.pop_debug_group();
       Ok(())
@@ -694,6 +737,8 @@ impl GpuCommandEncoder {
     Ok(New(GpuCommandBuffer {
       buffer: RefCell::new(Some(encoder.finish())),
       submit_destroyed: Cell::new(submit_destroyed),
+      invalid: Cell::new(invalid),
+      device_id,
       label: ObjectLabel::new(descriptor_label(scope, descriptor)?),
     }))
   }
@@ -702,6 +747,8 @@ impl GpuCommandEncoder {
 pub struct GpuCommandBuffer {
   buffer: RefCell<Option<wgpu::CommandBuffer>>,
   submit_destroyed: Cell<bool>,
+  invalid: Cell<bool>,
+  device_id: u64,
   label: ObjectLabel,
 }
 
@@ -714,9 +761,13 @@ unsafe impl v8::cppgc::GarbageCollected for GpuCommandBuffer {
 }
 
 impl GpuCommandBuffer {
-  pub fn take(&self) -> Option<(wgpu::CommandBuffer, bool)> {
+  pub fn take(&self) -> Option<(wgpu::CommandBuffer, bool, bool)> {
     let buffer = self.buffer.borrow_mut().take()?;
-    Some((buffer, self.submit_destroyed.get()))
+    Some((buffer, self.submit_destroyed.get(), self.invalid.get()))
+  }
+
+  pub fn device_id(&self) -> u64 {
+    self.device_id
   }
 }
 
@@ -824,8 +875,16 @@ impl GpuRenderPass {
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let max_vertex_buffers = encoder_limits(self.encoder)?.1;
-    let bind =
-      vertex_bind(scope, slot.0, buffer, offset, size, max_vertex_buffers)?;
+    let device_id = encoder_device(self.encoder)?;
+    let bind = vertex_bind(
+      scope,
+      slot.0,
+      buffer,
+      offset,
+      size,
+      max_vertex_buffers,
+      device_id,
+    )?;
     self.with_render(|record| {
       push_vertex(record, bind);
       Ok(())
@@ -840,7 +899,8 @@ impl GpuRenderPass {
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let bind = index_bind(scope, buffer, &format, offset, size)?;
+    let device_id = encoder_device(self.encoder)?;
+    let bind = index_bind(scope, buffer, &format, offset, size, device_id)?;
     self.with_render(|record| {
       push_index(record, bind);
       Ok(())
@@ -1450,8 +1510,16 @@ impl GpuRenderBundleEncoder {
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
     let max_vertex_buffers = self.limits()?;
-    let bind =
-      vertex_bind(scope, slot.0, buffer, offset, size, max_vertex_buffers)?;
+    let device_id = self.device_id()?;
+    let bind = vertex_bind(
+      scope,
+      slot.0,
+      buffer,
+      offset,
+      size,
+      max_vertex_buffers,
+      device_id,
+    )?;
     self.with_slot(|slot| {
       match bind {
         VertexBind::Invalid => slot.invalid = true,
@@ -1488,7 +1556,8 @@ impl GpuRenderBundleEncoder {
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let bind = index_bind(scope, buffer, &format, offset, size)?;
+    let device_id = self.device_id()?;
+    let bind = index_bind(scope, buffer, &format, offset, size, device_id)?;
     self.with_slot(|slot| {
       match bind {
         IndexBind::Invalid => slot.invalid = true,
@@ -1726,6 +1795,21 @@ impl GpuRenderBundleEncoder {
         .borrow()
         .get(&self.id)
         .map(|slot| slot.max_vertex_buffers)
+        .ok_or_else(|| {
+          OpError::dom(
+            "InvalidStateError",
+            "The render bundle encoder has finished",
+          )
+        })
+    })
+  }
+
+  fn device_id(&self) -> Result<u64, OpError> {
+    BUNDLES.with(|bundles| {
+      bundles
+        .borrow()
+        .get(&self.id)
+        .map(|slot| slot.device_id)
         .ok_or_else(|| {
           OpError::dom(
             "InvalidStateError",
@@ -2621,6 +2705,18 @@ fn host_gpu_buffer<'s>(
   resource::host_buffer(scope, value).ok_or_else(|| OpError::type_(message))
 }
 
+fn encoder_device(id: u64) -> Result<u64, OpError> {
+  ENCODERS.with(|encoders| {
+    encoders
+      .borrow()
+      .get(&id)
+      .map(|slot| slot.device_id)
+      .ok_or_else(|| {
+        OpError::dom("InvalidStateError", "The command encoder is finished")
+      })
+  })
+}
+
 fn encoder_limits(id: u64) -> Result<(u32, u32), OpError> {
   ENCODERS.with(|encoders| {
     encoders
@@ -2688,6 +2784,7 @@ enum IndexBind {
   },
 }
 
+#[allow(clippy::too_many_arguments)]
 fn vertex_bind(
   scope: &mut v8::PinScope,
   slot: u32,
@@ -2695,6 +2792,7 @@ fn vertex_bind(
   offset: Option<js::GpuSize64>,
   size: Option<js::GpuSize64>,
   max_vertex_buffers: u32,
+  device_id: u64,
 ) -> Result<VertexBind, OpError> {
   let offset = offset.map(|value| value.0).unwrap_or(0);
   if value.is_null() {
@@ -2708,6 +2806,9 @@ fn vertex_bind(
     return Ok(VertexBind::Unset { slot });
   }
   let host = host_gpu_buffer(scope, value, "A GPUBuffer is required")?;
+  if host.device_id() != device_id {
+    return Ok(VertexBind::Invalid);
+  }
   let buffer = host.alive()?;
   let buffer_size = host.byte_size();
   let requested = size.as_ref().map(|value| value.0);
@@ -2765,9 +2866,13 @@ fn index_bind(
   format: &str,
   offset: Option<js::GpuSize64>,
   size: Option<js::GpuSize64>,
+  device_id: u64,
 ) -> Result<IndexBind, OpError> {
   let format = resource::index_format(format)?;
   let host = host_gpu_buffer(scope, value, "A GPUBuffer is required")?;
+  if host.device_id() != device_id {
+    return Ok(IndexBind::Invalid);
+  }
   let buffer = host.alive()?;
   let offset = offset.map(|value| value.0).unwrap_or(0);
   let buffer_size = host.byte_size();
@@ -2889,15 +2994,23 @@ fn offset_list(
   Ok(offsets)
 }
 
+pub struct SubmittedCommand {
+  pub buffer: Option<wgpu::CommandBuffer>,
+  pub device_id: u64,
+  /// Already submitted, listed twice, finished invalid, or uses a destroyed
+  /// resource. The JavaScript command buffer is still consumed.
+  pub rejected: bool,
+}
+
 pub fn command_buffers(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
-) -> Result<(Vec<wgpu::CommandBuffer>, bool), OpError> {
+) -> Result<Vec<SubmittedCommand>, OpError> {
   let array = v8::Local::<v8::Array>::try_from(value).map_err(|_| {
     OpError::type_("submit requires a sequence of command buffers")
   })?;
-  let mut buffers = Vec::new();
-  let mut destroyed = false;
+  let mut seen = Vec::<*const GpuCommandBuffer>::new();
+  let mut commands = Vec::new();
   for index in 0..array.length() {
     let value = js::read_index(scope, array, index)?;
     let object = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
@@ -2908,14 +3021,31 @@ pub fn command_buffers(
         .ok_or_else(|| {
         OpError::type_("submit requires GPUCommandBuffer objects")
       })?;
-    let (buffer, submit_destroyed) = host.get().take().ok_or_else(|| {
-      OpError::dom(
-        "InvalidStateError",
-        "The command buffer was already submitted",
-      )
-    })?;
-    destroyed |= submit_destroyed;
-    buffers.push(buffer);
+    let ptr = host.get() as *const GpuCommandBuffer;
+    let device_id = host.get().device_id();
+    if seen.contains(&ptr) {
+      commands.push(SubmittedCommand {
+        buffer: None,
+        device_id,
+        rejected: true,
+      });
+      continue;
+    }
+    seen.push(ptr);
+    match host.get().take() {
+      Some((buffer, submit_destroyed, invalid)) => {
+        commands.push(SubmittedCommand {
+          buffer: Some(buffer),
+          device_id,
+          rejected: submit_destroyed || invalid,
+        });
+      }
+      None => commands.push(SubmittedCommand {
+        buffer: None,
+        device_id,
+        rejected: true,
+      }),
+    }
   }
-  Ok((buffers, destroyed))
+  Ok(commands)
 }
