@@ -89,9 +89,9 @@ impl EventTarget {
 
   /// Stores `value` as the `on*` handler for `type_name`.
   ///
-  /// A function is also registered as a bubbling listener. Any other value,
-  /// including `null` and `undefined`, clears the attribute and removes the
-  /// listener that the previous assignment added.
+  /// A function replaces the previous handler's listener in place, so listeners
+  /// registered around it keep their order. Any other value, including `null`
+  /// and `undefined`, clears the attribute and removes that listener.
   pub fn set_event_handler(
     &self,
     scope: &mut v8::PinScope,
@@ -105,19 +105,42 @@ impl EventTarget {
         .position(|handler| handler.type_name == type_name);
       index.map(|index| handlers.remove(index).callback)
     };
-    if let Some(previous) = previous
+    let previous = previous
       .as_ref()
-      .and_then(|callback| yuzuko_core::op::traced_local(scope, callback))
-    {
-      self.remove_callback(scope, type_name, previous, false);
-    }
+      .and_then(|callback| yuzuko_core::op::traced_local(scope, callback));
     if value.is_function() {
-      self.add_callback(scope, type_name, value, false, false, false);
+      let replaced = match previous {
+        Some(previous) => {
+          self.replace_listener(scope, type_name, previous, value, false)
+        }
+        None => false,
+      };
+      if !replaced {
+        self.add_callback(scope, type_name, value, false, false, false);
+      }
       self.handlers.borrow_mut().push(EventHandler {
         type_name: type_name.to_string(),
         callback: traced(scope, value),
       });
+    } else if let Some(previous) = previous {
+      self.remove_callback(scope, type_name, previous, false);
     }
+  }
+
+  fn replace_listener(
+    &self,
+    scope: &mut v8::PinScope,
+    type_name: &str,
+    previous: v8::Local<v8::Value>,
+    value: v8::Local<v8::Value>,
+    capture: bool,
+  ) -> bool {
+    let Some(index) = self.listener_index(scope, type_name, previous, capture)
+    else {
+      return false;
+    };
+    self.listeners.borrow_mut()[index].callback = traced(scope, value);
+    true
   }
 
   pub fn remove_callback(
@@ -1054,12 +1077,13 @@ fn realm_set_event_handler(
       .position(|handler| handler.type_name == type_name);
     index.map(|index| handlers.remove(index).callback)
   });
-  if let Some(previous) = previous {
-    let previous = v8::Local::new(scope, &previous);
-    realm_remove(scope, type_name, previous, false);
-  }
+  let previous = previous.map(|callback| v8::Local::new(scope, &callback));
   if value.is_function() {
-    if !realm_contains(scope, type_name, value, false) {
+    let replaced = match previous {
+      Some(previous) => realm_replace(scope, type_name, previous, value, false),
+      None => false,
+    };
+    if !replaced && !realm_contains(scope, type_name, value, false) {
       realm_push(scope, type_name, value, false, false, false);
     }
     REALM_HANDLERS.with(|handlers| {
@@ -1068,7 +1092,30 @@ fn realm_set_event_handler(
         callback: v8::Global::new(scope, value),
       });
     });
+  } else if let Some(previous) = previous {
+    realm_remove(scope, type_name, previous, false);
   }
+}
+
+fn realm_replace(
+  scope: &mut v8::PinScope,
+  type_name: &str,
+  previous: v8::Local<v8::Value>,
+  value: v8::Local<v8::Value>,
+  capture: bool,
+) -> bool {
+  REALM.with(|listeners| {
+    let mut listeners = listeners.borrow_mut();
+    let Some(index) = listeners.iter().position(|listener| {
+      listener.type_name == type_name
+        && listener.capture == capture
+        && v8::Local::new(scope, &listener.callback).strict_equals(previous)
+    }) else {
+      return false;
+    };
+    listeners[index].callback = v8::Global::new(scope, value);
+    true
+  })
 }
 
 fn realm_push(

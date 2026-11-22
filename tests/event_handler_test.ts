@@ -276,6 +276,51 @@ Yuzuko.test("event handler attributes follow the listener rules", () => {
     assert(first === 0 && second === 1, `${first} ${second}`);
     window.onkeydown = null;
 
+    let order = "";
+    const mark = (letter: string) => () => {
+      order += letter;
+    };
+    const firstListener = mark("a");
+    const secondListener = mark("b");
+    window.addEventListener("keydown", firstListener);
+    window.onkeydown = mark("c");
+    window.addEventListener("keydown", secondListener);
+    window.dispatchEvent(new KeyboardEvent("keydown"));
+    assert(order === "acb", order);
+    order = "";
+    window.onkeydown = mark("d");
+    window.dispatchEvent(new KeyboardEvent("keydown"));
+    assert(order === "adb", order);
+    order = "";
+    window.onkeydown = null;
+    window.onkeydown = mark("e");
+    window.dispatchEvent(new KeyboardEvent("keydown"));
+    assert(order === "abe", order);
+    window.onkeydown = null;
+    window.removeEventListener("keydown", firstListener);
+    window.removeEventListener("keydown", secondListener);
+
+    order = "";
+    const realmFirst = mark("a");
+    const realmSecond = mark("b");
+    globalThis.addEventListener("unhandledrejection", realmFirst);
+    globalThis.onunhandledrejection = mark("c");
+    globalThis.addEventListener("unhandledrejection", realmSecond);
+    globalThis.dispatchEvent(new Event("unhandledrejection"));
+    assert(order === "acb", `realm ${order}`);
+    order = "";
+    globalThis.onunhandledrejection = mark("d");
+    globalThis.dispatchEvent(new Event("unhandledrejection"));
+    assert(order === "adb", `realm ${order}`);
+    order = "";
+    globalThis.onunhandledrejection = null;
+    globalThis.onunhandledrejection = mark("e");
+    globalThis.dispatchEvent(new Event("unhandledrejection"));
+    assert(order === "abe", `realm ${order}`);
+    globalThis.onunhandledrejection = null;
+    globalThis.removeEventListener("unhandledrejection", realmFirst);
+    globalThis.removeEventListener("unhandledrejection", realmSecond);
+
     calls = 0;
     window.onwheel = listener;
     // @ts-expect-error A number is not a listener.
