@@ -320,6 +320,7 @@ impl GpuCanvasContext {
       None,
       1,
       usage.bits(),
+      true,
       wgpu::TextureDimension::D2,
       1,
       1,

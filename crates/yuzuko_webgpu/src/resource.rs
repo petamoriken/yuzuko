@@ -31,6 +31,17 @@ struct Mapped {
   gpu_mapped: bool,
 }
 
+enum PendingAction {
+  Map { offset: u64, size: u64, mode: u32 },
+  Reject { name: &'static str, message: String },
+}
+
+struct PendingMap {
+  generation: u64,
+  resolver: v8::Global<v8::PromiseResolver>,
+  action: PendingAction,
+}
+
 pub struct GpuBuffer {
   buffer: RefCell<Option<wgpu::Buffer>>,
   lost: Arc<AtomicBool>,
@@ -41,6 +52,9 @@ pub struct GpuBuffer {
   valid: bool,
   destroyed: Cell<bool>,
   mapped: RefCell<Option<Mapped>>,
+  pending: RefCell<Option<PendingMap>>,
+  /// Bumped when a pending map is aborted so the later task does nothing.
+  map_generation: Cell<u64>,
   label: ObjectLabel,
 }
 
@@ -71,6 +85,8 @@ impl GpuBuffer {
       valid,
       destroyed: Cell::new(false),
       mapped: RefCell::new(None),
+      pending: RefCell::new(None),
+      map_generation: Cell::new(0),
       label: ObjectLabel::new(label),
     }
   }
@@ -142,9 +158,187 @@ impl GpuBuffer {
     self.device_id
   }
 
+  /// Validation for a buffer that is not already mapped or pending.
+  /// A failure is reported before the returned message rejects the promise.
+  fn map_request(
+    &self,
+    mode: u32,
+    offset: Option<js::GpuSize64>,
+    size: Option<js::GpuSize64>,
+  ) -> Result<(u64, u64), &'static str> {
+    let message = if self.destroyed.get() {
+      Some("The buffer is destroyed")
+    } else if !self.valid {
+      Some("The buffer is invalid")
+    } else if mode != MAP_READ_BIT && mode != MAP_WRITE_BIT {
+      Some("The map mode is invalid")
+    } else if (mode & MAP_READ_BIT) != 0 && (self.usage & MAP_READ_BIT) == 0 {
+      Some("The buffer is not mappable for reading")
+    } else if (mode & MAP_WRITE_BIT) != 0 && (self.usage & MAP_WRITE_BIT) == 0 {
+      Some("The buffer is not mappable for writing")
+    } else {
+      None
+    };
+    if let Some(message) = message {
+      crate::state::report_validation(self.device_id, message);
+      return Err(message);
+    }
+    let offset = offset.map(|value| value.0).unwrap_or(0);
+    match checked_map_size(self.size, offset, size.map(|value| value.0)) {
+      Ok(size) => Ok((offset, size)),
+      Err(message) => {
+        crate::state::report_validation(
+          self.device_id,
+          "The map range is outside the buffer",
+        );
+        Err(message)
+      }
+    }
+  }
+
   fn fail_map(&self, message: &str) -> OpError {
     crate::state::report_validation(self.device_id, message);
     OpError::dom("OperationError", message.to_string())
+  }
+
+  fn abort_pending(&self, scope: &mut v8::PinScope, message: &str) {
+    let pending = self.pending.borrow_mut().take();
+    if pending.is_none() {
+      return;
+    }
+    self
+      .map_generation
+      .set(self.map_generation.get().wrapping_add(1));
+    if let Some(pending) = pending {
+      let resolver = v8::Local::new(scope, &pending.resolver);
+      js::reject(
+        scope,
+        resolver,
+        OpError::dom("AbortError", message.to_string()),
+      );
+    }
+  }
+
+  fn begin_pending(
+    &self,
+    scope: &mut v8::PinScope,
+    object: v8::Local<v8::Object>,
+    action: PendingAction,
+  ) -> Js {
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    let promise = resolver.get_promise(scope);
+    let generation = self.map_generation.get().wrapping_add(1);
+    self.map_generation.set(generation);
+    *self.pending.borrow_mut() = Some(PendingMap {
+      generation,
+      resolver: v8::Global::new(scope, resolver),
+      action,
+    });
+    let object = v8::Global::new(scope, object);
+    // A macrotask, not a microtask. `mapState` stays `"pending"` until the
+    // caller's `queueMicrotask` has run.
+    yuzuko_core::enqueue(move |scope| {
+      let local = v8::Local::new(scope, &object);
+      if let Some(buffer) = host_buffer(scope, local.into()) {
+        buffer.finish_pending(scope, generation);
+      }
+    });
+    let promise: v8::Local<v8::Value> = promise.into();
+    Js(v8::Global::new(scope, promise))
+  }
+
+  fn finish_pending(&self, scope: &mut v8::PinScope, generation: u64) {
+    let pending = {
+      let mut slot = self.pending.borrow_mut();
+      match slot.as_ref() {
+        Some(pending) if pending.generation == generation => slot.take(),
+        _ => None,
+      }
+    };
+    let Some(pending) = pending else {
+      return;
+    };
+    let error = match pending.action {
+      PendingAction::Reject { name, message } => {
+        Some(OpError::dom(name, message))
+      }
+      PendingAction::Map { offset, size, mode } => {
+        self.perform_map(offset, size, mode).err()
+      }
+    };
+    let resolver = v8::Local::new(scope, &pending.resolver);
+    match error {
+      Some(error) => js::reject(scope, resolver, error),
+      None => {
+        let value: v8::Local<v8::Value> = v8::undefined(scope).into();
+        resolver.resolve(scope, value);
+      }
+    }
+  }
+
+  fn perform_map(
+    &self,
+    offset: u64,
+    size: u64,
+    mode: u32,
+  ) -> Result<(), OpError> {
+    if self.lost.load(Ordering::SeqCst) {
+      return Err(OpError::dom("AbortError", "The GPU device is lost"));
+    }
+    if self.destroyed.get() {
+      return Err(OpError::dom("AbortError", "The buffer was destroyed"));
+    }
+    if size == 0 {
+      *self.mapped.borrow_mut() = Some(Mapped {
+        offset,
+        size,
+        mode,
+        bytes: Vec::new(),
+        views: Vec::new(),
+        gpu_mapped: false,
+      });
+      return Ok(());
+    }
+    let Some(buffer) = self.buffer.borrow().clone() else {
+      return Err(OpError::dom("AbortError", "The buffer was destroyed"));
+    };
+    let end = offset + size;
+    let host_mode = if (mode & MAP_READ_BIT) != 0 {
+      wgpu::MapMode::Read
+    } else {
+      wgpu::MapMode::Write
+    };
+    let handle = device_of(&self.lost)?;
+    // `writeBuffer` stays in the queue until a submit. Mapping has to see it.
+    handle.queue.submit([]);
+    let (send, recv) = std::sync::mpsc::channel();
+    buffer
+      .slice(offset..end)
+      .map_async(host_mode, move |result| {
+        let _ = send.send(result);
+      });
+    poll_device(&handle.device);
+    match recv.recv_timeout(std::time::Duration::from_secs(5)) {
+      Ok(Ok(())) => {
+        let bytes = match buffer.slice(offset..end).get_mapped_range() {
+          Ok(view) => view.to_vec(),
+          Err(_) => {
+            buffer.unmap();
+            return Err(self.fail_map("mapAsync failed"));
+          }
+        };
+        *self.mapped.borrow_mut() = Some(Mapped {
+          offset,
+          size,
+          mode,
+          bytes,
+          views: Vec::new(),
+          gpu_mapped: true,
+        });
+        Ok(())
+      }
+      _ => Err(self.fail_map("mapAsync failed")),
+    }
   }
 }
 
@@ -169,6 +363,8 @@ impl GpuBuffer {
   fn map_state(&self) -> String {
     if self.mapped.borrow().is_some() {
       "mapped".to_string()
+    } else if self.pending.borrow().is_some() {
+      "pending".to_string()
     } else {
       "unmapped".to_string()
     }
@@ -180,6 +376,7 @@ impl GpuBuffer {
   }
 
   fn destroy(&self, scope: &mut v8::PinScope) {
+    self.abort_pending(scope, "The buffer was destroyed");
     self.release_mapping(scope, false);
     if !self.destroyed.replace(true)
       && let Some(buffer) = self.buffer.borrow().as_ref()
@@ -190,92 +387,35 @@ impl GpuBuffer {
 
   fn map_async(
     &self,
+    #[this] object: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
     mode: u32,
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Js {
-    let mapped = (|| {
-      if self.lost.load(Ordering::SeqCst) {
-        return Err(OpError::dom("AbortError", "The GPU device is lost"));
-      }
-      if (mode & !MAP_MODE_MASK) != 0 || (mode & MAP_MODE_MASK) == 0 {
-        return Err(OpError::type_("GPUMapMode is invalid"));
-      }
-      if self.destroyed.get() {
-        return Err(self.fail_map("The buffer is destroyed"));
-      }
-      if self.mapped.borrow().is_some() {
-        return Err(self.fail_map("The buffer is already mapped"));
-      }
-      if !self.valid {
-        return Err(self.fail_map("The buffer is invalid"));
-      }
-      let buffer = self.alive()?;
-      let usage = self.usage;
-      if (mode & MAP_READ_BIT) != 0 && (usage & MAP_READ_BIT) == 0 {
-        return Err(self.fail_map("The buffer is not mappable for reading"));
-      }
-      if (mode & MAP_WRITE_BIT) != 0 && (usage & MAP_WRITE_BIT) == 0 {
-        return Err(self.fail_map("The buffer is not mappable for writing"));
-      }
-      let offset = offset.map(|value| value.0).unwrap_or(0);
-      let size =
-        match checked_map_size(self.size, offset, size.map(|value| value.0)) {
-          Ok(size) => size,
-          Err(error) => {
-            crate::state::report_validation(
-              self.device_id,
-              "The map range is outside the buffer",
-            );
-            return Err(error);
-          }
-        };
-      let end = offset + size;
-      let host_mode = if (mode & MAP_READ_BIT) != 0 {
-        wgpu::MapMode::Read
-      } else {
-        wgpu::MapMode::Write
-      };
-      let handle = device_of(&self.lost)?;
-      // `writeBuffer` stays in the queue until a submit. Mapping has to see it.
-      handle.queue.submit([]);
-      let (send, recv) = std::sync::mpsc::channel();
-      buffer
-        .slice(offset..end)
-        .map_async(host_mode, move |result| {
-          let _ = send.send(result);
-        });
-      poll_device(&handle.device);
-      match recv.recv_timeout(std::time::Duration::from_secs(5)) {
-        Ok(Ok(())) => {
-          let bytes = match buffer.slice(offset..end).get_mapped_range() {
-            Ok(view) => view.to_vec(),
-            Err(_) => {
-              buffer.unmap();
-              return Err(self.fail_map("mapAsync failed"));
-            }
-          };
-          *self.mapped.borrow_mut() = Some(Mapped {
-            offset,
-            size,
-            mode,
-            bytes,
-            views: Vec::new(),
-            gpu_mapped: true,
-          });
-          Ok(())
-        }
-        _ => Err(self.fail_map("mapAsync failed")),
-      }
-    })();
-    match mapped {
-      Ok(()) => {
-        let value: v8::Local<v8::Value> = v8::undefined(scope).into();
-        js::promise(scope, value)
-      }
-      Err(error) => js::promise_rejected(scope, error),
+    let busy =
+      self.mapped.borrow().is_some() || self.pending.borrow().is_some();
+    if busy {
+      return js::promise_rejected(
+        scope,
+        self.fail_map("The buffer is already mapped"),
+      );
     }
+    let action = if self.lost.load(Ordering::SeqCst) {
+      PendingAction::Reject {
+        name: "AbortError",
+        message: "The GPU device is lost".to_string(),
+      }
+    } else {
+      match self.map_request(mode, offset, size) {
+        Ok((offset, size)) => PendingAction::Map { offset, size, mode },
+        Err(message) => PendingAction::Reject {
+          name: "OperationError",
+          message: message.to_string(),
+        },
+      }
+    };
+    self.begin_pending(scope, object, action)
   }
 
   fn get_mapped_range(
@@ -338,6 +478,7 @@ impl GpuBuffer {
   }
 
   fn unmap(&self, scope: &mut v8::PinScope) -> Result<(), OpError> {
+    self.abort_pending(scope, "The map was aborted");
     self.release_mapping(scope, true);
     Ok(())
   }
@@ -345,6 +486,10 @@ impl GpuBuffer {
 
 impl Drop for GpuBuffer {
   fn drop(&mut self) {
+    self.pending.borrow_mut().take();
+    self
+      .map_generation
+      .set(self.map_generation.get().wrapping_add(1));
     let mapped = self.mapped.borrow_mut().take();
     if mapped.is_some_and(|mapped| mapped.gpu_mapped)
       && let Some(buffer) = self.buffer.borrow().as_ref()
@@ -369,6 +514,8 @@ pub struct GpuTexture {
   requested_dimension: wgpu::TextureDimension,
   requested_depth: u32,
   requested_mips: u32,
+  /// False when `createTexture` recorded a validation error.
+  valid: bool,
   label: ObjectLabel,
 }
 
@@ -392,6 +539,7 @@ impl GpuTexture {
     label: Option<String>,
     sample_count: u32,
     usage: u32,
+    valid: bool,
     requested_dimension: wgpu::TextureDimension,
     requested_depth: u32,
     requested_mips: u32,
@@ -409,6 +557,7 @@ impl GpuTexture {
       requested_dimension,
       requested_depth,
       requested_mips,
+      valid,
       label: ObjectLabel::new(label),
     }
   }
@@ -492,13 +641,15 @@ impl GpuTexture {
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<GpuTextureView>, OpError> {
+    if self.lost.load(Ordering::SeqCst) {
+      return Err(state_lost());
+    }
     let parts = match descriptor {
       Some(value) if !value.is_null_or_undefined() => {
         texture_view_parts(scope, value)?
       }
       _ => TextureViewParts::default(),
     };
-    let texture = self.texture()?;
     let features = device_of(&self.lost)?.device.features();
     let format = match parts.format {
       Some(view_format) => require_texture_format(features, view_format)?,
@@ -512,36 +663,47 @@ impl GpuTexture {
       self.requested_mips,
       &parts,
     );
+    let destroyed = self.destroyed.load(Ordering::SeqCst);
     let usage_invalid =
       view_usage_invalid(self.usage, parts.usage, format, features);
-    if usage_invalid || resolved.invalid {
+    // A destroyed texture still returns a view. An invalid texture records
+    // one validation error and returns a view of the stand-in.
+    if !destroyed && (!self.valid || usage_invalid || resolved.invalid) {
       crate::state::report_validation(
         self.device_id,
         "The texture view descriptor is invalid",
       );
     }
+    let held = self.texture.borrow().clone();
+    let texture = match held {
+      Some(texture) => texture,
+      None => placeholder_texture(&self.lost)?,
+    };
     // The stand-in is 2D with one mip and one layer. A descriptor it would
     // reject must not reach wgpu: that would be a second error, or an error
     // for a request that is valid against the descriptor the caller passed.
-    let descriptor =
-      if usage_invalid || resolved.invalid || !view_fits_stand_in(&resolved) {
-        wgpu::TextureViewDescriptor {
-          label: parts.label.as_deref(),
-          ..Default::default()
-        }
-      } else {
-        wgpu::TextureViewDescriptor {
-          label: parts.label.as_deref(),
-          format: parts.format.map(|_| format),
-          dimension: parts.dimension,
-          usage: parts.usage.map(wgpu::TextureUsages::from_bits_truncate),
-          aspect: parts.aspect,
-          base_mip_level: parts.base_mip_level,
-          mip_level_count: parts.mip_level_count,
-          base_array_layer: parts.base_array_layer,
-          array_layer_count: parts.array_layer_count,
-        }
-      };
+    let descriptor = if destroyed
+      || usage_invalid
+      || resolved.invalid
+      || !view_fits_stand_in(&resolved)
+    {
+      wgpu::TextureViewDescriptor {
+        label: parts.label.as_deref(),
+        ..Default::default()
+      }
+    } else {
+      wgpu::TextureViewDescriptor {
+        label: parts.label.as_deref(),
+        format: parts.format.map(|_| format),
+        dimension: parts.dimension,
+        usage: parts.usage.map(wgpu::TextureUsages::from_bits_truncate),
+        aspect: parts.aspect,
+        base_mip_level: parts.base_mip_level,
+        mip_level_count: parts.mip_level_count,
+        base_array_layer: parts.base_array_layer,
+        array_layer_count: parts.array_layer_count,
+      }
+    };
     let view = texture.create_view(&descriptor);
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
@@ -1060,6 +1222,22 @@ pub fn create_texture(
   if let Some(message) = invalid {
     crate::state::report_validation(device_id, message);
   }
+  // A request inside the device limits can still be too large to allocate.
+  // Record out-of-memory and keep the 1×1 stand-in.
+  let oom = invalid.is_none()
+    && estimated_texture_bytes(
+      dimension,
+      &extent,
+      format,
+      mip_level_count,
+      sample_count,
+    ) > MAX_TEXTURE_BYTES;
+  if oom {
+    crate::state::report_out_of_memory(
+      device_id,
+      "The texture allocation is too large",
+    );
+  }
   // The JavaScript texture stays 2D, one mip, and one layer. A spec-valid
   // request for another shape still succeeds. An invalid descriptor records
   // a validation error and returns a 1×1 stand-in.
@@ -1074,7 +1252,7 @@ pub fn create_texture(
     create_format,
     create_usage,
     create_samples,
-  ) = if invalid.is_some() {
+  ) = if invalid.is_some() || oom {
     (1, 1, wgpu::TextureFormat::Rgba8Unorm, stand_in, 1)
   } else {
     (
@@ -1086,7 +1264,7 @@ pub fn create_texture(
     )
   };
   let empty_views = Vec::new();
-  let create_views = if invalid.is_some() {
+  let create_views = if invalid.is_some() || oom {
     empty_views.as_slice()
   } else {
     view_formats.as_slice()
@@ -1142,6 +1320,7 @@ pub fn create_texture(
     label,
     sample_count,
     usage_bits,
+    invalid.is_none() && !oom,
     dimension,
     extent.depth_or_array_layers,
     mip_level_count,
@@ -1284,7 +1463,10 @@ pub fn create_pipeline_layout(
   let refs: Vec<Option<&wgpu::BindGroupLayout>> = if over_cap {
     Vec::new()
   } else {
-    layouts.iter().map(|layout| Some(layout.layout())).collect()
+    layouts
+      .iter()
+      .map(|layout| layout.as_ref().map(GpuBindGroupLayout::layout))
+      .collect()
   };
   let layout =
     handle
@@ -1488,6 +1670,7 @@ pub fn create_compute_pipeline(
 
 pub fn create_query_set(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuQuerySet>, OpError> {
@@ -1515,11 +1698,17 @@ pub fn create_query_set(
     QueryKind::Occlusion => wgpu::QueryType::Occlusion,
     QueryKind::Timestamp => wgpu::QueryType::Timestamp,
   };
+  // wgpu rejects a count of 0. The JavaScript set still reports 0.
+  let over_max = count > 4096;
+  if over_max {
+    crate::state::report_validation(device_id, "The query count is invalid");
+  }
+  let host_count = if count == 0 || over_max { 1 } else { count };
   let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     handle.device.create_query_set(&wgpu::QuerySetDescriptor {
       label: label.as_deref(),
       ty,
-      count,
+      count: host_count,
     })
   }));
   let set = set
@@ -2636,6 +2825,43 @@ fn texture_dimension(
 
 /// One message covers every spec-invalid descriptor. `TypeError` and
 /// `depth32float-stencil8` are rejected before this runs.
+/// Textures above this estimated size record an out-of-memory error.
+const MAX_TEXTURE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+fn estimated_texture_bytes(
+  dimension: wgpu::TextureDimension,
+  extent: &TextureExtent,
+  format: wgpu::TextureFormat,
+  mip_level_count: u32,
+  sample_count: u32,
+) -> u64 {
+  let Some(block_bytes) = format.block_copy_size(None) else {
+    return 0;
+  };
+  let (block_width, block_height) = format.block_dimensions();
+  let mut width = extent.width.max(1);
+  let mut height = extent.height.max(1);
+  let mut depth = extent.depth_or_array_layers.max(1);
+  let mut total = 0u64;
+  for _ in 0..mip_level_count.max(1) {
+    let blocks_wide = u64::from(width.div_ceil(block_width));
+    let blocks_high = u64::from(height.div_ceil(block_height));
+    total = total.saturating_add(
+      blocks_wide
+        .saturating_mul(blocks_high)
+        .saturating_mul(u64::from(depth))
+        .saturating_mul(u64::from(block_bytes))
+        .saturating_mul(u64::from(sample_count.max(1))),
+    );
+    width = (width / 2).max(1);
+    height = (height / 2).max(1);
+    if dimension == wgpu::TextureDimension::D3 {
+      depth = (depth / 2).max(1);
+    }
+  }
+  total
+}
+
 fn texture_invalid(
   extent: &TextureExtent,
   dimension: wgpu::TextureDimension,
@@ -2662,8 +2888,10 @@ fn texture_invalid(
   if sample_count != 1 && sample_count != 4 {
     return Some(invalid);
   }
-  if dimension != wgpu::TextureDimension::D2
-    && usage.contains(wgpu::TextureUsages::TRANSIENT_ATTACHMENT)
+  if usage.contains(wgpu::TextureUsages::TRANSIENT_ATTACHMENT)
+    && (dimension != wgpu::TextureDimension::D2
+      || extent.depth_or_array_layers != 1
+      || mip_level_count != 1)
   {
     return Some(invalid);
   }
@@ -3136,7 +3364,6 @@ const MAP_READ_BIT: u32 = 0x0001;
 const MAP_WRITE_BIT: u32 = 0x0002;
 const COPY_SRC_BIT: u32 = 0x0004;
 const COPY_DST_BIT: u32 = 0x0008;
-const MAP_MODE_MASK: u32 = MAP_READ_BIT | MAP_WRITE_BIT;
 const BUFFER_USAGE_MASK: u32 = 0x03FF;
 
 fn buffer_usage_mismatch(usage: u32) -> bool {
@@ -3167,19 +3394,16 @@ fn checked_map_size(
   buffer_size: u64,
   offset: u64,
   size: Option<u64>,
-) -> Result<u64, OpError> {
+) -> Result<u64, &'static str> {
   if !offset.is_multiple_of(8) || offset > buffer_size {
-    return Err(OpError::dom(
-      "OperationError",
-      "The map offset must be a multiple of 8 inside the buffer",
-    ));
+    return Err("The map offset must be a multiple of 8 inside the buffer");
   }
   let size = size.unwrap_or(buffer_size - offset);
-  if size == 0 || !size.is_multiple_of(4) || offset + size > buffer_size {
-    return Err(OpError::dom(
-      "OperationError",
-      "The map size must be a non-zero multiple of 4 inside the buffer",
-    ));
+  let Some(end) = offset.checked_add(size) else {
+    return Err("The map size must be a multiple of 4 inside the buffer");
+  };
+  if !size.is_multiple_of(4) || end > buffer_size {
+    return Err("The map size must be a multiple of 4 inside the buffer");
   }
   Ok(size)
 }
@@ -3372,12 +3596,34 @@ fn array_of<'a>(
 fn layout_list(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
-) -> Result<Vec<GpuBindGroupLayout>, OpError> {
+) -> Result<Vec<Option<GpuBindGroupLayout>>, OpError> {
   let mut layouts = Vec::new();
   for value in array_of(scope, object, "bindGroupLayouts")? {
-    layouts.push(host_layout(scope, value)?);
+    if value.is_null_or_undefined() {
+      layouts.push(None);
+    } else {
+      layouts.push(Some(host_layout(scope, value)?));
+    }
   }
   Ok(layouts)
+}
+
+fn placeholder_texture(lost: &AtomicBool) -> Result<wgpu::Texture, OpError> {
+  let handle = device_of(lost)?;
+  Ok(handle.device.create_texture(&wgpu::TextureDescriptor {
+    label: None,
+    size: wgpu::Extent3d {
+      width: 1,
+      height: 1,
+      depth_or_array_layers: 1,
+    },
+    mip_level_count: 1,
+    sample_count: 1,
+    dimension: wgpu::TextureDimension::D2,
+    format: wgpu::TextureFormat::Rgba8Unorm,
+    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+    view_formats: &[],
+  }))
 }
 
 fn shader_of(

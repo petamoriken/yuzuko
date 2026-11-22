@@ -15,10 +15,34 @@ pub struct Handle {
   pub lost: Arc<AtomicBool>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ScopeKind {
+  Validation,
+  OutOfMemory,
+  Internal,
+}
+
+impl ScopeKind {
+  pub fn wgpu(self) -> wgpu::ErrorFilter {
+    match self {
+      Self::Validation => wgpu::ErrorFilter::Validation,
+      Self::OutOfMemory => wgpu::ErrorFilter::OutOfMemory,
+      Self::Internal => wgpu::ErrorFilter::Internal,
+    }
+  }
+}
+
+pub struct ScopeCapture {
+  pub kind: ScopeKind,
+  pub message: String,
+}
+
 pub struct ErrorScope {
-  /// This scope's filter includes validation errors.
-  pub validation: bool,
+  pub kind: ScopeKind,
   pub synthetic: Option<String>,
+  /// A wgpu error taken while this scope was moved out from under another
+  /// device. The re-pushed guard is empty.
+  pub captured: Option<ScopeCapture>,
 }
 
 /// Guards for every JavaScript device, in the order they were pushed.
@@ -38,9 +62,49 @@ impl Drop for ScopeStack {
   }
 }
 
-pub struct PoppedScope {
+pub struct DisplacedScope {
+  pub id: u64,
   pub guard: wgpu::ErrorScopeGuard,
+  pub kind: ScopeKind,
+}
+
+/// Newer scopes from other devices, newest first.
+///
+/// Drop pops these guards before the caller's own guard. wgpu panics if an
+/// older scope is popped first.
+pub struct DisplacedScopes {
+  items: Vec<DisplacedScope>,
+}
+
+impl DisplacedScopes {
+  fn push(&mut self, item: DisplacedScope) {
+    self.items.push(item);
+  }
+
+  fn taken(&self, id: u64) -> usize {
+    self.items.iter().filter(|item| item.id == id).count()
+  }
+
+  pub fn take(&mut self) -> Vec<DisplacedScope> {
+    std::mem::take(&mut self.items)
+  }
+}
+
+impl Drop for DisplacedScopes {
+  fn drop(&mut self) {
+    for item in self.items.drain(..) {
+      drop(item.guard.pop());
+    }
+  }
+}
+
+pub struct PoppedScope {
+  /// Dropped before `guard`.
+  pub displaced: DisplacedScopes,
+  pub guard: wgpu::ErrorScopeGuard,
+  pub kind: ScopeKind,
   pub synthetic: Option<String>,
+  pub captured: Option<ScopeCapture>,
 }
 
 pub struct LiveDevice {
@@ -143,12 +207,13 @@ pub fn destroy(scope: &mut v8::PinScope, id: u64) {
 pub fn push_scope(
   id: u64,
   guard: wgpu::ErrorScopeGuard,
-  validation: bool,
+  kind: ScopeKind,
 ) -> Result<(), OpError> {
   with_mut(id, |live| {
     live.scopes.push(ErrorScope {
-      validation,
+      kind,
       synthetic: None,
+      captured: None,
     });
     Ok(())
   })?;
@@ -158,46 +223,119 @@ pub fn push_scope(
   Ok(())
 }
 
+/// Pushes a wgpu scope for a JavaScript scope that is already on the stack.
+pub fn repush_scope(id: u64, kind: ScopeKind) -> Result<(), OpError> {
+  let device = wgpu_device(id)?;
+  let guard = device.push_error_scope(kind.wgpu());
+  SCOPES.with(|scopes| {
+    scopes.borrow_mut().guards.push((id, guard));
+  });
+  Ok(())
+}
+
+/// Records `capture` on the scope `depth_from_top` below the newest.
+/// The first error wins.
+pub fn store_captured(id: u64, depth_from_top: usize, capture: ScopeCapture) {
+  DEVICES.with(|devices| {
+    let mut devices = devices.borrow_mut();
+    let Some(live) = devices.get_mut(&id) else {
+      return;
+    };
+    let Some(index) = live.scopes.len().checked_sub(depth_from_top + 1) else {
+      return;
+    };
+    if let Some(scope) = live.scopes.get_mut(index)
+      && scope.captured.is_none()
+    {
+      scope.captured = Some(capture);
+    }
+  });
+}
+
+/// The wgpu device, including after `destroy`. Error scopes still have to be
+/// popped, because every JavaScript device shares one wgpu device.
+pub fn wgpu_device(id: u64) -> Result<wgpu::Device, OpError> {
+  DEVICES.with(|devices| {
+    devices
+      .borrow()
+      .get(&id)
+      .map(|live| live.device.clone())
+      .ok_or_else(lost_error)
+  })
+}
+
+pub fn device_is_lost(id: u64) -> bool {
+  DEVICES.with(|devices| {
+    devices
+      .borrow()
+      .get(&id)
+      .is_none_or(|live| live.lost.load(Ordering::SeqCst))
+  })
+}
+
 pub fn pop_scope(id: u64) -> Result<PoppedScope, OpError> {
   let none =
     || OpError::dom("OperationError", "There is no error scope on the stack");
-  DEVICES.with(|devices| {
+  let has_scope = DEVICES.with(|devices| {
     let devices = devices.borrow();
     let live = devices.get(&id).ok_or_else(lost_error)?;
-    if live.lost.load(Ordering::SeqCst) {
-      return Err(lost_error());
-    }
-    if live.scopes.is_empty() {
-      return Err(none());
-    }
-    Ok(())
+    Ok(!live.scopes.is_empty())
   })?;
-  let guard = SCOPES.with(|scopes| {
-    let mut scopes = scopes.borrow_mut();
-    let Some((owner, _)) = scopes.guards.last() else {
+  if !has_scope {
+    return Err(none());
+  }
+  // One wgpu device, so every JavaScript scope shares one stack. Pop newer
+  // scopes from other devices first. The caller saves their errors and
+  // pushes those scopes again.
+  let mut displaced = DisplacedScopes { items: Vec::new() };
+  let guard = loop {
+    let Some((owner, guard)) =
+      SCOPES.with(|scopes| scopes.borrow_mut().guards.pop())
+    else {
       return Err(none());
     };
-    if *owner != id {
-      return Err(OpError::dom(
-        "OperationError",
-        "The error scope belongs to another device",
-      ));
+    if owner == id {
+      break guard;
     }
-    let Some((_, guard)) = scopes.guards.pop() else {
-      return Err(none());
+    let kind = DEVICES.with(|devices| {
+      let devices = devices.borrow();
+      let taken = displaced.taken(owner);
+      devices.get(&owner).and_then(|live| {
+        live
+          .scopes
+          .len()
+          .checked_sub(taken + 1)
+          .and_then(|index| live.scopes.get(index).map(|scope| scope.kind))
+      })
+    });
+    let Some(kind) = kind else {
+      // The device is gone. This guard is the newest one, so pop it now.
+      drop(guard.pop());
+      continue;
     };
-    Ok(guard)
-  })?;
-  let synthetic = DEVICES
+    displaced.push(DisplacedScope {
+      id: owner,
+      guard,
+      kind,
+    });
+  };
+  let (kind, synthetic, captured) = DEVICES
     .with(|devices| {
-      devices
-        .borrow_mut()
-        .get_mut(&id)
-        .and_then(|live| live.scopes.pop())
-        .map(|scope| scope.synthetic)
+      devices.borrow_mut().get_mut(&id).and_then(|live| {
+        live
+          .scopes
+          .pop()
+          .map(|scope| (scope.kind, scope.synthetic, scope.captured))
+      })
     })
     .ok_or_else(none)?;
-  Ok(PoppedScope { guard, synthetic })
+  Ok(PoppedScope {
+    displaced,
+    guard,
+    kind,
+    synthetic,
+    captured,
+  })
 }
 
 /// Record one validation error on the device timeline.
@@ -206,6 +344,14 @@ pub fn pop_scope(id: u64) -> Result<PoppedScope, OpError> {
 /// error for that scope is dropped. With no matching scope, the error is
 /// uncaptured.
 pub fn report_validation(id: u64, message: &str) {
+  report_synthetic(id, ScopeKind::Validation, message);
+}
+
+pub fn report_out_of_memory(id: u64, message: &str) {
+  report_synthetic(id, ScopeKind::OutOfMemory, message);
+}
+
+fn report_synthetic(id: u64, kind: ScopeKind, message: &str) {
   let captured = DEVICES.with(|devices| {
     let mut devices = devices.borrow_mut();
     let Some(live) = devices.get_mut(&id) else {
@@ -215,7 +361,7 @@ pub fn report_validation(id: u64, message: &str) {
       return false;
     }
     for scope in live.scopes.iter_mut().rev() {
-      if !scope.validation {
+      if scope.kind != kind {
         continue;
       }
       if scope.synthetic.is_none() {
@@ -226,7 +372,12 @@ pub fn report_validation(id: u64, message: &str) {
     false
   });
   if !captured {
-    queue_uncaptured(UncapturedKind::Validation, message.to_string());
+    let kind = match kind {
+      ScopeKind::Validation => UncapturedKind::Validation,
+      ScopeKind::OutOfMemory => UncapturedKind::OutOfMemory,
+      ScopeKind::Internal => UncapturedKind::Internal,
+    };
+    queue_uncaptured(kind, message.to_string());
   }
 }
 

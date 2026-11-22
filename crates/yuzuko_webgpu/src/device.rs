@@ -397,7 +397,7 @@ impl GpuDevice {
     scope: &mut v8::PinScope,
     descriptor: v8::Local<v8::Value>,
   ) -> Result<New<resource::GpuQuerySet>, OpError> {
-    resource::create_query_set(scope, &self.require()?, descriptor)
+    resource::create_query_set(scope, self.id, &self.require()?, descriptor)
   }
 
   fn import_external_texture(
@@ -413,16 +413,15 @@ impl GpuDevice {
   }
 
   fn push_error_scope(&self, filter: String) -> Result<(), OpError> {
-    let filter = match filter.as_str() {
-      "validation" => wgpu::ErrorFilter::Validation,
-      "out-of-memory" => wgpu::ErrorFilter::OutOfMemory,
-      "internal" => wgpu::ErrorFilter::Internal,
+    let kind = match filter.as_str() {
+      "validation" => state::ScopeKind::Validation,
+      "out-of-memory" => state::ScopeKind::OutOfMemory,
+      "internal" => state::ScopeKind::Internal,
       _ => return Err(OpError::type_("The error filter is invalid")),
     };
-    let validation = matches!(filter, wgpu::ErrorFilter::Validation);
     let handle = self.require()?;
-    let guard = handle.device.push_error_scope(filter);
-    state::push_scope(self.id, guard, validation)
+    let guard = handle.device.push_error_scope(kind.wgpu());
+    state::push_scope(self.id, guard, kind)
   }
 
   fn pop_error_scope(&self, scope: &mut v8::PinScope) -> Js {
@@ -533,6 +532,11 @@ impl GpuQueue {
   }
 
   fn on_submitted_work_done(&self, scope: &mut v8::PinScope) -> Js {
+    // After the device is lost, queue operations that report back appear to
+    // succeed. Rejecting here skips the caller's `popErrorScope`.
+    if state::device_is_lost(self.device_id) {
+      return js::promise(scope, v8::undefined(scope).into());
+    }
     let handle = match state::handle(self.device_id) {
       Ok(handle) => handle,
       Err(error) => return js::promise_rejected(scope, error),
@@ -976,28 +980,86 @@ impl ScopeFailure {
 
 fn finish_scope(id: u64) -> Result<Option<ScopeFailure>, OpError> {
   let popped = state::pop_scope(id)?;
-  let handle = match state::handle(id) {
-    Ok(handle) => handle,
-    Err(error) => {
-      let _ = pollster::block_on(popped.guard.pop());
-      return Err(error);
-    }
-  };
-  let _ = handle.device.poll(wgpu::PollType::Wait {
+  let lost = state::device_is_lost(id);
+  let device = state::wgpu_device(id)?;
+  let _ = device.poll(wgpu::PollType::Wait {
     submission_index: None,
     timeout: Some(std::time::Duration::from_secs(5)),
   });
-  let error = pollster::block_on(popped.guard.pop());
-  if let Some(error) = error {
-    let message = error.to_string();
-    let failure = match error {
-      wgpu::Error::OutOfMemory { .. } => ScopeFailure::OutOfMemory(message),
-      wgpu::Error::Internal { .. } => ScopeFailure::Internal(message),
-      wgpu::Error::Validation { .. } => ScopeFailure::Validation(message),
-    };
-    return Ok(Some(failure));
+  // Newer scopes from other devices sit above this one on the single wgpu
+  // stack. Pop them first, keep the error on that device, and push the scope
+  // again after this one is gone.
+  let state::PoppedScope {
+    guard,
+    kind,
+    synthetic,
+    captured,
+    mut displaced,
+  } = popped;
+  let mut restore = Vec::new();
+  for item in displaced.take() {
+    let depth = restore
+      .iter()
+      .filter(|(other, _)| *other == item.id)
+      .count();
+    let error = pollster::block_on(item.guard.pop());
+    if let Some(error) = error {
+      state::store_captured(item.id, depth, capture_from_wgpu(&error));
+    }
+    restore.push((item.id, item.kind));
   }
-  Ok(popped.synthetic.map(ScopeFailure::Validation))
+  let error = pollster::block_on(guard.pop());
+  let mut repush_error = None;
+  for (other, kind) in restore.into_iter().rev() {
+    if let Err(error) = state::repush_scope(other, kind) {
+      repush_error.get_or_insert(error);
+    }
+  }
+  if let Some(error) = repush_error {
+    return Err(error);
+  }
+  // The scope stack is already popped. A lost device resolves `null`.
+  if lost {
+    return Ok(None);
+  }
+  if let Some(captured) = captured {
+    return Ok(Some(failure_from_capture(captured)));
+  }
+  if let Some(error) = error {
+    return Ok(Some(failure_from_wgpu(error)));
+  }
+  Ok(synthetic.map(|message| failure_from_kind(kind, message)))
+}
+
+fn failure_from_wgpu(error: wgpu::Error) -> ScopeFailure {
+  let message = error.to_string();
+  match error {
+    wgpu::Error::OutOfMemory { .. } => ScopeFailure::OutOfMemory(message),
+    wgpu::Error::Internal { .. } => ScopeFailure::Internal(message),
+    wgpu::Error::Validation { .. } => ScopeFailure::Validation(message),
+  }
+}
+
+fn capture_from_wgpu(error: &wgpu::Error) -> state::ScopeCapture {
+  let message = error.to_string();
+  let kind = match error {
+    wgpu::Error::OutOfMemory { .. } => state::ScopeKind::OutOfMemory,
+    wgpu::Error::Internal { .. } => state::ScopeKind::Internal,
+    wgpu::Error::Validation { .. } => state::ScopeKind::Validation,
+  };
+  state::ScopeCapture { kind, message }
+}
+
+fn failure_from_capture(capture: state::ScopeCapture) -> ScopeFailure {
+  failure_from_kind(capture.kind, capture.message)
+}
+
+fn failure_from_kind(kind: state::ScopeKind, message: String) -> ScopeFailure {
+  match kind {
+    state::ScopeKind::Validation => ScopeFailure::Validation(message),
+    state::ScopeKind::OutOfMemory => ScopeFailure::OutOfMemory(message),
+    state::ScopeKind::Internal => ScopeFailure::Internal(message),
+  }
 }
 
 fn pop_scope<'s>(
@@ -1043,7 +1105,8 @@ fn async_pipeline(
   let guard = handle
     .device
     .push_error_scope(wgpu::ErrorFilter::Validation);
-  if let Err(error) = state::push_scope(id, guard, true) {
+  if let Err(error) = state::push_scope(id, guard, state::ScopeKind::Validation)
+  {
     return js::promise_rejected(scope, error);
   }
   let created = match kind {

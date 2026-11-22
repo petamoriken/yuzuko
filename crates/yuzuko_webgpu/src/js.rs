@@ -334,6 +334,15 @@ pub fn promise_rejected(scope: &mut v8::PinScope, error: OpError) -> Js {
   promise_rejected_value(scope, exception)
 }
 
+pub fn reject(
+  scope: &mut v8::PinScope,
+  resolver: v8::Local<v8::PromiseResolver>,
+  error: OpError,
+) {
+  let exception = exception_value(scope, error);
+  resolver.reject(scope, exception);
+}
+
 pub fn promise_rejected_value(
   scope: &mut v8::PinScope,
   error: v8::Local<v8::Value>,

@@ -12686,7 +12686,9 @@ interface GPUDevice extends EventTarget {
    * format that cannot be multisampled, a 1D usage that includes
    * `RENDER_ATTACHMENT`, a non-2D usage that includes `TRANSIENT_ATTACHMENT`,
    * a dimension the format cannot use, or a format whose feature is not
-   * enabled records a validation error. `depth32float-stencil8` throws
+   * enabled records a validation error. A texture whose estimated size is
+   * above 2 GiB records an out-of-memory error and returns that stand-in.
+   * `depth32float-stencil8` throws
    * `NotSupportedError` when that feature is not enabled.
    *
    * @throws {@link TypeError} When the format name is unknown.
@@ -12833,7 +12835,9 @@ interface GPUDevice extends EventTarget {
   pushErrorScope(filter: GPUErrorFilter): void;
 
   /**
-   * A validation failure is a {@link GPUValidationError}.
+   * A validation failure is a {@link GPUValidationError}. An empty stack
+   * rejects `OperationError`. A lost device still pops one scope, and the
+   * promise resolves `null`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/popErrorScope)
    */
@@ -13004,7 +13008,8 @@ interface GPUQueue {
    * GPUQueue at the point the method is called has been processed.
    *
    * The promise is already settled. The calling thread polls until that work
-   * finishes. The promise resolves `undefined`.
+   * finishes. The promise resolves `undefined`. A lost device resolves
+   * `undefined`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/onSubmittedWorkDone)
    */
@@ -13076,8 +13081,8 @@ interface GPUBuffer {
   readonly size: number;
 
   /**
-   * `"mapped"` while a mapping is held, and `"unmapped"` otherwise.
-   * `mapAsync` finishes on the calling stack, so `"pending"` is not observed.
+   * `"pending"` after `mapAsync` until that promise settles, `"mapped"` while
+   * a mapping is held, and `"unmapped"` otherwise.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/mapState)
    */
@@ -13103,13 +13108,14 @@ interface GPUBuffer {
    * GPUBuffer's content is ready to be accessed. While the GPUBuffer is mapped it
    * cannot be used in any GPU commands.
    *
-   * `offset` is a multiple of 8 and `size` is a non-zero multiple of 4. A mode
-   * other than `READ` or `WRITE` rejects `TypeError`.
-   *
-   * @throws {@link DOMException} `InvalidStateError` when the buffer is
-   * already mapped or destroyed. `OperationError` when the range or the
-   * usage does not allow the map. The promise rejects. The mode check
-   * rejects `TypeError`.
+   * `offset` is a multiple of 8 and `size` is a multiple of 4, including 0.
+   * An omitted `size` is the rest of the buffer. A mode other than `READ` or
+   * `WRITE`, a range, a usage, a destroyed buffer, or an invalid buffer
+   * rejects `OperationError` on a later turn. `mapState` is `"pending"` until
+   * then. A call while `mapState` is `"mapped"` or `"pending"` rejects
+   * `OperationError` on the calling stack and leaves `mapState` unchanged. A
+   * lost device rejects `AbortError` on a later turn. `unmap` or `destroy`
+   * while `"pending"` rejects that promise with `AbortError`.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUBuffer/mapAsync)
    */

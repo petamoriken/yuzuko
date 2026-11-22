@@ -121,7 +121,25 @@ Yuzuko.test("too many bind group layouts is a validation error", async () => {
   assert(pipeline instanceof GPUPipelineLayout, "layout");
   const error = await device.popErrorScope();
   assert(error instanceof GPUValidationError, "too many groups");
+  const other = await adapter.requestDevice();
+  device.pushErrorScope("validation");
+  other.pushErrorScope("out-of-memory");
+  const nested = device.createPipelineLayout({ bindGroupLayouts });
+  assert(nested instanceof GPUPipelineLayout, "nested layout");
+  const nestedError = await device.popErrorScope();
+  assert(nestedError instanceof GPUValidationError, "scope under another device");
+  assert(await other.popErrorScope() === null, "displaced scope");
+  other.destroy();
+  device.pushErrorScope("validation");
   device.destroy();
+  assert(await device.popErrorScope() === null, "lost scope");
+  let empty = "";
+  try {
+    await device.popErrorScope();
+  } catch (error) {
+    empty = errorName(error);
+  }
+  assert(empty === "OperationError", "empty lost scope");
 });
 
 Yuzuko.test("a triangle readback and the same current texture", async () => {
@@ -1695,8 +1713,9 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   assert(buffer.usage === usage, "buffer usage");
   assert(buffer.mapState === "unmapped", "unmapped");
   const mapping = buffer.mapAsync(GPUMapMode.READ);
-  assert(buffer.mapState === "mapped", "mapped on the calling stack");
+  assert(buffer.mapState === "pending", "pending after mapAsync");
   await mapping;
+  assert(buffer.mapState === "mapped", "mapped after mapAsync");
   buffer.unmap();
   assert(buffer.mapState === "unmapped", "unmapped after unmap");
 
@@ -1882,7 +1901,7 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   const gone = await adapter.requestDevice();
   gone.destroy();
   assert(
-    await rejectionName(gone.queue.onSubmittedWorkDone()) === "InvalidStateError",
+    await rejectionName(gone.queue.onSubmittedWorkDone()) === "",
     "submitted work lost",
   );
   device.pushErrorScope("validation");
@@ -2128,6 +2147,70 @@ Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
   device.pushErrorScope("validation");
   mips.createView({ baseMipLevel: 2, mipLevelCount: 2 });
   assert((await device.popErrorScope()) instanceof GPUValidationError, "mip overflow");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 4],
+    mipLevelCount: 2,
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "transient mips");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 4, 2],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "transient layers");
+  device.pushErrorScope("validation");
+  const queries = device.createQuerySet({ type: "occlusion", count: 0 });
+  assert(queries.count === 0, "query count");
+  assert(await device.popErrorScope() === null, "query count zero");
+  const empty = device.createBindGroupLayout({ entries: [] });
+  device.pushErrorScope("validation");
+  device.createPipelineLayout({ bindGroupLayouts: [null, empty] });
+  assert(await device.popErrorScope() === null, "null bind group layout");
+  device.pushErrorScope("validation");
+  const invalidTexture = device.createTexture({
+    size: [0, 0, 0],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "invalid texture");
+  const side = device.limits.maxTextureDimension2D;
+  const layers = device.limits.maxTextureArrayLayers;
+  if (side * side * layers * 16 > 2 * 1024 * 1024 * 1024) {
+    device.pushErrorScope("validation");
+    device.createTexture({
+      size: [side, side, layers],
+      format: "rgba32float",
+      usage: GPUTextureUsage.COPY_DST,
+    });
+    assert(await device.popErrorScope() === null, "huge texture validation");
+    device.pushErrorScope("out-of-memory");
+    const huge = device.createTexture({
+      size: [side, side, layers],
+      format: "rgba32float",
+      usage: GPUTextureUsage.COPY_DST,
+    });
+    assert(huge instanceof GPUTexture, "huge texture");
+    assert(
+      (await device.popErrorScope()) instanceof GPUOutOfMemoryError,
+      "huge texture oom",
+    );
+  }
+  device.pushErrorScope("validation");
+  invalidTexture.createView();
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "invalid texture view");
+  const destroyedTexture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  destroyedTexture.destroy();
+  device.pushErrorScope("validation");
+  destroyedTexture.createView();
+  assert(await device.popErrorScope() === null, "destroyed texture view");
 
   const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
   device.createShaderModule({
@@ -2671,10 +2754,7 @@ Yuzuko.test("device-timeline validation follows the WebGPU spec", async () => {
   device.pushErrorScope("validation");
   const emptyQueries = device.createQuerySet({ type: "occlusion", count: 0 });
   assert(emptyQueries.count === 0, `query count ${emptyQueries.count}`);
-  assert(
-    (await device.popErrorScope()) instanceof GPUValidationError,
-    "zero query set",
-  );
+  assert(await device.popErrorScope() === null, "zero query set");
   const queries = device.createQuerySet({ type: "occlusion", count: 1 });
   const resolved = device.createBuffer({
     size: 256,
@@ -2948,7 +3028,7 @@ Yuzuko.test("device-timeline validation follows the WebGPU spec", async () => {
     }) === "TypeError",
     "destroyed aspect",
   );
-  assert(throwName(() => plain.createView()) === "InvalidStateError", "destroyed view");
+  assert(plain.createView() instanceof GPUTextureView, "destroyed view");
   assert(
     throwName(() => plain.createView({ baseMipLevel: -1 })) === "TypeError",
     "mip range",
