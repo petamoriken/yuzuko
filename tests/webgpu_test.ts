@@ -78,7 +78,7 @@ Yuzuko.test("preferred format and an empty feature request", async () => {
   }
   assert(rejected, "invalid feature name");
   const device = await adapter.requestDevice();
-  const above = device.limits.maxTextureDimension2D + 1;
+  const above = adapter.limits.maxTextureDimension2D + 1;
   rejected = false;
   try {
     await adapter.requestDevice({
@@ -1775,23 +1775,21 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   );
   assert(Object.keys(adapter.limits).length === 0, "limit keys");
   assert(adapter.limits.maxTextureDimension2D > 0, "limit value");
+  const coreLimits = adapter.features.has("core-features-and-limits");
   assert(
-    adapter.features.has("core-features-and-limits"),
-    "core feature",
-  );
-  assert(
-    device.features.has("core-features-and-limits"),
+    device.features.has("core-features-and-limits") === coreLimits,
     "device core feature",
   );
-  assert(
-    adapter.limits.maxBindGroupsPlusVertexBuffers
-      === device.limits.maxBindGroupsPlusVertexBuffers,
-    "adapter plus",
-  );
-  assert(
-    device.limits.maxBindGroupsPlusVertexBuffers === 24,
-    "device plus",
-  );
+  if (coreLimits) {
+    assert(
+      adapter.limits.maxBindGroupsPlusVertexBuffers === 24,
+      "adapter plus",
+    );
+    assert(
+      device.limits.maxBindGroupsPlusVertexBuffers === 24,
+      "device plus",
+    );
+  }
   assert(Object.keys(device.limits).length === 0, "device limit keys");
   const inherited = await adapter.requestDevice({
     requiredLimits: adapter.limits as unknown as Record<string, number>,

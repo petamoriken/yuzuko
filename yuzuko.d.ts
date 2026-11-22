@@ -12693,7 +12693,8 @@ interface GPUDevice extends EventTarget {
 
   /**
    * `mappedAtCreation` throws `RangeError` when `size` is not a multiple of 4
-   * or is above 4 GiB.
+   * or is above 4 GiB. A size above the reported `maxBufferSize` is a
+   * validation error.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createBuffer)
    */

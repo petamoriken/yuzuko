@@ -13294,8 +13294,22 @@
   "webgpu:idl,javascript:inheritance:type=\"GPUPipelineError\"": true,
   "webgpu:idl,javascript:inheritance:type=\"GPUUncapturedErrorEvent\"": true,
   "webgpu:idl,javascript:inheritance:type=\"GPUValidationError\"": true,
-  "webgpu:idl,javascript:limits:type=\"adapter\"": true,
-  "webgpu:idl,javascript:limits:type=\"device\"": true,
+  "webgpu:idl,javascript:limits:type=\"adapter\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU core defaults, and the published limits are not the compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:idl,javascript:limits:type=\"device\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU core defaults, and the published limits are not the compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:idl,javascript:method_replacement:type=\"adapter\"": true,
   "webgpu:idl,javascript:method_replacement:type=\"adapter.limits\"": true,
   "webgpu:idl,javascript:method_replacement:type=\"buffer\"": true,

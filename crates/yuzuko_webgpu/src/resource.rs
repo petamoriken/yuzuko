@@ -1162,8 +1162,20 @@ pub fn create_buffer(
   } else {
     wgpu::BufferUsages::from_bits_truncate(raw_usage)
   };
-  let over_max = size as f64 > crate::state::max_buffer_size(device_id)?
-    || size > handle.device.limits().max_buffer_size;
+  let reported_max = crate::state::max_buffer_size(device_id)?;
+  let device_max = handle.device.limits().max_buffer_size;
+  // The JavaScript limit can be below the shared device. wgpu reports the
+  // device limit itself, so record the published limit only when wgpu accepts
+  // the allocation.
+  let over_reported = size as f64 > reported_max;
+  let over_device = size > device_max;
+  if over_reported && !over_device {
+    crate::state::report_validation(
+      device_id,
+      "The buffer size exceeds maxBufferSize",
+    );
+  }
+  let over_max = over_reported || over_device;
   let valid = raw_usage != 0
     && !unknown
     && !buffer_usage_mismatch(raw_usage)
