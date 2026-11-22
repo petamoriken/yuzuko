@@ -12682,13 +12682,14 @@ interface GPUDevice extends EventTarget {
    * for another dimension, mip count, or layer count still returns that
    * texture. A zero size, a zero `mipLevelCount`, a zero usage, a usage the
    * format does not allow, a size past the device limit, a mip count the size
-   * cannot hold, `sampleCount` 4 on a format that cannot be multisampled, a
-   * dimension the format cannot use, or a format whose feature is not enabled
-   * records a validation error. `depth32float-stencil8` throws
+   * cannot hold, a `sampleCount` other than 1 or 4, `sampleCount` 4 on a
+   * format that cannot be multisampled, a 1D usage that includes
+   * `RENDER_ATTACHMENT`, a non-2D usage that includes `TRANSIENT_ATTACHMENT`,
+   * a dimension the format cannot use, or a format whose feature is not
+   * enabled records a validation error. `depth32float-stencil8` throws
    * `NotSupportedError` when that feature is not enabled.
    *
-   * @throws {@link TypeError} When `sampleCount` is not 1 or 4, or the format
-   * name is unknown.
+   * @throws {@link TypeError} When the format name is unknown.
    * @throws {@link DOMException} `NotSupportedError` when the format is
    * `depth32float-stencil8` and that feature is not enabled.
    *
@@ -13201,9 +13202,12 @@ interface GPUTexture {
    * The **`createView()`** method of the GPUTexture interface creates a
    * GPUTextureView representing a specific view of the GPUTexture.
    *
-   * An omitted `usage`, or a `usage` of 0, inherits the texture's usage. A usage the view format
-   * does not allow, a usage that is not a subset of the texture usage, or a
-   * non-zero usage other than the texture usage when the texture includes
+   * An omitted `usage`, or a `usage` of 0, inherits the texture's usage.
+   * Dimension, mip levels, and array layers are checked against the requested
+   * descriptor, including a cube or cube array that is not square. The view
+   * is still a view of the 2D stand-in. A usage the view format does not
+   * allow, a usage that is not a subset of the texture usage, or a non-zero
+   * usage other than the texture usage when the texture includes
    * `TRANSIENT_ATTACHMENT`, records a validation error. The view is still
    * returned.
    *

@@ -365,6 +365,10 @@ pub struct GpuTexture {
   sample_count: u32,
   /// Usage bits of the texture that was created, kept after `destroy`.
   usage: u32,
+  /// Requested shape. Getters report the 2D stand-in. `createView` uses this.
+  requested_dimension: wgpu::TextureDimension,
+  requested_depth: u32,
+  requested_mips: u32,
   label: ObjectLabel,
 }
 
@@ -388,6 +392,9 @@ impl GpuTexture {
     label: Option<String>,
     sample_count: u32,
     usage: u32,
+    requested_dimension: wgpu::TextureDimension,
+    requested_depth: u32,
+    requested_mips: u32,
   ) -> Self {
     Self {
       texture: Rc::new(RefCell::new(Some(texture))),
@@ -399,6 +406,9 @@ impl GpuTexture {
       format,
       sample_count,
       usage,
+      requested_dimension,
+      requested_depth,
+      requested_mips,
       label: ObjectLabel::new(label),
     }
   }
@@ -494,14 +504,27 @@ impl GpuTexture {
       Some(view_format) => require_texture_format(features, view_format)?,
       None => self.format,
     };
-    // A bad usage or view format must not reach wgpu. Its error would be
-    // uncaptured when no scope is open, and the caller still receives a view.
+    let resolved = resolve_view(
+      self.requested_dimension,
+      self.width,
+      self.height,
+      self.requested_depth,
+      self.requested_mips,
+      &parts,
+    );
+    let usage_invalid =
+      view_usage_invalid(self.usage, parts.usage, format, features);
+    if usage_invalid || resolved.invalid {
+      crate::state::report_validation(
+        self.device_id,
+        "The texture view descriptor is invalid",
+      );
+    }
+    // The stand-in is 2D with one mip and one layer. A descriptor it would
+    // reject must not reach wgpu: that would be a second error, or an error
+    // for a request that is valid against the descriptor the caller passed.
     let descriptor =
-      if view_usage_invalid(self.usage, parts.usage, format, features) {
-        crate::state::report_validation(
-          self.device_id,
-          "The texture view descriptor is invalid",
-        );
+      if usage_invalid || resolved.invalid || !view_fits_stand_in(&resolved) {
         wgpu::TextureViewDescriptor {
           label: parts.label.as_deref(),
           ..Default::default()
@@ -1020,9 +1043,7 @@ pub fn create_texture(
   let format = require_texture_format(features, format)?;
   let view_formats = view_format_list(scope, object, features)?;
   let usage_bits = js::required_u32(scope, object, "usage")?;
-  let sample_count = allowed_sample_count(
-    js::field_u32(scope, object, "sampleCount")?.unwrap_or(1),
-  )?;
+  let sample_count = js::field_u32(scope, object, "sampleCount")?.unwrap_or(1);
   let mip_level_count =
     js::field_u32(scope, object, "mipLevelCount")?.unwrap_or(1);
   let label = optional_label(scope, object)?;
@@ -1121,6 +1142,9 @@ pub fn create_texture(
     label,
     sample_count,
     usage_bits,
+    dimension,
+    extent.depth_or_array_layers,
+    mip_level_count,
   )))
 }
 
@@ -2404,6 +2428,124 @@ fn view_usage_invalid(
     && !allowed.contains(wgpu::TextureUsages::STORAGE_BINDING)
 }
 
+struct ResolvedView {
+  dimension: wgpu::TextureViewDimension,
+  base_mip: u32,
+  mip_count: u32,
+  base_layer: u32,
+  layer_count: u32,
+  invalid: bool,
+}
+
+/// Ranges follow the requested descriptor. The getters still report the
+/// 2D stand-in, which has one mip and one layer.
+fn resolve_view(
+  texture_dimension: wgpu::TextureDimension,
+  width: u32,
+  height: u32,
+  depth: u32,
+  mip_level_count: u32,
+  parts: &TextureViewParts,
+) -> ResolvedView {
+  let dimension = parts
+    .dimension
+    .unwrap_or_else(|| default_view_dimension(texture_dimension, depth));
+  let texture_layers = if texture_dimension == wgpu::TextureDimension::D2 {
+    depth
+  } else {
+    1
+  };
+  let base_mip = parts.base_mip_level;
+  let mip_count = parts
+    .mip_level_count
+    .unwrap_or(mip_level_count.saturating_sub(base_mip));
+  let base_layer = parts.base_array_layer;
+  let layer_count = parts.array_layer_count.unwrap_or(match dimension {
+    wgpu::TextureViewDimension::D2Array
+    | wgpu::TextureViewDimension::CubeArray => {
+      texture_layers.saturating_sub(base_layer)
+    }
+    wgpu::TextureViewDimension::Cube => 6,
+    _ => 1,
+  });
+  let compatible = view_dimension_compatible(texture_dimension, dimension);
+  let mip_end = base_mip.checked_add(mip_count);
+  let layer_end = base_layer.checked_add(layer_count);
+  let range_ok = mip_count > 0
+    && layer_count > 0
+    && base_mip < mip_level_count
+    && mip_end.is_some_and(|end| end <= mip_level_count)
+    && base_layer < texture_layers
+    && layer_end.is_some_and(|end| end <= texture_layers);
+  let shape_ok = match dimension {
+    wgpu::TextureViewDimension::D1
+    | wgpu::TextureViewDimension::D2
+    | wgpu::TextureViewDimension::D3 => layer_count == 1,
+    wgpu::TextureViewDimension::D2Array => true,
+    wgpu::TextureViewDimension::Cube => layer_count == 6 && width == height,
+    wgpu::TextureViewDimension::CubeArray => {
+      layer_count.is_multiple_of(6) && width == height
+    }
+  };
+  ResolvedView {
+    dimension,
+    base_mip,
+    mip_count,
+    base_layer,
+    layer_count,
+    invalid: !compatible || !range_ok || !shape_ok,
+  }
+}
+
+fn default_view_dimension(
+  dimension: wgpu::TextureDimension,
+  depth: u32,
+) -> wgpu::TextureViewDimension {
+  match dimension {
+    wgpu::TextureDimension::D1 => wgpu::TextureViewDimension::D1,
+    wgpu::TextureDimension::D2 => {
+      if depth > 1 {
+        wgpu::TextureViewDimension::D2Array
+      } else {
+        wgpu::TextureViewDimension::D2
+      }
+    }
+    wgpu::TextureDimension::D3 => wgpu::TextureViewDimension::D3,
+  }
+}
+
+fn view_dimension_compatible(
+  texture: wgpu::TextureDimension,
+  view: wgpu::TextureViewDimension,
+) -> bool {
+  match texture {
+    wgpu::TextureDimension::D1 => view == wgpu::TextureViewDimension::D1,
+    wgpu::TextureDimension::D2 => {
+      matches!(
+        view,
+        wgpu::TextureViewDimension::D2
+          | wgpu::TextureViewDimension::D2Array
+          | wgpu::TextureViewDimension::Cube
+          | wgpu::TextureViewDimension::CubeArray
+      )
+    }
+    wgpu::TextureDimension::D3 => view == wgpu::TextureViewDimension::D3,
+  }
+}
+
+/// The stand-in is 2D, one mip, and one layer.
+fn view_fits_stand_in(view: &ResolvedView) -> bool {
+  !view.invalid
+    && matches!(
+      view.dimension,
+      wgpu::TextureViewDimension::D2 | wgpu::TextureViewDimension::D2Array
+    )
+    && view.base_mip == 0
+    && view.mip_count == 1
+    && view.base_layer == 0
+    && view.layer_count == 1
+}
+
 fn view_format_list(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
@@ -2514,6 +2656,19 @@ fn texture_invalid(
     || extent.depth_or_array_layers == 0
     || mip_level_count == 0
     || !features.contains(format.required_features())
+  {
+    return Some(invalid);
+  }
+  if sample_count != 1 && sample_count != 4 {
+    return Some(invalid);
+  }
+  if dimension != wgpu::TextureDimension::D2
+    && usage.contains(wgpu::TextureUsages::TRANSIENT_ATTACHMENT)
+  {
+    return Some(invalid);
+  }
+  if dimension == wgpu::TextureDimension::D1
+    && usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
   {
     return Some(invalid);
   }

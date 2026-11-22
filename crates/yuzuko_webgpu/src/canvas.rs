@@ -320,6 +320,9 @@ impl GpuCanvasContext {
       None,
       1,
       usage.bits(),
+      wgpu::TextureDimension::D2,
+      1,
+      1,
     );
     let texture_slot = gpu_texture.texture_slot();
     let destroyed = gpu_texture.destroyed_flag();

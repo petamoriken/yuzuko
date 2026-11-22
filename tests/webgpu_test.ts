@@ -2059,6 +2059,75 @@ Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
     usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TRANSIENT_ATTACHMENT,
   });
   assert((await device.popErrorScope()) instanceof GPUValidationError, "bad transient");
+  device.pushErrorScope("validation");
+  const counted = device.createTexture({
+    size: [4, 4],
+    format: "rgba8unorm",
+    sampleCount: 2,
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  assert(counted.sampleCount === 2, "requested samples");
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "sample count");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 1, 1],
+    dimension: "1d",
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  assert(await device.popErrorScope() === null, "1d texture");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 1, 1],
+    dimension: "1d",
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "1d render");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 4, 4],
+    dimension: "3d",
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  assert(await device.popErrorScope() === null, "3d render");
+  device.pushErrorScope("validation");
+  device.createTexture({
+    size: [4, 4, 1],
+    dimension: "3d",
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TRANSIENT_ATTACHMENT,
+  });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "3d transient");
+  const cube = device.createTexture({
+    size: [4, 4, 6],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  device.pushErrorScope("validation");
+  cube.createView({ dimension: "cube" });
+  assert(await device.popErrorScope() === null, "cube view");
+  const wide = device.createTexture({
+    size: [8, 4, 6],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  device.pushErrorScope("validation");
+  wide.createView({ dimension: "cube" });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "nonsquare cube");
+  const mips = device.createTexture({
+    size: [8, 8],
+    mipLevelCount: 3,
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  device.pushErrorScope("validation");
+  mips.createView({ baseMipLevel: 1, mipLevelCount: 2 });
+  assert(await device.popErrorScope() === null, "mip range");
+  device.pushErrorScope("validation");
+  mips.createView({ baseMipLevel: 2, mipLevelCount: 2 });
+  assert((await device.popErrorScope()) instanceof GPUValidationError, "mip overflow");
 
   const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
   device.createShaderModule({
