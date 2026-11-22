@@ -1162,7 +1162,8 @@ pub fn create_buffer(
   } else {
     wgpu::BufferUsages::from_bits_truncate(raw_usage)
   };
-  let over_max = size > handle.device.limits().max_buffer_size;
+  let over_max = size as f64 > crate::state::max_buffer_size(device_id)?
+    || size > handle.device.limits().max_buffer_size;
   let valid = raw_usage != 0
     && !unknown
     && !buffer_usage_mismatch(raw_usage)

@@ -568,13 +568,31 @@ impl GpuCommandEncoder {
 
   fn copy_texture_to_texture(
     &self,
+    scope: &mut v8::PinScope,
     source: v8::Local<v8::Value>,
     destination: v8::Local<v8::Value>,
     copy_size: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let _ = (source, destination, copy_size);
-    with_idle_encoder(self.id, |_| {
-      Err(js::unsupported("GPUCommandEncoder.copyTextureToTexture"))
+    let source = copy_texture(scope, source, "source")?;
+    let destination = copy_texture(scope, destination, "destination")?;
+    let extent = copy_extent(scope, copy_size)?;
+    with_idle_encoder(self.id, |encoder| {
+      encoder.copy_texture_to_texture(
+        wgpu::TexelCopyTextureInfo {
+          texture: &source.texture,
+          mip_level: source.mip_level,
+          origin: source.origin,
+          aspect: source.aspect,
+        },
+        wgpu::TexelCopyTextureInfo {
+          texture: &destination.texture,
+          mip_level: destination.mip_level,
+          origin: destination.origin,
+          aspect: destination.aspect,
+        },
+        extent,
+      );
+      Ok(())
     })
   }
 
@@ -2600,6 +2618,45 @@ fn color_channel(
     return Ok(default);
   };
   js::finite_number(scope, value)
+}
+
+struct CopyTexture {
+  texture: wgpu::Texture,
+  mip_level: u32,
+  origin: wgpu::Origin3d,
+  aspect: wgpu::TextureAspect,
+}
+
+fn copy_texture(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  role: &str,
+) -> Result<CopyTexture, OpError> {
+  let copy = js::object(scope, value).ok_or_else(|| {
+    OpError::type_(format!("copyTextureToTexture {role} must be an object"))
+  })?;
+  let texture = js::get(scope, copy, "texture")?
+    .and_then(|value| resource::host_texture(scope, value))
+    .ok_or_else(|| {
+      OpError::type_(format!("The copy {role} is not a texture"))
+    })?;
+  let texture = texture.texture()?;
+  let mip_level = js::field_u32(scope, copy, "mipLevel")?.unwrap_or(0);
+  let origin = copy_origin(scope, copy)?;
+  let aspect = match js::get(scope, copy, "aspect")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None => wgpu::TextureAspect::All,
+    Some(name) => resource::texture_aspect(name)?,
+  };
+  Ok(CopyTexture {
+    texture,
+    mip_level,
+    origin,
+    aspect,
+  })
 }
 
 fn copy_origin(

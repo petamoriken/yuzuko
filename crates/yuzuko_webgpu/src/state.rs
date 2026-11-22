@@ -119,6 +119,10 @@ pub struct LiveDevice {
   pub limits_object: Option<v8::Global<v8::Object>>,
   pub adapter_info: Option<v8::Global<v8::Object>>,
   pub owner: Option<String>,
+  /// Core defaults, raised by own `requiredLimits` properties.
+  pub reported_limits: Vec<f64>,
+  /// `maxBufferSize` from `reported_limits`.
+  pub max_buffer_size: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -145,6 +149,26 @@ pub fn insert(id: u64, live: LiveDevice) {
   DEVICES.with(|devices| {
     devices.borrow_mut().insert(id, live);
   });
+}
+
+pub fn reported_limit(id: u64, index: usize) -> Result<f64, OpError> {
+  DEVICES.with(|devices| {
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
+    live
+      .reported_limits
+      .get(index)
+      .copied()
+      .ok_or_else(|| OpError::type_("The limit is unknown"))
+  })
+}
+
+pub fn max_buffer_size(id: u64) -> Result<f64, OpError> {
+  DEVICES.with(|devices| {
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
+    Ok(live.max_buffer_size)
+  })
 }
 
 pub fn handle(id: u64) -> Result<Handle, OpError> {

@@ -1776,10 +1776,45 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   assert(Object.keys(adapter.limits).length === 0, "limit keys");
   assert(adapter.limits.maxTextureDimension2D > 0, "limit value");
   assert(
-    adapter.limits.maxBindGroupsPlusVertexBuffers
-      === adapter.limits.maxBindGroups + adapter.limits.maxVertexBuffers,
-    "bind groups plus vertex buffers",
+    adapter.features.has("core-features-and-limits"),
+    "core feature",
   );
+  assert(
+    device.features.has("core-features-and-limits"),
+    "device core feature",
+  );
+  assert(
+    adapter.limits.maxBindGroupsPlusVertexBuffers
+      === device.limits.maxBindGroupsPlusVertexBuffers,
+    "adapter plus",
+  );
+  assert(
+    device.limits.maxBindGroupsPlusVertexBuffers === 24,
+    "device plus",
+  );
+  assert(Object.keys(device.limits).length === 0, "device limit keys");
+  const inherited = await adapter.requestDevice({
+    requiredLimits: adapter.limits as unknown as Record<string, number>,
+  });
+  assert(
+    inherited.limits.maxBindGroupsPlusVertexBuffers
+      === device.limits.maxBindGroupsPlusVertexBuffers,
+    "inherited plus",
+  );
+  assert(
+    inherited.limits.maxTextureDimension2D
+      === device.limits.maxTextureDimension2D,
+    "inherited dimension",
+  );
+  const worse = await adapter.requestDevice({
+    requiredLimits: { maxBindGroups: 1 },
+  });
+  assert(
+    worse.limits.maxBindGroups === device.limits.maxBindGroups,
+    "worse bind groups",
+  );
+  inherited.destroy();
+  worse.destroy();
   assert(
     Object.getOwnPropertyDescriptor(
       GPUSupportedLimits.prototype,
@@ -1942,9 +1977,23 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
       {},
       {},
       [1, 1],
-    )) === "NotSupportedError",
+    )) === "TypeError",
     "copyTextureToTexture",
   );
+  const copiedAgain = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  const again = device.createCommandEncoder();
+  again.copyTextureToTexture(
+    { texture: copied },
+    { texture: copiedAgain },
+    [1, 1],
+  );
+  device.queue.submit([again.finish()]);
+  const againPixel = await readPixel(device, copiedAgain, 0, 0);
+  assert(againPixel.join() === "9,8,7,6", `texture copy ${againPixel}`);
   assert(
     throwName(() => {
       device.queue.writeTexture(

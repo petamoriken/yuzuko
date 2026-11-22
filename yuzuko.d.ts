@@ -12549,14 +12549,19 @@ interface GPUAdapterInfo {
  */
 interface GPUAdapter {
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/features) */
+  /**
+   * Includes `core-features-and-limits` when the shared device meets the
+   * WebGPU core defaults.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/features)
+   */
   readonly features: GPUSupportedFeatures;
 
   /**
-   * The shared device's wgpu defaults, or the adapter's own limits when a
-   * downlevel adapter cannot meet those defaults. `maxBindGroupsPlusVertexBuffers`
-   * can be below the WebGPU minimum. Vertex and fragment storage limits equal
-   * the per-shader-stage limits.
+   * The WebGPU core defaults when the shared device meets them, or that
+   * device's own limits when it does not. `maxBindGroupsPlusVertexBuffers`
+   * is the wgpu limit. Vertex and fragment storage limits equal the
+   * per-shader-stage limits.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUAdapter/limits)
    */
@@ -12580,7 +12585,8 @@ interface GPUAdapter {
    * communicating with the GPU.
    *
    * Returns a JavaScript device on the shared wgpu device. A feature or limit the
-   * shared device does not have rejects. `destroy` loses that JavaScript device
+   * shared device does not have rejects. Properties inherited from
+   * `GPUSupportedLimits` are not requests. `destroy` loses that JavaScript device
    * only.
    *
    * @throws {@link TypeError} When a required feature is not enabled on the
@@ -12634,10 +12640,24 @@ interface GPUDevice extends EventTarget {
    */
   readonly lost: Promise<GPUDeviceLostInfo>;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/features) */
+  /**
+   * Includes `core-features-and-limits` when the shared device meets the
+   * WebGPU core defaults.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/features)
+   */
   readonly features: GPUSupportedFeatures;
 
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/limits) */
+  /**
+   * The WebGPU core defaults when the shared device supports them, and a
+   * worse shared-device limit when it does not. An own property of
+   * `requiredLimits` raises a limit when that value is better than the
+   * default and supported. Properties inherited from `GPUSupportedLimits`
+   * are not requests. A requested limit that is worse than the default does
+   * not lower it.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/limits)
+   */
   readonly limits: GPUSupportedLimits;
 
   /**
@@ -13690,9 +13710,13 @@ interface GPUCommandEncoder {
   ): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
-   * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
-   * or a pass is already open.
+   * Copies a 3D extent from one texture to another. `mipLevel`, `origin`,
+   * and `aspect` are applied. An invalid copy is a validation error.
+   *
+   * @throws {@link DOMException} `InvalidStateError` when the encoder is
+   * finished, a pass is open, or a texture is destroyed.
+   * @throws {@link TypeError} When the source or the destination is not a
+   * texture.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCommandEncoder/copyTextureToTexture)
    */

@@ -118,8 +118,10 @@ impl GpuAdapter {
     }
     // The process has one device. `requestDevice` can enable only the
     // features that device already has, so the adapter lists that set.
-    let features = gpu_parts()?.1.features();
-    let object = features_object(scope, features);
+    let device = gpu_parts()?.1;
+    let features = device.features();
+    let object =
+      features_object(scope, features, meets_core_limits(&device.limits()));
     Ok(remember_js(scope, &self.features, object))
   }
 
@@ -129,7 +131,8 @@ impl GpuAdapter {
       return Ok(cached);
     }
     let _ = gpu_parts()?;
-    let object = limits_object(scope);
+    // Id 0 is the adapter. JavaScript device ids start at 1.
+    let object = limits_object(scope, 0)?;
     Ok(remember_js(scope, &self.limits, object))
   }
 
@@ -228,8 +231,13 @@ impl GpuDevice {
   #[getter]
   fn features(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     device_member(scope, self.id, state::CachedObject::Features, |scope| {
-      let features = self.require()?.device.features();
-      Ok(features_object(scope, features))
+      let device = self.require()?.device;
+      let features = device.features();
+      Ok(features_object(
+        scope,
+        features,
+        meets_core_limits(&device.limits()),
+      ))
     })
   }
 
@@ -237,7 +245,7 @@ impl GpuDevice {
   fn limits(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     device_member(scope, self.id, state::CachedObject::Limits, |scope| {
       let _ = self.require()?;
-      Ok(limits_object(scope))
+      limits_object(scope, self.id)
     })
   }
 
@@ -943,14 +951,18 @@ fn open_device(
     })?;
   let mut device_label = None;
   let mut queue_label = None;
-  if let Some(object) = dictionary(scope, descriptor) {
-    reject_features(scope, object, features)?;
-    check_required_limits(scope, object, &limits)?;
+  let reported_limits = if let Some(object) = dictionary(scope, descriptor) {
+    reject_features(scope, object, features, meets_core_limits(&limits))?;
+    let reported = resolve_device_limits(scope, Some(object), &limits)?;
     device_label = js::get(scope, object, "label")?
       .map(|value| js::string(scope, value))
       .transpose()?;
     queue_label = queue_label_of(scope, object)?;
-  }
+    reported
+  } else {
+    resolve_device_limits(scope, None, &limits)?
+  };
+  let max_buffer_size = reported_max_buffer_size(&reported_limits, &limits);
   let id = state::alloc_id();
   let lost = Arc::new(AtomicBool::new(false));
   let resolver = v8::PromiseResolver::new(scope).unwrap();
@@ -978,6 +990,8 @@ fn open_device(
       limits_object: None,
       adapter_info: None,
       owner: yuzuko_core::caller_module_url(scope),
+      reported_limits,
+      max_buffer_size,
     },
   );
   Ok(GpuDevice {
@@ -1432,6 +1446,7 @@ fn reject_features(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
   enabled: wgpu::Features,
+  core_limits: bool,
 ) -> Result<(), OpError> {
   let Some(value) = js::get(scope, descriptor, "requiredFeatures")? else {
     return Ok(());
@@ -1440,6 +1455,16 @@ fn reject_features(
     return Ok(());
   }
   for name in feature_sequence(scope, value)? {
+    // wgpu has no bit for this name. It is present when the shared device
+    // meets the WebGPU core defaults.
+    if name == "core-features-and-limits" {
+      if !core_limits {
+        return Err(OpError::type_(
+          "Required features are not enabled on the shared device",
+        ));
+      }
+      continue;
+    }
     let feature = name
       .parse::<wgpu::Features>()
       .map_err(|_| OpError::type_("The feature name is invalid"))?;
@@ -1457,40 +1482,134 @@ fn reject_features(
   Ok(())
 }
 
-fn check_required_limits(
+/// WebGPU core defaults, then each own `requiredLimits` property that the
+/// shared device can satisfy. A property inherited from `GPUSupportedLimits`
+/// is not a request. A value that does not improve on the default is ignored.
+fn resolve_device_limits(
   scope: &mut v8::PinScope,
-  descriptor: v8::Local<v8::Object>,
+  descriptor: Option<v8::Local<v8::Object>>,
   limits: &wgpu::Limits,
-) -> Result<(), OpError> {
+) -> Result<Vec<f64>, OpError> {
+  let table = limit_table(limits);
+  let mut values = Vec::with_capacity(table.len());
+  for (name, advertised, lower_is_better) in &table {
+    let ceiling = *advertised;
+    let default = core_default(name).unwrap_or(ceiling);
+    let start = if *lower_is_better {
+      default.max(ceiling)
+    } else {
+      default.min(ceiling)
+    };
+    values.push(start);
+  }
+  let Some(descriptor) = descriptor else {
+    return Ok(values);
+  };
   let Some(value) = js::get(scope, descriptor, "requiredLimits")? else {
-    return Ok(());
+    return Ok(values);
   };
   let Some(requested) = js::object(scope, value) else {
     return Err(OpError::type_("requiredLimits must be an object"));
   };
-  for (name, actual, lower_is_better) in limit_table(limits) {
+  for (index, (name, advertised, lower_is_better)) in table.iter().enumerate() {
+    let Some(key) = v8::String::new(scope, name) else {
+      continue;
+    };
+    match requested.has_own_property(scope, key.into()) {
+      Some(true) => {}
+      Some(false) => continue,
+      None => return Err(OpError::type_("requiredLimits is not readable")),
+    }
     let Some(value) = js::get(scope, requested, name)? else {
       continue;
     };
     let number = js::finite_number(scope, value)?;
-    let exceeds = if lower_is_better {
-      number < actual
+    let ceiling = *advertised;
+    let exceeds = if *lower_is_better {
+      number < ceiling
     } else {
-      number > actual
+      number > ceiling
     };
     if exceeds {
       return Err(OpError::type_(format!(
         "The required limit {name} is not supported"
       )));
     }
+    let improves = if *lower_is_better {
+      number < values[index]
+    } else {
+      number > values[index]
+    };
+    if improves {
+      values[index] = number;
+    }
   }
-  Ok(())
+  Ok(values)
+}
+
+fn reported_max_buffer_size(values: &[f64], limits: &wgpu::Limits) -> f64 {
+  limit_table(limits)
+    .iter()
+    .position(|(name, _, _)| *name == "maxBufferSize")
+    .and_then(|index| values.get(index).copied())
+    .unwrap_or(268_435_456.0)
+}
+
+fn meets_core_limits(limits: &wgpu::Limits) -> bool {
+  limit_table(limits)
+    .iter()
+    .all(|(name, advertised, lower_is_better)| {
+      let Some(default) = core_default(name) else {
+        return true;
+      };
+      if *lower_is_better {
+        *advertised <= default
+      } else {
+        *advertised >= default
+      }
+    })
+}
+
+fn core_default(name: &str) -> Option<f64> {
+  Some(match name {
+    "maxTextureDimension1D" | "maxTextureDimension2D" => 8192.0,
+    "maxTextureDimension3D" => 2048.0,
+    "maxTextureArrayLayers" => 256.0,
+    "maxBindGroups" => 4.0,
+    "maxBindGroupsPlusVertexBuffers" => 24.0,
+    "maxBindingsPerBindGroup" => 1000.0,
+    "maxDynamicUniformBuffersPerPipelineLayout" => 8.0,
+    "maxDynamicStorageBuffersPerPipelineLayout" => 4.0,
+    "maxSampledTexturesPerShaderStage" | "maxSamplersPerShaderStage" => 16.0,
+    "maxStorageBuffersPerShaderStage"
+    | "maxStorageBuffersInVertexStage"
+    | "maxStorageBuffersInFragmentStage" => 8.0,
+    "maxStorageTexturesPerShaderStage"
+    | "maxStorageTexturesInVertexStage"
+    | "maxStorageTexturesInFragmentStage" => 4.0,
+    "maxUniformBuffersPerShaderStage" => 12.0,
+    "maxUniformBufferBindingSize" => 65536.0,
+    "maxStorageBufferBindingSize" => 134_217_728.0,
+    "minUniformBufferOffsetAlignment" | "minStorageBufferOffsetAlignment" => {
+      256.0
+    }
+    "maxVertexBuffers" => 8.0,
+    "maxBufferSize" => 268_435_456.0,
+    "maxVertexAttributes" | "maxInterStageShaderVariables" => 16.0,
+    "maxVertexBufferArrayStride" => 2048.0,
+    "maxColorAttachments" => 8.0,
+    "maxColorAttachmentBytesPerSample" => 32.0,
+    "maxComputeWorkgroupStorageSize" => 16384.0,
+    "maxComputeInvocationsPerWorkgroup"
+    | "maxComputeWorkgroupSizeX"
+    | "maxComputeWorkgroupSizeY" => 256.0,
+    "maxComputeWorkgroupSizeZ" => 64.0,
+    "maxComputeWorkgroupsPerDimension" => 65535.0,
+    _ => return None,
+  })
 }
 
 fn limit_table(limits: &wgpu::Limits) -> Vec<(&'static str, f64, bool)> {
-  let plus = limits
-    .max_bind_groups
-    .saturating_add(limits.max_vertex_buffers);
   vec![
     (
       "maxTextureDimension1D",
@@ -1513,7 +1632,11 @@ fn limit_table(limits: &wgpu::Limits) -> Vec<(&'static str, f64, bool)> {
       false,
     ),
     ("maxBindGroups", f64::from(limits.max_bind_groups), false),
-    ("maxBindGroupsPlusVertexBuffers", f64::from(plus), false),
+    (
+      "maxBindGroupsPlusVertexBuffers",
+      f64::from(limits.max_bind_groups_plus_vertex_buffers),
+      false,
+    ),
     (
       "maxBindingsPerBindGroup",
       f64::from(limits.max_bindings_per_bind_group),
@@ -1660,12 +1783,43 @@ fn limit_table(limits: &wgpu::Limits) -> Vec<(&'static str, f64, bool)> {
 
 fn limits_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-) -> v8::Local<'s, v8::Object> {
-  let object = v8::Object::new(scope);
+  device_id: u64,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  let template = isolate_object_template(scope);
+  if !template.set_internal_field_count(1) {
+    return Err(OpError::type_("The GPU limits are unavailable"));
+  }
+  let Some(object) = template.new_instance(scope) else {
+    return Err(OpError::type_("The GPU limits are unavailable"));
+  };
+  let bits = usize::try_from(device_id)
+    .map_err(|_| OpError::type_("The GPU limits are unavailable"))?;
+  let external = isolate_external(scope, bits as *mut std::ffi::c_void);
+  if !object.set_internal_field(0, external.into()) {
+    return Err(OpError::type_("The GPU limits are unavailable"));
+  }
   if let Some(prototype) = limits_prototype(scope) {
     let _ = object.set_prototype(scope, prototype.into());
   }
-  object
+  Ok(object)
+}
+
+/// `ObjectTemplate::new` and `External::new` take a scope whose context
+/// parameter is `()`. That parameter is `PhantomData`. A context scope has
+/// the same layout, and both constructors only read the isolate pointer.
+fn isolate_object_template<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::ObjectTemplate> {
+  let scope: &v8::PinScope<'_, '_, ()> = unsafe { std::mem::transmute(scope) };
+  v8::ObjectTemplate::new(scope)
+}
+
+fn isolate_external<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: *mut std::ffi::c_void,
+) -> v8::Local<'s, v8::External> {
+  let scope: &v8::PinScope<'_, '_, ()> = unsafe { std::mem::transmute(scope) };
+  v8::External::new(scope, value)
 }
 
 fn limits_prototype<'s>(
@@ -1684,6 +1838,7 @@ fn limits_prototype<'s>(
 fn features_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   features: wgpu::Features,
+  core_limits: bool,
 ) -> v8::Local<'s, v8::Object> {
   let set = v8::Set::new(scope);
   let web = features & wgpu::Features::all_webgpu_mask();
@@ -1696,24 +1851,33 @@ fn features_object<'s>(
     };
     set.add(scope, text.into());
   }
+  if core_limits
+    && let Some(text) = v8::String::new(scope, "core-features-and-limits")
+  {
+    set.add(scope, text.into());
+  }
   set.into()
 }
 
-/// Limit attributes are prototype getters. Their values stay the shared
-/// device's limits. `maxBindGroupsPlusVertexBuffers` is the sum of the
-/// bind-group and vertex-buffer limits.
+/// Limit attributes are enumerable getters on the prototype. Each limits
+/// object stores a device id in an internal field. Id 0 reads the shared
+/// device. Any other id reads the limits stored for that device.
 fn install_limit_getters(scope: &mut v8::PinScope) {
   let Some(proto) = limits_prototype(scope) else {
     return;
   };
-  for (name, _, _) in limit_table(&wgpu::Limits::default()) {
+  for (index, (name, _, _)) in limit_table(&wgpu::Limits::default())
+    .into_iter()
+    .enumerate()
+  {
     let Some(key) = v8::String::new(scope, name) else {
       continue;
     };
+    let index = v8::Integer::new_from_unsigned(scope, index as u32);
     let Some(getter) = v8::Function::builder(limit_getter)
       .length(0)
       .constructor_behavior(v8::ConstructorBehavior::Throw)
-      .data(key.into())
+      .data(index.into())
       .build(scope)
     else {
       continue;
@@ -1736,20 +1900,36 @@ fn limit_getter(
   args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  let name = args.data().to_rust_string_lossy(scope);
-  match limit_value(&name) {
+  let Some(index) = args.data().uint32_value(scope) else {
+    OpException::throw(OpError::type_("The limit is unknown"), scope);
+    return;
+  };
+  let object = args.this();
+  let Some(field) = object.get_internal_field(scope, 0) else {
+    OpException::throw(OpError::type_("Illegal invocation"), scope);
+    return;
+  };
+  let Ok(external) = v8::Local::<v8::External>::try_from(field) else {
+    OpException::throw(OpError::type_("Illegal invocation"), scope);
+    return;
+  };
+  let id = external.value() as usize as u64;
+  let value = if id == 0 {
+    adapter_limit(index as usize)
+  } else {
+    state::reported_limit(id, index as usize)
+  };
+  match value {
     Ok(value) => ret.set(v8::Number::new(scope, value).into()),
     Err(error) => OpException::throw(error, scope),
   }
 }
 
-fn limit_value(name: &str) -> Result<f64, OpError> {
+fn adapter_limit(index: usize) -> Result<f64, OpError> {
   let (_, device, _) = gpu_parts()?;
-  let limits = device.limits();
-  limit_table(&limits)
-    .into_iter()
-    .find(|(limit, _, _)| *limit == name)
-    .map(|(_, value, _)| value)
+  limit_table(&device.limits())
+    .get(index)
+    .map(|(_, value, _)| *value)
     .ok_or_else(|| OpError::type_("The limit is unknown"))
 }
 
