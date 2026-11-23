@@ -3,8 +3,11 @@
 //! The main realm and a dedicated worker read the same values. An operating
 //! system change updates that pair and queues `languagechange`, `online`, or
 //! `offline` on every live realm. The event runs on the realm thread.
+//! `poll` samples at most once a second. Realm waits are capped to the time
+//! remaining in that interval, so a parked loop still notices a change.
 //! `yuzuko test` can replace the reported values from the object passed to a
-//! test function. That function is not a property of `Yuzuko`.
+//! test function. That function is not a property of `Yuzuko`. Staging a
+//! value writes the override and does not publish; the next sample does.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, Weak};
@@ -14,6 +17,9 @@ use crate::op::OpException;
 use crate::platform::TaskQueue;
 
 const SAMPLE: Duration = Duration::from_secs(1);
+/// Win32 `ERROR_NO_DATA`. `GetAdaptersAddresses` returns it when no adapter
+/// matches. That host has none, so `navigator.onLine` is false.
+const ERROR_NO_DATA: u32 = 232;
 const STATE: &str = "The navigator state must be an object.";
 const LANGUAGES: &str = "The language list must be an array or null.";
 const TAG: &str = "A language tag must be a string.";
@@ -133,16 +139,45 @@ pub(crate) fn clear() {
 
 /// Attaches the test-only override to the object passed into a test function.
 ///
-/// `Yuzuko` does not gain this function. `yuzuko run` and `yuzuko repl` never
-/// build that object, and a dedicated worker does not either.
+/// `Yuzuko` does not gain these functions. `yuzuko run` and `yuzuko repl`
+/// never build that object, and a dedicated worker does not either.
+/// `setHostNavigator` publishes immediately. `stageHostNavigator` only writes
+/// the override, so the next sample is what fires the event.
 pub(crate) fn bind_test_context(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) {
-  let function =
-    v8::Function::new(scope, set_host_navigator).expect("setHostNavigator");
-  let name = v8::String::new(scope, "setHostNavigator").unwrap();
-  object.set(scope, name.into(), function.into());
+  define_test_fn(scope, object, "setHostNavigator", set_host_navigator);
+  define_test_fn(scope, object, "stageHostNavigator", stage_host_navigator);
+}
+
+fn define_test_fn(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+) {
+  let function = v8::Function::new(scope, callback).expect(name);
+  let key = v8::String::new(scope, name).unwrap();
+  object.set(scope, key.into(), function.into());
+}
+
+/// How long a parked realm may sleep before `poll` has to sample again.
+pub(crate) fn next_sample_wait() -> Duration {
+  let remaining = {
+    let sampled = lock(&SAMPLED);
+    match *sampled {
+      None => Duration::ZERO,
+      Some(then) => {
+        SAMPLE.saturating_sub(Instant::now().saturating_duration_since(then))
+      }
+    }
+  };
+  if remaining.is_zero() {
+    Duration::ZERO
+  } else {
+    remaining.max(Duration::from_millis(1))
+  }
 }
 
 pub fn set_notice_handler(handler: NoticeHandler) {
@@ -189,15 +224,27 @@ fn set_host_navigator(
   args: v8::FunctionCallbackArguments,
   mut _ret: v8::ReturnValue,
 ) {
-  if let Err(error) = apply_script(scope, &args) {
-    error.throw(scope);
+  match read_override(scope, &args) {
+    Ok((languages, online)) => apply(languages, online),
+    Err(error) => error.throw(scope),
   }
 }
 
-fn apply_script(
+fn stage_host_navigator(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut _ret: v8::ReturnValue,
+) {
+  match read_override(scope, &args) {
+    Ok((languages, online)) => stage(languages, online),
+    Err(error) => error.throw(scope),
+  }
+}
+
+fn read_override(
   scope: &mut v8::PinScope,
   args: &v8::FunctionCallbackArguments,
-) -> Result<(), crate::op::OpError> {
+) -> Result<(Languages, Online), crate::op::OpError> {
   if args.length() < 1 {
     return Err(crate::op::OpError::type_("Not enough arguments"));
   }
@@ -221,8 +268,7 @@ fn apply_script(
     }
     Some(_) => return Err(crate::op::OpError::type_(ONLINE)),
   };
-  apply(languages, online);
-  Ok(())
+  Ok((languages, online))
 }
 
 fn language_list(
@@ -262,16 +308,7 @@ fn language_list(
 fn apply(languages: Languages, online: Online) {
   let (languages, online) = {
     let mut host = lock(&HOST);
-    match languages {
-      Languages::Leave => {}
-      Languages::Clear => host.languages = None,
-      Languages::Set(tags) => host.languages = Some(tags),
-    }
-    match online {
-      Online::Leave => {}
-      Online::Clear => host.online = None,
-      Online::Set(bit) => host.online = Some(bit),
-    }
+    write_override(&mut host, languages, online);
     let languages = host.languages.clone();
     let online = host.online;
     (languages, online)
@@ -279,6 +316,37 @@ fn apply(languages: Languages, online: Online) {
   let languages = languages.unwrap_or_else(crate::locale::os_languages);
   let online = online.unwrap_or_else(platform_online);
   commit(languages, online);
+}
+
+/// Writes the test override and does not publish or poke.
+fn stage(languages: Languages, online: Online) {
+  let mut host = lock(&HOST);
+  write_override(&mut host, languages, online);
+}
+
+fn write_override(
+  host: &mut HostOverride,
+  languages: Languages,
+  online: Online,
+) {
+  match languages {
+    Languages::Leave => {}
+    Languages::Clear => host.languages = None,
+    Languages::Set(tags) => host.languages = Some(tags),
+  }
+  match online {
+    Online::Leave => {}
+    Online::Clear => host.online = None,
+    Online::Set(bit) => host.online = Some(bit),
+  }
+}
+
+/// True when `GetAdaptersAddresses` is reporting an empty adapter list.
+///
+/// `NO_ERROR` on a filled buffer still has to be walked, so it is not empty.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn adapters_absent(status: u32) -> bool {
+  status == ERROR_NO_DATA
 }
 
 fn ensure_baseline() {
@@ -402,7 +470,10 @@ fn unix_online() -> bool {
 
 #[cfg(target_os = "windows")]
 fn windows_online() -> bool {
-  use windows_sys::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
+  use windows_sys::Win32::Foundation::{
+    ERROR_BUFFER_OVERFLOW, ERROR_NO_DATA as WIN_ERROR_NO_DATA,
+  };
+  const _: () = assert!(ERROR_NO_DATA == WIN_ERROR_NO_DATA);
   use windows_sys::Win32::NetworkManagement::IpHelper::{
     GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
     GAA_FLAG_SKIP_FRIENDLY_NAME, GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses,
@@ -424,7 +495,7 @@ fn windows_online() -> bool {
       std::ptr::null_mut(),
       &mut size,
     );
-    if status == 0 {
+    if status == 0 || adapters_absent(status) {
       return false;
     }
     if status != ERROR_BUFFER_OVERFLOW || size == 0 {
@@ -447,9 +518,14 @@ fn windows_online() -> bool {
         buffer.as_mut_ptr().cast(),
         &mut size,
       );
+      if adapters_absent(status) {
+        return false;
+      }
       if status != 0 {
         return true;
       }
+    } else if adapters_absent(status) {
+      return false;
     } else if status != 0 {
       return true;
     }
@@ -465,5 +541,20 @@ fn windows_online() -> bool {
       cursor = adapter.Next;
     }
     false
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::adapters_absent;
+
+  #[test]
+  fn no_adapter_data_is_offline() {
+    // 232 is Win32 ERROR_NO_DATA. 111 is ERROR_BUFFER_OVERFLOW. 0 is NO_ERROR
+    // on a filled buffer, which still has to be walked.
+    assert!(adapters_absent(232));
+    assert!(!adapters_absent(111));
+    assert!(!adapters_absent(0));
+    assert!(!adapters_absent(87));
   }
 }

@@ -7158,7 +7158,9 @@ declare var PerformanceObserver: {
  * `appName` is `"Netscape"`, `appVersion` is `"5.0"`, and `product` is
  * `"Gecko"`. `onLine` follows host connectivity. A worker navigator has the
  * same values. `languagechange` fires when the language list changes.
- * `online` and `offline` fire when `onLine` changes.
+ * `online` and `offline` fire when `onLine` changes. A waiting event loop
+ * samples the host about once a second, so those events do not depend on
+ * another task waking the realm.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -17024,7 +17026,9 @@ declare class WorkerLocation {
 }
 
 /**
- * `navigator` inside a dedicated worker.
+ * `navigator` inside a dedicated worker. `languagechange`, `online`, and
+ * `offline` fire on this realm. A waiting event loop samples the host about
+ * once a second, so those events do not depend on another task waking it.
  *
  * @throws {@link TypeError} Illegal constructor.
  *

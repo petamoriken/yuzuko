@@ -1104,7 +1104,8 @@ pub(crate) fn run_worker_isolate(
           }
           // This loop is still alive for messages. An unreferenced timer does
           // not show up in `has_pending`, so include its deadline here.
-          queue.wait(crate::timers::next_wait());
+          // Cap that sleep so a host language or connectivity change is sampled.
+          queue.wait(cap_sample_wait(crate::timers::next_wait()));
         }
       }
     }
@@ -1551,7 +1552,7 @@ fn loop_interest() -> LoopInterest {
 
 pub(crate) fn loop_wait(timeout: Option<std::time::Duration>) {
   let wait = loop_hooks().wait;
-  wait(timeout);
+  wait(cap_sample_wait(timeout));
 }
 
 fn pump_until(
@@ -1693,7 +1694,8 @@ pub(crate) fn pump(
 ///
 /// Ready timers, host tasks, jobs, and window frames run. The returned delay
 /// is how long the editor may block in the terminal before calling again.
-/// `None` means nothing is scheduled, so the editor waits for a key. A host
+/// The delay is at most the navigator sample interval, so a host language or
+/// connectivity change still fires while the editor waits for a key. A host
 /// job that has already finished returns zero, and the editor's wait is also
 /// interrupted when that job finishes mid-poll.
 pub(crate) fn poll_repl(
@@ -1775,14 +1777,19 @@ fn repl_wait() -> Option<std::time::Duration> {
     || crate::worker::keeps_alive(host::agent_id())
     || crate::idle::idle_has_pending()
     || wasm_in_flight() > 0;
+  let sample = crate::navigator_host::next_sample_wait();
   if live {
     Some(
       hint
         .unwrap_or(std::time::Duration::from_millis(16))
-        .min(std::time::Duration::from_millis(16)),
+        .min(std::time::Duration::from_millis(16))
+        .min(sample),
     )
   } else {
-    hint
+    Some(match hint {
+      Some(hint) => hint.min(sample),
+      None => sample,
+    })
   }
 }
 
@@ -1936,11 +1943,24 @@ fn signals_pending() -> bool {
 }
 
 fn realm_wait(timeout: Option<std::time::Duration>) {
+  let timeout = cap_sample_wait(timeout);
   if host::is_dedicated_worker() {
     host::queue().wait(timeout);
   } else {
+    // `loop_wait` caps again. The second cap is the same bound.
     loop_wait(timeout);
   }
+}
+
+/// A parked realm samples navigator state at least once a second.
+fn cap_sample_wait(
+  timeout: Option<std::time::Duration>,
+) -> Option<std::time::Duration> {
+  let sample = crate::navigator_host::next_sample_wait();
+  Some(match timeout {
+    Some(timeout) => timeout.min(sample),
+    None => sample,
+  })
 }
 
 fn earliest_wait(

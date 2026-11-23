@@ -110,6 +110,17 @@ function setHostNavigator(
   ).setHostNavigator(state);
 }
 
+function stageHostNavigator(
+  t: Yuzuko.TestContext,
+  state: HostNavigatorState,
+): void {
+  (
+    t as Yuzuko.TestContext & {
+      stageHostNavigator(state: HostNavigatorState): void;
+    }
+  ).stageHostNavigator(state);
+}
+
 interface NavigatorNotice {
   kind: string;
   language: string;
@@ -166,12 +177,16 @@ function workerQueue(worker: Worker): {
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  message: string,
+  ms = 2000,
+): Promise<T> {
   let timer: number | undefined;
   const timeout = new Promise<T>((_, reject) => {
     timer = setTimeout(() => {
       reject(new Error(message));
-    }, 2000);
+    }, ms);
   });
   return Promise.race([promise, timeout]).finally(() => {
     clearTimeout(timer);
@@ -202,6 +217,11 @@ Yuzuko.test(
       typeof (Yuzuko as { setHostNavigator?: unknown }).setHostNavigator ===
         "undefined",
       "setter stays off Yuzuko",
+    );
+    assert(
+      typeof (Yuzuko as { stageHostNavigator?: unknown }).stageHostNavigator ===
+        "undefined",
+      "stage stays off Yuzuko",
     );
     const worker = new Worker(
       new URL("./workers/navigator_events.js", import.meta.url).href,
@@ -301,6 +321,68 @@ Yuzuko.test(
         "worker " + secondKind + " bit",
       );
       console.log(secondKind + " onLine " + secondBit);
+    } finally {
+      try {
+        setHostNavigator(t, { languages: null, onLine: null });
+      } finally {
+        worker.terminate();
+      }
+    }
+  },
+);
+
+Yuzuko.test(
+  "a parked realm samples a staged navigator change",
+  async (t) => {
+    assert(
+      typeof (Yuzuko as { stageHostNavigator?: unknown }).stageHostNavigator ===
+        "undefined",
+      "stage stays off Yuzuko",
+    );
+    const worker = new Worker(
+      new URL("./workers/navigator_events.js", import.meta.url).href,
+    );
+    const inbox = workerQueue(worker);
+    try {
+      const ready = await withTimeout(inbox.take(), "worker ready timed out");
+      assert(ready.kind === "ready", "ready");
+      const next =
+        navigator.languages[0] === "zu-ZZ" ? ["en-US"] : ["zu-ZZ", "en-US"];
+      let saw = false;
+      const mark = () => {
+        saw = true;
+      };
+      addEventListener("languagechange", mark);
+      stageHostNavigator(t, { languages: next });
+      assert(navigator.language === next[0], "getter sees the staged list");
+      await turn();
+      assert(saw === false, "staging does not publish");
+      removeEventListener("languagechange", mark);
+
+      const started = performance.now();
+      const pending = once("languagechange");
+      const workerPending = inbox.take();
+      // The safety timer is longer than the sample interval. Without a
+      // capped wait the loop sleeps until this timer, and the event is late.
+      const event = await withTimeout(
+        pending,
+        "sample languagechange timed out",
+        8000,
+      );
+      const elapsed = performance.now() - started;
+      assert(elapsed < 3500, "sampled while parked: " + elapsed);
+      assert(event.isTrusted === true, "trusted");
+      assert(event.bubbles === false, "bubbles");
+      assert(navigator.language === next[0], "language");
+      const fromWorker = await withTimeout(
+        workerPending,
+        "worker sample languagechange timed out",
+        8000,
+      );
+      assert(fromWorker.kind === "languagechange", "worker kind");
+      assert(fromWorker.language === next[0], "worker language");
+      assert(fromWorker.trusted === true, "worker trusted");
+      console.log("languagechange after parked sample " + elapsed);
     } finally {
       try {
         setHostNavigator(t, { languages: null, onLine: null });
