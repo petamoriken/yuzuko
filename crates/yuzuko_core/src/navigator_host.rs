@@ -184,6 +184,37 @@ pub fn set_notice_handler(handler: NoticeHandler) {
   *lock(&HANDLER) = Some(handler);
 }
 
+/// Test-only. Writes the language override and does not publish.
+#[cfg(test)]
+pub(crate) fn stage_languages_for_test(tags: Vec<String>) {
+  stage(Languages::Set(tags), Online::Leave);
+}
+
+/// Installs `handler` until dropped, then restores the previous one.
+#[cfg(test)]
+pub(crate) struct NoticeHandlerGuard(Option<NoticeHandler>);
+
+#[cfg(test)]
+impl NoticeHandlerGuard {
+  pub(crate) fn install(handler: NoticeHandler) -> Self {
+    Self(swap_notice_handler(Some(handler)))
+  }
+}
+
+#[cfg(test)]
+impl Drop for NoticeHandlerGuard {
+  fn drop(&mut self) {
+    swap_notice_handler(self.0.take());
+  }
+}
+
+#[cfg(test)]
+fn swap_notice_handler(
+  handler: Option<NoticeHandler>,
+) -> Option<NoticeHandler> {
+  std::mem::replace(&mut *lock(&HANDLER), handler)
+}
+
 /// Dispatches notices queued for this realm.
 ///
 /// Also samples the operating system, at most once a second, so a change

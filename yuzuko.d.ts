@@ -7159,8 +7159,9 @@ declare var PerformanceObserver: {
  * `"Gecko"`. `onLine` follows host connectivity. A worker navigator has the
  * same values. `languagechange` fires when the language list changes.
  * `online` and `offline` fire when `onLine` changes. A waiting event loop
- * samples the host about once a second, so those events do not depend on
- * another task waking the realm.
+ * samples the host about once a second, including while the REPL is awaiting
+ * a top-level promise, so those events do not depend on another task waking
+ * the realm.
  *
  * @throws {@link TypeError} Illegal constructor.
  *

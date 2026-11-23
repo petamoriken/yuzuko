@@ -143,6 +143,14 @@ fn wait_for_promise<'a>(
         if promise.state() != v8::PromiseState::Pending {
           continue;
         }
+        // Sample before sleeping. The wait is capped to the sample interval,
+        // and that cap becomes zero once the interval is due. Without this
+        // poll the loop would spin and never dispatch `languagechange`,
+        // `online`, or `offline`.
+        if crate::navigator_host::poll(scope) {
+          scope.perform_microtask_checkpoint();
+          continue;
+        }
         // The chunk itself is still awaiting. Sleep only until the next
         // timer or host task that might settle it.
         let wait =
@@ -772,5 +780,71 @@ mod tests {
     assert!(input_is_complete("1.5"));
     assert!(input_is_complete("const labeled: number = 3"));
     assert!(input_is_complete(""));
+  }
+
+  #[test]
+  fn top_level_await_dispatches_a_staged_language_change() {
+    let tag = if crate::primary_language() == "zu-ZZ" {
+      "en-US"
+    } else {
+      "zu-ZZ"
+    };
+    let started = std::time::Instant::now();
+    let saw = crate::runtime::with_runtime(
+      false,
+      false,
+      |_| {},
+      |scope| -> Result<String, crate::runtime::RuntimeError> {
+        let _guard =
+          crate::navigator_host::NoticeHandlerGuard::install(on_language);
+        crate::navigator_host::stage_languages_for_test(vec![tag.to_string()]);
+        super::evaluate(
+          scope,
+          r#"globalThis.__saw = await new Promise((resolve) => {
+  const timer = setTimeout(() => resolve("timeout"), 2000);
+  globalThis.__resolveLanguage = () => {
+    clearTimeout(timer);
+    resolve(navigator.language);
+  };
+});"#,
+          "file:///repl.js",
+        );
+        let global = scope.get_current_context().global(scope);
+        let key = v8::String::new(scope, "__saw").unwrap();
+        let value = global
+          .get(scope, key.into())
+          .expect("staged await did not settle");
+        let text = value
+          .to_string(scope)
+          .expect("settled value")
+          .to_rust_string_lossy(scope);
+        Ok(text)
+      },
+    )
+    .expect("runtime");
+    assert_eq!(saw, tag, "staged change was not dispatched during await");
+    assert!(
+      started.elapsed() < std::time::Duration::from_millis(1500),
+      "await waited for the safety timer: {:?}",
+      started.elapsed()
+    );
+  }
+
+  fn on_language(scope: &mut v8::PinScope, notice: crate::HostNotice) {
+    if notice != crate::HostNotice::Language {
+      return;
+    }
+    v8::tc_scope!(let tc, scope);
+    let global = tc.get_current_context().global(tc);
+    let Some(key) = v8::String::new(tc, "__resolveLanguage") else {
+      return;
+    };
+    let Some(value) = global.get(tc, key.into()) else {
+      return;
+    };
+    let Ok(function) = v8::Local::<v8::Function>::try_from(value) else {
+      return;
+    };
+    let _ = function.call(tc, global.into(), &[]);
   }
 }
