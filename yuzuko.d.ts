@@ -8802,9 +8802,8 @@ declare var MessageEvent: {
 
 /**
  * One end of a message channel. `postMessage` carries the values
- * {@link structuredClone} can carry. `onmessage` starts the port.
- * `onmessageerror` does not. A `WebAssembly.Module` sent to a peer in
- * another agent dispatches `messageerror` there.
+ * {@link structuredClone} can carry, including a `WebAssembly.Module`.
+ * `onmessage` starts the port. `onmessageerror` does not.
  *
  * @throws {@link TypeError} Illegal constructor. Use {@link MessageChannel}.
  *
@@ -16826,9 +16825,9 @@ declare class WebTransportError extends DOMException {
  * `{ type: "module" }` runs an ES module. A source-phase import of JavaScript or
  * TypeScript also starts a module worker. There is no `SharedWorker`. A
  * {@link Yuzuko.Window} cannot be transferred. A WebGPU device stays on the
- * thread that created it. A `WebAssembly.Module` posted to another agent
- * does not throw. That agent dispatches `messageerror` and does not dispatch
- * `error`.
+ * thread that created it. `postMessage` of a `WebAssembly.Module` delivers
+ * a new module compiled from the same bytes. Listing one in the transfer
+ * list throws `DataCloneError`.
  *
  * @throws {@link TypeError} When the URL is omitted, when `type` is invalid,
  * or when `type` is `"classic"` with a source-phase import.

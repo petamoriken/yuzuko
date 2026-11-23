@@ -460,8 +460,12 @@ function workerMessages(worker: Worker): { next(): Promise<Record<string, unknow
   const queue: Record<string, unknown>[] = [];
   let wait: ((value: Record<string, unknown>) => void) | null = null;
   worker.addEventListener("message", (event: Event) => {
-    // @ts-expect-error A message event carries a data record.
-    const data: Record<string, unknown> = event.data;
+    // @ts-expect-error A message event carries the posted value.
+    const raw: unknown = event.data;
+    if (raw === null || typeof raw !== "object" || !("kind" in raw)) return;
+    const kind = raw.kind;
+    if (typeof kind !== "string") return;
+    const data = raw as Record<string, unknown>;
     if (wait) {
       const resolve = wait;
       wait = null;
@@ -487,17 +491,30 @@ function wasmModule(): WebAssembly.Module {
   );
 }
 
-function assertMessageError(event: Record<string, unknown>, label: string) {
-  assert(event["data"] === null, `${label} data`);
-  assert(event["type"] === "messageerror", `${label} type`);
+function assertMessage(event: Record<string, unknown>, label: string) {
+  assert(event["module"] === true, `${label} module`);
+  assert(event["instantiated"] === true, `${label} instance`);
+  assert(event["type"] === "message", `${label} type`);
   assert(event["trusted"] === true, `${label} trust`);
   assert(event["bubbles"] === false && event["cancelable"] === false, `${label} flags`);
   assert(event["messageEvent"] === true, `${label} event`);
 }
 
-Yuzuko.test("messageerror for a module posted across agents", async () => {
+function transferName(run: () => void): string {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof DOMException ? `${error.name}: ${error.message}` : "";
+  }
+  return "";
+}
+
+Yuzuko.test("a module posted across agents is delivered", async () => {
   const module = wasmModule();
-  assert(structuredClone(module) instanceof WebAssembly.Module, "structuredClone");
+  const copied = structuredClone(module);
+  assert(copied instanceof WebAssembly.Module, "structuredClone");
+  assert(copied !== module, "structuredClone identity");
+  assert(new WebAssembly.Instance(copied) instanceof WebAssembly.Instance, "copy instance");
 
   const local = new MessageChannel();
   const localResult = new Promise<unknown>((resolve) => {
@@ -505,11 +522,28 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
     local.port2.onmessageerror = () => resolve("messageerror");
   });
   local.port1.postMessage(module);
-  assert(await localResult instanceof WebAssembly.Module, "same agent");
+  const localModule = await localResult;
+  assert(localModule instanceof WebAssembly.Module, "same agent");
+  assert(localModule !== module, "same agent identity");
   local.port2.onmessageerror = () => {};
   // @ts-expect-error A number is not a messageerror handler.
   local.port2.onmessageerror = 1;
   assert(local.port2.onmessageerror === null, "port handler cleared");
+  assert(
+    transferName(() => {
+      // @ts-expect-error A WebAssembly.Module is not transferable.
+      local.port1.postMessage(module, [module]);
+    }) === "DataCloneError: The value cannot be transferred",
+    "port transfer",
+  );
+  assert(
+    transferName(() => {
+      // @ts-expect-error A WebAssembly.Module is not transferable.
+      structuredClone(module, { transfer: [module] });
+    }) === "DataCloneError: The value cannot be transferred",
+    "clone transfer",
+  );
+  assert(new WebAssembly.Instance(module) instanceof WebAssembly.Instance, "source remains");
 
   const worker = new Worker(script("message_error.js"));
   const incoming = workerMessages(worker);
@@ -525,36 +559,45 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
     parentMessageError = true;
   };
   worker.postMessage(module);
-  const globalError = await incoming.next();
-  assert(
-    globalError["kind"] === "global-messageerror",
-    String(globalError["kind"]),
-  );
-  assertMessageError(globalError, "worker global");
+  const globalMessage = await incoming.next();
+  assert(globalMessage["kind"] === "global-module", String(globalMessage["kind"]));
+  assert(globalMessage["data"] instanceof WebAssembly.Module, "worker data");
+  assert(globalMessage["data"] !== module, "worker identity");
+  assertMessage(globalMessage, "worker global");
   assert(parentError === false, "parent error");
   assert(parentMessageError === false, "parent messageerror");
 
-  const echoed = new Promise<Record<string, unknown>>((resolve) => {
-    worker.onmessageerror = (event: MessageEvent) => {
-      parentMessageError = true;
-      resolve({
-        data: event.data,
-        type: event.type,
-        trusted: event.isTrusted,
-        bubbles: event.bubbles,
-        cancelable: event.cancelable,
-        messageEvent: event instanceof MessageEvent,
-      });
+  const echoed = new Promise<WebAssembly.Module>((resolve, reject) => {
+    const onMessage = (event: Event) => {
+      // @ts-expect-error A message event carries the posted module.
+      const data: unknown = event.data;
+      if (!(data instanceof WebAssembly.Module)) return;
+      worker.removeEventListener("message", onMessage);
+      resolve(data);
+    };
+    worker.addEventListener("message", onMessage);
+    worker.onmessageerror = () => {
+      worker.removeEventListener("message", onMessage);
+      reject(new Error("echo messageerror"));
     };
   });
   worker.postMessage({ kind: "echo-module" });
-  assertMessageError(await echoed, "owner");
+  const echoedModule = await echoed;
+  assert(echoedModule !== module, "owner identity");
+  assert(new WebAssembly.Instance(echoedModule) instanceof WebAssembly.Instance, "owner instance");
   assert(parentError === false, "owner error");
 
   worker.onmessageerror = () => {};
   // @ts-expect-error A number is not a messageerror handler.
   worker.onmessageerror = 1;
   assert(worker.onmessageerror === null, "worker handler cleared");
+
+  const again = wasmModule();
+  worker.postMessage({ kind: "same-ref", a: module, b: module, c: again });
+  const same = await incoming.next();
+  assert(same["kind"] === "same-ref", String(same["kind"]));
+  assert(same["modules"] === true && same["ab"] === true && same["ac"] === true, "same ref");
+  assert(same["instantiated"] === true, "same ref instance");
 
   const channel = new MessageChannel();
   worker.postMessage({ kind: "hold-port", port: channel.port1 }, [channel.port1]);
@@ -567,9 +610,9 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
     before["kind"] === "before-start" && before["seen"] === false,
     "not started",
   );
-  const portError = await incoming.next();
-  assert(portError["kind"] === "port-messageerror", String(portError["kind"]));
-  assertMessageError(portError, "port");
+  const portMessage = await incoming.next();
+  assert(portMessage["kind"] === "port-message", String(portMessage["kind"]));
+  assertMessage(portMessage, "port");
 
   const queued = new MessageChannel();
   queued.port2.postMessage(wasmModule());
@@ -579,17 +622,42 @@ Yuzuko.test("messageerror for a module posted across agents", async () => {
     queuedBefore["kind"] === "queued-before-start" && queuedBefore["seen"] === false,
     "queued quiet",
   );
-  const queuedError = await incoming.next();
-  assert(
-    queuedError["kind"] === "queued-messageerror",
-    String(queuedError["kind"]),
-  );
-  assertMessageError(queuedError, "queued");
+  const queuedMessage = await incoming.next();
+  assert(queuedMessage["kind"] === "queued-message", String(queuedMessage["kind"]));
+  assertMessage(queuedMessage, "queued");
+
+  worker.postMessage({ kind: "stream-module" });
+  const streamed = await incoming.next();
+  assert(streamed["kind"] === "stream", String(streamed["kind"]));
+  const stream = streamed["stream"];
+  assert(stream instanceof ReadableStream, "stream");
+  const reader = stream.getReader();
+  const first = await reader.read();
+  assert(first.done === false && first.value instanceof WebAssembly.Module, "stream module");
+  assert((await reader.read()).done === true, "stream end");
+
+  const outbound = new ReadableStream({
+    start(controller) {
+      controller.enqueue(wasmModule());
+      controller.close();
+    },
+  });
+  worker.postMessage({ kind: "read-stream", stream: outbound }, [outbound]);
+  const read = await incoming.next();
+  assert(read["kind"] === "read-stream", String(read["kind"]));
+  assert(read["module"] === true && read["done"] === true, String(read["value"]));
 
   parentMessageError = false;
   worker.onmessageerror = () => {
     parentMessageError = true;
   };
+  assert(
+    transferName(() => {
+      // @ts-expect-error A WebAssembly.Module is not transferable.
+      worker.postMessage(module, [module]);
+    }) === "DataCloneError: The value cannot be transferred",
+    "worker transfer",
+  );
   let cloneName = "";
   try {
     worker.postMessage(() => {});

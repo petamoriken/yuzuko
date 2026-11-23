@@ -5,7 +5,7 @@
 //! `ArrayBuffer` over the same store, so `resizable` and `maxByteLength`
 //! stay. Host objects use the registered clone writers.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use v8::ValueDeserializerHelper;
@@ -56,6 +56,12 @@ pub struct Parcel {
   /// `Releases` runs when the parcel drops.
   #[allow(dead_code)]
   releases: Releases,
+  /// Wire bytes for each `WebAssembly.Module` in this parcel.
+  ///
+  /// The serializer writes only an id. The receiver is another isolate, so
+  /// the bytes travel with the parcel and are compiled there. Ids are
+  /// 1-based indexes into this list.
+  wasm: Vec<Vec<u8>>,
 }
 
 /// Owns the resource frame for one `serialize_parcel`.
@@ -88,8 +94,8 @@ impl Drop for ResourceGuard {
 
 struct CrossHost {
   shared: Rc<RefCell<Vec<SharedStore>>>,
-  /// Ids written for `WebAssembly.Module`. The bytes are not kept.
-  next_wasm: Cell<u32>,
+  /// Wire bytes kept until `serialize_parcel` moves them onto the parcel.
+  wasm: Rc<RefCell<Vec<Vec<u8>>>>,
 }
 
 impl v8::ValueSerializerImpl for CrossHost {
@@ -143,18 +149,24 @@ impl v8::ValueSerializerImpl for CrossHost {
   fn get_wasm_module_transfer_id(
     &self,
     _scope: &mut v8::PinScope<'_, '_>,
-    _module: v8::Local<v8::WasmModuleObject>,
+    module: v8::Local<v8::WasmModuleObject>,
   ) -> Option<u32> {
-    // The sender must not throw. `CrossRead` fails the module so the
-    // receiver dispatches `messageerror` instead of delivering it.
-    let id = self.next_wasm.get().saturating_add(1).max(1);
-    self.next_wasm.set(id);
+    // Returning `None` writes nothing and drops the module. Keep the bytes
+    // so the other agent can compile a new module. A transfer list still
+    // rejects the module before this callback.
+    let compiled = module.get_compiled_module();
+    let bytes = compiled.get_wire_bytes_ref().to_vec();
+    drop(compiled);
+    let mut modules = self.wasm.borrow_mut();
+    let id = u32::try_from(modules.len().checked_add(1)?).ok()?;
+    modules.push(bytes);
     Some(id)
   }
 }
 
 struct CrossRead {
   shared: Vec<SharedStore>,
+  wasm: Vec<Vec<u8>>,
 }
 
 impl v8::ValueDeserializerImpl for CrossRead {
@@ -180,12 +192,12 @@ impl v8::ValueDeserializerImpl for CrossRead {
 
   fn get_wasm_module_from_id<'s>(
     &self,
-    _scope: &mut v8::PinScope<'s, '_>,
-    _clone_id: u32,
+    scope: &mut v8::PinScope<'s, '_>,
+    clone_id: u32,
   ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
-    // Returning `None` fails the read without throwing. The default
-    // delegate throws while JavaScript is disallowed.
-    None
+    let index = usize::try_from(clone_id).ok()?.checked_sub(1)?;
+    let bytes = self.wasm.get(index)?;
+    v8::WasmModuleObject::compile(scope, bytes)
   }
 }
 
@@ -223,13 +235,14 @@ pub fn serialize_parcel(
   clone::set_structured_transfer(objects.to_vec());
   let resources = ResourceGuard::open();
   let shared = Rc::new(RefCell::new(Vec::new()));
+  let wasm = Rc::new(RefCell::new(Vec::new()));
   let moved = {
     v8::tc_scope!(let tc, scope);
     let serializer = v8::ValueSerializer::new(
       tc,
       Box::new(CrossHost {
         shared: Rc::clone(&shared),
-        next_wasm: Cell::new(0),
+        wasm: Rc::clone(&wasm),
       }),
     );
     serializer.write_header();
@@ -261,11 +274,13 @@ pub fn serialize_parcel(
     let _ = buffer.detach(None);
   }
   let shared = std::mem::take(&mut *shared.borrow_mut());
+  let wasm = std::mem::take(&mut *wasm.borrow_mut());
   Ok(Parcel {
     bytes: moved.0,
     buffers: moved.1,
     shared,
     releases: Releases(releases),
+    wasm,
   })
 }
 
@@ -279,10 +294,12 @@ pub fn deserialize_parcel<'s>(
   let session = clone::CloneSession::enter();
   let value = {
     v8::tc_scope!(let tc, scope);
+    let wasm = parcel.wasm;
     let deserializer = v8::ValueDeserializer::new(
       tc,
       Box::new(CrossRead {
         shared: parcel.shared,
+        wasm,
       }),
       &parcel.bytes,
     );
