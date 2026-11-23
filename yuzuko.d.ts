@@ -6416,15 +6416,19 @@ declare const self: Window & typeof globalThis;
  * Events dispatched on `globalThis`.
  *
  * `error`, `unhandledrejection`, and `rejectionhandled` are reported on this
- * realm. `postMessage` dispatches `message`. `gamepadconnected` and
- * `gamepaddisconnected` fire on the main realm. Pointer and key events are
- * delivered to {@link Yuzuko.Window}.
+ * realm. `postMessage` dispatches `message`. `languagechange` fires when the
+ * language list changes. `online` and `offline` fire when `navigator.onLine`
+ * changes. `gamepadconnected` and `gamepaddisconnected` fire on the main
+ * realm. Pointer and key events are delivered to {@link Yuzuko.Window}.
  */
 interface GlobalEventMap {
   error: ErrorEvent;
   unhandledrejection: PromiseRejectionEvent;
   rejectionhandled: PromiseRejectionEvent;
   message: MessageEvent;
+  languagechange: Event;
+  online: Event;
+  offline: Event;
   gamepadconnected: GamepadEvent;
   gamepaddisconnected: GamepadEvent;
 }
@@ -6609,13 +6613,18 @@ declare function structuredClone<T = any>(
  *
  * Installed on the main global. A dedicated worker uses
  * {@link DedicatedWorkerGlobalScope.postMessage}. `targetOrigin` defaults to
- * `"/"`. `"*"` or the entry origin clones `message`. Any other origin returns
- * without cloning.
+ * `"/"`, including a call with one argument and an omitted `targetOrigin`.
+ * `"/"` is the entry origin and delivers. `"*"` delivers. A string that is
+ * neither `"/"` nor `"*"` and does not parse as a URL throws before the value
+ * is cloned. A parsed origin that is not the entry origin still clones
+ * `message` and neuters a reachable transferable, then does not dispatch
+ * `message`. `source` is null.
  *
- * @throws {@link DOMException} `SyntaxError` when `targetOrigin` is `"/"` or
- * does not parse as a URL.
+ * @throws {@link DOMException} `SyntaxError` when `targetOrigin` is neither
+ * `"/"` nor `"*"` and does not parse as a URL.
  * @throws {@link DOMException} `DataCloneError` when `message` cannot be
  * cloned, including a locked stream or a stream left out of `transfer`.
+ * A parsed origin that will not receive the event still throws.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/postMessage)
  */
@@ -7146,8 +7155,10 @@ declare var PerformanceObserver: {
  *
  * `userAgent` is `Yuzuko/` followed by the runtime version. `platform` is
  * `"Win32"`, `"MacIntel"`, or `"Linux"`. `appCodeName` is `"Mozilla"`,
- * `appName` is `"Netscape"`, `appVersion` is `"5.0"`, `product` is `"Gecko"`,
- * and `onLine` is `true`. A worker navigator has the same values.
+ * `appName` is `"Netscape"`, `appVersion` is `"5.0"`, and `product` is
+ * `"Gecko"`. `onLine` follows host connectivity. A worker navigator has the
+ * same values. `languagechange` fires when the language list changes.
+ * `online` and `offline` fire when `onLine` changes.
  *
  * @throws {@link TypeError} Illegal constructor.
  *
@@ -7179,7 +7190,8 @@ interface Navigator {
   /**
    * The first preferred language tag. `languages` is a new frozen array of the
    * operating-system list on each read. An empty list is `en`. A dedicated
-   * worker reports the same tags. `languagechange` does not fire.
+   * worker reports the same tags. The list is not fixed at process start.
+   * `languagechange` fires on this realm when the list changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/language)
    */
@@ -7188,7 +7200,8 @@ interface Navigator {
   /**
    * A new frozen array of the preferred language tags on each read. The first
    * tag is `language`. An empty operating-system list is `en`. A dedicated
-   * worker reports the same tags. `languagechange` does not fire.
+   * worker reports the same tags. The list is not fixed at process start.
+   * `languagechange` fires on this realm when the list changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/languages)
    */
@@ -7223,7 +7236,10 @@ interface Navigator {
   readonly product: string;
 
   /**
-   * The value is `true`.
+   * True when a non-loopback network interface is up, and false when the host
+   * has none. A failure to read the interfaces leaves it true. The value is
+   * not fixed at process start. `online` or `offline` fires on this realm
+   * when it changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/onLine)
    */
@@ -17046,7 +17062,8 @@ declare class WorkerNavigator {
   /**
    * The first preferred language tag. `languages` is a new frozen array of the
    * operating-system list on each read. An empty list is `en`. The list matches
-   * the main realm. `languagechange` does not fire.
+   * the main realm. The list is not fixed at process start. `languagechange`
+   * fires on this realm when the list changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/language)
    */
@@ -17055,7 +17072,8 @@ declare class WorkerNavigator {
   /**
    * A new frozen array of the preferred language tags on each read. The first
    * tag is `language`. An empty operating-system list is `en`. The list matches
-   * the main realm. `languagechange` does not fire.
+   * the main realm. The list is not fixed at process start. `languagechange`
+   * fires on this realm when the list changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/languages)
    */
@@ -17090,7 +17108,10 @@ declare class WorkerNavigator {
   readonly product: string;
 
   /**
-   * The value is `true`.
+   * True when a non-loopback network interface is up, and false when the host
+   * has none. A failure to read the interfaces leaves it true. The value
+   * matches the main realm and is not fixed at process start. `online` or
+   * `offline` fires on this realm when it changes.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WorkerNavigator/onLine)
    */

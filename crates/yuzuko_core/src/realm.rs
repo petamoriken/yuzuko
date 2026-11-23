@@ -303,7 +303,7 @@ fn navigator_on_line(
   _args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  ret.set(v8::Boolean::new(scope, true).into());
+  ret.set(v8::Boolean::new(scope, crate::on_line()).into());
 }
 
 /// Logical processors available to this process.

@@ -1573,9 +1573,9 @@ fn queue_self_message(
     return Err(OpError::type_("postMessage requires a message"));
   }
   let (origin, transfer) = message_target(scope, args)?;
-  if !target_origin_matches(&origin)? {
-    return Ok(());
-  }
+  // HTML serializes before it discards a parsed origin that will not match.
+  // `"/"` and `"*"` match. An unparsable string throws before the clone.
+  let deliver = target_origin_matches(&origin)?;
   let message = args.get(0);
   let message = v8::Local::new(scope, v8::Global::new(scope, message));
   let transfer = match transfer {
@@ -1615,6 +1615,9 @@ fn queue_self_message(
   }
   let data = v8::Global::new(scope, cloned);
   let origin = realm_origin();
+  if !deliver {
+    return Ok(());
+  }
   // A zero-delay timer runs before a `setTimeout` scheduled after this
   // call returns. A macrotask queued behind timers would leave the message
   // for the next test's listener.
@@ -1705,12 +1708,12 @@ fn usv_string(
   Ok(text.to_rust_string_lossy(tc))
 }
 
-/// `Ok(true)` serializes. `Ok(false)` returns without cloning.
+/// `Ok(true)` queues the message. `Ok(false)` has already been serialized.
+///
+/// A single `"/"` is the incumbent origin. `"*"` matches every origin.
+/// Any other string is a URL, and a parse failure is `SyntaxError`.
 fn target_origin_matches(target: &str) -> Result<bool, OpError> {
-  if target == "/" {
-    return Err(OpError::dom("SyntaxError", "The target origin is \"/\"."));
-  }
-  if target == "*" {
+  if target == "/" || target == "*" {
     return Ok(true);
   }
   let Ok(parsed) = url::Url::parse(target) else {

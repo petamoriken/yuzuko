@@ -1483,31 +1483,60 @@ Yuzuko.test("postMessage ports lists a transferred MessagePort", async () => {
   }
 });
 
-Yuzuko.test("postMessage rejects / and a different origin without transferring", async () => {
-  const slash = chunkStream("slash");
-  const slashFailure = cloneFailure(() => postMessage(slash, "/", [slash]));
-  if (slashFailure.name !== "SyntaxError" || slash.locked) {
-    throw new Error("slash " + slashFailure.name + " " + slash.locked);
+async function delivered(run: () => void, value: string): Promise<void> {
+  const pending = nextSelfMessage();
+  run();
+  const event = await pending;
+  if (event.data !== value) {
+    throw new Error("data " + String(event.data));
   }
-  const omitted = chunkStream("omitted");
-  const omittedFailure = cloneFailure(() => postMessage(omitted));
-  if (omittedFailure.name !== "SyntaxError" || omitted.locked) {
-    throw new Error("omitted " + omittedFailure.name);
+  if (event.source !== null) {
+    throw new Error("source");
   }
-  const empty = chunkStream("empty");
-  const emptyFailure = cloneFailure(() => postMessage(empty, {}));
-  if (emptyFailure.name !== "SyntaxError" || empty.locked) {
-    throw new Error("empty " + emptyFailure.name);
+  if (event.isTrusted !== true) {
+    throw new Error("trusted");
   }
+}
+
+Yuzuko.test("postMessage delivers / and serializes a foreign origin", async () => {
+  await delivered(() => postMessage("slash", "/"), "slash");
+  console.log("postMessage / delivered");
+  await delivered(() => postMessage("one"), "one");
+  console.log("postMessage one argument delivered");
+  await delivered(
+    () => postMessage("opts", { targetOrigin: "/" }),
+    "opts",
+  );
+  await delivered(() => postMessage("empty", {}), "empty");
+  console.log("postMessage targetOrigin / delivered");
+  await delivered(() => postMessage("star", "*"), "star");
+  console.log("postMessage * delivered");
+
+  const bad = chunkStream("bad");
+  const syntax = cloneFailure(() => postMessage(bad, "not a url", [bad]));
+  const early = cloneFailure(() => postMessage(() => {}, "not a url"));
+  if (
+    syntax.name !== "SyntaxError" ||
+    early.name !== "SyntaxError" ||
+    bad.locked
+  ) {
+    throw new Error(
+      "syntax " + syntax.name + " " + early.name + " " + bad.locked,
+    );
+  }
+  console.log("postMessage unparsable SyntaxError");
+
   const foreign = chunkStream("foreign");
+  const idle = chunkStream("idle");
   let saw = false;
   const stop = () => {
     saw = true;
   };
   addEventListener("message", stop);
   postMessage(foreign, "https://example.test", [foreign]);
-  if (foreign.locked) {
-    throw new Error("foreign locked");
+  postMessage("nope", "https://example.test", [idle]);
+  if (!foreign.locked || idle.locked) {
+    throw new Error("transfer " + foreign.locked + " " + idle.locked);
   }
   await turn();
   await turn();
@@ -1515,4 +1544,13 @@ Yuzuko.test("postMessage rejects / and a different origin without transferring",
   if (saw) {
     throw new Error("foreign delivered");
   }
+  console.log("postMessage foreign origin neutered no message");
+
+  const clone = cloneFailure(() =>
+    postMessage(() => {}, "https://example.test"),
+  );
+  if (clone.name !== "DataCloneError") {
+    throw new Error("clone " + clone.name + " " + clone.message);
+  }
+  console.log("postMessage uncloneable DataCloneError");
 });

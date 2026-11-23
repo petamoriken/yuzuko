@@ -720,7 +720,7 @@ impl WorkerNavigator {
 
   #[getter]
   fn on_line(#[this] _navigator: v8::Local<v8::Object>) -> bool {
-    true
+    yuzuko_core::on_line()
   }
 
   #[getter]

@@ -110,7 +110,7 @@ impl Navigator {
   #[getter]
   fn on_line(&self) -> bool {
     let _ = self;
-    true
+    yuzuko_core::on_line()
   }
 
   fn get_gamepads(&self, scope: &mut v8::PinScope) -> Js {

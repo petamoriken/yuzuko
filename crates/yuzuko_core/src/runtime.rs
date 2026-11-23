@@ -1353,6 +1353,7 @@ fn execute_test(
   let step = v8::Function::new(scope, step_callback).expect("step function");
   let step_name = v8::String::new(scope, "step").unwrap();
   test_context.set(scope, step_name.into(), step.into());
+  crate::navigator_host::bind_test_context(scope, test_context);
   let result = {
     v8::tc_scope!(let tc, scope);
     match function.call(tc, receiver.into(), &[test_context.into()]) {
@@ -1590,6 +1591,10 @@ fn pump_until(
       scope.perform_microtask_checkpoint();
       continue;
     }
+    if poll_navigator(scope) {
+      scope.perform_microtask_checkpoint();
+      continue;
+    }
     scope.perform_microtask_checkpoint();
     bail_if_exit()?;
     if global_string(scope, done_key).is_some() {
@@ -1624,6 +1629,7 @@ fn pump_until(
       && queue.is_idle()
       && !crate::jobs::pending()
       && !signals_pending()
+      && !crate::navigator_host::pending()
       && !interest.keep_alive
       && !workers
       && !crate::idle::idle_has_pending()
@@ -1721,6 +1727,9 @@ pub(crate) fn poll_repl(
   if poll_signals(scope) {
     return Some(std::time::Duration::ZERO);
   }
+  if poll_navigator(scope) {
+    return Some(std::time::Duration::ZERO);
+  }
   if exiting() {
     return Some(std::time::Duration::ZERO);
   }
@@ -1762,6 +1771,7 @@ fn repl_wait() -> Option<std::time::Duration> {
     || !queue.is_idle()
     || crate::jobs::pending()
     || signals_pending()
+    || crate::navigator_host::pending()
     || crate::worker::keeps_alive(host::agent_id())
     || crate::idle::idle_has_pending()
     || wasm_in_flight() > 0;
@@ -1796,6 +1806,7 @@ fn due_timers_should_run(keep_alive: bool, workers: bool) -> bool {
   !queue.is_idle()
     || crate::jobs::pending()
     || signals_pending()
+    || crate::navigator_host::pending()
     || wasm_in_flight() > 0
     || keep_alive
     || workers
@@ -1808,6 +1819,10 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     return false;
   }
   if poll_signals(scope) {
+    scope.perform_microtask_checkpoint();
+    return true;
+  }
+  if poll_navigator(scope) {
     scope.perform_microtask_checkpoint();
     return true;
   }
@@ -1875,6 +1890,7 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
     || !queue.is_idle()
     || crate::jobs::pending()
     || signals_pending()
+    || crate::navigator_host::pending()
     || wasm_in_flight() > 0
     || interest.keep_alive
     || workers
@@ -1893,6 +1909,10 @@ pub(crate) fn pump_once(scope: &mut v8::PinScope<'_, '_>) -> bool {
   // Same ordering as `pump_until`: a `postMessage` that landed before the
   // worker died is still in this inbox.
   crate::worker::inbound_ready()
+}
+
+fn poll_navigator(scope: &mut v8::PinScope) -> bool {
+  crate::navigator_host::poll(scope)
 }
 
 #[cfg(feature = "signal")]
@@ -2059,6 +2079,7 @@ fn init_v8() {
 }
 
 fn install_realm(scope: &mut v8::PinScope<'_, '_>, test_mode: bool) {
+  crate::navigator_host::install();
   install_console(scope);
   install_wasm_async(scope);
   crate::loader::module_source::install(scope);
@@ -2092,6 +2113,7 @@ fn install_realm(scope: &mut v8::PinScope<'_, '_>, test_mode: bool) {
 }
 
 fn teardown_realm() {
+  crate::navigator_host::clear();
   crate::errors::clear();
   #[cfg(feature = "fs")]
   crate::fs::clear();

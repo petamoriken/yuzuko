@@ -48,6 +48,7 @@ pub fn register() {
     message::register_clone();
     stream_transfer::register_clone();
     yuzuko_core::set_inbound_handler(worker::drain);
+    yuzuko_core::set_notice_handler(dispatch_host_notice);
     yuzuko_core::set_idle_hooks(yuzuko_core::IdleHooks {
       has_pending: idle::has_pending,
       next_wait: idle::next_wait,
@@ -64,6 +65,22 @@ fn drop_reachable_listeners(scope: &mut v8::PinScope) {
   let _finished = yuzuko_core::walk_objects(scope, |scope, object| {
     target::drop_reloaded_listeners(scope, object);
   });
+}
+
+fn dispatch_host_notice(
+  scope: &mut v8::PinScope,
+  notice: yuzuko_core::HostNotice,
+) {
+  let type_name = match notice {
+    yuzuko_core::HostNotice::Language => "languagechange",
+    yuzuko_core::HostNotice::Online => "online",
+    yuzuko_core::HostNotice::Offline => "offline",
+  };
+  let global = yuzuko_core::global(scope);
+  let event = event::Event::new(type_name, false, false, false, true);
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
+  event::define_is_trusted(scope, object);
+  let _ = target::dispatch(scope, global, object);
 }
 
 fn install(scope: &mut v8::PinScope) {

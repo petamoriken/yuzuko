@@ -8,7 +8,19 @@
 /// An empty operating-system list is `en`. Duplicate tags are removed,
 /// keeping the first spelling.
 pub fn preferred_languages() -> Vec<String> {
+  crate::navigator_host::reported_languages()
+}
+
+pub(crate) fn os_languages() -> Vec<String> {
   finish(platform_languages())
+}
+
+pub(crate) fn normalize_language_list(tags: Vec<String>) -> Vec<String> {
+  let mut unique = Vec::new();
+  for tag in tags {
+    push_unique(&mut unique, tag);
+  }
+  finish(unique)
 }
 
 /// The first preferred tag, or `en` when the list is empty.
