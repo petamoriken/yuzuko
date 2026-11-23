@@ -13,6 +13,8 @@ use yuzuko_image::SampleFormat;
 use yuzuko_window::CanvasSnapshot;
 use yuzuko_window::ContextKind;
 use yuzuko_window::OffscreenCanvas;
+use yuzuko_window::PresentRequest;
+use yuzuko_window::PresentTarget;
 
 use crate::paint::bitmap::BitmapContext;
 use crate::paint::context::Context2D;
@@ -33,6 +35,7 @@ pub fn register() {
       resized: record::resized,
       snapshot,
       layers_open: record::layers_open,
+      present_request,
       stage,
       present,
       discard_present: discard_staged,
@@ -382,6 +385,8 @@ enum Staged {
     width: u32,
     height: u32,
     pixels: Vec<u8>,
+    /// Encoded `Rgba16Float` samples. Otherwise tightly packed unorm8.
+    float16: bool,
   },
 }
 
@@ -395,14 +400,48 @@ thread_local! {
   static STAGED: RefCell<Option<(u64, Staged)>> = const { RefCell::new(None) };
 }
 
+fn present_request(id: u64) -> Option<PresentRequest> {
+  if let Some(request) = record::with_drawing(id, |drawing| {
+    request_of(drawing.attrs.color_space, drawing.attrs.format)
+  }) {
+    return Some(request);
+  }
+  record::with_bitmap(id, |image| {
+    let space = if image.display_p3 {
+      ColorSpace::DisplayP3
+    } else {
+      ColorSpace::Srgb
+    };
+    let format = if image.float16 {
+      SampleFormat::Float16
+    } else {
+      SampleFormat::Unorm8
+    };
+    request_of(space, format)
+  })
+}
+
+fn request_of(space: ColorSpace, format: SampleFormat) -> PresentRequest {
+  match (space, format) {
+    (_, SampleFormat::Float16) => PresentRequest::Float16 {
+      display_p3: space == ColorSpace::DisplayP3,
+    },
+    (ColorSpace::DisplayP3, SampleFormat::Unorm8) => {
+      PresentRequest::DisplayP3Unorm8
+    }
+    (ColorSpace::Srgb, SampleFormat::Unorm8) => PresentRequest::SrgbUnorm8,
+  }
+}
+
 fn stage(
   _device: &wgpu::Device,
   _queue: &wgpu::Queue,
   id: u64,
   target_width: u32,
   target_height: u32,
+  target: PresentTarget,
 ) -> bool {
-  match prepare(id, target_width, target_height) {
+  match prepare(id, target_width, target_height, target) {
     Some(staged) => {
       STAGED.with(|slot| *slot.borrow_mut() = Some((id, staged)));
       true
@@ -445,24 +484,41 @@ fn present(
       width,
       height,
       pixels,
+      float16,
     } => {
       replay::present_texture(
-        device, queue, view, format, &pixels, width, height,
+        device,
+        queue,
+        view,
+        format,
+        replay::PresentSamples {
+          pixels: &pixels,
+          width,
+          height,
+          float16,
+        },
       );
       true
     }
   }
 }
 
-fn prepare(id: u64, target_width: u32, target_height: u32) -> Option<Staged> {
-  match record::with_drawing(id, |drawing| {
-    prepare_drawing(drawing, id, target_width, target_height)
-  }) {
-    Some(Prepare::Ready(staged)) => return Some(staged),
-    Some(Prepare::Failed) => return None,
-    Some(Prepare::Fallback) | None => {}
+fn prepare(
+  id: u64,
+  target_width: u32,
+  target_height: u32,
+  target: PresentTarget,
+) -> Option<Staged> {
+  if target == PresentTarget::SrgbUnorm8 {
+    match record::with_drawing(id, |drawing| {
+      prepare_drawing(drawing, id, target_width, target_height)
+    }) {
+      Some(Prepare::Ready(staged)) => return Some(staged),
+      Some(Prepare::Failed) => return None,
+      Some(Prepare::Fallback) | None => {}
+    }
   }
-  prepare_snapshot(id, target_width, target_height)
+  prepare_snapshot(id, target_width, target_height, target)
 }
 
 fn prepare_drawing(
@@ -507,46 +563,54 @@ fn prepare_drawing(
     target_width,
     target_height,
     id,
+    false,
   ))
+}
+
+/// Premultiplied bytes for `target`. Unorm8 targets quantize float16.
+/// Extended targets keep encoded float16, including components outside 0..1.
+fn encode_present(
+  mut raster: yuzuko_image::Raster,
+  target: PresentTarget,
+) -> Option<(Vec<u8>, bool)> {
+  let (space, float16) = match target {
+    PresentTarget::SrgbUnorm8 => (ColorSpace::Srgb, false),
+    PresentTarget::DisplayP3Unorm8 => (ColorSpace::DisplayP3, false),
+    PresentTarget::ExtendedSrgb => (ColorSpace::Srgb, true),
+    PresentTarget::ExtendedDisplayP3 => (ColorSpace::DisplayP3, true),
+  };
+  yuzuko_image::convert(&mut raster, space);
+  let format = if float16 {
+    SampleFormat::Float16
+  } else {
+    SampleFormat::Unorm8
+  };
+  raster = yuzuko_image::convert_format(raster, format).ok()?;
+  yuzuko_image::premultiply(&mut raster);
+  Some((raster.bytes, float16))
 }
 
 fn prepare_snapshot(
   id: u64,
   target_width: u32,
   target_height: u32,
+  target: PresentTarget,
 ) -> Option<Staged> {
-  let mut raster = snapshot_raster(id)?;
+  let raster = snapshot_raster(id)?;
   if raster.width == 0 || raster.height == 0 {
     return Some(Staged::Skip);
   }
-  yuzuko_image::convert(&mut raster, ColorSpace::Srgb);
-  if raster.format != SampleFormat::Unorm8 {
-    let mut bytes =
-      Vec::with_capacity(raster.width as usize * raster.height as usize * 4);
-    for y in 0..raster.height {
-      for x in 0..raster.width {
-        let sample = raster.sample(i64::from(x), i64::from(y));
-        for channel in sample {
-          bytes.push((channel.clamp(0.0, 1.0) * 255.0).round() as u8);
-        }
-      }
-    }
-    raster = yuzuko_image::Raster::from_rgba8(
-      raster.width,
-      raster.height,
-      ColorSpace::Srgb,
-      &bytes,
-    )
-    .expect("present");
-  }
-  yuzuko_image::premultiply(&mut raster);
+  let width = raster.width;
+  let height = raster.height;
+  let (pixels, float16) = encode_present(raster, target)?;
   Some(fit_pixels(
-    raster.bytes,
-    raster.width,
-    raster.height,
+    pixels,
+    width,
+    height,
     target_width,
     target_height,
     id,
+    float16,
   ))
 }
 
@@ -557,21 +621,23 @@ fn fit_pixels(
   target_width: u32,
   target_height: u32,
   id: u64,
+  float16: bool,
 ) -> Staged {
   if source_width == 0 || source_height == 0 {
     return Staged::Skip;
   }
   let style = yuzuko_window::canvas_style(id);
-  if target_width == 0
+  let direct = target_width == 0
     || target_height == 0
     || (source_width == target_width && source_height == target_height)
     || (style.fit == yuzuko_window::ObjectFit::Fill
-      && yuzuko_window::rendering_is_smooth(style.rendering))
-  {
+      && yuzuko_window::rendering_is_smooth(style.rendering));
+  if direct {
     return Staged::Pixels {
       width: source_width,
       height: source_height,
       pixels,
+      float16,
     };
   }
   let pad = if yuzuko_window::canvas_is_transparent(id) {
@@ -579,8 +645,19 @@ fn fit_pixels(
   } else {
     255
   };
+  // `composite_pad` is unorm8. A float16 object-fit pad quantizes, pads, and
+  // expands. That path is lossy and is not the equal-size present.
+  let unorm = if float16 {
+    let Some(bytes) = quantize_encoded(&pixels, source_width, source_height)
+    else {
+      return Staged::Skip;
+    };
+    bytes
+  } else {
+    pixels
+  };
   let fitted = yuzuko_window::composite_pad(
-    &pixels,
+    &unorm,
     source_width,
     source_height,
     target_width,
@@ -589,11 +666,52 @@ fn fit_pixels(
     style.rendering,
     pad,
   );
+  if !float16 {
+    return Staged::Pixels {
+      width: target_width,
+      height: target_height,
+      pixels: fitted,
+      float16: false,
+    };
+  }
+  let Some(pixels) = expand_encoded(&fitted, target_width, target_height)
+  else {
+    return Staged::Skip;
+  };
   Staged::Pixels {
     width: target_width,
     height: target_height,
-    pixels: fitted,
+    pixels,
+    float16: true,
   }
+}
+
+fn quantize_encoded(bytes: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+  let mut raster = yuzuko_image::Raster::new(
+    width,
+    height,
+    ColorSpace::Srgb,
+    SampleFormat::Float16,
+  )
+  .ok()?;
+  if raster.bytes.len() != bytes.len() {
+    return None;
+  }
+  raster.bytes.copy_from_slice(bytes);
+  raster.premultiplied = true;
+  let raster =
+    yuzuko_image::convert_format(raster, SampleFormat::Unorm8).ok()?;
+  Some(raster.bytes)
+}
+
+fn expand_encoded(bytes: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+  let raster =
+    yuzuko_image::Raster::from_rgba8(width, height, ColorSpace::Srgb, bytes)
+      .ok()?;
+  let mut raster =
+    yuzuko_image::convert_format(raster, SampleFormat::Float16).ok()?;
+  raster.premultiplied = true;
+  Some(raster.bytes)
 }
 
 fn resolve_blob(scope: &mut v8::PinScope, bytes: Vec<u8>, mime: &str) -> Js {
@@ -620,4 +738,49 @@ fn reject(scope: &mut v8::PinScope, name: &str, message: &str) -> Js {
   }
   let promise_value: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, promise_value))
+}
+
+#[cfg(test)]
+mod present_tests {
+  use super::encode_present;
+  use yuzuko_image::ColorSpace;
+  use yuzuko_image::Raster;
+  use yuzuko_window::PresentTarget;
+
+  #[test]
+  fn present_keeps_display_p3_and_quantizes_when_asked() {
+    let wide =
+      Raster::from_rgba8(1, 1, ColorSpace::DisplayP3, &[10, 20, 30, 255])
+        .unwrap();
+    let (kept, float16) =
+      encode_present(wide, PresentTarget::DisplayP3Unorm8).unwrap();
+    assert!(!float16);
+    assert_eq!(kept, vec![10, 20, 30, 255]);
+
+    let wide =
+      Raster::from_rgba8(1, 1, ColorSpace::DisplayP3, &[10, 20, 30, 255])
+        .unwrap();
+    let (srgb, _) = encode_present(wide, PresentTarget::SrgbUnorm8).unwrap();
+    assert_ne!(srgb, vec![10, 20, 30, 255]);
+  }
+
+  #[test]
+  fn extended_present_keeps_a_component_above_one() {
+    let raster =
+      Raster::from_float16(1, 1, ColorSpace::Srgb, &[1.5, 0.0, 0.0, 1.0])
+        .unwrap();
+    let (bytes, float16) =
+      encode_present(raster, PresentTarget::ExtendedSrgb).unwrap();
+    assert!(float16);
+    assert_eq!(bytes.len(), 8);
+    assert_eq!(&bytes[0..2], &0x3E00u16.to_le_bytes());
+
+    let raster =
+      Raster::from_float16(1, 1, ColorSpace::Srgb, &[1.5, 0.0, 0.0, 1.0])
+        .unwrap();
+    let (quantized, float16) =
+      encode_present(raster, PresentTarget::SrgbUnorm8).unwrap();
+    assert!(!float16);
+    assert_eq!(quantized, vec![255, 0, 0, 255]);
+  }
 }

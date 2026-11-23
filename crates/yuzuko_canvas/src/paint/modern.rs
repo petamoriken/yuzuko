@@ -36,7 +36,13 @@ pub(crate) fn parse_tree(
       let name = name.to_ascii_lowercase();
       let mut parsed = None;
       parser.parse_nested_block(|inner| {
-        if name == "color-mix" || body_is_custom(inner) {
+        // `lch()` and `oklch()` stay here. The `color` crate maps LCH
+        // `100%` chroma to 125, and CSS Color 4 maps it to 150.
+        if name == "color-mix"
+          || name == "lch"
+          || name == "oklch"
+          || body_is_custom(inner)
+        {
           parsed = Some(parse_custom(&name, inner)?);
           Ok(())
         } else {
@@ -175,11 +181,16 @@ fn color_model(tag: ColorSpaceTag) -> Model {
     scale: 1.0,
     clamp: Clamp::None,
   };
+  let xyz = matches!(tag, ColorSpaceTag::XyzD50 | ColorSpaceTag::XyzD65);
   Model {
     tag,
     legacy: false,
     commas: false,
-    names: ["r", "g", "b", "alpha"],
+    names: if xyz {
+      ["x", "y", "z", "alpha"]
+    } else {
+      ["r", "g", "b", "alpha"]
+    },
     axes: [channel, channel, channel, alpha_axis()],
   }
 }
@@ -263,11 +274,11 @@ fn lab_model(ok: bool) -> Model {
 }
 
 fn lch_model(ok: bool) -> Model {
-  // `color` maps `100%` LCH chroma to 125. CSS Color 4 uses 150.
+  // CSS Color 4 maps `100%` LCH chroma to 150. Oklch `100%` chroma is 0.4.
   let (tag, lightness, chroma) = if ok {
     (ColorSpaceTag::Oklch, 1.0, 0.4)
   } else {
-    (ColorSpaceTag::Lch, 100.0, 125.0)
+    (ColorSpaceTag::Lch, 100.0, 150.0)
   };
   Model {
     tag,
@@ -309,6 +320,8 @@ fn color_tag(name: &str) -> Result<ColorSpaceTag, ParseError<()>> {
     "srgb" => Ok(ColorSpaceTag::Srgb),
     "srgb-linear" => Ok(ColorSpaceTag::LinearSrgb),
     "display-p3" => Ok(ColorSpaceTag::DisplayP3),
+    "xyz" | "xyz-d65" => Ok(ColorSpaceTag::XyzD65),
+    "xyz-d50" => Ok(ColorSpaceTag::XyzD50),
     _ => Err(ParseError::unexpected_token()),
   }
 }
@@ -534,6 +547,8 @@ fn mix_tag(name: &str) -> Result<ColorSpaceTag, ParseError<()>> {
     "oklch" => Ok(ColorSpaceTag::Oklch),
     "hsl" => Ok(ColorSpaceTag::Hsl),
     "hwb" => Ok(ColorSpaceTag::Hwb),
+    "xyz" | "xyz-d65" => Ok(ColorSpaceTag::XyzD65),
+    "xyz-d50" => Ok(ColorSpaceTag::XyzD50),
     _ => Err(ParseError::unexpected_token()),
   }
 }
@@ -899,8 +914,22 @@ mod tests {
     let same =
       parse_color("color-mix(in srgb, red, color(srgb 1 0 0))").unwrap();
     assert_eq!(serialize(same), "color(srgb 1 0 0)");
-    assert!(parse_color("color-mix(in xyz, red, blue)").is_none());
-    assert!(parse_color("color(xyz 0 0 0)").is_none());
+    let xyz = parse_color("color-mix(in xyz, red, blue)").unwrap();
+    assert!(serialize(xyz).starts_with("color(srgb "));
+    let xyz_d50 = parse_color("color-mix(in xyz-d50, red, blue)").unwrap();
+    assert!(serialize(xyz_d50).starts_with("color(srgb "));
+    assert!(parse_color("color-mix(in xyz-d65, white, black)").is_some());
+    assert!(parse_color("color-mix(in xyz longer hue, red, blue)").is_none());
+    assert!(
+      serialize(parse_color("color(xyz 0 0 0)").unwrap())
+        .starts_with("color(srgb ")
+    );
+    assert!(parse_color("color(xyz-d50 0 0 0)").is_some());
+    assert!(parse_color("color(xyz-d65 0 0 0)").is_some());
+    assert!(
+      serialize(parse_color("color(from red xyz x y z)").unwrap())
+        .starts_with("color(srgb ")
+    );
   }
 
   #[test]
@@ -960,9 +989,9 @@ mod tests {
   }
 
   #[test]
-  fn lch_percentage_chroma_matches_the_color_crate() {
+  fn lch_percentage_chroma_is_150() {
     let percent = parse_color("lch(50 100% 40)").unwrap();
-    let number = parse_color("lch(50 125 40)").unwrap();
+    let number = parse_color("lch(50 150 40)").unwrap();
     assert!(
       (percent.r - number.r).abs() < 1.0e-4,
       "{percent:?} {number:?}"
@@ -971,5 +1000,11 @@ mod tests {
     assert!((percent.b - number.b).abs() < 1.0e-4);
     let calc = parse_color("lch(50 calc(100%) 40)").unwrap();
     assert!((calc.r - percent.r).abs() < 1.0e-4, "{calc:?}");
+    let oklch_percent = parse_color("oklch(0.5 100% 40)").unwrap();
+    let oklch_number = parse_color("oklch(0.5 0.4 40)").unwrap();
+    assert!(
+      (oklch_percent.r - oklch_number.r).abs() < 1.0e-4,
+      "{oklch_percent:?} {oklch_number:?}"
+    );
   }
 }

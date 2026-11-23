@@ -395,6 +395,8 @@ fn layout(
         Family::Sans => GenericFamily::SansSerif,
         Family::Serif => GenericFamily::Serif,
         Family::Mono => GenericFamily::Monospace,
+        Family::Cursive => GenericFamily::Cursive,
+        Family::Fantasy => GenericFamily::Fantasy,
         Family::Named(_) | Family::Unloaded(_) => GenericFamily::SansSerif,
       };
       builder.push_default(generic);

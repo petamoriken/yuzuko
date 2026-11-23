@@ -175,19 +175,20 @@ pub fn font_css(font: &FontDesc) -> String {
 }
 
 fn shaping_family(list: &[Listed]) -> Option<Family> {
-  for item in list {
-    if let Listed::Named(name) = item
-      && let Some(id) = ready_family(name)
-    {
-      return Some(Family::Named(id));
-    }
-  }
+  // The first family that resolves wins, in list order. Generics always
+  // resolve. An unloaded name does not, so a later generic is used instead.
   for item in list {
     match item {
+      Listed::Named(name) => {
+        if let Some(id) = ready_family(name) {
+          return Some(Family::Named(id));
+        }
+      }
       Listed::Sans => return Some(Family::Sans),
       Listed::Serif => return Some(Family::Serif),
       Listed::Mono => return Some(Family::Mono),
-      _ => {}
+      Listed::Cursive => return Some(Family::Cursive),
+      Listed::Fantasy => return Some(Family::Fantasy),
     }
   }
   for item in list {
@@ -195,12 +196,7 @@ fn shaping_family(list: &[Listed]) -> Option<Family> {
       return Some(Family::Unloaded(intern_family(name)));
     }
   }
-  if list.is_empty() {
-    None
-  } else {
-    // `cursive` and `fantasy` are stored and shaped as `sans-serif`.
-    Some(Family::Sans)
-  }
+  None
 }
 
 fn serialize(
@@ -648,7 +644,19 @@ mod tests {
       font_css(&family),
       "20px cursive, fantasy, monospace, sans-serif, serif, UnquotedFont, \"QuotedFont\\\\\\\",\""
     );
-    assert!(matches!(family.family, Family::Mono));
+    assert!(matches!(family.family, Family::Cursive));
+    assert!(matches!(
+      parse_font("20px fantasy").unwrap().family,
+      Family::Fantasy
+    ));
+    assert!(matches!(
+      parse_font("20px fantasy, cursive").unwrap().family,
+      Family::Fantasy
+    ));
+    assert!(matches!(
+      parse_font("20px sans-serif, cursive").unwrap().family,
+      Family::Sans
+    ));
 
     assert_eq!(
       font_css(&parse_font("italic 400 12px serif").unwrap()),

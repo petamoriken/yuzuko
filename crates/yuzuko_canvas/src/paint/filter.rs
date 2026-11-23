@@ -340,8 +340,7 @@ fn quantize(value: f32) -> u8 {
 }
 
 fn blur_premul(pixels: &mut [u8], width: u32, height: u32, sigma: f32) {
-  let sigma = sigma.clamp(0.0, 128.0);
-  if sigma <= 0.0 {
+  if !(sigma.is_finite() && sigma > 0.0) {
     return;
   }
   let width = width as usize;
@@ -392,9 +391,8 @@ fn drop_shadow(
       );
     }
   }
-  let sigma = blur.clamp(0.0, 128.0);
-  if sigma > 0.0 {
-    composite::blur_plane(&mut alpha, width as usize, height as usize, sigma);
+  if blur.is_finite() && blur > 0.0 {
+    composite::blur_plane(&mut alpha, width as usize, height as usize, blur);
   }
   let image = pixels.to_vec();
   let [red, green, blue, color_a] = color;

@@ -11998,8 +11998,10 @@ interface OffscreenCanvasRenderingContext2D {
 
   /**
    * The shorthand accepts style, `small-caps`, weight, a `px` or `pt` size, an
-   * optional line height, and a family list. An unregistered family is stored and
-   * shaped as `sans-serif`. A value that does not parse is ignored.
+   * optional line height, and a family list. `cursive` and `fantasy` resolve to
+   * the platform families. A list uses the first family that resolves. A size
+   * that names only an unregistered family is stored and shaped as
+   * `sans-serif`. A value that does not parse is ignored.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/font)
    */
@@ -12102,8 +12104,9 @@ interface OffscreenCanvasRenderingContext2D {
   filter: string;
 
   /**
-   * A non-negative finite value is stored. Any other value is ignored. The blur is
-   * a Gaussian with σ capped at 128.
+   * A non-negative finite value is stored. Any other value is ignored. σ above
+   * 128 is downsampled so the kernel stays within 128. The shadow layer extends
+   * 384 canvas pixels, and samples outside that margin are clipped.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/shadowBlur)
    */
@@ -12203,7 +12206,8 @@ declare var TextMetrics: {
  * CanvasRenderingContext2D.createRadialGradient().
  *
  * A canvas gradient. Stops accept CSS colors, `color(srgb ...)`,
- * `color(display-p3 ...)`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
+ * `color(display-p3 ...)`, `color(xyz ...)`, `color(xyz-d50 ...)`,
+ * `color(xyz-d65 ...)`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`,
  * `color-mix()`, and relative colors. Colors other than `color(display-p3 ...)`
  * serialize as `color(srgb ...)`.
  *

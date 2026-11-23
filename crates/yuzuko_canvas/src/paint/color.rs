@@ -74,7 +74,7 @@ pub fn parse_color(input: &str) -> Option<CssColor> {
   if text.eq_ignore_ascii_case("currentcolor") {
     return Some(CssColor::BLACK);
   }
-  let (color, legacy) = if needs_level5(text) {
+  let (color, legacy) = if needs_modern_parser(text) {
     let lower = text.to_ascii_lowercase();
     Parser::new(&lower)
       .parse_entirely(crate::paint::modern::parse_tree)
@@ -85,12 +85,21 @@ pub fn parse_color(input: &str) -> Option<CssColor> {
   css_color(color, legacy)
 }
 
-/// `color-mix()`, relative `from`, or `calc()` need the parser in `modern`.
-fn needs_level5(text: &str) -> bool {
+/// `color-mix()`, relative `from`, `calc()`, or `lch()` / `oklch()`.
+///
+/// Those two functions are parsed here so LCH `100%` chroma is 150. The
+/// `color` crate uses 125 for that percentage.
+fn needs_modern_parser(text: &str) -> bool {
   let lower = text.to_ascii_lowercase();
   lower.contains("calc(")
     || lower.contains("color-mix(")
     || has_ident(&lower, "from")
+    || polar_function(&lower)
+}
+
+fn polar_function(text: &str) -> bool {
+  let text = text.trim();
+  text.starts_with("lch(") || text.starts_with("oklch(")
 }
 
 fn has_ident(text: &str, word: &str) -> bool {
@@ -349,7 +358,7 @@ pub(crate) fn css_color(color: DynamicColor, legacy: bool) -> Option<CssColor> {
   })
 }
 
-/// Spaces this runtime does not accept, including `xyz`.
+/// Spaces this runtime does not accept.
 fn supported(color: DynamicColor) -> Option<DynamicColor> {
   match color.cs {
     ColorSpaceTag::Srgb
@@ -360,7 +369,9 @@ fn supported(color: DynamicColor) -> Option<DynamicColor> {
     | ColorSpaceTag::Hwb
     | ColorSpaceTag::Oklab
     | ColorSpaceTag::Oklch
-    | ColorSpaceTag::DisplayP3 => Some(color),
+    | ColorSpaceTag::DisplayP3
+    | ColorSpaceTag::XyzD50
+    | ColorSpaceTag::XyzD65 => Some(color),
     _ => None,
   }
 }

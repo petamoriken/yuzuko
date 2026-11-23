@@ -393,6 +393,8 @@ pub enum Family {
   Sans,
   Serif,
   Mono,
+  Cursive,
+  Fantasy,
   /// Index into the loaded-family table in `text`.
   Named(u32),
   /// Index into that table for a family that is not loaded. Shaping uses

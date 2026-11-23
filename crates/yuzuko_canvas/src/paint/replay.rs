@@ -1937,21 +1937,43 @@ fn readback(
   Some(pixels)
 }
 
+/// Encoded canvas samples uploaded for one present.
+pub struct PresentSamples<'a> {
+  pub pixels: &'a [u8],
+  pub width: u32,
+  pub height: u32,
+  /// Tightly packed little-endian binary16. Otherwise unorm8.
+  pub float16: bool,
+}
+
 pub fn present_texture(
   device: &wgpu::Device,
   queue: &wgpu::Queue,
   target: &wgpu::TextureView,
   format: wgpu::TextureFormat,
-  pixels: &[u8],
-  width: u32,
-  height: u32,
+  samples: PresentSamples<'_>,
 ) {
-  if width == 0
-    || height == 0
-    || pixels.len() < width as usize * height as usize * 4
-  {
+  let PresentSamples {
+    pixels,
+    width,
+    height,
+    float16,
+  } = samples;
+  let bpp: usize = if float16 { 8 } else { 4 };
+  let Some(row) = (width as usize).checked_mul(bpp) else {
+    return;
+  };
+  let Some(needed) = row.checked_mul(height as usize) else {
+    return;
+  };
+  if width == 0 || height == 0 || pixels.len() < needed {
     return;
   }
+  let upload = if float16 {
+    wgpu::TextureFormat::Rgba16Float
+  } else {
+    wgpu::TextureFormat::Rgba8Unorm
+  };
   let texture = device.create_texture(&wgpu::TextureDescriptor {
     label: Some("yuzuko-canvas-present"),
     size: wgpu::Extent3d {
@@ -1962,16 +1984,19 @@ pub fn present_texture(
     mip_level_count: 1,
     sample_count: 1,
     dimension: wgpu::TextureDimension::D2,
-    format: wgpu::TextureFormat::Rgba8Unorm,
+    format: upload,
     usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
     view_formats: &[],
   });
+  let Ok(bytes_per_row) = u32::try_from(row) else {
+    return;
+  };
   queue.write_texture(
     texture.as_image_copy(),
     pixels,
     wgpu::TexelCopyBufferLayout {
       offset: 0,
-      bytes_per_row: Some(width * 4),
+      bytes_per_row: Some(bytes_per_row),
       rows_per_image: Some(height),
     },
     texture.size(),

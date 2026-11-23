@@ -60,8 +60,19 @@ pub struct CanvasHooks {
   pub snapshot: fn(u64) -> Option<CanvasSnapshot>,
   /// A 2D context on this canvas has a `beginLayer` that is still open.
   pub layers_open: fn(u64) -> bool,
+  /// The canvas encoding, read without rasterizing. `None` when this canvas
+  /// has no 2D context.
+  pub present_request: fn(u64) -> Option<crate::gpu::PresentRequest>,
   /// Rasterize before the swapchain texture is acquired. May wait on the GPU.
-  pub stage: fn(&wgpu::Device, &wgpu::Queue, u64, u32, u32) -> bool,
+  /// `target` is the encoding [`crate::gpu::choose_present`] selected.
+  pub stage: fn(
+    &wgpu::Device,
+    &wgpu::Queue,
+    u64,
+    u32,
+    u32,
+    crate::gpu::PresentTarget,
+  ) -> bool,
   pub present: fn(
     &wgpu::Device,
     &wgpu::Queue,
@@ -84,8 +95,17 @@ fn hooks() -> Option<&'static CanvasHooks> {
 
 pub struct WebGpuHooks {
   pub get_context: GetContextFn,
+  /// The configured canvas color space, without reading the texture back.
+  pub present_request: fn(u64) -> Option<crate::gpu::PresentRequest>,
   /// Read back, if needed, before the swapchain texture is acquired.
-  pub stage: fn(&wgpu::Device, &wgpu::Queue, u64, u32, u32) -> bool,
+  pub stage: fn(
+    &wgpu::Device,
+    &wgpu::Queue,
+    u64,
+    u32,
+    u32,
+    crate::gpu::PresentTarget,
+  ) -> bool,
   pub present: fn(
     &wgpu::Device,
     &wgpu::Queue,
@@ -180,14 +200,25 @@ pub fn reset_canvas_bitmap(
   }
 }
 
+pub fn canvas_present_request(id: u64) -> Option<crate::gpu::PresentRequest> {
+  hooks().and_then(|hooks| (hooks.present_request)(id))
+}
+
+pub fn webgpu_present_request(id: u64) -> Option<crate::gpu::PresentRequest> {
+  webgpu_hooks().and_then(|hooks| (hooks.present_request)(id))
+}
+
 pub fn stage_canvas(
   device: &wgpu::Device,
   queue: &wgpu::Queue,
   id: u64,
   width: u32,
   height: u32,
+  target: crate::gpu::PresentTarget,
 ) -> bool {
-  hooks().is_some_and(|hooks| (hooks.stage)(device, queue, id, width, height))
+  hooks().is_some_and(|hooks| {
+    (hooks.stage)(device, queue, id, width, height, target)
+  })
 }
 
 pub fn stage_webgpu(
@@ -196,9 +227,11 @@ pub fn stage_webgpu(
   id: u64,
   width: u32,
   height: u32,
+  target: crate::gpu::PresentTarget,
 ) -> bool {
-  webgpu_hooks()
-    .is_some_and(|hooks| (hooks.stage)(device, queue, id, width, height))
+  webgpu_hooks().is_some_and(|hooks| {
+    (hooks.stage)(device, queue, id, width, height, target)
+  })
 }
 
 pub fn discard_staged() {

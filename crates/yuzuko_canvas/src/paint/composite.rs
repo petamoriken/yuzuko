@@ -268,8 +268,8 @@ fn shadow_layer(
   shadow: Shadow,
   render_plain: &dyn Fn(&[Command]) -> Option<Vec<u8>>,
 ) -> Vec<u8> {
-  let sigma = (shadow.blur * 0.5).clamp(0.0, 128.0);
-  let radius = blur_radius(sigma);
+  let sigma = finite_sigma(shadow.blur * 0.5);
+  let radius = shadow_margin(shadow.blur);
   let Some(buf_w) = width.checked_add(radius.saturating_mul(2)) else {
     return shadow_bytes(canvas_ink, width, height, shadow);
   };
@@ -345,11 +345,30 @@ fn colorize_crop(
 }
 
 fn blur_radius(sigma: f32) -> u32 {
-  if sigma <= 0.0 {
+  if !sigma.is_finite() || sigma <= 0.0 {
     0
   } else {
     (3.0 * sigma).ceil().max(1.0) as u32
   }
+}
+
+/// Exact separable Gaussian at or below this σ. Larger blurs downsample.
+const EXACT_SIGMA: f32 = 128.0;
+/// Stops `ceil(σ / 128)` from growing without a bound.
+const MAX_SIGMA: f32 = 4096.0;
+
+fn finite_sigma(sigma: f32) -> f32 {
+  if sigma.is_finite() && sigma > 0.0 {
+    sigma.min(MAX_SIGMA)
+  } else {
+    0.0
+  }
+}
+
+/// Canvas pixels added on each side of a shadow. The blur itself may be
+/// wider; samples outside this window are clipped.
+fn shadow_margin(blur: f32) -> u32 {
+  blur_radius(finite_sigma(blur * 0.5).min(EXACT_SIGMA))
 }
 
 fn shadow_bytes(
@@ -389,7 +408,7 @@ fn shadowed_alpha(
         sample_alpha(ink, width_i, height_i, sample_x, sample_y);
     }
   }
-  let sigma = (shadow.blur * 0.5).clamp(0.0, 128.0);
+  let sigma = finite_sigma(shadow.blur * 0.5);
   if sigma > 0.0 {
     blur_plane(&mut alpha, width as usize, height as usize, sigma);
   }
@@ -424,6 +443,25 @@ pub(crate) fn blur_plane(
   height: usize,
   sigma: f32,
 ) {
+  if !(sigma.is_finite() && sigma > 0.0) || width == 0 || height == 0 {
+    return;
+  }
+  let sigma = sigma.min(MAX_SIGMA);
+  if sigma <= EXACT_SIGMA {
+    blur_exact(alpha, width, height, sigma);
+    return;
+  }
+  let factor = (sigma / EXACT_SIGMA).ceil() as usize;
+  let factor = factor.max(2);
+  let small_w = (width / factor).max(1);
+  let small_h = (height / factor).max(1);
+  let mut small = vec![0.0f32; small_w * small_h];
+  downsample_box(alpha, width, height, &mut small, small_w, small_h);
+  blur_exact(&mut small, small_w, small_h, sigma / factor as f32);
+  upsample_bilinear(&small, small_w, small_h, alpha, width, height);
+}
+
+fn blur_exact(alpha: &mut [f32], width: usize, height: usize, sigma: f32) {
   let kernel = kernel(sigma);
   let radius = (kernel.len() - 1) / 2;
   let mut horizontal = vec![0.0f32; alpha.len()];
@@ -449,6 +487,71 @@ pub(crate) fn blur_plane(
         }
       }
       alpha[y * width + x] = sum;
+    }
+  }
+}
+
+fn downsample_box(
+  src: &[f32],
+  src_w: usize,
+  src_h: usize,
+  dst: &mut [f32],
+  dst_w: usize,
+  dst_h: usize,
+) {
+  for y in 0..dst_h {
+    let y0 = y * src_h / dst_h;
+    let y1 = ((y + 1) * src_h / dst_h).max(y0 + 1).min(src_h);
+    for x in 0..dst_w {
+      let x0 = x * src_w / dst_w;
+      let x1 = ((x + 1) * src_w / dst_w).max(x0 + 1).min(src_w);
+      let mut sum = 0.0;
+      let mut count = 0.0;
+      for sy in y0..y1 {
+        for sx in x0..x1 {
+          sum += src[sy * src_w + sx];
+          count += 1.0;
+        }
+      }
+      dst[y * dst_w + x] = if count == 0.0 { 0.0 } else { sum / count };
+    }
+  }
+}
+
+fn upsample_bilinear(
+  src: &[f32],
+  src_w: usize,
+  src_h: usize,
+  dst: &mut [f32],
+  dst_w: usize,
+  dst_h: usize,
+) {
+  if src_w == dst_w && src_h == dst_h {
+    dst.copy_from_slice(src);
+    return;
+  }
+  for y in 0..dst_h {
+    let fy = if dst_h <= 1 {
+      0.0
+    } else {
+      (y as f32 + 0.5) * src_h as f32 / dst_h as f32 - 0.5
+    };
+    let y0 = fy.floor().max(0.0) as usize;
+    let y1 = (y0 + 1).min(src_h - 1);
+    let ty = (fy - y0 as f32).clamp(0.0, 1.0);
+    for x in 0..dst_w {
+      let fx = if dst_w <= 1 {
+        0.0
+      } else {
+        (x as f32 + 0.5) * src_w as f32 / dst_w as f32 - 0.5
+      };
+      let x0 = fx.floor().max(0.0) as usize;
+      let x1 = (x0 + 1).min(src_w - 1);
+      let tx = (fx - x0 as f32).clamp(0.0, 1.0);
+      let top = src[y0 * src_w + x0] * (1.0 - tx) + src[y0 * src_w + x1] * tx;
+      let bottom =
+        src[y1 * src_w + x0] * (1.0 - tx) + src[y1 * src_w + x1] * tx;
+      dst[y * dst_w + x] = top * (1.0 - ty) + bottom * ty;
     }
   }
 }
@@ -786,5 +889,34 @@ mod tests {
     assert!(alpha(6, 5) > 0);
     assert_eq!(alpha(0, 5), 0);
     assert!(blurred[(6 * 11 + 5) * 4 + 2] > 0);
+  }
+
+  #[test]
+  fn blur_above_128_spreads_more_and_keeps_the_shadow_margin() {
+    fn center(sigma: f32) -> f32 {
+      let mut alpha = vec![0.0f32; 32 * 32];
+      alpha[16 * 32 + 16] = 1.0;
+      super::blur_plane(&mut alpha, 32, 32, sigma);
+      alpha[16 * 32 + 16]
+    }
+    let exact = center(4.0);
+    let capped = center(128.0);
+    let wider = center(256.0);
+    assert!(exact > capped);
+    assert!(capped > wider);
+
+    let mut untouched = vec![0.0, 1.0, 0.0];
+    super::blur_plane(&mut untouched, 3, 1, f32::NAN);
+    assert_eq!(untouched, vec![0.0, 1.0, 0.0]);
+
+    assert_eq!(super::shadow_margin(4.0), super::blur_radius(2.0));
+    assert_eq!(
+      super::shadow_margin(256.0),
+      super::blur_radius(super::EXACT_SIGMA)
+    );
+    assert_eq!(
+      super::shadow_margin(10_000.0),
+      super::blur_radius(super::EXACT_SIGMA)
+    );
   }
 }

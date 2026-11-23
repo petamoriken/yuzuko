@@ -70,8 +70,8 @@ pub use fit::{
   rendering_is_smooth,
 };
 pub use gpu::{
-  ensure as ensure_gpu, failed as gpu_failed, foreign as gpu_foreign,
-  with_device, with_gpu,
+  PresentRequest, PresentTarget, ensure as ensure_gpu, failed as gpu_failed,
+  foreign as gpu_foreign, with_device, with_gpu,
 };
 pub use identity::set_app_identity;
 pub use os::{canvas_is_transparent, request_redraw};

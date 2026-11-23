@@ -73,7 +73,13 @@ Yuzuko.test("modern colors convert to srgb and paint", () => {
   assert(ctx.fillStyle === "color(display-p3 1 0 0)", "display-p3 round-trips");
   ctx.fillStyle = "#010203";
   ctx.fillStyle = "color-mix(in xyz, red, blue)";
-  assert(ctx.fillStyle === "#010203", "xyz is ignored");
+  assert(ctx.fillStyle.startsWith("color(srgb "), "xyz mix serializes as srgb");
+  assert(ctx.fillStyle !== "#010203", "xyz is parsed");
+  ctx.fillStyle = "color(xyz-d50 0.2 0.2 0.2)";
+  assert(
+    ctx.fillStyle.startsWith("color(srgb "),
+    "xyz-d50 serializes as srgb",
+  );
 
   ctx.filter = "none";
   ctx.filter = "drop-shadow(1px 1px 0px hwb(0 0% 0%))";

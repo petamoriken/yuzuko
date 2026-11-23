@@ -107,9 +107,11 @@ pub struct FrameOrigin {
 }
 
 struct Gpu {
+  adapter: wgpu::Adapter,
   device: wgpu::Device,
   queue: wgpu::Queue,
   format: wgpu::TextureFormat,
+  color_space: wgpu::SurfaceColorSpace,
   present_mode: wgpu::PresentMode,
   alpha: wgpu::CompositeAlphaMode,
   /// Whether a drawable acquired and dropped unpresented goes back to the
@@ -1260,7 +1262,7 @@ impl App {
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
       format: gpu.format,
-      color_space: wgpu::SurfaceColorSpace::Auto,
+      color_space: gpu.color_space,
       width,
       height,
       present_mode: gpu.present_mode,
@@ -1345,14 +1347,42 @@ impl App {
     };
     let device = gpu.device.clone();
     let queue = gpu.queue.clone();
-    let format = gpu.format;
+    let adapter = gpu.adapter.clone();
+    let probe_drawable = gpu.probe_drawable;
+    let request = crate::canvas::canvas_present_request(surface_id)
+      .or_else(|| crate::canvas::webgpu_present_request(surface_id))
+      .unwrap_or(crate::gpu::PresentRequest::SrgbUnorm8);
+    let Some(choice) = self.windows.get(&window_id).and_then(|host| {
+      host.surface.as_ref().map(|surface| {
+        let caps = surface.get_capabilities(&adapter);
+        crate::gpu::choose_present(&caps, request)
+      })
+    }) else {
+      return false;
+    };
+    let Some(choice) = choice else {
+      return false;
+    };
+    // Reconfigure before the probe acquire and before rasterizing. The format
+    // passed to present has to be the one the swapchain was just given.
+    if self.gpu.as_ref().is_some_and(|gpu| {
+      gpu.format != choice.format || gpu.color_space != choice.color_space
+    }) {
+      if let Some(gpu) = self.gpu.as_mut() {
+        gpu.format = choice.format;
+        gpu.color_space = choice.color_space;
+      }
+      self.configure_surface(window_id);
+    }
+    let format = choice.format;
+    let target = choice.target;
     // Refuse the drawable before building the scene. An occluded window, a
     // timeout, or a size change would otherwise rasterize and then discard
     // that scene, and the same turn would build it again. The probe is
     // released before rasterizing: a readback while a swapchain texture is
     // held makes the next drawable time out after about a second. Only a
     // backend that takes the dropped drawable back is probed.
-    if gpu.probe_drawable {
+    if probe_drawable {
       match self.acquire_drawable(window_id, width, height, false) {
         Ok(probe) => drop(probe),
         Err(true) => {
@@ -1362,11 +1392,12 @@ impl App {
         Err(false) => return false,
       }
     }
-    let canvas_ready =
-      crate::canvas::stage_canvas(&device, &queue, surface_id, width, height);
+    let canvas_ready = crate::canvas::stage_canvas(
+      &device, &queue, surface_id, width, height, target,
+    );
     let webgpu_ready = !canvas_ready
       && crate::canvas::stage_webgpu(
-        &device, &queue, surface_id, width, height,
+        &device, &queue, surface_id, width, height, target,
       );
     let frame = match self.acquire_drawable(window_id, width, height, true) {
       Ok(frame) => frame,
@@ -1733,9 +1764,11 @@ fn build_gpu(
   };
   let probe_drawable = releases_discarded_drawable(adapter.get_info().backend);
   let caps = surface.get_capabilities(&adapter);
-  let format = choose_format(&caps.formats).ok_or_else(|| {
-    "The window surface has no presentation format.".to_string()
-  })?;
+  let choice =
+    crate::gpu::choose_present(&caps, crate::gpu::PresentRequest::SrgbUnorm8)
+      .ok_or_else(|| {
+      "The window surface has no presentation format.".to_string()
+    })?;
   let present_mode = caps
     .present_modes
     .first()
@@ -1744,29 +1777,15 @@ fn build_gpu(
   let alpha = choose_alpha(&caps.alpha_modes)
     .ok_or_else(|| "The window surface has no alpha mode.".to_string())?;
   Ok(Some(Gpu {
+    adapter,
     device,
     queue,
-    format,
+    format: choice.format,
+    color_space: choice.color_space,
     present_mode,
     alpha,
     probe_drawable,
   }))
-}
-
-fn choose_format(
-  formats: &[wgpu::TextureFormat],
-) -> Option<wgpu::TextureFormat> {
-  const PREFERRED: &[wgpu::TextureFormat] = &[
-    wgpu::TextureFormat::Bgra8Unorm,
-    wgpu::TextureFormat::Rgba8Unorm,
-    wgpu::TextureFormat::Bgra8UnormSrgb,
-    wgpu::TextureFormat::Rgba8UnormSrgb,
-  ];
-  PREFERRED
-    .iter()
-    .copied()
-    .find(|format| formats.contains(format))
-    .or_else(|| formats.first().copied())
 }
 
 fn choose_alpha(

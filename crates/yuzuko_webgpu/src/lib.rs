@@ -19,6 +19,7 @@ pub fn register() {
   ONCE.call_once(|| {
     yuzuko_window::install_webgpu_hooks(yuzuko_window::WebGpuHooks {
       get_context: canvas::get_context,
+      present_request: canvas::present_request,
       stage: canvas::stage,
       present: canvas::present,
       discard_present: canvas::discard_staged,

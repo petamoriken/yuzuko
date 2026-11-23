@@ -11,10 +11,14 @@ use yuzuko_image::ColorSpace;
 use yuzuko_image::Raster;
 use yuzuko_image::SampleFormat;
 use yuzuko_image::convert;
+use yuzuko_image::premultiply;
+use yuzuko_image::unpremultiply;
 use yuzuko_image::{FramePixels, frame_pixels};
 use yuzuko_macros::op;
 use yuzuko_window::ContextKind;
 use yuzuko_window::OffscreenCanvas;
+use yuzuko_window::PresentRequest;
+use yuzuko_window::PresentTarget;
 
 use crate::js;
 use crate::resource::{self, GpuTexture};
@@ -426,8 +430,6 @@ pub fn get_context(
 enum StagedGpu {
   Blit {
     texture: wgpu::Texture,
-    alpha_opaque: bool,
-    color_space: ColorSpace,
   },
   Fitted {
     pixels: Vec<u8>,
@@ -436,9 +438,55 @@ enum StagedGpu {
   },
 }
 
+/// Converts a Display P3 readback when the swapchain fell back to sRGB, and
+/// forces alpha to 1 for `alphaMode: "opaque"`.
+///
+/// `"premultiplied"` texels are unpremultiplied for the color conversion and
+/// premultiplied again. `"opaque"` stores straight color and ignores alpha.
+pub(crate) fn prepare_presented_rgba(
+  pixels: &mut Vec<u8>,
+  width: u32,
+  height: u32,
+  color_space: ColorSpace,
+  target: PresentTarget,
+  alpha_opaque: bool,
+) {
+  if target == PresentTarget::SrgbUnorm8
+    && color_space == ColorSpace::DisplayP3
+    && let Ok(mut raster) =
+      Raster::from_rgba8(width, height, ColorSpace::DisplayP3, pixels)
+  {
+    if !alpha_opaque {
+      raster.premultiplied = true;
+      unpremultiply(&mut raster);
+    }
+    convert(&mut raster, ColorSpace::Srgb);
+    if !alpha_opaque {
+      premultiply(&mut raster);
+    }
+    *pixels = raster.bytes;
+  }
+  if alpha_opaque {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
+      pixel[3] = 255;
+    }
+  }
+}
+
 thread_local! {
   static STAGED: RefCell<Option<(u64, StagedGpu)>> =
     const { RefCell::new(None) };
+}
+
+pub fn present_request(id: u64) -> Option<PresentRequest> {
+  CANVASES.with(|canvases| {
+    let canvases = canvases.borrow();
+    let color_space = canvases.get(&id)?.config.as_ref()?.color_space;
+    Some(match color_space {
+      ColorSpace::DisplayP3 => PresentRequest::DisplayP3Unorm8,
+      ColorSpace::Srgb => PresentRequest::SrgbUnorm8,
+    })
+  })
 }
 
 pub fn stage(
@@ -447,6 +495,7 @@ pub fn stage(
   id: u64,
   target_width: u32,
   target_height: u32,
+  target: PresentTarget,
 ) -> bool {
   let taken = CANVASES.with(|canvases| {
     let mut canvases = canvases.borrow_mut();
@@ -476,8 +525,25 @@ pub fn stage(
     && (source_width != target_width || source_height != target_height)
     && !(style.fit == yuzuko_window::ObjectFit::Fill
       && yuzuko_window::rendering_is_smooth(style.rendering));
-  let staged = if fitted {
-    read_rgba(device, queue, &texture).map(|pixels| {
+  let needs_srgb =
+    color_space == ColorSpace::DisplayP3 && target == PresentTarget::SrgbUnorm8;
+  let staged = if fitted || alpha_opaque || needs_srgb {
+    read_rgba(device, queue, &texture).map(|mut pixels| {
+      prepare_presented_rgba(
+        &mut pixels,
+        source_width,
+        source_height,
+        color_space,
+        target,
+        alpha_opaque,
+      );
+      if !fitted {
+        return StagedGpu::Fitted {
+          pixels,
+          width: source_width,
+          height: source_height,
+        };
+      }
       let pad = if yuzuko_window::canvas_is_transparent(id) {
         0
       } else {
@@ -502,11 +568,7 @@ pub fn stage(
   } else {
     None
   };
-  let staged = staged.unwrap_or(StagedGpu::Blit {
-    texture,
-    alpha_opaque,
-    color_space,
-  });
+  let staged = staged.unwrap_or(StagedGpu::Blit { texture });
   STAGED.with(|slot| *slot.borrow_mut() = Some((id, staged)));
   true
 }
@@ -532,21 +594,9 @@ pub fn present(
     return false;
   }
   match staged {
-    StagedGpu::Blit {
-      texture,
-      alpha_opaque,
-      color_space,
-    } => {
+    StagedGpu::Blit { texture } => {
       let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-      blit_canvas(
-        device,
-        queue,
-        &view,
-        target,
-        format,
-        alpha_opaque,
-        color_space,
-      );
+      blit_canvas(device, queue, &view, target, format);
     }
     StagedGpu::Fitted {
       pixels,
@@ -685,22 +735,15 @@ fn blit_canvas(
   source: &wgpu::TextureView,
   target: &wgpu::TextureView,
   format: wgpu::TextureFormat,
-  alpha_opaque: bool,
-  color_space: ColorSpace,
 ) {
-  // There is no page composite. Both alpha modes blit stored texels.
-  // display-p3 is presented as the unorm8 swapchain image.
-  match (alpha_opaque, color_space) {
-    (true | false, ColorSpace::Srgb | ColorSpace::DisplayP3) => {
-      let blitter = wgpu::util::TextureBlitter::new(device, format);
-      let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-          label: Some("yuzuko-webgpu-present"),
-        });
-      blitter.copy(device, &mut encoder, source, target);
-      queue.submit([encoder.finish()]);
-    }
-  }
+  // Premultiplied texels. Opaque alpha is forced before this blit.
+  let blitter = wgpu::util::TextureBlitter::new(device, format);
+  let mut encoder =
+    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+      label: Some("yuzuko-webgpu-present"),
+    });
+  blitter.copy(device, &mut encoder, source, target);
+  queue.submit([encoder.finish()]);
 }
 
 pub fn expire(id: u64) {
@@ -1134,4 +1177,77 @@ fn origin_of(
     return Ok((x, y));
   }
   Ok((0, 0))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::prepare_presented_rgba;
+  use yuzuko_image::ColorSpace;
+  use yuzuko_image::Raster;
+  use yuzuko_image::convert;
+  use yuzuko_window::PresentTarget;
+
+  #[test]
+  fn opaque_present_forces_alpha_and_srgb_fallback_converts() {
+    let mut stored = vec![1, 2, 3, 4];
+    prepare_presented_rgba(
+      &mut stored,
+      1,
+      1,
+      ColorSpace::Srgb,
+      PresentTarget::SrgbUnorm8,
+      false,
+    );
+    assert_eq!(stored, vec![1, 2, 3, 4]);
+
+    let mut opaque = vec![1, 2, 3, 4];
+    prepare_presented_rgba(
+      &mut opaque,
+      1,
+      1,
+      ColorSpace::Srgb,
+      PresentTarget::SrgbUnorm8,
+      true,
+    );
+    assert_eq!(opaque, vec![1, 2, 3, 255]);
+
+    let mut wide = vec![128, 40, 20, 128];
+    prepare_presented_rgba(
+      &mut wide,
+      1,
+      1,
+      ColorSpace::DisplayP3,
+      PresentTarget::SrgbUnorm8,
+      true,
+    );
+    assert_eq!(wide[3], 255);
+    assert_ne!(&wide[..3], &[128, 40, 20]);
+
+    let mut kept = vec![128, 40, 20, 64];
+    prepare_presented_rgba(
+      &mut kept,
+      1,
+      1,
+      ColorSpace::DisplayP3,
+      PresentTarget::DisplayP3Unorm8,
+      false,
+    );
+    assert_eq!(kept, vec![128, 40, 20, 64]);
+
+    let mut premul = vec![100, 0, 0, 200];
+    prepare_presented_rgba(
+      &mut premul,
+      1,
+      1,
+      ColorSpace::DisplayP3,
+      PresentTarget::SrgbUnorm8,
+      false,
+    );
+    assert_eq!(premul[3], 200);
+    let mut straight =
+      Raster::from_rgba8(1, 1, ColorSpace::DisplayP3, &[100, 0, 0, 200])
+        .unwrap();
+    convert(&mut straight, ColorSpace::Srgb);
+    assert_ne!(&premul[..3], &straight.bytes[..3]);
+  }
 }

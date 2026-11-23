@@ -8,7 +8,8 @@ use crate::paint::color::CssColor;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Shadow {
-  /// `shadowBlur`. σ is half of this value and is capped at 128.
+  /// `shadowBlur`. σ is half of this value. σ above 128 is downsampled.
+  /// The shadow margin stays the radius of σ = 128.
   pub blur: f32,
   /// Canvas pixels. The current transform does not scale or rotate these.
   pub offset_x: f32,
