@@ -1917,7 +1917,10 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     }],
   });
   assert((await device.popErrorScope()) === null, "layout buffer");
-  assert(throwName(() => device.createSampler({ compare: "less" })) === "NotSupportedError", "compare");
+  assert(
+    device.createSampler({ compare: "less" }) instanceof GPUSampler,
+    "compare",
+  );
   device.createSampler();
 
   const attachment = texture.createView();
@@ -1937,7 +1940,7 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   );
 
   const encoder = device.createCommandEncoder();
-  assert(throwName(() => encoder.clearBuffer(buffer)) === "NotSupportedError", "clearBuffer");
+  encoder.clearBuffer(buffer);
   assert(
     throwName(() => encoder.copyBufferToTexture(
       // @ts-expect-error the copy source requires a buffer.
@@ -2001,7 +2004,7 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
         {},
         [1, 1],
       );
-    }) === "NotSupportedError",
+    }) === "TypeError",
     "writeTexture",
   );
 
@@ -2013,14 +2016,12 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
       storeOp: "store",
     }],
   });
-  assert(throwName(() => pass.setBlendConstant([0, 0, 0, 0])) === "NotSupportedError", "blend");
-  assert(throwName(() => pass.setStencilReference(0)) === "NotSupportedError", "stencil");
+  pass.setBlendConstant([0, 0, 0, 0]);
+  pass.setStencilReference(0);
 
   const shader = device.createShaderModule({ code: triangleShader });
-  assert(
-    await rejectionName(shader.getCompilationInfo()) === "NotSupportedError",
-    "compilation info",
-  );
+  const info = await shader.getCompilationInfo();
+  assert(Array.isArray(info.messages), "compilation info");
   assert(
     await rejectionName(device.createRenderPipelineAsync(
       // @ts-expect-error layout and vertex are required.

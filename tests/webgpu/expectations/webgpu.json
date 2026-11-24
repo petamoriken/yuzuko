@@ -423,7 +423,14 @@
   },
   "webgpu:api,operation,sampling,filter_mode:mipmapFilter:format=\"rgba8unorm\"": false,
   "webgpu:api,operation,sampling,filter_mode:mipmapFilter:format=\"rgba8unorm-srgb\"": false,
-  "webgpu:api,operation,sampling,sampler_texture:sample_texture_combos:": true,
+  "webgpu:api,operation,sampling,sampler_texture:sample_texture_combos:": {
+    "ignore": {
+      "reason": "lavapipe does not finish the maximum sampler and texture combination.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:api,operation,uncapturederror:iff_uncaptured:useOnuncapturederror=false;errorType=\"out-of-memory\"": true,
   "webgpu:api,operation,uncapturederror:iff_uncaptured:useOnuncapturederror=false;errorType=\"validation\"": true,
   "webgpu:api,operation,uncapturederror:iff_uncaptured:useOnuncapturederror=true;errorType=\"out-of-memory\"": true,
