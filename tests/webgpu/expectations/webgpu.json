@@ -13279,32 +13279,214 @@
   "webgpu:api,validation,shader_module,entry_point:vertex_undefined_entry_point_and_extra_stage:isAsync=true;extraShaderModuleStage=\"vertex\"": true,
   "webgpu:api,validation,shader_module,overrides:id_conflict:": true,
   "webgpu:api,validation,shader_module,overrides:name_conflict:": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=\"_undef_\";async=false": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=\"_undef_\";async=true": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0.1;async=false": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0.1;async=true": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0;async=false": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0;async=true": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=1;async=false": true,
-  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=1;async=true": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaDstFactor\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaOperation\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaSrcFactor\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorDstFactor\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorOperation\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorSrcFactor\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"default\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"noBlendTarget0\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"noBlendTarget1\"": true,
-  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"writeMask\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=1": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=12": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=3": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=6": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=1": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=12": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=3": true,
-  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=6": true,
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=\"_undef_\";async=false": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=\"_undef_\";async=true": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0.1;async=false": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0.1;async=true": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0;async=false": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=0;async=true": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=1;async=false": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:depthBiasClamp:depthBiasClamp=1;async=true": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaDstFactor\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaOperation\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"alphaSrcFactor\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorDstFactor\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorOperation\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"colorSrcFactor\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"default\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"noBlendTarget0\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"noBlendTarget1\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:colorState:caseName=\"writeMask\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=1": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=12": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=3": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"2d\";depthOrArrayLayers=6": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=1": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=12": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=3": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:depthOrArrayLayers_incompatible_with_textureBindingViewDimension:textureBindingViewDimension=\"cube\";depthOrArrayLayers=6": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:compat,api,validation,texture,createTexture:format_reinterpretation:format=\"astc-10x10-unorm-srgb\"": {
     "ignore": "texture format 'astc-10x10-unorm-srgb' requires feature: 'texture-compression-astc'"
   },
@@ -13371,32 +13553,214 @@
   "webgpu:compat,api,validation,texture,createTexture:format_reinterpretation:format=\"etc2-rgba8unorm-srgb\"": {
     "ignore": "texture format 'etc2-rgba8unorm-srgb' requires feature: 'texture-compression-etc2'"
   },
-  "webgpu:compat,api,validation,texture,createTexture:format_reinterpretation:format=\"rgba8unorm-srgb\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"1d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"2d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"2d-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"3d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"cube\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"cube-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"1d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"2d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"2d-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"3d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"cube\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"cube-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"1d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"2d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"2d-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"3d\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"cube\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"cube-array\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32float\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32sint\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32uint\"": true,
-  "webgpu:compat,api,validation,texture,createTexture:unsupportedTextureFormats:": true,
-  "webgpu:compat,api,validation,texture,createTexture:unsupportedTextureViewFormats:": true,
-  "webgpu:compat,api,validation,texture,cubeArray:cube_array:dimension=\"cube\"": true,
-  "webgpu:compat,api,validation,texture,cubeArray:cube_array:dimension=\"cube-array\"": true,
+  "webgpu:compat,api,validation,texture,createTexture:format_reinterpretation:format=\"rgba8unorm-srgb\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"1d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"2d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"2d-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"3d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"cube\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"1d\";textureBindingViewDimension=\"cube-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"1d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"2d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"2d-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"3d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"cube\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"2d\";textureBindingViewDimension=\"cube-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"1d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"2d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"2d-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"3d\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"cube\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:invalidTextureBindingViewDimension:dimension=\"3d\";textureBindingViewDimension=\"cube-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32float\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32sint\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:unsupportedStorageTextureFormats:format=\"rg32uint\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:unsupportedTextureFormats:": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,createTexture:unsupportedTextureViewFormats:": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,cubeArray:cube_array:dimension=\"cube\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
+  "webgpu:compat,api,validation,texture,cubeArray:cube_array:dimension=\"cube-array\"": {
+    "ignore": {
+      "reason": "The shared device does not meet the WebGPU compatibility defaults.",
+      "os": [
+        "linux"
+      ]
+    }
+  },
   "webgpu:idl,constants,flags:BufferUsage,count:": true,
   "webgpu:idl,constants,flags:BufferUsage,values:key=\"COPY_DST\"": true,
   "webgpu:idl,constants,flags:BufferUsage,values:key=\"COPY_SRC\"": true,
