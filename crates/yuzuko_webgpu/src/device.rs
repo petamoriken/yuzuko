@@ -881,7 +881,34 @@ fn install_webgpu_globals(scope: &mut v8::PinScope) {
   let script =
     v8::Script::compile(scope, source, None).expect("webgpu globals");
   script.run(scope).expect("webgpu globals");
+  capture_pipeline_error(scope);
   install_limit_getters(scope);
+}
+
+thread_local! {
+  static PIPELINE_ERROR: std::cell::RefCell<Option<v8::Global<v8::Function>>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// The constructor installed for this realm. A later assignment to
+/// `globalThis.GPUPipelineError` does not change pipeline rejections.
+fn capture_pipeline_error(scope: &mut v8::PinScope) {
+  let global = scope.get_current_context().global(scope);
+  let Some(key) = v8::String::new(scope, "GPUPipelineError") else {
+    return;
+  };
+  let Some(value) = global.get(scope, key.into()) else {
+    return;
+  };
+  let Ok(constructor) = v8::Local::<v8::Function>::try_from(value) else {
+    return;
+  };
+  let constructor = v8::Global::new(scope, constructor);
+  PIPELINE_ERROR.with(|slot| *slot.borrow_mut() = Some(constructor));
+}
+
+pub(crate) fn clear_pipeline_error() {
+  PIPELINE_ERROR.with(|slot| *slot.borrow_mut() = None);
 }
 
 fn install_navigator(scope: &mut v8::PinScope) {
@@ -1299,15 +1326,19 @@ fn pipeline_error_value<'s>(
   message: &str,
   reason: &str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "GPUPipelineError")?;
-  let constructor = global.get(scope, key.into())?;
-  let constructor = v8::Local::<v8::Function>::try_from(constructor).ok()?;
+  let constructor = PIPELINE_ERROR
+    .with(|slot| slot.borrow().as_ref().map(v8::Global::clone))?;
+  let constructor = v8::Local::new(scope, &constructor);
   let message = v8::String::new(scope, message)?;
   let options = v8::Object::new(scope);
   let reason_key = v8::String::new(scope, "reason")?;
   let reason_value = v8::String::new(scope, reason)?;
-  let _ = options.set(scope, reason_key.into(), reason_value.into());
+  // Own data property. A setter on `Object.prototype` must not run.
+  options.create_data_property(
+    scope,
+    reason_key.into(),
+    reason_value.into(),
+  )?;
   let arguments = [v8::Local::<v8::Value>::from(message), options.into()];
   constructor
     .new_instance(scope, &arguments)
@@ -1381,7 +1412,7 @@ fn adapter_info_object<'s>(
   let object = v8::Object::new(scope);
   let set = |name: &str, value: v8::Local<v8::Value>| {
     let key = v8::String::new(scope, name).unwrap();
-    object.set(scope, key.into(), value);
+    let _ = object.create_data_property(scope, key.into(), value);
   };
   let hex = |id: u32| {
     if id == 0 {

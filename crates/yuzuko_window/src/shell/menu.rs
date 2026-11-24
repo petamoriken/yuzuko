@@ -275,7 +275,7 @@ pub(crate) fn emit_menuclick(
   define_is_trusted(scope, object);
   let key = v8::String::new(scope, "action").unwrap();
   let value = v8::String::new(scope, action).unwrap();
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   let _ = dispatch(scope, target, object);
 }
 

@@ -324,13 +324,17 @@ pub fn define_is_trusted(
     return;
   };
   let descriptor = v8::Object::new(scope);
-  descriptor.set(scope, key(scope, "get").into(), getter.into());
-  descriptor.set(
+  let _ = descriptor.create_data_property(
+    scope,
+    key(scope, "get").into(),
+    getter.into(),
+  );
+  let _ = descriptor.create_data_property(
     scope,
     key(scope, "enumerable").into(),
     v8::Boolean::new(scope, true).into(),
   );
-  descriptor.set(
+  let _ = descriptor.create_data_property(
     scope,
     key(scope, "configurable").into(),
     v8::Boolean::new(scope, false).into(),

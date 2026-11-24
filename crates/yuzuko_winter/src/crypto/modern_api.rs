@@ -707,10 +707,10 @@ pub(crate) fn akp_value<'s>(
     operations.set_index(scope, index as u32, text.into());
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
-  object.set(scope, key.into(), operations.into());
+  let _ = object.create_data_property(scope, key.into(), operations.into());
   let ext = v8::Boolean::new(scope, jwk.ext);
   let key = v8::String::new(scope, "ext").unwrap();
-  object.set(scope, key.into(), ext.into());
+  let _ = object.create_data_property(scope, key.into(), ext.into());
   object.into()
 }
 

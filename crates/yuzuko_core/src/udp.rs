@@ -587,12 +587,12 @@ fn address_fields(
   let Some(value) = v8::String::new(scope, hostname) else {
     return Err(());
   };
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   let Some(key) = v8::String::new(scope, "port") else {
     return Err(());
   };
   let port = v8::Integer::new(scope, i32::from(port));
-  object.set(scope, key.into(), port.into());
+  let _ = object.create_data_property(scope, key.into(), port.into());
   Ok(())
 }
 
@@ -607,7 +607,7 @@ fn packet_value<'s>(
   let Some(key) = v8::String::new(scope, "data") else {
     return Err(Fail::Receive);
   };
-  object.set(scope, key.into(), data);
+  let _ = object.create_data_property(scope, key.into(), data);
   if address_fields(scope, object, &packet.hostname, packet.port).is_err() {
     return Err(Fail::Receive);
   }

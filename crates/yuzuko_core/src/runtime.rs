@@ -1353,7 +1353,8 @@ fn execute_test(
   let test_context = v8::Object::new(scope);
   let step = v8::Function::new(scope, step_callback).expect("step function");
   let step_name = v8::String::new(scope, "step").unwrap();
-  test_context.set(scope, step_name.into(), step.into());
+  let _ =
+    test_context.create_data_property(scope, step_name.into(), step.into());
   crate::navigator_host::bind_test_context(scope, test_context);
   let result = {
     v8::tc_scope!(let tc, scope);

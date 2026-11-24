@@ -493,10 +493,12 @@ fn lost_info<'s>(
   let object = v8::Object::new(scope);
   let reason_key = v8::String::new(scope, "reason").unwrap();
   let reason_value = v8::String::new(scope, reason).unwrap();
-  object.set(scope, reason_key.into(), reason_value.into());
+  let _ =
+    object.create_data_property(scope, reason_key.into(), reason_value.into());
   let message_key = v8::String::new(scope, "message").unwrap();
   let message = v8::String::new(scope, "The device was destroyed").unwrap();
-  object.set(scope, message_key.into(), message.into());
+  let _ =
+    object.create_data_property(scope, message_key.into(), message.into());
   object.into()
 }
 

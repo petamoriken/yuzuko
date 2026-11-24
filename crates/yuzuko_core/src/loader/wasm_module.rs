@@ -193,12 +193,12 @@ fn compile_options<'a>(
     let name = v8::String::new(scope, "js-string")?;
     let builtins = v8::Array::new_with_elements(scope, &[name.into()]);
     let key = v8::String::new(scope, "builtins")?;
-    options.set(scope, key.into(), builtins.into())?;
+    options.create_data_property(scope, key.into(), builtins.into())?;
   }
   if contains_bytes(bytes, b"wasm:js/string-constants") {
     let key = v8::String::new(scope, "importedStringConstants")?;
     let value = v8::String::new(scope, "wasm:js/string-constants")?;
-    options.set(scope, key.into(), value.into())?;
+    options.create_data_property(scope, key.into(), value.into())?;
   }
   Some(options)
 }

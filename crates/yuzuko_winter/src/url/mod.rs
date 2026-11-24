@@ -927,12 +927,12 @@ fn iterator_result(
 ) -> Js {
   let object = v8::Object::new(scope);
   let done = v8::Boolean::new(scope, done);
-  object.set(
+  let _ = object.create_data_property(
     scope,
     v8::String::new(scope, "done").unwrap().into(),
     done.into(),
   );
-  object.set(
+  let _ = object.create_data_property(
     scope,
     v8::String::new(scope, "value").unwrap().into(),
     value,
@@ -960,7 +960,7 @@ fn iterator_object(
   };
   let symbol = v8::Symbol::get_iterator(scope);
   let function = v8::Function::new(scope, iterate_self).unwrap();
-  iter.set(scope, symbol.into(), function.into());
+  let _ = iter.create_data_property(scope, symbol.into(), function.into());
   let value: v8::Local<v8::Value> = iter.into();
   Js(v8::Global::new(scope, value))
 }

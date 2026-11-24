@@ -303,6 +303,7 @@ impl yuzuko_core::op::FromV8 for GpuSignedOffset32 {
   }
 }
 
+/// Defines `name` with `[[Set]]` on a flag object built during installation.
 pub fn set_u32(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,

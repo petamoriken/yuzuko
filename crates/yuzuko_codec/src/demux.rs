@@ -64,7 +64,7 @@ fn to_movie<'s>(
     set_bytes(scope, value, "description", track.description)?;
     set_number(scope, value, "codedWidth", track.coded_width as f64);
     set_number(scope, value, "codedHeight", track.coded_height as f64);
-    yuzuko_core::set_value(scope, value, "chunks", chunks.into());
+    define_data(scope, value, "chunks", chunks.into());
     Ok(value)
   })?;
   let audio = array_of(scope, movie.audio, |scope, track| {
@@ -74,11 +74,11 @@ fn to_movie<'s>(
     set_bytes(scope, value, "description", track.description)?;
     set_number(scope, value, "sampleRate", track.sample_rate as f64);
     set_number(scope, value, "numberOfChannels", track.channels as f64);
-    yuzuko_core::set_value(scope, value, "chunks", chunks.into());
+    define_data(scope, value, "chunks", chunks.into());
     Ok(value)
   })?;
-  yuzuko_core::set_value(scope, object, "video", video.into());
-  yuzuko_core::set_value(scope, object, "audio", audio.into());
+  define_data(scope, object, "video", video.into());
+  define_data(scope, object, "audio", audio.into());
   Ok(object)
 }
 
@@ -144,7 +144,7 @@ fn set_number(
   value: f64,
 ) {
   let number = v8::Number::new(scope, value);
-  yuzuko_core::set_value(scope, object, name, number.into());
+  define_data(scope, object, name, number.into());
 }
 
 fn set_text(
@@ -156,7 +156,7 @@ fn set_text(
   let Some(text) = v8::String::new(scope, value) else {
     return Err(());
   };
-  yuzuko_core::set_value(scope, object, name, text.into());
+  define_data(scope, object, name, text.into());
   Ok(())
 }
 
@@ -169,6 +169,16 @@ fn set_bytes(
   let Some(view) = yuzuko_core::uint8_array(scope, bytes) else {
     return Err(());
   };
-  yuzuko_core::set_value(scope, object, name, view.into());
+  define_data(scope, object, name, view.into());
   Ok(())
+}
+
+fn define_data(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let _ = object.create_data_property(scope, key.into(), value);
 }

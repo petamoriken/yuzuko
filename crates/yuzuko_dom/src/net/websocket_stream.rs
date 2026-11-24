@@ -1119,7 +1119,7 @@ fn set(
   name: &str,
   value: v8::Local<v8::Value>,
 ) {
-  let _ = object.set(scope, key(scope, name).into(), value);
+  let _ = object.create_data_property(scope, key(scope, name).into(), value);
 }
 
 fn uint8_array<'s>(

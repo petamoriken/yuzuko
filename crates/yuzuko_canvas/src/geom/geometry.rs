@@ -624,7 +624,7 @@ impl DomQuad {
     ] {
       let key = v8::String::new(scope, name).unwrap();
       let value = v8::Local::new(scope, &point.0);
-      object.set(scope, key.into(), value);
+      let _ = object.create_data_property(scope, key.into(), value);
     }
     let value: v8::Local<v8::Value> = object.into();
     Js(v8::Global::new(scope, value))
@@ -1021,5 +1021,5 @@ fn set_number(
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let number = v8::Number::new(scope, value);
-  object.set(scope, key.into(), number.into());
+  let _ = object.create_data_property(scope, key.into(), number.into());
 }

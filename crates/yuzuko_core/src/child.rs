@@ -850,7 +850,7 @@ fn set_value(
   value: v8::Local<v8::Value>,
 ) -> Option<()> {
   let key = v8::String::new(scope, name)?;
-  object.set(scope, key.into(), value);
+  object.create_data_property(scope, key.into(), value)?;
   Some(())
 }
 

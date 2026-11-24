@@ -95,7 +95,7 @@ fn sink_value<'s>(
       let object = v8::Object::new(scope);
       let key = v8::String::new(scope, "type").unwrap();
       let value = v8::String::new(scope, "none").unwrap();
-      object.set(scope, key.into(), value.into());
+      let _ = object.create_data_property(scope, key.into(), value.into());
       object.into()
     }
   }
@@ -2286,12 +2286,12 @@ impl AudioContext {
     let object = v8::Object::new(scope);
     let context_key = v8::String::new(scope, "contextTime").unwrap();
     let performance_key = v8::String::new(scope, "performanceTime").unwrap();
-    let _ = object.set(
+    let _ = object.create_data_property(
       scope,
       context_key.into(),
       v8::Number::new(scope, context_time).into(),
     );
-    let _ = object.set(
+    let _ = object.create_data_property(
       scope,
       performance_key.into(),
       v8::Number::new(scope, performance_time).into(),

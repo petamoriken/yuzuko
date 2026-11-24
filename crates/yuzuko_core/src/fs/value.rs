@@ -718,7 +718,7 @@ fn set(
   value: v8::Local<v8::Value>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  object.set(scope, key.into(), value);
+  let _ = object.create_data_property(scope, key.into(), value);
 }
 
 fn set_bool(
@@ -747,6 +747,6 @@ fn set_string(
 ) -> Result<(), FsError> {
   let key = v8::String::new(scope, name).ok_or_else(FsError::failed)?;
   let value = v8::String::new(scope, text).ok_or_else(FsError::failed)?;
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   Ok(())
 }

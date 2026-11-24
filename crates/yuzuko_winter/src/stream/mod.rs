@@ -6609,8 +6609,12 @@ fn read_result<'s>(
   let value_key = v8::String::new(scope, "value").unwrap();
   let done_key = v8::String::new(scope, "done").unwrap();
   let value = value.unwrap_or_else(|| v8::undefined(scope).into());
-  object.set(scope, value_key.into(), value);
-  object.set(scope, done_key.into(), v8::Boolean::new(scope, done).into());
+  let _ = object.create_data_property(scope, value_key.into(), value);
+  let _ = object.create_data_property(
+    scope,
+    done_key.into(),
+    v8::Boolean::new(scope, done).into(),
+  );
   object.into()
 }
 
@@ -6686,7 +6690,7 @@ fn arm_then_shadow(
     return false;
   }
   object
-    .set(scope, key.into(), v8::undefined(scope).into())
+    .create_data_property(scope, key.into(), v8::undefined(scope).into())
     .unwrap_or(false)
 }
 

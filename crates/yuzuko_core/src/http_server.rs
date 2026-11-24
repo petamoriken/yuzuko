@@ -1125,12 +1125,12 @@ fn address_value(
   let Some(hostname) = v8::String::new(scope, &addr.ip().to_string()) else {
     return Err(OpError::type_(OPTIONS_READ));
   };
-  object.set(scope, key.into(), hostname.into());
+  let _ = object.create_data_property(scope, key.into(), hostname.into());
   let Some(key) = v8::String::new(scope, "port") else {
     return Err(OpError::type_(OPTIONS_READ));
   };
   let port = v8::Integer::new(scope, i32::from(addr.port()));
-  object.set(scope, key.into(), port.into());
+  let _ = object.create_data_property(scope, key.into(), port.into());
   let value: v8::Local<v8::Value> = object.into();
   Ok(Js(v8::Global::new(scope, value)))
 }

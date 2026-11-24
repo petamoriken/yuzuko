@@ -78,12 +78,12 @@ impl yuzuko_core::op::ToV8 for EncodeIntoResult {
     let object = v8::Object::new(scope);
     let read = v8::String::new(scope, "read").unwrap();
     let written = v8::String::new(scope, "written").unwrap();
-    object.set(
+    let _ = object.create_data_property(
       scope,
       read.into(),
       v8::Integer::new(scope, self.read as i32).into(),
     );
-    object.set(
+    let _ = object.create_data_property(
       scope,
       written.into(),
       v8::Integer::new(scope, self.written as i32).into(),

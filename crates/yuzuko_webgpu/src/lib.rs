@@ -29,6 +29,7 @@ pub fn register() {
     });
     yuzuko_core::add_extension(&device::install);
     yuzuko_core::on_realm_drop(shutdown);
+    yuzuko_core::on_realm_drop(device::clear_pipeline_error);
     yuzuko_core::on_reload(shutdown);
   });
 }

@@ -1360,12 +1360,16 @@ fn matrix_json(scope: &mut v8::PinScope, value: Mat4, is_2d: bool) -> Js {
   for (name, index) in names {
     let key = v8::String::new(scope, name).unwrap();
     let number = v8::Number::new(scope, columns[index]);
-    object.set(scope, key.into(), number.into());
+    let _ = object.create_data_property(scope, key.into(), number.into());
   }
   let key = v8::String::new(scope, "is2D").unwrap();
-  object.set(scope, key.into(), v8::Boolean::new(scope, is_2d).into());
+  let _ = object.create_data_property(
+    scope,
+    key.into(),
+    v8::Boolean::new(scope, is_2d).into(),
+  );
   let key = v8::String::new(scope, "isIdentity").unwrap();
-  object.set(
+  let _ = object.create_data_property(
     scope,
     key.into(),
     v8::Boolean::new(scope, value.is_identity()).into(),

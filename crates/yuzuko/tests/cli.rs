@@ -347,7 +347,7 @@ fn pollution_tests_pass() {
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
   let stdout = text(&output.stdout);
   assert!(
-    stdout.contains("ok | 8 passed | 0 failed | 0 ignored\n"),
+    stdout.contains("ok | 9 passed | 0 failed | 0 ignored\n"),
     "{stdout}"
   );
 }

@@ -241,13 +241,13 @@ pub(crate) fn attach_code(
   let Some(key) = v8::String::new(scope, "code") else {
     return;
   };
-  if object.has(scope, key.into()).unwrap_or(false) {
+  if object.has_own_property(scope, key.into()).unwrap_or(false) {
     return;
   }
   let Some(text) = v8::String::new(scope, code) else {
     return;
   };
-  object.set(scope, key.into(), text.into());
+  let _ = object.create_data_property(scope, key.into(), text.into());
 }
 
 #[cfg_attr(
@@ -317,7 +317,7 @@ fn named_error<'s>(
   let Some(value) = v8::String::new(scope, name) else {
     return object.into();
   };
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   object.into()
 }
 

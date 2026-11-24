@@ -366,7 +366,7 @@ impl VideoColorSpace {
       Some(value) => v8::Boolean::new(scope, value).into(),
       None => v8::null(scope).into(),
     };
-    object.set(
+    let _ = object.create_data_property(
       scope,
       v8::String::new(scope, "fullRange").unwrap().into(),
       full_range,
@@ -460,7 +460,11 @@ fn put_color_string(
       .into(),
     None => v8::null(scope).into(),
   };
-  object.set(scope, v8::String::new(scope, name).unwrap().into(), js);
+  let _ = object.create_data_property(
+    scope,
+    v8::String::new(scope, name).unwrap().into(),
+    js,
+  );
 }
 
 pub struct EncodedVideoChunk {
@@ -2678,7 +2682,7 @@ fn put_color_bool(
   let Some(key) = v8::String::new(scope, name) else {
     return;
   };
-  object.set(scope, key.into(), js);
+  let _ = object.create_data_property(scope, key.into(), js);
 }
 
 fn audio_support_object<'s>(
@@ -2780,7 +2784,7 @@ fn set_value(
   let Some(key) = v8::String::new(scope, name) else {
     return;
   };
-  object.set(scope, key.into(), value);
+  let _ = object.create_data_property(scope, key.into(), value);
 }
 
 struct Delivery {

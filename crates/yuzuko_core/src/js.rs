@@ -1,4 +1,7 @@
 //! Small helpers for installing host functions.
+//!
+//! `set_value` and `set_function` perform `[[Set]]`. An ordinary object
+//! created after user code can run uses `v8::Object::create_data_property`.
 
 #[inline]
 pub fn global<'a>(
@@ -7,6 +10,10 @@ pub fn global<'a>(
   scope.get_current_context().global(scope)
 }
 
+/// Installs `name` as a host function with `[[Set]]`.
+///
+/// Realm initialization only. A dictionary created after user code runs uses
+/// `Object::create_data_property`. See `set_value`.
 #[inline]
 pub fn set_function(
   scope: &mut v8::PinScope,
@@ -39,6 +46,12 @@ pub fn namespace<'s>(
   object
 }
 
+/// Assigns `name` with `[[Set]]`.
+///
+/// Realm initialization only: a property on `globalThis`, `Yuzuko`, or a
+/// prototype. A dictionary, `toJSON` result, iterator result, or other
+/// ordinary object created later uses `Object::create_data_property`, which
+/// does not run an accessor on `Object.prototype`.
 #[inline]
 pub fn set_value(
   scope: &mut v8::PinScope,
@@ -165,6 +178,7 @@ pub fn try_define_function(
   )
 }
 
+/// Stores the function with `[[Set]]`. Realm initialization only.
 fn install_host_function(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,

@@ -2466,7 +2466,8 @@ fn state_object<'s>(
 ) -> v8::Local<'s, v8::Object> {
   let object = v8::Object::new(scope);
   let text = v8::String::new(scope, state.as_str()).unwrap();
-  crate::js::set_value(scope, object, "state", text.into());
+  let key = v8::String::new(scope, "state").unwrap();
+  let _ = object.create_data_property(scope, key.into(), text.into());
   object
 }
 

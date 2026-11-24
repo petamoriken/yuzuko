@@ -104,22 +104,28 @@ impl CryptoKey {
     let object = v8::Object::new(scope);
     let name = v8::String::new(scope, &self.algorithm).unwrap();
     let name_key = v8::String::new(scope, "name").unwrap();
-    object.set(scope, name_key.into(), name.into());
+    let _ = object.create_data_property(scope, name_key.into(), name.into());
     if let Some(hash) = &self.hash {
       let hash_object = v8::Object::new(scope);
       let hash_name = v8::String::new(scope, hash).unwrap();
-      hash_object.set(scope, name_key.into(), hash_name.into());
+      let _ = hash_object.create_data_property(
+        scope,
+        name_key.into(),
+        hash_name.into(),
+      );
       let hash_key = v8::String::new(scope, "hash").unwrap();
-      object.set(scope, hash_key.into(), hash_object.into());
+      let _ =
+        object.create_data_property(scope, hash_key.into(), hash_object.into());
     }
     if let Some(curve) = &self.curve {
       let curve_key = v8::String::new(scope, "namedCurve").unwrap();
       let curve_name = v8::String::new(scope, curve).unwrap();
-      object.set(scope, curve_key.into(), curve_name.into());
+      let _ =
+        object.create_data_property(scope, curve_key.into(), curve_name.into());
     }
     if self.length != 0 {
       let length_key = v8::String::new(scope, "length").unwrap();
-      object.set(
+      let _ = object.create_data_property(
         scope,
         length_key.into(),
         v8::Number::new(scope, f64::from(self.length)).into(),
@@ -127,14 +133,18 @@ impl CryptoKey {
     }
     if self.modulus_length != 0 {
       let modulus_key = v8::String::new(scope, "modulusLength").unwrap();
-      object.set(
+      let _ = object.create_data_property(
         scope,
         modulus_key.into(),
         v8::Number::new(scope, f64::from(self.modulus_length)).into(),
       );
       let exponent = bytes::uint8_array(scope, self.public_exponent.clone());
       let exponent_key = v8::String::new(scope, "publicExponent").unwrap();
-      object.set(scope, exponent_key.into(), exponent.into());
+      let _ = object.create_data_property(
+        scope,
+        exponent_key.into(),
+        exponent.into(),
+      );
     }
     *self.algorithm_object.borrow_mut() = Some(traced(scope, object));
     let value: v8::Local<v8::Value> = object.into();
@@ -1671,10 +1681,10 @@ fn jwk_value<'s>(
     operations.set_index(scope, index as u32, text.into());
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
-  object.set(scope, key.into(), operations.into());
+  let _ = object.create_data_property(scope, key.into(), operations.into());
   let ext = v8::Boolean::new(scope, jwk.ext);
   let key = v8::String::new(scope, "ext").unwrap();
-  object.set(scope, key.into(), ext.into());
+  let _ = object.create_data_property(scope, key.into(), ext.into());
   object.into()
 }
 
@@ -1686,7 +1696,7 @@ fn set_string(
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let text = v8::String::new(scope, value).unwrap();
-  object.set(scope, key.into(), text.into());
+  let _ = object.create_data_property(scope, key.into(), text.into());
 }
 
 fn sign_bytes(
@@ -2630,8 +2640,10 @@ fn resolve_pair(
   let private_key = unsafe { yuzuko_core::op::wrap_instance(scope, private) };
   let public_name = v8::String::new(scope, "publicKey").unwrap();
   let private_name = v8::String::new(scope, "privateKey").unwrap();
-  object.set(scope, public_name.into(), public_key.into());
-  object.set(scope, private_name.into(), private_key.into());
+  let _ =
+    object.create_data_property(scope, public_name.into(), public_key.into());
+  let _ =
+    object.create_data_property(scope, private_name.into(), private_key.into());
   resolve(scope, object.into())
 }
 
@@ -3067,9 +3079,9 @@ fn resolve_kem(
   let object = v8::Object::new(scope);
   let buffer = bytes::array_buffer(scope, ciphertext);
   let name = v8::String::new(scope, "ciphertext").unwrap();
-  object.set(scope, name.into(), buffer.into());
+  let _ = object.create_data_property(scope, name.into(), buffer.into());
   let name = v8::String::new(scope, "sharedKey").unwrap();
-  object.set(scope, name.into(), shared);
+  let _ = object.create_data_property(scope, name.into(), shared);
   resolve(scope, object.into())
 }
 
@@ -3543,10 +3555,10 @@ fn ec_jwk_value<'s>(
     operations.set_index(scope, index as u32, text.into());
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
-  object.set(scope, key.into(), operations.into());
+  let _ = object.create_data_property(scope, key.into(), operations.into());
   let ext = v8::Boolean::new(scope, ext);
   let key = v8::String::new(scope, "ext").unwrap();
-  object.set(scope, key.into(), ext.into());
+  let _ = object.create_data_property(scope, key.into(), ext.into());
   object.into()
 }
 
@@ -3827,10 +3839,10 @@ fn okp_jwk_value<'s>(
     operations.set_index(scope, index as u32, text.into());
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
-  object.set(scope, key.into(), operations.into());
+  let _ = object.create_data_property(scope, key.into(), operations.into());
   let ext_value = v8::Boolean::new(scope, ext);
   let key = v8::String::new(scope, "ext").unwrap();
-  object.set(scope, key.into(), ext_value.into());
+  let _ = object.create_data_property(scope, key.into(), ext_value.into());
   object.into()
 }
 
@@ -4240,10 +4252,10 @@ fn rsa_jwk_value<'s>(
     operations.set_index(scope, index as u32, text.into());
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
-  object.set(scope, key.into(), operations.into());
+  let _ = object.create_data_property(scope, key.into(), operations.into());
   let ext = v8::Boolean::new(scope, ext);
   let key = v8::String::new(scope, "ext").unwrap();
-  object.set(scope, key.into(), ext.into());
+  let _ = object.create_data_property(scope, key.into(), ext.into());
   object.into()
 }
 

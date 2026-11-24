@@ -459,5 +459,5 @@ fn set_number(
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let number = v8::Number::new(scope, value);
-  object.set(scope, key.into(), number.into());
+  let _ = object.create_data_property(scope, key.into(), number.into());
 }

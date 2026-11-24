@@ -921,7 +921,7 @@ fn format_url(
   for (name, field) in fields {
     let key = v8_str(scope, name);
     let field = v8::Local::new(scope, field);
-    synthetic.set(scope, key.into(), field);
+    let _ = synthetic.create_data_property(scope, key.into(), field);
   }
   let body = format_with(scope, ctx, synthetic.into(), 0)?;
   let name = constructor_label(scope, value, "URL")?;
@@ -995,7 +995,7 @@ fn format_headers(
       v8_str(scope, &parts.join(", ")).into()
     };
     let key = v8_str(scope, &name);
-    synthetic.set(scope, key.into(), stored);
+    let _ = synthetic.create_data_property(scope, key.into(), stored);
   }
   let body = format_with(scope, ctx, synthetic.into(), 0)?;
   let name = constructor_label(scope, value, "Headers")?;
@@ -3257,7 +3257,7 @@ fn json_stringify(
 fn circular_json_message(scope: &mut v8::PinScope) -> String {
   let sample = v8::Object::new(scope);
   let key = v8_str(scope, "a");
-  sample.set(scope, key.into(), sample.into());
+  let _ = sample.create_data_property(scope, key.into(), sample.into());
   let message = {
     v8::tc_scope!(let tc, scope);
     match v8::json::stringify(tc, sample.into()) {

@@ -211,7 +211,7 @@ impl GpuCanvasContext {
     let object = v8::Object::new(scope);
     let set = |name: &str, value: v8::Local<v8::Value>| {
       let key = v8::String::new(scope, name).unwrap();
-      object.set(scope, key.into(), value);
+      let _ = object.create_data_property(scope, key.into(), value);
     };
     set("device", v8::Local::new(scope, &device).into());
     let format_name =
@@ -239,7 +239,7 @@ impl GpuCanvasContext {
     let tone = v8::Object::new(scope);
     let mode_key = v8::String::new(scope, "mode").unwrap();
     let mode = v8::String::new(scope, "standard").unwrap();
-    tone.set(scope, mode_key.into(), mode.into());
+    let _ = tone.create_data_property(scope, mode_key.into(), mode.into());
     set("toneMapping", tone.into());
     let value: v8::Local<v8::Value> = object.into();
     Js(v8::Global::new(scope, value))

@@ -286,7 +286,7 @@ fn set_string(
 ) -> Option<()> {
   let key = v8::String::new(scope, name)?;
   let value = v8::String::new(scope, text)?;
-  object.set(scope, key.into(), value.into())?;
+  object.create_data_property(scope, key.into(), value.into())?;
   Some(())
 }
 
@@ -298,7 +298,7 @@ fn set_number(
 ) -> Option<()> {
   let key = v8::String::new(scope, name)?;
   let value = v8::Number::new(scope, number);
-  object.set(scope, key.into(), value.into())?;
+  object.create_data_property(scope, key.into(), value.into())?;
   Some(())
 }
 
@@ -310,7 +310,7 @@ fn set_bool(
 ) -> Option<()> {
   let key = v8::String::new(scope, name)?;
   let value = v8::Boolean::new(scope, flag);
-  object.set(scope, key.into(), value.into())?;
+  object.create_data_property(scope, key.into(), value.into())?;
   Some(())
 }
 

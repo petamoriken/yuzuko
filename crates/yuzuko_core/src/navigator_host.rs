@@ -159,7 +159,7 @@ fn define_test_fn(
 ) {
   let function = v8::Function::new(scope, callback).expect(name);
   let key = v8::String::new(scope, name).unwrap();
-  object.set(scope, key.into(), function.into());
+  let _ = object.create_data_property(scope, key.into(), function.into());
 }
 
 /// How long a parked realm may sleep before `poll` has to sample again.

@@ -4672,7 +4672,7 @@ fn call_process(
       .collect::<Vec<_>>();
     let view = f32_array(scope, &samples);
     let key = v8::String::new(scope, &param.name).ok_or(CallFail::Exception)?;
-    parameters.set(scope, key.into(), view.into());
+    let _ = parameters.create_data_property(scope, key.into(), view.into());
   }
   let key = v8::String::new(scope, "process").ok_or(CallFail::Exception)?;
   let Some(method) = instance.get(scope, key.into()) else {
@@ -4966,17 +4966,17 @@ fn processor_options_object<'s>(
       list.set_index(scope, index as u32, number.into());
     }
     let key = v8::String::new(scope, "outputChannelCount").unwrap();
-    object.set(scope, key.into(), list.into());
+    let _ = object.create_data_property(scope, key.into(), list.into());
   }
   if let Some(value) = parameter_data {
     let value = v8::Local::new(scope, value);
     let key = v8::String::new(scope, "parameterData").unwrap();
-    object.set(scope, key.into(), value);
+    let _ = object.create_data_property(scope, key.into(), value);
   }
   if let Some(value) = processor_options {
     let value = v8::Local::new(scope, value);
     let key = v8::String::new(scope, "processorOptions").unwrap();
-    object.set(scope, key.into(), value);
+    let _ = object.create_data_property(scope, key.into(), value);
   }
   object
 }
@@ -4989,7 +4989,7 @@ fn set_number_prop(
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let number = v8::Number::new(scope, value);
-  object.set(scope, key.into(), number.into());
+  let _ = object.create_data_property(scope, key.into(), number.into());
 }
 
 fn set_pending_port(ctx: u64, port: v8::Global<v8::Object>) {
@@ -5041,7 +5041,7 @@ fn set_number(scope: &mut v8::PinScope, name: &str, value: f64) {
   let global = scope.get_current_context().global(scope);
   let key = v8::String::new(scope, name).unwrap();
   let number = v8::Number::new(scope, value);
-  global.set(scope, key.into(), number.into());
+  let _ = global.create_data_property(scope, key.into(), number.into());
 }
 
 pub fn worklet_port(id: u64) -> Option<v8::Global<v8::Object>> {

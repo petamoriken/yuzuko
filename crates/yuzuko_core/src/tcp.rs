@@ -799,12 +799,12 @@ pub(crate) fn address_fields(
   let Some(value) = v8::String::new(scope, hostname) else {
     return Err(());
   };
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   let Some(key) = v8::String::new(scope, "port") else {
     return Err(());
   };
   let port = v8::Integer::new(scope, i32::from(port));
-  object.set(scope, key.into(), port.into());
+  let _ = object.create_data_property(scope, key.into(), port.into());
   Ok(())
 }
 

@@ -606,7 +606,7 @@ impl Context2D {
     let object = v8::Object::new(scope);
     let set = |name: &str, value: v8::Local<v8::Value>| {
       let key = v8::String::new(scope, name).unwrap();
-      object.set(scope, key.into(), value);
+      let _ = object.create_data_property(scope, key.into(), value);
     };
     set("alpha", v8::Boolean::new(scope, attrs.alpha).into());
     set(
@@ -639,7 +639,7 @@ impl Context2D {
     let mode_key = v8::String::new(scope, "mode").unwrap();
     let mode_value: v8::Local<v8::Value> =
       v8::String::new(scope, mode).unwrap().into();
-    tone.set(scope, mode_key.into(), mode_value);
+    let _ = tone.create_data_property(scope, mode_key.into(), mode_value);
     set("toneMapping", tone.into());
     let object_value: v8::Local<v8::Value> = object.into();
     Ok(js_of(scope, object_value))

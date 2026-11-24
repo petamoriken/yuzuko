@@ -395,10 +395,45 @@ Yuzuko.test("validation scope, lost device, and pass validation", async () => {
     invalid = caught instanceof TypeError;
   }
   assert(invalid, "depth attachment");
+  const previousReason = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "reason",
+  );
+  const previousMessage = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "message",
+  );
+  Object.defineProperty(Object.prototype, "reason", {
+    configurable: true,
+    get() {
+      return "polluted";
+    },
+  });
+  Object.defineProperty(Object.prototype, "message", {
+    configurable: true,
+    get() {
+      return "polluted";
+    },
+  });
   const lost = device.lost;
   device.destroy();
-  const info = await lost;
+  let info: GPUDeviceLostInfo;
+  try {
+    info = await lost;
+  } finally {
+    if (previousReason) {
+      Object.defineProperty(Object.prototype, "reason", previousReason);
+    } else {
+      Reflect.deleteProperty(Object.prototype, "reason");
+    }
+    if (previousMessage) {
+      Object.defineProperty(Object.prototype, "message", previousMessage);
+    } else {
+      Reflect.deleteProperty(Object.prototype, "message");
+    }
+  }
   assert(info.reason === "destroyed", "lost reason");
+  assert(info.message === "The device was destroyed", "lost message");
   let lostDevice = false;
   try {
     device.createBuffer({ size: 4, usage: GPUBufferUsage.COPY_DST });
@@ -1789,14 +1824,40 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
     return;
   }
   const device = await adapter.requestDevice();
-  for (const value of [adapter.info, device.adapterInfo]) {
-    assert(typeof value.vendor === "string", "vendor");
-    assert(typeof value.device === "string", "device");
-    assert(value.architecture === "", "architecture");
-    assert(typeof value.description === "string", "description");
-    assert(typeof value.subgroupMinSize === "number", "subgroup min");
-    assert(typeof value.subgroupMaxSize === "number", "subgroup max");
-    assert(value.isFallbackAdapter === false, "fallback");
+  const infoNames = ["vendor", "device", "architecture", "description"] as const;
+  const previousInfo = infoNames.map((name) =>
+    Object.getOwnPropertyDescriptor(Object.prototype, name),
+  );
+  for (const name of infoNames) {
+    Object.defineProperty(Object.prototype, name, {
+      configurable: true,
+      get() {
+        return "polluted";
+      },
+    });
+  }
+  try {
+    for (const value of [adapter.info, device.adapterInfo]) {
+      assert(typeof value.vendor === "string", "vendor");
+      assert(value.vendor !== "polluted", "vendor own");
+      assert(typeof value.device === "string", "device");
+      assert(value.device !== "polluted", "device own");
+      assert(value.architecture === "", "architecture");
+      assert(typeof value.description === "string", "description");
+      assert(value.description !== "polluted", "description own");
+      assert(typeof value.subgroupMinSize === "number", "subgroup min");
+      assert(typeof value.subgroupMaxSize === "number", "subgroup max");
+      assert(value.isFallbackAdapter === false, "fallback");
+    }
+  } finally {
+    infoNames.forEach((name, index) => {
+      const descriptor = previousInfo[index];
+      if (descriptor) {
+        Object.defineProperty(Object.prototype, name, descriptor);
+      } else {
+        Reflect.deleteProperty(Object.prototype, name);
+      }
+    });
   }
   const limits = adapter.limits;
   assert(
@@ -2116,6 +2177,43 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   assert(constructed.message === "nope", "pipeline message");
   assert(constructed.reason === "validation", "constructed reason");
   assert(constructed instanceof DOMException, "constructed exception");
+  const installedPipelineError = GPUPipelineError;
+  const previousReason = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "reason",
+  );
+  Object.defineProperty(Object.prototype, "reason", {
+    configurable: true,
+    get() {
+      return "internal";
+    },
+  });
+  globalThis.GPUPipelineError = function ReplacedPipelineError() {
+    throw new TypeError("replaced");
+  } as unknown as typeof GPUPipelineError;
+  try {
+    let replaced: unknown = null;
+    try {
+      await device.createRenderPipelineAsync({
+        layout: "auto",
+        vertex: { module: shader, entryPoint: "missing" },
+      });
+    } catch (error) {
+      replaced = error;
+    }
+    if (!(replaced instanceof installedPipelineError)) {
+      throw new Error(`installed pipeline error ${errorName(replaced)}`);
+    }
+    assert(!(replaced instanceof GPUPipelineError), "replaced pipeline error");
+    assert(replaced.reason === "validation", "polluted pipeline reason");
+  } finally {
+    globalThis.GPUPipelineError = installedPipelineError;
+    if (previousReason) {
+      Object.defineProperty(Object.prototype, "reason", previousReason);
+    } else {
+      Reflect.deleteProperty(Object.prototype, "reason");
+    }
+  }
   assert(
     await rejectionName(device.queue.onSubmittedWorkDone()) === "",
     "submitted work",
@@ -2160,18 +2258,51 @@ Yuzuko.test("published WebGPU members match the created objects", async () => {
   assert(context.getConfiguration() === null, "unconfigured");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format });
-  const configuration = context.getConfiguration();
-  assert(configuration !== null, "configured");
-  if (configuration === null) {
-    throw new Error("configured");
+  const configNames = [
+    "format",
+    "alphaMode",
+    "colorSpace",
+    "usage",
+    "mode",
+  ] as const;
+  const previousConfig = configNames.map((name) =>
+    Object.getOwnPropertyDescriptor(Object.prototype, name),
+  );
+  for (const name of configNames) {
+    Object.defineProperty(Object.prototype, name, {
+      configurable: true,
+      get() {
+        return "polluted";
+      },
+    });
   }
-  assert(configuration.device === device, "config device");
-  assert(configuration.format === format, "config format");
-  assert(configuration.alphaMode === "opaque", "alpha");
-  assert(configuration.colorSpace === "srgb", "color space");
-  assert(configuration.toneMapping!.mode === "standard", "tone mapping");
-  assert(Array.isArray(configuration.viewFormats), "view formats");
-  assert(configuration.usage === GPUTextureUsage.RENDER_ATTACHMENT, "config usage");
+  let configuration: GPUCanvasConfiguration | null;
+  try {
+    configuration = context.getConfiguration();
+    assert(configuration !== null, "configured");
+    if (configuration === null) {
+      throw new Error("configured");
+    }
+    assert(configuration.device === device, "config device");
+    assert(configuration.format === format, "config format");
+    assert(configuration.alphaMode === "opaque", "alpha");
+    assert(configuration.colorSpace === "srgb", "color space");
+    assert(configuration.toneMapping!.mode === "standard", "tone mapping");
+    assert(Array.isArray(configuration.viewFormats), "view formats");
+    assert(
+      configuration.usage === GPUTextureUsage.RENDER_ATTACHMENT,
+      "config usage",
+    );
+  } finally {
+    configNames.forEach((name, index) => {
+      const descriptor = previousConfig[index];
+      if (descriptor) {
+        Object.defineProperty(Object.prototype, name, descriptor);
+      } else {
+        Reflect.deleteProperty(Object.prototype, name);
+      }
+    });
+  }
   const current = context.getCurrentTexture();
   const canvasUsage = GPUTextureUsage.RENDER_ATTACHMENT
     | GPUTextureUsage.TEXTURE_BINDING

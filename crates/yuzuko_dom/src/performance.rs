@@ -58,7 +58,11 @@ impl Performance {
   fn to_json(&self, scope: &mut v8::PinScope) -> Js {
     let object = v8::Object::new(scope);
     let origin = v8::Number::new(scope, yuzuko_core::time_origin_ms());
-    object.set(scope, key(scope, "timeOrigin").into(), origin.into());
+    let _ = object.create_data_property(
+      scope,
+      key(scope, "timeOrigin").into(),
+      origin.into(),
+    );
     js_value(scope, object.into())
   }
 
@@ -923,7 +927,7 @@ fn deliver_one(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) {
   let options = v8::Object::new(scope);
   if dropped {
     let count = v8::Number::new(scope, 0.0);
-    options.set(
+    let _ = options.create_data_property(
       scope,
       key(scope, "droppedEntriesCount").into(),
       count.into(),
@@ -1504,23 +1508,38 @@ fn entry_json(
 ) -> Js {
   let object = v8::Object::new(scope);
   let id = v8::Number::new(scope, entry.id as f64);
-  object.set(scope, key(scope, "id").into(), id.into());
+  let _ =
+    object.create_data_property(scope, key(scope, "id").into(), id.into());
   let name = v8::String::new(scope, &entry.name).unwrap();
-  object.set(scope, key(scope, "name").into(), name.into());
+  let _ =
+    object.create_data_property(scope, key(scope, "name").into(), name.into());
   let entry_type = v8::String::new(scope, &entry.entry_type).unwrap();
-  object.set(scope, key(scope, "entryType").into(), entry_type.into());
+  let _ = object.create_data_property(
+    scope,
+    key(scope, "entryType").into(),
+    entry_type.into(),
+  );
   let start_time = v8::Number::new(scope, entry.start_time);
-  object.set(scope, key(scope, "startTime").into(), start_time.into());
+  let _ = object.create_data_property(
+    scope,
+    key(scope, "startTime").into(),
+    start_time.into(),
+  );
   let duration = v8::Number::new(scope, entry.duration);
-  object.set(scope, key(scope, "duration").into(), duration.into());
+  let _ = object.create_data_property(
+    scope,
+    key(scope, "duration").into(),
+    duration.into(),
+  );
   let navigation_id = v8::Number::new(scope, entry.navigation_id as f64);
-  object.set(
+  let _ = object.create_data_property(
     scope,
     key(scope, "navigationId").into(),
     navigation_id.into(),
   );
   if let Some(detail) = detail {
-    object.set(scope, key(scope, "detail").into(), detail);
+    let _ =
+      object.create_data_property(scope, key(scope, "detail").into(), detail);
   }
   js_value(scope, object.into())
 }

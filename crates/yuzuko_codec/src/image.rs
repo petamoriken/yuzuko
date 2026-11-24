@@ -1237,9 +1237,12 @@ fn decode_result<'s>(
   let image = v8::String::new(scope, "image").unwrap();
   let complete = v8::String::new(scope, "complete").unwrap();
   let frame: v8::Local<v8::Value> = frame.into();
-  let _ = result.set(scope, image.into(), frame);
-  let _ =
-    result.set(scope, complete.into(), v8::Boolean::new(scope, true).into());
+  let _ = result.create_data_property(scope, image.into(), frame);
+  let _ = result.create_data_property(
+    scope,
+    complete.into(),
+    v8::Boolean::new(scope, true).into(),
+  );
   result
 }
 

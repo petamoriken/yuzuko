@@ -863,14 +863,19 @@ fn remover<'s>(
   capture: bool,
 ) -> Option<v8::Local<'s, v8::Function>> {
   let data = v8::Object::new(scope);
-  data.set(scope, key(scope, "target").into(), target.into());
-  data.set(
+  let _ = data.create_data_property(
+    scope,
+    key(scope, "target").into(),
+    target.into(),
+  );
+  let _ = data.create_data_property(
     scope,
     key(scope, "type").into(),
     key(scope, type_name).into(),
   );
-  data.set(scope, key(scope, "callback").into(), callback);
-  data.set(
+  let _ =
+    data.create_data_property(scope, key(scope, "callback").into(), callback);
+  let _ = data.create_data_property(
     scope,
     key(scope, "capture").into(),
     v8::Boolean::new(scope, capture).into(),

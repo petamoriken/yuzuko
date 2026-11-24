@@ -339,7 +339,7 @@ fn dispatch_reopen(scope: &mut v8::PinScope, has_visible: bool) {
   yuzuko_dom::define_is_trusted(scope, object);
   let key = v8::String::new(scope, "hasVisibleWindows").unwrap();
   let value = v8::Boolean::new(scope, has_visible);
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
   let _ = yuzuko_dom::dispatch(scope, target, object);
 }
 

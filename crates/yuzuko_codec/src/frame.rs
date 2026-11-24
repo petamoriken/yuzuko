@@ -1122,8 +1122,10 @@ fn layout_array<'s>(
     let stride = v8::Number::new(scope, layout.stride as f64);
     let offset_key = v8::String::new(scope, "offset").unwrap();
     let stride_key = v8::String::new(scope, "stride").unwrap();
-    object.set(scope, offset_key.into(), offset.into());
-    object.set(scope, stride_key.into(), stride.into());
+    let _ =
+      object.create_data_property(scope, offset_key.into(), offset.into());
+    let _ =
+      object.create_data_property(scope, stride_key.into(), stride.into());
     array.set_index(scope, index as u32, object.into());
   }
   array.into()
@@ -1179,7 +1181,11 @@ fn dom_rect<'s>(
     ("bottom", y + height),
   ] {
     let key = v8::String::new(scope, name).unwrap();
-    object.set(scope, key.into(), v8::Number::new(scope, value).into());
+    let _ = object.create_data_property(
+      scope,
+      key.into(),
+      v8::Number::new(scope, value).into(),
+    );
   }
   object.into()
 }

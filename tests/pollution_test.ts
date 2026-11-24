@@ -206,3 +206,63 @@ Yuzuko.test("globalThis dispatches events", () => {
     throw new Error("file");
   }
 });
+
+Yuzuko.test("host dictionaries ignore Object.prototype accessors", () => {
+  const names = [
+    "x",
+    "y",
+    "width",
+    "height",
+    "read",
+    "written",
+    "done",
+    "value",
+    "timeOrigin",
+  ];
+  const previous = names.map((name) =>
+    Object.getOwnPropertyDescriptor(Object.prototype, name),
+  );
+  for (const name of names) {
+    // A null prototype keeps `value` from being read off `Object.prototype`
+    // once that accessor exists.
+    const descriptor: PropertyDescriptor = Object.create(null);
+    descriptor.configurable = true;
+    descriptor.get = () => "polluted";
+    Object.defineProperty(Object.prototype, name, descriptor);
+  }
+  try {
+    const point = new DOMPoint(1, 2, 3, 4).toJSON();
+    if (point.x !== 1 || point.y !== 2 || point.z !== 3 || point.w !== 4) {
+      throw new Error("DOMPoint");
+    }
+    const rect = new DOMRect(1, 2, 3, 4).toJSON();
+    if (rect.x !== 1 || rect.width !== 3 || rect.height !== 4) {
+      throw new Error("DOMRect");
+    }
+    const into = new TextEncoder().encodeInto("ab", new Uint8Array(8));
+    if (into.read !== 2 || into.written !== 2) {
+      throw new Error("encodeInto");
+    }
+    const entry = new URLSearchParams("a=b").entries().next();
+    if (entry.done !== false || entry.value[0] !== "a" || entry.value[1] !== "b") {
+      throw new Error("iterator");
+    }
+    const origin = performance.toJSON().timeOrigin;
+    if (typeof origin !== "number") {
+      throw new Error("performance");
+    }
+    const headers = new Headers([["a", "b"]]).entries().next();
+    if (headers.done !== false || headers.value[0] !== "a") {
+      throw new Error("headers");
+    }
+  } finally {
+    names.forEach((name, index) => {
+      const descriptor = previous[index];
+      if (descriptor) {
+        Object.defineProperty(Object.prototype, name, descriptor);
+      } else {
+        Reflect.deleteProperty(Object.prototype, name);
+      }
+    });
+  }
+});

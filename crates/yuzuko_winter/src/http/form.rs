@@ -279,8 +279,12 @@ fn pair(
   let object = v8::Object::new(scope);
   let done_key = v8::String::new(scope, "done").unwrap();
   let value_key = v8::String::new(scope, "value").unwrap();
-  object.set(scope, done_key.into(), v8::Boolean::new(scope, done).into());
-  object.set(scope, value_key.into(), value);
+  let _ = object.create_data_property(
+    scope,
+    done_key.into(),
+    v8::Boolean::new(scope, done).into(),
+  );
+  let _ = object.create_data_property(scope, value_key.into(), value);
   let value: v8::Local<v8::Value> = object.into();
   Js(v8::Global::new(scope, value))
 }

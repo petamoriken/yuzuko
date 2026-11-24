@@ -428,7 +428,7 @@ fn set_value(
   value: v8::Local<v8::Value>,
 ) -> Result<(), FsError> {
   let key = v8_string(scope, name)?;
-  object.set(scope, key.into(), value);
+  let _ = object.create_data_property(scope, key.into(), value);
   Ok(())
 }
 

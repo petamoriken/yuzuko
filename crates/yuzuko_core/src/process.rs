@@ -396,7 +396,7 @@ fn set_bytes(
 ) {
   let key = v8::String::new(scope, name).expect(name);
   let value = v8::Number::new(scope, bytes as f64);
-  object.set(scope, key.into(), value.into());
+  let _ = object.create_data_property(scope, key.into(), value.into());
 }
 
 fn ref_timer(

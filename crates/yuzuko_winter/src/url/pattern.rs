@@ -407,7 +407,7 @@ fn result_object(
     inputs.set_index(scope, index, base);
   }
   let key = v8::String::new(scope, "inputs").unwrap();
-  object.set(scope, key.into(), inputs.into());
+  let _ = object.create_data_property(scope, key.into(), inputs.into());
   let value: v8::Local<v8::Value> = object.into();
   Js(v8::Global::new(scope, value))
 }
@@ -421,7 +421,7 @@ fn set_component(
   let record = v8::Object::new(scope);
   let input = v8::String::new(scope, &component.input).unwrap();
   let input_key = v8::String::new(scope, "input").unwrap();
-  record.set(scope, input_key.into(), input.into());
+  let _ = record.create_data_property(scope, input_key.into(), input.into());
   let groups = v8::Object::new(scope);
   for (name, value) in &component.groups {
     let key = v8::String::new(scope, name).unwrap();
@@ -433,12 +433,12 @@ fn set_component(
       }
       None => v8::undefined(scope).into(),
     };
-    groups.set(scope, key.into(), value);
+    let _ = groups.create_data_property(scope, key.into(), value);
   }
   let groups_key = v8::String::new(scope, "groups").unwrap();
-  record.set(scope, groups_key.into(), groups.into());
+  let _ = record.create_data_property(scope, groups_key.into(), groups.into());
   let key = v8::String::new(scope, name).unwrap();
-  object.set(scope, key.into(), record.into());
+  let _ = object.create_data_property(scope, key.into(), record.into());
 }
 
 pub fn install(scope: &mut v8::PinScope) {
