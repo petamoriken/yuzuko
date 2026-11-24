@@ -455,7 +455,14 @@
   "webcodecs/videoDecoder-reconfigure.https.any.js": {
     "expectedFailures": [
       "Test configure() between decode() calls outputs the frames decoded with the previous configuration"
-    ]
+    ],
+    "ignore": {
+      "reason": "Reconfigure does not finish within the file deadline.",
+      "os": [
+        "linux",
+        "windows"
+      ]
+    }
   },
   "webcodecs/videoFrame-alpha-discard.any.js": true,
   "webcodecs/videoFrame-alpha-discard.window.js": {
