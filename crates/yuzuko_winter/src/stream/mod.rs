@@ -6657,11 +6657,11 @@ fn resolved(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
   Js(v8::Global::new(scope, value))
 }
 
-/// Fulfills `resolver` without running `Object.prototype.then`.
+/// Fulfills `resolver` with `value`.
 ///
-/// V8's `Resolver::resolve` uses the Promise Resolve functions, which
-/// assimilate thenables. Stream read records are ordinary objects, and a
-/// test that puts `then` on `Object.prototype` must not observe them.
+/// `Resolver::resolve` follows the Promise Resolve functions and assimilates
+/// a thenable. `arm_then_shadow` hides a data `then` on `Object.prototype`.
+/// A getter-only `then` still runs.
 pub(super) fn fulfill_resolver(
   scope: &mut v8::PinScope,
   resolver: v8::Local<v8::PromiseResolver>,
@@ -6675,6 +6675,13 @@ pub(super) fn fulfill_resolver(
   }
 }
 
+/// Install an own `then` when `[[Set]]` can.
+///
+/// A getter-only `Object.prototype.then` has no setter, so `[[Set]]` fails
+/// and Promise Resolve still runs that getter.
+/// `readable-byte-streams/patched-global.any.js` requires the call.
+/// `create_data_property` would hide the getter. A data property is
+/// shadowed, so that `then` does not assimilate the value.
 fn arm_then_shadow(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -6690,7 +6697,7 @@ fn arm_then_shadow(
     return false;
   }
   object
-    .create_data_property(scope, key.into(), v8::undefined(scope).into())
+    .set(scope, key.into(), v8::undefined(scope).into())
     .unwrap_or(false)
 }
 
