@@ -65,6 +65,7 @@
   "WebCryptoAPI/import_export/ec_importKey.https.any.js": true,
   "WebCryptoAPI/import_export/ec_importKey_failures_ECDH.https.any.js": true,
   "WebCryptoAPI/import_export/ec_importKey_failures_ECDSA.https.any.js": true,
+  "WebCryptoAPI/import_export/jwk_key_ops_duplicates.https.any.js": true,
   "WebCryptoAPI/import_export/okp_fixed_length.https.any.js": true,
   "WebCryptoAPI/import_export/okp_importKey_Ed25519.https.any.js": true,
   "WebCryptoAPI/import_export/okp_importKey_X25519.https.any.js": true,

@@ -714,6 +714,12 @@
       "Same-origin mode: 2 cookies"
     ]
   },
+  "fetch/api/headers/header-forbidden-compression-dictionary.tentative.any.js": {
+    "expectedFailures": [
+      "Available-Dictionary is a forbidden request header name",
+      "Dictionary-ID is a forbidden request header name"
+    ]
+  },
   "fetch/api/headers/header-setcookie.any.js": {
     "expectedFailures": [
       "Set-Cookie is a forbidden response header"
@@ -1527,7 +1533,11 @@
   "fetch/compression-dictionary/dictionary-fetch-timing-002.tentative.https.html": {
     "ignore": "The file needs a document."
   },
-  "fetch/compression-dictionary/dictionary-fetch-with-imagesrcset.tentative.https.html": false,
+  "fetch/compression-dictionary/dictionary-fetch-with-imagesrcset.tentative.https.html": {
+    "expectedFailures": [
+      "imagesrcset is not supported on <link rel=compression-dictionary>"
+    ]
+  },
   "fetch/compression-dictionary/dictionary-fetch-with-link-connect-src-nonce.tentative.https.html": {
     "ignore": "The file needs a document."
   },
@@ -1570,7 +1580,11 @@
   "fetch/compression-dictionary/dictionary-fetch-with-link-referrer-and-referrerpolicy.tentative.https.html": {
     "ignore": "The file needs a document."
   },
-  "fetch/compression-dictionary/dictionary-fetch-with-type-attribute.tentative.https.html": false,
+  "fetch/compression-dictionary/dictionary-fetch-with-type-attribute.tentative.https.html": {
+    "expectedFailures": [
+      "<link rel=compression-dictionary> are fetched independently of the type."
+    ]
+  },
   "fetch/compression-dictionary/dictionary-insecure-context.tentative.http.html": true,
   "fetch/compression-dictionary/dictionary-match.tentative.https.html": {
     "expectedFailures": [
@@ -2359,7 +2373,14 @@
       "Response with Cache-Control: max-age=2592000, immutable and Pragma: no-cache should be cached"
     ]
   },
-  "fetch/http-cache/split-cache.html": false,
+  "fetch/http-cache/split-cache.html": {
+    "expectedFailures": [
+      "HTTP cache is not shared between cross-site top-level frames",
+      "HTTP cache is not shared between same-site frames with cross-site top-level frames",
+      "HTTP cache is shared between same-site frames with same-site top-level frames",
+      "HTTP cache is shared between same-site top-level frames"
+    ]
+  },
   "fetch/http-cache/status.any.js": {
     "expectedFailures": [
       "HTTP cache avoids going to the network if it has a fresh 200 response",

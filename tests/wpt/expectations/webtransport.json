@@ -72,6 +72,11 @@
       "server initiated connection closure"
     ]
   },
+  "webtransport/close2.https.any.js": {
+    "expectedFailures": [
+      "pulling incomingBidirectionalStreams while closed resolves should not produce a stream"
+    ]
+  },
   "webtransport/congestion-control.https.any.js": {
     "expectedFailures": [
       "WebTransport session established with congestionControl \"default\" and attribute is readable",
@@ -128,6 +133,13 @@
   },
   "webtransport/datagram-cancel-crash.https.sub.window.js": {
     "ignore": "The runner does not apply .sub. substitutions."
+  },
+  "webtransport/datagrams-cleanup.https.any.js": {
+    "expectedFailures": [
+      "a failed session errors datagrams.readable",
+      "close() closes a byte datagrams.readable",
+      "close() closes datagrams.readable"
+    ]
   },
   "webtransport/datagrams-writable.https.any.js": {
     "expectedFailures": [

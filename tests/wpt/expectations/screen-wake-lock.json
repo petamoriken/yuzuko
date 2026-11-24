@@ -13,6 +13,7 @@
   "screen-wake-lock/wakelock-disabled-by-permissions-policy.https.html": {
     "ignore": "The file needs a document."
   },
+  "screen-wake-lock/wakelock-document-detached-while-pending.https.window.js": false,
   "screen-wake-lock/wakelock-document-hidden.https.html": {
     "ignore": "The file needs a document."
   },

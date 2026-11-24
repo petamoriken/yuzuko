@@ -116,6 +116,11 @@
   },
   "webcodecs/audioDecoder-codec-specific.https.any.js": true,
   "webcodecs/audioDecoder-pcm-output.https.any.js": true,
+  "webcodecs/audioDecoder-reconfigure.https.any.js": {
+    "expectedFailures": [
+      "Test configure() between decode() calls outputs the audio decoded with the previous configuration"
+    ]
+  },
   "webcodecs/chunk-serialization.any.js": true,
   "webcodecs/encoded-audio-chunk.any.js": true,
   "webcodecs/encoded-audio-chunk.crossOriginIsolated.https.any.js": true,
@@ -447,6 +452,11 @@
       "Test decoding h.264 interlaced content"
     ]
   },
+  "webcodecs/videoDecoder-reconfigure.https.any.js": {
+    "expectedFailures": [
+      "Test configure() between decode() calls outputs the frames decoded with the previous configuration"
+    ]
+  },
   "webcodecs/videoFrame-alpha-discard.any.js": true,
   "webcodecs/videoFrame-alpha-discard.window.js": {
     "expectedFailures": [
@@ -464,6 +474,7 @@
   "webcodecs/videoFrame-canvasImageSource.html": {
     "ignore": "The file needs a document."
   },
+  "webcodecs/videoFrame-construction-layout.any.js": true,
   "webcodecs/videoFrame-construction.any.js": {
     "expectedFailures": [
       "Test we can construct a I420AP10 VideoFrame",
@@ -543,6 +554,7 @@
       "Encoding a RGBA VideoFrame with vp8 preserves its input pixels"
     ]
   },
+  "webcodecs/videoFrame-imageBitmap-crop.any.js": true,
   "webcodecs/videoFrame-metadata-rtpTimestamp.https.html": true,
   "webcodecs/videoFrame-odd-size.any.js": true,
   "webcodecs/videoFrame-orientation-drawImage.any.js": true,

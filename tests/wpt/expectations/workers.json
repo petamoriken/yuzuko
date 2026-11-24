@@ -253,10 +253,10 @@
   "workers/constructors/Worker/expected-self-properties.worker.js": true,
   "workers/constructors/Worker/same-origin.html": {
     "expectedFailures": [
-      "port_81",
+      "http_post_8012",
       "https_port_80",
       "https_port_8000",
-      "http_post_8012"
+      "port_81"
     ]
   },
   "workers/constructors/Worker/terminate.html": true,
@@ -292,11 +292,20 @@
       "Creating a dedicated worker from a blob URL works immediately before revoking."
     ]
   },
-  "workers/dedicated-worker-in-data-url-context.window.js": false,
+  "workers/dedicated-worker-in-data-url-context.window.js": {
+    "expectedFailures": [
+      "Create a data url dedicated worker in a data url frame",
+      "Create a dedicated worker in a data url frame"
+    ]
+  },
   "workers/dedicated-worker-parse-error-failure.html": true,
   "workers/dedicated-worker-runtime-error-is-not-parse-error.html": true,
   "workers/examples/fetch_tests_from_worker.html": false,
-  "workers/examples/general.any.js": false,
+  "workers/examples/general.any.js": {
+    "expectedFailures": [
+      "Worker top-level script is a generated script."
+    ]
+  },
   "workers/examples/general.worker.js": true,
   "workers/examples/onconnect.any.js": {
     "ignore": "The runner does not run this .any.js global."
@@ -549,7 +558,11 @@
   },
   "workers/modules/dedicated-worker-options-credentials.html": false,
   "workers/modules/dedicated-worker-options-type.html": true,
-  "workers/modules/dedicated-worker-parse-error-failure.html": false,
+  "workers/modules/dedicated-worker-parse-error-failure.html": {
+    "expectedFailures": [
+      "Static import on module worker for script with syntax error should dispatch an event named error."
+    ]
+  },
   "workers/modules/shared-worker-import-blob-url.window.js": {
     "ignore": "The runner has no shared worker or service worker."
   },
@@ -737,7 +750,27 @@
       "shared"
     ]
   },
-  "workers/semantics/structured-clone/dedicated.html": false,
+  "workers/semantics/structured-clone/dedicated.html": {
+    "expectedFailures": [
+      "A detached platform object cannot be transferred",
+      "Array FileList object, FileList empty",
+      "Array ImageBitmap object, ImageBitmap 1x1 transparent black",
+      "Array ImageBitmap object, ImageBitmap 1x1 transparent non-black",
+      "Array ImageData object, ImageData 1x1 non-transparent non-black",
+      "Array ImageData object, ImageData 1x1 transparent black",
+      "FileList empty",
+      "Growable SharedArrayBuffer",
+      "ImageBitmap 1x1 non-transparent non-black",
+      "ImageBitmap 1x1 transparent black",
+      "ImageData 1x1 non-transparent non-black",
+      "ImageData 1x1 transparent black",
+      "Object FileList object, FileList empty",
+      "Object ImageBitmap object, ImageBitmap 1x1 transparent black",
+      "Object ImageBitmap object, ImageBitmap 1x1 transparent non-black",
+      "Object ImageData object, ImageData 1x1 non-transparent non-black",
+      "Object ImageData object, ImageData 1x1 transparent black"
+    ]
+  },
   "workers/semantics/structured-clone/shared.html": false,
   "workers/semantics/xhr/001.html": {
     "ignore": "The file needs a layout element."

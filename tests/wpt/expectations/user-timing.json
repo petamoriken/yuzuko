@@ -22,12 +22,19 @@
   "user-timing/mark.any.js": true,
   "user-timing/mark.html": false,
   "user-timing/mark_exceptions.html": false,
-  "user-timing/measure-exceptions.html": false,
+  "user-timing/measure-exceptions.html": {
+    "ignore": "A PerformanceTiming attribute name is a valid mark without a document navigation."
+  },
   "user-timing/measure-l3.any.js": true,
   "user-timing/measure-with-dict.any.js": true,
   "user-timing/measure.html": false,
   "user-timing/measure_associated_with_navigation_timing.html": false,
-  "user-timing/measure_exception.html": false,
+  "user-timing/measure_exception.html": {
+    "expectedFailures": [
+      "Invocation of performance.measure(\"Exception2\", \"NonExistMark1\", \"navigationStart\") should throw SYNTAX_ERR Exception.",
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception."
+    ]
+  },
   "user-timing/measure_exceptions_navigation_timing.html": false,
   "user-timing/measure_navigation_timing.html": false,
   "user-timing/measure_syntax_err.any.js": true,

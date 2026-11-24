@@ -10,6 +10,7 @@
   "wasm/jsapi/esm-integration/global-exports.tentative.any.js": true,
   "wasm/jsapi/esm-integration/js-wasm-cycle.tentative.any.js": true,
   "wasm/jsapi/esm-integration/mutable-global-sharing.tentative.any.js": true,
+  "wasm/jsapi/esm-integration/namespace-import.tentative.any.js": true,
   "wasm/jsapi/esm-integration/namespace-instance.tentative.any.js": true,
   "wasm/jsapi/esm-integration/reserved-import-names.tentative.any.js": true,
   "wasm/jsapi/esm-integration/resolve-export.tentative.any.js": true,
@@ -99,12 +100,7 @@
   },
   "wasm/jsapi/global/value-get-set.any.js": true,
   "wasm/jsapi/global/valueOf.any.js": true,
-  "wasm/jsapi/idlharness.any.js": {
-    "expectedFailures": [
-      "Module interface: existence and properties of interface object",
-      "Module interface: existence and properties of interface prototype object"
-    ]
-  },
+  "wasm/jsapi/idlharness.any.js": true,
   "wasm/jsapi/instance/constructor-bad-imports.any.js": true,
   "wasm/jsapi/instance/constructor-caching.any.js": true,
   "wasm/jsapi/instance/constructor.any.js": true,

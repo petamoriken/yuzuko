@@ -114,9 +114,6 @@
     "ignore": "The file needs a document."
   },
   "performance-timeline/po-takeRecords.any.js": true,
-  "performance-timeline/resources/going-back.html": {
-    "ignore": "The page only calls history.back()."
-  },
   "performance-timeline/supportedEntryTypes-cross-realm-access.html": {
     "ignore": "The file needs a document."
   },

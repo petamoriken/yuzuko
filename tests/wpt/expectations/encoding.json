@@ -216901,11 +216901,22 @@
   "encoding/textdecoder-copy.any.js": true,
   "encoding/textdecoder-eof.any.js": true,
   "encoding/textdecoder-fatal-single-byte.any.js": true,
-  "encoding/textdecoder-fatal-streaming.any.js": true,
+  "encoding/textdecoder-fatal-streaming.any.js": {
+    "expectedFailures": [
+      "Fatal flag, streaming error resets BOM handling: utf-16be",
+      "Fatal flag, streaming error resets BOM handling: utf-16le",
+      "Fatal flag, streaming error resets BOM handling: utf-8"
+    ]
+  },
   "encoding/textdecoder-fatal.any.js": true,
   "encoding/textdecoder-ignorebom.any.js": true,
   "encoding/textdecoder-labels.any.js": true,
-  "encoding/textdecoder-mistakes.any.js": true,
+  "encoding/textdecoder-mistakes.any.js": {
+    "expectedFailures": [
+      "EUC-JP JIS0212 state after a fatal streaming error",
+      "fatal stream: iso-2022-jp"
+    ]
+  },
   "encoding/textdecoder-streaming.any.js": true,
   "encoding/textdecoder-utf16-surrogates.any.js": true,
   "encoding/textencoder-constructor-non-utf.any.js": true,

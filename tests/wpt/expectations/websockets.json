@@ -450,7 +450,11 @@
       ]
     }
   },
-  "websockets/cookies/third-party-cookie-accepted.https.html": false,
+  "websockets/cookies/third-party-cookie-accepted.https.html": {
+    "expectedFailures": [
+      "Test that third-party cookies are accepted for WebSockets."
+    ]
+  },
   "websockets/eventhandlers.any.js": true,
   "websockets/extended-payload-length.html": true,
   "websockets/idlharness.any.js": true,

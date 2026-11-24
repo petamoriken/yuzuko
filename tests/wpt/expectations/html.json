@@ -2258,6 +2258,18 @@
   "html/canvas/offscreen/path-objects/2d.path.arc.angle.5.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.arc.angle.6.html": true,
   "html/canvas/offscreen/path-objects/2d.path.arc.angle.6.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.arc.angle.7.html": true,
+  "html/canvas/offscreen/path-objects/2d.path.arc.angle.7.worker.js": true,
+  "html/canvas/offscreen/path-objects/2d.path.arc.angle.8.html": {
+    "expectedFailures": [
+      "arc() draws a full circle when anticlockwise and start - end is very large"
+    ]
+  },
+  "html/canvas/offscreen/path-objects/2d.path.arc.angle.8.worker.js": {
+    "expectedFailures": [
+      "arc() draws a full circle when anticlockwise and start - end is very large"
+    ]
+  },
   "html/canvas/offscreen/path-objects/2d.path.arc.default.html": true,
   "html/canvas/offscreen/path-objects/2d.path.arc.default.worker.js": true,
   "html/canvas/offscreen/path-objects/2d.path.arc.empty.html": true,
@@ -3617,6 +3629,15 @@
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-font-change.tentative.w.html": {
     "ignore": "The file is not a testharness document."
   },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-leading-spaces.tentative-expected.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-leading-spaces.tentative.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-leading-spaces.tentative.w.html": {
+    "ignore": "The file is not a testharness document."
+  },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRun-range.tentative.html": {
     "ignore": "The file needs a document."
   },
@@ -3630,6 +3651,15 @@
     "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-and-strokeGlyphRuns.tentative.w.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-shadow.tentative-expected.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-shadow.tentative.html": {
+    "ignore": "The file is not a testharness document."
+  },
+  "html/canvas/offscreen/text/2d.text.shape.fillGlyphRuns-shadow.tentative.w.html": {
     "ignore": "The file is not a testharness document."
   },
   "html/canvas/offscreen/text/2d.text.shape.glyph-clusters-exceptions.tentative.html": {

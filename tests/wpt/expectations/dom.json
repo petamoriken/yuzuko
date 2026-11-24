@@ -154,6 +154,12 @@
   "dom/events/EventListener-handleEvent-cross-realm.html": {
     "ignore": "The file needs a document."
   },
+  "dom/events/EventListener-handleEvent-not-callable-after-caught-exception.html": {
+    "expectedFailures": [
+      "reports a TypeError when a previous listener caught an exception",
+      "reports a TypeError when the handleEvent getter caught an exception before returning a non-callable value"
+    ]
+  },
   "dom/events/EventListener-handleEvent.html": {
     "ignore": "The file needs a document."
   },

@@ -1,5 +1,14 @@
 {
-  "hr-time/audioworklet.https.html": true,
+  "hr-time/audioworklet-cross-origin-isolated.https.html": {
+    "expectedFailures": [
+      "AudioWorkletGlobalScope performance.now() enforces >= 5us COI resolution"
+    ]
+  },
+  "hr-time/audioworklet.https.html": {
+    "expectedFailures": [
+      "performance.now() resolution is >= 100us without cross-origin isolation"
+    ]
+  },
   "hr-time/basic.any.js": true,
   "hr-time/clamped-time-origin-isolated.https.html": {
     "expectedFailures": [
