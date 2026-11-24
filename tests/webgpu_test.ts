@@ -30,6 +30,74 @@ async function adapterOrSkip() {
   return adapter;
 }
 
+Yuzuko.test("webgpu constructors keep their intrinsic errors", () => {
+  const TypeErrorCtor = TypeError;
+  const StringCtor = String;
+  const defineProperty = Object.defineProperty;
+  globalThis.TypeError = function ReplacedTypeError() {
+    return new TypeErrorCtor("replaced");
+  } as ErrorConstructor;
+  globalThis.String = function ReplacedString() {
+    return "replaced";
+  } as StringConstructor;
+  Object.defineProperty = (() => {
+    throw new TypeErrorCtor("replaced defineProperty");
+  }) as typeof Object.defineProperty;
+  try {
+    for (const constructor of [
+      GPUError,
+      GPUSupportedLimits,
+      GPUCompilationInfo,
+      GPUCompilationMessage,
+    ]) {
+      let error: unknown = null;
+      try {
+        new constructor();
+      } catch (caught) {
+        error = caught;
+      }
+      assert(
+        error instanceof TypeErrorCtor &&
+          error.message === "Illegal constructor",
+        constructor.name,
+      );
+    }
+    let missing: unknown = null;
+    try {
+      // @ts-expect-error options are required.
+      new GPUPipelineError();
+    } catch (caught) {
+      missing = caught;
+    }
+    assert(
+      missing instanceof TypeErrorCtor &&
+        missing.message === "GPUPipelineError options are required",
+      "GPUPipelineError",
+    );
+    let invalid: unknown = null;
+    try {
+      new GPUPipelineError("", {
+        // @ts-expect-error nope is not a GPUPipelineErrorReason.
+        reason: "nope",
+      });
+    } catch (caught) {
+      invalid = caught;
+    }
+    assert(
+      invalid instanceof TypeErrorCtor &&
+        invalid.message === "The pipeline error reason is invalid",
+      "pipeline reason",
+    );
+    const error = new GPUPipelineError("false", { reason: "internal" });
+    assert(error.message === "false", "pipeline string");
+    assert(error.reason === "internal", "pipeline reason");
+  } finally {
+    globalThis.TypeError = TypeErrorCtor;
+    globalThis.String = StringCtor;
+    Object.defineProperty = defineProperty;
+  }
+});
+
 Yuzuko.test("preferred format and an empty feature request", async () => {
   const adapter = await adapterOrSkip();
   if (!adapter) {
@@ -3378,8 +3446,44 @@ Yuzuko.test("queue texture writes, clears, and compilation info", async () => {
     code: "@fragment fn main() -> @location(0) vec4f { return vec4f(1); }",
   });
   const info = await module.getCompilationInfo();
+  assert(info instanceof GPUCompilationInfo, "compilation info");
   assert(Array.isArray(info.messages), "messages");
   assert(Object.isFrozen(info.messages), "frozen messages");
+  device.pushErrorScope("validation");
+  const broken = device.createShaderModule({ code: "?" });
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "broken shader",
+  );
+  const installedInfo = GPUCompilationInfo;
+  const installedMessage = GPUCompilationMessage;
+  globalThis.GPUCompilationInfo = function ReplacedInfo() {
+    throw new TypeError("replaced");
+  } as unknown as typeof GPUCompilationInfo;
+  globalThis.GPUCompilationMessage = function ReplacedMessage() {
+    throw new TypeError("replaced");
+  } as unknown as typeof GPUCompilationMessage;
+  try {
+    const brokenInfo = await broken.getCompilationInfo();
+    assert(brokenInfo instanceof installedInfo, "installed compilation info");
+    assert(
+      !(brokenInfo instanceof GPUCompilationInfo),
+      "replaced compilation info",
+    );
+    assert(Object.isFrozen(brokenInfo.messages), "frozen after replacement");
+    const message = brokenInfo.messages[0];
+    if (!(message instanceof installedMessage)) {
+      throw new Error("installed compilation message");
+    }
+    assert(
+      !(message instanceof GPUCompilationMessage),
+      "replaced compilation message",
+    );
+    assert(message.type === "error", "broken message type");
+  } finally {
+    globalThis.GPUCompilationInfo = installedInfo;
+    globalThis.GPUCompilationMessage = installedMessage;
+  }
 
   const target = device.createTexture({
     size: [1, 1],

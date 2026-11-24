@@ -35,7 +35,8 @@ const MARKER: &str = "YUZUKO_CTS_JSON ";
 /// `unittests:*` exercises the harness. The `webgpu:` queries cover
 /// validation and operation of the implemented buffer, sampler, texture,
 /// texture view, bind-group layout, pipeline layout, error scope, query set,
-/// shader module, compute pipeline, queue, and command encoding, plus
+/// shader module, compilation info, compute pipeline, queue writes
+/// including texture writes, buffer clears, and command encoding, plus
 /// sampling, vertex formats, device loss, labels, and the IDL surface.
 /// Shader execution, compatibility mode, capability-limit sweeps, and the
 /// HTML canvas reftests stay out.
@@ -54,10 +55,13 @@ const ENROLLED: &[&str] = &[
   "webgpu:api,validation,query_set,destroy:*",
   "webgpu:api,validation,compute_pipeline:*",
   "webgpu:api,validation,shader_module,*",
+  "webgpu:api,operation,shader_module,compilation_info:*",
   "webgpu:api,validation,queue,writeBuffer:*",
+  "webgpu:api,validation,queue,writeTexture:*",
   "webgpu:api,validation,queue,submit:*",
   "webgpu:api,validation,queue,destroyed,buffer:*",
   "webgpu:api,validation,encoding,cmds,copyBufferToBuffer:*",
+  "webgpu:api,validation,encoding,cmds,clearBuffer:*",
   "webgpu:api,validation,encoding,cmds,render,setVertexBuffer:*",
   "webgpu:api,validation,encoding,cmds,render,setIndexBuffer:*",
   "webgpu:api,operation,sampling,*",
@@ -68,6 +72,7 @@ const ENROLLED: &[&str] = &[
   "webgpu:api,operation,buffers,createBindGroup:*",
   "webgpu:api,operation,vertex_state,*",
   "webgpu:api,operation,command_buffer,copyBufferToBuffer:*",
+  "webgpu:api,operation,command_buffer,clearBuffer:*",
   "webgpu:api,operation,command_buffer,basic:*",
   "webgpu:api,operation,device,*",
   "webgpu:api,operation,uncapturederror:*",

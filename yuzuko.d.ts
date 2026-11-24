@@ -13351,13 +13351,7 @@ interface GPUSamplerDescriptor {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule) */
 interface GPUShaderModule extends GPUObjectBase {
-  /**
-   * Resolves a plain object. `messages` is a frozen array of plain objects,
-   * not `GPUCompilationMessage` instances. `offset`, `length`, `lineNum`, and
-   * `linePos` are UTF-16 code units. A message with no location uses 0.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule/getCompilationInfo)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule/getCompilationInfo) */
   getCompilationInfo(): Promise<GPUCompilationInfo>;
 }
 declare var GPUShaderModule: {
@@ -13385,6 +13379,10 @@ interface GPUCompilationInfo {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationInfo/messages) */
   readonly messages: readonly GPUCompilationMessage[];
 }
+declare var GPUCompilationInfo: {
+  prototype: GPUCompilationInfo;
+  new(): GPUCompilationInfo;
+};
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage) */
 interface GPUCompilationMessage {
@@ -13406,6 +13404,10 @@ interface GPUCompilationMessage {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUCompilationMessage/type) */
   readonly type: GPUCompilationMessageType;
 }
+declare var GPUCompilationMessage: {
+  prototype: GPUCompilationMessage;
+  new(): GPUCompilationMessage;
+};
 
 type GPUCompilationMessageType = "error" | "info" | "warning";
 

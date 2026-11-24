@@ -794,6 +794,8 @@ pub fn install(scope: &mut v8::PinScope) {
   resource::GpuTextureView::install(scope);
   resource::GpuSampler::install(scope);
   resource::GpuShaderModule::install(scope);
+  resource::GpuCompilationMessage::install(scope);
+  resource::GpuCompilationInfo::install(scope);
   resource::GpuBindGroupLayout::install(scope);
   resource::GpuBindGroup::install(scope);
   resource::GpuPipelineLayout::install(scope);
@@ -817,32 +819,38 @@ pub fn install(scope: &mut v8::PinScope) {
 /// after that constructor exists. `GPUSupportedLimits` is an interface object
 /// with an illegal constructor and no `maxImmediateSize`. `GPUError` is an
 /// illegal constructor. The three error interfaces inherit from it.
+/// Constructors close over `TypeError`, `String`, and `Object.defineProperty`
+/// while the realm is still pristine.
 const WEBGPU_GLOBALS: &str = r#"
 (() => {
+  const TypeErrorCtor = TypeError;
+  const StringCtor = String;
+  const defineProperty = Object.defineProperty;
+  const setPrototypeOf = Object.setPrototypeOf;
   function GPUError() {
-    throw new TypeError("Illegal constructor");
+    throw new TypeErrorCtor("Illegal constructor");
   }
-  Object.defineProperty(globalThis, "GPUError", {
+  defineProperty(globalThis, "GPUError", {
     value: GPUError,
     writable: true,
     enumerable: false,
     configurable: true,
   });
-  Object.setPrototypeOf(GPUValidationError.prototype, GPUError.prototype);
-  Object.setPrototypeOf(GPUOutOfMemoryError.prototype, GPUError.prototype);
-  Object.setPrototypeOf(GPUInternalError.prototype, GPUError.prototype);
+  setPrototypeOf(GPUValidationError.prototype, GPUError.prototype);
+  setPrototypeOf(GPUOutOfMemoryError.prototype, GPUError.prototype);
+  setPrototypeOf(GPUInternalError.prototype, GPUError.prototype);
   class GPUPipelineError extends DOMException {
     constructor(message = "", options) {
       if (typeof options !== "object" || options === null) {
-        throw new TypeError("GPUPipelineError options are required");
+        throw new TypeErrorCtor("GPUPipelineError options are required");
       }
       const reason = options.reason;
       if (reason !== "validation" && reason !== "internal") {
-        throw new TypeError("The pipeline error reason is invalid");
+        throw new TypeErrorCtor("The pipeline error reason is invalid");
       }
-      const text = message === undefined ? "" : String(message);
+      const text = message === undefined ? "" : StringCtor(message);
       super(text, "GPUPipelineError");
-      Object.defineProperty(this, "reason", {
+      defineProperty(this, "reason", {
         value: reason,
         enumerable: true,
         configurable: true,
@@ -851,15 +859,15 @@ const WEBGPU_GLOBALS: &str = r#"
     }
   }
   function GPUSupportedLimits() {
-    throw new TypeError("Illegal constructor");
+    throw new TypeErrorCtor("Illegal constructor");
   }
-  Object.defineProperty(globalThis, "GPUPipelineError", {
+  defineProperty(globalThis, "GPUPipelineError", {
     value: GPUPipelineError,
     writable: true,
     enumerable: false,
     configurable: true,
   });
-  Object.defineProperty(globalThis, "GPUSupportedLimits", {
+  defineProperty(globalThis, "GPUSupportedLimits", {
     value: GPUSupportedLimits,
     writable: true,
     enumerable: false,

@@ -864,6 +864,90 @@ fn shader_compilation_info(
   }
 }
 
+/// Installed template, not `globalThis.GPUCompilationMessage`. A later
+/// assignment to that global does not change instances from
+/// `getCompilationInfo`.
+pub struct GpuCompilationMessage {
+  message: String,
+  kind: &'static str,
+  offset: u32,
+  length: u32,
+  line_num: u32,
+  line_pos: u32,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for GpuCompilationMessage {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCompilationMessage"
+  }
+}
+
+#[op(name = "GPUCompilationMessage")]
+impl GpuCompilationMessage {
+  #[getter]
+  fn message(&self) -> String {
+    self.message.clone()
+  }
+
+  #[getter]
+  #[rename("type")]
+  fn message_type(&self) -> &'static str {
+    self.kind
+  }
+
+  #[getter]
+  fn offset(&self) -> u32 {
+    self.offset
+  }
+
+  #[getter]
+  fn length(&self) -> u32 {
+    self.length
+  }
+
+  #[getter]
+  fn line_num(&self) -> u32 {
+    self.line_num
+  }
+
+  #[getter]
+  fn line_pos(&self) -> u32 {
+    self.line_pos
+  }
+}
+
+/// Installed template, not `globalThis.GPUCompilationInfo`. `messages` is one
+/// frozen array for the life of the object.
+pub struct GpuCompilationInfo {
+  messages: v8::TracedReference<v8::Array>,
+}
+
+unsafe impl v8::cppgc::GarbageCollected for GpuCompilationInfo {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.messages);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCompilationInfo"
+  }
+}
+
+#[op(name = "GPUCompilationInfo")]
+impl GpuCompilationInfo {
+  #[getter]
+  fn messages(&self, scope: &mut v8::PinScope) -> Js {
+    match yuzuko_core::op::traced_local(scope, &self.messages) {
+      Some(array) => {
+        let value: v8::Local<v8::Value> = array.into();
+        Js(v8::Global::new(scope, value))
+      }
+      None => Js::null(scope),
+    }
+  }
+}
+
 fn compilation_info_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   source: &str,
@@ -871,14 +955,6 @@ fn compilation_info_object<'s>(
 ) -> v8::Local<'s, v8::Object> {
   let messages = v8::Array::new(scope, info.messages.len() as i32);
   for (index, message) in info.messages.iter().enumerate() {
-    let item = v8::Object::new(scope);
-    set_text(scope, item, "message", &message.message);
-    set_text(
-      scope,
-      item,
-      "type",
-      compilation_message_type(message.message_type),
-    );
     let (offset, length, line_num, line_pos) = match message.location {
       Some(location) => utf16_compilation_span(
         source,
@@ -889,18 +965,26 @@ fn compilation_info_object<'s>(
       ),
       None => (0, 0, 0, 0),
     };
-    js::set_u32(scope, item, "offset", offset);
-    js::set_u32(scope, item, "length", length);
-    js::set_u32(scope, item, "lineNum", line_num);
-    js::set_u32(scope, item, "linePos", line_pos);
-    let _ = item.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+    let item = unsafe {
+      yuzuko_core::op::wrap_instance(
+        scope,
+        GpuCompilationMessage {
+          message: message.message.clone(),
+          kind: compilation_message_type(message.message_type),
+          offset,
+          length,
+          line_num,
+          line_pos,
+        },
+      )
+    };
     messages.set_index(scope, index as u32, item.into());
   }
   let _ = messages.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
-  let object = v8::Object::new(scope);
-  let key = v8::String::new(scope, "messages").unwrap();
-  object.set(scope, key.into(), messages.into());
-  object
+  let messages = yuzuko_core::op::traced(scope, messages);
+  unsafe {
+    yuzuko_core::op::wrap_instance(scope, GpuCompilationInfo { messages })
+  }
 }
 
 fn compilation_message_type(
@@ -911,17 +995,6 @@ fn compilation_message_type(
     wgpu::CompilationMessageType::Warning => "warning",
     wgpu::CompilationMessageType::Info => "info",
   }
-}
-
-fn set_text(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: &str,
-) {
-  let key = v8::String::new(scope, name).unwrap();
-  let text = v8::String::new(scope, value).unwrap();
-  object.set(scope, key.into(), text.into());
 }
 
 /// wgpu locations are UTF-8 bytes. `GPUCompilationMessage` counts UTF-16 code units.
