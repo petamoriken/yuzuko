@@ -258,7 +258,8 @@ impl GpuCommandEncoder {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
           label: label.as_deref(),
         });
-    let limits = handle.device.limits();
+    let limits = crate::state::validation_limits(device_id)
+      .unwrap_or_else(|_| handle.device.limits());
     let id = NEXT_ENCODER.fetch_add(1, Ordering::Relaxed);
     ENCODERS.with(|encoders| {
       encoders.borrow_mut().insert(
@@ -1496,7 +1497,9 @@ pub fn create_bundle_encoder(
         sample_count,
         commands: Vec::new(),
         invalid: false,
-        max_vertex_buffers: handle.device.limits().max_vertex_buffers,
+        max_vertex_buffers: crate::state::validation_limits(device_id)
+          .map(|limits| limits.max_vertex_buffers)
+          .unwrap_or_else(|_| handle.device.limits().max_vertex_buffers),
       },
     );
   });

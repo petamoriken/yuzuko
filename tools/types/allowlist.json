@@ -186,13 +186,6 @@
         "GPURenderPassEncoder.setImmediates",
         "GPUSupportedLimits.maxImmediateSize"
       ]
-    },
-    {
-      "reason": "textureBindingViewDimension is not implemented.",
-      "members": [
-        "GPUTexture.textureBindingViewDimension",
-        "GPUTextureDescriptor.textureBindingViewDimension"
-      ]
     }
   ]
 }

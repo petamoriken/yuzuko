@@ -16,6 +16,44 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.name : "";
 }
 
+function meetsCompatibilityLimits(limits: GPUSupportedLimits): boolean {
+  return limits.maxTextureDimension1D >= 4096
+    && limits.maxTextureDimension2D >= 4096
+    && limits.maxTextureDimension3D >= 2048
+    && limits.maxTextureArrayLayers >= 256
+    && limits.maxBindGroups >= 4
+    && limits.maxBindGroupsPlusVertexBuffers >= 24
+    && limits.maxBindingsPerBindGroup >= 1000
+    && limits.maxDynamicUniformBuffersPerPipelineLayout >= 8
+    && limits.maxDynamicStorageBuffersPerPipelineLayout >= 4
+    && limits.maxSampledTexturesPerShaderStage >= 16
+    && limits.maxSamplersPerShaderStage >= 16
+    && limits.maxStorageBuffersPerShaderStage >= 8
+    && limits.maxStorageBuffersInVertexStage >= 0
+    && limits.maxStorageBuffersInFragmentStage >= 4
+    && limits.maxStorageTexturesPerShaderStage >= 4
+    && limits.maxStorageTexturesInVertexStage >= 0
+    && limits.maxStorageTexturesInFragmentStage >= 4
+    && limits.maxUniformBuffersPerShaderStage >= 12
+    && limits.maxUniformBufferBindingSize >= 16384
+    && limits.maxStorageBufferBindingSize >= 134217728
+    && limits.maxVertexBuffers >= 8
+    && limits.maxBufferSize >= 268435456
+    && limits.maxVertexAttributes >= 16
+    && limits.maxVertexBufferArrayStride >= 2048
+    && limits.maxInterStageShaderVariables >= 15
+    && limits.maxColorAttachments >= 4
+    && limits.maxColorAttachmentBytesPerSample >= 32
+    && limits.maxComputeWorkgroupStorageSize >= 16384
+    && limits.maxComputeInvocationsPerWorkgroup >= 128
+    && limits.maxComputeWorkgroupSizeX >= 128
+    && limits.maxComputeWorkgroupSizeY >= 128
+    && limits.maxComputeWorkgroupSizeZ >= 64
+    && limits.maxComputeWorkgroupsPerDimension >= 65535
+    && limits.minUniformBufferOffsetAlignment <= 256
+    && limits.minStorageBufferOffsetAlignment <= 256;
+}
+
 async function adapterOrSkip() {
   const fallback = await navigator.gpu.requestAdapter({
     forceFallbackAdapter: true,
@@ -2384,7 +2422,202 @@ Yuzuko.test("WebGPU adapter, queue, and pipeline options", async () => {
     return;
   }
   assert(await navigator.gpu.requestAdapter({ featureLevel: "core" }) !== null, "core");
-  assert(await navigator.gpu.requestAdapter({ featureLevel: "compatibility" }) === null, "compatibility");
+  const coreProbe = await adapter.requestDevice();
+  const coreTexture = coreProbe.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  if (coreProbe.features.has("core-features-and-limits")) {
+    assert(coreTexture.textureBindingViewDimension === undefined, "core binding");
+  } else {
+    assert(coreTexture.textureBindingViewDimension === "2d", "downlevel binding");
+  }
+  assert(
+    throwName(() => {
+      coreProbe.createTexture({
+        size: [1, 1],
+        format: "rgba8unorm",
+        usage: GPUTextureUsage.TEXTURE_BINDING,
+        // @ts-expect-error the binding dimension is not a GPUTextureViewDimension.
+        textureBindingViewDimension: "nope",
+      });
+    }) === "TypeError",
+    "binding dimension",
+  );
+  coreProbe.destroy();
+
+  const meetsCompat = meetsCompatibilityLimits(adapter.limits);
+  const compat = await navigator.gpu.requestAdapter({ featureLevel: "compatibility" });
+  assert((compat !== null) === meetsCompat, "compatibility");
+  if (compat) {
+    assert(
+      compat.features.has("core-features-and-limits")
+        === adapter.features.has("core-features-and-limits"),
+      "compat adapter feature",
+    );
+    const compatDevice = await compat.requestDevice();
+    assert(!compatDevice.features.has("core-features-and-limits"), "compat device core feature");
+    assert(!compatDevice.features.has("timestamp-query"), "compat device timestamp");
+    const capped = (name: keyof GPUSupportedLimits, compatDefault: number) => {
+      assert(
+        compatDevice.limits[name] === Math.min(compatDefault, adapter.limits[name]),
+        String(name),
+      );
+    };
+    capped("maxTextureDimension1D", 4096);
+    capped("maxTextureDimension2D", 4096);
+    capped("maxColorAttachments", 4);
+    capped("maxUniformBufferBindingSize", 16384);
+    capped("maxInterStageShaderVariables", 15);
+    capped("maxComputeInvocationsPerWorkgroup", 128);
+    capped("maxComputeWorkgroupSizeX", 128);
+    capped("maxComputeWorkgroupSizeY", 128);
+    assert(compatDevice.limits.maxStorageBuffersInVertexStage === 0, "vertex storage buffers");
+    assert(compatDevice.limits.maxStorageTexturesInVertexStage === 0, "vertex storage textures");
+    assert(compatDevice.limits.maxStorageBuffersInFragmentStage === 4, "fragment storage buffers");
+    const one = compatDevice.createTexture({
+      size: [1, 1],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    assert(one.textureBindingViewDimension === "2d", "binding 2d");
+    const layers = compatDevice.createTexture({
+      size: [4, 4, 6],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+      textureBindingViewDimension: "2d-array",
+    });
+    assert(layers.textureBindingViewDimension === "2d-array", "binding array");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [1, 1],
+      format: "bgra8unorm-srgb",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "bgra8unorm-srgb");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [1, 1],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+      viewFormats: ["rgba8unorm-srgb"],
+    });
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "srgb view");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [1, 1],
+      format: "rgba8unorm-srgb",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    assert(await compatDevice.popErrorScope() === null, "rgba8unorm-srgb");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [1, 1],
+      format: "rg32float",
+      usage: GPUTextureUsage.STORAGE_BINDING,
+    });
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "rg32float storage");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [4096, 1],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    assert(await compatDevice.popErrorScope() === null, "size 4096");
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createTexture({
+      size: [4097, 1],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING,
+    });
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "size 4097");
+    compatDevice.pushErrorScope("validation");
+    const cubeView = layers.createView({ dimension: "cube" });
+    assert(cubeView instanceof GPUTextureView, "cube view");
+    assert(await compatDevice.popErrorScope() === null, "cube view error");
+    const cubeLayout = compatDevice.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.FRAGMENT,
+        texture: { viewDimension: "cube" },
+      }],
+    });
+    compatDevice.pushErrorScope("validation");
+    compatDevice.createBindGroup({
+      layout: cubeLayout,
+      entries: [{ binding: 0, resource: cubeView }],
+    });
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "bind mismatch");
+    compatDevice.pushErrorScope("validation");
+    const arrayView = layers.createView({ dimension: "cube-array" });
+    assert(arrayView instanceof GPUTextureView, "cube array view");
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "cube array");
+    const compatModule = compatDevice.createShaderModule({ code: triangleShader });
+    compatDevice.pushErrorScope("validation");
+    const zeroBias = compatDevice.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: compatModule, entryPoint: "vs" },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: true,
+        depthCompare: "less",
+        depthBiasClamp: 0,
+      },
+    });
+    assert(zeroBias instanceof GPURenderPipeline, "compat zero bias pipeline");
+    assert(await compatDevice.popErrorScope() === null, "compat zero bias");
+    compatDevice.pushErrorScope("validation");
+    const biased = compatDevice.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: compatModule, entryPoint: "vs" },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: true,
+        depthCompare: "less",
+        depthBiasClamp: 1,
+      },
+    });
+    assert(biased instanceof GPURenderPipeline, "compat bias pipeline");
+    assert((await compatDevice.popErrorScope()) instanceof GPUValidationError, "compat depth bias");
+    if (adapter.features.has("core-features-and-limits")) {
+      const upgraded = await compat.requestDevice({
+        requiredFeatures: ["core-features-and-limits"],
+      });
+      assert(upgraded.features.has("core-features-and-limits"), "requested core");
+      assert(!upgraded.features.has("timestamp-query"), "no auto timestamp");
+      assert(!upgraded.features.has("depth-clip-control"), "no auto depth clip");
+      assert(
+        upgraded.limits.maxStorageBuffersInVertexStage
+          === upgraded.limits.maxStorageBuffersPerShaderStage,
+        "vertex storage buffers raised",
+      );
+      assert(upgraded.limits.maxStorageBuffersInVertexStage > 0, "vertex storage raised");
+      assert(
+        upgraded.limits.maxStorageBuffersInFragmentStage
+          === upgraded.limits.maxStorageBuffersPerShaderStage,
+        "fragment storage buffers raised",
+      );
+      assert(
+        upgraded.limits.maxStorageTexturesInVertexStage
+          === upgraded.limits.maxStorageTexturesPerShaderStage,
+        "vertex storage textures raised",
+      );
+      assert(
+        upgraded.limits.maxStorageTexturesInFragmentStage
+          === upgraded.limits.maxStorageTexturesPerShaderStage,
+        "fragment storage textures raised",
+      );
+      const upgradedTexture = upgraded.createTexture({
+        size: [1, 1],
+        format: "rgba8unorm",
+        usage: GPUTextureUsage.TEXTURE_BINDING,
+      });
+      assert(upgradedTexture.textureBindingViewDimension === undefined, "upgraded binding");
+      upgraded.destroy();
+    }
+    compatDevice.destroy();
+  }
   assert(await navigator.gpu.requestAdapter({ xrCompatible: true }) === null, "xr");
   assert(await navigator.gpu.requestAdapter({ xrCompatible: false }) !== null, "xr false");
   assert(

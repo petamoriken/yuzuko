@@ -313,6 +313,11 @@ impl GpuCanvasContext {
       usage,
       view_formats: &view_formats,
     });
+    let binding_view = if state::has_core_features(device_id) {
+      None
+    } else {
+      Some(wgpu::TextureViewDimension::D2)
+    };
     let gpu_texture = GpuTexture::from_parts(
       texture,
       Arc::new(AtomicBool::new(false)),
@@ -328,6 +333,7 @@ impl GpuCanvasContext {
       wgpu::TextureDimension::D2,
       1,
       1,
+      binding_view,
     );
     let texture_slot = gpu_texture.texture_slot();
     let destroyed = gpu_texture.destroyed_flag();

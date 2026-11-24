@@ -512,6 +512,9 @@ pub struct GpuTexture {
   requested_dimension: wgpu::TextureDimension,
   requested_depth: u32,
   requested_mips: u32,
+  /// `None` when the device has `core-features-and-limits`.
+  /// Otherwise the content-timeline binding dimension.
+  binding_view: Option<wgpu::TextureViewDimension>,
   /// False when `createTexture` recorded a validation error.
   valid: bool,
   label: ObjectLabel,
@@ -541,6 +544,7 @@ impl GpuTexture {
     requested_dimension: wgpu::TextureDimension,
     requested_depth: u32,
     requested_mips: u32,
+    binding_view: Option<wgpu::TextureViewDimension>,
   ) -> Self {
     Self {
       texture: Rc::new(RefCell::new(Some(texture))),
@@ -555,6 +559,7 @@ impl GpuTexture {
       requested_dimension,
       requested_depth,
       requested_mips,
+      binding_view,
       valid,
       label: ObjectLabel::new(label),
     }
@@ -654,6 +659,21 @@ impl GpuTexture {
     self.usage
   }
 
+  #[getter]
+  fn texture_binding_view_dimension(&self, scope: &mut v8::PinScope) -> Js {
+    let Some(dimension) = self.binding_view else {
+      let value: v8::Local<v8::Value> = v8::undefined(scope).into();
+      return Js(v8::Global::new(scope, value));
+    };
+    let Some(text) = v8::String::new(scope, view_dimension_name(dimension))
+    else {
+      let value: v8::Local<v8::Value> = v8::undefined(scope).into();
+      return Js(v8::Global::new(scope, value));
+    };
+    let value: v8::Local<v8::Value> = text.into();
+    Js(v8::Global::new(scope, value))
+  }
+
   fn create_view(
     &self,
     scope: &mut v8::PinScope,
@@ -684,9 +704,20 @@ impl GpuTexture {
     let destroyed = self.destroyed.load(Ordering::SeqCst);
     let usage_invalid =
       view_usage_invalid(self.usage, parts.usage, format, features);
+    // `cube-array` is rejected only on a compatibility device that does not
+    // have `core-features-and-limits`. A mismatched binding dimension is
+    // reported by `createBindGroup`, not here.
+    let cube_array = crate::state::enforce_compat(self.device_id)
+      && resolved.dimension == wgpu::TextureViewDimension::CubeArray;
+    let binding_mismatch = crate::state::enforce_compat(self.device_id)
+      && self
+        .binding_view
+        .is_some_and(|binding| binding != resolved.dimension);
     // A destroyed texture still returns a view. An invalid texture records
     // one validation error and returns a view of the stand-in.
-    if !destroyed && (!self.valid || usage_invalid || resolved.invalid) {
+    if !destroyed
+      && (!self.valid || usage_invalid || resolved.invalid || cube_array)
+    {
       crate::state::report_validation(
         self.device_id,
         "The texture view descriptor is invalid",
@@ -726,6 +757,7 @@ impl GpuTexture {
     Ok(New(GpuTextureView {
       view: RefCell::new(Some(view)),
       format,
+      binding_mismatch,
       label: ObjectLabel::new(parts.label),
     }))
   }
@@ -739,6 +771,8 @@ impl GpuTexture {
 pub struct GpuTextureView {
   view: RefCell<Option<wgpu::TextureView>>,
   format: wgpu::TextureFormat,
+  /// The view dimension differs from `textureBindingViewDimension`.
+  binding_mismatch: bool,
   label: ObjectLabel,
 }
 
@@ -759,6 +793,10 @@ impl GpuTextureView {
 
   pub fn format(&self) -> wgpu::TextureFormat {
     self.format
+  }
+
+  pub(crate) fn binding_mismatch(&self) -> bool {
+    self.binding_mismatch
   }
 }
 
@@ -1445,16 +1483,18 @@ pub fn create_texture(
   let extent = texture_extent(scope, object)?;
   let dimension = texture_dimension(scope, object)?;
   let features = handle.device.features();
-  let limits = handle.device.limits();
+  let limits = crate::state::validation_limits(device_id)
+    .unwrap_or_else(|_| handle.device.limits());
   let format = texture_format(&required_string(scope, object, "format")?)?;
   let format = require_texture_format(features, format)?;
   let view_formats = view_format_list(scope, object, features)?;
   let usage_bits = js::required_u32(scope, object, "usage")?;
+  let specified_binding = texture_binding_view_dimension(scope, object)?;
   let sample_count = js::field_u32(scope, object, "sampleCount")?.unwrap_or(1);
   let mip_level_count =
     js::field_u32(scope, object, "mipLevelCount")?.unwrap_or(1);
   let label = optional_label(scope, object)?;
-  let invalid = texture_invalid(
+  let mut invalid = texture_invalid(
     &extent,
     dimension,
     format,
@@ -1464,6 +1504,19 @@ pub fn create_texture(
     features,
     &limits,
   );
+  if invalid.is_none()
+    && crate::state::enforce_compat(device_id)
+    && compat_texture_rejected(
+      format,
+      dimension,
+      extent.depth_or_array_layers,
+      usage_bits,
+      &view_formats,
+      specified_binding,
+    )
+  {
+    invalid = Some("The texture descriptor is invalid");
+  }
   if let Some(message) = invalid {
     crate::state::report_validation(device_id, message);
   }
@@ -1554,6 +1607,13 @@ pub fn create_texture(
       })
     }
   };
+  let binding_view = if crate::state::has_core_features(device_id) {
+    None
+  } else {
+    Some(specified_binding.unwrap_or_else(|| {
+      default_view_dimension(dimension, extent.depth_or_array_layers)
+    }))
+  };
   Ok(New(GpuTexture::from_parts(
     texture,
     Arc::new(AtomicBool::new(false)),
@@ -1569,6 +1629,7 @@ pub fn create_texture(
     dimension,
     extent.depth_or_array_layers,
     mip_level_count,
+    binding_view,
   )))
 }
 
@@ -1768,6 +1829,15 @@ pub fn create_bind_group(
   })?;
   let layout = host_layout(scope, layout_value)?;
   let built = bind_entries(scope, object)?;
+  if built
+    .iter()
+    .any(|entry| matches!(entry.owned, OwnedBinding::View(_, true)))
+  {
+    crate::state::report_validation(
+      layout.device_id,
+      "The texture view dimension does not match the texture",
+    );
+  }
   let entries = built
     .iter()
     .map(|entry| wgpu::BindGroupEntry {
@@ -1868,6 +1938,19 @@ pub fn create_render_pipeline(
     crate::state::report_validation(
       device_id,
       "The pipeline object belongs to another device",
+    );
+  }
+  if crate::state::enforce_compat(device_id)
+    && (depth_stencil
+      .as_ref()
+      .is_some_and(|state| state.bias.clamp != 0.0)
+      || fragment
+        .as_ref()
+        .is_some_and(|stage| color_targets_differ(&stage.targets)))
+  {
+    crate::state::report_validation(
+      device_id,
+      "The render pipeline descriptor is invalid",
     );
   }
   let pipeline = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2027,6 +2110,24 @@ struct ColorTargetOwned {
   write_mask: wgpu::ColorWrites,
 }
 
+/// Compatibility mode requires every non-null color target to share a blend
+/// state and a write mask.
+fn color_targets_differ(targets: &[Option<ColorTargetOwned>]) -> bool {
+  let mut seen: Option<&ColorTargetOwned> = None;
+  for target in targets.iter().flatten() {
+    if let Some(previous) = seen {
+      if previous.blend != target.blend
+        || previous.write_mask != target.write_mask
+      {
+        return true;
+      }
+    } else {
+      seen = Some(target);
+    }
+  }
+  false
+}
+
 #[derive(Clone)]
 struct FragmentOwned {
   module: wgpu::ShaderModule,
@@ -2037,7 +2138,8 @@ struct FragmentOwned {
 
 enum OwnedBinding {
   Buffer(wgpu::Buffer, u64, Option<u64>),
-  View(wgpu::TextureView),
+  /// The bool is a compatibility binding-dimension mismatch.
+  View(wgpu::TextureView, bool),
   Sampler(wgpu::Sampler),
   External(wgpu::ExternalTexture),
 }
@@ -2057,7 +2159,7 @@ impl BuiltEntry {
           size: size.and_then(std::num::NonZeroU64::new),
         })
       }
-      OwnedBinding::View(view) => wgpu::BindingResource::TextureView(view),
+      OwnedBinding::View(view, _) => wgpu::BindingResource::TextureView(view),
       OwnedBinding::Sampler(sampler) => wgpu::BindingResource::Sampler(sampler),
       OwnedBinding::External(external) => {
         wgpu::BindingResource::ExternalTexture(external)
@@ -2165,7 +2267,7 @@ fn owned_binding(
   value: v8::Local<v8::Value>,
 ) -> Result<OwnedBinding, OpError> {
   if let Some(view) = host_view(scope, value) {
-    return Ok(OwnedBinding::View(view.view()?));
+    return Ok(OwnedBinding::View(view.view()?, view.binding_mismatch()));
   }
   if let Some(sampler) = host_sampler(scope, value) {
     return Ok(OwnedBinding::Sampler(sampler.sampler().clone()));
@@ -2822,6 +2924,66 @@ fn texture_view_dimension(
     "3d" => Ok(wgpu::TextureViewDimension::D3),
     _ => Err(OpError::type_("The texture view dimension is invalid")),
   }
+}
+
+fn view_dimension_name(dimension: wgpu::TextureViewDimension) -> &'static str {
+  match dimension {
+    wgpu::TextureViewDimension::D1 => "1d",
+    wgpu::TextureViewDimension::D2 => "2d",
+    wgpu::TextureViewDimension::D2Array => "2d-array",
+    wgpu::TextureViewDimension::Cube => "cube",
+    wgpu::TextureViewDimension::CubeArray => "cube-array",
+    wgpu::TextureViewDimension::D3 => "3d",
+  }
+}
+
+fn texture_binding_view_dimension(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<wgpu::TextureViewDimension>, OpError> {
+  match js::get(scope, object, "textureBindingViewDimension")?
+    .map(|value| js::string(scope, value))
+    .transpose()?
+    .as_deref()
+  {
+    None => Ok(None),
+    Some(name) => Ok(Some(texture_view_dimension(name)?)),
+  }
+}
+
+/// Host checks for a compatibility device without `core-features-and-limits`.
+fn compat_texture_rejected(
+  format: wgpu::TextureFormat,
+  dimension: wgpu::TextureDimension,
+  depth: u32,
+  usage_bits: u32,
+  view_formats: &[wgpu::TextureFormat],
+  binding: Option<wgpu::TextureViewDimension>,
+) -> bool {
+  if format == wgpu::TextureFormat::Bgra8UnormSrgb {
+    return true;
+  }
+  if view_formats.iter().any(|view| *view != format) {
+    return true;
+  }
+  let storage = wgpu::TextureUsages::STORAGE_BINDING.bits();
+  if usage_bits & storage != 0
+    && matches!(
+      format,
+      wgpu::TextureFormat::Rg32Float
+        | wgpu::TextureFormat::Rg32Sint
+        | wgpu::TextureFormat::Rg32Uint
+    )
+  {
+    return true;
+  }
+  let Some(binding) = binding else {
+    return false;
+  };
+  binding == wgpu::TextureViewDimension::CubeArray
+    || !view_dimension_compatible(dimension, binding)
+    || (binding == wgpu::TextureViewDimension::D2 && depth != 1)
+    || (binding == wgpu::TextureViewDimension::Cube && depth != 6)
 }
 
 pub(crate) fn texture_aspect(

@@ -13263,6 +13263,14 @@ interface GPUTexture {
   readonly usage: number;
 
   /**
+   * Undefined when the device has `core-features-and-limits`. Otherwise the
+   * `textureBindingViewDimension` from `createTexture`, or `"1d"`, `"3d"`,
+   * `"2d"` for one array layer, or `"2d-array"`. `dimension` still reports
+   * the 2D stand-in.
+   */
+  readonly textureBindingViewDimension?: GPUTextureViewDimension | undefined;
+
+  /**
    * The **`createView()`** method of the GPUTexture interface creates a
    * GPUTextureView representing a specific view of the GPUTexture.
    *
@@ -13273,7 +13281,8 @@ interface GPUTexture {
    * allow, a usage that is not a subset of the texture usage, or a non-zero
    * usage other than the texture usage when the texture includes
    * `TRANSIENT_ATTACHMENT`, records a validation error. The view is still
-   * returned.
+   * returned. On a compatibility device without `core-features-and-limits`,
+   * `cube-array` records a validation error.
    *
    * @throws {@link DOMException} `NotSupportedError` when `swizzle` is not
    * `"rgba"`.
@@ -13302,6 +13311,7 @@ interface GPUTextureDescriptor {
   sampleCount?: number;
   dimension?: GPUTextureDimension;
   viewFormats?: GPUTextureFormat[];
+  textureBindingViewDimension?: GPUTextureViewDimension;
 }
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUTextureView) */

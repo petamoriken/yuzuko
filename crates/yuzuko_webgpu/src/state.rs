@@ -119,10 +119,21 @@ pub struct LiveDevice {
   pub limits_object: Option<v8::Global<v8::Object>>,
   pub adapter_info: Option<v8::Global<v8::Object>>,
   pub owner: Option<String>,
-  /// Core defaults, raised by own `requiredLimits` properties.
+  /// Feature-level defaults, raised by own `requiredLimits` properties.
   pub reported_limits: Vec<f64>,
   /// `maxBufferSize` from `reported_limits`.
   pub max_buffer_size: f64,
+  /// The device lists `core-features-and-limits`.
+  pub has_core_features: bool,
+  /// Compatibility-defaulting device without `core-features-and-limits`.
+  /// A core-defaulting device that merely lacks the feature does not.
+  pub enforce_compat: bool,
+  /// `None` lists the shared device's WebGPU features.
+  /// `Some` lists exactly these names.
+  pub feature_names: Option<Vec<String>>,
+  /// Limits used for texture and encoder checks. Core devices keep the
+  /// shared wgpu limits. A compatibility device uses its reported limits.
+  pub validation_limits: wgpu::Limits,
 }
 
 #[derive(Clone, Copy)]
@@ -168,6 +179,41 @@ pub fn max_buffer_size(id: u64) -> Result<f64, OpError> {
     let devices = devices.borrow();
     let live = devices.get(&id).ok_or_else(lost_error)?;
     Ok(live.max_buffer_size)
+  })
+}
+
+pub fn has_core_features(id: u64) -> bool {
+  DEVICES.with(|devices| {
+    devices
+      .borrow()
+      .get(&id)
+      .is_some_and(|live| live.has_core_features)
+  })
+}
+
+/// Host compatibility checks. False for every core-defaulting device.
+pub fn enforce_compat(id: u64) -> bool {
+  DEVICES.with(|devices| {
+    devices
+      .borrow()
+      .get(&id)
+      .is_some_and(|live| live.enforce_compat)
+  })
+}
+
+pub fn feature_names(id: u64) -> Result<Option<Vec<String>>, OpError> {
+  DEVICES.with(|devices| {
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
+    Ok(live.feature_names.clone())
+  })
+}
+
+pub fn validation_limits(id: u64) -> Result<wgpu::Limits, OpError> {
+  DEVICES.with(|devices| {
+    let devices = devices.borrow();
+    let live = devices.get(&id).ok_or_else(lost_error)?;
+    Ok(live.validation_limits.clone())
   })
 }
 

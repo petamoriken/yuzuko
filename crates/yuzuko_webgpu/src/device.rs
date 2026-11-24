@@ -56,13 +56,14 @@ impl Gpu {
       );
     }
     match adapter_choice(scope, options) {
-      Ok(true) => {
-        let adapter =
-          unsafe { yuzuko_core::op::wrap_instance(scope, GpuAdapter::new()) };
+      Ok(Some(level)) => {
+        let adapter = unsafe {
+          yuzuko_core::op::wrap_instance(scope, GpuAdapter::new(level))
+        };
         let value: v8::Local<v8::Value> = adapter.into();
         js::promise(scope, value)
       }
-      Ok(false) => js::promise_null(scope),
+      Ok(None) => js::promise_null(scope),
       Err(error) => js::promise_rejected(scope, error),
     }
   }
@@ -81,7 +82,14 @@ impl Gpu {
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FeatureLevel {
+  Core,
+  Compatibility,
+}
+
 pub struct GpuAdapter {
+  feature_level: FeatureLevel,
   features: RefCell<Option<v8::TracedReference<v8::Object>>>,
   limits: RefCell<Option<v8::TracedReference<v8::Object>>>,
   info: RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -100,8 +108,9 @@ unsafe impl v8::cppgc::GarbageCollected for GpuAdapter {
 }
 
 impl GpuAdapter {
-  fn new() -> Self {
+  fn new(feature_level: FeatureLevel) -> Self {
     Self {
+      feature_level,
       features: RefCell::new(None),
       limits: RefCell::new(None),
       info: RefCell::new(None),
@@ -155,7 +164,7 @@ impl GpuAdapter {
     scope: &mut v8::PinScope,
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Js {
-    match open_device(scope, descriptor) {
+    match open_device(scope, descriptor, self.feature_level) {
       Ok(device) => {
         let id = device.id;
         let object = unsafe { yuzuko_core::op::wrap_instance(scope, device) };
@@ -231,13 +240,8 @@ impl GpuDevice {
   #[getter]
   fn features(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     device_member(scope, self.id, state::CachedObject::Features, |scope| {
-      let device = self.require()?.device;
-      let features = device.features();
-      Ok(features_object(
-        scope,
-        features,
-        meets_core_limits(&device.limits()),
-      ))
+      let _ = self.require()?;
+      device_features_object(scope, self.id)
     })
   }
 
@@ -1018,6 +1022,7 @@ fn define_flags(
 fn open_device(
   scope: &mut v8::PinScope,
   descriptor: Option<v8::Local<v8::Value>>,
+  level: FeatureLevel,
 ) -> Result<GpuDevice, OpError> {
   if yuzuko_window::gpu_foreign() {
     return Err(OpError::dom(
@@ -1037,20 +1042,43 @@ fn open_device(
       let features = device.features();
       (device, queue, limits, features)
     })?;
+  let core_ok = meets_core_limits(&limits);
   let mut device_label = None;
   let mut queue_label = None;
-  let reported_limits = if let Some(object) = dictionary(scope, descriptor) {
-    reject_features(scope, object, features, meets_core_limits(&limits))?;
-    let reported = resolve_device_limits(scope, Some(object), &limits)?;
+  let object = dictionary(scope, descriptor);
+  let accepted = match object {
+    Some(object) => accepted_features(scope, object, features, core_ok)?,
+    None => Vec::new(),
+  };
+  if let Some(object) = object {
     device_label = js::get(scope, object, "label")?
       .map(|value| js::string(scope, value))
       .transpose()?;
     queue_label = queue_label_of(scope, object)?;
-    reported
-  } else {
-    resolve_device_limits(scope, None, &limits)?
+  }
+  // A core-defaulting device lists the feature whenever the shared device
+  // meets the defaults. A compatibility device lists it only when requested.
+  let has_core = match level {
+    FeatureLevel::Core => core_ok,
+    FeatureLevel::Compatibility => accepted
+      .iter()
+      .any(|name| name == "core-features-and-limits"),
   };
+  let reported_limits =
+    resolve_device_limits(scope, object, &limits, level, has_core)?;
   let max_buffer_size = reported_max_buffer_size(&reported_limits, &limits);
+  let enforce_compat = level == FeatureLevel::Compatibility && !has_core;
+  let feature_names = match level {
+    FeatureLevel::Core => None,
+    FeatureLevel::Compatibility => Some(accepted),
+  };
+  // Core devices keep the shared wgpu limits, including a downlevel device.
+  // A compatibility device checks sizes against the limits it reports.
+  let validation_limits = if level == FeatureLevel::Compatibility {
+    overlay_reported(&limits, &reported_limits)
+  } else {
+    limits.clone()
+  };
   let id = state::alloc_id();
   let lost = Arc::new(AtomicBool::new(false));
   let resolver = v8::PromiseResolver::new(scope).unwrap();
@@ -1080,6 +1108,10 @@ fn open_device(
       owner: yuzuko_core::caller_module_url(scope),
       reported_limits,
       max_buffer_size,
+      has_core_features: has_core,
+      enforce_compat,
+      feature_names,
+      validation_limits,
     },
   );
   Ok(GpuDevice {
@@ -1472,35 +1504,46 @@ fn preferred_format() -> Result<&'static str, OpError> {
   })
 }
 
-/// `Ok(true)` is the process adapter. `Ok(false)` resolves `null`.
+/// `Ok(Some)` is the process adapter at that feature level.
+/// `Ok(None)` resolves `null`.
 fn adapter_choice(
   scope: &mut v8::PinScope,
   options: Option<v8::Local<v8::Value>>,
-) -> Result<bool, OpError> {
+) -> Result<Option<FeatureLevel>, OpError> {
   let Some(object) = dictionary(scope, options) else {
-    return Ok(state::ensure_adapter());
+    return Ok(state::ensure_adapter().then_some(FeatureLevel::Core));
   };
+  let mut level = FeatureLevel::Core;
   if let Some(value) = js::try_get(scope, object, "featureLevel")? {
     let value = v8::Local::new(scope, value);
     match js::try_string(scope, value)?.as_str() {
       "core" => {}
-      "compatibility" => return Ok(false),
+      "compatibility" => level = FeatureLevel::Compatibility,
       _ => return Err(OpError::type_("The feature level is invalid")),
     }
   }
   if let Some(value) = js::try_get(scope, object, "xrCompatible")? {
     let value = v8::Local::new(scope, value);
     if value.boolean_value(scope) {
-      return Ok(false);
+      return Ok(None);
     }
   }
   if let Some(value) = js::try_get(scope, object, "forceFallbackAdapter")? {
     let value = v8::Local::new(scope, value);
     if value.boolean_value(scope) {
-      return Ok(false);
+      return Ok(None);
     }
   }
-  Ok(state::ensure_adapter())
+  if !state::ensure_adapter() {
+    return Ok(None);
+  }
+  if level == FeatureLevel::Compatibility {
+    let limits = gpu_parts()?.1.limits();
+    if !meets_compat_limits(&limits) {
+      return Ok(None);
+    }
+  }
+  Ok(Some(level))
 }
 
 fn queue_label_of(
@@ -1534,18 +1577,20 @@ fn dictionary<'a>(
   js::object(scope, value)
 }
 
-fn reject_features(
+/// Names from `requiredFeatures` that the shared device supports.
+fn accepted_features(
   scope: &mut v8::PinScope,
   descriptor: v8::Local<v8::Object>,
   enabled: wgpu::Features,
   core_limits: bool,
-) -> Result<(), OpError> {
+) -> Result<Vec<String>, OpError> {
   let Some(value) = js::get(scope, descriptor, "requiredFeatures")? else {
-    return Ok(());
+    return Ok(Vec::new());
   };
   if value.is_null() {
-    return Ok(());
+    return Ok(Vec::new());
   }
+  let mut names = Vec::new();
   for name in feature_sequence(scope, value)? {
     // wgpu has no bit for this name. It is present when the shared device
     // meets the WebGPU core defaults.
@@ -1555,6 +1600,7 @@ fn reject_features(
           "Required features are not enabled on the shared device",
         ));
       }
+      names.push(name);
       continue;
     }
     let feature = name
@@ -1570,23 +1616,27 @@ fn reject_features(
         "Required features are not enabled on the shared device",
       ));
     }
+    names.push(name);
   }
-  Ok(())
+  Ok(names)
 }
 
-/// WebGPU core defaults, then each own `requiredLimits` property that the
+/// Feature-level defaults, then each own `requiredLimits` property that the
 /// shared device can satisfy. A property inherited from `GPUSupportedLimits`
 /// is not a request. A value that does not improve on the default is ignored.
+/// Per-stage storage limits are then normalized for the device's features.
 fn resolve_device_limits(
   scope: &mut v8::PinScope,
   descriptor: Option<v8::Local<v8::Object>>,
   limits: &wgpu::Limits,
+  level: FeatureLevel,
+  has_core: bool,
 ) -> Result<Vec<f64>, OpError> {
   let table = limit_table(limits);
   let mut values = Vec::with_capacity(table.len());
   for (name, advertised, lower_is_better) in &table {
     let ceiling = *advertised;
-    let default = core_default(name).unwrap_or(ceiling);
+    let default = default_limit(name, level).unwrap_or(ceiling);
     let start = if *lower_is_better {
       default.max(ceiling)
     } else {
@@ -1594,49 +1644,122 @@ fn resolve_device_limits(
     };
     values.push(start);
   }
-  let Some(descriptor) = descriptor else {
-    return Ok(values);
-  };
-  let Some(value) = js::get(scope, descriptor, "requiredLimits")? else {
-    return Ok(values);
-  };
-  let Some(requested) = js::object(scope, value) else {
-    return Err(OpError::type_("requiredLimits must be an object"));
-  };
-  for (index, (name, advertised, lower_is_better)) in table.iter().enumerate() {
-    let Some(key) = v8::String::new(scope, name) else {
-      continue;
+  if let Some(descriptor) = descriptor
+    && let Some(value) = js::get(scope, descriptor, "requiredLimits")?
+  {
+    let Some(requested) = js::object(scope, value) else {
+      return Err(OpError::type_("requiredLimits must be an object"));
     };
-    match requested.has_own_property(scope, key.into()) {
-      Some(true) => {}
-      Some(false) => continue,
-      None => return Err(OpError::type_("requiredLimits is not readable")),
-    }
-    let Some(value) = js::get(scope, requested, name)? else {
-      continue;
-    };
-    let number = js::finite_number(scope, value)?;
-    let ceiling = *advertised;
-    let exceeds = if *lower_is_better {
-      number < ceiling
-    } else {
-      number > ceiling
-    };
-    if exceeds {
-      return Err(OpError::type_(format!(
-        "The required limit {name} is not supported"
-      )));
-    }
-    let improves = if *lower_is_better {
-      number < values[index]
-    } else {
-      number > values[index]
-    };
-    if improves {
-      values[index] = number;
+    for (index, (name, advertised, lower_is_better)) in table.iter().enumerate()
+    {
+      let Some(key) = v8::String::new(scope, name) else {
+        continue;
+      };
+      match requested.has_own_property(scope, key.into()) {
+        Some(true) => {}
+        Some(false) => continue,
+        None => return Err(OpError::type_("requiredLimits is not readable")),
+      }
+      let Some(value) = js::get(scope, requested, name)? else {
+        continue;
+      };
+      let number = js::finite_number(scope, value)?;
+      let ceiling = *advertised;
+      let exceeds = if *lower_is_better {
+        number < ceiling
+      } else {
+        number > ceiling
+      };
+      if exceeds {
+        return Err(OpError::type_(format!(
+          "The required limit {name} is not supported"
+        )));
+      }
+      let improves = if *lower_is_better {
+        number < values[index]
+      } else {
+        number > values[index]
+      };
+      if improves {
+        values[index] = number;
+      }
     }
   }
+  normalize_stage_limits(&mut values, &table, has_core);
   Ok(values)
+}
+
+/// `max*PerShaderStage` is at least each stage limit. With
+/// `core-features-and-limits`, the stage limits are raised to that value.
+fn normalize_stage_limits(
+  values: &mut [f64],
+  table: &[(&str, f64, bool)],
+  has_core: bool,
+) {
+  let raise = |values: &mut [f64], per: &str, vertex: &str, fragment: &str| {
+    let Some(per) = limit_index(table, per) else {
+      return;
+    };
+    let Some(vertex) = limit_index(table, vertex) else {
+      return;
+    };
+    let Some(fragment) = limit_index(table, fragment) else {
+      return;
+    };
+    let raised = values[per].max(values[vertex]).max(values[fragment]);
+    values[per] = raised;
+    if has_core {
+      values[vertex] = raised;
+      values[fragment] = raised;
+    }
+  };
+  raise(
+    values,
+    "maxStorageBuffersPerShaderStage",
+    "maxStorageBuffersInVertexStage",
+    "maxStorageBuffersInFragmentStage",
+  );
+  raise(
+    values,
+    "maxStorageTexturesPerShaderStage",
+    "maxStorageTexturesInVertexStage",
+    "maxStorageTexturesInFragmentStage",
+  );
+}
+
+fn limit_index(table: &[(&str, f64, bool)], name: &str) -> Option<usize> {
+  table.iter().position(|(entry, _, _)| *entry == name)
+}
+
+/// Copy the reported texture and vertex-buffer limits onto the shared limits.
+fn overlay_reported(base: &wgpu::Limits, reported: &[f64]) -> wgpu::Limits {
+  let mut limits = base.clone();
+  let table = limit_table(base);
+  let value = |name: &str| -> Option<u32> {
+    let index = limit_index(&table, name)?;
+    let number = *reported.get(index)?;
+    if number.is_finite() && (0.0..=f64::from(u32::MAX)).contains(&number) {
+      Some(number as u32)
+    } else {
+      None
+    }
+  };
+  if let Some(value) = value("maxTextureDimension1D") {
+    limits.max_texture_dimension_1d = value;
+  }
+  if let Some(value) = value("maxTextureDimension2D") {
+    limits.max_texture_dimension_2d = value;
+  }
+  if let Some(value) = value("maxTextureDimension3D") {
+    limits.max_texture_dimension_3d = value;
+  }
+  if let Some(value) = value("maxTextureArrayLayers") {
+    limits.max_texture_array_layers = value;
+  }
+  if let Some(value) = value("maxVertexBuffers") {
+    limits.max_vertex_buffers = value;
+  }
+  limits
 }
 
 fn reported_max_buffer_size(values: &[f64], limits: &wgpu::Limits) -> f64 {
@@ -1648,10 +1771,18 @@ fn reported_max_buffer_size(values: &[f64], limits: &wgpu::Limits) -> f64 {
 }
 
 fn meets_core_limits(limits: &wgpu::Limits) -> bool {
+  meets_level_limits(limits, FeatureLevel::Core)
+}
+
+fn meets_compat_limits(limits: &wgpu::Limits) -> bool {
+  meets_level_limits(limits, FeatureLevel::Compatibility)
+}
+
+fn meets_level_limits(limits: &wgpu::Limits, level: FeatureLevel) -> bool {
   limit_table(limits)
     .iter()
     .all(|(name, advertised, lower_is_better)| {
-      let Some(default) = core_default(name) else {
+      let Some(default) = default_limit(name, level) else {
         return true;
       };
       if *lower_is_better {
@@ -1660,6 +1791,31 @@ fn meets_core_limits(limits: &wgpu::Limits) -> bool {
         *advertised >= default
       }
     })
+}
+
+fn default_limit(name: &str, level: FeatureLevel) -> Option<f64> {
+  if level == FeatureLevel::Compatibility
+    && let Some(value) = compat_default(name)
+  {
+    return Some(value);
+  }
+  core_default(name)
+}
+
+/// Compatibility Mode defaults that differ from the core defaults.
+fn compat_default(name: &str) -> Option<f64> {
+  Some(match name {
+    "maxTextureDimension1D" | "maxTextureDimension2D" => 4096.0,
+    "maxStorageBuffersInFragmentStage" => 4.0,
+    "maxStorageBuffersInVertexStage" | "maxStorageTexturesInVertexStage" => 0.0,
+    "maxUniformBufferBindingSize" => 16384.0,
+    "maxInterStageShaderVariables" => 15.0,
+    "maxColorAttachments" => 4.0,
+    "maxComputeInvocationsPerWorkgroup"
+    | "maxComputeWorkgroupSizeX"
+    | "maxComputeWorkgroupSizeY" => 128.0,
+    _ => return None,
+  })
 }
 
 fn core_default(name: &str) -> Option<f64> {
@@ -1946,6 +2102,35 @@ fn features_object<'s>(
   if core_limits
     && let Some(text) = v8::String::new(scope, "core-features-and-limits")
   {
+    set.add(scope, text.into());
+  }
+  set.into()
+}
+
+fn device_features_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u64,
+) -> Result<v8::Local<'s, v8::Object>, OpError> {
+  if let Some(names) = state::feature_names(id)? {
+    return Ok(feature_name_set(scope, &names));
+  }
+  let device = state::wgpu_device(id)?;
+  Ok(features_object(
+    scope,
+    device.features(),
+    state::has_core_features(id),
+  ))
+}
+
+fn feature_name_set<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  names: &[String],
+) -> v8::Local<'s, v8::Object> {
+  let set = v8::Set::new(scope);
+  for name in names {
+    let Some(text) = v8::String::new(scope, name) else {
+      continue;
+    };
     set.add(scope, text.into());
   }
   set.into()

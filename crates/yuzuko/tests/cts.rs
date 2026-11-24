@@ -38,8 +38,10 @@ const MARKER: &str = "YUZUKO_CTS_JSON ";
 /// shader module, compilation info, compute pipeline, queue writes
 /// including texture writes, buffer clears, and command encoding, plus
 /// sampling, vertex formats, device loss, labels, and the IDL surface.
-/// Shader execution, compatibility mode, capability-limit sweeps, and the
-/// HTML canvas reftests stay out.
+/// The `webgpu:compat` queries are host checks for texture creation,
+/// cube-array views, depth bias clamp, and fragment color state.
+/// Shader execution, shader-language compatibility tests, capability-limit
+/// sweeps, and the HTML canvas reftests stay out.
 const ENROLLED: &[&str] = &[
   "unittests:*",
   "webgpu:api,validation,createSampler:*",
@@ -81,6 +83,10 @@ const ENROLLED: &[&str] = &[
   "webgpu:idl,constants,flags:*",
   "webgpu:idl,constructable:*",
   "webgpu:idl,javascript:*",
+  "webgpu:compat,api,validation,texture,createTexture:*",
+  "webgpu:compat,api,validation,texture,cubeArray:*",
+  "webgpu:compat,api,validation,render_pipeline,depth_stencil_state:*",
+  "webgpu:compat,api,validation,render_pipeline,fragment_state:*",
 ];
 
 const PLATFORMS: [Platform; 3] =
@@ -265,6 +271,8 @@ const RUNNER: &str = r#"
 import { DefaultTestFileLoader } from "YUZUKO_CTS_OUT/common/internal/file_loader.js";
 import { Logger } from "YUZUKO_CTS_OUT/common/internal/logging/logger.js";
 import { parseQuery } from "YUZUKO_CTS_OUT/common/internal/query/parseQuery.js";
+import { globalTestConfig } from "YUZUKO_CTS_OUT/common/framework/test_config.js";
+import { setDefaultRequestAdapterOptions } from "YUZUKO_CTS_OUT/common/util/navigator_gpu.js";
 
 function skipReason(result) {
   const logs = result.logs || [];
@@ -280,6 +288,11 @@ function skipReason(result) {
 }
 
 const args = Array.from(Yuzuko.args);
+if (args[0] === "--compat") {
+  globalTestConfig.compatibility = true;
+  setDefaultRequestAdapterOptions({ featureLevel: "compatibility" });
+  args.shift();
+}
 const ignored = new Set(YUZUKO_CTS_IGNORED);
 const queries = args.length > 0 ? args : ["unittests:*"];
 const loader = new DefaultTestFileLoader();
@@ -371,6 +384,26 @@ fn run_cases(
   queries: &[String],
   skipped: &[String],
 ) -> BTreeMap<String, Ran> {
+  let (compat, rest): (Vec<String>, Vec<String>) = queries
+    .iter()
+    .cloned()
+    .partition(|query| query.contains("webgpu:compat"));
+  let mut observed = BTreeMap::new();
+  if !rest.is_empty() {
+    observed.extend(run_query_set(workspace, &rest, skipped, false));
+  }
+  if !compat.is_empty() {
+    observed.extend(run_query_set(workspace, &compat, skipped, true));
+  }
+  observed
+}
+
+fn run_query_set(
+  workspace: &Path,
+  queries: &[String],
+  skipped: &[String],
+  compat: bool,
+) -> BTreeMap<String, Ran> {
   let runner =
     RunnerFile::create(&workspace.join("tests/webgpu/suite/out"), skipped);
   let mut command = Command::new(env!("CARGO_BIN_EXE_yuzuko"));
@@ -378,8 +411,11 @@ fn run_cases(
     .current_dir(workspace)
     .arg("run")
     .arg(&runner.path)
-    .arg("--")
-    .args(queries);
+    .arg("--");
+  if compat {
+    command.arg("--compat");
+  }
+  command.args(queries);
   let output = command.output().expect("spawn yuzuko");
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
