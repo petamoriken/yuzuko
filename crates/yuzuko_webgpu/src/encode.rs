@@ -130,6 +130,8 @@ enum PassCommand {
     query_set: wgpu::QuerySet,
     index: u32,
   },
+  BlendConstant(wgpu::Color),
+  StencilReference(u32),
 }
 
 struct ComputeRecord {
@@ -502,10 +504,22 @@ impl GpuCommandEncoder {
     offset: Option<js::GpuSize64>,
     size: Option<js::GpuSize64>,
   ) -> Result<(), OpError> {
-    let _ = (offset, size);
-    let _ = alive_buffer(scope, buffer, "clearBuffer requires a GPUBuffer")?;
-    with_idle_encoder(self.id, |_| {
-      Err(js::unsupported("GPUCommandEncoder.clearBuffer"))
+    let buffer =
+      host_gpu_buffer(scope, buffer, "clearBuffer requires a GPUBuffer")?;
+    buffer.alive()?;
+    let encoder_device = encoder_device(self.id)?;
+    if buffer.device_id() != encoder_device || !buffer.is_valid() {
+      return invalidate_encoder(self.id);
+    }
+    if buffer.is_destroyed() {
+      return note_submit_destroyed(self.id);
+    }
+    let gpu = buffer.alive()?;
+    let offset = offset.map(|value| value.0).unwrap_or(0);
+    let size = size.map(|value| value.0);
+    with_idle_encoder(self.id, |encoder| {
+      encoder.clear_buffer(&gpu, offset, size);
+      Ok(())
     })
   }
 
@@ -1128,17 +1142,15 @@ impl GpuRenderPass {
 
   fn set_blend_constant(
     &self,
+    scope: &mut v8::PinScope,
     color: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let _ = color;
-    self.with_render(|_| Ok(()))?;
-    Err(js::unsupported("GPURenderPassEncoder.setBlendConstant"))
+    let color = blend_color(scope, color)?;
+    self.push(PassCommand::BlendConstant(color))
   }
 
   fn set_stencil_reference(&self, reference: u32) -> Result<(), OpError> {
-    let _ = reference;
-    self.with_render(|_| Ok(()))?;
-    Err(js::unsupported("GPURenderPassEncoder.setStencilReference"))
+    self.push(PassCommand::StencilReference(reference))
   }
 
   fn end(&self) -> Result<(), OpError> {
@@ -2045,6 +2057,10 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
       PassCommand::WriteTimestamp { query_set, index } => {
         pass.write_timestamp(query_set, *index);
       }
+      PassCommand::BlendConstant(color) => pass.set_blend_constant(*color),
+      PassCommand::StencilReference(reference) => {
+        pass.set_stencil_reference(*reference);
+      }
     }
   }
   if record.draws_exceeded {
@@ -2590,6 +2606,84 @@ fn bundle_depth(
   }))
 }
 
+fn blend_color(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<wgpu::Color, OpError> {
+  // An array is an object in V8. The sequence form is checked first.
+  let Some(object) = js::object(scope, value) else {
+    return Err(OpError::type_("The blend constant is invalid"));
+  };
+  if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
+    return sequence_color(scope, object, array.length());
+  }
+  if value.is_typed_array()
+    && let Ok(typed) = v8::Local::<v8::TypedArray>::try_from(value)
+  {
+    let length = u32::try_from(typed.length()).unwrap_or(u32::MAX);
+    return sequence_color(scope, object, length);
+  }
+  Ok(wgpu::Color {
+    r: required_channel(scope, object, "r")?,
+    g: required_channel(scope, object, "g")?,
+    b: required_channel(scope, object, "b")?,
+    a: optional_channel(scope, object, "a", 1.0)?,
+  })
+}
+
+fn sequence_color(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  length: u32,
+) -> Result<wgpu::Color, OpError> {
+  if length != 3 && length != 4 {
+    return Err(OpError::type_("The blend constant is invalid"));
+  }
+  Ok(wgpu::Color {
+    r: indexed_channel(scope, object, 0)?,
+    g: indexed_channel(scope, object, 1)?,
+    b: indexed_channel(scope, object, 2)?,
+    a: if length == 4 {
+      indexed_channel(scope, object, 3)?
+    } else {
+      1.0
+    },
+  })
+}
+
+fn indexed_channel(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  index: u32,
+) -> Result<f64, OpError> {
+  let value = object
+    .get_index(scope, index)
+    .ok_or_else(|| OpError::type_("The blend constant is invalid"))?;
+  js::finite_number(scope, value)
+}
+
+fn required_channel(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+) -> Result<f64, OpError> {
+  let value = js::get(scope, object, name)?
+    .ok_or_else(|| OpError::type_("The blend constant is invalid"))?;
+  js::finite_number(scope, value)
+}
+
+fn optional_channel(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  default: f64,
+) -> Result<f64, OpError> {
+  match js::get(scope, object, name)? {
+    Some(value) => js::finite_number(scope, value),
+    None => Ok(default),
+  }
+}
+
 fn clear_color(
   scope: &mut v8::PinScope,
   value: Option<v8::Local<v8::Value>>,
@@ -2659,7 +2753,7 @@ fn copy_texture(
   })
 }
 
-fn copy_origin(
+pub(crate) fn copy_origin(
   scope: &mut v8::PinScope,
   copy: v8::Local<v8::Object>,
 ) -> Result<wgpu::Origin3d, OpError> {
@@ -2692,7 +2786,7 @@ fn copy_origin(
   })
 }
 
-fn copy_extent(
+pub(crate) fn copy_extent(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<wgpu::Extent3d, OpError> {
@@ -2742,16 +2836,6 @@ fn copy_size(
   let width = js::required_u32(scope, object, "width")?;
   let height = js::field_u32(scope, object, "height")?.unwrap_or(1);
   Ok((width, height))
-}
-
-fn alive_buffer(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-  message: &str,
-) -> Result<wgpu::Buffer, OpError> {
-  let buffer = resource::host_buffer(scope, value)
-    .ok_or_else(|| OpError::type_(message))?;
-  buffer.alive()
 }
 
 fn host_gpu_buffer<'s>(

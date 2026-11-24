@@ -12748,11 +12748,7 @@ interface GPUDevice extends EventTarget {
    */
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
 
-  /**
-   * @throws {@link DOMException} `NotSupportedError` when `compare` is set.
-   *
-   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createSampler)
-   */
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createSampler) */
   createSampler(descriptor?: GPUSamplerDescriptor): GPUSampler;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUDevice/createShaderModule) */
@@ -13074,7 +13070,12 @@ interface GPUQueue {
   submit(commandBuffers: Iterable<GPUCommandBuffer>): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * Writes the 2D texture. A destroyed texture, an invalid texture, or a
+   * texture from another device records a validation error. A lost device
+   * returns without writing.
+   *
+   * @throws {@link TypeError} When `destination`, `data`, or `dataLayout` is
+   * not the type this method requires.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUQueue/writeTexture)
    */
@@ -13351,7 +13352,9 @@ interface GPUSamplerDescriptor {
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule) */
 interface GPUShaderModule extends GPUObjectBase {
   /**
-   * @throws {@link DOMException} `NotSupportedError` The promise rejects.
+   * Resolves a plain object. `messages` is a frozen array of plain objects,
+   * not `GPUCompilationMessage` instances. `offset`, `length`, `lineNum`, and
+   * `linePos` are UTF-16 code units. A message with no location uses 0.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUShaderModule/getCompilationInfo)
    */
@@ -13702,7 +13705,10 @@ interface GPUCommandEncoder {
   ): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * A buffer from another device or an invalid buffer invalidates the encoder.
+   * A destroyed buffer records the error when the command buffer is submitted.
+   * A range or usage wgpu rejects is a validation error.
+   *
    * @throws {@link DOMException} `InvalidStateError` when the encoder is finished
    * or a pass is already open.
    * @throws {@link TypeError} When `buffer` is not a `GPUBuffer`.
@@ -13991,7 +13997,11 @@ interface GPURenderPassEncoder {
   writeTimestamp(querySet: GPUQuerySet, queryIndex: GPUSize32): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
+   * A sequence has three or four finite components. A dictionary requires
+   * finite `r`, `g`, and `b`. `a` defaults to 1.
+   *
+   * @throws {@link TypeError} When `color` is not that sequence or dictionary,
+   * or a component is not finite.
    * @throws {@link DOMException} `InvalidStateError` when the pass has ended.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setBlendConstant)
@@ -13999,7 +14009,6 @@ interface GPURenderPassEncoder {
   setBlendConstant(color: GPUColor): void;
 
   /**
-   * @throws {@link DOMException} `NotSupportedError` This command is not implemented.
    * @throws {@link DOMException} `InvalidStateError` when the pass has ended.
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPURenderPassEncoder/setStencilReference)

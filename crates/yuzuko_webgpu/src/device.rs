@@ -298,7 +298,7 @@ impl GpuDevice {
     descriptor: Option<v8::Local<v8::Value>>,
   ) -> Result<New<resource::GpuSampler>, OpError> {
     let value = descriptor.unwrap_or_else(|| v8::undefined(scope).into());
-    resource::create_sampler(scope, &self.require()?, value)
+    resource::create_sampler(scope, self.id, &self.require()?, value)
   }
 
   fn create_shader_module(
@@ -557,15 +557,68 @@ impl GpuQueue {
 
   fn write_texture(
     &self,
-    _scope: &mut v8::PinScope,
+    scope: &mut v8::PinScope,
     destination: v8::Local<v8::Value>,
     data: v8::Local<v8::Value>,
     data_layout: v8::Local<v8::Value>,
     size: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let _ = (destination, data, data_layout, size);
-    let _ = state::handle(self.device_id)?;
-    Err(js::unsupported("GPUQueue.writeTexture"))
+    let destination = js::object(scope, destination).ok_or_else(|| {
+      OpError::type_("writeTexture destination must be an object")
+    })?;
+    let texture = js::get(scope, destination, "texture")?
+      .and_then(|value| resource::host_texture(scope, value))
+      .ok_or_else(|| OpError::type_("The copy destination is not a texture"))?;
+    let bytes = yuzuko_winter::buffer_source(scope, data)?
+      .ok_or_else(|| OpError::type_("writeTexture requires a BufferSource"))?;
+    let layout = js::object(scope, data_layout).ok_or_else(|| {
+      OpError::type_("writeTexture dataLayout must be an object")
+    })?;
+    let offset = js::field_u64(scope, layout, "offset")?.unwrap_or(0);
+    let bytes_per_row = js::field_u32(scope, layout, "bytesPerRow")?;
+    let rows_per_image = js::field_u32(scope, layout, "rowsPerImage")?;
+    let mip_level = js::field_u32(scope, destination, "mipLevel")?.unwrap_or(0);
+    let origin = encode::copy_origin(scope, destination)?;
+    let aspect = match js::get(scope, destination, "aspect")?
+      .map(|value| js::string(scope, value))
+      .transpose()?
+      .as_deref()
+    {
+      None => wgpu::TextureAspect::All,
+      Some(name) => resource::texture_aspect(name)?,
+    };
+    let extent = encode::copy_extent(scope, size)?;
+    if texture.is_lost() || state::device_is_lost(self.device_id) {
+      return Ok(());
+    }
+    if texture.device_id() != self.device_id
+      || !texture.is_valid()
+      || texture.is_destroyed()
+    {
+      state::report_validation(self.device_id, "The texture write is invalid");
+      return Ok(());
+    }
+    let Some(gpu) = texture.wgpu_texture() else {
+      state::report_validation(self.device_id, "The texture write is invalid");
+      return Ok(());
+    };
+    let handle = state::handle(self.device_id)?;
+    handle.queue.write_texture(
+      wgpu::TexelCopyTextureInfo {
+        texture: &gpu,
+        mip_level,
+        origin,
+        aspect,
+      },
+      &bytes,
+      wgpu::TexelCopyBufferLayout {
+        offset,
+        bytes_per_row,
+        rows_per_image,
+      },
+      extent,
+    );
+    Ok(())
   }
 
   fn on_submitted_work_done(&self, scope: &mut v8::PinScope) -> Js {

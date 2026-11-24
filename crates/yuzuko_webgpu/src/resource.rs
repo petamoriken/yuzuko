@@ -580,6 +580,26 @@ impl GpuTexture {
       OpError::dom("InvalidStateError", "The texture is destroyed")
     })
   }
+
+  pub(crate) fn device_id(&self) -> u64 {
+    self.device_id
+  }
+
+  pub(crate) fn is_destroyed(&self) -> bool {
+    self.destroyed.load(Ordering::SeqCst)
+  }
+
+  pub(crate) fn is_lost(&self) -> bool {
+    self.lost.load(Ordering::SeqCst)
+  }
+
+  pub(crate) fn is_valid(&self) -> bool {
+    self.valid
+  }
+
+  pub(crate) fn wgpu_texture(&self) -> Option<wgpu::Texture> {
+    self.texture.borrow().clone()
+  }
 }
 
 #[op(name = "GPUTexture")]
@@ -790,6 +810,8 @@ impl GpuSampler {
 pub struct GpuShaderModule {
   module: wgpu::ShaderModule,
   device_id: u64,
+  /// WGSL source. Compilation spans from wgpu are UTF-8 bytes.
+  source: Arc<str>,
   label: ObjectLabel,
 }
 
@@ -820,11 +842,138 @@ impl GpuShaderModule {
   }
 
   fn get_compilation_info(&self, scope: &mut v8::PinScope) -> Js {
-    js::promise_rejected(
-      scope,
-      js::unsupported("GPUShaderModule.getCompilationInfo"),
-    )
+    let info = shader_compilation_info(&self.module);
+    let object = compilation_info_object(scope, &self.source, &info);
+    js::promise(scope, object.into())
   }
+}
+
+fn shader_compilation_info(
+  module: &wgpu::ShaderModule,
+) -> wgpu::CompilationInfo {
+  use std::future::Future;
+  let future = module.get_compilation_info();
+  let mut future = std::pin::pin!(future);
+  let waker = std::task::Waker::noop();
+  let mut context = std::task::Context::from_waker(waker);
+  match future.as_mut().poll(&mut context) {
+    std::task::Poll::Ready(info) => info,
+    std::task::Poll::Pending => wgpu::CompilationInfo {
+      messages: Vec::new(),
+    },
+  }
+}
+
+fn compilation_info_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  source: &str,
+  info: &wgpu::CompilationInfo,
+) -> v8::Local<'s, v8::Object> {
+  let messages = v8::Array::new(scope, info.messages.len() as i32);
+  for (index, message) in info.messages.iter().enumerate() {
+    let item = v8::Object::new(scope);
+    set_text(scope, item, "message", &message.message);
+    set_text(
+      scope,
+      item,
+      "type",
+      compilation_message_type(message.message_type),
+    );
+    let (offset, length, line_num, line_pos) = match message.location {
+      Some(location) => utf16_compilation_span(
+        source,
+        location.offset,
+        location.length,
+        location.line_number,
+        location.line_position,
+      ),
+      None => (0, 0, 0, 0),
+    };
+    js::set_u32(scope, item, "offset", offset);
+    js::set_u32(scope, item, "length", length);
+    js::set_u32(scope, item, "lineNum", line_num);
+    js::set_u32(scope, item, "linePos", line_pos);
+    let _ = item.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+    messages.set_index(scope, index as u32, item.into());
+  }
+  let _ = messages.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+  let object = v8::Object::new(scope);
+  let key = v8::String::new(scope, "messages").unwrap();
+  object.set(scope, key.into(), messages.into());
+  object
+}
+
+fn compilation_message_type(
+  kind: wgpu::CompilationMessageType,
+) -> &'static str {
+  match kind {
+    wgpu::CompilationMessageType::Error => "error",
+    wgpu::CompilationMessageType::Warning => "warning",
+    wgpu::CompilationMessageType::Info => "info",
+  }
+}
+
+fn set_text(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  name: &str,
+  value: &str,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let text = v8::String::new(scope, value).unwrap();
+  object.set(scope, key.into(), text.into());
+}
+
+/// wgpu locations are UTF-8 bytes. `GPUCompilationMessage` counts UTF-16 code units.
+fn utf16_compilation_span(
+  source: &str,
+  byte_offset: u32,
+  byte_length: u32,
+  line_number: u32,
+  line_position: u32,
+) -> (u32, u32, u32, u32) {
+  let offset = utf16_prefix(source, byte_offset as usize);
+  let end = utf16_prefix(
+    source,
+    (byte_offset as usize).saturating_add(byte_length as usize),
+  );
+  (
+    offset,
+    end.saturating_sub(offset),
+    line_number,
+    line_pos_utf16(source, line_number, line_position),
+  )
+}
+
+fn utf16_prefix(source: &str, byte_end: usize) -> u32 {
+  let end = source.floor_char_boundary(byte_end.min(source.len()));
+  u32::try_from(source[..end].encode_utf16().count()).unwrap_or(u32::MAX)
+}
+
+fn line_pos_utf16(source: &str, line_number: u32, line_position: u32) -> u32 {
+  if line_number == 0 || line_position == 0 {
+    return 0;
+  }
+  let mut line = 1u32;
+  let mut start = 0usize;
+  if line_number > 1 {
+    for (index, byte) in source.bytes().enumerate() {
+      if byte == b'\n' {
+        line += 1;
+        if line == line_number {
+          start = index + 1;
+          break;
+        }
+      }
+    }
+    if line != line_number {
+      return 0;
+    }
+  }
+  let bytes = (line_position - 1) as usize;
+  let end = source.floor_char_boundary((start + bytes).min(source.len()));
+  let end = end.max(start);
+  utf16_prefix(&source[start..end], end - start).saturating_add(1)
 }
 
 pub struct GpuBindGroupLayout {
@@ -1352,6 +1501,7 @@ pub fn create_texture(
 
 pub fn create_sampler(
   scope: &mut v8::PinScope,
+  device_id: u64,
   handle: &Handle,
   descriptor: v8::Local<v8::Value>,
 ) -> Result<New<GpuSampler>, OpError> {
@@ -1370,10 +1520,16 @@ pub fn create_sampler(
   let lod_min = lod_clamp_of(scope, object, "lodMinClamp", 0.0)?;
   let lod_max = lod_clamp_of(scope, object, "lodMaxClamp", 32.0)?;
   let anisotropy = anisotropy_of(scope, object)?;
-  if let Some(object) = object
-    && js::get(scope, object, "compare")?.is_some_and(|value| !value.is_null())
-  {
-    return Err(js::unsupported("GPUSamplerDescriptor.compare"));
+  let compare = match object {
+    Some(object) => sampler_compare(scope, object)?,
+    None => None,
+  };
+  // wgpu accepts a comparison sampler with anisotropy above 1. WebGPU does not.
+  if compare.is_some() && anisotropy > 1 {
+    crate::state::report_validation(
+      device_id,
+      "Anisotropic filtering cannot be used with a comparison sampler",
+    );
   }
   let label = match object {
     Some(object) => optional_label(scope, object)?,
@@ -1389,7 +1545,7 @@ pub fn create_sampler(
     mipmap_filter: mipmap,
     lod_min_clamp: lod_min,
     lod_max_clamp: lod_max,
-    compare: None,
+    compare,
     anisotropy_clamp: anisotropy,
     border_color: None,
   });
@@ -1411,12 +1567,13 @@ pub fn create_shader(
   let code = required_string(scope, object, "code")?;
   check_compilation_hints(scope, object)?;
   let label = optional_label(scope, object)?;
+  let source: Arc<str> = Arc::from(code);
   let module = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     handle
       .device
       .create_shader_module(wgpu::ShaderModuleDescriptor {
         label: label.as_deref(),
-        source: wgpu::ShaderSource::Wgsl(code.into()),
+        source: wgpu::ShaderSource::Wgsl(source.as_ref().to_string().into()),
       })
   }));
   let module = module.map_err(|_| {
@@ -1425,6 +1582,7 @@ pub fn create_shader(
   Ok(New(GpuShaderModule {
     module,
     device_id,
+    source,
     label: ObjectLabel::new(label),
   }))
 }
@@ -2317,6 +2475,33 @@ fn multisample_state(
     mask,
     alpha_to_coverage_enabled,
   })
+}
+
+fn sampler_compare(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Result<Option<wgpu::CompareFunction>, OpError> {
+  match js::get(scope, object, "compare")? {
+    Some(value) if !value.is_null() => Ok(Some(named_compare(scope, value)?)),
+    _ => Ok(None),
+  }
+}
+
+fn named_compare(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<wgpu::CompareFunction, OpError> {
+  match js::string(scope, value)?.as_str() {
+    "never" => Ok(wgpu::CompareFunction::Never),
+    "less" => Ok(wgpu::CompareFunction::Less),
+    "equal" => Ok(wgpu::CompareFunction::Equal),
+    "less-equal" => Ok(wgpu::CompareFunction::LessEqual),
+    "greater" => Ok(wgpu::CompareFunction::Greater),
+    "not-equal" => Ok(wgpu::CompareFunction::NotEqual),
+    "greater-equal" => Ok(wgpu::CompareFunction::GreaterEqual),
+    "always" => Ok(wgpu::CompareFunction::Always),
+    _ => Err(OpError::type_("The compare function is invalid")),
+  }
 }
 
 fn compare_function(
@@ -3870,6 +4055,7 @@ fn host_shader(
   Ok(GpuShaderModule {
     module: host.get().module().clone(),
     device_id: host.get().device_id,
+    source: Arc::clone(&host.get().source),
     label: ObjectLabel::new(None),
   })
 }
@@ -3985,4 +4171,28 @@ fn poll_device(device: &wgpu::Device) {
 
 fn state_lost() -> OpError {
   OpError::dom("InvalidStateError", "The GPU device is lost")
+}
+
+#[cfg(test)]
+mod compilation_span {
+  use super::utf16_compilation_span;
+
+  #[test]
+  fn ascii_offsets_match_bytes() {
+    let (offset, length, line_num, line_pos) =
+      utf16_compilation_span("abc\ndef", 4, 2, 2, 1);
+    assert_eq!((offset, length, line_num, line_pos), (4, 2, 2, 1));
+  }
+
+  #[test]
+  fn multibyte_spans_count_utf16_units() {
+    // "aéb": é is two UTF-8 bytes and one UTF-16 unit.
+    let (offset, length, line_num, line_pos) =
+      utf16_compilation_span("aéb", 1, 2, 1, 2);
+    assert_eq!((offset, length, line_num, line_pos), (1, 1, 1, 2));
+    // U+1F600 is four UTF-8 bytes and a surrogate pair.
+    let (offset, length, _, line_pos) =
+      utf16_compilation_span("a😀b", 1, 4, 1, 2);
+    assert_eq!((offset, length, line_pos), (1, 2, 2));
+  }
 }

@@ -3246,3 +3246,192 @@ Yuzuko.test("device-timeline validation follows the WebGPU spec", async () => {
 
   device.destroy();
 });
+
+Yuzuko.test("queue texture writes, clears, and compilation info", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+  });
+  device.queue.writeTexture(
+    { texture },
+    new Uint8Array([9, 8, 7, 6]),
+    {},
+    [1, 1],
+  );
+  const read = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const copy = device.createCommandEncoder();
+  copy.copyTextureToBuffer({ texture }, { buffer: read }, [1, 1]);
+  device.queue.submit([copy.finish()]);
+  await read.mapAsync(GPUMapMode.READ);
+  const written = new Uint8Array(read.getMappedRange());
+  assert(
+    written[0] === 9 && written[1] === 8 && written[2] === 7 && written[3] === 6,
+    `writeTexture ${written}`,
+  );
+  read.unmap();
+
+  const unbound = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING,
+  });
+  device.pushErrorScope("validation");
+  device.queue.writeTexture(
+    { texture: unbound },
+    new Uint8Array(4),
+    {},
+    [1, 1],
+  );
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "writeTexture usage",
+  );
+  assert(
+    throwName(() => {
+      device.queue.writeTexture({ texture }, 1 as never, {}, [1, 1]);
+    }) === "TypeError",
+    "writeTexture data",
+  );
+  texture.destroy();
+  device.pushErrorScope("validation");
+  device.queue.writeTexture(
+    { texture },
+    new Uint8Array(4),
+    {},
+    [1, 1],
+  );
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "destroyed writeTexture",
+  );
+
+  const buffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(buffer, 0, new Uint8Array(16).fill(7));
+  const clear = device.createCommandEncoder();
+  clear.clearBuffer(buffer, 4, 8);
+  device.queue.submit([clear.finish()]);
+  const cleared = await readBytes(device, buffer, 16);
+  assert(
+    cleared[3] === 7 && cleared[4] === 0 && cleared[11] === 0 && cleared[12] === 7,
+    `clear ${cleared}`,
+  );
+
+  const sourceOnly = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.COPY_SRC,
+  });
+  device.pushErrorScope("validation");
+  const rejected = device.createCommandEncoder();
+  rejected.clearBuffer(sourceOnly);
+  device.queue.submit([rejected.finish()]);
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "clearBuffer usage",
+  );
+
+  const compare = device.createSampler({ compare: "less" });
+  assert(compare instanceof GPUSampler, "compare sampler");
+  assert(
+    device.createSampler({
+      // @ts-expect-error null leaves the sampler without a compare function.
+      compare: null,
+    }) instanceof GPUSampler,
+    "null compare",
+  );
+  assert(
+    throwName(() => {
+      device.createSampler({
+        // @ts-expect-error sideways is not a compare function.
+        compare: "sideways",
+      });
+    }) === "TypeError",
+    "compare name",
+  );
+  device.pushErrorScope("validation");
+  const anisotropic = device.createSampler({
+    compare: "less",
+    maxAnisotropy: 4,
+    magFilter: "linear",
+    minFilter: "linear",
+    mipmapFilter: "linear",
+  });
+  assert(anisotropic instanceof GPUSampler, "anisotropic compare");
+  assert(
+    (await device.popErrorScope()) instanceof GPUValidationError,
+    "compare anisotropy",
+  );
+
+  const module = device.createShaderModule({
+    code: "@fragment fn main() -> @location(0) vec4f { return vec4f(1); }",
+  });
+  const info = await module.getCompilationInfo();
+  assert(Array.isArray(info.messages), "messages");
+  assert(Object.isFrozen(info.messages), "frozen messages");
+
+  const target = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: target.createView(),
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.setBlendConstant([0.1, 0.2, 0.3]);
+  pass.setBlendConstant({ r: 1, g: 0, b: 0, a: 1 });
+  pass.setBlendConstant(
+    // @ts-expect-error a defaults to 1.
+    { r: 0, g: 1, b: 0 },
+  );
+  pass.setBlendConstant(
+    // @ts-expect-error a typed array is a GPUColor sequence.
+    new Float32Array([0, 0, 0, 1]),
+  );
+  pass.setStencilReference(3);
+  assert(
+    throwName(() => {
+      pass.setBlendConstant([Number.NaN, 0, 0, 1]);
+    }) === "TypeError",
+    "non-finite blend",
+  );
+  assert(
+    throwName(() => {
+      pass.setBlendConstant([0, 1]);
+    }) === "TypeError",
+    "short blend",
+  );
+  assert(
+    throwName(() => {
+      pass.setBlendConstant(
+        // @ts-expect-error r is required.
+        { g: 0, b: 0 },
+      );
+    }) === "TypeError",
+    "blend dictionary",
+  );
+  pass.end();
+  assert(
+    throwName(() => {
+      pass.setStencilReference(1);
+    }) === "InvalidStateError",
+    "ended stencil",
+  );
+  device.queue.submit([encoder.finish()]);
+  device.destroy();
+});
