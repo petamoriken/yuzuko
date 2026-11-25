@@ -2,6 +2,7 @@
 
 extern crate self as yuzuko_core;
 
+pub mod base64;
 #[cfg(feature = "child")]
 mod child;
 mod clone;

@@ -810,7 +810,8 @@ fn decode_data_url(url: &str) -> Result<String, String> {
     return Ok(decoded);
   }
   // HTML data URLs percent-decode, then forgiving-base64-decode.
-  let bytes = forgiving_base64(&decoded)?;
+  let bytes = crate::base64::decode_forgiving(&decoded)
+    .map_err(|_| "The data URL is invalid".to_string())?;
   Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -825,56 +826,6 @@ fn meta_is_base64(meta: &str) -> bool {
     .rsplit(';')
     .next()
     .is_some_and(|part| part.trim().eq_ignore_ascii_case("base64"))
-}
-
-/// Infra forgiving-base64 decode. ASCII whitespace is ignored.
-fn forgiving_base64(input: &str) -> Result<Vec<u8>, String> {
-  let mut filtered: String = input
-    .chars()
-    .filter(|ch| !matches!(ch, ' ' | '\t' | '\n' | '\u{000c}' | '\r'))
-    .collect();
-  if filtered.len().is_multiple_of(4) {
-    if filtered.ends_with("==") {
-      filtered.truncate(filtered.len() - 2);
-    } else if filtered.ends_with('=') {
-      filtered.truncate(filtered.len() - 1);
-    }
-  }
-  if filtered.is_empty() {
-    return Ok(Vec::new());
-  }
-  if filtered.len() % 4 == 1 {
-    return Err("The data URL is invalid".to_string());
-  }
-  let mut out = Vec::new();
-  let mut buffer: u32 = 0;
-  let mut bits = 0u32;
-  for byte in filtered.bytes() {
-    let value = u32::from(base64_digit(byte)?);
-    buffer = (buffer << 6) | value;
-    bits += 6;
-    if bits >= 8 {
-      bits -= 8;
-      out.push((buffer >> bits) as u8);
-      if bits == 0 {
-        buffer = 0;
-      } else {
-        buffer &= (1 << bits) - 1;
-      }
-    }
-  }
-  Ok(out)
-}
-
-fn base64_digit(byte: u8) -> Result<u8, String> {
-  match byte {
-    b'A'..=b'Z' => Ok(byte - b'A'),
-    b'a'..=b'z' => Ok(byte - b'a' + 26),
-    b'0'..=b'9' => Ok(byte - b'0' + 52),
-    b'+' => Ok(62),
-    b'/' => Ok(63),
-    _ => Err("The data URL is invalid".to_string()),
-  }
 }
 
 fn percent_decode(input: &str) -> Result<String, String> {
