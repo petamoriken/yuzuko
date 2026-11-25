@@ -10,7 +10,6 @@
 //! during `copy` or `cut` is not written to the operating system.
 
 use std::cell::{Cell, RefCell};
-use std::io::Cursor;
 
 use yuzuko_core::op::Js;
 use yuzuko_core::op::OpError;
@@ -178,14 +177,14 @@ fn publish_text(text: &str) -> Result<(), String> {
 }
 
 fn publish_png(bytes: &[u8]) -> Result<(), String> {
-  let Some((width, height, rgba)) = decode_png(bytes) else {
+  let Some((rgba, width, height)) = crate::png_rgba::decode(bytes) else {
     return Ok(());
   };
   with_board(|board| {
     board
       .set_image(arboard::ImageData {
-        width,
-        height,
+        width: width as usize,
+        height: height as usize,
         bytes: rgba.into(),
       })
       .map_err(|error| error.to_string())
@@ -203,48 +202,6 @@ fn with_board(
     }
     body(slot.as_mut().expect("clipboard"))
   })
-}
-
-fn decode_png(bytes: &[u8]) -> Option<(usize, usize, Vec<u8>)> {
-  let mut decoder = png::Decoder::new(Cursor::new(bytes));
-  decoder.set_transformations(
-    png::Transformations::EXPAND | png::Transformations::STRIP_16,
-  );
-  let mut reader = decoder.read_info().ok()?;
-  let mut buffer = vec![0; reader.output_buffer_size()?];
-  let frame = reader.next_frame(&mut buffer).ok()?;
-  let (color, width, height) = {
-    let info = reader.info();
-    (info.color_type, info.width as usize, info.height as usize)
-  };
-  let pixels = &buffer[..frame.buffer_size()];
-  let rgba = match color {
-    png::ColorType::Rgba => pixels.to_vec(),
-    png::ColorType::Rgb => {
-      let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
-      for chunk in pixels.chunks(3) {
-        rgba.extend_from_slice(chunk);
-        rgba.push(255);
-      }
-      rgba
-    }
-    png::ColorType::Grayscale => {
-      let mut rgba = Vec::with_capacity(pixels.len() * 4);
-      for sample in pixels {
-        rgba.extend_from_slice(&[*sample, *sample, *sample, 255]);
-      }
-      rgba
-    }
-    png::ColorType::GrayscaleAlpha => {
-      let mut rgba = Vec::with_capacity(pixels.len() / 2 * 4);
-      for chunk in pixels.chunks(2) {
-        rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
-      }
-      rgba
-    }
-    _ => return None,
-  };
-  Some((width, height, rgba))
 }
 
 fn current_item() -> ClipboardItem {
