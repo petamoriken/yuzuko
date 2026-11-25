@@ -1000,35 +1000,7 @@ fn read_field<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let Some(key) = v8::String::new(tc, name) else {
-      return Err(OpError::type_(SYMBOLS_READ));
-    };
-    let object = v8::Local::new(tc, object);
-    match object.get(tc, key.into()) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(Some(v8::Local::new(scope, value))),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(SYMBOLS_READ)),
-  }
+  crate::js::read_field(scope, object, name, SYMBOLS_READ)
 }
 
 fn array_element<'s>(

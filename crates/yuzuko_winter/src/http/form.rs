@@ -511,33 +511,8 @@ fn decode_component(value: &str) -> String {
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn percent_decode(input: &str) -> String {
-  let bytes = input.as_bytes();
-  let mut out = Vec::new();
-  let mut index = 0;
-  while index < bytes.len() {
-    if bytes[index] == b'%'
-      && index + 2 < bytes.len()
-      && let (Some(high), Some(low)) =
-        (hex(bytes[index + 1]), hex(bytes[index + 2]))
-    {
-      out.push((high << 4) | low);
-      index += 3;
-      continue;
-    }
-    out.push(bytes[index]);
-    index += 1;
-  }
-  String::from_utf8_lossy(&out).into_owned()
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn hex(byte: u8) -> Option<u8> {
-  match byte {
-    b'0'..=b'9' => Some(byte - b'0'),
-    b'a'..=b'f' => Some(byte - b'a' + 10),
-    b'A'..=b'F' => Some(byte - b'A' + 10),
-    _ => None,
-  }
+  String::from_utf8_lossy(&crate::text::mime::percent_decode(input))
+    .into_owned()
 }
 
 pub fn install(scope: &mut v8::PinScope) {

@@ -79,14 +79,9 @@ yuzuko_window = { path = "crates/yuzuko_window" }
 yuzuko_winter = { path = "crates/yuzuko_winter", default-features = false }
 
 # The packaged binary optimizes for size. Hot crates below stay at speed.
-# `bench` matches `release`. Panic stays unwind so `catch_unwind` can turn a
-# decoder panic into `InvalidStateError`.
+# `bench` inherits `release`, including its package overrides. Panic stays
+# unwind so `catch_unwind` can turn a decoder panic into `InvalidStateError`.
 [profile.release]
-codegen-units = 1
-lto = true
-opt-level = "z"
-
-[profile.bench]
 codegen-units = 1
 lto = true
 opt-level = "z"
@@ -131,8 +126,7 @@ opt-level = 3
 opt-level = 3
 
 # Speed for the runtime and the libraries on its hot path. Everything else
-# stays at opt-level "z". Repeated for `bench` so measurements match release.
-# Package overrides do not inherit across profiles.
+# stays at opt-level "z". `bench` and `release-lite` inherit these overrides.
 [profile.release.package.yuzuko]
 opt-level = 3
 [profile.release.package.yuzuko_core]
@@ -208,81 +202,4 @@ opt-level = 3
 [profile.release.package.parley_engine]
 opt-level = 3
 [profile.release.package.rav1d]
-opt-level = 3
-
-[profile.bench.package.yuzuko]
-opt-level = 3
-[profile.bench.package.yuzuko_core]
-opt-level = 3
-[profile.bench.package.yuzuko_dom]
-opt-level = 3
-[profile.bench.package.yuzuko_winter]
-opt-level = 3
-[profile.bench.package.yuzuko_window]
-opt-level = 3
-[profile.bench.package.yuzuko_image]
-opt-level = 3
-[profile.bench.package.yuzuko_canvas]
-opt-level = 3
-[profile.bench.package.yuzuko_webgpu]
-opt-level = 3
-[profile.bench.package.yuzuko_audio]
-opt-level = 3
-[profile.bench.package.yuzuko_codec]
-opt-level = 3
-[profile.bench.package.v8]
-opt-level = 3
-[profile.bench.package.wgpu]
-opt-level = 3
-[profile.bench.package.wgpu-core]
-opt-level = 3
-[profile.bench.package.wgpu-hal]
-opt-level = 3
-[profile.bench.package.naga]
-opt-level = 3
-[profile.bench.package.vello_gpu]
-opt-level = 3
-[profile.bench.package.vello_cpu]
-opt-level = 3
-[profile.bench.package.vello_common]
-opt-level = 3
-[profile.bench.package.vello_gpu_shaders]
-opt-level = 3
-[profile.bench.package.flate2]
-opt-level = 3
-[profile.bench.package.miniz_oxide]
-opt-level = 3
-[profile.bench.package.brotli]
-opt-level = 3
-[profile.bench.package.hyper]
-opt-level = 3
-[profile.bench.package.hyper-util]
-opt-level = 3
-[profile.bench.package.tokio]
-opt-level = 3
-[profile.bench.package.bytes]
-opt-level = 3
-[profile.bench.package.serde]
-opt-level = 3
-[profile.bench.package.serde_json]
-opt-level = 3
-[profile.bench.package.url]
-opt-level = 3
-[profile.bench.package.rustls]
-opt-level = 3
-[profile.bench.package.symphonia]
-opt-level = 3
-[profile.bench.package.oxc_parser]
-opt-level = 3
-[profile.bench.package.oxc_transformer]
-opt-level = 3
-[profile.bench.package.oxc_resolver]
-opt-level = 3
-[profile.bench.package.fontique]
-opt-level = 3
-[profile.bench.package.parley]
-opt-level = 3
-[profile.bench.package.parley_engine]
-opt-level = 3
-[profile.bench.package.rav1d]
 opt-level = 3

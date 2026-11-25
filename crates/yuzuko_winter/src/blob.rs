@@ -1504,7 +1504,7 @@ pub fn data_url(bytes: &[u8], mime: &str) -> String {
   } else {
     mime
   };
-  format!("data:{mime};base64,{}", base64_encode(bytes))
+  format!("data:{mime};base64,{}", crate::text::base64::encode(bytes))
 }
 
 fn charset_label(mime: &str) -> Option<&str> {
@@ -1555,37 +1555,4 @@ mod source_tests {
     assert_eq!(sliced.read_all().unwrap(), bytes[64 * 1024..]);
     let _ = std::fs::remove_file(path);
   }
-}
-
-fn base64_encode(bytes: &[u8]) -> String {
-  const TABLE: &[u8] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-  let mut index = 0;
-  while index + 3 <= bytes.len() {
-    let chunk = ((bytes[index] as u32) << 16)
-      | ((bytes[index + 1] as u32) << 8)
-      | bytes[index + 2] as u32;
-    out.push(TABLE[((chunk >> 18) & 63) as usize] as char);
-    out.push(TABLE[((chunk >> 12) & 63) as usize] as char);
-    out.push(TABLE[((chunk >> 6) & 63) as usize] as char);
-    out.push(TABLE[(chunk & 63) as usize] as char);
-    index += 3;
-  }
-  let rest = bytes.len() - index;
-  if rest == 1 {
-    let chunk = (bytes[index] as u32) << 16;
-    out.push(TABLE[((chunk >> 18) & 63) as usize] as char);
-    out.push(TABLE[((chunk >> 12) & 63) as usize] as char);
-    out.push('=');
-    out.push('=');
-  } else if rest == 2 {
-    let chunk =
-      ((bytes[index] as u32) << 16) | ((bytes[index + 1] as u32) << 8);
-    out.push(TABLE[((chunk >> 18) & 63) as usize] as char);
-    out.push(TABLE[((chunk >> 12) & 63) as usize] as char);
-    out.push(TABLE[((chunk >> 6) & 63) as usize] as char);
-    out.push('=');
-  }
-  out
 }

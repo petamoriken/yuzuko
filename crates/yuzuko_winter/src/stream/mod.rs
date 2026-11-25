@@ -2316,7 +2316,9 @@ fn chunk_size(
   Ok(number)
 }
 
-fn pop_request(stream: u64) -> Option<v8::Global<v8::PromiseResolver>> {
+pub(super) fn pop_request(
+  stream: u64,
+) -> Option<v8::Global<v8::PromiseResolver>> {
   let reader = READS
     .with(|slot| slot.borrow().get(&stream).and_then(|state| state.reader))?;
   READERS.with(|slot| {

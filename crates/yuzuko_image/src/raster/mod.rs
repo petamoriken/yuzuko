@@ -543,10 +543,12 @@ fn map_alpha(raster: &mut Raster, multiply: bool) {
   }
 }
 
+#[inline]
 fn premul_u8(color: u8, alpha: u8) -> u8 {
   ((u16::from(color) * u16::from(alpha) + 127) / 255) as u8
 }
 
+#[inline]
 fn unpremul_u8(color: u8, alpha: u8) -> u8 {
   if alpha == 0 {
     0

@@ -255,8 +255,9 @@ fn trim_ascii_whitespace(value: &str) -> &str {
   value.trim_matches(|ch| matches!(ch, '\t' | '\n' | '\u{000c}' | '\r' | ' '))
 }
 
+/// Decodes each valid `%XX` sequence and keeps every other byte.
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn percent_decode(input: &str) -> Vec<u8> {
+pub(crate) fn percent_decode(input: &str) -> Vec<u8> {
   let bytes = input.as_bytes();
   let mut out = Vec::with_capacity(bytes.len());
   let mut index = 0;
@@ -277,6 +278,7 @@ fn percent_decode(input: &str) -> Vec<u8> {
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+#[inline]
 fn hex_digit(byte: u8) -> Option<u8> {
   match byte {
     b'0'..=b'9' => Some(byte - b'0'),

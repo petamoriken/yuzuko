@@ -516,7 +516,8 @@ fn handshake_request(
   if !url.username().is_empty() || url.password().is_some() {
     let user = url.username();
     let pass = url.password().unwrap_or("");
-    let token = base64_encode(format!("{user}:{pass}").as_bytes());
+    let token =
+      crate::text::base64::encode(format!("{user}:{pass}").as_bytes());
     message.push_str("Authorization: Basic ");
     message.push_str(&token);
     message.push_str("\r\n");
@@ -528,7 +529,7 @@ fn handshake_request(
 fn random_key() -> String {
   let mut bytes = [0u8; 16];
   getrandom::fill(&mut bytes).ok();
-  base64_encode(&bytes)
+  crate::text::base64::encode(&bytes)
 }
 
 fn accept_matches(headers: &[(String, String)], key: &str) -> bool {
@@ -538,7 +539,7 @@ fn accept_matches(headers: &[(String, String)], key: &str) -> bool {
   let mut data = key.as_bytes().to_vec();
   data.extend(GUID.as_bytes());
   let digest = Sha1::digest(&data);
-  value.trim() == base64_encode(&digest)
+  value.trim() == crate::text::base64::encode(&digest)
 }
 
 fn protocol_ok(offered: &[String], selected: &str) -> bool {
@@ -1189,37 +1190,6 @@ fn fail(notes: &NoteQueue) {
   });
 }
 
-fn base64_encode(bytes: &[u8]) -> String {
-  const TABLE: &[u8] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let mut out = String::new();
-  let mut index = 0;
-  while index + 3 <= bytes.len() {
-    let value =
-      u32::from_be_bytes([0, bytes[index], bytes[index + 1], bytes[index + 2]]);
-    for shift in [18, 12, 6, 0] {
-      out.push(TABLE[((value >> shift) & 0x3F) as usize] as char);
-    }
-    index += 3;
-  }
-  let rest = bytes.len() - index;
-  if rest == 1 {
-    let value = u32::from(bytes[index]) << 16;
-    out.push(TABLE[((value >> 18) & 0x3F) as usize] as char);
-    out.push(TABLE[((value >> 12) & 0x3F) as usize] as char);
-    out.push('=');
-    out.push('=');
-  } else if rest == 2 {
-    let value =
-      (u32::from(bytes[index]) << 16) | (u32::from(bytes[index + 1]) << 8);
-    out.push(TABLE[((value >> 18) & 0x3F) as usize] as char);
-    out.push(TABLE[((value >> 12) & 0x3F) as usize] as char);
-    out.push(TABLE[((value >> 6) & 0x3F) as usize] as char);
-    out.push('=');
-  }
-  out
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1230,7 +1200,10 @@ mod tests {
     let mut data = key.as_bytes().to_vec();
     data.extend(GUID.as_bytes());
     let digest = Sha1::digest(&data);
-    assert_eq!(base64_encode(&digest), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+    assert_eq!(
+      crate::text::base64::encode(&digest),
+      "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+    );
   }
 
   #[test]
@@ -1260,7 +1233,7 @@ mod tests {
         .trim();
       let mut material = key.as_bytes().to_vec();
       material.extend(GUID.as_bytes());
-      let accept = base64_encode(&Sha1::digest(&material));
+      let accept = crate::text::base64::encode(&Sha1::digest(&material));
       let response = format!(
         "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
       );
@@ -1420,7 +1393,7 @@ mod tests {
         .trim();
       let mut material = key.as_bytes().to_vec();
       material.extend(GUID.as_bytes());
-      let accept = base64_encode(&Sha1::digest(&material));
+      let accept = crate::text::base64::encode(&Sha1::digest(&material));
       let mut response = format!(
         "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
       )

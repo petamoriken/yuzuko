@@ -285,7 +285,9 @@ fn recv_datagram(shared: &Shared) -> Result<Packet, Fail> {
           port: addr.port(),
         });
       }
-      Err(error) if is_retry(error.kind()) => continue,
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
+        continue;
+      }
       // Windows reports an ICMP unreachable as a connection reset. UDP has
       // no connection, so the receive keeps waiting.
       Err(error) if error.kind() == ErrorKind::ConnectionReset => {
@@ -299,13 +301,6 @@ fn recv_datagram(shared: &Shared) -> Result<Packet, Fail> {
       Err(_) => return Err(Fail::Receive),
     }
   }
-}
-
-fn is_retry(kind: ErrorKind) -> bool {
-  matches!(
-    kind,
-    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
-  )
 }
 
 pub struct Datagram {
@@ -332,8 +327,13 @@ impl Datagram {
   fn addr(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     let object = v8::Object::new(scope);
     let bound = self.shared.bound;
-    address_fields(scope, object, &bound.ip().to_string(), bound.port())
-      .map_err(|_| OpError::type_(ADDRESS_READ))?;
+    crate::socket_endpoint::address_fields(
+      scope,
+      object,
+      &bound.ip().to_string(),
+      bound.port(),
+    )
+    .map_err(|_| OpError::type_(ADDRESS_READ))?;
     let value: v8::Local<v8::Value> = object.into();
     Ok(Js(v8::Global::new(scope, value)))
   }
@@ -531,7 +531,7 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let reuse = reuse_flag(scope, options)?;
+  let reuse = crate::socket_endpoint::reuse_flag(scope, options, OPTIONS_READ)?;
   let shared = match if reuse {
     bind_udp_reuse(addr)
   } else {
@@ -545,25 +545,6 @@ fn listen_op(
   Ok(New(Datagram { shared }))
 }
 
-fn reuse_flag(
-  scope: &mut v8::PinScope,
-  options: v8::Local<v8::Value>,
-) -> Result<bool, OpError> {
-  if options.is_null_or_undefined() {
-    return Ok(false);
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
-    return Ok(false);
-  };
-  let value = crate::socket_endpoint::read_field(
-    scope,
-    object,
-    "reusePort",
-    OPTIONS_READ,
-  )?;
-  crate::socket_bind::reuse_port(scope, value)
-}
-
 fn copy_source(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -573,27 +554,6 @@ fn copy_source(
     value,
     crate::js::BufferCopy::strict(MAX_DATAGRAM, TOO_LARGE, DETACHED, DATA),
   )
-}
-
-fn address_fields(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  hostname: &str,
-  port: u16,
-) -> Result<(), ()> {
-  let Some(key) = v8::String::new(scope, "hostname") else {
-    return Err(());
-  };
-  let Some(value) = v8::String::new(scope, hostname) else {
-    return Err(());
-  };
-  let _ = object.create_data_property(scope, key.into(), value.into());
-  let Some(key) = v8::String::new(scope, "port") else {
-    return Err(());
-  };
-  let port = v8::Integer::new(scope, i32::from(port));
-  let _ = object.create_data_property(scope, key.into(), port.into());
-  Ok(())
 }
 
 fn packet_value<'s>(
@@ -608,7 +568,14 @@ fn packet_value<'s>(
     return Err(Fail::Receive);
   };
   let _ = object.create_data_property(scope, key.into(), data);
-  if address_fields(scope, object, &packet.hostname, packet.port).is_err() {
+  if crate::socket_endpoint::address_fields(
+    scope,
+    object,
+    &packet.hostname,
+    packet.port,
+  )
+  .is_err()
+  {
     return Err(Fail::Receive);
   }
   Ok(object.into())

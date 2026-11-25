@@ -717,6 +717,53 @@ pub(crate) fn relocate_constructor(scope: &mut v8::PinScope, name: &str) {
   yuzuko.set(scope, key.into(), constructor);
 }
 
+/// Reads `object[name]`. A thrown getter becomes the error. A failed read
+/// without an exception is a `TypeError` with `read_message`.
+#[cfg(any(
+  feature = "tcp",
+  feature = "udp",
+  feature = "http",
+  feature = "ffi",
+  feature = "child"
+))]
+pub(crate) fn read_field<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  name: &str,
+  read_message: &str,
+) -> Result<Option<v8::Local<'s, v8::Value>>, crate::op::OpError> {
+  enum Outcome {
+    Value(v8::Global<v8::Value>),
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let Some(key) = v8::String::new(tc, name) else {
+      return Err(crate::op::OpError::type_(read_message));
+    };
+    let object = v8::Local::new(tc, object);
+    match object.get(tc, key.into()) {
+      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  match outcome {
+    Outcome::Value(value) => Ok(Some(v8::Local::new(scope, value))),
+    Outcome::Throw(exception) => Err(crate::op::OpError::thrown(
+      scope,
+      v8::Local::new(scope, exception),
+    )),
+    Outcome::Missing => Err(crate::op::OpError::type_(read_message)),
+  }
+}
+
 /// `Error` whose message is `message`, or `TypeError` when the text cannot
 /// be allocated.
 #[cfg_attr(

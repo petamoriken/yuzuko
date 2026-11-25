@@ -531,7 +531,7 @@ fn read_tls(shared: &Shared, max: usize) -> Result<Deliver, crate::tcp::Fail> {
         buf.truncate(count);
         break Ok(ReadOut::Bytes(buf));
       }
-      Err(error) if crate::tcp::is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
           break Err(crate::tcp::Fail::Closed);
         }
@@ -566,7 +566,7 @@ fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
     if offset == bytes.len() {
       match stream.flush() {
         Ok(()) => break Ok(offset),
-        Err(error) if crate::tcp::is_io_retry(error.kind()) => {
+        Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
           if shared.is_closed() {
             break Err(crate::tcp::Fail::Closed);
           }
@@ -592,7 +592,7 @@ fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
       }
       Ok(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
       Ok(count) => offset += count,
-      Err(error) if crate::tcp::is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
           break Err(crate::tcp::Fail::Closed);
         }

@@ -150,42 +150,7 @@ fn parse_host(hostname: &str) -> Result<IpAddr, OpError> {
 }
 
 #[cfg(any(feature = "tcp", feature = "udp"))]
-pub(crate) fn read_field<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  object: v8::Local<'_, v8::Object>,
-  name: &str,
-  read_message: &str,
-) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let Some(key) = v8::String::new(tc, name) else {
-      return Err(OpError::type_(read_message));
-    };
-    let object = v8::Local::new(tc, object);
-    match object.get(tc, key.into()) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(Some(v8::Local::new(scope, value))),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(read_message)),
-  }
-}
+pub(crate) use crate::js::read_field;
 
 #[cfg(all(test, feature = "tcp", feature = "udp"))]
 mod tests {
@@ -212,4 +177,53 @@ mod tests {
     assert_eq!(lines[0], lines[1]);
     assert!(!lines[0].is_empty(), "{lines:?}");
   }
+}
+
+/// Reads `options.reusePort`. A missing or non-object `options` is `false`.
+pub(crate) fn reuse_flag(
+  scope: &mut v8::PinScope,
+  options: v8::Local<v8::Value>,
+  read_message: &str,
+) -> Result<bool, OpError> {
+  if options.is_null_or_undefined() {
+    return Ok(false);
+  }
+  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
+    return Ok(false);
+  };
+  let value = crate::js::read_field(scope, object, "reusePort", read_message)?;
+  crate::socket_bind::reuse_port(scope, value)
+}
+
+/// Whether a nonblocking socket call should be tried again.
+#[inline]
+pub(crate) fn is_io_retry(kind: std::io::ErrorKind) -> bool {
+  use std::io::ErrorKind;
+  matches!(
+    kind,
+    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+  )
+}
+
+/// Defines `hostname` and `port` as own data properties of `object`.
+#[cfg(any(feature = "tcp", feature = "udp"))]
+pub(crate) fn address_fields(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+  hostname: &str,
+  port: u16,
+) -> Result<(), ()> {
+  let Some(key) = v8::String::new(scope, "hostname") else {
+    return Err(());
+  };
+  let Some(value) = v8::String::new(scope, hostname) else {
+    return Err(());
+  };
+  let _ = object.create_data_property(scope, key.into(), value.into());
+  let Some(key) = v8::String::new(scope, "port") else {
+    return Err(());
+  };
+  let port = v8::Integer::new(scope, i32::from(port));
+  let _ = object.create_data_property(scope, key.into(), port.into());
+  Ok(())
 }

@@ -58,10 +58,12 @@ impl Mat4 {
     self.data
   }
 
+  #[inline]
   pub(crate) fn get(self, index: usize) -> f64 {
     self.data[index]
   }
 
+  #[inline]
   pub(crate) fn set(&mut self, index: usize, value: f64) {
     self.data[index] = value;
   }
@@ -77,6 +79,7 @@ impl Mat4 {
     }
   }
 
+  #[inline]
   pub(crate) fn is_identity(self) -> bool {
     self.data
       == [

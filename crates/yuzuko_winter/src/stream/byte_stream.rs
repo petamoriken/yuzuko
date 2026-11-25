@@ -18,6 +18,7 @@ use super::error_stream;
 use super::error_value;
 use super::finish_close;
 use super::object_value;
+use super::pop_request;
 use super::property;
 use super::read_result;
 use super::read_strategy;
@@ -1394,17 +1395,6 @@ fn fulfill_into(
   let view = yuzuko_core::op::root(scope, view);
   let result = read_result(scope, Some(view), done);
   super::fulfill_resolver(scope, resolver, result);
-}
-
-fn pop_request(stream: u64) -> Option<v8::Global<v8::PromiseResolver>> {
-  let reader = READS
-    .with(|slot| slot.borrow().get(&stream).and_then(|state| state.reader))?;
-  READERS.with(|slot| {
-    slot
-      .borrow_mut()
-      .get_mut(&reader)
-      .and_then(|state| state.requests.pop_front())
-  })
 }
 
 fn pop_into(stream: u64) -> Option<v8::Global<v8::PromiseResolver>> {

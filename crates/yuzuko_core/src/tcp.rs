@@ -375,7 +375,7 @@ fn read_conn(shared: &ConnShared, max: usize) -> Result<Deliver, Fail> {
         buf.truncate(count);
         return Ok(Deliver::Bytes(buf));
       }
-      Err(error) if is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
           return Err(Fail::Closed);
         }
@@ -420,7 +420,7 @@ fn write_conn(shared: &ConnShared, bytes: &[u8]) -> Result<usize, Fail> {
         return Err(Fail::Closed);
       }
       Ok(count) => offset += count,
-      Err(error) if is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
           return Err(Fail::Closed);
         }
@@ -443,13 +443,6 @@ fn is_accept_retry(kind: ErrorKind) -> bool {
       | ErrorKind::Interrupted
       | ErrorKind::ConnectionAborted
       | ErrorKind::ConnectionReset
-  )
-}
-
-pub(crate) fn is_io_retry(kind: ErrorKind) -> bool {
-  matches!(
-    kind,
-    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
   )
 }
 
@@ -719,7 +712,7 @@ fn listen_op(
       OPTIONS_READ,
     )?
   };
-  let reuse = reuse_flag(scope, options)?;
+  let reuse = crate::socket_endpoint::reuse_flag(scope, options, OPTIONS_READ)?;
   let shared = match if reuse {
     bind_tcp_reuse(addr)
   } else {
@@ -731,25 +724,6 @@ fn listen_op(
     }
   };
   Ok(New(Listener { shared }))
-}
-
-fn reuse_flag(
-  scope: &mut v8::PinScope,
-  options: v8::Local<v8::Value>,
-) -> Result<bool, OpError> {
-  if options.is_null_or_undefined() {
-    return Ok(false);
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
-    return Ok(false);
-  };
-  let value = crate::socket_endpoint::read_field(
-    scope,
-    object,
-    "reusePort",
-    OPTIONS_READ,
-  )?;
-  crate::socket_bind::reuse_port(scope, value)
 }
 
 fn connect_op(
@@ -781,31 +755,15 @@ pub(crate) fn address_value(
   addr: SocketAddr,
 ) -> Result<Js, OpError> {
   let object = v8::Object::new(scope);
-  address_fields(scope, object, &addr.ip().to_string(), addr.port())
-    .map_err(|_| OpError::type_(ADDRESS_READ))?;
+  crate::socket_endpoint::address_fields(
+    scope,
+    object,
+    &addr.ip().to_string(),
+    addr.port(),
+  )
+  .map_err(|_| OpError::type_(ADDRESS_READ))?;
   let value: v8::Local<v8::Value> = object.into();
   Ok(Js(v8::Global::new(scope, value)))
-}
-
-pub(crate) fn address_fields(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  hostname: &str,
-  port: u16,
-) -> Result<(), ()> {
-  let Some(key) = v8::String::new(scope, "hostname") else {
-    return Err(());
-  };
-  let Some(value) = v8::String::new(scope, hostname) else {
-    return Err(());
-  };
-  let _ = object.create_data_property(scope, key.into(), value.into());
-  let Some(key) = v8::String::new(scope, "port") else {
-    return Err(());
-  };
-  let port = v8::Integer::new(scope, i32::from(port));
-  let _ = object.create_data_property(scope, key.into(), port.into());
-  Ok(())
 }
 
 pub(crate) fn read_destination(

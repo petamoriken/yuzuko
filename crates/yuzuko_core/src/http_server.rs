@@ -373,7 +373,7 @@ fn read_some(
         buf.extend_from_slice(&tmp[..count]);
         return Ok(count);
       }
-      Err(error) if is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if closed.load(Ordering::Acquire) {
           return Err(Fail::Closed);
         }
@@ -504,13 +504,6 @@ fn is_accept_retry(kind: ErrorKind) -> bool {
       | ErrorKind::Interrupted
       | ErrorKind::ConnectionAborted
       | ErrorKind::ConnectionReset
-  )
-}
-
-fn is_io_retry(kind: ErrorKind) -> bool {
-  matches!(
-    kind,
-    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
   )
 }
 
@@ -753,7 +746,7 @@ fn write_all(
     match stream.write(&bytes[offset..]) {
       Ok(0) => return Err(Fail::Zero),
       Ok(count) => offset += count,
-      Err(error) if is_io_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if closed.load(Ordering::Acquire) {
           return Err(Fail::Closed);
         }
@@ -976,7 +969,7 @@ fn listen_op(
   } else {
     endpoint(scope, options)?
   };
-  let reuse = reuse_flag(scope, options)?;
+  let reuse = crate::socket_endpoint::reuse_flag(scope, options, OPTIONS_READ)?;
   let shared = match if reuse {
     bind_http_reuse(addr)
   } else {
@@ -988,20 +981,6 @@ fn listen_op(
     }
   };
   Ok(New(Server { shared }))
-}
-
-fn reuse_flag(
-  scope: &mut v8::PinScope,
-  options: v8::Local<v8::Value>,
-) -> Result<bool, OpError> {
-  if options.is_null_or_undefined() {
-    return Ok(false);
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(options) else {
-    return Ok(false);
-  };
-  let value = read_field(scope, object, "reusePort")?;
-  crate::socket_bind::reuse_port(scope, value)
 }
 
 fn endpoint(
@@ -1058,35 +1037,7 @@ fn read_field<'s>(
   object: v8::Local<'_, v8::Object>,
   name: &str,
 ) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let Some(key) = v8::String::new(tc, name) else {
-      return Err(OpError::type_(OPTIONS_READ));
-    };
-    let object = v8::Local::new(tc, object);
-    match object.get(tc, key.into()) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(Some(v8::Local::new(scope, value))),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(OPTIONS_READ)),
-  }
+  crate::js::read_field(scope, object, name, OPTIONS_READ)
 }
 
 fn payload_bytes(

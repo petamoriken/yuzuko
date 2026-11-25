@@ -359,6 +359,7 @@ pub fn shape_block(
   output
 }
 
+#[inline]
 pub fn shape_sample(sample: f32, curve: &[f32]) -> f32 {
   let length = curve.len();
   if length < 2 {
@@ -822,10 +823,12 @@ pub fn automatic_makeup_db(threshold_db: f64, knee_db: f64, ratio: f64) -> f64 {
   linear_to_db(automatic_makeup_linear(threshold_db, knee_db, ratio))
 }
 
+#[inline]
 pub fn db_to_lin(db: f64) -> f64 {
   10f64.powf(db / 20.0)
 }
 
+#[inline]
 pub fn linear_to_db(value: f64) -> f64 {
   if value <= 0.0 || !value.is_finite() {
     -1000.0
@@ -1046,6 +1049,7 @@ pub fn fft_magnitudes(input: &[f32]) -> Vec<f32> {
     .collect()
 }
 
+#[inline]
 pub fn db_from_magnitude(magnitude: f32) -> f32 {
   if magnitude <= 0.0 || !magnitude.is_finite() {
     f32::NEG_INFINITY
@@ -1054,6 +1058,7 @@ pub fn db_from_magnitude(magnitude: f32) -> f32 {
   }
 }
 
+#[inline]
 pub fn byte_time_sample(sample: f32) -> u8 {
   let value = 128.0 + 128.0 * f64::from(sample);
   if !value.is_finite() {
@@ -1062,6 +1067,7 @@ pub fn byte_time_sample(sample: f32) -> u8 {
   value.round().clamp(0.0, 255.0) as u8
 }
 
+#[inline]
 pub fn byte_frequency(db: f32, min_db: f64, max_db: f64) -> u8 {
   if !db.is_finite() {
     return if db.is_sign_positive() { 255 } else { 0 };
