@@ -255,38 +255,8 @@ fn trim_ascii_whitespace(value: &str) -> &str {
   value.trim_matches(|ch| matches!(ch, '\t' | '\n' | '\u{000c}' | '\r' | ' '))
 }
 
-/// Decodes each valid `%XX` sequence and keeps every other byte.
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-pub(crate) fn percent_decode(input: &str) -> Vec<u8> {
-  let bytes = input.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut index = 0;
-  while index < bytes.len() {
-    if bytes[index] == b'%'
-      && index + 2 < bytes.len()
-      && let (Some(high), Some(low)) =
-        (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2]))
-    {
-      out.push((high << 4) | low);
-      index += 3;
-      continue;
-    }
-    out.push(bytes[index]);
-    index += 1;
-  }
-  out
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-#[inline]
-fn hex_digit(byte: u8) -> Option<u8> {
-  match byte {
-    b'0'..=b'9' => Some(byte - b'0'),
-    b'a'..=b'f' => Some(byte - b'a' + 10),
-    b'A'..=b'F' => Some(byte - b'A' + 10),
-    _ => None,
-  }
-}
+#[cfg_attr(not(feature = "fetch"), allow(unused_imports))]
+pub(crate) use yuzuko_core::percent::decode as percent_decode;
 
 struct Cursor<'a> {
   chars: &'a [char],

@@ -805,11 +805,13 @@ fn decode_data_url(url: &str) -> Result<String, String> {
   let (meta, data) = rest
     .split_once(',')
     .ok_or_else(|| "The data URL has no payload".to_string())?;
-  let decoded = percent_decode(data)?;
+  let decoded = crate::percent::decode(data);
   if !meta_is_base64(meta) {
-    return Ok(decoded);
+    return Ok(String::from_utf8_lossy(&decoded).into_owned());
   }
-  // HTML data URLs percent-decode, then forgiving-base64-decode.
+  // Fetch data URLs percent-decode, then forgiving-base64-decode the
+  // isomorphic decoding. A non-ASCII byte is not base64 either way.
+  let decoded: String = decoded.iter().copied().map(char::from).collect();
   let bytes = crate::base64::decode_forgiving(&decoded)
     .map_err(|_| "The data URL is invalid".to_string())?;
   Ok(String::from_utf8_lossy(&bytes).into_owned())
@@ -826,26 +828,6 @@ fn meta_is_base64(meta: &str) -> bool {
     .rsplit(';')
     .next()
     .is_some_and(|part| part.trim().eq_ignore_ascii_case("base64"))
-}
-
-fn percent_decode(input: &str) -> Result<String, String> {
-  let bytes = input.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut index = 0;
-  while index < bytes.len() {
-    if bytes[index] == b'%' && index + 2 < bytes.len() {
-      let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
-        .map_err(|error| error.to_string())?;
-      let value =
-        u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?;
-      out.push(value);
-      index += 3;
-    } else {
-      out.push(bytes[index]);
-      index += 1;
-    }
-  }
-  Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
 fn sandbox_file(url: &Url, sandbox: &Path) -> Option<PathBuf> {
@@ -887,6 +869,14 @@ mod tests {
   fn plain_data_url_percent_decodes() {
     let text = decode_data_url("data:text/javascript,hi%21").unwrap();
     assert_eq!(text, "hi!");
+  }
+
+  #[test]
+  fn invalid_percent_escape_is_kept() {
+    let text = decode_data_url("data:text/javascript,a%zz%4").unwrap();
+    assert_eq!(text, "a%zz%4");
+    let text = decode_data_url("data:text/javascript,%+1").unwrap();
+    assert_eq!(text, "%+1");
   }
 
   #[test]

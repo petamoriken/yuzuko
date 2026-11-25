@@ -31,6 +31,7 @@ mod locale;
 mod navigator_host;
 pub mod op;
 mod parcel;
+pub mod percent;
 mod permissions;
 mod platform;
 #[cfg(any(feature = "signal", feature = "child"))]
