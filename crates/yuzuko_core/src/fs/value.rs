@@ -28,10 +28,11 @@ pub(super) fn parse_path(
     };
     return Ok(PathBuf::from(text.to_rust_string_lossy(scope)));
   }
-  if is_url(scope, value) {
+  if crate::js::is_url(scope, value) {
     let object = v8::Local::<v8::Object>::try_from(value)
       .map_err(|_| FsError::type_("The URL is invalid."))?;
-    let href = href_of(scope, object)?;
+    let href = crate::js::url_href(scope, object)
+      .ok_or_else(|| FsError::type_("The URL is invalid."))?;
     let url = url::Url::parse(&href)
       .map_err(|_| FsError::type_("The URL is invalid."))?;
     if url.scheme() != "file" {
@@ -302,7 +303,7 @@ pub(super) fn watch_paths(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Vec<PathBuf>, FsError> {
-  if value.is_string() || is_url(scope, value) {
+  if value.is_string() || crate::js::is_url(scope, value) {
     return Ok(vec![parse_path(scope, value)?]);
   }
   let Ok(array) = v8::Local::<v8::Array>::try_from(value) else {
@@ -513,40 +514,6 @@ pub(super) fn entries_value<'s>(
     array.set_index(scope, index as u32, object.into());
   }
   Ok(array.into())
-}
-
-fn is_url(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, "URL") else {
-    return false;
-  };
-  let Some(ctor) = global.get(scope, key.into()) else {
-    return false;
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return false;
-  };
-  value.instance_of(scope, ctor) == Some(true)
-}
-
-fn href_of(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-) -> Result<String, FsError> {
-  let key = v8::String::new(scope, "href").unwrap();
-  let read = {
-    v8::tc_scope!(let tc, scope);
-    match object.get(tc, key.into()) {
-      Some(value) if tc.exception().is_none() => match value.to_string(tc) {
-        Some(text) if tc.exception().is_none() => {
-          Ok(text.to_rust_string_lossy(tc))
-        }
-        _ => Err(()),
-      },
-      _ => Err(()),
-    }
-  };
-  read.map_err(|()| FsError::type_("The URL is invalid."))
 }
 
 fn object_of(

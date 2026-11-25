@@ -255,22 +255,8 @@ fn call_listener(
     });
   } else if let Some(thrown) = thrown {
     let thrown = v8::Local::new(tc, thrown);
-    report_uncaught(tc, thrown);
+    crate::realm::report_uncaught(tc, thrown);
   }
-}
-
-fn report_uncaught(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
-  let global = crate::js::global(scope);
-  let Some(key) = v8::String::new(scope, "reportError") else {
-    return;
-  };
-  let Some(report) = global
-    .get(scope, key.into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-  else {
-    return;
-  };
-  let _ = report.call(scope, global.into(), &[error]);
 }
 
 fn add_listener(

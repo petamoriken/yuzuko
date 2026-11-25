@@ -166,7 +166,7 @@ impl Fail {
   }
 }
 
-fn io_fail(error: io::Error, generic: Fail) -> Fail {
+pub(crate) fn io_fail(error: io::Error, generic: Fail) -> Fail {
   match crate::socket_error::map_io(&error) {
     crate::socket_error::Mapped::Class { class, code } => {
       Fail::Class { class, code }
@@ -296,7 +296,7 @@ fn accept_conn(shared: &ListenerShared) -> Result<ConnParts, Fail> {
           remote: peer,
         });
       }
-      Err(error) if is_accept_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_accept_retry(error.kind()) => {
         if shared.is_closed() {
           return Err(Fail::Closed);
         }
@@ -433,17 +433,6 @@ fn write_conn(shared: &ConnShared, bytes: &[u8]) -> Result<usize, Fail> {
     }
   }
   Ok(offset)
-}
-
-fn is_accept_retry(kind: ErrorKind) -> bool {
-  matches!(
-    kind,
-    ErrorKind::WouldBlock
-      | ErrorKind::TimedOut
-      | ErrorKind::Interrupted
-      | ErrorKind::ConnectionAborted
-      | ErrorKind::ConnectionReset
-  )
 }
 
 pub struct Listener {
@@ -938,37 +927,12 @@ fn settle(
   work: impl FnOnce() -> Result<Deliver, Fail> + Send + 'static,
   finish: Finish,
 ) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let promise = resolver.get_promise(scope);
-  let promise_value: v8::Local<v8::Value> = promise.into();
-  let promise_global = v8::Global::new(scope, promise_value);
-  let resolver_global = v8::Global::new(scope, resolver);
-  crate::jobs::spawn(work, move |scope, result| {
-    let resolver = v8::Local::new(scope, &resolver_global);
-    let outcome = match result {
-      Ok(value) => value,
-      Err(()) => Err(panicked),
-    };
-    let mapped = match outcome {
-      Ok(value) => apply(scope, finish, value),
-      Err(fail) => Err(fail),
-    };
-    match mapped {
-      Ok(value) => {
-        let _ = resolver.resolve(scope, value);
-      }
-      Err(fail) => {
-        let error = fail_value(scope, &fail);
-        let _ = resolver.reject(scope, error);
-      }
-    }
-  });
-  Ok(Js(promise_global))
+  crate::jobs::settle(
+    scope, NO_PROMISE, panicked, work, finish, apply, fail_value,
+  )
 }
 
-fn resolved_count(
+pub(crate) fn resolved_count(
   scope: &mut v8::PinScope,
   count: usize,
 ) -> Result<Js, OpError> {
@@ -981,7 +945,10 @@ fn resolved_count(
   Ok(Js(v8::Global::new(scope, promise)))
 }
 
-fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {
+pub(crate) fn rejected(
+  scope: &mut v8::PinScope,
+  message: &str,
+) -> Result<Js, OpError> {
   crate::errors::reject(scope, "Busy", message, NO_PROMISE)
 }
 

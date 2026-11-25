@@ -606,36 +606,19 @@ fn settle(
   panicked: Fail,
   work: impl FnOnce() -> Result<Deliver, Fail> + Send + 'static,
 ) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let promise = resolver.get_promise(scope);
-  let promise_value: v8::Local<v8::Value> = promise.into();
-  let promise_global = v8::Global::new(scope, promise_value);
-  let resolver_global = v8::Global::new(scope, resolver);
-  crate::jobs::spawn(work, move |scope, result| {
-    let resolver = v8::Local::new(scope, &resolver_global);
-    let outcome = match result {
-      Ok(value) => value,
-      Err(()) => Err(panicked),
-    };
-    let mapped = match outcome {
-      Ok(Deliver::Count(count)) => count_value(scope, count),
-      Ok(Deliver::Packet(packet)) => packet_value(scope, packet),
-      Ok(Deliver::Ready) => Ok(v8::undefined(scope).into()),
-      Err(fail) => Err(fail),
-    };
-    match mapped {
-      Ok(value) => {
-        let _ = resolver.resolve(scope, value);
-      }
-      Err(fail) => {
-        let error = fail_value(scope, &fail);
-        let _ = resolver.reject(scope, error);
-      }
-    }
-  });
-  Ok(Js(promise_global))
+  crate::jobs::settle(scope, NO_PROMISE, panicked, work, (), apply, fail_value)
+}
+
+fn apply<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  (): (),
+  value: Deliver,
+) -> Result<v8::Local<'s, v8::Value>, Fail> {
+  match value {
+    Deliver::Count(count) => count_value(scope, count),
+    Deliver::Packet(packet) => packet_value(scope, packet),
+    Deliver::Ready => Ok(v8::undefined(scope).into()),
+  }
 }
 
 fn rejected(scope: &mut v8::PinScope, message: &str) -> Result<Js, OpError> {

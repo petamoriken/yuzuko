@@ -50,6 +50,56 @@ pub fn spawn<T: Send + 'static>(
   });
 }
 
+/// Runs `work` like [`spawn`] and returns a promise for its result.
+///
+/// On the main thread `apply` turns `data` and a success into the
+/// fulfillment value. A failure from `work` or `apply` rejects with
+/// `reject`. A panic in `work` fails with `panicked`. A promise that cannot
+/// be created is a `TypeError` with `no_promise`.
+#[cfg(any(feature = "tcp", feature = "udp", feature = "http"))]
+pub(crate) fn settle<T: Send + 'static, F: Send + 'static, D: 'static>(
+  scope: &mut v8::PinScope,
+  no_promise: &'static str,
+  panicked: F,
+  work: impl FnOnce() -> Result<T, F> + Send + 'static,
+  data: D,
+  apply: for<'s> fn(
+    &mut v8::PinScope<'s, '_>,
+    D,
+    T,
+  ) -> Result<v8::Local<'s, v8::Value>, F>,
+  reject: for<'s> fn(&mut v8::PinScope<'s, '_>, &F) -> v8::Local<'s, v8::Value>,
+) -> Result<crate::op::Js, crate::op::OpError> {
+  let Some(resolver) = v8::PromiseResolver::new(scope) else {
+    return Err(crate::op::OpError::type_(no_promise));
+  };
+  let promise = resolver.get_promise(scope);
+  let promise_value: v8::Local<v8::Value> = promise.into();
+  let promise_global = v8::Global::new(scope, promise_value);
+  let resolver_global = v8::Global::new(scope, resolver);
+  spawn(work, move |scope, result| {
+    let resolver = v8::Local::new(scope, &resolver_global);
+    let outcome = match result {
+      Ok(value) => value,
+      Err(()) => Err(panicked),
+    };
+    let mapped = match outcome {
+      Ok(value) => apply(scope, data, value),
+      Err(fail) => Err(fail),
+    };
+    match mapped {
+      Ok(value) => {
+        let _ = resolver.resolve(scope, value);
+      }
+      Err(fail) => {
+        let error = reject(scope, &fail);
+        let _ = resolver.reject(scope, error);
+      }
+    }
+  });
+  Ok(crate::op::Js(promise_global))
+}
+
 /// Registers `finish` and keeps the event loop awake until `notify`.
 ///
 /// The worker that produces the result calls `notify` from any thread.

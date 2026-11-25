@@ -131,7 +131,7 @@ impl TlsConn {
   ) -> Result<Js, OpError> {
     let (dest, length) = crate::tcp::read_destination(scope, buffer)?;
     if length == 0 {
-      return resolved_count(scope, 0);
+      return crate::tcp::resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
       return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
@@ -142,7 +142,7 @@ impl TlsConn {
       .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
       .is_err()
     {
-      return rejected_message(scope, BUSY_READ);
+      return crate::tcp::rejected(scope, BUSY_READ);
     }
     let shared = Arc::clone(&self.shared);
     let settled = settle(
@@ -167,7 +167,7 @@ impl TlsConn {
   ) -> Result<Js, OpError> {
     let bytes = crate::tcp::copy_source(scope, data)?;
     if bytes.is_empty() {
-      return resolved_count(scope, 0);
+      return crate::tcp::resolved_count(scope, 0);
     }
     if self.shared.is_closed() {
       return crate::errors::reject(scope, "BadResource", CLOSED, NO_PROMISE);
@@ -178,7 +178,7 @@ impl TlsConn {
       .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
       .is_err()
     {
-      return rejected_message(scope, BUSY_WRITE);
+      return crate::tcp::rejected(scope, BUSY_WRITE);
     }
     let shared = Arc::clone(&self.shared);
     let settled = settle(
@@ -540,7 +540,9 @@ fn read_tls(shared: &Shared, max: usize) -> Result<Deliver, crate::tcp::Fail> {
         }
       }
       Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Err(error) => break Err(io_fail(error, crate::tcp::Fail::Read)),
+      Err(error) => {
+        break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Read));
+      }
     }
   };
   restore(shared, stream);
@@ -576,7 +578,9 @@ fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
           continue;
         }
         Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-        Err(error) => break Err(io_fail(error, crate::tcp::Fail::Write)),
+        Err(error) => {
+          break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Write));
+        }
       }
     }
     if shared.is_closed() {
@@ -601,7 +605,9 @@ fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
         }
       }
       Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Err(error) => break Err(io_fail(error, crate::tcp::Fail::Write)),
+      Err(error) => {
+        break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Write));
+      }
     }
   };
   restore(shared, stream);
@@ -614,21 +620,6 @@ fn restore(shared: &Shared, stream: StreamOwned<ClientConnection, TcpStream>) {
     let _ = stream.sock.shutdown(Shutdown::Both);
   } else {
     *slot = Some(stream);
-  }
-}
-
-fn io_fail(error: io::Error, generic: crate::tcp::Fail) -> crate::tcp::Fail {
-  match crate::socket_error::map_io(&error) {
-    crate::socket_error::Mapped::Class { class, code } => {
-      crate::tcp::Fail::Class { class, code }
-    }
-    crate::socket_error::Mapped::Generic { code, type_error } => {
-      crate::tcp::Fail::Io {
-        message: generic.message(),
-        code,
-        type_error,
-      }
-    }
   }
 }
 
@@ -696,54 +687,15 @@ fn settle(
   work: impl FnOnce() -> Result<Deliver, crate::tcp::Fail> + Send + 'static,
   finish: Finish,
 ) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let promise = resolver.get_promise(scope);
-  let promise_value: v8::Local<v8::Value> = promise.into();
-  let promise_global = v8::Global::new(scope, promise_value);
-  let resolver_global = v8::Global::new(scope, resolver);
-  crate::jobs::spawn(work, move |scope, result| {
-    let resolver = v8::Local::new(scope, &resolver_global);
-    let outcome = match result {
-      Ok(value) => value,
-      Err(()) => Err(panicked),
-    };
-    let mapped = match outcome {
-      Ok(value) => apply(scope, finish, value),
-      Err(fail) => Err(fail),
-    };
-    match mapped {
-      Ok(value) => {
-        let _ = resolver.resolve(scope, value);
-      }
-      Err(fail) => {
-        let error = crate::tcp::fail_value(scope, &fail);
-        let _ = resolver.reject(scope, error);
-      }
-    }
-  });
-  Ok(Js(promise_global))
-}
-
-fn resolved_count(
-  scope: &mut v8::PinScope,
-  count: usize,
-) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let value = v8::Number::new(scope, count as f64).into();
-  let _ = resolver.resolve(scope, value);
-  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
-  Ok(Js(v8::Global::new(scope, promise)))
-}
-
-fn rejected_message(
-  scope: &mut v8::PinScope,
-  message: &str,
-) -> Result<Js, OpError> {
-  crate::errors::reject(scope, "Busy", message, NO_PROMISE)
+  crate::jobs::settle(
+    scope,
+    NO_PROMISE,
+    panicked,
+    work,
+    finish,
+    apply,
+    crate::tcp::fail_value,
+  )
 }
 
 use crate::js::define_function as define_fn;

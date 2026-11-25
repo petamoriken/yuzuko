@@ -174,7 +174,7 @@ pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
         });
       } else if let Some(thrown) = thrown {
         let thrown = v8::Local::new(tc, thrown);
-        report_uncaught(tc, thrown);
+        crate::realm::report_uncaught(tc, thrown);
       }
     }
   }
@@ -193,18 +193,6 @@ pub fn fire(scope: &mut v8::PinScope, mut timer: Timer) {
       state.timer_unref.remove(&timer.id);
     }
   });
-}
-
-fn report_uncaught(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
-  let global = js::global(scope);
-  let key = v8::String::new(scope, "reportError").unwrap();
-  let Some(report) = global
-    .get(scope, key.into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-  else {
-    return;
-  };
-  let _ = report.call(scope, global.into(), &[error]);
 }
 
 fn set_timeout(

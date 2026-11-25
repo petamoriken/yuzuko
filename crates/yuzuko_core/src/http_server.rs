@@ -282,7 +282,7 @@ fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
         }
         break stream;
       }
-      Err(error) if is_accept_retry(error.kind()) => {
+      Err(error) if crate::socket_endpoint::is_accept_retry(error.kind()) => {
         if shared.is_closed() {
           return Err(Fail::Closed);
         }
@@ -494,17 +494,6 @@ fn is_token(value: &str) -> bool {
           | b'~'
       )
     })
-}
-
-fn is_accept_retry(kind: ErrorKind) -> bool {
-  matches!(
-    kind,
-    ErrorKind::WouldBlock
-      | ErrorKind::TimedOut
-      | ErrorKind::Interrupted
-      | ErrorKind::ConnectionAborted
-      | ErrorKind::ConnectionReset
-  )
 }
 
 fn response_headers(
@@ -967,7 +956,14 @@ fn listen_op(
   let addr = if options.is_null_or_undefined() {
     crate::socket_endpoint::loopback_bind()?
   } else {
-    endpoint(scope, options)?
+    crate::socket_endpoint::endpoint(
+      scope,
+      options,
+      0,
+      PORT_BIND,
+      OPTIONS,
+      OPTIONS_READ,
+    )?
   };
   let reuse = crate::socket_endpoint::reuse_flag(scope, options, OPTIONS_READ)?;
   let shared = match if reuse {
@@ -983,41 +979,6 @@ fn listen_op(
   Ok(New(Server { shared }))
 }
 
-fn endpoint(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> Result<SocketAddr, OpError> {
-  if !value.is_object() {
-    return Err(OpError::type_(OPTIONS));
-  }
-  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
-    return Err(OpError::type_(OPTIONS));
-  };
-  let hostname = match read_field(scope, object, "hostname")? {
-    Some(value) if !value.is_undefined() => String::from_v8(scope, value)?,
-    _ => "127.0.0.1".to_string(),
-  };
-  let port = match read_field(scope, object, "port")? {
-    Some(value) if !value.is_undefined() => to_port(scope, value)?,
-    _ => 0,
-  };
-  crate::socket_endpoint::checked_host(&hostname, port)
-}
-
-fn to_port(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> Result<u16, OpError> {
-  let number = f64::from_v8(scope, value)?;
-  if !number.is_finite()
-    || number.fract() != 0.0
-    || !(0.0..=65535.0).contains(&number)
-  {
-    return Err(OpError::type_(PORT_BIND));
-  }
-  Ok(number as u16)
-}
-
 fn to_status(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -1030,14 +991,6 @@ fn to_status(
     return Err(OpError::type_(STATUS));
   }
   Ok(number as u16)
-}
-
-fn read_field<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  object: v8::Local<'_, v8::Object>,
-  name: &str,
-) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  crate::js::read_field(scope, object, name, OPTIONS_READ)
 }
 
 fn payload_bytes(
@@ -1126,34 +1079,9 @@ fn settle(
   work: impl FnOnce() -> Result<Deliver, Fail> + Send + 'static,
   finish: Finish,
 ) -> Result<Js, OpError> {
-  let Some(resolver) = v8::PromiseResolver::new(scope) else {
-    return Err(OpError::type_(NO_PROMISE));
-  };
-  let promise = resolver.get_promise(scope);
-  let promise_value: v8::Local<v8::Value> = promise.into();
-  let promise_global = v8::Global::new(scope, promise_value);
-  let resolver_global = v8::Global::new(scope, resolver);
-  crate::jobs::spawn(work, move |scope, result| {
-    let resolver = v8::Local::new(scope, &resolver_global);
-    let outcome = match result {
-      Ok(value) => value,
-      Err(()) => Err(panicked),
-    };
-    let mapped = match outcome {
-      Ok(value) => apply(scope, finish, value),
-      Err(fail) => Err(fail),
-    };
-    match mapped {
-      Ok(value) => {
-        let _ = resolver.resolve(scope, value);
-      }
-      Err(fail) => {
-        let error = fail_value(scope, &fail);
-        let _ = resolver.reject(scope, error);
-      }
-    }
-  });
-  Ok(Js(promise_global))
+  crate::jobs::settle(
+    scope, NO_PROMISE, panicked, work, finish, apply, fail_value,
+  )
 }
 
 fn apply<'s>(

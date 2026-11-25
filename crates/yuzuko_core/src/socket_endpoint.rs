@@ -6,7 +6,6 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-#[cfg(any(feature = "tcp", feature = "udp"))]
 use crate::op::FromV8;
 use crate::op::OpError;
 
@@ -17,7 +16,6 @@ pub(crate) fn loopback_bind() -> Result<SocketAddr, OpError> {
   Ok(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 }
 
-#[cfg(any(feature = "tcp", feature = "udp"))]
 pub(crate) fn endpoint(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -122,7 +120,6 @@ pub(crate) fn checked_host(
   Ok(SocketAddr::new(ip, port))
 }
 
-#[cfg(any(feature = "tcp", feature = "udp"))]
 fn to_port(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -149,7 +146,6 @@ fn parse_host(hostname: &str) -> Result<IpAddr, OpError> {
     .map_err(|_| OpError::type_(HOSTNAME))
 }
 
-#[cfg(any(feature = "tcp", feature = "udp"))]
 pub(crate) use crate::js::read_field;
 
 #[cfg(all(test, feature = "tcp", feature = "udp"))]
@@ -202,6 +198,20 @@ pub(crate) fn is_io_retry(kind: std::io::ErrorKind) -> bool {
   matches!(
     kind,
     ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+  )
+}
+
+/// Whether a blocking `accept` should be tried again.
+#[cfg(any(feature = "tcp", feature = "http"))]
+pub(crate) fn is_accept_retry(kind: std::io::ErrorKind) -> bool {
+  use std::io::ErrorKind;
+  matches!(
+    kind,
+    ErrorKind::WouldBlock
+      | ErrorKind::TimedOut
+      | ErrorKind::Interrupted
+      | ErrorKind::ConnectionAborted
+      | ErrorKind::ConnectionReset
   )
 }
 

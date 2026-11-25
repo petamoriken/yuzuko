@@ -646,7 +646,7 @@ fn throw_builtin(scope: &mut v8::PinScope, message: String, range: bool) {
   scope.throw_exception(error);
 }
 
-fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
+pub(crate) fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
   if let Some(error) = new_dom_exception(scope, name, message) {
     scope.throw_exception(error.into());
     return;

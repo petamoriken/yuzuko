@@ -387,47 +387,14 @@ fn own_names(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Vec<String>, OpError> {
-  enum Outcome {
-    Names(v8::Global<v8::Array>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let object = v8::Local::new(tc, object);
-    let mut builder = v8::GetPropertyNamesArgsBuilder::new();
-    let listed = builder
-      .mode(v8::KeyCollectionMode::OwnOnly)
-      .property_filter(
-        v8::PropertyFilter::ONLY_ENUMERABLE | v8::PropertyFilter::SKIP_SYMBOLS,
-      )
-      .key_conversion(v8::KeyConversionMode::ConvertToString)
-      .build();
-    match object.get_own_property_names(tc, listed) {
-      Some(names) => Outcome::Names(v8::Global::new(tc, names)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  let names = match outcome {
-    Outcome::Names(names) => v8::Local::new(scope, names),
-    Outcome::Throw(exception) => {
-      return Err(OpError::thrown(scope, v8::Local::new(scope, exception)));
-    }
-    Outcome::Missing => return Err(OpError::type_(SYMBOLS_READ)),
-  };
+  let names = crate::js::own_enumerable_names(scope, object, SYMBOLS_READ)?;
   let length = names.length();
   if length > MAX_SYMBOLS {
     return Err(OpError::type_(TOO_MANY));
   }
   let mut keys = Vec::with_capacity(length as usize);
   for index in 0..length {
-    let value = array_element(scope, names, index)?;
+    let value = crate::js::array_element(scope, names, index, SYMBOLS_READ)?;
     keys.push(string_primitive(scope, value, NAME_TYPE)?);
   }
   Ok(keys)
@@ -467,7 +434,7 @@ fn read_parameters(
   }
   let mut params = [Param::I32; 4];
   for index in 0..length {
-    let value = array_element(scope, array, index)?;
+    let value = crate::js::array_element(scope, array, index, SYMBOLS_READ)?;
     let text = string_primitive(scope, value, UNSUPPORTED)?;
     params[index as usize] =
       parse_param(&text).ok_or_else(|| OpError::type_(UNSUPPORTED))?;
@@ -1001,39 +968,6 @@ fn read_field<'s>(
   name: &str,
 ) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   crate::js::read_field(scope, object, name, SYMBOLS_READ)
-}
-
-fn array_element<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  array: v8::Local<'_, v8::Array>,
-  index: u32,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let array = v8::Local::new(tc, array);
-    match array.get_index(tc, index) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(v8::Local::new(scope, value)),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(SYMBOLS_READ)),
-  }
 }
 
 fn string_primitive(

@@ -121,7 +121,11 @@ fn run_queued_microtask(
   report_uncaught(tc, thrown);
 }
 
-fn report_uncaught(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) {
+/// Calls `globalThis.reportError(error)` when it is a function.
+pub(crate) fn report_uncaught(
+  scope: &mut v8::PinScope,
+  error: v8::Local<v8::Value>,
+) {
   let global = js::global(scope);
   let Some(key) = v8::String::new(scope, "reportError") else {
     return;

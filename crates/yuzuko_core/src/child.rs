@@ -1622,7 +1622,7 @@ fn read_args_field(
   }
   let mut args = Vec::with_capacity(length as usize);
   for index in 0..length {
-    let element = array_element(scope, array, index)?;
+    let element = crate::js::array_element(scope, array, index, OPTIONS_READ)?;
     let text = string_primitive(scope, element, ARGS)?;
     if text.contains('\0') {
       return Err(OpError::type_(NUL));
@@ -1746,10 +1746,11 @@ fn parse_cwd(
     }
     return Ok(Some(PathBuf::from(text)));
   }
-  if is_url(scope, value) {
+  if crate::js::is_url(scope, value) {
     let object = v8::Local::<v8::Object>::try_from(value)
       .map_err(|_| OpError::type_(PATH_URL))?;
-    let href = href_of(scope, object).map_err(OpError::type_)?;
+    let href = crate::js::url_href(scope, object)
+      .ok_or_else(|| OpError::type_(PATH_URL))?;
     let url = url::Url::parse(&href).map_err(|_| OpError::type_(PATH_URL))?;
     if url.scheme() != "file" {
       return Err(OpError::type_(PATH_SCHEME));
@@ -1784,82 +1785,15 @@ fn ensure_directory(
   }
 }
 
-fn is_url(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, "URL") else {
-    return false;
-  };
-  let Some(ctor) = global.get(scope, key.into()) else {
-    return false;
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return false;
-  };
-  value.instance_of(scope, ctor) == Some(true)
-}
-
-fn href_of(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-) -> Result<String, &'static str> {
-  let key = v8::String::new(scope, "href").expect("href");
-
-  {
-    v8::tc_scope!(let tc, scope);
-    match object.get(tc, key.into()) {
-      Some(value) if tc.exception().is_none() => match value.to_string(tc) {
-        Some(text) if tc.exception().is_none() => {
-          Ok(text.to_rust_string_lossy(tc))
-        }
-        _ => Err(PATH_URL),
-      },
-      _ => Err(PATH_URL),
-    }
-  }
-}
-
 fn own_names(
   scope: &mut v8::PinScope,
   object: v8::Local<v8::Object>,
 ) -> Result<Vec<String>, OpError> {
-  enum Outcome {
-    Names(v8::Global<v8::Array>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let object = v8::Local::new(tc, object);
-    let mut builder = v8::GetPropertyNamesArgsBuilder::new();
-    let listed = builder
-      .mode(v8::KeyCollectionMode::OwnOnly)
-      .property_filter(
-        v8::PropertyFilter::ONLY_ENUMERABLE | v8::PropertyFilter::SKIP_SYMBOLS,
-      )
-      .key_conversion(v8::KeyConversionMode::ConvertToString)
-      .build();
-    match object.get_own_property_names(tc, listed) {
-      Some(names) => Outcome::Names(v8::Global::new(tc, names)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  let names = match outcome {
-    Outcome::Names(names) => v8::Local::new(scope, names),
-    Outcome::Throw(exception) => {
-      return Err(OpError::thrown(scope, v8::Local::new(scope, exception)));
-    }
-    Outcome::Missing => return Err(OpError::type_(OPTIONS_READ)),
-  };
+  let names = crate::js::own_enumerable_names(scope, object, OPTIONS_READ)?;
   let length = names.length();
   let mut keys = Vec::with_capacity(length as usize);
   for index in 0..length {
-    let value = array_element(scope, names, index)?;
+    let value = crate::js::array_element(scope, names, index, OPTIONS_READ)?;
     keys.push(string_primitive(scope, value, NAME_TYPE)?);
   }
   Ok(keys)
@@ -1999,39 +1933,6 @@ fn read_field<'s>(
   name: &str,
 ) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
   crate::js::read_field(scope, object, name, OPTIONS_READ)
-}
-
-fn array_element<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  array: v8::Local<'_, v8::Array>,
-  index: u32,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  enum Outcome {
-    Value(v8::Global<v8::Value>),
-    Throw(v8::Global<v8::Value>),
-    Missing,
-  }
-  let outcome = {
-    v8::tc_scope!(let tc, scope);
-    let array = v8::Local::new(tc, array);
-    match array.get_index(tc, index) {
-      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Outcome::Throw(v8::Global::new(tc, exception))
-        } else {
-          Outcome::Missing
-        }
-      }
-    }
-  };
-  match outcome {
-    Outcome::Value(value) => Ok(v8::Local::new(scope, value)),
-    Outcome::Throw(exception) => {
-      Err(OpError::thrown(scope, v8::Local::new(scope, exception)))
-    }
-    Outcome::Missing => Err(OpError::type_(OPTIONS_READ)),
-  }
 }
 
 fn string_primitive(

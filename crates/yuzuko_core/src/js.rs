@@ -764,6 +764,127 @@ pub(crate) fn read_field<'s>(
   }
 }
 
+/// Own enumerable string keys of `object`, converted to strings. A thrown
+/// trap becomes the error. A failed read without an exception is a
+/// `TypeError` with `read_message`.
+#[cfg(any(feature = "ffi", feature = "child"))]
+pub(crate) fn own_enumerable_names<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<'_, v8::Object>,
+  read_message: &str,
+) -> Result<v8::Local<'s, v8::Array>, crate::op::OpError> {
+  enum Outcome {
+    Names(v8::Global<v8::Array>),
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let object = v8::Local::new(tc, object);
+    let mut builder = v8::GetPropertyNamesArgsBuilder::new();
+    let listed = builder
+      .mode(v8::KeyCollectionMode::OwnOnly)
+      .property_filter(
+        v8::PropertyFilter::ONLY_ENUMERABLE | v8::PropertyFilter::SKIP_SYMBOLS,
+      )
+      .key_conversion(v8::KeyConversionMode::ConvertToString)
+      .build();
+    match object.get_own_property_names(tc, listed) {
+      Some(names) => Outcome::Names(v8::Global::new(tc, names)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  match outcome {
+    Outcome::Names(names) => Ok(v8::Local::new(scope, names)),
+    Outcome::Throw(exception) => Err(crate::op::OpError::thrown(
+      scope,
+      v8::Local::new(scope, exception),
+    )),
+    Outcome::Missing => Err(crate::op::OpError::type_(read_message)),
+  }
+}
+
+/// Reads `array[index]`. A thrown getter becomes the error. A failed read
+/// without an exception is a `TypeError` with `read_message`.
+#[cfg(any(feature = "ffi", feature = "child"))]
+pub(crate) fn array_element<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  array: v8::Local<'_, v8::Array>,
+  index: u32,
+  read_message: &str,
+) -> Result<v8::Local<'s, v8::Value>, crate::op::OpError> {
+  enum Outcome {
+    Value(v8::Global<v8::Value>),
+    Throw(v8::Global<v8::Value>),
+    Missing,
+  }
+  let outcome = {
+    v8::tc_scope!(let tc, scope);
+    let array = v8::Local::new(tc, array);
+    match array.get_index(tc, index) {
+      Some(value) => Outcome::Value(v8::Global::new(tc, value)),
+      None => {
+        if let Some(exception) = tc.exception() {
+          Outcome::Throw(v8::Global::new(tc, exception))
+        } else {
+          Outcome::Missing
+        }
+      }
+    }
+  };
+  match outcome {
+    Outcome::Value(value) => Ok(v8::Local::new(scope, value)),
+    Outcome::Throw(exception) => Err(crate::op::OpError::thrown(
+      scope,
+      v8::Local::new(scope, exception),
+    )),
+    Outcome::Missing => Err(crate::op::OpError::type_(read_message)),
+  }
+}
+
+/// Whether `value` is an instance of the realm's current `globalThis.URL`.
+pub(crate) fn is_url(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  let global = scope.get_current_context().global(scope);
+  let Some(key) = v8::String::new(scope, "URL") else {
+    return false;
+  };
+  let Some(ctor) = global.get(scope, key.into()) else {
+    return false;
+  };
+  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
+    return false;
+  };
+  value.instance_of(scope, ctor) == Some(true)
+}
+
+/// `ToString(object.href)`. A throw or a failed read is `None`; the
+/// exception is not rethrown.
+pub(crate) fn url_href(
+  scope: &mut v8::PinScope,
+  object: v8::Local<v8::Object>,
+) -> Option<String> {
+  let key = v8::String::new(scope, "href")?;
+  v8::tc_scope!(let tc, scope);
+  match object.get(tc, key.into()) {
+    Some(value) if tc.exception().is_none() => match value.to_string(tc) {
+      Some(text) if tc.exception().is_none() => {
+        Some(text.to_rust_string_lossy(tc))
+      }
+      _ => None,
+    },
+    _ => None,
+  }
+}
+
 /// `Error` whose message is `message`, or `TypeError` when the text cannot
 /// be allocated.
 #[cfg_attr(

@@ -11,7 +11,7 @@ use std::sync::{
   Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 
-use crate::op::OpException;
+use crate::op::{OpException, throw_dom};
 
 static EXIT: AtomicI32 = AtomicI32::new(-1);
 static ARGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -663,10 +663,10 @@ fn parse_directory(
     };
     return Ok(PathBuf::from(text.to_rust_string_lossy(scope)));
   }
-  if is_url(scope, value) {
+  if crate::js::is_url(scope, value) {
     let object =
       v8::Local::<v8::Object>::try_from(value).map_err(|_| PATH_URL)?;
-    let href = href_of(scope, object)?;
+    let href = crate::js::url_href(scope, object).ok_or(PATH_URL)?;
     let url = url::Url::parse(&href).map_err(|_| PATH_URL)?;
     if url.scheme() != "file" {
       return Err(PATH_SCHEME);
@@ -674,48 +674,6 @@ fn parse_directory(
     return url.to_file_path().map_err(|_| PATH_FILE);
   }
   Err(PATH_TYPE)
-}
-
-fn is_url(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, "URL") else {
-    return false;
-  };
-  let Some(ctor) = global.get(scope, key.into()) else {
-    return false;
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return false;
-  };
-  value.instance_of(scope, ctor) == Some(true)
-}
-
-fn href_of(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-) -> Result<String, &'static str> {
-  let key = v8::String::new(scope, "href").expect("href");
-
-  {
-    v8::tc_scope!(let tc, scope);
-    match object.get(tc, key.into()) {
-      Some(value) if tc.exception().is_none() => match value.to_string(tc) {
-        Some(text) if tc.exception().is_none() => {
-          Ok(text.to_rust_string_lossy(tc))
-        }
-        _ => Err(PATH_URL),
-      },
-      _ => Err(PATH_URL),
-    }
-  }
-}
-
-fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
-  if let Some(error) = crate::op::new_dom_exception(scope, name, message) {
-    scope.throw_exception(error.into());
-    return;
-  }
-  crate::js::throw_type(scope, &format!("{name}: {message}"));
 }
 
 fn io_read() -> RwLockReadGuard<'static, ()> {
