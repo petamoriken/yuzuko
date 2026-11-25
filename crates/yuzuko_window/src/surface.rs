@@ -1461,7 +1461,7 @@ impl Window {
     scope: &mut v8::PinScope,
     message: v8::Local<v8::Value>,
   ) -> Result<(), OpError> {
-    let message = crate::shell::dialog::js_string(scope, message)?;
+    let message = crate::util::js_string(scope, message)?;
     self.require_dialog()?;
     let title = self.title.borrow().clone();
     crate::shell::dialog::alert(self.id, &title, &message)
@@ -1473,7 +1473,7 @@ impl Window {
     scope: &mut v8::PinScope,
     message: v8::Local<v8::Value>,
   ) -> Result<bool, OpError> {
-    let message = crate::shell::dialog::js_string(scope, message)?;
+    let message = crate::util::js_string(scope, message)?;
     self.require_dialog()?;
     let title = self.title.borrow().clone();
     crate::shell::dialog::confirm(self.id, &title, &message)
@@ -1486,10 +1486,10 @@ impl Window {
     message: v8::Local<v8::Value>,
     default_value: Option<v8::Local<v8::Value>>,
   ) -> Result<Js, OpError> {
-    let message = crate::shell::dialog::js_string(scope, message)?;
+    let message = crate::util::js_string(scope, message)?;
     let default_value = match default_value {
       Some(value) if !value.is_undefined() => {
-        crate::shell::dialog::js_string(scope, value)?
+        crate::util::js_string(scope, value)?
       }
       _ => String::new(),
     };

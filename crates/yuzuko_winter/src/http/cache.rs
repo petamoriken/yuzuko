@@ -13,6 +13,7 @@ use yuzuko_core::op::OpException;
 use yuzuko_macros::op;
 
 use crate::http::fetch::{CachedBody, CachedResponse};
+use crate::util::resolve;
 
 thread_local! {
   static STORAGE: RefCell<Storage> = RefCell::new(Storage::empty());
@@ -1479,7 +1480,7 @@ pub fn install(scope: &mut v8::PinScope) {
   Cache::install(scope);
   CacheStorage::install(scope);
   let caches = unsafe { yuzuko_core::op::wrap_instance(scope, CacheStorage) };
-  let getter = v8::Function::builder(caches_attribute)
+  let getter = v8::Function::builder(crate::util::global_attribute)
     .data(caches.into())
     .length(0)
     .constructor_behavior(v8::ConstructorBehavior::Throw)
@@ -1497,23 +1498,6 @@ pub fn install(scope: &mut v8::PinScope) {
   let _ = global.define_property(scope, key.into(), &descriptor);
 }
 
-fn caches_attribute(
-  scope: &mut v8::PinScope,
-  args: v8::FunctionCallbackArguments,
-  mut ret: v8::ReturnValue,
-) {
-  let global = scope.get_current_context().global(scope);
-  let this = args.this();
-  if this.is_null_or_undefined() || this.strict_equals(global.into()) {
-    ret.set(args.data());
-    return;
-  }
-  yuzuko_core::op::OpException::throw(
-    OpError::type_("illegal invocation"),
-    scope,
-  );
-}
-
 fn new_get_request<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   url: &str,
@@ -1528,14 +1512,6 @@ fn new_get_request<'s>(
   };
   let url = v8::String::new(scope, url).unwrap();
   ctor.new_instance(scope, &[url.into()]).ok_or(())
-}
-
-fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  resolver.resolve(scope, value);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
 }
 
 fn reject(scope: &mut v8::PinScope, message: &str) -> Js {

@@ -7,6 +7,7 @@ mod http;
 mod stream;
 mod text;
 mod url;
+mod util;
 
 use std::sync::Once;
 

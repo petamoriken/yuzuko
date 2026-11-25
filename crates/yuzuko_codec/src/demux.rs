@@ -24,7 +24,7 @@ fn movie_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<'_, v8::Value>,
 ) -> Result<v8::Local<'s, v8::Object>, OpError> {
-  if detached(scope, value) {
+  if crate::classes::detached_buffer(scope, value) {
     return Err(OpError::type_("The MP4 data is detached"));
   }
   let Some(bytes) = yuzuko_winter::buffer_source(scope, value)? else {
@@ -35,21 +35,6 @@ fn movie_value<'s>(
   to_movie(scope, movie).map_err(|_| {
     OpError::dom("EncodingError", "The MP4 samples could not be returned")
   })
-}
-
-fn detached(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
-  if v8::Local::<v8::SharedArrayBuffer>::try_from(value).is_ok() {
-    return false;
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    return view
-      .buffer(scope)
-      .is_some_and(|buffer| buffer.was_detached());
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return buffer.was_detached();
-  }
-  false
 }
 
 fn to_movie<'s>(

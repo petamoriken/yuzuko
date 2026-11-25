@@ -11,6 +11,8 @@ use yuzuko_core::op::{
 };
 use yuzuko_macros::op;
 
+use crate::util::iterator_result;
+
 pub struct Url {
   shared: Rc<RefCell<url::Url>>,
   params: RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -918,27 +920,6 @@ impl SearchIter {
     };
     iterator_result(scope, false, item)
   }
-}
-
-fn iterator_result(
-  scope: &mut v8::PinScope,
-  done: bool,
-  value: v8::Local<v8::Value>,
-) -> Js {
-  let object = v8::Object::new(scope);
-  let done = v8::Boolean::new(scope, done);
-  let _ = object.create_data_property(
-    scope,
-    v8::String::new(scope, "done").unwrap().into(),
-    done.into(),
-  );
-  let _ = object.create_data_property(
-    scope,
-    v8::String::new(scope, "value").unwrap().into(),
-    value,
-  );
-  let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
 }
 
 fn iterator_object(

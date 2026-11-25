@@ -40,7 +40,7 @@ use super::reject_unknown_usages;
 use super::rsa_crypto_key;
 use super::rsa_error;
 use super::secret_key;
-use super::string_value;
+use crate::util::string_value;
 
 fn op(error: modern::Fail) -> OpError {
   error.into_op()

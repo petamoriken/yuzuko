@@ -2504,7 +2504,7 @@ fn optional_buffer(
     .ok_or_else(|| OpError::type_(format!("{name} is not a BufferSource")))
 }
 
-fn detached_buffer(
+pub(crate) fn detached_buffer(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> bool {

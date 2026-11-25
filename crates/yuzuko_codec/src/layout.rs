@@ -8,6 +8,8 @@ use yuzuko_image::{
   ColorSpace, Raster, SampleFormat, convert_encoded, unpremultiply,
 };
 
+use crate::color::yuv_to_rgb;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PixelFormat {
   Rgba,
@@ -1037,30 +1039,6 @@ fn pack_rgb(format: PixelFormat, pixel: [u8; 4]) -> [u8; 4] {
     PixelFormat::Rgbx => [pixel[0], pixel[1], pixel[2], 255],
     _ => pixel,
   }
-}
-
-fn yuv_to_rgb(y: i32, u: i32, v: i32, limited: bool) -> (u8, u8, u8) {
-  let d = u - 128;
-  let e = v - 128;
-  let (red, green, blue) = if limited {
-    let c = y - 16;
-    (
-      (298 * c + 409 * e + 128) >> 8,
-      (298 * c - 100 * d - 208 * e + 128) >> 8,
-      (298 * c + 516 * d + 128) >> 8,
-    )
-  } else {
-    (
-      y + ((359 * e) >> 8),
-      y - ((88 * d + 183 * e) >> 8),
-      y + ((454 * d) >> 8),
-    )
-  };
-  (clamp_u8(red), clamp_u8(green), clamp_u8(blue))
-}
-
-fn clamp_u8(value: i32) -> u8 {
-  value.clamp(0, 255) as u8
 }
 
 fn fill_channel(planes: &mut [Vec<u8>], channel: usize) {

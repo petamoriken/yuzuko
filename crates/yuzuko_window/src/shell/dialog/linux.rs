@@ -161,7 +161,7 @@ fn choose(
       dialog.filename().into_iter().collect::<Vec<_>>()
     };
     let paths: Vec<String> =
-      picked.into_iter().map(super::absolute_path).collect();
+      picked.into_iter().map(crate::util::absolute_path).collect();
     if paths.is_empty() { None } else { Some(paths) }
   } else {
     None

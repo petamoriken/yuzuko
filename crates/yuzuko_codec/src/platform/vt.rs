@@ -12,6 +12,7 @@ use yuzuko_image::{ColorSpace, Raster};
 
 use crate::color::packed_to_rgba;
 use crate::error::DecodeError;
+use crate::h264::take_nal;
 
 const BGRA: u32 = fourcc(b"BGRA");
 const RGBA: u32 = fourcc(b"RGBA");
@@ -513,21 +514,6 @@ fn parse_avcc(bytes: &[u8]) -> Result<Vec<Vec<u8>>, DecodeError> {
     return Err(DecodeError::Rejected);
   }
   Ok(sets)
-}
-
-fn take_nal(bytes: &[u8], offset: &mut usize) -> Result<Vec<u8>, DecodeError> {
-  if *offset + 2 > bytes.len() {
-    return Err(DecodeError::Rejected);
-  }
-  let length =
-    u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
-  *offset += 2;
-  if length == 0 || *offset + length > bytes.len() {
-    return Err(DecodeError::Rejected);
-  }
-  let nal = bytes[*offset..*offset + length].to_vec();
-  *offset += length;
-  Ok(nal)
 }
 
 fn block_buffer(sample: &[u8]) -> Result<*mut c_void, DecodeError> {

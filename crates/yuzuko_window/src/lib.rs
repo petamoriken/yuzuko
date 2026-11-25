@@ -20,6 +20,7 @@ mod session;
 mod shell;
 mod surface;
 mod test_api;
+mod util;
 mod wake;
 
 use std::sync::Once;

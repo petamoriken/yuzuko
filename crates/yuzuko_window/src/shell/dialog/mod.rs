@@ -13,35 +13,13 @@ mod windows;
 
 use yuzuko_core::op::{OpError, OpException};
 
+use crate::util::{array_item, js_string};
+
 pub(crate) fn install(scope: &mut v8::PinScope) {
   let yuzuko = crate::shell::menu::yuzuko_object(scope);
   let function = v8::Function::new(scope, set_dialog_labels).unwrap();
   let key = v8::String::new(scope, "setDialogLabels").unwrap();
   yuzuko.set(scope, key.into(), function.into());
-}
-
-pub(crate) fn js_string(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> Result<String, OpError> {
-  let captured = {
-    v8::tc_scope!(let tc, scope);
-    match value.to_string(tc) {
-      Some(text) => Ok(text.to_rust_string_lossy(tc)),
-      None => {
-        let exception =
-          tc.exception().unwrap_or_else(|| v8::undefined(tc).into());
-        Err(v8::Global::new(tc, exception))
-      }
-    }
-  };
-  match captured {
-    Ok(text) => Ok(text),
-    Err(exception) => {
-      let exception = v8::Local::new(scope, exception);
-      Err(OpError::thrown(scope, exception))
-    }
-  }
 }
 
 pub fn alert(id: u64, title: &str, message: &str) -> Result<(), String> {
@@ -340,18 +318,6 @@ pub(crate) fn pick_directory(
   }
 }
 
-pub(super) fn absolute_path(path: std::path::PathBuf) -> String {
-  let path = if path.is_absolute() {
-    path
-  } else {
-    match std::env::current_dir() {
-      Ok(dir) => dir.join(path),
-      Err(_) => path,
-    }
-  };
-  path.to_string_lossy().into_owned()
-}
-
 fn options_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   options: Option<v8::Local<'_, v8::Value>>,
@@ -401,35 +367,6 @@ fn get_field<'s>(
         Ok(Some(value))
       }
     }
-    Err(exception) => {
-      let exception = v8::Local::new(scope, exception);
-      Err(OpError::thrown(scope, exception))
-    }
-  }
-}
-
-fn array_item<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  list: v8::Local<'_, v8::Array>,
-  index: u32,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  let captured = {
-    v8::tc_scope!(let tc, scope);
-    let list = yuzuko_core::op::root(tc, list);
-    match list.get_index(tc, index) {
-      Some(value) => Ok(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Err(v8::Global::new(tc, exception))
-        } else {
-          let missing: v8::Local<v8::Value> = v8::undefined(tc).into();
-          Ok(v8::Global::new(tc, missing))
-        }
-      }
-    }
-  };
-  match captured {
-    Ok(global) => Ok(v8::Local::new(scope, global)),
     Err(exception) => {
       let exception = v8::Local::new(scope, exception);
       Err(OpError::thrown(scope, exception))

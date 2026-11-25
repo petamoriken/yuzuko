@@ -155,7 +155,7 @@ fn read_paths(
     if text.is_empty() {
       return Err(OpError::type_("A file path must not be empty"));
     }
-    let path = inbox::absolute_dropped_path(std::path::PathBuf::from(text));
+    let path = crate::util::absolute_path(std::path::PathBuf::from(text));
     if path.is_empty() {
       return Err(OpError::type_("A file path must not be empty"));
     }

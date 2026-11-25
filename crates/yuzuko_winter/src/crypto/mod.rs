@@ -40,6 +40,7 @@ use yuzuko_macros::op;
 
 use crate::bytes;
 use crate::text::base64;
+use crate::util::{reject, resolve, string_value};
 
 enum Material {
   Bytes(Vec<u8>),
@@ -3048,16 +3049,6 @@ fn buffer(
     .ok_or_else(|| OpError::type_("The value is not a BufferSource"))
 }
 
-fn string_value(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> Result<String, OpError> {
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .ok_or_else(|| OpError::type_("The value is not a string"))
-}
-
 fn resolve_bytes(scope: &mut v8::PinScope, bytes: Vec<u8>) -> Js {
   let buffer = bytes::array_buffer(scope, bytes);
   let value: v8::Local<v8::Value> = buffer.into();
@@ -3087,34 +3078,6 @@ fn resolve_kem(
 
 fn resolve_bool(scope: &mut v8::PinScope, value: bool) -> Js {
   resolve(scope, v8::Boolean::new(scope, value).into())
-}
-
-fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  resolver.resolve(scope, value);
-  let promise = resolver.get_promise(scope);
-  let value: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, value))
-}
-
-fn reject(scope: &mut v8::PinScope, error: OpError) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let exception = match error {
-    OpError::Thrown(_) => {
-      let text = v8::String::new(scope, "The operation failed").unwrap();
-      v8::Exception::type_error(scope, text)
-    }
-    other => yuzuko_core::exception_value(
-      scope,
-      other,
-      yuzuko_core::DomFallback::Error,
-      yuzuko_core::StringFailure::Unwrap,
-    ),
-  };
-  resolver.reject(scope, exception);
-  let promise = resolver.get_promise(scope);
-  let value: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, value))
 }
 
 fn quota_exceeded(scope: &mut v8::PinScope, message: &str) -> OpError {
@@ -3249,23 +3212,6 @@ impl Crypto {
   }
 }
 
-fn crypto_attribute(
-  scope: &mut v8::PinScope,
-  args: v8::FunctionCallbackArguments,
-  mut ret: v8::ReturnValue,
-) {
-  let global = scope.get_current_context().global(scope);
-  let this = args.this();
-  if this.is_null_or_undefined() || this.strict_equals(global.into()) {
-    ret.set(args.data());
-    return;
-  }
-  yuzuko_core::op::OpException::throw(
-    OpError::type_("illegal invocation"),
-    scope,
-  );
-}
-
 pub fn install(scope: &mut v8::PinScope) {
   CryptoKey::install(scope);
   SubtleCrypto::install(scope);
@@ -3274,7 +3220,7 @@ pub fn install(scope: &mut v8::PinScope) {
   let subtle = traced(scope, subtle);
   let crypto =
     unsafe { yuzuko_core::op::wrap_instance(scope, Crypto { subtle }) };
-  let getter = v8::Function::builder(crypto_attribute)
+  let getter = v8::Function::builder(crate::util::global_attribute)
     .data(crypto.into())
     .length(0)
     .constructor_behavior(v8::ConstructorBehavior::Throw)

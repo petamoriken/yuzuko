@@ -1695,7 +1695,7 @@ impl App {
 }
 
 fn push_file(id: u64, phase: FilePhase, path: std::path::PathBuf) {
-  let path = inbox::absolute_dropped_path(path);
+  let path = crate::util::absolute_path(path);
   if path.is_empty() {
     return;
   }

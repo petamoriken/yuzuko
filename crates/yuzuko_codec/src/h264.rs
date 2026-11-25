@@ -521,7 +521,10 @@ pub fn has_idr(sample: &[u8]) -> bool {
   false
 }
 
-fn take_nal(bytes: &[u8], offset: &mut usize) -> Result<Vec<u8>, DecodeError> {
+pub(crate) fn take_nal(
+  bytes: &[u8],
+  offset: &mut usize,
+) -> Result<Vec<u8>, DecodeError> {
   if *offset + 2 > bytes.len() {
     return Err(DecodeError::Rejected);
   }

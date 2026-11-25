@@ -24,6 +24,7 @@ use crate::blob::Blob;
 use crate::bytes;
 use crate::lease_blob_url;
 use crate::stream::StreamBody;
+use crate::util::iterator_result;
 
 struct AbortWatch {
   cancel: Arc<AtomicBool>,
@@ -368,27 +369,15 @@ impl HeaderIter {
     let pairs = sorted_combined(&host.get().pairs.borrow());
     let index = self.index.get();
     if index >= pairs.len() {
-      return Ok(header_iterator_result(
-        scope,
-        true,
-        v8::undefined(scope).into(),
-      ));
+      return Ok(iterator_result(scope, true, v8::undefined(scope).into()));
     }
     self.index.set(index + 1);
     let (name, value) = &pairs[index];
     let Some(name) = v8::String::new(scope, name) else {
-      return Ok(header_iterator_result(
-        scope,
-        true,
-        v8::undefined(scope).into(),
-      ));
+      return Ok(iterator_result(scope, true, v8::undefined(scope).into()));
     };
     let Some(value) = v8::String::new(scope, value) else {
-      return Ok(header_iterator_result(
-        scope,
-        true,
-        v8::undefined(scope).into(),
-      ));
+      return Ok(iterator_result(scope, true, v8::undefined(scope).into()));
     };
     let item = match self.kind {
       HeaderIterKind::Entries => {
@@ -400,7 +389,7 @@ impl HeaderIter {
       HeaderIterKind::Keys => name.into(),
       HeaderIterKind::Values => value.into(),
     };
-    Ok(header_iterator_result(scope, false, item))
+    Ok(iterator_result(scope, false, item))
   }
 }
 
@@ -453,27 +442,6 @@ fn header_iterator(
   let function = v8::Function::new(scope, iterate_header_self).unwrap();
   let _ = iter.create_data_property(scope, symbol.into(), function.into());
   let value: v8::Local<v8::Value> = iter.into();
-  Js(v8::Global::new(scope, value))
-}
-
-fn header_iterator_result(
-  scope: &mut v8::PinScope,
-  done: bool,
-  value: v8::Local<v8::Value>,
-) -> Js {
-  let object = v8::Object::new(scope);
-  let done = v8::Boolean::new(scope, done);
-  let _ = object.create_data_property(
-    scope,
-    v8::String::new(scope, "done").unwrap().into(),
-    done.into(),
-  );
-  let _ = object.create_data_property(
-    scope,
-    v8::String::new(scope, "value").unwrap().into(),
-    value,
-  );
-  let value: v8::Local<v8::Value> = object.into();
   Js(v8::Global::new(scope, value))
 }
 

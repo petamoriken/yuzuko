@@ -20,6 +20,7 @@ use yuzuko_dom::define_is_trusted;
 use yuzuko_macros::op;
 
 use crate::activation;
+use crate::util::{array_item, js_object, reject, resolve};
 
 const TEXT: &str = "text/plain";
 const HTML: &str = "text/html";
@@ -138,7 +139,7 @@ fn require_gesture(scope: &mut v8::PinScope) -> Result<(), Js> {
   if activation::allowed() {
     Ok(())
   } else {
-    Err(reject_dom(
+    Err(reject(
       scope,
       "NotAllowedError",
       "A user action on the focused window is required",
@@ -307,7 +308,7 @@ impl ClipboardItem {
   #[promise]
   fn get_type(&self, scope: &mut v8::PinScope, type_name: String) -> Js {
     let Some(parsed) = clipboard_type(&type_name) else {
-      return reject_dom(scope, "TypeError", "The clipboard type is not valid");
+      return reject(scope, "TypeError", "The clipboard type is not valid");
     };
     let found = self.parts.borrow().iter().find_map(|part| {
       if part.custom != parsed.custom || part.serialized != parsed.serialized {
@@ -319,7 +320,7 @@ impl ClipboardItem {
       })
     });
     let Some((bytes, blob_type)) = found else {
-      return reject_dom(scope, "NotFoundError", "The type is not available");
+      return reject(scope, "NotFoundError", "The type is not available");
     };
     let blob = yuzuko_winter::new_script_blob(scope, bytes, &blob_type);
     resolve(scope, blob.into())
@@ -380,7 +381,7 @@ impl Clipboard {
       return error;
     }
     if let Err(message) = store_text(data) {
-      return reject_dom(scope, "NotAllowedError", &message);
+      return reject(scope, "NotAllowedError", &message);
     }
     announce(scope);
     resolve(scope, v8::undefined(scope).into())
@@ -406,20 +407,16 @@ impl Clipboard {
       return error;
     }
     let Ok(list) = v8::Local::<v8::Array>::try_from(data) else {
-      return reject_dom(
-        scope,
-        "TypeError",
-        "Clipboard.write requires a sequence",
-      );
+      return reject(scope, "TypeError", "Clipboard.write requires a sequence");
     };
     if list.length() == 0 {
-      return reject_dom(scope, "TypeError", "Clipboard.write requires data");
+      return reject(scope, "TypeError", "Clipboard.write requires data");
     }
     let Some(value) = list.get_index(scope, 0) else {
-      return reject_dom(scope, "TypeError", "Clipboard.write requires data");
+      return reject(scope, "TypeError", "Clipboard.write requires data");
     };
     let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
-      return reject_dom(
+      return reject(
         scope,
         "TypeError",
         "Clipboard.write requires a ClipboardItem",
@@ -428,7 +425,7 @@ impl Clipboard {
     let Some(item) =
       (unsafe { yuzuko_core::op::host_ref::<ClipboardItem>(scope, object) })
     else {
-      return reject_dom(
+      return reject(
         scope,
         "TypeError",
         "Clipboard.write requires a ClipboardItem",
@@ -448,14 +445,14 @@ impl Clipboard {
       }
     }
     if text.is_none() && png.is_none() {
-      return reject_dom(
+      return reject(
         scope,
         "NotSupportedError",
         "The clipboard type is not supported",
       );
     }
     if let Err(message) = store_parts(text, png) {
-      return reject_dom(scope, "NotAllowedError", &message);
+      return reject(scope, "NotAllowedError", &message);
     }
     announce(scope);
     resolve(scope, v8::undefined(scope).into())
@@ -1138,38 +1135,6 @@ fn presentation_style(
   }
 }
 
-fn reject_dom(scope: &mut v8::PinScope, name: &str, message: &str) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  let error = if name == "TypeError" {
-    let message = v8::String::new(scope, message).unwrap();
-    v8::Exception::type_error(scope, message)
-  } else {
-    yuzuko_core::op::new_dom_exception(scope, name, message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| {
-        let message = v8::String::new(scope, message).unwrap();
-        v8::Exception::type_error(scope, message)
-      })
-  };
-  resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
-}
-
-fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  resolver.resolve(scope, value);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
-}
-
-fn js_object(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) -> Js {
-  let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
-}
-
 fn js_value(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
   Js(v8::Global::new(scope, value))
 }
@@ -1469,38 +1434,9 @@ fn read_type_list(
   let mut types = Vec::new();
   for index in 0..list.length() {
     let item = array_item(scope, list, index)?;
-    types.push(crate::shell::dialog::js_string(scope, item)?);
+    types.push(crate::util::js_string(scope, item)?);
   }
   Ok(types)
-}
-
-fn array_item<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  list: v8::Local<'_, v8::Array>,
-  index: u32,
-) -> Result<v8::Local<'s, v8::Value>, OpError> {
-  let captured = {
-    v8::tc_scope!(let tc, scope);
-    let list = yuzuko_core::op::root(tc, list);
-    match list.get_index(tc, index) {
-      Some(value) => Ok(v8::Global::new(tc, value)),
-      None => {
-        if let Some(exception) = tc.exception() {
-          Err(v8::Global::new(tc, exception))
-        } else {
-          let missing: v8::Local<v8::Value> = v8::undefined(tc).into();
-          Ok(v8::Global::new(tc, missing))
-        }
-      }
-    }
-  };
-  match captured {
-    Ok(global) => Ok(v8::Local::new(scope, global)),
-    Err(exception) => {
-      let exception = v8::Local::new(scope, exception);
-      Err(OpError::thrown(scope, exception))
-    }
-  }
 }
 
 fn read_change_id(

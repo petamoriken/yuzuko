@@ -137,7 +137,7 @@ fn open_panel(
     let Some(path) = url.path() else {
       continue;
     };
-    paths.push(super::absolute_path(std::path::PathBuf::from(
+    paths.push(crate::util::absolute_path(std::path::PathBuf::from(
       path.to_string(),
     )));
   }
@@ -175,9 +175,9 @@ pub(super) fn pick_save(
   let Some(path) = url.path() else {
     return Ok(None);
   };
-  Ok(Some(vec![super::absolute_path(std::path::PathBuf::from(
-    path.to_string(),
-  ))]))
+  Ok(Some(vec![crate::util::absolute_path(
+    std::path::PathBuf::from(path.to_string()),
+  )]))
 }
 
 fn configure_panel(

@@ -11,6 +11,8 @@ use yuzuko_core::op::Js;
 use yuzuko_dom::EventTarget;
 use yuzuko_macros::op;
 
+use crate::util::{js_object, reject, resolve};
+
 const INVALID_TYPE: &str = "The wake lock type is invalid";
 const REFUSED: &str = "The platform refused the screen wake lock";
 
@@ -171,38 +173,6 @@ impl WakeLockSentinel {
     }
     resolve(scope, v8::undefined(scope).into())
   }
-}
-
-fn reject(scope: &mut v8::PinScope, name: &str, message: &str) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  let error = if name == "TypeError" {
-    let message = v8::String::new(scope, message).unwrap();
-    v8::Exception::type_error(scope, message)
-  } else {
-    yuzuko_core::op::new_dom_exception(scope, name, message)
-      .map(v8::Local::<v8::Value>::from)
-      .unwrap_or_else(|| {
-        let message = v8::String::new(scope, message).unwrap();
-        v8::Exception::type_error(scope, message)
-      })
-  };
-  resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
-}
-
-fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  resolver.resolve(scope, value);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
-}
-
-fn js_object(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) -> Js {
-  let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
 }
 
 #[cfg(target_os = "macos")]

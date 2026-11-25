@@ -17,6 +17,7 @@ use crate::http::fetch::Extracted;
 use crate::http::fetch::Headers;
 use crate::http::fetch::extract_body;
 use crate::http::fetch::read_header_init;
+use crate::util::{reject, resolve, string_value};
 
 pub struct Prepared {
   pub method: String,
@@ -901,16 +902,6 @@ fn property<'s>(
   }
 }
 
-fn string_value(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> Result<String, OpError> {
-  value
-    .to_string(scope)
-    .map(|text| text.to_rust_string_lossy(scope))
-    .ok_or_else(|| OpError::type_("The value is not a string"))
-}
-
 fn traced_or_undefined(
   scope: &mut v8::PinScope,
   reference: &RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -921,14 +912,6 @@ fn traced_or_undefined(
     .and_then(|reference| traced_local(scope, reference))
     .map(v8::Local::<v8::Value>::from)
     .unwrap_or_else(|| v8::undefined(scope).into());
-  Js(v8::Global::new(scope, value))
-}
-
-fn resolve(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  resolver.resolve(scope, value);
-  let promise = resolver.get_promise(scope);
-  let value: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, value))
 }
 
@@ -968,26 +951,6 @@ fn reject_syntax(scope: &mut v8::PinScope) -> Js {
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let message = v8::String::new(scope, "The response is not JSON").unwrap();
   resolver.reject(scope, v8::Exception::syntax_error(scope, message));
-  let promise = resolver.get_promise(scope);
-  let value: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, value))
-}
-
-fn reject(scope: &mut v8::PinScope, error: OpError) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let exception = match error {
-    OpError::Thrown(_) => {
-      let text = v8::String::new(scope, "The operation failed").unwrap();
-      v8::Exception::type_error(scope, text)
-    }
-    other => yuzuko_core::exception_value(
-      scope,
-      other,
-      yuzuko_core::DomFallback::Error,
-      yuzuko_core::StringFailure::Unwrap,
-    ),
-  };
-  resolver.reject(scope, exception);
   let promise = resolver.get_promise(scope);
   let value: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, value))

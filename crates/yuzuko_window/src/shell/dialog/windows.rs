@@ -452,7 +452,7 @@ fn pick(
   }
   let paths: Vec<String> = chosen_paths(&buffer, multiple)
     .into_iter()
-    .map(super::absolute_path)
+    .map(crate::util::absolute_path)
     .collect();
   if paths.is_empty() {
     Ok(None)
@@ -581,7 +581,7 @@ pub(super) fn pick_directory(
     return Ok(None);
   }
   let path = String::from_utf16_lossy(&buffer[..end]);
-  Ok(Some(vec![super::absolute_path(std::path::PathBuf::from(
-    path,
-  ))]))
+  Ok(Some(vec![crate::util::absolute_path(
+    std::path::PathBuf::from(path),
+  )]))
 }

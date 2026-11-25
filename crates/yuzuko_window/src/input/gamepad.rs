@@ -28,6 +28,7 @@ use yuzuko_macros::op;
 
 use crate::TEST_INPUT;
 use crate::inbox;
+use crate::util::{js_object, reject};
 
 const STANDARD_BUTTONS: [Button; 17] = [
   Button::South,
@@ -836,25 +837,6 @@ fn js_null(scope: &mut v8::PinScope) -> Js {
   Js(v8::Global::new(scope, value))
 }
 
-fn js_object(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) -> Js {
-  let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
-}
-
-fn reject_dom(scope: &mut v8::PinScope, name: &str, message: &str) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  let error = yuzuko_core::op::new_dom_exception(scope, name, message)
-    .map(v8::Local::<v8::Value>::from)
-    .unwrap_or_else(|| {
-      let message = v8::String::new(scope, message).unwrap();
-      v8::Exception::type_error(scope, message)
-    });
-  resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
-}
-
 fn resolve_text(scope: &mut v8::PinScope, text: &str) -> Js {
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
@@ -1084,17 +1066,7 @@ struct EffectParams {
 }
 
 fn disconnected(scope: &mut v8::PinScope) -> Js {
-  reject_dom(scope, "InvalidStateError", "The gamepad is disconnected")
-}
-
-fn reject_type(scope: &mut v8::PinScope, message: &str) -> Js {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  let message = v8::String::new(scope, message).unwrap();
-  let error = v8::Exception::type_error(scope, message);
-  resolver.reject(scope, error);
-  let promise: v8::Local<v8::Value> = promise.into();
-  Js(v8::Global::new(scope, promise))
+  reject(scope, "InvalidStateError", "The gamepad is disconnected")
 }
 
 fn open_promise(
@@ -1288,7 +1260,7 @@ fn start_effect(
   }
   preempt_playing(token);
   if !effect_supported(token, kind) {
-    return reject_dom(
+    return reject(
       scope,
       "NotSupportedError",
       "The haptic effect is not supported",
@@ -1530,13 +1502,17 @@ impl GamepadHapticActuator {
     let kind = match effect_kind(scope, effect_type) {
       Ok(kind) => kind,
       Err(()) => {
-        return reject_type(scope, "The haptic effect type is invalid");
+        return reject(scope, "TypeError", "The haptic effect type is invalid");
       }
     };
     let params = match effect_parameters(scope, kind, params) {
       Ok(params) => params,
       Err(()) => {
-        return reject_type(scope, "The haptic effect parameters are invalid");
+        return reject(
+          scope,
+          "TypeError",
+          "The haptic effect parameters are invalid",
+        );
       }
     };
     start_effect(scope, self.token, kind, params)

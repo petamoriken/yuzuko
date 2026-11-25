@@ -1,10 +1,5 @@
 //! YUV and BGRA conversion into tightly packed RGBA.
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn clamp(value: i32) -> u8 {
-  value.clamp(0, 255) as u8
-}
-
 #[cfg(target_os = "linux")]
 pub struct I420<'a> {
   pub y: &'a [u8],
@@ -51,7 +46,7 @@ pub fn i420_to_rgba(
     let u_row = &u[(row / 2) * u_stride..];
     let v_row = &v[(row / 2) * v_stride..];
     for col in 0..width {
-      let (red, green, blue) = rgb(
+      let (red, green, blue) = yuv_to_rgb(
         i32::from(y_row[col]),
         i32::from(u_row[col / 2]),
         i32::from(v_row[col / 2]),
@@ -67,24 +62,34 @@ pub fn i420_to_rgba(
   Some(rgba)
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn rgb(y: i32, u: i32, v: i32, limited: bool) -> (u8, u8, u8) {
+/// BT.601 YUV to 8-bit RGB. `limited` selects studio swing.
+pub(crate) fn yuv_to_rgb(
+  y: i32,
+  u: i32,
+  v: i32,
+  limited: bool,
+) -> (u8, u8, u8) {
   let d = u - 128;
   let e = v - 128;
-  if limited {
+  let (red, green, blue) = if limited {
     let c = y - 16;
     (
-      clamp((298 * c + 409 * e + 128) >> 8),
-      clamp((298 * c - 100 * d - 208 * e + 128) >> 8),
-      clamp((298 * c + 516 * d + 128) >> 8),
+      (298 * c + 409 * e + 128) >> 8,
+      (298 * c - 100 * d - 208 * e + 128) >> 8,
+      (298 * c + 516 * d + 128) >> 8,
     )
   } else {
     (
-      clamp(y + ((359 * e) >> 8)),
-      clamp(y - ((88 * d + 183 * e) >> 8)),
-      clamp(y + ((454 * d) >> 8)),
+      y + ((359 * e) >> 8),
+      y - ((88 * d + 183 * e) >> 8),
+      y + ((454 * d) >> 8),
     )
-  }
+  };
+  (clamp_u8(red), clamp_u8(green), clamp_u8(blue))
+}
+
+fn clamp_u8(value: i32) -> u8 {
+  value.clamp(0, 255) as u8
 }
 
 /// NV12 is a Y plane plus an interleaved UV plane. `limited` selects studio swing.
@@ -111,7 +116,7 @@ pub fn nv12_to_rgba(
     let uv_row = &uv[(row / 2) * uv_stride..];
     for (col, sample) in y_row.iter().enumerate().take(width) {
       let uv_index = (col / 2) * 2;
-      let (red, green, blue) = rgb(
+      let (red, green, blue) = yuv_to_rgb(
         i32::from(*sample),
         i32::from(uv_row[uv_index]),
         i32::from(uv_row[uv_index + 1]),

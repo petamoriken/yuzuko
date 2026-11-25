@@ -12,6 +12,7 @@ use yuzuko_core::op::{
 use yuzuko_macros::op;
 
 use super::clipboard::{self, DataTransfer};
+use crate::util::js_object;
 
 pub(crate) fn prepare(scope: &mut v8::PinScope) {
   // `GetFunction` instantiates the template. `SetHandler` after that is a V8
@@ -132,11 +133,6 @@ fn file_argument<'a>(
     .get()
     .media_type();
   Some((object, type_))
-}
-
-fn js_object(scope: &mut v8::PinScope, object: v8::Local<v8::Object>) -> Js {
-  let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
 }
 
 /// One entry in a `DataTransfer`. `owner` is that store.
