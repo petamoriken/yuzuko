@@ -6,8 +6,8 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use yuzuko_core::call_method;
 use yuzuko_core::op::{Js, OpError, host_ref, traced, traced_local};
@@ -17,6 +17,11 @@ use yuzuko_winter::{
   connect, environment_origin, is_bad_port,
 };
 
+use super::common::{
+  self, clamp_unsigned_short, defined, invalid_state, mark_handled,
+  promise_slot, reject_slot, resolve_slot, resolved_promise, resolver_pair,
+  set, trace_slot, uint8_array, unacceptable_buffer,
+};
 use crate::abort::{self, AbortSignal};
 use crate::net::websocket::{parse_url, protocol_list};
 use crate::util::key;
@@ -375,17 +380,6 @@ fn stream_options(
   })
 }
 
-fn resolver_pair<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> (
-  v8::Local<'s, v8::PromiseResolver>,
-  v8::Local<'s, v8::Promise>,
-) {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  (resolver, promise)
-}
-
 fn take_prepared(id: u64) -> Option<Prepared> {
   PREPARED.with(|slot| {
     let mut prepared = slot.borrow_mut();
@@ -446,14 +440,10 @@ fn on_abort(
 }
 
 fn arm(id: u64, notes: NoteQueue) {
-  let listen = yuzuko_core::listen(move |scope| pump(scope, id));
-  let slot = Arc::new(Mutex::new(Some(listen)));
-  let wake = Arc::clone(&slot);
-  notes.listen(Arc::new(move || {
-    if let Some(listen) = wake.lock().expect("websocket stream wake").take() {
-      listen.notify();
-    }
-  }));
+  notes.listen(common::one_shot_wake(
+    "websocket stream wake",
+    move |scope| pump(scope, id),
+  ));
 }
 
 fn pump(scope: &mut v8::PinScope, id: u64) {
@@ -731,19 +721,6 @@ fn reject_both(
   mark_handled(scope, &stream.closed_promise);
 }
 
-fn mark_handled(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Promise>>>,
-) {
-  if let Some(promise) = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-  {
-    promise.mark_as_handled();
-  }
-}
-
 fn make_readable<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   id: u64,
@@ -958,30 +935,6 @@ fn error_close(
   (code, text)
 }
 
-fn unacceptable_buffer(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> bool {
-  if value.is_shared_array_buffer() {
-    return true;
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return shared_or_resizable(buffer);
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    let Some(buffer) = view.buffer(scope) else {
-      return true;
-    };
-    return shared_or_resizable(buffer);
-  }
-  false
-}
-
-fn shared_or_resizable(buffer: v8::Local<v8::ArrayBuffer>) -> bool {
-  let store = buffer.get_backing_store();
-  store.is_shared() || store.is_resizable_by_user_javascript()
-}
-
 fn stringify(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
@@ -1016,23 +969,6 @@ fn live_object<'s>(
   })
 }
 
-fn promise_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Promise>>>,
-) -> Js {
-  let promise = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference));
-  match promise {
-    Some(promise) => {
-      let value: v8::Local<v8::Value> = promise.into();
-      Js(v8::Global::new(scope, value))
-    }
-    None => Js::null(scope),
-  }
-}
-
 fn slot_local<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
@@ -1041,49 +977,6 @@ fn slot_local<'s>(
   let reference = borrowed.as_ref()?;
   traced_local(scope, reference)
     .map(|value| yuzuko_core::op::root(scope, value))
-}
-
-fn resolve_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::PromiseResolver>>>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(reference) = slot.borrow_mut().take() else {
-    return;
-  };
-  let Some(resolver) = traced_local(scope, &reference) else {
-    return;
-  };
-  let resolver = yuzuko_core::op::root(scope, resolver);
-  let value = yuzuko_core::op::root(scope, value);
-  v8::tc_scope!(let scope, scope);
-  resolver.resolve(scope, value);
-}
-
-fn reject_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::PromiseResolver>>>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(reference) = slot.borrow_mut().take() else {
-    return;
-  };
-  let Some(resolver) = traced_local(scope, &reference) else {
-    return;
-  };
-  let resolver = yuzuko_core::op::root(scope, resolver);
-  let value = yuzuko_core::op::root(scope, value);
-  v8::tc_scope!(let scope, scope);
-  resolver.reject(scope, value);
-}
-
-fn trace_slot<T>(
-  slot: &RefCell<Option<v8::TracedReference<T>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
 }
 
 fn set_function(
@@ -1113,31 +1006,6 @@ fn construct<'s>(
   function.new_instance(scope, &[source.into()])
 }
 
-fn set(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  let _ = object.create_data_property(scope, key(scope, name).into(), value);
-}
-
-fn uint8_array<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  bytes: Vec<u8>,
-) -> v8::Local<'s, v8::Uint8Array> {
-  yuzuko_core::uint8_array(scope, bytes).unwrap()
-}
-
-fn resolved_promise<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> v8::Local<'s, v8::Promise> {
-  let (resolver, promise) = resolver_pair(scope);
-  let value = v8::undefined(scope).into();
-  resolver.resolve(scope, value);
-  promise
-}
-
 fn abort_error<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
@@ -1147,15 +1015,6 @@ fn abort_error<'s>(
     "The operation was aborted.",
   )
   .unwrap_or_else(|| v8::Object::new(scope))
-}
-
-fn invalid_state<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-) -> v8::Local<'s, v8::Value> {
-  yuzuko_core::op::new_dom_exception(scope, "InvalidStateError", message)
-    .map(Into::into)
-    .unwrap_or_else(|| v8::undefined(scope).into())
 }
 
 fn fabricate<'s>(
@@ -1182,54 +1041,12 @@ fn stamp(
   object: v8::Local<v8::Object>,
   message: &str,
 ) {
-  if let Some(text) = v8::String::new(scope, message) {
-    let _ = object.define_own_property(
-      scope,
-      key(scope, "message").into(),
-      text.into(),
-      v8::PropertyAttribute::NONE,
-    );
-  }
-  if let Some(text) = v8::String::new(scope, "WebSocketError") {
-    let _ = object.define_own_property(
-      scope,
-      key(scope, "name").into(),
-      text.into(),
-      v8::PropertyAttribute::NONE,
-    );
-  }
-  let code = v8::Integer::new(scope, 0);
-  let _ = object.define_own_property(
-    scope,
-    key(scope, "code").into(),
-    code.into(),
-    v8::PropertyAttribute::READ_ONLY,
-  );
+  common::stamp_exception(scope, object, "WebSocketError", message);
 }
 
 fn link_exception(scope: &mut v8::PinScope) {
-  let Some(constructor) = WebSocketError::template(scope).get_function(scope)
-  else {
-    return;
-  };
-  let Some(prototype) = constructor
-    .get(scope, key(scope, "prototype").into())
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  else {
-    return;
-  };
-  let Some(parent) =
-    crate::exception::DOMException::template(scope).get_function(scope)
-  else {
-    return;
-  };
-  let Some(parent_prototype) = parent
-    .get(scope, key(scope, "prototype").into())
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  else {
-    return;
-  };
-  let _ = prototype.set_prototype(scope, parent_prototype.into());
+  let template = WebSocketError::template(scope);
+  common::link_exception(scope, template);
 }
 
 fn close_arguments(
@@ -1272,14 +1089,6 @@ fn close_info(
   Ok((code, reason))
 }
 
-fn defined<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  object: v8::Local<v8::Object>,
-  name: &str,
-) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  yuzuko_core::dictionary_member(scope, object, name)
-}
-
 fn checked_code(code: u16) -> Result<u16, OpError> {
   if code == 1000 || (3000..=4999).contains(&code) {
     Ok(code)
@@ -1297,15 +1106,4 @@ fn checked_reason(text: String) -> Result<String, OpError> {
   } else {
     Ok(text)
   }
-}
-
-fn clamp_unsigned_short(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> u16 {
-  let number = value.number_value(scope).unwrap_or(f64::NAN);
-  if number.is_nan() {
-    return 0;
-  }
-  number.clamp(0.0, 65535.0).round_ties_even() as u16
 }

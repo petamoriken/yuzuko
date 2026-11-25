@@ -10,7 +10,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use yuzuko_core::call_method;
 use yuzuko_core::op::{HostRef, Js, OpError, host_ref, traced, traced_local};
@@ -24,6 +23,11 @@ use yuzuko_winter::{
   connect_web_transport, next_web_transport_stream_id,
 };
 
+use super::common::{
+  self, defined, invalid_state, mark_handled, promise_slot, reject_moved,
+  reject_slot, resolve_moved, resolve_slot, resolved_promise, resolver_pair,
+  set, trace_slot, uint8_array, unacceptable_buffer,
+};
 use crate::util::key;
 
 const CONNECTING: u8 = 0;
@@ -117,7 +121,8 @@ impl WebTransport {
       return Err(OpError::type_("WebTransport requires a URL"));
     }
     let input = yuzuko_core::rust_string(scope, args.get(0));
-    let url = parse_url(&input)?;
+    let url =
+      common::parse_url(&input, &["https"], "The URL scheme is not https")?;
     yuzuko_core::authorize_url(&url)?;
     let parsed = parsed_options(scope, args)?;
     let connection = connect_web_transport(url.clone(), parsed.options);
@@ -375,13 +380,8 @@ pub(crate) fn clear() {
 }
 
 fn arm(id: u64, notes: NoteQueue) {
-  let listen = yuzuko_core::listen(move |scope| pump(scope, id));
-  let slot = Arc::new(Mutex::new(Some(listen)));
-  let wake = Arc::clone(&slot);
-  notes.listen(Arc::new(move || {
-    if let Some(listen) = wake.lock().expect("webtransport wake").take() {
-      listen.notify();
-    }
+  notes.listen(common::one_shot_wake("webtransport wake", move |scope| {
+    pump(scope, id)
   }));
 }
 
@@ -1889,27 +1889,6 @@ fn close_arguments(
   Ok((code, reason))
 }
 
-fn parse_url(input: &str) -> Result<url::Url, OpError> {
-  let url = if let Ok(url) = url::Url::parse(input) {
-    url
-  } else if let Some(base) = yuzuko_core::entry_url() {
-    let base = url::Url::parse(&base)
-      .map_err(|_| OpError::dom("SyntaxError", "The URL is invalid"))?;
-    base
-      .join(input)
-      .map_err(|_| OpError::dom("SyntaxError", "The URL is invalid"))?
-  } else {
-    return Err(OpError::dom("SyntaxError", "The URL is invalid"));
-  };
-  if url.scheme() != "https" {
-    return Err(OpError::dom("SyntaxError", "The URL scheme is not https"));
-  }
-  if url.fragment().is_some() {
-    return Err(OpError::dom("SyntaxError", "The URL has a fragment"));
-  }
-  Ok(url)
-}
-
 fn live_host(
   scope: &mut v8::PinScope,
   id: u64,
@@ -1971,17 +1950,6 @@ fn set_callback(
   Some(())
 }
 
-fn resolver_pair<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> (
-  v8::Local<'s, v8::PromiseResolver>,
-  v8::Local<'s, v8::Promise>,
-) {
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  (resolver, promise)
-}
-
 fn promise_js(scope: &mut v8::PinScope, promise: v8::Local<v8::Promise>) -> Js {
   let value: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, value))
@@ -1992,32 +1960,6 @@ fn rejected(scope: &mut v8::PinScope, error: v8::Local<v8::Value>) -> Js {
   let error = yuzuko_core::op::root(scope, error);
   resolver.reject(scope, error);
   promise_js(scope, promise)
-}
-
-fn resolved_promise<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> v8::Local<'s, v8::Promise> {
-  let (resolver, promise) = resolver_pair(scope);
-  let value = v8::undefined(scope).into();
-  resolver.resolve(scope, value);
-  promise
-}
-
-fn promise_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Promise>>>,
-) -> Js {
-  let promise = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference));
-  match promise {
-    Some(promise) => {
-      let value: v8::Local<v8::Value> = promise.into();
-      Js(v8::Global::new(scope, value))
-    }
-    None => Js::null(scope),
-  }
 }
 
 fn object_slot(
@@ -2043,78 +1985,6 @@ fn traced_object<'s>(
 ) -> Option<v8::Local<'s, v8::Object>> {
   traced_local(scope, reference)
     .map(|value| yuzuko_core::op::root(scope, value))
-}
-
-fn resolve_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::PromiseResolver>>>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(reference) = slot.borrow_mut().take() else {
-    return;
-  };
-  resolve_moved(scope, reference, value);
-}
-
-fn reject_slot(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::PromiseResolver>>>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(reference) = slot.borrow_mut().take() else {
-    return;
-  };
-  reject_moved(scope, reference, value);
-}
-
-fn resolve_moved(
-  scope: &mut v8::PinScope,
-  reference: v8::TracedReference<v8::PromiseResolver>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(resolver) = traced_local(scope, &reference) else {
-    return;
-  };
-  let resolver = yuzuko_core::op::root(scope, resolver);
-  let value = yuzuko_core::op::root(scope, value);
-  v8::tc_scope!(let scope, scope);
-  resolver.resolve(scope, value);
-}
-
-fn reject_moved(
-  scope: &mut v8::PinScope,
-  reference: v8::TracedReference<v8::PromiseResolver>,
-  value: v8::Local<v8::Value>,
-) {
-  let Some(resolver) = traced_local(scope, &reference) else {
-    return;
-  };
-  let resolver = yuzuko_core::op::root(scope, resolver);
-  let value = yuzuko_core::op::root(scope, value);
-  v8::tc_scope!(let scope, scope);
-  resolver.reject(scope, value);
-}
-
-fn mark_handled(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Promise>>>,
-) {
-  if let Some(promise) = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference))
-  {
-    promise.mark_as_handled();
-  }
-}
-
-fn trace_slot<T>(
-  slot: &RefCell<Option<v8::TracedReference<T>>>,
-  visitor: &mut v8::cppgc::Visitor,
-) {
-  if let Ok(slot) = slot.try_borrow() {
-    visitor.trace(&*slot);
-  }
 }
 
 fn trace_writes(
@@ -2171,22 +2041,6 @@ fn construct<'s>(
   }
 }
 
-fn set(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: v8::Local<v8::Value>,
-) {
-  let _ = object.create_data_property(scope, key(scope, name).into(), value);
-}
-
-fn uint8_array<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  bytes: Vec<u8>,
-) -> v8::Local<'s, v8::Uint8Array> {
-  yuzuko_core::uint8_array(scope, bytes).unwrap()
-}
-
 fn property<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   object: v8::Local<v8::Object>,
@@ -2195,14 +2049,6 @@ fn property<'s>(
   object
     .get(scope, key(scope, name).into())
     .ok_or_else(|| OpError::type_("WebTransport options must be an object"))
-}
-
-fn defined<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  object: v8::Local<v8::Object>,
-  name: &str,
-) -> Result<Option<v8::Local<'s, v8::Value>>, OpError> {
-  yuzuko_core::dictionary_member(scope, object, name)
 }
 
 fn constructor_name(
@@ -2230,30 +2076,6 @@ fn reason_code(scope: &mut v8::PinScope, reason: v8::Local<v8::Value>) -> u32 {
     return 0;
   };
   error.get().stream_error_code.unwrap_or(0)
-}
-
-fn unacceptable_buffer(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> bool {
-  if value.is_shared_array_buffer() {
-    return true;
-  }
-  if let Ok(buffer) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-    return shared_or_resizable(buffer);
-  }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-    let Some(buffer) = view.buffer(scope) else {
-      return true;
-    };
-    return shared_or_resizable(buffer);
-  }
-  false
-}
-
-fn shared_or_resizable(buffer: v8::Local<v8::ArrayBuffer>) -> bool {
-  let store = buffer.get_backing_store();
-  store.is_shared() || store.is_resizable_by_user_javascript()
 }
 
 fn clamp_unsigned_long(
@@ -2315,62 +2137,10 @@ fn stamp(
   object: v8::Local<v8::Object>,
   message: &str,
 ) {
-  if let Some(text) = v8::String::new(scope, message) {
-    let _ = object.define_own_property(
-      scope,
-      key(scope, "message").into(),
-      text.into(),
-      v8::PropertyAttribute::NONE,
-    );
-  }
-  if let Some(text) = v8::String::new(scope, "WebTransportError") {
-    let _ = object.define_own_property(
-      scope,
-      key(scope, "name").into(),
-      text.into(),
-      v8::PropertyAttribute::NONE,
-    );
-  }
-  let code = v8::Integer::new(scope, 0);
-  let _ = object.define_own_property(
-    scope,
-    key(scope, "code").into(),
-    code.into(),
-    v8::PropertyAttribute::READ_ONLY,
-  );
+  common::stamp_exception(scope, object, "WebTransportError", message);
 }
 
 fn link_exception(scope: &mut v8::PinScope) {
-  let Some(constructor) =
-    WebTransportError::template(scope).get_function(scope)
-  else {
-    return;
-  };
-  let Some(prototype) = constructor
-    .get(scope, key(scope, "prototype").into())
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  else {
-    return;
-  };
-  let Some(parent) =
-    crate::exception::DOMException::template(scope).get_function(scope)
-  else {
-    return;
-  };
-  let Some(parent_prototype) = parent
-    .get(scope, key(scope, "prototype").into())
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  else {
-    return;
-  };
-  let _ = prototype.set_prototype(scope, parent_prototype.into());
-}
-
-fn invalid_state<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: &str,
-) -> v8::Local<'s, v8::Value> {
-  yuzuko_core::op::new_dom_exception(scope, "InvalidStateError", message)
-    .map(Into::into)
-    .unwrap_or_else(|| v8::undefined(scope).into())
+  let template = WebTransportError::template(scope);
+  common::link_exception(scope, template);
 }

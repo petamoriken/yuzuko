@@ -9,6 +9,7 @@ use yuzuko_core::op::{FromV8, Js, OpError};
 use yuzuko_macros::op;
 use yuzuko_winter::{XhrSend, XhrState, extract_xhr_body};
 
+use super::common::define_constant;
 use crate::event::dispatch_progress;
 use crate::target::EventTarget;
 
@@ -378,22 +379,6 @@ fn still_current(
     return false;
   };
   xhr.get().inner.borrow().is_current(generation)
-}
-
-fn define_constant(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: i32,
-) {
-  let key = v8::String::new(scope, name).unwrap();
-  let number = v8::Integer::new(scope, value);
-  let _ = object.define_own_property(
-    scope,
-    key.into(),
-    number.into(),
-    v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
-  );
 }
 
 /// WebIDL unsigned long: `ToNumber`, then modulo 2^32. Non-finite values are 0.

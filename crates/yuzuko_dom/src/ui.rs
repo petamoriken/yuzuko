@@ -12,7 +12,7 @@ use yuzuko_core::op::{
 };
 use yuzuko_macros::op;
 
-use crate::event::{self, Event};
+use crate::event::{self, Event, traced_object};
 use crate::target;
 use crate::util::{self, key};
 
@@ -367,23 +367,6 @@ fn window_view(
 ) -> Option<v8::TracedReference<v8::Object>> {
   let global = scope.get_current_context().global(scope);
   Some(traced(scope, global))
-}
-
-fn traced_object(
-  scope: &mut v8::PinScope,
-  slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
-) -> Js {
-  let local = slot
-    .borrow()
-    .as_ref()
-    .and_then(|reference| traced_local(scope, reference));
-  match local {
-    Some(object) => {
-      let value: v8::Local<v8::Value> = object.into();
-      Js(v8::Global::new(scope, value))
-    }
-    None => Js::null(scope),
-  }
 }
 
 fn trace_optional(

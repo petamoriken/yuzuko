@@ -6,7 +6,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use yuzuko_core::op::{OpError, host_ref};
 use yuzuko_macros::op;
@@ -16,6 +15,9 @@ use yuzuko_winter::{
   new_blob, snapshot_blob, valid_protocol,
 };
 
+use super::common::{
+  self, clamp_unsigned_short, define_constant, dispatch_simple,
+};
 use crate::event::{Event, define_is_trusted};
 use crate::message::trusted_message;
 use crate::target::{self, EventTarget};
@@ -351,13 +353,8 @@ pub(crate) fn clear() {
 }
 
 fn arm(id: u64, notes: NoteQueue) {
-  let listen = yuzuko_core::listen(move |scope| pump(scope, id));
-  let slot = Arc::new(Mutex::new(Some(listen)));
-  let wake = Arc::clone(&slot);
-  notes.listen(Arc::new(move || {
-    if let Some(listen) = wake.lock().expect("websocket wake").take() {
-      listen.notify();
-    }
+  notes.listen(common::one_shot_wake("websocket wake", move |scope| {
+    pump(scope, id)
   }));
 }
 
@@ -457,17 +454,6 @@ fn dispatch_close(
   let _ = target::dispatch(scope, target, object);
 }
 
-fn dispatch_simple(
-  scope: &mut v8::PinScope,
-  target: v8::Local<v8::Object>,
-  name: &str,
-) {
-  let event = Event::new(name, false, false, false, true);
-  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
-  define_is_trusted(scope, object);
-  let _ = target::dispatch(scope, target, object);
-}
-
 fn live_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   id: u64,
@@ -482,27 +468,7 @@ fn live_object<'s>(
 }
 
 pub(crate) fn parse_url(input: &str) -> Result<url::Url, OpError> {
-  let url = if let Ok(url) = url::Url::parse(input) {
-    url
-  } else if let Some(base) = yuzuko_core::entry_url() {
-    let base = url::Url::parse(&base)
-      .map_err(|_| OpError::dom("SyntaxError", "The URL is invalid"))?;
-    base
-      .join(input)
-      .map_err(|_| OpError::dom("SyntaxError", "The URL is invalid"))?
-  } else {
-    return Err(OpError::dom("SyntaxError", "The URL is invalid"));
-  };
-  if url.scheme() != "ws" && url.scheme() != "wss" {
-    return Err(OpError::dom(
-      "SyntaxError",
-      "The URL scheme is not ws or wss",
-    ));
-  }
-  if url.fragment().is_some() {
-    return Err(OpError::dom("SyntaxError", "The URL has a fragment"));
-  }
-  Ok(url)
+  common::parse_url(input, &["ws", "wss"], "The URL scheme is not ws or wss")
 }
 
 #[derive(Default)]
@@ -611,30 +577,4 @@ fn one_protocol_text(
     return Err(OpError::dom("SyntaxError", "The protocol is invalid"));
   }
   Ok(text)
-}
-
-fn clamp_unsigned_short(
-  scope: &mut v8::PinScope,
-  value: v8::Local<v8::Value>,
-) -> u16 {
-  let number = value.number_value(scope).unwrap_or(f64::NAN);
-  if number.is_nan() {
-    return 0;
-  }
-  number.clamp(0.0, 65535.0).round_ties_even() as u16
-}
-
-fn define_constant(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: i32,
-) {
-  let number = v8::Integer::new(scope, value);
-  let _ = object.define_own_property(
-    scope,
-    key(scope, name).into(),
-    number.into(),
-    v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
-  );
 }

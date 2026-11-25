@@ -391,7 +391,7 @@ fn define_constants(scope: &mut v8::PinScope) {
   }
 }
 
-fn traced_object(
+pub(crate) fn traced_object(
   scope: &mut v8::PinScope,
   slot: &RefCell<Option<v8::TracedReference<v8::Object>>>,
 ) -> Js {

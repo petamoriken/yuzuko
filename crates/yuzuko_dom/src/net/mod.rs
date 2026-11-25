@@ -5,6 +5,8 @@
 //! `WebSocket`, `WebSocketStream`, and `WebTransport` are installed with the
 //! `socket` feature.
 
+#[cfg(any(feature = "fetch", feature = "socket"))]
+mod common;
 #[cfg(feature = "fetch")]
 pub(crate) mod event_source;
 #[cfg(feature = "socket")]

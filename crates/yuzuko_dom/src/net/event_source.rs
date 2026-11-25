@@ -9,7 +9,7 @@ use yuzuko_core::op::OpError;
 use yuzuko_macros::op;
 use yuzuko_winter::{BodyNote, SseItem, SseParser, perform};
 
-use crate::event::define_is_trusted;
+use super::common::{self, define_constant, dispatch_simple};
 use crate::message::trusted_message;
 use crate::target::{self, EventTarget};
 use crate::util::{self, key};
@@ -426,13 +426,8 @@ fn arm(id: u64) {
   let Some(notes) = live_notes(id) else {
     return;
   };
-  let listen = yuzuko_core::listen(move |scope| pump(scope, id));
-  let slot = Arc::new(Mutex::new(Some(listen)));
-  let wake_slot = Arc::clone(&slot);
-  notes.listen(Arc::new(move || {
-    if let Some(listen) = wake_slot.lock().expect("event source wake").take() {
-      listen.notify();
-    }
+  notes.listen(common::one_shot_wake("event source wake", move |scope| {
+    pump(scope, id)
   }));
 }
 
@@ -560,30 +555,4 @@ fn live_object<'s>(
       .find(|(stored, _)| *stored == id)
       .map(|(_, live)| v8::Local::new(scope, &live.object))
   })
-}
-
-fn dispatch_simple(
-  scope: &mut v8::PinScope,
-  target: v8::Local<v8::Object>,
-  name: &str,
-) {
-  let event = crate::event::Event::new(name, false, false, false, true);
-  let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
-  define_is_trusted(scope, object);
-  let _ = target::dispatch(scope, target, object);
-}
-
-fn define_constant(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-  name: &str,
-  value: i32,
-) {
-  let number = v8::Integer::new(scope, value);
-  let _ = object.define_own_property(
-    scope,
-    key(scope, name).into(),
-    number.into(),
-    v8::PropertyAttribute::READ_ONLY | v8::PropertyAttribute::DONT_DELETE,
-  );
 }
