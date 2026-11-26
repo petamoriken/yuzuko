@@ -25,6 +25,31 @@ pub struct ImageFrames {
   pub repetition_count: f64,
 }
 
+/// The most pixels every frame of one animation may hold together. Each
+/// frame is a full canvas, so a small file with many frames on a large
+/// canvas would otherwise allocate without bound.
+pub const MAX_ANIMATION_PIXELS: u64 = 1 << 28;
+
+/// Pixels decoded so far for one animation.
+struct FrameBudget(u64);
+
+impl FrameBudget {
+  fn new() -> Self {
+    Self(0)
+  }
+
+  /// Counts one `width` by `height` frame before it is composited.
+  fn charge(&mut self, width: u32, height: u32) -> Result<(), DecodeError> {
+    let next = self
+      .0
+      .checked_add(u64::from(width) * u64::from(height))
+      .filter(|total| *total <= MAX_ANIMATION_PIXELS)
+      .ok_or(DecodeError::TooLarge)?;
+    self.0 = next;
+    Ok(())
+  }
+}
+
 pub(super) fn decode_all(
   bytes: &[u8],
   to_srgb: bool,
@@ -113,6 +138,7 @@ fn decode_png_frames(
   let mut buffer = vec![0u8; size];
   let mut canvas = PngCanvas::new(canvas_w, canvas_h)?;
   let mut frames = Vec::new();
+  let mut budget = FrameBudget::new();
   let mut pending: Option<PendingDispose> = None;
   for _ in 0..count {
     let output = reader
@@ -151,6 +177,7 @@ fn decode_png_frames(
     if dispose == png::DisposeOp::Previous {
       canvas.snapshot_previous();
     }
+    budget.charge(canvas_w, canvas_h)?;
     let pixels = &buffer[..output.buffer_size()];
     canvas.blend(&output, pixels, &control)?;
     let mut raster = canvas.raster()?;
@@ -534,8 +561,10 @@ fn decode_webp_frames(
   if count == 0 {
     return Err(DecodeError::Corrupt);
   }
-  let mut frames = Vec::with_capacity(count as usize);
+  let mut frames = Vec::new();
+  let mut budget = FrameBudget::new();
   for _ in 0..count {
+    budget.charge(width, height)?;
     let milliseconds = decoder
       .read_frame(&mut pixels)
       .map_err(|_| DecodeError::Corrupt)?;
@@ -577,9 +606,11 @@ fn decode_jxl_frames(
     return Err(DecodeError::Corrupt);
   }
   let (icc, cicp) = super::jxl_color(&image);
-  let mut frames = Vec::with_capacity(count);
+  let mut frames = Vec::new();
+  let mut budget = FrameBudget::new();
   for index in 0..count {
     let (mut raster, ticks) = super::jxl_frame(&image, index)?;
+    budget.charge(raster.width, raster.height)?;
     let decoded = super::finish(&mut raster, icc.as_deref(), cicp, to_srgb, 1)?;
     frames.push(ImageFrame {
       raster: decoded.raster,
@@ -715,6 +746,7 @@ fn load_gif(
   let mut saved: Option<Vec<u8>> = None;
   let mut pending: Option<GifPending> = None;
   let mut frames = Vec::new();
+  let mut budget = FrameBudget::new();
   loop {
     if limit.is_some_and(|limit| frames.len() >= limit) {
       break;
@@ -752,6 +784,7 @@ fn load_gif(
     ) {
       return Err(DecodeError::Corrupt);
     }
+    budget.charge(width, height)?;
     apply_gif_dispose(&mut canvas, width, pending.take(), &mut saved)?;
     if copied.dispose == gif::DisposalMethod::Previous {
       saved = Some(canvas.clone());
@@ -1292,5 +1325,40 @@ mod tests {
     assert!(repetition.is_infinite());
     let total: f64 = spline.iter().map(|duration| duration.unwrap()).sum();
     assert_eq!(total, 1_200_000.0, "{spline:?}");
+  }
+  fn many_frame_gif(width: u16, height: u16, count: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    {
+      let mut encoder =
+        gif::Encoder::new(&mut bytes, width, height, &[255, 0, 0, 0, 0, 0])
+          .unwrap();
+      // A 1 x 1 frame on a large screen costs a few bytes each and decodes
+      // to a full screen.
+      for _ in 0..count {
+        let frame = gif::Frame {
+          width: 1,
+          height: 1,
+          buffer: std::borrow::Cow::Owned(vec![0]),
+          ..gif::Frame::default()
+        };
+        encoder.write_frame(&frame).unwrap();
+      }
+    }
+    bytes
+  }
+
+  #[test]
+  fn animation_frames_share_a_pixel_budget() {
+    let side = 4096u16;
+    let per_frame = u64::from(side) * u64::from(side);
+    let over = (MAX_ANIMATION_PIXELS / per_frame) as usize + 1;
+    let bytes = many_frame_gif(side, side, over);
+    assert!(bytes.len() < 4096, "{} bytes", bytes.len());
+    assert_eq!(decode_all(&bytes, true).err(), Some(DecodeError::TooLarge));
+    // The first frame alone still decodes for a still image.
+    assert!(decode_gif(&bytes, true).is_ok());
+    // An animation inside the budget decodes every frame.
+    let small = many_frame_gif(64, 64, 3);
+    assert_eq!(decode_all(&small, true).unwrap().frames.len(), 3);
   }
 }
