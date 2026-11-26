@@ -495,22 +495,21 @@ impl MessagePort {
     let transfer = transfer.unwrap_or_else(|| v8::undefined(scope).into());
     let message = v8::Local::new(scope, v8::Global::new(scope, message));
     let transfer = v8::Local::new(scope, v8::Global::new(scope, transfer));
+    // HTML message port post message steps: a closed or unentangled port
+    // has no target. The message is still serialized with its transfer
+    // list, so a transferred buffer detaches and a bad value throws, and
+    // then nothing is queued.
     let peer = PORTS.with(|slot| {
       let ports = slot.borrow();
-      let state = ports.get(&self.id);
-      match state {
-        Some(state) if state.closed => {
-          Err(OpError::dom("InvalidStateError", "The port is closed"))
-        }
-        Some(state) => Ok(state.peer),
-        None => Err(OpError::dom("InvalidStateError", "The port is closed")),
-      }
-    })?;
-    let Some(peer) = peer else {
-      return Ok(());
-    };
+      ports
+        .get(&self.id)
+        .filter(|state| !state.closed)
+        .and_then(|state| state.peer)
+    });
     let (objects, buffers) = transfer_parts(scope, transfer)?;
-    if port_agent(peer) != yuzuko_core::agent_id() {
+    if let Some(peer) = peer
+      && port_agent(peer) != yuzuko_core::agent_id()
+    {
       return post_port_remote(scope, peer, message, &objects, &buffers);
     }
     // A transferred ArrayBuffer moves its backing store. Detach afterward
@@ -540,6 +539,9 @@ impl MessagePort {
       let buffer = v8::Local::new(scope, buffer);
       let _ = buffer.detach(None);
     }
+    let Some(peer) = peer else {
+      return Ok(());
+    };
     let started = PORTS.with(|slot| {
       let mut ports = slot.borrow_mut();
       let Some(state) = ports.get_mut(&peer) else {

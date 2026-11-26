@@ -1590,3 +1590,22 @@ Yuzuko.test("a transfer detached during serialization throws DataCloneError", as
   channel.port1.close();
   channel.port2.close();
 });
+
+Yuzuko.test("a closed MessagePort still serializes and transfers", () => {
+  const channel = new MessageChannel();
+  channel.port1.close();
+  const buffer = new ArrayBuffer(8);
+  channel.port1.postMessage(buffer, [buffer]);
+  if (buffer.byteLength !== 0) {
+    throw new Error("the transferred buffer stayed attached");
+  }
+  try {
+    channel.port1.postMessage(() => {});
+    throw new Error("a function was posted");
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "DataCloneError") {
+      throw error;
+    }
+  }
+  channel.port2.close();
+});
