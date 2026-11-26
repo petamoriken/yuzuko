@@ -264,6 +264,9 @@ pub fn serialize_parcel(
     if serializer.write_value(context, value).is_none() {
       return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
     }
+    if !crate::realm::transfers_still_attached(tc, buffers) {
+      return Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)));
+    }
     let bytes = serializer.release();
     (bytes, moved)
   };

@@ -1554,3 +1554,39 @@ Yuzuko.test("postMessage delivers / and serializes a foreign origin", async () =
   }
   console.log("postMessage uncloneable DataCloneError");
 });
+
+Yuzuko.test("a transfer detached during serialization throws DataCloneError", async () => {
+  const transfersDuring = (post: (value: unknown, buffer: ArrayBuffer) => void) => {
+    const buffer = new ArrayBuffer(8);
+    new Uint8Array(buffer)[0] = 7;
+    let stolen: ArrayBuffer | undefined;
+    const value = {
+      buffer,
+      get steal() {
+        stolen = buffer.transfer();
+        return 0;
+      },
+    };
+    try {
+      post(value, buffer);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== "DataCloneError") {
+        throw new Error("unexpected " + String(error));
+      }
+      if (stolen === undefined || new Uint8Array(stolen)[0] !== 7) {
+        throw new Error("stolen buffer");
+      }
+      return;
+    }
+    throw new Error("transfer of a detached buffer succeeded");
+  };
+  transfersDuring((value, buffer) => {
+    structuredClone(value, { transfer: [buffer] });
+  });
+  const channel = new MessageChannel();
+  transfersDuring((value, buffer) => {
+    channel.port1.postMessage(value, [buffer]);
+  });
+  channel.port1.close();
+  channel.port2.close();
+});

@@ -452,6 +452,8 @@ pub fn clone_value_with_buffers<'s>(
         if serializer.write_value(context, value).is_none() {
           promote_shared_array_buffer_error!(tc);
           Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
+        } else if !transfers_still_attached(tc, buffers) {
+          Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown)))
         } else {
           let bytes = serializer.release();
           let deserializer =
@@ -511,6 +513,27 @@ fn moved_array_buffers(
     serializer.transfer_array_buffer(id, buffer);
   }
   Ok(stores)
+}
+
+/// Whether every transferred buffer is still attached after `write_value`.
+///
+/// HTML StructuredSerializeWithTransfer throws `DataCloneError` when a
+/// transferred buffer is detached by the time it is moved. A getter can run
+/// during serialization and detach the buffer, for example with
+/// `ArrayBuffer.prototype.transfer`, which keeps the backing store taken
+/// before `write_value`. Moving that store would give it two owners.
+pub(crate) fn transfers_still_attached(
+  scope: &mut v8::PinScope,
+  buffers: &[v8::Global<v8::ArrayBuffer>],
+) -> bool {
+  for buffer in buffers {
+    let buffer = v8::Local::new(scope, buffer);
+    if buffer.was_detached() || !buffer.is_detachable() {
+      clone::throw_data_clone(scope, "The ArrayBuffer cannot be transferred");
+      return false;
+    }
+  }
+  true
 }
 
 fn install_moved_array_buffers(

@@ -832,3 +832,20 @@ Yuzuko.test("worker URLs, decoding, and parse errors", async () => {
   assert(closed.length === 1 && closed[0] === "after", closed.join(","));
   closer.terminate();
 });
+
+Yuzuko.test("a worker transfer detached during serialization throws", () => {
+  const worker = new Worker(script("echo.js"));
+  const buffer = new ArrayBuffer(8);
+  let stolen: ArrayBuffer | undefined;
+  const value = {
+    buffer,
+    get steal() {
+      stolen = buffer.transfer();
+      return 0;
+    },
+  };
+  const error = thrown(() => worker.postMessage(value, [buffer]));
+  worker.terminate();
+  assert(error.name === "DataCloneError", error.name + ": " + error.message);
+  assert(stolen !== undefined && stolen.byteLength === 8, "stolen buffer");
+});
