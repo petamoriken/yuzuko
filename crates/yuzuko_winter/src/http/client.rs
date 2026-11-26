@@ -996,6 +996,12 @@ fn raw_request(
   message
 }
 
+/// The largest response head, and the largest chunk trailer section.
+const HEAD_LIMIT: usize = 1024 * 1024;
+
+/// The longest chunk-size or trailer line.
+const LINE_LIMIT: usize = 64 * 1024;
+
 async fn next_http1_head(
   stream: &mut tokio::net::TcpStream,
   mut pending: Vec<u8>,
@@ -1009,6 +1015,11 @@ async fn next_http1_head(
       let rest = pending[split + separator..].to_vec();
       let parsed = parse_raw_headers(&header_bytes)?;
       return Ok((parsed, rest));
+    }
+    if pending.len() > HEAD_LIMIT {
+      return Err(HttpFailure::Type(
+        "The response headers are too large".to_string(),
+      ));
     }
     if cancel.load(Ordering::Relaxed) {
       return Err(HttpFailure::Abort);
@@ -1054,7 +1065,7 @@ async fn read_raw_head(
     if let Some(found) = find_header_end(&buffered) {
       break found;
     }
-    if buffered.len() > 1024 * 1024 {
+    if buffered.len() > HEAD_LIMIT {
       return Err(HttpFailure::Type(
         "The response headers are too large".to_string(),
       ));
@@ -1252,10 +1263,16 @@ async fn forward_chunked(
       return Ok(());
     };
     if size == 0 {
+      let mut trailers = 0usize;
       loop {
         match read_line(stream, &mut pending, cancel).await {
           Ok(trailer) if trailer.is_empty() => break,
-          Ok(_) => {}
+          Ok(trailer) => {
+            trailers += trailer.len() + 2;
+            if trailers > HEAD_LIMIT {
+              break;
+            }
+          }
           Err(_) => break,
         }
       }
@@ -1491,7 +1508,7 @@ async fn raw_http1_exchange(
     if let Some(found) = find_header_end(&buffered) {
       break found;
     }
-    if buffered.len() > 1024 * 1024 {
+    if buffered.len() > HEAD_LIMIT {
       return Err(HttpFailure::Type(
         "The response headers are too large".to_string(),
       ));
@@ -1719,10 +1736,17 @@ async fn read_chunked(
       HttpFailure::Network("A chunk size is invalid".to_string())
     })?;
     if size == 0 {
+      let mut trailers = 0usize;
       loop {
         let trailer = read_line(stream, &mut pending, cancel).await?;
         if trailer.is_empty() {
           break;
+        }
+        trailers += trailer.len() + 2;
+        if trailers > HEAD_LIMIT {
+          return Err(HttpFailure::Network(
+            "The chunk trailers are too large".to_string(),
+          ));
         }
       }
       return Ok(body);
@@ -1741,39 +1765,44 @@ async fn read_chunked(
   }
 }
 
+/// One CRLF- or LF-terminated line. Bytes after it stay in `pending`.
 async fn read_line(
   stream: &mut tokio::net::TcpStream,
   pending: &mut Vec<u8>,
   cancel: &Arc<AtomicBool>,
 ) -> Result<Vec<u8>, HttpFailure> {
   use tokio::io::AsyncReadExt;
-  let mut line = Vec::new();
-  let mut tmp = [0u8; 1];
+  let mut searched = 0;
   loop {
-    let byte = if !pending.is_empty() {
-      pending.remove(0)
-    } else {
-      if cancel.load(Ordering::Relaxed) {
-        return Err(HttpFailure::Abort);
-      }
-      let read = stream
-        .read(&mut tmp)
-        .await
-        .map_err(|error| HttpFailure::Network(error.to_string()))?;
-      if read == 0 {
-        return Err(HttpFailure::Network(
-          "The connection closed before the body ended".to_string(),
-        ));
-      }
-      tmp[0]
-    };
-    if byte == b'\n' {
+    if let Some(found) =
+      pending[searched..].iter().position(|byte| *byte == b'\n')
+    {
+      let end = searched + found;
+      let mut line: Vec<u8> = pending.drain(..=end).collect();
+      line.pop();
       if line.last() == Some(&b'\r') {
         line.pop();
       }
       return Ok(line);
     }
-    line.push(byte);
+    searched = pending.len();
+    if pending.len() > LINE_LIMIT {
+      return Err(HttpFailure::Network("A chunk line is too long".to_string()));
+    }
+    if cancel.load(Ordering::Relaxed) {
+      return Err(HttpFailure::Abort);
+    }
+    let mut tmp = [0u8; 8192];
+    let read = stream
+      .read(&mut tmp)
+      .await
+      .map_err(|error| HttpFailure::Network(error.to_string()))?;
+    if read == 0 {
+      return Err(HttpFailure::Network(
+        "The connection closed before the body ended".to_string(),
+      ));
+    }
+    pending.extend_from_slice(&tmp[..read]);
   }
 }
 

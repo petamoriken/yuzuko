@@ -39,17 +39,36 @@ fn read_head(stream: &mut TcpStream) {
 /// Serves `responses` to successive connections, then runs `script`, which
 /// can read the port from `PORT`.
 fn serve(name: &str, responses: Vec<Vec<u8>>, script: &str) -> Output {
+  serve_holding(name, responses, Duration::from_millis(100), script)
+}
+
+/// Like `serve`, but keeps each connection open for `hold` after writing,
+/// so a client that waits for more bytes is still waiting.
+fn serve_holding(
+  name: &str,
+  responses: Vec<Vec<u8>>,
+  hold: Duration,
+  script: &str,
+) -> Output {
   let listener = TcpListener::bind("127.0.0.1:0").unwrap();
   let port = listener.local_addr().unwrap().port();
   let server = thread::spawn(move || {
+    let mut connections = Vec::new();
     for response in responses {
       let Ok((mut stream, _)) = listener.accept() else {
-        return;
+        break;
       };
-      read_head(&mut stream);
-      let _ = stream.write_all(&response);
-      let _ = stream.flush();
-      thread::sleep(Duration::from_millis(100));
+      // Each connection has its own thread, so a held one does not delay
+      // the next accept.
+      connections.push(thread::spawn(move || {
+        read_head(&mut stream);
+        let _ = stream.write_all(&response);
+        let _ = stream.flush();
+        thread::sleep(hold);
+      }));
+    }
+    for connection in connections {
+      let _ = connection.join();
     }
   });
   let dir = scratch(name);
@@ -101,4 +120,38 @@ console.log("alive");
   assert!(stdout.contains("large TypeError"), "{stdout}\n{stderr}");
   assert!(stdout.contains("max TypeError"), "{stdout}\n{stderr}");
   assert!(stdout.contains("alive"), "{stdout}\n{stderr}");
+}
+
+#[test]
+fn an_unterminated_line_or_head_rejects_without_waiting() {
+  let filler = "a".repeat(2 * 1024 * 1024);
+  let line =
+    format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{filler}");
+  let head =
+    format!("HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nX: {filler}");
+  let output = serve_holding(
+    "unterminated",
+    vec![line.into_bytes(), head.into_bytes()],
+    Duration::from_secs(30),
+    r#"for (const label of ["line", "head"]) {
+  const started = Date.now();
+  try {
+    const response = await fetch(`http://127.0.0.1:${PORT}/${label}`);
+    await response.arrayBuffer();
+    console.log(label + " read");
+  } catch (error) {
+    console.log(label + " " + error.name);
+  }
+  // The server holds the connection for 30 seconds after the bytes.
+  console.log(label + (Date.now() - started < 20000 ? " prompt" : " waited"));
+}
+"#,
+  );
+  let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+  let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+  assert!(output.status.success(), "{stdout}\n{stderr}");
+  assert!(stdout.contains("line TypeError"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("head TypeError"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("line prompt"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("head prompt"), "{stdout}\n{stderr}");
 }
