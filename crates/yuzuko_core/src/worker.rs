@@ -799,6 +799,9 @@ fn load_blob_script(url: &str) -> Result<String, String> {
 }
 
 fn decode_data_url(url: &str) -> Result<String, String> {
+  // Fetch's data: URL processor serializes the URL without its fragment.
+  // A serialized URL starts its fragment at the first `#`.
+  let url = url.split_once('#').map_or(url, |(before, _)| before);
   let rest = url
     .strip_prefix("data:")
     .ok_or_else(|| "The data URL is invalid".to_string())?;
@@ -869,6 +872,18 @@ mod tests {
   fn plain_data_url_percent_decodes() {
     let text = decode_data_url("data:text/javascript,hi%21").unwrap();
     assert_eq!(text, "hi!");
+  }
+
+  #[test]
+  fn a_fragment_is_not_part_of_the_payload() {
+    let text =
+      decode_data_url("data:text/javascript,postMessage(1)#x").unwrap();
+    assert_eq!(text, "postMessage(1)");
+    let text =
+      decode_data_url("data:text/javascript;base64,aGk=#frag").unwrap();
+    assert_eq!(text, "hi");
+    let text = decode_data_url("data:text/javascript,a%23b#c").unwrap();
+    assert_eq!(text, "a#b");
   }
 
   #[test]

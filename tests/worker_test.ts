@@ -849,3 +849,10 @@ Yuzuko.test("a worker transfer detached during serialization throws", () => {
   assert(error.name === "DataCloneError", error.name + ": " + error.message);
   assert(stolen !== undefined && stolen.byteLength === 8, "stolen buffer");
 });
+
+Yuzuko.test("a data: worker URL drops its fragment", async () => {
+  const worker = new Worker("data:text/javascript,postMessage(1)#frag");
+  const value = await nextMessage(worker);
+  worker.terminate();
+  assert(value === 1, String(value));
+});
