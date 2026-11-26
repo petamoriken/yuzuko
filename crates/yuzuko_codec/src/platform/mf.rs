@@ -32,19 +32,19 @@ use windows::Win32::Graphics::Direct3D11::{
   ID3D11Device, ID3D11Multithread, ID3D11VideoDevice,
 };
 use windows::Win32::Media::MediaFoundation::{
-  IMF2DBuffer, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
+  IMF2DBuffer2, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
   IMFMediaBuffer, IMFMediaType, IMFSample, IMFTransform,
   MF_E_TRANSFORM_NEED_MORE_INPUT, MF_E_TRANSFORM_STREAM_CHANGE, MF_LOW_LATENCY,
   MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
   MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_SA_D3D11_AWARE, MF_VERSION,
-  MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateMemoryBuffer,
-  MFCreateSample, MFMediaType_Video, MFSTARTUP_NOSOCKET, MFStartup,
-  MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT, MFT_MESSAGE_COMMAND_DRAIN,
-  MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM,
-  MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER,
-  MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO, MFTEnumEx,
-  MFVideoFormat_ARGB32, MFVideoFormat_AV1, MFVideoFormat_H264,
-  MFVideoFormat_NV12, MFVideoFormat_RGB32,
+  MF2DBuffer_LockFlags_Read, MFCreateDXGIDeviceManager, MFCreateMediaType,
+  MFCreateMemoryBuffer, MFCreateSample, MFMediaType_Video, MFSTARTUP_NOSOCKET,
+  MFStartup, MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT,
+  MFT_MESSAGE_COMMAND_DRAIN, MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,
+  MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER,
+  MFT_OUTPUT_DATA_BUFFER, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES,
+  MFT_REGISTER_TYPE_INFO, MFTEnumEx, MFVideoFormat_ARGB32, MFVideoFormat_AV1,
+  MFVideoFormat_H264, MFVideoFormat_NV12, MFVideoFormat_RGB32,
 };
 use windows::Win32::System::Com::{
   COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree,
@@ -413,7 +413,7 @@ impl Session {
       .unwrap_or(0);
     let buffer = unsafe { sample.ConvertToContiguousBuffer() }
       .map_err(|_| DecodeError::Rejected)?;
-    let rgba = if let Ok(image) = buffer.cast::<IMF2DBuffer>() {
+    let rgba = if let Ok(image) = buffer.cast::<IMF2DBuffer2>() {
       rgba_2d(&image, &subtype, width, height)?
     } else {
       rgba_linear(&buffer, &subtype, width, height, stride)?
@@ -621,7 +621,7 @@ fn take_sample(buffer: &mut MFT_OUTPUT_DATA_BUFFER) -> Option<IMFSample> {
 }
 
 fn rgba_2d(
-  image: &IMF2DBuffer,
+  image: &IMF2DBuffer2,
   subtype: &GUID,
   width: u32,
   height: u32,
@@ -629,10 +629,22 @@ fn rgba_2d(
   unsafe {
     let mut scan = null_mut();
     let mut pitch = 0i32;
+    let mut buffer_start = null_mut();
+    let mut buffer_length = 0u32;
     image
-      .Lock2D(&mut scan, &mut pitch)
+      .Lock2DSize(
+        MF2DBuffer_LockFlags_Read,
+        &mut scan,
+        &mut pitch,
+        &mut buffer_start,
+        &mut buffer_length,
+      )
       .map_err(|_| DecodeError::Rejected)?;
-    let rgba = pixels_from_pointer(scan, pitch, subtype, width, height);
+    let locked = Locked {
+      buffer_start,
+      buffer_length: buffer_length as usize,
+    };
+    let rgba = pixels_from_pointer(scan, pitch, subtype, width, height, locked);
     let _ = image.Unlock2D();
     rgba
   }
@@ -663,34 +675,74 @@ fn rgba_linear(
     } else {
       i32::try_from(width.saturating_mul(4)).unwrap_or(0)
     };
-    let rgba = pixels_from_pointer(data, pitch, subtype, width, height);
+    // A linear buffer starts at its lowest address. A negative default
+    // stride stores the bottom row first, which is the layout the strided
+    // path reads from its lowest scan line.
+    let locked = Locked {
+      buffer_start: data,
+      buffer_length: current as usize,
+    };
+    let scan = if pitch < 0 {
+      let rows = plane_rows(subtype, height) as isize;
+      data.wrapping_offset(-(pitch as isize) * (rows - 1))
+    } else {
+      data
+    };
+    let rgba = pixels_from_pointer(scan, pitch, subtype, width, height, locked);
     let _ = buffer.Unlock();
     rgba
   }
 }
 
+/// The locked memory a decoder output may be read from.
+struct Locked {
+  buffer_start: *mut u8,
+  buffer_length: usize,
+}
+
+fn plane_rows(subtype: &GUID, height: u32) -> usize {
+  let rows = height as usize;
+  if *subtype == MFVideoFormat_NV12 {
+    rows + rows.div_ceil(2)
+  } else {
+    rows
+  }
+}
+
+/// Copies the planes that start at scan line `data`, after checking that
+/// every row lies inside `locked`.
 fn pixels_from_pointer(
   data: *mut u8,
   pitch: i32,
   subtype: &GUID,
   width: u32,
   height: u32,
+  locked: Locked,
 ) -> Result<Vec<u8>, DecodeError> {
-  if data.is_null() || width == 0 || height == 0 || pitch == 0 {
+  if data.is_null()
+    || locked.buffer_start.is_null()
+    || width == 0
+    || height == 0
+    || pitch == 0
+  {
     return Err(DecodeError::Rejected);
   }
   let abs_pitch = pitch.unsigned_abs() as usize;
   let rows = height as usize;
   let nv12 = *subtype == MFVideoFormat_NV12;
-  let plane_rows = if nv12 { rows + rows.div_ceil(2) } else { rows };
+  let plane_rows = plane_rows(subtype, height);
   let bytes = abs_pitch
     .checked_mul(plane_rows)
     .ok_or(DecodeError::Rejected)?;
-  let start = if pitch < 0 {
-    unsafe { data.offset(pitch as isize * (plane_rows as isize - 1)) }
-  } else {
-    data
-  };
+  let offset = crate::layout::plane_offset(
+    data as usize,
+    pitch,
+    plane_rows,
+    locked.buffer_start as usize,
+    locked.buffer_length,
+  )
+  .ok_or(DecodeError::Rejected)?;
+  let start = locked.buffer_start.wrapping_add(offset);
   let copied = unsafe { std::slice::from_raw_parts(start, bytes) }.to_vec();
   if nv12 {
     let y = &copied[..abs_pitch * rows];

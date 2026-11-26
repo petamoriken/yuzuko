@@ -1427,3 +1427,48 @@ mod tests {
     );
   }
 }
+
+/// The offset into the locked buffer of the lowest byte that
+/// `plane_rows` rows of `pitch` starting at scan line `first` use, when
+/// every byte lies inside the buffer. A negative pitch walks down from
+/// `first`.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn plane_offset(
+  first: usize,
+  pitch: i32,
+  plane_rows: usize,
+  buffer_start: usize,
+  buffer_length: usize,
+) -> Option<usize> {
+  let abs_pitch = pitch.unsigned_abs() as usize;
+  if abs_pitch == 0 || plane_rows == 0 {
+    return None;
+  }
+  let span = abs_pitch.checked_mul(plane_rows)?;
+  let lowest = if pitch < 0 {
+    first.checked_sub(abs_pitch * (plane_rows - 1))?
+  } else {
+    first
+  };
+  let offset = lowest.checked_sub(buffer_start)?;
+  (offset.checked_add(span)? <= buffer_length).then_some(offset)
+}
+
+#[cfg(test)]
+mod plane_offset_tests {
+  use super::plane_offset;
+
+  #[test]
+  fn rows_must_lie_in_the_locked_buffer() {
+    // Four rows of 16 bytes in a 64-byte buffer at 1000.
+    assert_eq!(plane_offset(1000, 16, 4, 1000, 64), Some(0));
+    assert_eq!(plane_offset(1000, 16, 4, 1000, 63), None);
+    assert_eq!(plane_offset(1016, 16, 4, 1000, 64), None);
+    // A negative pitch starts at the last row in memory.
+    assert_eq!(plane_offset(1048, -16, 4, 1000, 64), Some(0));
+    assert_eq!(plane_offset(1032, -16, 4, 1000, 64), None);
+    assert_eq!(plane_offset(16, -16, 4, 0, 64), None);
+    assert_eq!(plane_offset(usize::MAX - 8, 16, 4, 0, usize::MAX), None);
+    assert_eq!(plane_offset(1000, 0, 4, 1000, 64), None);
+  }
+}
