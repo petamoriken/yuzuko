@@ -21,6 +21,9 @@ const MAX_HEAD: usize = 65_536;
 const MAX_BODY: usize = 1_048_576;
 const MAX_TARGET: usize = 8_192;
 const IO_WAIT: Duration = Duration::from_millis(50);
+/// How long an accepted connection has to deliver its whole request. A
+/// client that sends nothing, or sends slowly, cannot hold `accept`.
+const REQUEST_WAIT: Duration = Duration::from_secs(10);
 
 const OPTIONS: &str = "Options must be an object.";
 const OPTIONS_READ: &str = "The options could not be read.";
@@ -253,6 +256,13 @@ fn configure(stream: &TcpStream) -> io::Result<()> {
 }
 
 fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
+  accept_request_within(shared, REQUEST_WAIT)
+}
+
+fn accept_request_within(
+  shared: &ServerShared,
+  wait: Duration,
+) -> Result<RequestParts, Fail> {
   if shared.is_closed() {
     return Err(Fail::Closed);
   }
@@ -293,7 +303,8 @@ fn accept_request(shared: &ServerShared) -> Result<RequestParts, Fail> {
     }
   };
   configure(&stream).map_err(|error| io_fail(error, Fail::Accept))?;
-  let parsed = read_request(&mut stream, &shared.closed)?;
+  let deadline = std::time::Instant::now() + wait;
+  let parsed = read_request(&mut stream, &shared.closed, deadline)?;
   Ok(RequestParts {
     stream,
     method: parsed.method,
@@ -311,6 +322,7 @@ struct Incoming {
 fn read_request(
   stream: &mut TcpStream,
   closed: &AtomicBool,
+  deadline: std::time::Instant,
 ) -> Result<Incoming, Fail> {
   let mut buf = Vec::new();
   let mut header_at: Option<usize> = None;
@@ -345,7 +357,10 @@ fn read_request(
         });
       }
     }
-    let count = read_some(stream, &mut buf, closed)?;
+    if std::time::Instant::now() >= deadline {
+      return Err(Fail::Request);
+    }
+    let count = read_some(stream, &mut buf, closed, deadline)?;
     if count == 0 {
       return Err(if closed.load(Ordering::Acquire) {
         Fail::Closed
@@ -360,6 +375,7 @@ fn read_some(
   stream: &mut TcpStream,
   buf: &mut Vec<u8>,
   closed: &AtomicBool,
+  deadline: std::time::Instant,
 ) -> Result<usize, Fail> {
   let mut tmp = [0u8; 8192];
   loop {
@@ -376,6 +392,9 @@ fn read_some(
       Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if closed.load(Ordering::Acquire) {
           return Err(Fail::Closed);
+        }
+        if std::time::Instant::now() >= deadline {
+          return Err(Fail::Request);
         }
         if error.kind() == ErrorKind::WouldBlock {
           std::thread::sleep(IO_WAIT);
@@ -1180,7 +1199,8 @@ mod tests {
   use std::time::Duration;
 
   use super::{
-    Fail, TEXT_TYPE, accept_request, bind_http, header_end, write_shared,
+    Fail, TEXT_TYPE, accept_request, accept_request_within, bind_http,
+    header_end, write_shared,
   };
 
   fn exchange(port: u16, request: &[u8]) -> Vec<u8> {
@@ -1276,6 +1296,49 @@ mod tests {
     assert_eq!(status, 201);
     assert!(head.contains("201 Created"), "{head}");
     assert_eq!(body, b"hello");
+  }
+
+  #[test]
+  fn a_slow_or_silent_client_does_not_hold_accept() {
+    let server = bind_http("127.0.0.1:0".parse().unwrap()).unwrap();
+    let port = server.bound.port();
+    let wait = Duration::from_millis(400);
+
+    let silent = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let started = std::time::Instant::now();
+    let result = accept_request_within(&server, wait);
+    assert!(matches!(result, Err(Fail::Request)), "{result:?}");
+    assert!(started.elapsed() < Duration::from_secs(3));
+    drop(silent);
+
+    // One byte at a time keeps the socket busy but never finishes.
+    let slow = std::thread::spawn(move || {
+      let mut stream =
+        std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+      for byte in b"GET / HTTP/1.1\r\nHost: x\r\n".iter().cycle().take(40) {
+        if stream.write_all(&[*byte]).is_err() {
+          return;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+      }
+    });
+    let started = std::time::Instant::now();
+    let result = accept_request_within(&server, wait);
+    assert!(matches!(result, Err(Fail::Request)), "{result:?}");
+    assert!(started.elapsed() < Duration::from_millis(1000));
+    slow.join().unwrap();
+
+    // The next client is served.
+    let client = std::thread::spawn(move || {
+      exchange(port, b"GET /next HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+    });
+    let parts = accept_request(&server).unwrap();
+    assert_eq!(parts.url, "/next");
+    let shared = request_shared(parts);
+    write_shared(&shared, 200, TEXT_TYPE, &[], b"ok").unwrap();
+    let (status, _, body) = split_response(&client.join().unwrap());
+    assert_eq!(status, 200);
+    assert_eq!(body, b"ok");
   }
 
   #[test]

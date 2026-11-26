@@ -4069,7 +4069,8 @@ declare namespace Yuzuko {
      * {@link errors.Busy} with `An accept is already waiting.` when another
      * accept is waiting. A header block longer than 65536 bytes, or a body longer
      * than 1048576 bytes, rejects {@link Error} with
-     * `The request is too large.` A malformed request rejects
+     * `The request is too large.` A malformed request, or a request that has
+     * not fully arrived 10 seconds after its connection was accepted, rejects
      * {@link errors.Http} with `The request could not be read.` An
      * operating-system failure while accepting the connection rejects that
      * socket class, or {@link Error} with
