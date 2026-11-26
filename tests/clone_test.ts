@@ -1609,3 +1609,32 @@ Yuzuko.test("a closed MessagePort still serializes and transfers", () => {
   }
   channel.port2.close();
 });
+
+Yuzuko.test("MessagePort.postMessage lists transferred ports", async () => {
+  const channel = new MessageChannel();
+  const carried = new MessageChannel();
+  const received = new Promise<MessageEvent>((resolve) => {
+    channel.port2.onmessage = resolve;
+  });
+  channel.port1.postMessage({ note: 1 }, [carried.port1]);
+  const event = await received;
+  if (event.ports.length !== 1 || !(event.ports[0] instanceof MessagePort)) {
+    throw new Error("ports " + event.ports.length);
+  }
+  // A port the value does not reach stays the same object in this realm,
+  // as for postMessage on the main global.
+  if (event.ports[0] !== carried.port1) {
+    throw new Error("the listed port is another object");
+  }
+  const echoed = new Promise<MessageEvent>((resolve) => {
+    carried.port2.onmessage = resolve;
+  });
+  event.ports[0].postMessage("through");
+  if ((await echoed).data !== "through") {
+    throw new Error("the transferred port is not entangled");
+  }
+  channel.port1.close();
+  channel.port2.close();
+  event.ports[0].close();
+  carried.port2.close();
+});

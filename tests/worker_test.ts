@@ -856,3 +856,28 @@ Yuzuko.test("a data: worker URL drops its fragment", async () => {
   worker.terminate();
   assert(value === 1, String(value));
 });
+
+Yuzuko.test("a port message to a worker lists transferred ports", async () => {
+  const body = [
+    "onmessage = (event) => {",
+    "  const control = event.ports[0];",
+    "  control.onmessage = (inner) => {",
+    "    const count = inner.ports.length;",
+    "    inner.ports[0].postMessage('via ' + count);",
+    "  };",
+    "};",
+  ].join("\n");
+  const worker = new Worker(`data:text/javascript,${encodeURIComponent(body)}`);
+  const control = new MessageChannel();
+  worker.postMessage(null, [control.port2]);
+  const reply = new MessageChannel();
+  const answered = new Promise<unknown>((resolve) => {
+    reply.port1.onmessage = (event) => resolve(event.data);
+  });
+  control.port1.postMessage(null, [reply.port2]);
+  const value = await answered;
+  worker.terminate();
+  control.port1.close();
+  reply.port1.close();
+  assert(value === "via 1", String(value));
+});

@@ -17,7 +17,8 @@ use crate::animation;
 use crate::event::{ErrorEvent, define_is_trusted};
 use crate::message::{
   capture_ports, fail_port_message, message_error_event, message_event_for,
-  receive_port_message, receive_transferred_port, take_captured_ports,
+  receive_port_message, receive_transferred_port, received_message,
+  take_captured_ports,
 };
 use crate::target::{self, EventTarget};
 
@@ -100,7 +101,11 @@ pub(crate) fn drain(scope: &mut v8::PinScope) {
       } => {
         deliver_script(scope, worker, parcel, ports);
       }
-      Inbound::Port { port, parcel } => deliver_port(scope, port, parcel),
+      Inbound::Port {
+        port,
+        parcel,
+        ports,
+      } => deliver_port(scope, port, parcel, &ports),
       Inbound::Failed {
         worker,
         message,
@@ -164,18 +169,12 @@ fn deliver_port(
   scope: &mut v8::PinScope,
   port: u64,
   parcel: yuzuko_core::Parcel,
+  ports: &[u64],
 ) {
-  capture_ports(true);
-  let value = match yuzuko_core::deserialize_parcel(scope, parcel) {
-    Ok(value) => value,
-    Err(_) => {
-      let _ = take_captured_ports();
-      fail_port_message(port);
-      return;
-    }
-  };
-  let _ = take_captured_ports();
-  receive_port_message(scope, port, value);
+  match received_message(scope, parcel, ports) {
+    Some(queued) => receive_port_message(port, queued),
+    None => fail_port_message(port),
+  }
 }
 
 fn deliver_message_error(scope: &mut v8::PinScope, worker: u64) {
@@ -567,13 +566,13 @@ fn rooted<'s>(
 }
 
 /// Restores the cross-agent flag around a transfer that follows serialization.
-struct CrossAgentRestore {
+pub(crate) struct CrossAgentRestore {
   enabled: bool,
   target: u64,
 }
 
 impl CrossAgentRestore {
-  fn enter(enabled: bool, target: u64) -> Self {
+  pub(crate) fn enter(enabled: bool, target: u64) -> Self {
     let previous = Self {
       enabled: yuzuko_core::cross_agent(),
       target: yuzuko_core::cross_target(),

@@ -18,6 +18,14 @@ use crate::event::Event;
 use crate::event::define_is_trusted;
 use crate::target::{self, EventTarget};
 
+/// A message waiting on a port, with the `MessagePort`s its sender listed
+/// in the transfer list. They become `MessageEvent.ports`.
+#[derive(Clone)]
+pub(crate) struct Queued {
+  data: v8::Global<v8::Value>,
+  ports: Vec<v8::Global<v8::Object>>,
+}
+
 struct PortState {
   peer: Option<u64>,
   started: bool,
@@ -25,7 +33,7 @@ struct PortState {
   wrapper: Option<v8::Global<v8::Object>>,
   /// Deserialization failures waiting for `deliver`.
   failures: u32,
-  queue: VecDeque<v8::Global<v8::Value>>,
+  queue: VecDeque<Queued>,
 }
 
 thread_local! {
@@ -43,7 +51,8 @@ struct PortMove {
   peer: Option<u64>,
   started: bool,
   failures: u32,
-  queue: Vec<yuzuko_core::Parcel>,
+  /// Each queued message and the ids of the ports it transferred.
+  queue: Vec<(yuzuko_core::Parcel, Vec<u64>)>,
 }
 
 static PORT_MOVES: LazyLock<Mutex<HashMap<u64, PortMove>>> =
@@ -53,7 +62,7 @@ thread_local! {
   static CAPTURE_PORTS: Cell<bool> = const { Cell::new(false) };
   static READ_PORTS: RefCell<Vec<v8::Global<v8::Object>>> =
     const { RefCell::new(Vec::new()) };
-  static EARLY_PORTS: RefCell<HashMap<u64, Vec<v8::Global<v8::Value>>>> =
+  static EARLY_PORTS: RefCell<HashMap<u64, Vec<Queued>>> =
     RefCell::new(HashMap::new());
   static EARLY_FAILURES: RefCell<HashMap<u64, u32>> =
     RefCell::new(HashMap::new());
@@ -233,12 +242,13 @@ fn move_port_cross(scope: &mut v8::PinScope, old_id: u64) -> Result<u64, ()> {
   };
   let target = yuzuko_core::cross_target();
   let mut parcels = Vec::new();
-  for value in &queued {
-    let local = v8::Local::new(scope, value);
-    match yuzuko_core::serialize_parcel(scope, local, &[], &[], target) {
-      Ok(parcel) => parcels.push(parcel),
-      Err(_) => return Err(()),
-    }
+  for queued in &queued {
+    let local = v8::Local::new(scope, &queued.data);
+    let parcel =
+      yuzuko_core::serialize_parcel(scope, local, &queued.ports, &[], target)
+        .map_err(|_| ())?;
+    let ports = transfer_listed_ports(scope, &queued.ports).map_err(|_| ())?;
+    parcels.push((parcel, ports));
   }
   let (peer, started) = PORTS.with(|slot| {
     let mut ports = slot.borrow_mut();
@@ -299,11 +309,10 @@ fn install_moved_port(
 ) -> v8::Global<v8::Object> {
   let mut queue = VecDeque::new();
   let mut failures = ticket.failures;
-  for parcel in ticket.queue {
-    if let Ok(value) = yuzuko_core::deserialize_parcel(scope, parcel) {
-      queue.push_back(v8::Global::new(scope, value));
-    } else {
-      failures = failures.saturating_add(1);
+  for (parcel, ids) in ticket.queue {
+    match received_message(scope, parcel, &ids) {
+      Some(queued) => queue.push_back(queued),
+      None => failures = failures.saturating_add(1),
     }
   }
   let early = EARLY_PORTS
@@ -348,28 +357,43 @@ fn install_moved_port(
   stored
 }
 
-pub(crate) fn receive_port_message(
+/// Deserializes a parcel posted to a port and installs the ports its
+/// sender transferred, in transfer-list order. `None` is a message error.
+pub(crate) fn received_message(
   scope: &mut v8::PinScope,
-  id: u64,
-  value: v8::Local<v8::Value>,
-) {
+  parcel: yuzuko_core::Parcel,
+  ids: &[u64],
+) -> Option<Queued> {
+  capture_ports(true);
+  let value = yuzuko_core::deserialize_parcel(scope, parcel);
+  // A port inside the value is installed during deserialization, and the
+  // lookup below returns that wrapper.
+  let _installed = take_captured_ports();
+  let value = value.ok()?;
+  let mut ports = Vec::with_capacity(ids.len());
+  for id in ids {
+    ports.push(receive_transferred_port(scope, *id).ok()?);
+  }
+  Some(Queued {
+    data: v8::Global::new(scope, value),
+    ports,
+  })
+}
+
+pub(crate) fn receive_port_message(id: u64, queued: Queued) {
   let started = PORTS.with(|slot| {
     let mut ports = slot.borrow_mut();
     let state = ports.get_mut(&id)?;
     if state.closed {
       return Some(false);
     }
-    state.queue.push_back(v8::Global::new(scope, value));
+    state.queue.push_back(queued.clone());
     Some(state.started)
   });
   match started {
     None => {
       EARLY_PORTS.with(|slot| {
-        slot
-          .borrow_mut()
-          .entry(id)
-          .or_default()
-          .push(v8::Global::new(scope, value));
+        slot.borrow_mut().entry(id).or_default().push(queued);
       });
     }
     Some(true) => schedule(id),
@@ -517,6 +541,8 @@ impl MessagePort {
     // `MessagePort` and `OffscreenCanvas` move during that clone.
     // `ImageBitmap`, `AudioData`, and `VideoFrame` move their pixels or
     // samples and close after the clone succeeds.
+    let listed = objects.iter().map(v8::Global::clone).collect::<Vec<_>>();
+    capture_ports(true);
     let cloned = {
       let _guard = yuzuko_core::StructuredTransferGuard::install(objects);
       // Same-agent peers share a SharedArrayBuffer. `structuredClone` does not.
@@ -524,17 +550,24 @@ impl MessagePort {
       match yuzuko_core::clone_value_with_buffers(scope, message, &buffers) {
         Ok(cloned) => {
           yuzuko_core::detach_structured_transfers(scope);
-          cloned
+          Ok(cloned)
         }
-        Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
-        Err(None) => {
-          return Err(OpError::dom(
-            "DataCloneError",
-            "The object could not be cloned.",
-          ));
-        }
+        Err(error) => Err(error),
       }
     };
+    let _reached = take_captured_ports();
+    let cloned = match cloned {
+      Ok(cloned) => cloned,
+      Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
+      Err(None) => {
+        return Err(OpError::dom(
+          "DataCloneError",
+          "The object could not be cloned.",
+        ));
+      }
+    };
+    // The event lists the transfer list's ports as the receiver sees them.
+    let ports = port_wrappers_for_transfer(scope, &listed)?;
     for buffer in &buffers {
       let buffer = v8::Local::new(scope, buffer);
       let _ = buffer.detach(None);
@@ -542,12 +575,16 @@ impl MessagePort {
     let Some(peer) = peer else {
       return Ok(());
     };
+    let queued = Queued {
+      data: v8::Global::new(scope, cloned),
+      ports,
+    };
     let started = PORTS.with(|slot| {
       let mut ports = slot.borrow_mut();
       let Some(state) = ports.get_mut(&peer) else {
         return false;
       };
-      state.queue.push_back(v8::Global::new(scope, cloned));
+      state.queue.push_back(queued);
       state.started
     });
     if started {
@@ -947,9 +984,19 @@ fn post_port_remote(
       ));
     }
   };
+  // A port the value did not reach is still open, and moving it has to
+  // target the receiving agent.
+  let ports = {
+    let _restore = crate::worker::CrossAgentRestore::enter(true, agent);
+    transfer_listed_ports(scope, objects)?
+  };
   yuzuko_core::post_inbound(
     agent,
-    yuzuko_core::Inbound::Port { port: peer, parcel },
+    yuzuko_core::Inbound::Port {
+      port: peer,
+      parcel,
+      ports,
+    },
   );
   Ok(())
 }
@@ -1084,10 +1131,11 @@ fn deliver(scope: &mut v8::PinScope, id: u64) {
   let Some(wrapper) = wrapper else {
     return;
   };
-  for data in pending {
+  for queued in pending {
     let target = v8::Local::new(scope, &wrapper);
-    adopt_shared_buffers(scope, id, &data);
-    let event = message_event(scope, "message", &data, &[], "");
+    adopt_shared_buffers(scope, id, &queued.data);
+    let event =
+      message_event(scope, "message", &queued.data, &queued.ports, "");
     let _ = target::dispatch(scope, target, event);
   }
   for _ in 0..failures {

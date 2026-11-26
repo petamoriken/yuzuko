@@ -43,6 +43,8 @@ pub enum Inbound {
   Port {
     port: u64,
     parcel: Parcel,
+    /// Ports in the sender's transfer list, in that order.
+    ports: Vec<u64>,
   },
   Failed {
     worker: u64,
