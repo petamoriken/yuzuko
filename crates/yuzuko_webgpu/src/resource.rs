@@ -58,8 +58,14 @@ pub struct GpuBuffer {
   pending: RefCell<Option<PendingMap>>,
   /// Bumped when a pending map is aborted so the later task does nothing.
   map_generation: Cell<u64>,
+  /// Identifies this buffer's entries in `LIVE_MAPPINGS`.
+  mapping_owner: u64,
   label: ObjectLabel,
 }
+
+/// Next `GpuBuffer::mapping_owner`.
+static NEXT_MAPPING_OWNER: std::sync::atomic::AtomicU64 =
+  std::sync::atomic::AtomicU64::new(1);
 
 unsafe impl v8::cppgc::GarbageCollected for GpuBuffer {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
@@ -90,6 +96,8 @@ impl GpuBuffer {
       mapped: RefCell::new(None),
       pending: RefCell::new(None),
       map_generation: Cell::new(0),
+      mapping_owner: NEXT_MAPPING_OWNER
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
       label: ObjectLabel::new(label),
     }
   }
@@ -464,7 +472,7 @@ impl GpuBuffer {
     let key_object = v8::Object::new(scope);
     let key: v8::Local<v8::Value> = key_object.into();
     buffer.set_detach_key(key);
-    track_mapping(scope, self.device_id, buffer, key);
+    track_mapping(scope, self.device_id, self.mapping_owner, buffer, key);
     mapped.views.push(MappedView {
       offset,
       size,
@@ -488,6 +496,9 @@ impl Drop for GpuBuffer {
     self
       .map_generation
       .set(self.map_generation.get().wrapping_add(1));
+    // A buffer collected while mapped cannot unmap later, so its views
+    // stop blocking a transfer and their handles are released.
+    forget_owner_mappings(self.mapping_owner);
     let mapped = self.mapped.borrow_mut().take();
     if mapped.is_some_and(|mapped| mapped.gpu_mapped)
       && let Some(buffer) = self.buffer.borrow().as_ref()
@@ -3968,6 +3979,7 @@ fn detach_views(scope: &mut v8::PinScope, mapped: &Mapped) {
 
 struct LiveMapping {
   device_id: u64,
+  owner: u64,
   buffer: v8::Global<v8::ArrayBuffer>,
   key: v8::Global<v8::Value>,
 }
@@ -3980,12 +3992,14 @@ thread_local! {
 fn track_mapping(
   scope: &mut v8::PinScope,
   device_id: u64,
+  owner: u64,
   buffer: v8::Local<v8::ArrayBuffer>,
   key: v8::Local<v8::Value>,
 ) {
   LIVE_MAPPINGS.with(|list| {
     list.borrow_mut().push(LiveMapping {
       device_id,
+      owner,
       buffer: v8::Global::new(scope, buffer),
       key: v8::Global::new(scope, key),
     });
@@ -4002,6 +4016,19 @@ fn forget_mappings(scope: &mut v8::PinScope, mapped: &Mapped) {
       })
     });
   });
+}
+
+fn forget_owner_mappings(owner: u64) {
+  let removed = LIVE_MAPPINGS.with(|list| {
+    let Ok(mut list) = list.try_borrow_mut() else {
+      return Vec::new();
+    };
+    let (removed, kept) =
+      list.drain(..).partition(|entry| entry.owner == owner);
+    *list = kept;
+    removed
+  });
+  drop(removed);
 }
 
 pub(crate) fn mapping_blocks_transfer(
