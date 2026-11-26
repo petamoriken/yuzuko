@@ -3,6 +3,12 @@
 //! Supported codings are `gzip`, `x-gzip`, `deflate`, `br`, and `zstd`.
 //! A zstd window above 8 MiB is rejected. Browsers refuse that window, and
 //! the large-window fixture expects the body read to fail.
+//!
+//! Each push hands its decoded bytes to the caller and keeps none of them.
+//! One push may decode at most `STEP_LIMIT` bytes per coding, so a small
+//! compressed input cannot expand without bound before the caller sees it.
+//! zstd decodes once the body ends, so its compressed input and its output
+//! are limited the same way.
 
 use std::io::Write;
 
@@ -11,27 +17,21 @@ use flate2::write::ZlibDecoder;
 
 const ZSTD_MAX_WINDOW: u64 = 8 * 1024 * 1024;
 
-enum BrotliDec {
-  Open(Box<brotli::DecompressorWriter<Vec<u8>>>),
-  Done(Vec<u8>),
-}
+/// The most bytes one push may decode in one coding.
+const STEP_LIMIT: usize = 128 * 1024 * 1024;
+
+/// Compressed input is written in slices this long, so `STEP_LIMIT` is
+/// checked before a slice can expand much past it.
+const SLICE: usize = 16 * 1024;
+
+const INVALID: &str = "The content encoding is invalid";
+const TOO_LARGE: &str = "The decoded body is too large";
 
 enum Stage {
-  Gzip {
-    decoder: GzDecoder<Vec<u8>>,
-    emitted: usize,
-  },
-  Zlib {
-    decoder: ZlibDecoder<Vec<u8>>,
-    emitted: usize,
-  },
-  Brotli {
-    inner: BrotliDec,
-    emitted: usize,
-  },
-  Zstd {
-    compressed: Vec<u8>,
-  },
+  Gzip(GzDecoder<Vec<u8>>),
+  Zlib(ZlibDecoder<Vec<u8>>),
+  Brotli(Option<Box<brotli::DecompressorWriter<Vec<u8>>>>),
+  Zstd { compressed: Vec<u8> },
 }
 
 pub struct ContentDecoder {
@@ -71,24 +71,15 @@ impl ContentDecoder {
     let stages = codings
       .into_iter()
       .map(|coding| match coding.as_str() {
-        "deflate" => Stage::Zlib {
-          decoder: ZlibDecoder::new(Vec::new()),
-          emitted: 0,
-        },
-        "br" => Stage::Brotli {
-          inner: BrotliDec::Open(Box::new(brotli::DecompressorWriter::new(
-            Vec::new(),
-            4096,
-          ))),
-          emitted: 0,
-        },
+        "deflate" => Stage::Zlib(ZlibDecoder::new(Vec::new())),
+        "br" => Stage::Brotli(Some(Box::new(brotli::DecompressorWriter::new(
+          Vec::new(),
+          4096,
+        )))),
         "zstd" => Stage::Zstd {
           compressed: Vec::new(),
         },
-        _ => Stage::Gzip {
-          decoder: GzDecoder::new(Vec::new()),
-          emitted: 0,
-        },
+        _ => Stage::Gzip(GzDecoder::new(Vec::new())),
       })
       .collect();
     Self { stages }
@@ -116,58 +107,60 @@ impl ContentDecoder {
 impl Stage {
   fn feed(&mut self, input: &[u8], finish: bool) -> Result<Vec<u8>, String> {
     match self {
-      Self::Gzip { decoder, emitted } => {
-        write_flate(decoder, emitted, input, finish)
-      }
-      Self::Zlib { decoder, emitted } => {
-        write_flate(decoder, emitted, input, finish)
-      }
-      Self::Brotli { inner, emitted } => {
-        feed_brotli(inner, emitted, input, finish)
-      }
+      Self::Gzip(decoder) => write_flate(decoder, input, finish),
+      Self::Zlib(decoder) => write_flate(decoder, input, finish),
+      Self::Brotli(decoder) => feed_brotli(decoder, input, finish),
       Self::Zstd { compressed } => {
+        if compressed.len() + input.len() > STEP_LIMIT {
+          return Err(TOO_LARGE.to_string());
+        }
         compressed.extend_from_slice(input);
         if !finish {
           return Ok(Vec::new());
         }
-        decode_zstd(compressed)
+        decode_zstd(&std::mem::take(compressed))
       }
     }
   }
 }
 
+/// Moves the decoder's new output into `output`, failing past `STEP_LIMIT`.
+fn collect(buf: &mut Vec<u8>, output: &mut Vec<u8>) -> Result<(), String> {
+  if output.len() + buf.len() > STEP_LIMIT {
+    return Err(TOO_LARGE.to_string());
+  }
+  output.append(buf);
+  Ok(())
+}
+
 fn write_flate<D>(
   decoder: &mut D,
-  emitted: &mut usize,
   input: &[u8],
   finish: bool,
 ) -> Result<Vec<u8>, String>
 where
   D: Write + FlateBuf,
 {
-  if !input.is_empty() {
-    decoder
-      .write_all(input)
-      .map_err(|_| "The content encoding is invalid".to_string())?;
-    decoder
-      .flush()
-      .map_err(|_| "The content encoding is invalid".to_string())?;
+  let mut output = Vec::new();
+  for slice in input.chunks(SLICE) {
+    decoder.write_all(slice).map_err(|_| INVALID.to_string())?;
+    decoder.flush().map_err(|_| INVALID.to_string())?;
+    collect(decoder.buf(), &mut output)?;
   }
   if finish {
-    decoder
-      .try_finish()
-      .map_err(|_| "The content encoding is invalid".to_string())?;
+    decoder.try_finish().map_err(|_| INVALID.to_string())?;
+    collect(decoder.buf(), &mut output)?;
   }
-  Ok(take_new(decoder.buf(), emitted))
+  Ok(output)
 }
 
 trait FlateBuf {
-  fn buf(&mut self) -> &[u8];
+  fn buf(&mut self) -> &mut Vec<u8>;
   fn try_finish(&mut self) -> std::io::Result<()>;
 }
 
 impl FlateBuf for GzDecoder<Vec<u8>> {
-  fn buf(&mut self) -> &[u8] {
+  fn buf(&mut self) -> &mut Vec<u8> {
     self.get_mut()
   }
 
@@ -177,7 +170,7 @@ impl FlateBuf for GzDecoder<Vec<u8>> {
 }
 
 impl FlateBuf for ZlibDecoder<Vec<u8>> {
-  fn buf(&mut self) -> &[u8] {
+  fn buf(&mut self) -> &mut Vec<u8> {
     self.get_mut()
   }
 
@@ -187,67 +180,55 @@ impl FlateBuf for ZlibDecoder<Vec<u8>> {
 }
 
 fn feed_brotli(
-  inner: &mut BrotliDec,
-  emitted: &mut usize,
+  slot: &mut Option<Box<brotli::DecompressorWriter<Vec<u8>>>>,
   input: &[u8],
   finish: bool,
 ) -> Result<Vec<u8>, String> {
-  if let BrotliDec::Open(decoder) = inner {
-    if !input.is_empty() {
-      decoder
-        .write_all(input)
-        .map_err(|_| "The content encoding is invalid".to_string())?;
+  let mut output = Vec::new();
+  let Some(decoder) = slot else {
+    if input.is_empty() {
+      return Ok(output);
     }
-    if finish {
-      decoder
-        .flush()
-        .map_err(|_| "The content encoding is invalid".to_string())?;
-    }
-  }
-  if finish && matches!(inner, BrotliDec::Open(_)) {
-    let BrotliDec::Open(decoder) =
-      std::mem::replace(inner, BrotliDec::Done(Vec::new()))
-    else {
-      return Err("The content encoding is invalid".to_string());
-    };
-    match decoder.into_inner() {
-      Ok(bytes) => *inner = BrotliDec::Done(bytes),
-      Err(_) => return Err("The content encoding is invalid".to_string()),
-    }
-  }
-  let buf: &[u8] = match inner {
-    BrotliDec::Open(decoder) => decoder.get_mut(),
-    BrotliDec::Done(bytes) => bytes,
+    return Err(INVALID.to_string());
   };
-  Ok(take_new(buf, emitted))
+  for slice in input.chunks(SLICE) {
+    decoder.write_all(slice).map_err(|_| INVALID.to_string())?;
+    collect(decoder.get_mut(), &mut output)?;
+  }
+  if finish {
+    decoder.flush().map_err(|_| INVALID.to_string())?;
+    collect(decoder.get_mut(), &mut output)?;
+    let Some(decoder) = slot.take() else {
+      return Err(INVALID.to_string());
+    };
+    let mut rest = decoder.into_inner().map_err(|_| INVALID.to_string())?;
+    collect(&mut rest, &mut output)?;
+  }
+  Ok(output)
 }
 
 fn decode_zstd(compressed: &[u8]) -> Result<Vec<u8>, String> {
   use std::io::Read;
   let cursor = std::io::Cursor::new(compressed);
-  let mut decoder =
-    ruzstd::decoding::StreamingDecoder::new_with_max_window_size(
-      cursor,
-      ZSTD_MAX_WINDOW,
-    )
-    .map_err(|_| "The content encoding is invalid".to_string())?;
+  let decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(
+    cursor,
+    ZSTD_MAX_WINDOW,
+  )
+  .map_err(|_| INVALID.to_string())?;
   let mut output = Vec::new();
   decoder
+    .take(STEP_LIMIT as u64 + 1)
     .read_to_end(&mut output)
-    .map_err(|_| "The content encoding is invalid".to_string())?;
+    .map_err(|_| INVALID.to_string())?;
+  if output.len() > STEP_LIMIT {
+    return Err(TOO_LARGE.to_string());
+  }
   Ok(output)
-}
-
-fn take_new(buf: &[u8], emitted: &mut usize) -> Vec<u8> {
-  let start = (*emitted).min(buf.len());
-  let output = buf[start..].to_vec();
-  *emitted = buf.len();
-  output
 }
 
 #[cfg(test)]
 mod tests {
-  use super::prepare;
+  use super::{STEP_LIMIT, TOO_LARGE, prepare};
   use flate2::Compression;
   use flate2::write::GzEncoder;
   use std::io::Write;
@@ -266,5 +247,41 @@ mod tests {
     assert!(headers.iter().all(|(name, _)| name == "content-type"));
     let output = decoder.finish(&compressed).unwrap();
     assert_eq!(output, b"hello content encoding");
+  }
+  fn gzip(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(bytes).unwrap();
+    encoder.finish().unwrap()
+  }
+
+  fn decoder(coding: &str) -> super::ContentDecoder {
+    let mut headers =
+      vec![("content-encoding".to_string(), coding.to_string())];
+    prepare(&mut headers).unwrap()
+  }
+
+  #[test]
+  fn decoded_output_is_not_kept() {
+    let compressed = gzip(&vec![7u8; 4 * 1024 * 1024]);
+    let mut decoder = decoder("gzip");
+    let mut total = 0;
+    for piece in compressed.chunks(1024) {
+      total += decoder.push(piece, false).unwrap().len();
+      if let super::Stage::Gzip(inner) = &mut decoder.stages[0] {
+        assert!(inner.get_mut().is_empty(), "decoded bytes were kept");
+      }
+    }
+    total += decoder.push(&[], true).unwrap().len();
+    assert_eq!(total, 4 * 1024 * 1024);
+  }
+
+  #[test]
+  fn one_push_cannot_expand_past_the_step_limit() {
+    // Nested gzip multiplies the ratio, so a few kilobytes name gigabytes.
+    let inner = gzip(&vec![0u8; STEP_LIMIT + 1]);
+    let outer = gzip(&inner);
+    assert!(outer.len() < STEP_LIMIT / 1024);
+    let error = decoder("gzip, gzip").push(&outer, true).unwrap_err();
+    assert_eq!(error, TOO_LARGE);
   }
 }
