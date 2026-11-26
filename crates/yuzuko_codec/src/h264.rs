@@ -1323,7 +1323,7 @@ mod tests {
     }
     put(0, 1); // vui_parameters_present_flag
     put(1, 1); // rbsp_stop_one_bit
-    while bits.len() % 8 != 0 {
+    while !bits.len().is_multiple_of(8) {
       bits.push(false);
     }
     bits
