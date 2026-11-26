@@ -5022,7 +5022,8 @@ declare namespace Yuzuko {
    * none. `The MP4 track has too many samples` when one track declares more
    * than 2,000,000 samples. `The MP4 samples could not be returned` when the
    * chunks cannot be copied into JavaScript. `The MP4 file is not a valid
-   * container` for any other malformed file.
+   * container` for any other malformed file. `InvalidStateError`
+   * `The MP4 parser panicked` when the parser panics.
    */
   function demuxMp4(data: AllowSharedBufferSource): Mp4Movie;
 

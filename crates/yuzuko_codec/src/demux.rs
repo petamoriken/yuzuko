@@ -30,8 +30,13 @@ fn movie_value<'s>(
   let Some(bytes) = yuzuko_winter::buffer_source(scope, value)? else {
     return Err(OpError::type_("The MP4 data is not a BufferSource"));
   };
-  let movie = crate::mp4::parse(&bytes)
-    .map_err(|error| OpError::dom("EncodingError", error.message()))?;
+  // AGENTS.md: a panic on file bytes becomes InvalidStateError.
+  let parsed =
+    std::panic::catch_unwind(|| crate::mp4::parse(&bytes)).map_err(|_| {
+      OpError::dom("InvalidStateError", "The MP4 parser panicked")
+    })?;
+  let movie =
+    parsed.map_err(|error| OpError::dom("EncodingError", error.message()))?;
   to_movie(scope, movie).map_err(|_| {
     OpError::dom("EncodingError", "The MP4 samples could not be returned")
   })
