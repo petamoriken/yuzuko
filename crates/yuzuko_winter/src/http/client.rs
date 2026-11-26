@@ -244,7 +244,7 @@ fn drive(
 async fn exchange(
   mut method: String,
   mut url: String,
-  headers: Vec<(String, String)>,
+  mut headers: Vec<(String, String)>,
   mut body: Vec<u8>,
   redirect: String,
   cancel: Arc<AtomicBool>,
@@ -257,7 +257,7 @@ async fn exchange(
     && exchange_http1(
       &mut method,
       &mut url,
-      &headers,
+      &mut headers,
       &mut body,
       &redirect,
       &mut redirected,
@@ -281,6 +281,7 @@ async fn exchange(
       let mut cursor = ExchangeCursor {
         method: &mut method,
         url: &mut url,
+        headers: &mut headers,
         body: &mut body,
         redirect: &redirect,
         redirected: &mut redirected,
@@ -297,7 +298,7 @@ async fn exchange(
       let step = h3::attempt(h3::Attempt {
         method: &mut method,
         url: &mut url,
-        headers: &headers,
+        headers: &mut headers,
         body: &mut body,
         redirect: &redirect,
         redirected: &mut redirected,
@@ -334,6 +335,7 @@ async fn exchange(
           let mut cursor = ExchangeCursor {
             method: &mut method,
             url: &mut url,
+            headers: &mut headers,
             body: &mut body,
             redirect: &redirect,
             redirected: &mut redirected,
@@ -383,6 +385,7 @@ async fn exchange(
               HttpFailure::Type("The redirect URL is invalid".to_string())
             })?;
           authorize_redirect(&next)?;
+          drop_cross_origin_credentials(&mut headers, &url, &next);
           if matches!(status, 303)
             || (matches!(status, 301 | 302)
               && method.eq_ignore_ascii_case("POST"))
@@ -564,6 +567,27 @@ fn authorize_redirect(next: &url::Url) -> Result<(), HttpFailure> {
   }
 }
 
+/// Fetch HTTP-redirect fetch step: a hop to another origin removes
+/// `Authorization`. Forbidden request headers are not enforced, so a
+/// caller's `Cookie` and `Proxy-Authorization` are removed the same way.
+/// An `https:` to `http:` hop is another origin.
+fn drop_cross_origin_credentials(
+  headers: &mut Vec<(String, String)>,
+  from: &str,
+  next: &url::Url,
+) {
+  let same =
+    url::Url::parse(from).is_ok_and(|from| from.origin() == next.origin());
+  if same {
+    return;
+  }
+  headers.retain(|(name, _)| {
+    !name.eq_ignore_ascii_case("authorization")
+      && !name.eq_ignore_ascii_case("cookie")
+      && !name.eq_ignore_ascii_case("proxy-authorization")
+  });
+}
+
 fn https_connector(
   roots: Option<&rustls::RootCertStore>,
 ) -> hyper_rustls::HttpsConnector<net_guard::GuardedHttp> {
@@ -651,6 +675,7 @@ fn header_values_need_raw(headers: &[(String, String)]) -> bool {
 struct ExchangeCursor<'a> {
   method: &'a mut String,
   url: &'a mut String,
+  headers: &'a mut Vec<(String, String)>,
   body: &'a mut Vec<u8>,
   redirect: &'a str,
   redirected: &'a mut bool,
@@ -718,6 +743,7 @@ fn finish_exchange(
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
       authorize_redirect(&next)?;
+      drop_cross_origin_credentials(cursor.headers, cursor.url, &next);
       if matches!(raw.status, 303)
         || (matches!(raw.status, 301 | 302)
           && cursor.method.eq_ignore_ascii_case("POST"))
@@ -785,7 +811,7 @@ fn deliver_buffered(
 async fn exchange_http1(
   method: &mut String,
   url: &mut String,
-  headers: &[(String, String)],
+  headers: &mut Vec<(String, String)>,
   body: &mut Vec<u8>,
   redirect: &str,
   redirected: &mut bool,
@@ -902,6 +928,7 @@ async fn exchange_http1(
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
     authorize_redirect(&next)?;
+    drop_cross_origin_credentials(headers, url, &next);
     if matches!(parsed_head.status, 303)
       || (matches!(parsed_head.status, 301 | 302)
         && method.eq_ignore_ascii_case("POST"))

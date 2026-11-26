@@ -24,7 +24,7 @@ pub(super) enum Step {
 pub(super) struct Attempt<'a> {
   pub method: &'a mut String,
   pub url: &'a mut String,
-  pub headers: &'a [(String, String)],
+  pub headers: &'a mut Vec<(String, String)>,
   pub body: &'a mut Vec<u8>,
   pub redirect: &'a str,
   pub redirected: &'a mut bool,
@@ -222,7 +222,7 @@ fn build_request(
   let mut builder = hyper::Request::builder()
     .method(attempt.method.as_str())
     .uri(attempt.url.as_str());
-  for (name, value) in attempt.headers {
+  for (name, value) in attempt.headers.iter() {
     builder = builder.header(name, value);
   }
   builder
@@ -289,6 +289,7 @@ async fn redirect(
           HttpFailure::Type("The redirect URL is invalid".to_string())
         })?;
       super::authorize_redirect(&next)?;
+      super::drop_cross_origin_credentials(attempt.headers, attempt.url, &next);
       if matches!(status, 303)
         || (matches!(status, 301 | 302)
           && attempt.method.eq_ignore_ascii_case("POST"))

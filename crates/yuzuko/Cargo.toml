@@ -135,6 +135,10 @@ required-features = ["window"]
 name = "fetch_feature"
 
 [[test]]
+name = "fetch_redirect"
+required-features = ["fetch"]
+
+[[test]]
 name = "canvas_composite"
 required-features = ["canvas"]
 
