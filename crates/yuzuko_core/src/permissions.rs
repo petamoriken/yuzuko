@@ -768,6 +768,12 @@ pub fn check_write_tree(path: &Path) -> Result<(), OpError> {
   require(Kind::Write, &Detail::Tree(path.to_path_buf()))
 }
 
+/// Read of a tree. A final symlink is not resolved, and a deny of a
+/// descendant blocks the call.
+pub fn check_read_tree(path: &Path) -> Result<(), OpError> {
+  require(Kind::Read, &Detail::Tree(path.to_path_buf()))
+}
+
 pub fn check_write_all() -> Result<(), OpError> {
   require(Kind::Write, &Detail::Any)
 }

@@ -532,6 +532,12 @@ fn rename_args(
   crate::permissions::check_write(&from)?;
   crate::permissions::check_read(&to)?;
   crate::permissions::check_write(&to)?;
+  // Moving a directory moves its descendants. A deny inside the source
+  // would stop covering them, and a write deny inside the destination
+  // would gain them.
+  crate::permissions::check_read_tree(&from)?;
+  crate::permissions::check_write_tree(&from)?;
+  crate::permissions::check_write_tree(&to)?;
   Ok((from, to))
 }
 

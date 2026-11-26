@@ -2495,6 +2495,60 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
 }
 
 #[test]
+fn rename_stops_at_a_denied_descendant() {
+  let entry = scratch("rename-deny");
+  write(&entry.join("dir").join("secret").join("key"), "key\n");
+  write(&entry.join("open").join("note"), "note\n");
+  fs::create_dir_all(entry.join("guarded")).unwrap();
+  write(
+    &entry.join("main.ts"),
+    r#"function attempt(label, from, to) {
+  try {
+    Yuzuko.renameSync(from, to);
+    console.log(label + " ok");
+  } catch (error) {
+    console.log(label + " " + error.name);
+  }
+}
+attempt("read", "dir", "moved");
+attempt("write", "open", "guarded/locked");
+attempt("plain", "open", "renamed");
+"#,
+  );
+  let read = format!("--allow-read={}", entry.display());
+  let write_grant = format!("--allow-write={}", entry.display());
+  let deny_read =
+    format!("--deny-read={}", entry.join("dir").join("secret").display());
+  let deny_write = format!(
+    "--deny-write={}",
+    entry.join("guarded").join("locked").join("note").display()
+  );
+  let output = run(
+    &entry,
+    &[
+      "run",
+      "--no-prompt",
+      &read,
+      &write_grant,
+      &deny_read,
+      &deny_write,
+      "main.ts",
+    ],
+  );
+  let stdout = text(&output.stdout);
+  let stderr = text(&output.stderr);
+  assert_eq!(output.status.code(), Some(0), "{stderr}\n{stdout}");
+  let lines = stdout.lines().collect::<Vec<_>>();
+  assert!(lines.contains(&"read NotCapable"), "{stdout}\n{stderr}");
+  assert!(lines.contains(&"write NotCapable"), "{stdout}\n{stderr}");
+  assert!(lines.contains(&"plain ok"), "{stdout}\n{stderr}");
+  assert!(entry.join("dir").join("secret").join("key").exists());
+  assert!(!entry.join("moved").exists());
+  assert!(!entry.join("guarded").join("locked").exists());
+  let _ = fs::remove_dir_all(&entry);
+}
+
+#[test]
 fn recursive_remove_stops_at_a_denied_descendant() {
   let entry = scratch("tree-deny");
   write(&entry.join("tree").join("keep").join("note"), "keep\n");
