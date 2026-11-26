@@ -4148,7 +4148,8 @@ declare namespace Yuzuko {
      * rejects {@link Error} with `The response could not be written.`
      *
      * @param body - Response payload. A view sends only its own bytes.
-     * @param status - HTTP status from 100 through 599.
+     * @param status - HTTP status from 200 through 599. A `204` or `304`
+     * response sends no body, `Content-Length`, or `Content-Type`.
      * @param headers - Extra response headers. A caller `content-type`
      * replaces the default. `content-length`, `transfer-encoding`, and
      * `connection` are rejected.
@@ -4156,8 +4157,10 @@ declare namespace Yuzuko {
      * missing. `The data must be a string or a BufferSource.` when it is
      * neither. `The buffer is detached.` when it is detached.
      * `The data is too large.` when it is longer than 1048576 bytes.
-     * `The status must be an integer from 100 through 599.` when `status`
-     * is present and is not. `The headers must be an object.` when
+     * `The status must be an integer from 200 through 599.` when `status`
+     * is present and is not. `A 204 or 304 response cannot have a body.`
+     * when that status has a non-empty `body`. `The headers must be an
+     * object.` when
      * `headers` is not an object. `There are too many headers.` when there
      * are more than 64. `The header name is invalid.` when a name is not a
      * token. `The header cannot be set.` for `content-length`,

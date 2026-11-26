@@ -40,7 +40,8 @@ const WRITE_ERR: &str = "The response could not be written.";
 const BUSY_ACCEPT: &str = "An accept is already waiting.";
 const BUSY_RESPOND: &str = "A response is already waiting.";
 const ALREADY: &str = "The response was already sent.";
-const STATUS: &str = "The status must be an integer from 100 through 599.";
+const STATUS: &str = "The status must be an integer from 200 through 599.";
+const NO_BODY: &str = "A 204 or 304 response cannot have a body.";
 const NO_PROMISE: &str = "The socket operation failed.";
 const TEXT_TYPE: &str = "text/plain;charset=UTF-8";
 const BYTE_TYPE: &str = "application/octet-stream";
@@ -675,17 +676,25 @@ fn header_text_ok(value: &str) -> bool {
     .any(|byte| byte == b'\r' || byte == b'\n' || byte == 0)
 }
 
+/// RFC 9110 15.3.5 and 15.4.5: a 204 or 304 response ends after its
+/// header section, and a 204 response does not send `Content-Length`.
+fn bodiless(status: u16) -> bool {
+  matches!(status, 204 | 304)
+}
+
 fn response_message(
   status: u16,
   content_type: &str,
   extra: &[(String, String)],
   body: &[u8],
 ) -> Vec<u8> {
-  let mut head = format!(
-    "HTTP/1.1 {status} {}\r\nContent-Length: {}\r\nContent-Type: {content_type}\r\n",
-    reason(status),
-    body.len(),
-  );
+  let mut head = format!("HTTP/1.1 {status} {}\r\n", reason(status));
+  if !bodiless(status) {
+    head.push_str(&format!(
+      "Content-Length: {}\r\nContent-Type: {content_type}\r\n",
+      body.len()
+    ));
+  }
   for (name, value) in extra {
     head.push_str(name);
     head.push_str(": ");
@@ -911,6 +920,9 @@ impl Request {
       Some(value) => to_status(scope, value)?,
       None => 200,
     };
+    if bodiless(status) && !bytes.is_empty() {
+      return Err(OpError::type_(NO_BODY));
+    }
     let (content_type, extra) = response_headers(scope, headers, default_type)?;
     if self.shared.responding.load(Ordering::Acquire) {
       return rejected(scope, BUSY_RESPOND);
@@ -1005,7 +1017,7 @@ fn to_status(
   let number = f64::from_v8(scope, value)?;
   if !number.is_finite()
     || number.fract() != 0.0
-    || !(100.0..=599.0).contains(&number)
+    || !(200.0..=599.0).contains(&number)
   {
     return Err(OpError::type_(STATUS));
   }
@@ -1339,6 +1351,23 @@ mod tests {
     let (status, _, body) = split_response(&client.join().unwrap());
     assert_eq!(status, 200);
     assert_eq!(body, b"ok");
+  }
+
+  #[test]
+  fn a_204_or_304_response_has_no_body_headers() {
+    for status in [204u16, 304] {
+      let bytes = super::response_message(
+        status,
+        TEXT_TYPE,
+        &[("ETag".to_string(), "\"a\"".to_string())],
+        b"",
+      );
+      let text = String::from_utf8(bytes).unwrap();
+      assert!(!text.contains("Content-Length"), "{text}");
+      assert!(!text.contains("Content-Type"), "{text}");
+      assert!(text.contains("ETag: \"a\"\r\n"), "{text}");
+      assert!(text.ends_with("Connection: close\r\n\r\n"), "{text}");
+    }
   }
 
   #[test]

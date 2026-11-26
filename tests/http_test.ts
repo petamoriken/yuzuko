@@ -12,7 +12,8 @@ const DETACHED = "The buffer is detached.";
 const BUSY_ACCEPT = "An accept is already waiting.";
 const BUSY_RESPOND = "A response is already waiting.";
 const ALREADY = "The response was already sent.";
-const STATUS = "The status must be an integer from 100 through 599.";
+const STATUS = "The status must be an integer from 200 through 599.";
+const NO_BODY = "A 204 or 304 response cannot have a body.";
 const UNAVAILABLE = "The address is not available.";
 const REQUEST = "The request could not be read.";
 
@@ -351,7 +352,7 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
       assert(!(returned instanceof Promise), "detached respond returned a promise");
       assert(detached === DETACHED, detached);
 
-      for (const status of [99, 600, 200.5, Number.NaN]) {
+      for (const status of [99, 100, 199, 600, 200.5, Number.NaN]) {
         let message = "";
         returned = "unset";
         try {
@@ -361,6 +362,18 @@ Yuzuko.test("HTTP arguments and close use the server", async () => {
         }
         assert(!(returned instanceof Promise), `status ${status} returned a promise`);
         assert(message === STATUS, `${status} ${message}`);
+      }
+
+      for (const status of [204, 304]) {
+        let message = "";
+        returned = "unset";
+        try {
+          returned = request.respond("body", status);
+        } catch (error) {
+          message = error instanceof TypeError ? error.message : "other";
+        }
+        assert(!(returned instanceof Promise), `${status} body returned a promise`);
+        assert(message === NO_BODY, `${status} ${message}`);
       }
 
       let again = "";
