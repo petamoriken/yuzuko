@@ -1268,7 +1268,8 @@ fn port_array(
       break;
     };
     let port = v8::Local::new(scope, port);
-    let _ = array.set_index(scope, index, port.into());
+    let _ =
+      yuzuko_core::define_element(scope, array.into(), index, port.into());
   }
   let object: v8::Local<v8::Object> = array.into();
   let _ = object.set_integrity_level(scope, v8::IntegrityLevel::Frozen);

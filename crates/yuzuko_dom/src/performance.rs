@@ -772,8 +772,8 @@ fn supported_entry_types(
   let array = v8::Array::new(scope, 2);
   let mark = v8::String::new(scope, "mark").unwrap();
   let measure = v8::String::new(scope, "measure").unwrap();
-  array.set_index(scope, 0, mark.into());
-  array.set_index(scope, 1, measure.into());
+  yuzuko_core::define_element(scope, array.into(), 0, mark.into());
+  yuzuko_core::define_element(scope, array.into(), 1, measure.into());
   let _ = array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   TIMELINE.with(|slot| {
     slot.borrow_mut().supported = Some(v8::Global::new(scope, array));
@@ -1550,7 +1550,12 @@ fn object_array(
 ) -> Js {
   let array = v8::Array::new(scope, objects.len() as i32);
   for (index, object) in objects.iter().enumerate() {
-    array.set_index(scope, index as u32, (*object).into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      (*object).into(),
+    );
   }
   js_value(scope, array.into())
 }

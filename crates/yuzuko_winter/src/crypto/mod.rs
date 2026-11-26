@@ -163,7 +163,12 @@ impl CryptoKey {
     let array = v8::Array::new(scope, self.usages.len() as i32);
     for (index, usage) in self.usages.iter().enumerate() {
       let text = v8::String::new(scope, usage).unwrap();
-      array.set_index(scope, index as u32, text.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        text.into(),
+      );
     }
     let object: v8::Local<v8::Object> = array.into();
     *self.usages_object.borrow_mut() = Some(traced(scope, object));
@@ -1679,7 +1684,12 @@ fn jwk_value<'s>(
   let operations = v8::Array::new(scope, jwk.key_ops.len() as i32);
   for (index, usage) in jwk.key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
-    operations.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(
+      scope,
+      operations.into(),
+      index as u32,
+      text.into(),
+    );
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
   let _ = object.create_data_property(scope, key.into(), operations.into());
@@ -3498,7 +3508,12 @@ fn ec_jwk_value<'s>(
   let operations = v8::Array::new(scope, key_ops.len() as i32);
   for (index, usage) in key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
-    operations.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(
+      scope,
+      operations.into(),
+      index as u32,
+      text.into(),
+    );
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
   let _ = object.create_data_property(scope, key.into(), operations.into());
@@ -3782,7 +3797,12 @@ fn okp_jwk_value<'s>(
   let operations = v8::Array::new(scope, key_ops.len() as i32);
   for (index, usage) in key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
-    operations.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(
+      scope,
+      operations.into(),
+      index as u32,
+      text.into(),
+    );
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
   let _ = object.create_data_property(scope, key.into(), operations.into());
@@ -4195,7 +4215,12 @@ fn rsa_jwk_value<'s>(
   let operations = v8::Array::new(scope, key_ops.len() as i32);
   for (index, usage) in key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
-    operations.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(
+      scope,
+      operations.into(),
+      index as u32,
+      text.into(),
+    );
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
   let _ = object.create_data_property(scope, key.into(), operations.into());

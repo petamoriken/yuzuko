@@ -52,6 +52,22 @@ pub fn namespace<'s>(
 /// prototype. A dictionary, `toJSON` result, iterator result, or other
 /// ordinary object created later uses `Object::create_data_property`, which
 /// does not run an accessor on `Object.prototype`.
+/// Defines element `index` of a host-made array or object as an own data
+/// property, as CreateDataProperty does.
+///
+/// `Object::set_index` performs `[[Set]]`, so a setter that user code put on
+/// `Array.prototype` or `Object.prototype` would receive the value and the
+/// element would stay a hole.
+pub fn define_element(
+  scope: &mut v8::PinScope,
+  target: v8::Local<v8::Object>,
+  index: u32,
+  value: v8::Local<v8::Value>,
+) -> Option<bool> {
+  let key = v8::String::new(scope, &index.to_string())?;
+  target.create_data_property(scope, key.into(), value)
+}
+
 #[inline]
 pub fn set_value(
   scope: &mut v8::PinScope,

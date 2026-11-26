@@ -214,7 +214,7 @@ fn found_value<'s>(
       let array = v8::Array::new(scope, rows.len() as i32);
       for (index, row) in rows.iter().enumerate() {
         let inner = string_array(scope, row)?;
-        array.set_index(scope, index as u32, inner)?;
+        crate::js::define_element(scope, array.into(), index as u32, inner)?;
       }
       Some(array.into())
     }
@@ -273,7 +273,7 @@ fn object_rows<'s, T>(
   let array = v8::Array::new(scope, rows.len() as i32);
   for (index, row) in rows.iter().enumerate() {
     let value = fill(scope, row)?;
-    array.set_index(scope, index as u32, value)?;
+    crate::js::define_element(scope, array.into(), index as u32, value)?;
   }
   Some(array.into())
 }
@@ -321,7 +321,7 @@ fn string_array<'s>(
   let array = v8::Array::new(scope, addrs.len() as i32);
   for (index, addr) in addrs.iter().enumerate() {
     let text = v8::String::new(scope, addr)?;
-    array.set_index(scope, index as u32, text.into())?;
+    crate::js::define_element(scope, array.into(), index as u32, text.into())?;
   }
   Some(array.into())
 }

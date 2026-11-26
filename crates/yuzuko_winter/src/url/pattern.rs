@@ -400,11 +400,11 @@ fn result_object(
   );
   let mut index = 0;
   if let Some(input) = input {
-    inputs.set_index(scope, index, input);
+    yuzuko_core::define_element(scope, inputs.into(), index, input);
     index += 1;
   }
   if let Some(base) = base {
-    inputs.set_index(scope, index, base);
+    yuzuko_core::define_element(scope, inputs.into(), index, base);
   }
   let key = v8::String::new(scope, "inputs").unwrap();
   let _ = object.create_data_property(scope, key.into(), inputs.into());

@@ -270,7 +270,12 @@ impl ToV8 for Vec<String> {
     let array = v8::Array::new(scope, self.len() as i32);
     for (index, item) in self.iter().enumerate() {
       if let Some(text) = v8::String::new(scope, item) {
-        array.set_index(scope, index as u32, text.into());
+        crate::js::define_element(
+          scope,
+          array.into(),
+          index as u32,
+          text.into(),
+        );
       }
     }
     ret.set(array.into());

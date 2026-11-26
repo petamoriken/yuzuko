@@ -638,7 +638,7 @@ pub(crate) fn get_gamepads(scope: &mut v8::PinScope) -> Js {
       }
       None => v8::null(scope).into(),
     };
-    array.set_index(scope, index as u32, value);
+    yuzuko_core::define_element(scope, array.into(), index as u32, value);
   }
   js_array(scope, array)
 }
@@ -785,7 +785,7 @@ fn frozen_strings<'s>(
   let array = v8::Array::new(scope, values.len() as i32);
   for (index, value) in values.iter().enumerate() {
     let text = v8::String::new(scope, value).unwrap();
-    array.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(scope, array.into(), index as u32, text.into());
   }
   array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   array
@@ -808,7 +808,12 @@ fn frozen_numbers<'s>(
   let array = v8::Array::new(scope, values.len() as i32);
   for (index, value) in values.iter().enumerate() {
     let number = v8::Number::new(scope, *value);
-    array.set_index(scope, index as u32, number.into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      number.into(),
+    );
   }
   array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   array
@@ -821,7 +826,12 @@ fn frozen_objects<'s>(
   let array = v8::Array::new(scope, values.len() as i32);
   for (index, value) in values.iter().enumerate() {
     let object = v8::Local::new(scope, value);
-    array.set_index(scope, index as u32, object.into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      object.into(),
+    );
   }
   array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   array

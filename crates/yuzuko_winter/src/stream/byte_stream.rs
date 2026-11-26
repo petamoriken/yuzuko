@@ -2207,8 +2207,8 @@ fn tee_cancel_source(scope: &mut v8::PinScope, tee: u64) {
     .as_ref()
     .map(|value| v8::Local::new(scope, value))
     .unwrap_or_else(|| v8::undefined(scope).into());
-  array.set_index(scope, 0, first);
-  array.set_index(scope, 1, second);
+  yuzuko_core::define_element(scope, array.into(), 0, first);
+  yuzuko_core::define_element(scope, array.into(), 1, second);
   let result = super::cancel_stream(scope, source, Some(array.into()));
   let value = super::js_value(scope, result);
   tee_resolve_with(scope, tee, value);

@@ -609,7 +609,12 @@ fn font_array<'s>(
   let array = v8::Array::new(scope, selected.len() as i32);
   for (index, data) in selected.into_iter().enumerate() {
     let object = unsafe { yuzuko_core::op::wrap_instance(scope, data) };
-    array.set_index(scope, index as u32, object.into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      object.into(),
+    );
   }
   array
 }

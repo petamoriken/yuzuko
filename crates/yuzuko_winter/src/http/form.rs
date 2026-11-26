@@ -104,7 +104,7 @@ impl FormData {
     for (index, entry) in matched.iter().enumerate() {
       let value = part_value(scope, &entry.value);
       let local = v8::Local::new(scope, &value.0);
-      array.set_index(scope, index as u32, local);
+      yuzuko_core::define_element(scope, array.into(), index as u32, local);
     }
     let value: v8::Local<v8::Value> = array.into();
     Js(v8::Global::new(scope, value))
@@ -232,8 +232,8 @@ impl FormIter {
           let key = v8::String::new(scope, &name).unwrap();
           let item = part_value(scope, &part);
           let item = v8::Local::new(scope, &item.0);
-          array.set_index(scope, 0, key.into());
-          array.set_index(scope, 1, item);
+          yuzuko_core::define_element(scope, array.into(), 0, key.into());
+          yuzuko_core::define_element(scope, array.into(), 1, item);
           array.into()
         }
       },

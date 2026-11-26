@@ -39,7 +39,7 @@ pub fn languages_array<'s>(
   let array = v8::Array::new(scope, tags.len() as i32);
   for (index, tag) in tags.iter().enumerate() {
     let value = v8::String::new(scope, tag).unwrap();
-    array.set_index(scope, index as u32, value.into());
+    crate::js::define_element(scope, array.into(), index as u32, value.into());
   }
   let _ = array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   array

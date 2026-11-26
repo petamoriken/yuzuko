@@ -299,7 +299,12 @@ impl ClipboardItem {
     let array = v8::Array::new(scope, names.len() as i32);
     for (index, name) in names.iter().enumerate() {
       let text = v8::String::new(scope, name).unwrap();
-      array.set_index(scope, index as u32, text.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        text.into(),
+      );
     }
     array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
     js_value(scope, array.into())
@@ -396,7 +401,7 @@ impl Clipboard {
     let item_value = current_item();
     let item = unsafe { yuzuko_core::op::wrap_instance(scope, item_value) };
     let array = v8::Array::new(scope, 1);
-    array.set_index(scope, 0, item.into());
+    yuzuko_core::define_element(scope, array.into(), 0, item.into());
     resolve(scope, array.into())
   }
 
@@ -881,7 +886,12 @@ impl DataTransfer {
       let Some(text) = v8::String::new(scope, name) else {
         return Err(OpError::type_("The data type could not be represented"));
       };
-      array.set_index(scope, index as u32, text.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        text.into(),
+      );
     }
     array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
     let object: v8::Local<v8::Object> = array.into();
@@ -1494,7 +1504,7 @@ fn frozen_strings(
         "ClipboardChangeEvent types must be a sequence.",
       ));
     };
-    array.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(scope, array.into(), index as u32, text.into());
   }
   array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   Ok(js_value(scope, array.into()))

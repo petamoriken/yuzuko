@@ -4654,11 +4654,16 @@ fn call_process(
     let mut locals = Vec::new();
     for channel in 0..*count {
       let view = f32_array(scope, &vec![0.0; quantum]);
-      channels.set_index(scope, channel, view.into());
+      yuzuko_core::define_element(scope, channels.into(), channel, view.into());
       locals.push(view);
     }
     freeze_object(scope, channels.into());
-    outputs.set_index(scope, index as u32, channels.into());
+    yuzuko_core::define_element(
+      scope,
+      outputs.into(),
+      index as u32,
+      channels.into(),
+    );
     output_locals.push(locals);
   }
   freeze_object(scope, outputs.into());
@@ -4709,10 +4714,20 @@ fn nested_arrays<'s>(
     let inner = v8::Array::new(scope, channels.len() as i32);
     for (channel, samples) in channels.iter().enumerate() {
       let view = f32_array(scope, samples);
-      inner.set_index(scope, channel as u32, view.into());
+      yuzuko_core::define_element(
+        scope,
+        inner.into(),
+        channel as u32,
+        view.into(),
+      );
     }
     freeze_object(scope, inner.into());
-    outer.set_index(scope, index as u32, inner.into());
+    yuzuko_core::define_element(
+      scope,
+      outer.into(),
+      index as u32,
+      inner.into(),
+    );
   }
   freeze_object(scope, outer.into());
   outer
@@ -4963,7 +4978,12 @@ fn processor_options_object<'s>(
     let list = v8::Array::new(scope, channels.len() as i32);
     for (index, count) in channels.iter().enumerate() {
       let number = v8::Integer::new_from_unsigned(scope, *count);
-      list.set_index(scope, index as u32, number.into());
+      yuzuko_core::define_element(
+        scope,
+        list.into(),
+        index as u32,
+        number.into(),
+      );
     }
     let key = v8::String::new(scope, "outputChannelCount").unwrap();
     let _ = object.create_data_property(scope, key.into(), list.into());

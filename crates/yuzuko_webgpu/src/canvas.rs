@@ -208,6 +208,17 @@ impl GpuCanvasContext {
     else {
       return Js::null(scope);
     };
+    let formats = v8::Array::new(scope, view_formats.len() as i32);
+    for (index, format) in view_formats.iter().enumerate() {
+      let name =
+        v8::String::new(scope, resource::format_name(*format)).unwrap();
+      yuzuko_core::define_element(
+        scope,
+        formats.into(),
+        index as u32,
+        name.into(),
+      );
+    }
     let object = v8::Object::new(scope);
     let set = |name: &str, value: v8::Local<v8::Value>| {
       let key = v8::String::new(scope, name).unwrap();
@@ -229,12 +240,6 @@ impl GpuCanvasContext {
       ColorSpace::DisplayP3 => "display-p3",
     };
     set("colorSpace", v8::String::new(scope, space).unwrap().into());
-    let formats = v8::Array::new(scope, view_formats.len() as i32);
-    for (index, format) in view_formats.iter().enumerate() {
-      let name =
-        v8::String::new(scope, resource::format_name(*format)).unwrap();
-      formats.set_index(scope, index as u32, name.into());
-    }
     set("viewFormats", formats.into());
     let tone = v8::Object::new(scope);
     let mode_key = v8::String::new(scope, "mode").unwrap();

@@ -1807,7 +1807,7 @@ fn path_list(
     let Some(text) = v8::String::new(scope, path) else {
       return Err(OpError::type_("The file dialog failed."));
     };
-    array.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(scope, array.into(), index as u32, text.into());
   }
   let value: v8::Local<v8::Value> = array.into();
   Ok(Js(v8::Global::new(scope, value)))

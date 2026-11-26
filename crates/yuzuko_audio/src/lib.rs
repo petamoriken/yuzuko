@@ -63,7 +63,9 @@ fn output_devices_value<'s>(
     let index = u32::try_from(index).map_err(|_| {
       OpError::dom("NotSupportedError", "The audio outputs could not be listed")
     })?;
-    if array.set_index(scope, index, text.into()) != Some(true) {
+    if yuzuko_core::define_element(scope, array.into(), index, text.into())
+      != Some(true)
+    {
       return Err(OpError::dom(
         "NotSupportedError",
         "The audio outputs could not be listed",

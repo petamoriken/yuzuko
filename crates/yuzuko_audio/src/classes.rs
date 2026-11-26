@@ -775,14 +775,14 @@ fn param_map_entries(
     for (name, id) in engine::worklet_param_ids(node) {
       let pair = v8::Array::new(scope, 2);
       if let Some(key) = v8::String::new(scope, &name) {
-        pair.set_index(scope, 0, key.into());
+        yuzuko_core::define_element(scope, pair.into(), 0, key.into());
       }
       if let Some(object) = engine::param_object(id) {
         let object = v8::Local::new(scope, object);
-        pair.set_index(scope, 1, object.into());
+        yuzuko_core::define_element(scope, pair.into(), 1, object.into());
       }
       let length = list.length();
-      list.set_index(scope, length, pair.into());
+      yuzuko_core::define_element(scope, list.into(), length, pair.into());
     }
   }
   let symbol = v8::Symbol::get_iterator(scope);

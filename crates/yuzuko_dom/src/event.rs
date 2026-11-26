@@ -258,7 +258,12 @@ impl Event {
       .collect();
     let array = v8::Array::new(scope, locals.len() as i32);
     for (index, object) in locals.iter().enumerate() {
-      array.set_index(scope, index as u32, (*object).into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        (*object).into(),
+      );
     }
     let value: v8::Local<v8::Value> = array.into();
     Js(v8::Global::new(scope, value))

@@ -407,7 +407,7 @@ fn event_list(
   let array = v8::Array::new(scope, held.len() as i32);
   for (index, item) in held.iter().enumerate() {
     let value: v8::Local<v8::Value> = v8::Local::new(scope, item).into();
-    array.set_index(scope, index as u32, value);
+    yuzuko_core::define_element(scope, array.into(), index as u32, value);
   }
   let value: v8::Local<v8::Value> = array.into();
   Js(v8::Global::new(scope, value))
@@ -2212,7 +2212,12 @@ fn touch_list_iterator(
   };
   let array = v8::Array::new(scope, locals.len() as i32);
   for (index, object) in locals.iter().enumerate() {
-    array.set_index(scope, index as u32, (*object).into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      (*object).into(),
+    );
   }
   return_array_iterator(scope, array, &mut ret);
 }

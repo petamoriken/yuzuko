@@ -863,7 +863,7 @@ fn call_abort_signal_any<'s>(
   let list = v8::Array::new(scope, sources.len() as i32);
   for (index, source) in sources.iter().enumerate() {
     let value: v8::Local<v8::Value> = (*source).into();
-    list.set_index(scope, index as u32, value);
+    yuzuko_core::define_element(scope, list.into(), index as u32, value);
   }
   let list: v8::Local<v8::Value> = list.into();
   let value = any.call(scope, ctor.into(), &[list])?;

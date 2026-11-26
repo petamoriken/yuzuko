@@ -303,7 +303,7 @@ fn run_load(
     };
     let promise = host.get().load_call_impl(scope);
     let value = v8::Local::new(scope, &promise.0);
-    array.set_index(scope, index as u32, value);
+    yuzuko_core::define_element(scope, array.into(), index as u32, value);
   }
   if faces.is_empty() {
     resolver.resolve(scope, array.into());

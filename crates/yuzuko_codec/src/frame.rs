@@ -1126,7 +1126,12 @@ fn layout_array<'s>(
       object.create_data_property(scope, offset_key.into(), offset.into());
     let _ =
       object.create_data_property(scope, stride_key.into(), stride.into());
-    array.set_index(scope, index as u32, object.into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      object.into(),
+    );
   }
   array.into()
 }

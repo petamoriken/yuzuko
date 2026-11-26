@@ -1143,7 +1143,12 @@ impl Context2D {
     let array = v8::Array::new(scope, dash.len() as i32);
     for (index, value) in dash.iter().enumerate() {
       let number = v8::Number::new(scope, *value);
-      array.set_index(scope, index as u32, number.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        number.into(),
+      );
     }
     let value: v8::Local<v8::Value> = array.into();
     Ok(js_of(scope, value))

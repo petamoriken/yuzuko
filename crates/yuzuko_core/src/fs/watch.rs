@@ -409,7 +409,9 @@ fn event_object<'s>(
   let paths = v8::Array::new(scope, event.paths.len() as i32);
   for (index, path) in event.paths.iter().enumerate() {
     let text = v8_string(scope, path)?;
-    if paths.set_index(scope, index as u32, text.into()).is_none() {
+    if crate::js::define_element(scope, paths.into(), index as u32, text.into())
+      .is_none()
+    {
       return Err(FsError::failed());
     }
   }

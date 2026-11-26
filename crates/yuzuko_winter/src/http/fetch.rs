@@ -266,7 +266,12 @@ impl Headers {
     let array = v8::Array::new(scope, values.len() as i32);
     for (index, value) in values.iter().enumerate() {
       let text = v8::String::new(scope, value).unwrap();
-      array.set_index(scope, index as u32, text.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        text.into(),
+      );
     }
     let value: v8::Local<v8::Value> = array.into();
     Js(v8::Global::new(scope, value))
@@ -382,8 +387,8 @@ impl HeaderIter {
     let item = match self.kind {
       HeaderIterKind::Entries => {
         let array = v8::Array::new(scope, 2);
-        array.set_index(scope, 0, name.into());
-        array.set_index(scope, 1, value.into());
+        yuzuko_core::define_element(scope, array.into(), 0, name.into());
+        yuzuko_core::define_element(scope, array.into(), 1, value.into());
         array.into()
       }
       HeaderIterKind::Keys => name.into(),

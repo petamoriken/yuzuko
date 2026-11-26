@@ -226,7 +226,12 @@ impl CacheStorage {
     let array = v8::Array::new(scope, names.len() as i32);
     for (index, name) in names.iter().enumerate() {
       let text = v8::String::new(scope, name).unwrap();
-      array.set_index(scope, index as u32, text.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        text.into(),
+      );
     }
     resolve(scope, array.into())
   }
@@ -407,7 +412,12 @@ impl Cache {
       let request = new_get_request(scope, url).map_err(|_| {
         OpError::type_("The cached request could not be created")
       })?;
-      array.set_index(scope, index as u32, request.into());
+      yuzuko_core::define_element(
+        scope,
+        array.into(),
+        index as u32,
+        request.into(),
+      );
     }
     Ok(array.into())
   }
@@ -1471,7 +1481,7 @@ fn array_of<'s>(
 ) -> v8::Local<'s, v8::Array> {
   let array = v8::Array::new(scope, values.len() as i32);
   for (index, value) in values.iter().enumerate() {
-    array.set_index(scope, index as u32, *value);
+    yuzuko_core::define_element(scope, array.into(), index as u32, *value);
   }
   array
 }

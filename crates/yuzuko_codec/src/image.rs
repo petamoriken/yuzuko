@@ -381,7 +381,7 @@ impl ImageDecoder {
               yuzuko_core::op::traced_local(scope, reference)
             })
         {
-          let _ = list.set_index(scope, 0, track.into());
+          let _ = yuzuko_core::define_element(scope, list, 0, track.into());
         }
         self.settle_metadata(scope);
         self.flush_waiters(scope);
@@ -683,7 +683,7 @@ fn image_track_list_iterator(
   let track = ready_track(scope, &host.get().decoder);
   let array = v8::Array::new(scope, i32::from(track.is_some()));
   if let Some(track) = track {
-    array.set_index(scope, 0, track.into());
+    yuzuko_core::define_element(scope, array.into(), 0, track.into());
   }
   let symbol = v8::Symbol::get_iterator(scope);
   if let Some(next) = array.get(scope, symbol.into())
@@ -1045,8 +1045,8 @@ fn read_chunk(
     return;
   };
   let pack = v8::Array::new(scope, 2);
-  let _ = pack.set_index(scope, 0, decoder.into());
-  let _ = pack.set_index(scope, 1, reader.into());
+  let _ = yuzuko_core::define_element(scope, pack.into(), 0, decoder.into());
+  let _ = yuzuko_core::define_element(scope, pack.into(), 1, reader.into());
   let pack: v8::Local<v8::Value> = pack.into();
   let Some(ok) = v8::Function::builder(on_chunk).data(pack).build(scope) else {
     return;

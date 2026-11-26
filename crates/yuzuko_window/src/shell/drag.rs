@@ -666,7 +666,12 @@ fn item_list_iterator(
     .collect::<Vec<_>>();
   let array = v8::Array::new(scope, values.len() as i32);
   for (index, object) in values.iter().enumerate() {
-    array.set_index(scope, index as u32, (*object).into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      (*object).into(),
+    );
   }
   return_array_iterator(scope, array, &mut ret);
 }
@@ -729,7 +734,12 @@ fn file_list_iterator(
   };
   let array = v8::Array::new(scope, locals.len() as i32);
   for (index, object) in locals.iter().enumerate() {
-    array.set_index(scope, index as u32, (*object).into());
+    yuzuko_core::define_element(
+      scope,
+      array.into(),
+      index as u32,
+      (*object).into(),
+    );
   }
   return_array_iterator(scope, array, &mut ret);
 }

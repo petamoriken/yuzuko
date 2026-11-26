@@ -1941,8 +1941,8 @@ fn set_callback(
   let data = v8::Array::new(scope, 2);
   let session = v8::BigInt::new_from_u64(scope, session);
   let stream = v8::BigInt::new_from_u64(scope, stream);
-  let _ = data.set_index(scope, 0, session.into());
-  let _ = data.set_index(scope, 1, stream.into());
+  let _ = yuzuko_core::define_element(scope, data.into(), 0, session.into());
+  let _ = yuzuko_core::define_element(scope, data.into(), 1, stream.into());
   let function = v8::Function::builder(callback)
     .data(data.into())
     .build(scope)?;

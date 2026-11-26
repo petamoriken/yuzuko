@@ -911,8 +911,8 @@ impl SearchIter {
     let item = match self.kind {
       IterKind::Entries => {
         let array = v8::Array::new(scope, 2);
-        array.set_index(scope, 0, name.into());
-        array.set_index(scope, 1, value.into());
+        yuzuko_core::define_element(scope, array.into(), 0, name.into());
+        yuzuko_core::define_element(scope, array.into(), 1, value.into());
         array.into()
       }
       IterKind::Keys => name.into(),

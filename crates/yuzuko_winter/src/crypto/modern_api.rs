@@ -704,7 +704,12 @@ pub(crate) fn akp_value<'s>(
   let operations = v8::Array::new(scope, jwk.key_ops.len() as i32);
   for (index, usage) in jwk.key_ops.iter().enumerate() {
     let text = v8::String::new(scope, usage).unwrap();
-    operations.set_index(scope, index as u32, text.into());
+    yuzuko_core::define_element(
+      scope,
+      operations.into(),
+      index as u32,
+      text.into(),
+    );
   }
   let key = v8::String::new(scope, "key_ops").unwrap();
   let _ = object.create_data_property(scope, key.into(), operations.into());

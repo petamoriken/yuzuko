@@ -511,7 +511,7 @@ pub(super) fn entries_value<'s>(
     set_bool(scope, object, "isFile", entry.is_file);
     set_bool(scope, object, "isDirectory", entry.is_directory);
     set_bool(scope, object, "isSymlink", entry.is_symlink);
-    array.set_index(scope, index as u32, object.into());
+    crate::js::define_element(scope, array.into(), index as u32, object.into());
   }
   Ok(array.into())
 }

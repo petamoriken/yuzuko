@@ -115,7 +115,8 @@ fn install_args(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
     let Some(text) = v8::String::new(scope, arg) else {
       continue;
     };
-    let _ = array.set_index(scope, index as u32, text.into());
+    let _ =
+      crate::js::define_element(scope, array.into(), index as u32, text.into());
   }
   let _ = array.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   let key = v8::String::new(scope, "args").expect("args");

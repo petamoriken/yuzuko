@@ -80,7 +80,9 @@ fn array_of<'s, T>(
   for (index, item) in items.into_iter().enumerate() {
     let value = one(scope, item)?;
     let index = u32::try_from(index).map_err(|_| ())?;
-    if array.set_index(scope, index, value.into()) != Some(true) {
+    if yuzuko_core::define_element(scope, array.into(), index, value.into())
+      != Some(true)
+    {
       return Err(());
     }
   }
@@ -115,7 +117,9 @@ fn chunk_array<'s>(
       unsafe { yuzuko_core::op::wrap_instance(scope, chunk) }
     };
     let index = u32::try_from(index).map_err(|_| ())?;
-    if array.set_index(scope, index, object.into()) != Some(true) {
+    if yuzuko_core::define_element(scope, array.into(), index, object.into())
+      != Some(true)
+    {
       return Err(());
     }
   }

@@ -1016,7 +1016,12 @@ fn compilation_info_object<'s>(
         },
       )
     };
-    messages.set_index(scope, index as u32, item.into());
+    yuzuko_core::define_element(
+      scope,
+      messages.into(),
+      index as u32,
+      item.into(),
+    );
   }
   let _ = messages.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
   let messages = yuzuko_core::op::traced(scope, messages);

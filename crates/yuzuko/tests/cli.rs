@@ -387,6 +387,14 @@ fn structured_clone_copies_blob_file_and_dom_exception() {
 }
 
 #[test]
+fn host_arrays_define_their_elements() {
+  let output = yuzuko(&["test", "-A", "tests/array_element_test.ts"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stdout));
+  let stdout = text(&output.stdout);
+  assert!(stdout.contains("ok | 1 passed | 0 failed"), "{stdout}");
+}
+
+#[test]
 fn microtask_runs_before_a_timer() {
   let output = yuzuko(&["test", "-A", "tests/order_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));

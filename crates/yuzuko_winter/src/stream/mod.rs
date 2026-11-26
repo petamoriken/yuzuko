@@ -738,8 +738,8 @@ impl ReadableStream {
     let right = v8::Local::new(scope, &branch_b);
     let left: v8::Local<v8::Value> = left.into();
     let right: v8::Local<v8::Value> = right.into();
-    array.set_index(scope, 0, left);
-    array.set_index(scope, 1, right);
+    yuzuko_core::define_element(scope, array.into(), 0, left);
+    yuzuko_core::define_element(scope, array.into(), 1, right);
     let value: v8::Local<v8::Value> = array.into();
     Ok(Js(v8::Global::new(scope, value)))
   }
@@ -7021,8 +7021,8 @@ fn tee_cancel_source(scope: &mut v8::PinScope, tee: u64) {
     .as_ref()
     .map(|value| v8::Local::new(scope, value))
     .unwrap_or_else(|| v8::undefined(scope).into());
-  array.set_index(scope, 0, first);
-  array.set_index(scope, 1, second);
+  yuzuko_core::define_element(scope, array.into(), 0, first);
+  yuzuko_core::define_element(scope, array.into(), 1, second);
   let result = cancel_stream(scope, source, Some(array.into()));
   let resolver = v8::Local::new(scope, &resolver);
   let resolver = yuzuko_core::op::root(scope, resolver);

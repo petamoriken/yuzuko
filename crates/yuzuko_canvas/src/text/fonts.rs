@@ -719,7 +719,7 @@ impl FontFaceSetLoadEvent {
     let array = v8::Array::new(scope, faces.len() as i32);
     for (index, face) in faces.iter().enumerate() {
       if let Some(value) = traced_local(scope, face) {
-        array.set_index(scope, index as u32, value);
+        yuzuko_core::define_element(scope, array.into(), index as u32, value);
       }
     }
     let value: v8::Local<v8::Value> = array.into();
@@ -867,8 +867,8 @@ impl FontSetIter {
           FaceIterKind::Keys | FaceIterKind::Values => face.into(),
           FaceIterKind::Entries => {
             let array = v8::Array::new(scope, 2);
-            array.set_index(scope, 0, face.into());
-            array.set_index(scope, 1, face.into());
+            yuzuko_core::define_element(scope, array.into(), 0, face.into());
+            yuzuko_core::define_element(scope, array.into(), 1, face.into());
             array.into()
           }
         };
