@@ -343,7 +343,10 @@ async fn session(
     fail(&notes);
     return;
   };
-  if status != 101 || !accept_matches(&headers, &key) {
+  if status != 101
+    || !accept_matches(&headers, &key)
+    || !upgrade_headers_ok(&headers)
+  {
     fail(&notes);
     return;
   }
@@ -542,6 +545,23 @@ fn accept_matches(headers: &[(String, String)], key: &str) -> bool {
   value.trim() == crate::text::base64::encode(&digest)
 }
 
+/// RFC 6455 4.1: a 101 response names `websocket` in `Upgrade` and the
+/// `upgrade` token in `Connection`. No extension is offered, so a server
+/// that selects one fails the connection.
+fn upgrade_headers_ok(headers: &[(String, String)]) -> bool {
+  let upgrade = header(headers, "upgrade")
+    .is_some_and(|value| value.trim().eq_ignore_ascii_case("websocket"));
+  let connection = header(headers, "connection").is_some_and(|value| {
+    value
+      .split(',')
+      .any(|token| token.trim().eq_ignore_ascii_case("upgrade"))
+  });
+  let extensions = headers
+    .iter()
+    .any(|(key, _)| key.eq_ignore_ascii_case("sec-websocket-extensions"));
+  upgrade && connection && !extensions
+}
+
 fn protocol_ok(offered: &[String], selected: &str) -> bool {
   if offered.is_empty() {
     return selected.is_empty();
@@ -715,8 +735,18 @@ fn parse_close(payload: &[u8]) -> Result<(u16, String), ()> {
     return Err(());
   }
   let code = u16::from_be_bytes([payload[0], payload[1]]);
+  if !close_code_ok(code) {
+    return Err(());
+  }
   let reason = std::str::from_utf8(&payload[2..]).map_err(|_| ())?;
   Ok((code, reason.to_string()))
+}
+
+/// RFC 6455 7.4: a close code a peer may send. 1004, 1005, 1006, and 1015
+/// are reserved, and codes below 1000 or from 1016 through 2999 are not
+/// assigned.
+fn close_code_ok(code: u16) -> bool {
+  matches!(code, 1000..=1003 | 1007..=1014 | 3000..=4999)
 }
 
 async fn write_data<S: AsyncWrite + Unpin>(
@@ -798,6 +828,10 @@ fn take_frame(bytes: &[u8]) -> Result<Option<(Frame, usize)>, ()> {
     return Err(());
   }
   let opcode = bytes[0] & 0x0F;
+  // RFC 6455 5.2: opcodes 3 through 7 and 0xB through 0xF are reserved.
+  if matches!(opcode, 0x3..=0x7 | 0xB..=0xF) {
+    return Err(());
+  }
   let masked = bytes[1] & 0x80 != 0;
   if masked {
     return Err(());
@@ -822,6 +856,11 @@ fn take_frame(bytes: &[u8]) -> Result<Option<(Frame, usize)>, ()> {
     short => (short as usize, 2),
   };
   if len > MAX_MESSAGE {
+    return Err(());
+  }
+  // RFC 6455 5.5: a control frame is not fragmented and carries at most
+  // 125 bytes.
+  if opcode >= 0x8 && (!fin || len > 125) {
     return Err(());
   }
   if bytes.len() < offset + len {
@@ -1193,6 +1232,56 @@ fn fail(notes: &NoteQueue) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn rfc6455_frame_and_close_rules_are_enforced() {
+    // A fragmented ping and a 126-byte ping are protocol errors.
+    assert!(take_frame(&[0x09, 0x00]).is_err());
+    let mut long_ping = vec![0x89, 126, 0, 126];
+    long_ping.extend(vec![0u8; 126]);
+    assert!(take_frame(&long_ping).is_err());
+    let mut ping = vec![0x89, 125];
+    ping.extend(vec![0u8; 125]);
+    assert!(take_frame(&ping).unwrap().is_some());
+    // Reserved opcodes.
+    assert!(take_frame(&[0x83, 0x00]).is_err());
+    assert!(take_frame(&[0x8B, 0x00]).is_err());
+
+    for code in [0u16, 999, 1004, 1005, 1006, 1015, 1016, 2999, 5000] {
+      let payload = code.to_be_bytes();
+      assert!(parse_close(&payload).is_err(), "{code}");
+    }
+    for code in [1000u16, 1003, 1007, 1014, 3000, 4999] {
+      let payload = code.to_be_bytes();
+      assert_eq!(parse_close(&payload).unwrap().0, code);
+    }
+    assert_eq!(parse_close(&[]).unwrap().0, 1005);
+  }
+
+  #[test]
+  fn a_101_needs_upgrade_headers_and_no_extension() {
+    let headers = |pairs: &[(&str, &str)]| {
+      pairs
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect::<Vec<_>>()
+    };
+    assert!(upgrade_headers_ok(&headers(&[
+      ("Upgrade", "WebSocket"),
+      ("Connection", "keep-alive, Upgrade"),
+    ])));
+    assert!(!upgrade_headers_ok(&headers(&[("Connection", "Upgrade")])));
+    assert!(!upgrade_headers_ok(&headers(&[
+      ("Upgrade", "h2c"),
+      ("Connection", "Upgrade"),
+    ])));
+    assert!(!upgrade_headers_ok(&headers(&[("Upgrade", "websocket")])));
+    assert!(!upgrade_headers_ok(&headers(&[
+      ("Upgrade", "websocket"),
+      ("Connection", "Upgrade"),
+      ("Sec-WebSocket-Extensions", "permessage-deflate"),
+    ])));
+  }
 
   #[test]
   fn accept_key_matches_rfc6455() {
