@@ -34,6 +34,39 @@ enum OpenPass {
   Compute(ComputeRecord),
 }
 
+/// Whether each `first..first + count` range fits in `u32`. wgpu takes
+/// `Range<u32>`, so a range past `u32::MAX` cannot be recorded.
+fn ranges_fit(ranges: &[(u32, u32)]) -> bool {
+  ranges
+    .iter()
+    .all(|(first, count)| first.checked_add(*count).is_some())
+}
+
+impl PassCommand {
+  fn ranges_fit(&self) -> bool {
+    match self {
+      Self::Draw {
+        vertices,
+        instances,
+        first_vertex,
+        first_instance,
+      } => {
+        ranges_fit(&[(*first_vertex, *vertices), (*first_instance, *instances)])
+      }
+      Self::DrawIndexed {
+        indices,
+        instances,
+        first_index,
+        first_instance,
+        ..
+      } => {
+        ranges_fit(&[(*first_index, *indices), (*first_instance, *instances)])
+      }
+      _ => true,
+    }
+  }
+}
+
 struct PassRecord {
   colors: Vec<Option<ColorTarget>>,
   depth: Option<DepthTarget>,
@@ -970,12 +1003,19 @@ impl GpuRenderPass {
     first_vertex: Option<js::GpuSize32>,
     first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
-    self.push_draw(PassCommand::Draw {
+    let command = PassCommand::Draw {
       vertices: vertices.0,
       instances: instances.map(|value| value.0).unwrap_or(1),
       first_vertex: first_vertex.map(|value| value.0).unwrap_or(0),
       first_instance: first_instance.map(|value| value.0).unwrap_or(0),
-    })
+    };
+    if !command.ranges_fit() {
+      return self.with_render(|record| {
+        record.invalid = true;
+        Ok(())
+      });
+    }
+    self.push_draw(command)
   }
 
   fn draw_indexed(
@@ -986,13 +1026,20 @@ impl GpuRenderPass {
     base_vertex: Option<js::GpuSignedOffset32>,
     first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
-    self.push_draw(PassCommand::DrawIndexed {
+    let command = PassCommand::DrawIndexed {
       indices: indices.0,
       instances: instances.map(|value| value.0).unwrap_or(1),
       first_index: first_index.map(|value| value.0).unwrap_or(0),
       base_vertex: base_vertex.map(|value| value.0).unwrap_or(0),
       first_instance: first_instance.map(|value| value.0).unwrap_or(0),
-    })
+    };
+    if !command.ranges_fit() {
+      return self.with_render(|record| {
+        record.invalid = true;
+        Ok(())
+      });
+    }
+    self.push_draw(command)
   }
 
   fn draw_indirect(
@@ -1641,11 +1688,21 @@ impl GpuRenderBundleEncoder {
     first_vertex: Option<js::GpuSize32>,
     first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
+    let vertices = vertices.0;
+    let instances = instances.map(|value| value.0).unwrap_or(1);
+    let first_vertex = first_vertex.map(|value| value.0).unwrap_or(0);
+    let first_instance = first_instance.map(|value| value.0).unwrap_or(0);
+    if !ranges_fit(&[(first_vertex, vertices), (first_instance, instances)]) {
+      return self.with_slot(|slot| {
+        slot.invalid = true;
+        Ok(())
+      });
+    }
     self.push(BundleCommand::Draw {
-      vertices: vertices.0,
-      instances: instances.map(|value| value.0).unwrap_or(1),
-      first_vertex: first_vertex.map(|value| value.0).unwrap_or(0),
-      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
+      vertices,
+      instances,
+      first_vertex,
+      first_instance,
     })
   }
 
@@ -1657,12 +1714,22 @@ impl GpuRenderBundleEncoder {
     base_vertex: Option<js::GpuSignedOffset32>,
     first_instance: Option<js::GpuSize32>,
   ) -> Result<(), OpError> {
+    let indices = indices.0;
+    let instances = instances.map(|value| value.0).unwrap_or(1);
+    let first_index = first_index.map(|value| value.0).unwrap_or(0);
+    let first_instance = first_instance.map(|value| value.0).unwrap_or(0);
+    if !ranges_fit(&[(first_index, indices), (first_instance, instances)]) {
+      return self.with_slot(|slot| {
+        slot.invalid = true;
+        Ok(())
+      });
+    }
     self.push(BundleCommand::DrawIndexed {
-      indices: indices.0,
-      instances: instances.map(|value| value.0).unwrap_or(1),
-      first_index: first_index.map(|value| value.0).unwrap_or(0),
+      indices,
+      instances,
+      first_index,
       base_vertex: base_vertex.map(|value| value.0).unwrap_or(0),
-      first_instance: first_instance.map(|value| value.0).unwrap_or(0),
+      first_instance,
     })
   }
 
@@ -2017,8 +2084,8 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
         first_vertex,
         first_instance,
       } => pass.draw(
-        *first_vertex..*first_vertex + *vertices,
-        *first_instance..*first_instance + *instances,
+        *first_vertex..first_vertex.saturating_add(*vertices),
+        *first_instance..first_instance.saturating_add(*instances),
       ),
       PassCommand::DrawIndexed {
         indices,
@@ -2027,9 +2094,9 @@ fn replay_render(encoder: &mut wgpu::CommandEncoder, record: &PassRecord) {
         base_vertex,
         first_instance,
       } => pass.draw_indexed(
-        *first_index..*first_index + *indices,
+        *first_index..first_index.saturating_add(*indices),
         *base_vertex,
-        *first_instance..*first_instance + *instances,
+        *first_instance..first_instance.saturating_add(*instances),
       ),
       PassCommand::DrawIndirect { buffer, offset } => {
         pass.draw_indirect(buffer, *offset);
@@ -2154,8 +2221,8 @@ fn finish_bundle(slot: BundleSlot) -> wgpu::RenderBundle {
         first_vertex,
         first_instance,
       } => encoder.draw(
-        *first_vertex..*first_vertex + *vertices,
-        *first_instance..*first_instance + *instances,
+        *first_vertex..first_vertex.saturating_add(*vertices),
+        *first_instance..first_instance.saturating_add(*instances),
       ),
       BundleCommand::DrawIndexed {
         indices,
@@ -2164,9 +2231,9 @@ fn finish_bundle(slot: BundleSlot) -> wgpu::RenderBundle {
         base_vertex,
         first_instance,
       } => encoder.draw_indexed(
-        *first_index..*first_index + *indices,
+        *first_index..first_index.saturating_add(*indices),
         *base_vertex,
-        *first_instance..*first_instance + *instances,
+        *first_instance..first_instance.saturating_add(*instances),
       ),
       BundleCommand::DrawIndirect { buffer, offset } => {
         encoder.draw_indirect(buffer, *offset);

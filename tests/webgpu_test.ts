@@ -3904,3 +3904,40 @@ Yuzuko.test("queue texture writes, clears, and compilation info", async () => {
   device.queue.submit([encoder.finish()]);
   device.destroy();
 });
+
+Yuzuko.test("a draw range past 2^32 is a validation error", async () => {
+  const adapter = await adapterOrSkip();
+  if (!adapter) {
+    return;
+  }
+  const device = await adapter.requestDevice();
+  const texture = device.createTexture({
+    size: [1, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const draws: [string, (pass: GPURenderPassEncoder | GPURenderBundleEncoder) => void][] = [
+    ["vertex", (pass) => pass.draw(2, 1, 0xffffffff)],
+    ["instance", (pass) => pass.draw(1, 2, 0, 0xffffffff)],
+    ["index", (pass) => pass.drawIndexed(2, 1, 0xffffffff)],
+    ["indexed instance", (pass) => pass.drawIndexed(1, 2, 0, 0, 0xffffffff)],
+  ];
+  for (const [label, draw] of draws) {
+    device.pushErrorScope("validation");
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store" }],
+    });
+    draw(pass);
+    pass.end();
+    encoder.finish();
+    assert(await device.popErrorScope() instanceof GPUValidationError, `pass ${label}`);
+
+    device.pushErrorScope("validation");
+    const bundle = device.createRenderBundleEncoder({ colorFormats: ["rgba8unorm"] });
+    draw(bundle);
+    bundle.finish();
+    assert(await device.popErrorScope() instanceof GPUValidationError, `bundle ${label}`);
+  }
+  device.destroy();
+});
