@@ -838,11 +838,27 @@ fn sandbox_file(url: &Url, sandbox: &Path) -> Option<PathBuf> {
   if host != "web-platform.test" && host != "localhost" && host != "127.0.0.1" {
     return None;
   }
-  let relative = url.path().trim_start_matches('/');
-  if relative.is_empty() {
-    return None;
+  // Each URL path segment is one percent-decoded file name under the entry
+  // directory. A segment that would name another directory, a root, or a
+  // drive does not map to a file.
+  let mut path = sandbox.to_path_buf();
+  let mut named = false;
+  for segment in url.path_segments()? {
+    let bytes = crate::percent::decode(segment);
+    let name = String::from_utf8(bytes).ok()?;
+    if name.is_empty() || name == "." || name == ".." {
+      return None;
+    }
+    if name.contains(['/', '\\', '\0']) {
+      return None;
+    }
+    if cfg!(windows) && name.contains(':') {
+      return None;
+    }
+    path.push(name);
+    named = true;
   }
-  Some(sandbox.join(relative))
+  named.then_some(path)
 }
 
 pub(crate) fn mark_dead(id: u64) {
@@ -853,7 +869,10 @@ pub(crate) fn mark_dead(id: u64) {
 
 #[cfg(test)]
 mod tests {
-  use super::{decode_data_url, load_worker_source, set_classic_worker_source};
+  use super::{
+    decode_data_url, load_worker_source, sandbox_file,
+    set_classic_worker_source,
+  };
   use url::Url;
 
   #[test]
@@ -884,6 +903,33 @@ mod tests {
     assert_eq!(text, "hi");
     let text = decode_data_url("data:text/javascript,a%23b#c").unwrap();
     assert_eq!(text, "a#b");
+  }
+
+  #[test]
+  fn a_sandbox_url_path_is_percent_decoded() {
+    let sandbox = std::path::Path::new("/entry");
+    let file = |text: &str| sandbox_file(&Url::parse(text).unwrap(), sandbox);
+    assert_eq!(
+      file("http://localhost/my%20worker.js"),
+      Some(sandbox.join("my worker.js"))
+    );
+    assert_eq!(
+      file("http://127.0.0.1:8000/dir/%E3%81%82.js"),
+      Some(sandbox.join("dir").join("\u{3042}.js"))
+    );
+    assert_eq!(file("http://localhost/a%2Fb.js"), None);
+    assert_eq!(file("http://localhost/a%5Cb.js"), None);
+    assert_eq!(file("http://localhost/a%00.js"), None);
+    // The URL parser resolves `%2e%2e` as `..`, so this stays inside.
+    assert_eq!(
+      file("http://localhost/%2e%2e/x.js"),
+      Some(sandbox.join("x.js"))
+    );
+    assert_eq!(file("http://localhost/"), None);
+    assert_eq!(file("http://example.com/x.js"), None);
+    if cfg!(windows) {
+      assert_eq!(file("http://localhost/C:/x.js"), None);
+    }
   }
 
   #[test]
