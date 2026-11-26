@@ -29,9 +29,13 @@ use super::source_methods;
 use super::type_error;
 use super::watch_promise;
 
+/// Runs once when a paused push stream wants more bytes or is canceled.
+pub(super) type Resume = Box<dyn FnOnce()>;
+
 thread_local! {
   static BYTES: RefCell<HashMap<u64, ByteCtrl>> = RefCell::new(HashMap::new());
   static TEES: RefCell<HashMap<u64, ByteTee>> = RefCell::new(HashMap::new());
+  static RESUMES: RefCell<HashMap<u64, Resume>> = RefCell::new(HashMap::new());
 }
 
 struct QueueChunk {
@@ -104,6 +108,29 @@ struct ByteTee {
 pub(super) fn clear() {
   BYTES.with(|slot| slot.borrow_mut().clear());
   TEES.with(|slot| slot.borrow_mut().clear());
+  // Dropping a resume lets its owner stop the producer.
+  let resumes = RESUMES.with(|slot| std::mem::take(&mut *slot.borrow_mut()));
+  drop(resumes);
+}
+
+/// Registers `resume` for a push stream whose producer paused. It runs the
+/// next time the stream would pull, or when the stream is canceled.
+pub(super) fn resume_on_pull(id: u64, resume: Resume) {
+  RESUMES.with(|slot| slot.borrow_mut().insert(id, resume));
+}
+
+/// Runs the resume registered for `id`, if any. The map is not borrowed
+/// while it runs.
+pub(super) fn run_resume(id: u64) {
+  let resume = RESUMES.with(|slot| slot.borrow_mut().remove(&id));
+  if let Some(resume) = resume {
+    resume();
+  }
+}
+
+/// Bytes waiting in a byte stream's queue.
+pub(super) fn queued_bytes(id: u64) -> usize {
+  queue_total(id)
 }
 
 pub(super) fn is_byte(id: u64) -> bool {
@@ -871,6 +898,8 @@ fn call_pull_if_needed(scope: &mut v8::PinScope, id: u64) {
         state.pull_again = false;
       }
     });
+    // A paused producer resumes in its own task, not inside this read.
+    run_resume(id);
     return;
   };
   let controller = unsafe {

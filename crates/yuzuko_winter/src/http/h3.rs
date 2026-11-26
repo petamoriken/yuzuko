@@ -364,6 +364,9 @@ async fn forward(
   mut decoder: Option<super::super::content_coding::ContentDecoder>,
 ) {
   loop {
+    if !body.wait_room().await {
+      return;
+    }
     let stream = &mut opened.stream;
     let driver = &mut opened.driver;
     tokio::select! {

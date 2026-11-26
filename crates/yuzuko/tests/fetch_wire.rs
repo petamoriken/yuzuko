@@ -155,3 +155,79 @@ fn an_unterminated_line_or_head_rejects_without_waiting() {
   assert!(stdout.contains("line prompt"), "{stdout}\n{stderr}");
   assert!(stdout.contains("head prompt"), "{stdout}\n{stderr}");
 }
+
+#[test]
+fn an_unread_body_holds_the_server_until_it_is_read() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicUsize, Ordering};
+  let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let written = Arc::new(AtomicUsize::new(0));
+  let counter = Arc::clone(&written);
+  thread::spawn(move || {
+    let Ok((mut stream, _)) = listener.accept() else {
+      return;
+    };
+    read_head(&mut stream);
+    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n");
+    let block = vec![b'x'; 64 * 1024];
+    while stream.write_all(&block).is_ok() {
+      counter.fetch_add(block.len(), Ordering::Relaxed);
+    }
+  });
+  let dir = scratch("unread");
+  fs::write(
+    dir.join("main.ts"),
+    format!(
+      r#"const response = await fetch("http://127.0.0.1:{port}/");
+await new Promise((resolve) => setTimeout(resolve, 2000));
+console.log("waited");
+await new Promise((resolve) => setTimeout(resolve, 500));
+const reader = response.body!.getReader();
+let total = 0;
+while (total < 8 * 1024 * 1024) {{
+  const {{ value, done }} = await reader.read();
+  if (done) break;
+  total += value.byteLength;
+}}
+console.log("read " + (total >= 8 * 1024 * 1024));
+await reader.cancel();
+console.log("canceled");
+"#
+    ),
+  )
+  .unwrap();
+  let mut child = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(&dir)
+    .args(["run", "-A", "main.ts"])
+    .env("YUZUKO_HEADLESS", "1")
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  // Sample the server when the script has waited two seconds without
+  // reading.
+  use std::io::BufRead;
+  let mut lines = std::io::BufReader::new(child.stdout.take().unwrap());
+  let mut stdout = String::new();
+  let mut held = None;
+  let mut line = String::new();
+  while lines.read_line(&mut line).unwrap_or(0) > 0 {
+    if line.trim() == "waited" {
+      held = Some(written.load(Ordering::Relaxed));
+    }
+    stdout.push_str(&line);
+    line.clear();
+  }
+  let output = child.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+  let held = held.expect("the script did not wait");
+  let _ = fs::remove_dir_all(&dir);
+  assert!(output.status.success(), "{stdout}\n{stderr}");
+  assert!(stdout.contains("read true"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("canceled"), "{stdout}\n{stderr}");
+  // The 1 MiB stream queue, the producer's chunks, and the socket buffers
+  // hold a few megabytes. An eager pump keeps taking bytes.
+  assert!(held < 12 * 1024 * 1024, "{held} bytes sent before a read");
+}

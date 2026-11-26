@@ -850,6 +850,19 @@ pub(crate) fn push_byte_chunk(
   enqueue_chunk(scope, id, view.into(), Some(1.0)).is_ok()
 }
 
+/// Bytes queued in a push byte stream and not read yet.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+pub(crate) fn byte_stream_queued(id: u64) -> usize {
+  byte_stream::queued_bytes(id)
+}
+
+/// Runs `resume` once, when a reader wants more bytes from the push byte
+/// stream `id` or the stream is canceled. Replaces an earlier registration.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+pub(crate) fn resume_byte_stream(id: u64, resume: impl FnOnce() + 'static) {
+  byte_stream::resume_on_pull(id, Box::new(resume));
+}
+
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn finish_byte_stream(scope: &mut v8::PinScope, id: u64) {
   if byte_stream::is_byte(id) {
@@ -2513,6 +2526,7 @@ fn cancel_stream(
   });
   byte_stream::prepare_cancel(stream);
   finish_close(scope, stream);
+  byte_stream::run_resume(stream);
   byte_stream::finish_cancel_reads(scope, stream);
   if let Some(writable) = transform_writable(stream) {
     return transform_source_cancel(scope, writable, reason);

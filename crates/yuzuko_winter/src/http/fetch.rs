@@ -1846,16 +1846,58 @@ fn arm_http_body(stream: u64, body: crate::http::HttpBody) {
   }));
 }
 
+/// Bytes a response body may queue in its stream before the pump waits for
+/// a read.
+const PUMP_QUEUE_LIMIT: usize = 1024 * 1024;
+
+/// A body whose pump waits for a read. Dropping it without a resume, as
+/// when the realm closes, stops the producer.
+struct PausedBody {
+  stream: u64,
+  body: Option<crate::http::HttpBody>,
+}
+
+impl PausedBody {
+  fn resume(mut self) {
+    let Some(body) = self.body.take() else {
+      return;
+    };
+    let stream = self.stream;
+    yuzuko_core::enqueue(move |scope| pump_http_body(scope, stream, body));
+  }
+}
+
+impl Drop for PausedBody {
+  fn drop(&mut self) {
+    if let Some(body) = self.body.take() {
+      body.stop();
+    }
+  }
+}
+
 fn pump_http_body(
   scope: &mut v8::PinScope,
   stream: u64,
   body: crate::http::HttpBody,
 ) {
-  while let Some(note) = body.poll() {
+  loop {
     if !crate::stream::byte_stream_open(stream) {
       body.stop();
       return;
     }
+    // A full stream waits for its reader. The producer then waits too,
+    // because notes stay queued.
+    if crate::stream::byte_stream_queued(stream) >= PUMP_QUEUE_LIMIT {
+      let paused = PausedBody {
+        stream,
+        body: Some(body),
+      };
+      crate::stream::resume_byte_stream(stream, move || paused.resume());
+      return;
+    }
+    let Some(note) = body.poll() else {
+      break;
+    };
     match note {
       crate::http::BodyNote::Chunk(bytes) => {
         if !crate::stream::push_byte_chunk(scope, stream, bytes) {

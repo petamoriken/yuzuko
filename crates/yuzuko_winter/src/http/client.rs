@@ -37,6 +37,9 @@ pub enum BodyNote {
 
 type BodyWake = Arc<dyn Fn() + Send + Sync>;
 
+/// Unread chunks a body producer may queue before it waits.
+const BODY_NOTES_AHEAD: usize = 8;
+
 pub struct HttpBody {
   notes: Arc<Mutex<VecDeque<BodyNote>>>,
   wake: Arc<Mutex<Option<BodyWake>>>,
@@ -81,8 +84,20 @@ impl HttpBody {
     }
   }
 
-  fn queued(&self) -> usize {
+  pub(crate) fn queued(&self) -> usize {
     self.notes.lock().expect("http body").len()
+  }
+
+  /// Waits while more than `BODY_NOTES_AHEAD` notes are unread. Returns
+  /// `false` when the body was stopped or the fetch aborted.
+  pub(super) async fn wait_room(&self) -> bool {
+    while self.queued() > BODY_NOTES_AHEAD {
+      if self.cancel.load(Ordering::Relaxed) {
+        return false;
+      }
+      tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    !self.cancel.load(Ordering::Relaxed)
   }
 
   /// Calls `wake` from the body thread when a note is waiting.
@@ -479,6 +494,9 @@ async fn forward_body(
   mut decoder: Option<crate::http::content_coding::ContentDecoder>,
 ) {
   loop {
+    if !body.wait_room().await {
+      return;
+    }
     let frame = tokio::select! {
       biased;
       _ = wait_cancel(Arc::clone(&body.cancel)) => {
@@ -1177,11 +1195,8 @@ async fn forward_raw_body(
       if cancel.load(Ordering::Relaxed) {
         return Err(HttpFailure::Abort);
       }
-      while body.queued() > 8 {
-        if cancel.load(Ordering::Relaxed) {
-          return Err(HttpFailure::Abort);
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
+      if !body.wait_room().await {
+        return Err(HttpFailure::Abort);
       }
       let read = stream
         .read(&mut tmp)
@@ -1215,11 +1230,8 @@ async fn forward_raw_body(
     if cancel.load(Ordering::Relaxed) {
       return Err(HttpFailure::Abort);
     }
-    while body.queued() > 8 {
-      if cancel.load(Ordering::Relaxed) {
-        return Err(HttpFailure::Abort);
-      }
-      tokio::time::sleep(Duration::from_millis(5)).await;
+    if !body.wait_room().await {
+      return Err(HttpFailure::Abort);
     }
     let read = stream
       .read(&mut tmp)
@@ -1243,11 +1255,8 @@ async fn forward_chunked(
   cancel: &Arc<AtomicBool>,
 ) -> Result<(), HttpFailure> {
   loop {
-    while body.queued() > 8 {
-      if cancel.load(Ordering::Relaxed) {
-        return Err(HttpFailure::Abort);
-      }
-      tokio::time::sleep(Duration::from_millis(5)).await;
+    if !body.wait_room().await {
+      return Err(HttpFailure::Abort);
     }
     let line = match read_line(stream, &mut pending, cancel).await {
       Ok(line) => line,
@@ -1283,11 +1292,8 @@ async fn forward_chunked(
     // time so a large or false size does not reserve memory up front.
     let mut remaining = size;
     while remaining > CHUNK_PIECE {
-      while body.queued() > 8 {
-        if cancel.load(Ordering::Relaxed) {
-          return Err(HttpFailure::Abort);
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
+      if !body.wait_room().await {
+        return Err(HttpFailure::Abort);
       }
       let piece =
         match take_bytes(stream, &mut pending, CHUNK_PIECE, cancel).await {

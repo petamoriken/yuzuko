@@ -259,6 +259,72 @@ async fn serve_h2(
   .await;
 }
 
+/// A response body that never ends and counts the bytes it hands out.
+struct Endless(Arc<std::sync::atomic::AtomicUsize>);
+
+const ENDLESS_FRAME: usize = 64 * 1024;
+
+impl hyper::body::Body for Endless {
+  type Data = bytes::Bytes;
+  type Error = std::convert::Infallible;
+
+  fn poll_frame(
+    self: std::pin::Pin<&mut Self>,
+    _cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<
+    Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>,
+  > {
+    self
+      .0
+      .fetch_add(ENDLESS_FRAME, std::sync::atomic::Ordering::Relaxed);
+    let frame =
+      hyper::body::Frame::data(bytes::Bytes::from(vec![7u8; ENDLESS_FRAME]));
+    std::task::Poll::Ready(Some(Ok(frame)))
+  }
+}
+
+async fn serve_endless_h2(
+  identity: Identity,
+  sent: Arc<std::sync::atomic::AtomicUsize>,
+  port_tx: mpsc::Sender<u16>,
+) {
+  let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+    .await
+    .expect("bind");
+  port_tx
+    .send(listener.local_addr().expect("local addr").port())
+    .expect("port");
+  let config = tls_server(identity, vec![b"h2".to_vec()], true);
+  let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+  let accepted =
+    tokio::time::timeout(Duration::from_secs(15), listener.accept()).await;
+  let Ok(Ok((stream, _))) = accepted else {
+    return;
+  };
+  let Ok(tls) = acceptor.accept(stream).await else {
+    return;
+  };
+  let io = hyper_util::rt::TokioIo::new(tls);
+  let service = hyper::service::service_fn(
+    move |_request: hyper::Request<hyper::body::Incoming>| {
+      let sent = Arc::clone(&sent);
+      async move {
+        Ok::<_, std::convert::Infallible>(
+          hyper::Response::builder()
+            .status(200)
+            .body(Endless(sent))
+            .expect("response"),
+        )
+      }
+    },
+  );
+  let _ = hyper::server::conn::http2::Builder::new(
+    hyper_util::rt::TokioExecutor::new(),
+  )
+  .serve_connection(io, service)
+  .await;
+}
+
 async fn serve_h3(identity: Identity, port_tx: mpsc::Sender<u16>) {
   let config = tls_server(identity, vec![b"h3".to_vec()], false);
   let quic = quinn::crypto::rustls::QuicServerConfig::try_from(config)
@@ -412,4 +478,28 @@ fn https_http3_follows_alt_svc() {
   assert_eq!(second.status, 200);
   assert_eq!(read_body(&second), b"from-h3");
   second.body.stop();
+}
+
+#[test]
+fn an_unread_https_body_stops_receiving() {
+  let prepared = material();
+  let roots = prepared.roots.clone();
+  let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+  let counter = Arc::clone(&sent);
+  let port = spawn_server(move |port_tx| {
+    serve_endless_h2(prepared.identity(), counter, port_tx)
+  });
+  let url = format!("https://127.0.0.1:{port}/");
+  let response = fetch(&url, Some(roots));
+  assert_eq!(response.status, 200);
+  std::thread::sleep(Duration::from_secs(2));
+  let queued = response.body.queued();
+  let first = sent.load(std::sync::atomic::Ordering::Relaxed);
+  std::thread::sleep(Duration::from_millis(500));
+  let second = sent.load(std::sync::atomic::Ordering::Relaxed);
+  response.body.stop();
+  // The producer stops a few chunks ahead of the reader, and then the
+  // HTTP/2 flow-control window stops the server.
+  assert!(queued <= 9, "{queued} chunks queued");
+  assert_eq!(first, second, "the server kept sending");
 }
