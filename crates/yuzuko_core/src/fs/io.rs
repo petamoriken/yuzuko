@@ -220,7 +220,7 @@ fn permit_opened(
   if crate::permissions::permissions_are_open() {
     return Ok(());
   }
-  let real = match fd_path(file) {
+  let real = match crate::fd_path::fd_path(file) {
     Ok(real) => real,
     Err(_) => return Err(host_denial(write, path)),
   };
@@ -837,7 +837,8 @@ pub(super) fn utime_file(
   #[cfg(any(unix, windows))]
   {
     if super::bundle_root().is_some() {
-      let path = fd_path(file).map_err(|_| FsError::bundle())?;
+      let path =
+        crate::fd_path::fd_path(file).map_err(|_| FsError::bundle())?;
       path::ensure_outside_bundle(&path)?;
     }
     set_times_file(file, atime, mtime)
@@ -1085,39 +1086,6 @@ fn time_spec(time: FileTime) -> Result<libc::timespec, FsError> {
   Ok(spec)
 }
 
-#[cfg(target_os = "macos")]
-fn fd_path(file: &File) -> io::Result<PathBuf> {
-  use std::os::fd::AsRawFd;
-  let mut buf = [0u8; 1024];
-  let rc = unsafe {
-    libc::fcntl(
-      file.as_raw_fd(),
-      libc::F_GETPATH,
-      buf.as_mut_ptr().cast::<libc::c_char>(),
-    )
-  };
-  if rc == -1 {
-    return Err(io::Error::last_os_error());
-  }
-  let end = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
-  let text = String::from_utf8_lossy(&buf[..end]).replace('\0', "\u{FFFD}");
-  Ok(PathBuf::from(text))
-}
-
-#[cfg(target_os = "linux")]
-fn fd_path(file: &File) -> io::Result<PathBuf> {
-  use std::os::fd::AsRawFd;
-  fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
-}
-
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
-fn fd_path(_file: &File) -> io::Result<PathBuf> {
-  Err(io::Error::new(
-    io::ErrorKind::Unsupported,
-    "The file path is unavailable.",
-  ))
-}
-
 #[cfg(unix)]
 fn set_raw_unix(
   file: &File,
@@ -1231,35 +1199,6 @@ fn set_times_file(
     }
     other => other,
   }
-}
-
-#[cfg(windows)]
-fn fd_path(file: &File) -> io::Result<PathBuf> {
-  use std::os::windows::io::AsRawHandle;
-  use windows_sys::Win32::Storage::FileSystem::{
-    GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
-  };
-  let mut buf = vec![0u16; 32768];
-  let wrote = unsafe {
-    GetFinalPathNameByHandleW(
-      file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
-      buf.as_mut_ptr(),
-      buf.len() as u32,
-      VOLUME_NAME_DOS,
-    )
-  };
-  if wrote == 0 || wrote as usize >= buf.len() {
-    return Err(last_windows_error());
-  }
-  let text = String::from_utf16_lossy(&buf[..wrote as usize]);
-  let text = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-    format!(r"\\{rest}")
-  } else if let Some(rest) = text.strip_prefix(r"\\?\") {
-    rest.to_string()
-  } else {
-    text
-  };
-  Ok(PathBuf::from(text))
 }
 
 #[cfg(windows)]

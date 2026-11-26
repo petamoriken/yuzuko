@@ -14,6 +14,7 @@ mod dns_query;
 mod error_codes;
 mod errors;
 mod extensions;
+mod fd_path;
 #[cfg(feature = "ffi")]
 mod ffi;
 #[cfg(feature = "fs")]

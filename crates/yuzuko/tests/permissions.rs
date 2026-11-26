@@ -814,6 +814,68 @@ fn a_symlink_swap_does_not_return_the_other_file() {
 
 #[cfg(unix)]
 #[test]
+fn a_worker_script_symlink_swap_does_not_load_another_file() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let root = scratch("worker-swap");
+  let proj = root.join("proj");
+  let outside = root.join("outside");
+  fs::create_dir_all(&proj).unwrap();
+  fs::create_dir_all(&outside).unwrap();
+  let inside = proj.join("inside.js");
+  let secret = outside.join("secret.js");
+  fs::write(&inside, "postMessage('INSIDE');\n").unwrap();
+  fs::write(&secret, "postMessage('OUTSIDE');\n").unwrap();
+  let link = proj.join("link.js");
+  std::os::unix::fs::symlink(&inside, &link).unwrap();
+
+  let stop = Arc::new(AtomicBool::new(false));
+  let swapping = Arc::clone(&stop);
+  let link_swap = link.clone();
+  let swapper = std::thread::spawn(move || {
+    let mut to_outside = true;
+    while !swapping.load(Ordering::Relaxed) {
+      let target = if to_outside { &secret } else { &inside };
+      let temporary = link_swap.with_extension("tmp");
+      let _ = fs::remove_file(&temporary);
+      if std::os::unix::fs::symlink(target, &temporary).is_ok() {
+        let _ = fs::rename(&temporary, &link_swap);
+      }
+      to_outside = !to_outside;
+    }
+  });
+  write(
+    &proj.join("race.ts"),
+    r#"const url = new URL("./link.js", import.meta.url).href;
+for (let i = 0; i < 60; i++) {
+  const text = await new Promise((resolve) => {
+    const worker = new Worker(url);
+    worker.onmessage = (event) => {
+      worker.terminate();
+      resolve(String(event.data));
+    };
+    worker.onerror = (event) => {
+      event.preventDefault();
+      worker.terminate();
+      resolve("error");
+    };
+  });
+  console.log("W " + text);
+}
+"#,
+  );
+  let raced = run(&proj, &["run", "--no-prompt", "--allow-read=.", "race.ts"]);
+  stop.store(true, Ordering::Relaxed);
+  let _ = swapper.join();
+  assert_eq!(raced.status.code(), Some(0), "{}", text(&raced.stderr));
+  let stdout = text(&raced.stdout);
+  assert!(!stdout.contains("OUTSIDE"), "{stdout}");
+  assert!(stdout.contains("W INSIDE"), "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
 fn real_path_does_not_return_a_path_outside_the_grant() {
   use std::sync::Arc;
   use std::sync::atomic::{AtomicBool, Ordering};

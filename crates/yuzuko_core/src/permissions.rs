@@ -707,7 +707,6 @@ pub fn validate_permissions(
 /// An open process allows every path, so a caller can skip naming an opened
 /// file. A sandbox still checks that file, including one that grants every
 /// path.
-#[cfg(any(test, feature = "fs"))]
 pub(crate) fn permissions_are_open() -> bool {
   matches!(*lock(), Mode::Open)
 }
@@ -728,7 +727,6 @@ pub fn install_permissions(
 /// A call that already opened a file descriptor uses this on the file it
 /// opened. A missing grant stays closed, so a swapped symlink cannot prompt
 /// for the other file.
-#[cfg(feature = "fs")]
 pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
   let kind = if write { Kind::Write } else { Kind::Read };
   Ok(
@@ -737,7 +735,6 @@ pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
 }
 
 /// `NotCapable` naming `path`, the path the caller requested.
-#[cfg(feature = "fs")]
 pub fn path_not_allowed(write: bool, path: &Path) -> OpError {
   let kind = if write { Kind::Write } else { Kind::Read };
   denied(kind, &Detail::Path(path.to_path_buf())).unwrap_or_else(|error| error)

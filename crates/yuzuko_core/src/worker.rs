@@ -708,7 +708,7 @@ pub fn load_worker_source(
     if let Err(error) = crate::permissions::check_read(&path) {
       return Err(worker_permission(error));
     }
-    let text = read_script_text(&path)?;
+    let text = read_granted_script(&path)?;
     return Ok(LoadedSource {
       path: Some(path),
       text,
@@ -724,7 +724,7 @@ pub fn load_worker_source(
       return Err(worker_permission(error));
     }
     if path.is_file() {
-      let text = read_script_text(&path)?;
+      let text = read_granted_script(&path)?;
       return Ok(LoadedSource {
         path: Some(path),
         text,
@@ -820,9 +820,28 @@ fn decode_data_url(url: &str) -> Result<String, String> {
   Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Classic scripts use UTF-8 decode with U+FFFD for an invalid byte.
-fn read_script_text(path: &Path) -> Result<String, String> {
-  let bytes = fs::read(path).map_err(|error| error.to_string())?;
+/// Reads a script whose path passed the read check. Classic scripts use
+/// UTF-8 decode with U+FFFD for an invalid byte.
+///
+/// The file is opened once, and the file the descriptor names is checked
+/// again, so a symlink swapped after the check cannot supply another file.
+fn read_granted_script(path: &Path) -> Result<String, WorkerLoadError> {
+  use std::io::Read;
+  let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
+  if !crate::permissions::permissions_are_open() {
+    let denied =
+      || worker_permission(crate::permissions::path_not_allowed(false, path));
+    let real = crate::fd_path::fd_path(&file).map_err(|_| denied())?;
+    match crate::permissions::path_is_granted(false, &real) {
+      Ok(true) => {}
+      Ok(false) => return Err(denied()),
+      Err(error) => return Err(worker_permission(error)),
+    }
+  }
+  let mut bytes = Vec::new();
+  file
+    .read_to_end(&mut bytes)
+    .map_err(|error| error.to_string())?;
   Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
