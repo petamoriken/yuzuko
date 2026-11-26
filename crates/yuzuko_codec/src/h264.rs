@@ -92,8 +92,14 @@ impl Sps {
     let x = self.crop_left.saturating_mul(sub_x);
     let y = self.crop_top.saturating_mul(unit_y);
     let (width, height) = self.coded_size();
-    let crop_x = self.crop_left.saturating_add(self.crop_right) * sub_x;
-    let crop_y = self.crop_top.saturating_add(self.crop_bottom) * unit_y;
+    let crop_x = self
+      .crop_left
+      .saturating_add(self.crop_right)
+      .saturating_mul(sub_x);
+    let crop_y = self
+      .crop_top
+      .saturating_add(self.crop_bottom)
+      .saturating_mul(unit_y);
     (
       x,
       y,
@@ -650,6 +656,16 @@ fn parse_sps(nal: &[u8]) -> Result<Sps, DecodeError> {
     crop_right = bits.ue()?;
     crop_top = bits.ue()?;
     crop_bottom = bits.ue()?;
+    // H.264 7.4.2.1.1: the crop leaves at least one sample in each
+    // direction. Only 4:2:0 reaches here, so a crop unit is two luma
+    // samples across and two or four down.
+    let unit_y: u64 = if frame_mbs_only { 2 } else { 4 };
+    let crop_x = (u64::from(crop_left) + u64::from(crop_right)) * 2;
+    let crop_y = (u64::from(crop_top) + u64::from(crop_bottom)) * unit_y;
+    if crop_x >= u64::from(mb_width) * 16 || crop_y >= u64::from(mb_height) * 16
+    {
+      return Err(DecodeError::Rejected);
+    }
   }
   Ok(Sps {
     profile_idc,
@@ -1265,6 +1281,72 @@ mod tests {
     assert_eq!(slice.first_mb, 0);
     assert!(slice.header_bits > 8);
     assert!(slice.header_bits as usize <= slice.bytes.len() * 8);
+  }
+
+  /// A baseline SPS NAL for a 64 x 64 frame with the given crop.
+  fn baseline_sps(crop: Option<[u32; 4]>) -> Vec<u8> {
+    let mut bits: Vec<bool> = Vec::new();
+    let mut put = |value: u32, count: u32| {
+      for shift in (0..count).rev() {
+        bits.push((value >> shift) & 1 == 1);
+      }
+    };
+    let ue = |put: &mut dyn FnMut(u32, u32), value: u32| {
+      let code = u64::from(value) + 1;
+      let length = 64 - code.leading_zeros();
+      put(0, length - 1);
+      for shift in (0..length).rev() {
+        put(((code >> shift) & 1) as u32, 1);
+      }
+    };
+    put(0x67, 8);
+    put(66, 8);
+    put(0, 8);
+    put(30, 8);
+    ue(&mut put, 0); // seq_parameter_set_id
+    ue(&mut put, 0); // log2_max_frame_num_minus4
+    ue(&mut put, 2); // pic_order_cnt_type
+    ue(&mut put, 1); // max_num_ref_frames
+    put(0, 1); // gaps_in_frame_num_value_allowed_flag
+    ue(&mut put, 3); // pic_width_in_mbs_minus1
+    ue(&mut put, 3); // pic_height_in_map_units_minus1
+    put(1, 1); // frame_mbs_only_flag
+    put(1, 1); // direct_8x8_inference_flag
+    match crop {
+      Some(values) => {
+        put(1, 1);
+        for value in values {
+          ue(&mut put, value);
+        }
+      }
+      None => put(0, 1),
+    }
+    put(0, 1); // vui_parameters_present_flag
+    put(1, 1); // rbsp_stop_one_bit
+    while bits.len() % 8 != 0 {
+      bits.push(false);
+    }
+    bits
+      .chunks(8)
+      .map(|byte| {
+        byte
+          .iter()
+          .fold(0u8, |acc, bit| (acc << 1) | u8::from(*bit))
+      })
+      .collect()
+  }
+
+  #[test]
+  fn a_crop_past_the_frame_is_rejected() {
+    let sps = super::parse_sps(&baseline_sps(Some([1, 2, 3, 4]))).unwrap();
+    assert_eq!(sps.visible_rect(), (2, 6, 58, 50));
+    // 31 + 1 units of two samples is the whole 64-sample width.
+    assert!(super::parse_sps(&baseline_sps(Some([31, 1, 0, 0]))).is_err());
+    assert!(super::parse_sps(&baseline_sps(Some([0, 0, 0, 32]))).is_err());
+    assert!(
+      super::parse_sps(&baseline_sps(Some([0x8000_0000, 0, 0, 0]))).is_err()
+    );
+    assert!(super::parse_sps(&baseline_sps(None)).is_ok());
   }
 
   #[test]
