@@ -79,6 +79,20 @@ Yuzuko.test("putImageData round-trips float16 Display P3", () => {
   }
 });
 
+Yuzuko.test("getImageData settings getters can draw on the same context", () => {
+  const ctx = new OffscreenCanvas(2, 1).getContext("2d")!;
+  const settings = {
+    get colorSpace(): PredefinedColorSpace {
+      ctx.fillStyle = "rgb(255, 0, 0)";
+      ctx.fillRect(0, 0, 1, 1);
+      return "srgb";
+    },
+  };
+  const image = ctx.getImageData(0, 0, 2, 1, settings);
+  assert(image.data[0] === 255 && image.data[3] === 255, "drawn pixel");
+  assert(image.data[7] === 0, "blank pixel");
+});
+
 Yuzuko.test("toneMapping is stored and does not change a fill", () => {
   const plain = new OffscreenCanvas(1, 1).getContext("2d")!;
   assert(plain.getContextAttributes().toneMapping.mode === "standard", "default");

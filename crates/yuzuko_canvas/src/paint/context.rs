@@ -1664,6 +1664,17 @@ impl Context2D {
     if !finite(&[sx, sy, sw, sh]) {
       return Err(OpError::type_("getImageData arguments are not finite"));
     }
+    let settings = if args.length() >= 5 {
+      Some(args.get(4))
+    } else {
+      None
+    };
+    // WebIDL converts the settings dictionary before the method steps. Its
+    // getters can call back into this context, so read them before
+    // `update` borrows the drawing.
+    // HTML: an omitted pixelFormat is rgba-unorm8, not the canvas color type.
+    let (space, format) =
+      image_settings(scope, settings, SampleFormat::Unorm8)?;
     if sw.trunc() == 0.0 || sh.trunc() == 0.0 {
       return Err(OpError::dom(
         "IndexSizeError",
@@ -1676,11 +1687,6 @@ impl Context2D {
         "The canvas has an open layer",
       ));
     }
-    let settings = if args.length() >= 5 {
-      Some(args.get(4))
-    } else {
-      None
-    };
     self.update(|drawing| {
       if drawing.width == 0 || drawing.height == 0 {
         return Err(OpError::dom(
@@ -1691,9 +1697,6 @@ impl Context2D {
       let source = replay::rasterize(drawing).ok_or_else(|| {
         OpError::dom("InvalidStateError", "The canvas has no pixels")
       })?;
-      // HTML: an omitted pixelFormat is rgba-unorm8, not the canvas color type.
-      let (space, format) =
-        image_settings(scope, settings, SampleFormat::Unorm8)?;
       let image = match crop_straight(&source, sx, sy, sw, sh, space, format) {
         Ok(image) => image,
         // The rectangle can ask for more pixels than a bitmap can hold.
