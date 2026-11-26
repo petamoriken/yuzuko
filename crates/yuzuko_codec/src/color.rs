@@ -93,7 +93,13 @@ fn clamp_u8(value: i32) -> u8 {
 }
 
 /// NV12 is a Y plane plus an interleaved UV plane. `limited` selects studio swing.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+///
+/// Each UV row holds one pair per two luma columns, so an odd width still
+/// reads a whole pair for its last column.
+#[cfg_attr(
+  not(any(target_os = "linux", target_os = "windows")),
+  allow(dead_code)
+)]
 pub fn nv12_to_rgba(
   y: &[u8],
   uv: &[u8],
@@ -103,7 +109,8 @@ pub fn nv12_to_rgba(
   height: usize,
   limited: bool,
 ) -> Option<Vec<u8>> {
-  if width == 0 || height == 0 || y_stride < width || uv_stride < width {
+  let uv_width = width.div_ceil(2) * 2;
+  if width == 0 || height == 0 || y_stride < width || uv_stride < uv_width {
     return None;
   }
   let chroma_h = height.div_ceil(2);
@@ -166,4 +173,21 @@ pub fn packed_to_rgba(
     }
   }
   Some(rgba)
+}
+
+#[cfg(test)]
+mod nv12_tests {
+  use super::nv12_to_rgba;
+
+  #[test]
+  fn an_odd_width_needs_a_whole_last_chroma_pair() {
+    // Three columns use two UV pairs, four bytes per chroma row.
+    let y = [128u8; 3 * 2];
+    assert!(nv12_to_rgba(&y, &[128u8; 3], 3, 3, 3, 2, false).is_none());
+    let rgba = nv12_to_rgba(&y, &[128u8; 4], 3, 4, 3, 2, false).unwrap();
+    assert_eq!(rgba.len(), 3 * 2 * 4);
+    assert!(
+      nv12_to_rgba(&[128u8; 4], &[128u8; 4], 4, 4, 4, 1, false).is_some()
+    );
+  }
 }
