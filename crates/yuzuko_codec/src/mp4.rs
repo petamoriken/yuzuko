@@ -24,6 +24,9 @@ const FRAGMENTED: Error = Error {
 const OUTSIDE: Error = Error {
   message: "The MP4 sample is outside the file",
 };
+const OVERLAP: Error = Error {
+  message: "The MP4 samples are larger than the file",
+};
 const CHANGES: Error = Error {
   message: "The MP4 track changes sample entries",
 };
@@ -268,13 +271,17 @@ impl<'a> Cursor<'a> {
 
 fn parse_moov(file: &[u8], moov: &[u8], moof: bool) -> Result<Movie, Error> {
   let boxes = children(moov)?;
+  // Samples of a well-formed file do not overlap, so together they fit in
+  // the file. Each sample is copied, and repeated chunk offsets would
+  // otherwise copy the same bytes without bound.
+  let mut budget = file.len();
   let mut video = Vec::new();
   let mut audio = Vec::new();
   for (kind, payload) in boxes {
     if kind != *b"trak" {
       continue;
     }
-    match parse_trak(file, payload, moof)? {
+    match parse_trak(file, payload, moof, &mut budget)? {
       Some(Track::Video(track)) => video.push(track),
       Some(Track::Audio(track)) => audio.push(track),
       None => {}
@@ -292,6 +299,7 @@ fn parse_trak(
   file: &[u8],
   trak: &[u8],
   moof: bool,
+  budget: &mut usize,
 ) -> Result<Option<Track>, Error> {
   let boxes = children(trak)?;
   let edit = match only(&boxes, b"edts")? {
@@ -328,7 +336,7 @@ fn parse_trak(
     return Ok(None);
   };
   let tables = parse_tables(&stbl, moof)?;
-  materialize(file, desc, entry, timescale, edit, tables)
+  materialize(file, desc, entry, timescale, edit, tables, budget)
 }
 
 fn handler_of(payload: &[u8]) -> Result<[u8; 4], Error> {
@@ -984,6 +992,7 @@ fn materialize(
   timescale: u32,
   edit: i64,
   tables: Tables,
+  budget: &mut usize,
 ) -> Result<Option<Track>, Error> {
   let count = match &tables.sizes {
     Some(sizes) => sizes.count()?,
@@ -1054,6 +1063,7 @@ fn materialize(
       if end > file.len() {
         return Err(OUTSIDE);
       }
+      *budget = budget.checked_sub(end - start).ok_or(OVERLAP)?;
       let delta = times.next()?;
       let composition = match &mut compositions {
         Some(runs) => runs.next()?,
@@ -1186,6 +1196,7 @@ mod tests {
   const NO_TRACK: &str = "The MP4 file has no H.264, AV1, or AAC track";
   const FRAGMENTED: &str = "Fragmented MP4 is not supported";
   const OUTSIDE: &str = "The MP4 sample is outside the file";
+  const OVERLAP: &str = "The MP4 samples are larger than the file";
   const CHANGES: &str = "The MP4 track changes sample entries";
   const ENCRYPTED: &str = "Encrypted MP4 is not supported";
   const NO_AVCC: &str = "The H.264 track has no avcC";
@@ -2399,5 +2410,44 @@ mod tests {
       )),
       ENCRYPTED
     );
+  }
+  #[test]
+  fn repeated_chunk_offsets_cannot_copy_past_the_file() {
+    // Every chunk names the same five bytes. Copied once per sample, they
+    // would add up to more than the whole file.
+    let count = 2000u32;
+    let file = movie_of(
+      b"vide",
+      1000,
+      &[0, 0, 0, 1, 0x65],
+      concat([
+        stsd(&[avc_entry()]),
+        stts(&[(count, 40)]),
+        stsc(&[(1, 1, 1)]),
+        stsz_constant(5, count),
+        stco(&vec![8; count as usize]),
+      ]),
+      None,
+      &[],
+    );
+    assert!(5 * count as usize > file.len());
+    assert_eq!(msg(&file), OVERLAP);
+
+    // A few repeats that still fit in the file are accepted.
+    let file = movie_of(
+      b"vide",
+      1000,
+      &[0, 0, 0, 1, 0x65],
+      concat([
+        stsd(&[avc_entry()]),
+        stts(&[(2, 40)]),
+        stsc(&[(1, 1, 1)]),
+        stsz(&[5, 5]),
+        stco(&[8, 8]),
+      ]),
+      None,
+      &[],
+    );
+    assert_eq!(ok(&file).video[0].samples.len(), 2);
   }
 }

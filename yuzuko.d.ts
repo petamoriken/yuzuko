@@ -5008,7 +5008,9 @@ declare namespace Yuzuko {
    * absent. `The MP4 file has no H.264, AV1, or AAC track` when no supported
    * track is present. `Fragmented MP4 is not supported` when `moof` carries
    * the samples. `The MP4 sample is outside the file` when a sample extends
-   * past the buffer. `The MP4 track changes sample entries` when one track
+   * past the buffer. `The MP4 samples are larger than the file` when the
+   * samples of every track together add up to more bytes than the buffer.
+   * `The MP4 track changes sample entries` when one track
    * uses more than one sample entry. `Encrypted MP4 is not supported` when a
    * sample entry is encrypted. `The H.264 track has no avcC` when that box
    * is missing. `The AV1 track has no av1C` when that box is missing.
