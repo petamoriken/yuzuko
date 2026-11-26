@@ -139,6 +139,10 @@ name = "fetch_redirect"
 required-features = ["fetch"]
 
 [[test]]
+name = "fetch_wire"
+required-features = ["fetch"]
+
+[[test]]
 name = "canvas_composite"
 required-features = ["canvas"]
 

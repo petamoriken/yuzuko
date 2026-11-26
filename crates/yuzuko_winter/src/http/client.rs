@@ -1262,7 +1262,30 @@ async fn forward_chunked(
       let _ = emit_decoded(&body, decoder.as_mut(), &[], true);
       return Ok(());
     }
-    let data = match take_bytes(stream, &mut pending, size, cancel).await {
+    // The size comes from the server. Read and emit at most one piece at a
+    // time so a large or false size does not reserve memory up front.
+    let mut remaining = size;
+    while remaining > CHUNK_PIECE {
+      while body.queued() > 8 {
+        if cancel.load(Ordering::Relaxed) {
+          return Err(HttpFailure::Abort);
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+      }
+      let piece =
+        match take_bytes(stream, &mut pending, CHUNK_PIECE, cancel).await {
+          Ok(piece) => piece,
+          Err(error) => {
+            body.emit(BodyNote::Failed(failure_message(&error)));
+            return Ok(());
+          }
+        };
+      if !emit_decoded(&body, decoder.as_mut(), &piece, false) {
+        return Ok(());
+      }
+      remaining -= CHUNK_PIECE;
+    }
+    let data = match take_bytes(stream, &mut pending, remaining, cancel).await {
       Ok(data) => data,
       Err(error) => {
         body.emit(BodyNote::Failed(failure_message(&error)));
@@ -1624,6 +1647,9 @@ async fn read_limited(
     body.truncate(length);
     return Ok(body);
   }
+  if length > BUFFERED_BODY_LIMIT {
+    return Err(body_too_large());
+  }
   let mut tmp = [0u8; 8192];
   while body.len() < length {
     if cancel.load(Ordering::Relaxed) {
@@ -1642,6 +1668,16 @@ async fn read_limited(
     body.extend_from_slice(&tmp[..read.min(need)]);
   }
   Ok(body)
+}
+
+/// The largest body the buffered HTTP/1 path collects.
+const BUFFERED_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
+/// The largest piece of a chunk read before it is emitted.
+const CHUNK_PIECE: usize = 64 * 1024;
+
+fn body_too_large() -> HttpFailure {
+  HttpFailure::Type("The response body is too large".into())
 }
 
 async fn read_until_end(
@@ -1663,8 +1699,8 @@ async fn read_until_end(
       return Ok(body);
     }
     body.extend_from_slice(&tmp[..read]);
-    if body.len() > 64 * 1024 * 1024 {
-      return Err(HttpFailure::Type("The response body is too large".into()));
+    if body.len() > BUFFERED_BODY_LIMIT {
+      return Err(body_too_large());
     }
   }
 }
@@ -1690,6 +1726,9 @@ async fn read_chunked(
         }
       }
       return Ok(body);
+    }
+    if size > BUFFERED_BODY_LIMIT - body.len() {
+      return Err(body_too_large());
     }
     let data = take_bytes(stream, &mut pending, size, cancel).await?;
     body.extend(data);
@@ -1745,7 +1784,8 @@ async fn take_bytes(
   cancel: &Arc<AtomicBool>,
 ) -> Result<Vec<u8>, HttpFailure> {
   use tokio::io::AsyncReadExt;
-  let mut out = Vec::with_capacity(length);
+  // `length` can come from the server, so it does not size the buffer.
+  let mut out = Vec::with_capacity(length.min(CHUNK_PIECE));
   while out.len() < length {
     if !pending.is_empty() {
       let need = length - out.len();
