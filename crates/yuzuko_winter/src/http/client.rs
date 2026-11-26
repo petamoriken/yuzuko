@@ -863,8 +863,15 @@ async fn exchange_http1(
       .map_err(|error| HttpFailure::Network(error.to_string()))?;
     let (mut parsed_head, mut rest) =
       read_raw_head(&mut stream, cancel).await?;
+    let mut interim = 0u32;
     while (100..200).contains(&parsed_head.status) && parsed_head.status != 101
     {
+      // Each interim head is bounded, and so is their number, so a server
+      // cannot stream interim responses forever.
+      interim += 1;
+      if interim > INTERIM_LIMIT {
+        return Err(HttpFailure::Type("Failed to fetch".to_string()));
+      }
       match next_http1_head(&mut stream, rest, cancel).await {
         Ok((next, next_rest)) => {
           parsed_head = next;
@@ -1016,6 +1023,9 @@ fn raw_request(
 
 /// The largest response head, and the largest chunk trailer section.
 const HEAD_LIMIT: usize = 1024 * 1024;
+
+/// The most interim `1xx` responses accepted before the final one.
+const INTERIM_LIMIT: u32 = 64;
 
 /// The longest chunk-size or trailer line.
 const LINE_LIMIT: usize = 64 * 1024;

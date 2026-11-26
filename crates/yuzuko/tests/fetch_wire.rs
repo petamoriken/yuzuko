@@ -231,3 +231,33 @@ console.log("canceled");
   // hold a few megabytes. An eager pump keeps taking bytes.
   assert!(held < 12 * 1024 * 1024, "{held} bytes sent before a read");
 }
+
+#[test]
+fn endless_interim_responses_reject_the_fetch() {
+  let mut many = "HTTP/1.1 100 Continue\r\n\r\n".repeat(100);
+  many.push_str(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+  );
+  let mut few = "HTTP/1.1 100 Continue\r\n\r\n".repeat(3);
+  few.push_str(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+  );
+  let output = serve(
+    "interim",
+    vec![many.into_bytes(), few.into_bytes()],
+    r#"for (const label of ["many", "few"]) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${PORT}/${label}`);
+    console.log(label + " " + (await response.text()));
+  } catch (error) {
+    console.log(label + " " + error.name);
+  }
+}
+"#,
+  );
+  let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+  let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+  assert!(output.status.success(), "{stdout}\n{stderr}");
+  assert!(stdout.contains("many TypeError"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("few ok"), "{stdout}\n{stderr}");
+}
