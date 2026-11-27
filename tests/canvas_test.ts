@@ -448,3 +448,19 @@ Yuzuko.test("a throwing element getter propagates from DOMMatrix and setLineDash
   }
   assert(caught instanceof TypeError, "a long sequence is rejected");
 });
+
+Yuzuko.test("putImageData at an offset past the i32 range draws nothing", () => {
+  for (const colorType of ["unorm8", "float16"] as const) {
+    const canvas = new OffscreenCanvas(4, 4);
+    const ctx = canvas.getContext("2d", { colorType });
+    assert(ctx !== null, "context");
+    const data = new ImageData(new Uint8ClampedArray(64).fill(255), 4, 4);
+    for (const offset of [2 ** 31, -(2 ** 31), 2 ** 40, -(2 ** 40)]) {
+      ctx.putImageData(data, offset, offset);
+    }
+    ctx.fillStyle = "#00ff00";
+    ctx.fillRect(1, 1, 1, 1);
+    assert(pixel(ctx, 0, 0).join() === "0,0,0,0", `${colorType} untouched`);
+    assert(pixel(ctx, 1, 1).join() === "0,255,0,255", `${colorType} painted`);
+  }
+});

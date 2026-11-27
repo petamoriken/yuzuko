@@ -338,7 +338,12 @@ fn put_direct(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
   for y in 0..raster.height as i32 {
     for x in 0..raster.width as i32 {
       let sample = raster.sample(i64::from(x), i64::from(y));
-      dest.write_sample(i64::from(dx + x), i64::from(dy + y), sample);
+      // `dx` and `dy` saturate at the i32 range, so the sum is i64.
+      dest.write_sample(
+        i64::from(dx) + i64::from(x),
+        i64::from(dy) + i64::from(y),
+        sample,
+      );
     }
   }
 }
@@ -351,8 +356,8 @@ fn draw_native(dest: &mut Raster, source: &ImageBuf, dx: i32, dy: i32) {
   for y in 0..raster.height as i32 {
     for x in 0..raster.width as i32 {
       let src = raster.sample(i64::from(x), i64::from(y));
-      let px = i64::from(dx + x);
-      let py = i64::from(dy + y);
+      let px = i64::from(dx) + i64::from(x);
+      let py = i64::from(dy) + i64::from(y);
       let src_a = src[3];
       if src_a >= 1.0 - 1.0e-4 {
         dest.write_sample(px, py, src);
@@ -745,18 +750,18 @@ fn put_premul(
   height: u32,
 ) {
   let premul = premul_rgba8(image);
-  for y in 0..image.height as i32 {
-    let dest_y = dy + y;
-    if dest_y < 0 || dest_y >= height as i32 {
+  for y in 0..image.height {
+    let dest_y = i64::from(dy) + i64::from(y);
+    if dest_y < 0 || dest_y >= i64::from(height) {
       continue;
     }
-    for x in 0..image.width as i32 {
-      let dest_x = dx + x;
-      if dest_x < 0 || dest_x >= width as i32 {
+    for x in 0..image.width {
+      let dest_x = i64::from(dx) + i64::from(x);
+      if dest_x < 0 || dest_x >= i64::from(width) {
         continue;
       }
-      let src_i = (y as u32 * image.width + x as u32) as usize * 4;
-      let dest_i = (dest_y as u32 * width + dest_x as u32) as usize * 4;
+      let src_i = (y as usize * image.width as usize + x as usize) * 4;
+      let dest_i = (dest_y as usize * width as usize + dest_x as usize) * 4;
       dest[dest_i..dest_i + 4].copy_from_slice(&premul[src_i..src_i + 4]);
     }
   }
