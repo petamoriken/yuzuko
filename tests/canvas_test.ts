@@ -464,3 +464,21 @@ Yuzuko.test("putImageData at an offset past the i32 range draws nothing", () => 
     assert(pixel(ctx, 1, 1).join() === "0,255,0,255", `${colorType} painted`);
   }
 });
+
+Yuzuko.test("a huge arc radius builds a bounded path", () => {
+  const started = performance.now();
+  const path = new Path2D();
+  path.arc(0, 0, 1e300, 0, 6);
+  path.arcTo(1, 0, 1, 1, 1e300);
+  path.roundRect(0, 0, 1e300, 1e300, [1e300]);
+  const ctx = new OffscreenCanvas(8, 8).getContext("2d")!;
+  ctx.ellipse(0, 0, 1e-300, 1e300, 0, 0, 1e10);
+  ctx.arc(4, 4, 1e40, 0, 6);
+  ctx.fill();
+  ctx.stroke(path);
+  ctx.getImageData(0, 0, 1, 1);
+  const elapsed = performance.now() - started;
+  if (elapsed > 10_000) {
+    throw new Error(`took ${elapsed} ms`);
+  }
+});

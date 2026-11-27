@@ -130,6 +130,17 @@ pub fn add_round_rect(
   }
 }
 
+/// The flattening tolerance for an arc, in user units. kurbo emits about
+/// (radius / tolerance)^(1/6) cubics per turn, so 0.1 makes a radius such as
+/// 1e300 loop practically forever. Up to a radius of 1e11 the tolerance stays
+/// 0.1. Past it the tolerance grows with the radius, which keeps about 100
+/// cubics per turn.
+fn arc_tolerance(arc: &Arc) -> f64 {
+  const SCALE: f64 = 1e12;
+  let radius = arc.radii.x.abs().max(arc.radii.y.abs());
+  (radius / SCALE).max(0.1)
+}
+
 fn corner(path: &mut BezPath, cx: f64, cy: f64, rx: f64, ry: f64, start: f64) {
   if rx == 0.0 || ry == 0.0 {
     return;
@@ -137,7 +148,7 @@ fn corner(path: &mut BezPath, cx: f64, cy: f64, rx: f64, ry: f64, start: f64) {
   let arc =
     Arc::new(Point::new(cx, cy), Vec2::new(rx, ry), start, TAU / 4.0, 0.0);
   path.line_to(arc.eval(0.0));
-  path.extend(arc.append_iter(0.1));
+  path.extend(arc.append_iter(arc_tolerance(&arc)));
 }
 
 pub fn add_ellipse(
@@ -173,7 +184,7 @@ pub fn add_ellipse(
   } else {
     path.line_to(arc.eval(0.0));
   }
-  path.extend(arc.append_iter(0.1));
+  path.extend(arc.append_iter(arc_tolerance(&arc)));
   Ok(())
 }
 
@@ -233,7 +244,7 @@ pub fn arc_to(
   let sweep = sweep_angle(start_angle, end_angle, cross > 0.0);
   let arc =
     Arc::new(center, Vec2::new(radius, radius), start_angle, sweep, 0.0);
-  path.extend(arc.append_iter(0.1));
+  path.extend(arc.append_iter(arc_tolerance(&arc)));
   Ok(())
 }
 
