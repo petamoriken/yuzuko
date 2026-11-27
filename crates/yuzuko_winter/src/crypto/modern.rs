@@ -463,62 +463,6 @@ fn der_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
   out
 }
 
-struct Cursor<'a> {
-  data: &'a [u8],
-  index: usize,
-}
-
-impl<'a> Cursor<'a> {
-  fn new(data: &'a [u8]) -> Self {
-    Self { data, index: 0 }
-  }
-
-  fn rest(&self) -> &'a [u8] {
-    &self.data[self.index..]
-  }
-
-  fn take(&mut self, len: usize) -> Result<&'a [u8], Fail> {
-    let end = self
-      .index
-      .checked_add(len)
-      .filter(|end| *end <= self.data.len())
-      .ok_or(Fail::Data("The key encoding is truncated"))?;
-    let bytes = &self.data[self.index..end];
-    self.index = end;
-    Ok(bytes)
-  }
-
-  fn byte(&mut self) -> Result<u8, Fail> {
-    Ok(self.take(1)?[0])
-  }
-
-  fn length(&mut self) -> Result<usize, Fail> {
-    let first = self.byte()?;
-    if first < 0x80 {
-      return Ok(usize::from(first));
-    }
-    let width = usize::from(first & 0x7f);
-    if width == 0 || width > 3 {
-      return Err(Fail::Data("The key encoding length is invalid"));
-    }
-    let bytes = self.take(width)?;
-    let mut value = 0usize;
-    for byte in bytes {
-      value = (value << 8) | usize::from(*byte);
-    }
-    Ok(value)
-  }
-
-  fn tlv(&mut self, tag: u8) -> Result<&'a [u8], Fail> {
-    let actual = self.byte()?;
-    if actual != tag {
-      return Err(Fail::Data("The key encoding tag is invalid"));
-    }
-    let len = self.length()?;
-    self.take(len)
-  }
-}
-
 pub(crate) fn pkcs8_encode(name: &str, seed: &[u8]) -> Result<Vec<u8>, Fail> {
   let oid =
     oid(name).ok_or(Fail::Unsupported("The key algorithm is not supported"))?;
@@ -536,26 +480,30 @@ pub(crate) fn pkcs8_encode(name: &str, seed: &[u8]) -> Result<Vec<u8>, Fail> {
   Ok(der_tlv(0x30, &body))
 }
 
+/// The algorithm named by an AlgorithmIdentifier with no parameters.
+fn algorithm_name(
+  algorithm: &p256::pkcs8::AlgorithmIdentifierRef<'_>,
+) -> Result<&'static str, Fail> {
+  if algorithm.parameters.is_some() {
+    return Err(Fail::Data("The key algorithm is invalid"));
+  }
+  let mut encoded = vec![0x06, algorithm.oid.as_bytes().len() as u8];
+  encoded.extend_from_slice(algorithm.oid.as_bytes());
+  oid_name(&encoded).ok_or(Fail::Data("The key algorithm is invalid"))
+}
+
 pub(crate) fn pkcs8_decode(
   bytes: &[u8],
 ) -> Result<(&'static str, Vec<u8>), Fail> {
-  let mut cursor = Cursor::new(bytes);
-  let body = cursor.tlv(0x30)?;
-  if !cursor.rest().is_empty() {
-    return Err(Fail::Data("The PKCS#8 encoding has trailing bytes"));
-  }
-  let mut inner = Cursor::new(body);
-  let version = inner.tlv(0x02)?;
-  if version != [0] {
+  let info = p256::pkcs8::PrivateKeyInfoRef::try_from(bytes)
+    .map_err(|_| Fail::Data("The PKCS#8 encoding is invalid"))?;
+  // A version 2 structure carries a public key, which these keys do not use.
+  if info.public_key.is_some() {
     return Err(Fail::Data("The PKCS#8 version is invalid"));
   }
-  let algorithm = inner.tlv(0x30)?;
-  let name =
-    oid_name(algorithm).ok_or(Fail::Data("The key algorithm is invalid"))?;
-  let octet = inner.tlv(0x04)?;
-  if !inner.rest().is_empty() {
-    return Err(Fail::Data("The PKCS#8 encoding has trailing bytes"));
-  }
+  let name = algorithm_name(&info.algorithm)?;
+  // The private key is the `seed` choice: [0] IMPLICIT OCTET STRING.
+  let octet = info.private_key.as_bytes();
   if octet.len() < 2 || octet[0] != 0x80 {
     return Err(Fail::Data("The PKCS#8 seed is invalid"));
   }
@@ -580,23 +528,15 @@ pub(crate) fn spki_encode(name: &str, public: &[u8]) -> Result<Vec<u8>, Fail> {
 pub(crate) fn spki_decode(
   bytes: &[u8],
 ) -> Result<(&'static str, Vec<u8>), Fail> {
-  let mut cursor = Cursor::new(bytes);
-  let body = cursor.tlv(0x30)?;
-  if !cursor.rest().is_empty() {
-    return Err(Fail::Data("The SPKI encoding has trailing bytes"));
-  }
-  let mut inner = Cursor::new(body);
-  let algorithm = inner.tlv(0x30)?;
-  let name =
-    oid_name(algorithm).ok_or(Fail::Data("The key algorithm is invalid"))?;
-  let bits = inner.tlv(0x03)?;
-  if !inner.rest().is_empty() {
-    return Err(Fail::Data("The SPKI encoding has trailing bytes"));
-  }
-  if bits.first() != Some(&0) || bits.len() < 2 {
-    return Err(Fail::Data("The SPKI public key is invalid"));
-  }
-  let public = bits[1..].to_vec();
+  let info = p256::pkcs8::SubjectPublicKeyInfoRef::try_from(bytes)
+    .map_err(|_| Fail::Data("The SPKI encoding is invalid"))?;
+  let name = algorithm_name(&info.algorithm)?;
+  let public = info
+    .subject_public_key
+    .as_bytes()
+    .filter(|public| !public.is_empty())
+    .ok_or(Fail::Data("The SPKI public key is invalid"))?
+    .to_vec();
   if is_mlkem(name) {
     mlkem_validate_public(name, &public)?;
   } else if is_mldsa(name) {
@@ -1232,6 +1172,32 @@ pub(crate) fn hybrid_decapsulate(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn key_encodings_round_trip_and_reject_malformed_der() {
+    let seed = [7u8; 32];
+    let pkcs8 = pkcs8_encode("ML-DSA-44", &seed).unwrap();
+    assert_eq!(pkcs8_decode(&pkcs8).unwrap(), ("ML-DSA-44", seed.to_vec()));
+    let mut trailing = pkcs8.clone();
+    trailing.push(0);
+    assert!(pkcs8_decode(&trailing).is_err());
+    assert!(pkcs8_decode(&pkcs8[..pkcs8.len() - 1]).is_err());
+    // The outer length in the long form although it fits the short form.
+    let mut long_form = vec![0x30, 0x81];
+    long_form.extend_from_slice(&pkcs8[1..]);
+    assert!(pkcs8_decode(&long_form).is_err());
+    let mut version = pkcs8.clone();
+    version[4] = 1;
+    assert!(pkcs8_decode(&version).is_err());
+
+    let public = mldsa_public_from_seed("ML-DSA-44", &seed).unwrap();
+    let spki = spki_encode("ML-DSA-44", &public).unwrap();
+    assert_eq!(spki_decode(&spki).unwrap(), ("ML-DSA-44", public.clone()));
+    let mut unused_bits = spki.clone();
+    let at = unused_bits.len() - public.len() - 1;
+    unused_bits[at] = 1;
+    assert!(spki_decode(&unused_bits).is_err());
+  }
 
   fn hex(text: &str) -> Vec<u8> {
     let digits: Vec<u8> = text.bytes().filter(u8::is_ascii_hexdigit).collect();
