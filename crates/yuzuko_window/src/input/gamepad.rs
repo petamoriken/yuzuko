@@ -289,7 +289,12 @@ fn read_devices() -> Option<Vec<Snapshot>> {
       return None;
     }
     if devices.gilrs.is_none() {
-      match Gilrs::new() {
+      // gilrs panics when the operating system refuses its event thread.
+      // That shortage can pass, so a later poll tries again.
+      let Ok(created) = std::panic::catch_unwind(Gilrs::new) else {
+        return None;
+      };
+      match created {
         Ok(gilrs) => devices.gilrs = Some(ManuallyDrop::new(gilrs)),
         Err(_) => {
           devices.failed = true;

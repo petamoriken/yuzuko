@@ -25,7 +25,8 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Runs `work` on a new thread. `finish` runs later on the main thread.
 ///
-/// A panic in `work` becomes `Err(())`.
+/// A panic in `work` becomes `Err(())`. So does a thread the operating
+/// system refuses to create; `work` then does not run.
 pub fn spawn<T: Send + 'static>(
   work: impl FnOnce() -> T + Send + 'static,
   finish: impl FnOnce(&mut v8::PinScope, Result<T, ()>) + 'static,
@@ -44,10 +45,14 @@ pub fn spawn<T: Send + 'static>(
   });
   let queue = host::queue();
   queue.job_started();
-  std::thread::spawn(move || {
+  let worker = queue.clone();
+  let started = std::thread::Builder::new().spawn(move || {
     let value = catch_unwind(AssertUnwindSafe(work)).map_err(|_| ());
-    queue.job_finished(id, Box::new(value));
+    worker.job_finished(id, Box::new(value));
   });
+  if started.is_err() {
+    queue.job_finished(id, Box::new(Err::<T, ()>(())));
+  }
 }
 
 /// Runs `work` like [`spawn`] and returns a promise for its result.
