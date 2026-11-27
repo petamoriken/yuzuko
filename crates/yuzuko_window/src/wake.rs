@@ -330,6 +330,13 @@ mod platform {
     }
   }
 
+  impl Drop for Hold {
+    fn drop(&mut self) {
+      let _ = self.child.kill();
+      let _ = self.child.wait();
+    }
+  }
+
   #[cfg(test)]
   mod tests {
     #[test]
@@ -348,13 +355,6 @@ mod platform {
           Some(std::ffi::OsStr::new("/usr/bin:/bin"))
         )]
       );
-    }
-  }
-
-  impl Drop for Hold {
-    fn drop(&mut self) {
-      let _ = self.child.kill();
-      let _ = self.child.wait();
     }
   }
 }
