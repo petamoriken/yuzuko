@@ -30,6 +30,7 @@ use yuzuko_image::convert;
 use yuzuko_image::convert_encoded;
 use yuzuko_image::premultiply;
 use yuzuko_image::unpremultiply;
+use yuzuko_image::within_limits;
 
 use crate::paint::color::ColorSyntax;
 use crate::paint::color::CssColor;
@@ -133,7 +134,7 @@ pub fn layer_image(
   width: u32,
   height: u32,
 ) -> Option<ImageBuf> {
-  if width == 0 || height == 0 || commands.is_empty() {
+  if commands.is_empty() {
     return None;
   }
   let bytes = render_premul(commands, width, height)?;
@@ -147,8 +148,11 @@ pub fn layer_image(
   })
 }
 
+/// `None` for an empty canvas, and for one past the raster limits that
+/// `ImageBitmap` and `ImageData` share. Neither renderer is asked to allocate
+/// such a bitmap.
 pub fn rasterize(drawing: &Drawing) -> Option<Raster> {
-  if drawing.width == 0 || drawing.height == 0 {
+  if !within_limits(drawing.width, drawing.height) {
     return None;
   }
   if drawing.attrs.vello_target() {
@@ -168,7 +172,7 @@ pub fn rasterize(drawing: &Drawing) -> Option<Raster> {
     unpremultiply(&mut raster);
     return Some(raster);
   }
-  Some(rasterize_backing(drawing))
+  rasterize_backing(drawing)
 }
 
 fn force_opaque(raster: &mut Raster) {
@@ -181,14 +185,14 @@ fn force_opaque(raster: &mut Raster) {
   }
 }
 
-fn rasterize_backing(drawing: &Drawing) -> Raster {
+fn rasterize_backing(drawing: &Drawing) -> Option<Raster> {
   let mut image = Raster::new(
     drawing.width,
     drawing.height,
     drawing.attrs.color_space,
     drawing.attrs.format,
   )
-  .expect("canvas size was checked");
+  .ok()?;
   let mut batch = Vec::new();
   for command in &drawing.commands {
     match command {
@@ -249,7 +253,7 @@ fn rasterize_backing(drawing: &Drawing) -> Raster {
   if !drawing.attrs.alpha {
     force_opaque(&mut image);
   }
-  image
+  Some(image)
 }
 
 fn paint_batch(image: &mut Raster, batch: &[Command], drawing: &Drawing) {
@@ -667,7 +671,7 @@ pub fn render_premul(
   width: u32,
   height: u32,
 ) -> Option<Vec<u8>> {
-  if width == 0 || height == 0 {
+  if !within_limits(width, height) {
     return None;
   }
   // source-in, copy, clear, and shadows touch pixels the shape misses.
@@ -1349,7 +1353,8 @@ pub fn render_texture(
   width: u32,
   height: u32,
 ) -> Option<wgpu::Texture> {
-  if width == 0 || height == 0 || commands.iter().any(composite::needs_isolated)
+  if !within_limits(width, height)
+    || commands.iter().any(composite::needs_isolated)
   {
     return None;
   }

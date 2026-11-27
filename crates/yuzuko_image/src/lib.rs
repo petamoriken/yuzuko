@@ -22,6 +22,7 @@ pub use raster::decode::{
 pub use raster::{
   ColorSpace, PixelError, Raster, ResizeQuality, SampleFormat, convert_format,
   crop_resize, orient, orient_display, premultiply, unpremultiply,
+  within_limits,
 };
 
 pub fn register() {

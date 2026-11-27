@@ -374,3 +374,36 @@ Yuzuko.test("CSS filters change composited pixels", () => {
   layer.endLayer();
   assert(pixel(layer, 0, 0).join() === "0,255,255,255", "layer filter");
 });
+
+Yuzuko.test("a canvas past the bitmap limit has no pixels", async () => {
+  for (const [width, height, colorType] of [
+    [65535, 1, "unorm8"],
+    [20000, 1, "unorm8"],
+    [20000, 1, "float16"],
+    [12000, 12000, "unorm8"],
+  ] as const) {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d", { colorType });
+    assert(ctx !== null, "context");
+    ctx.globalCompositeOperation = "copy";
+    ctx.fillRect(0, 0, 4, 1);
+    let name = "";
+    try {
+      ctx.getImageData(0, 0, 1, 1);
+    } catch (error) {
+      name = (error as DOMException).name;
+    }
+    assert(name === "InvalidStateError", `${width} getImageData ${name}`);
+    name = "";
+    try {
+      await canvas.convertToBlob();
+    } catch (error) {
+      name = (error as DOMException).name;
+    }
+    assert(name === "InvalidStateError", `${width} convertToBlob ${name}`);
+  }
+  const small = new OffscreenCanvas(2, 2).getContext("2d");
+  assert(small !== null, "small context");
+  small.fillRect(0, 0, 2, 2);
+  assert(pixel(small, 1, 1).join() === "0,0,0,255", "a small canvas still paints");
+});
