@@ -749,6 +749,24 @@ pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
   )
 }
 
+/// Whether the directory entry `path` is granted. A final symlink is not
+/// resolved. With `tree`, a deny of a descendant also refuses it. This does
+/// not ask.
+#[cfg_attr(not(feature = "fs"), allow(dead_code))]
+pub fn entry_is_granted(
+  write: bool,
+  path: &Path,
+  tree: bool,
+) -> Result<bool, OpError> {
+  let kind = if write { Kind::Write } else { Kind::Read };
+  let detail = if tree {
+    Detail::Tree(path.to_path_buf())
+  } else {
+    Detail::Entry(path.to_path_buf())
+  };
+  Ok(interact(kind, &detail, false)? == State::Granted)
+}
+
 /// `NotCapable` naming `path`, the path the caller requested.
 pub fn path_not_allowed(write: bool, path: &Path) -> OpError {
   let kind = if write { Kind::Write } else { Kind::Read };

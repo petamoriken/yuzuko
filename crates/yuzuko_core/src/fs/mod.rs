@@ -7,6 +7,7 @@
 //! A packaged launch records the bundle root. JavaScript may read that tree
 //! and cannot modify it. `yuzuko run` records no root.
 
+mod entry;
 mod error;
 mod file;
 mod io;

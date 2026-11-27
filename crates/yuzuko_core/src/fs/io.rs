@@ -10,6 +10,7 @@ use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use super::entry;
 use super::error::FsError;
 use super::path::{self, Link};
 
@@ -252,11 +253,11 @@ fn permit_real(
   Ok(())
 }
 
-fn host_denial(write: bool, path: &Path) -> FsError {
+pub(super) fn host_denial(write: bool, path: &Path) -> FsError {
   host_error(crate::permissions::path_not_allowed(write, path))
 }
 
-fn host_error(error: crate::op::OpError) -> FsError {
+pub(super) fn host_error(error: crate::op::OpError) -> FsError {
   match error {
     crate::op::OpError::Dom { name, message } => {
       FsError::Host { name, message }
@@ -292,7 +293,18 @@ pub(super) fn mkdir_path(
   path: &Path,
   flags: MkdirFlags,
 ) -> Result<(), FsError> {
+  let requested = path;
   let path = path::ensure_mutable(path, Link::Entry)?;
+  if sandboxed() {
+    return if flags.recursive {
+      entry::mkdir_recursive(requested, &path, flags.mode)
+    } else {
+      entry::mkdir(
+        &entry::open_parent(requested, &path, entry::WRITE)?,
+        flags.mode,
+      )
+    };
+  }
   if flags.recursive {
     mkdir_recursive(&path, flags.mode)
   } else {
@@ -300,11 +312,26 @@ pub(super) fn mkdir_path(
   }
 }
 
+/// A policy is installed, so a directory-entry change goes through an
+/// opened, checked parent directory.
+fn sandboxed() -> bool {
+  !crate::permissions::permissions_are_open()
+}
+
 pub(super) fn remove_path(
   path: &Path,
   flags: RemoveFlags,
 ) -> Result<(), FsError> {
+  let requested = path;
   let path = path::ensure_mutable(path, Link::Entry)?;
+  if sandboxed() {
+    let need = entry::Need {
+      read: false,
+      tree: flags.recursive,
+    };
+    let parent = entry::open_parent(requested, &path, need)?;
+    return entry::remove(&parent, flags.recursive);
+  }
   let meta = fs::symlink_metadata(&path).map_err(FsError::io)?;
   let file_type = meta.file_type();
   if file_type.is_symlink() {
@@ -321,8 +348,18 @@ pub(super) fn remove_path(
 }
 
 pub(super) fn rename_path(from: &Path, to: &Path) -> Result<(), FsError> {
+  let (from_requested, to_requested) = (from, to);
   let from = path::ensure_mutable(from, Link::Entry)?;
   let to = path::ensure_mutable(to, Link::Entry)?;
+  if sandboxed() {
+    let tree = entry::Need {
+      read: false,
+      tree: true,
+    };
+    let source = entry::open_parent(from_requested, &from, tree)?;
+    let dest = entry::open_parent(to_requested, &to, tree)?;
+    return entry::rename(&source, &dest);
+  }
   fs::rename(from, to).map_err(FsError::io)
 }
 
@@ -1031,8 +1068,19 @@ pub(super) fn umask(mask: Option<u32>) -> Result<u32, FsError> {
 }
 
 pub(super) fn link(old: &Path, new: &Path) -> Result<(), FsError> {
+  let (old_requested, new_requested) = (old, new);
   let old = path::ensure_mutable(old, Link::Entry)?;
   let new = path::ensure_mutable(new, Link::Entry)?;
+  if sandboxed() {
+    // A hard link needs read and write access to the old file.
+    let read_write = entry::Need {
+      read: true,
+      tree: false,
+    };
+    let source = entry::open_parent(old_requested, &old, read_write)?;
+    let dest = entry::open_parent(new_requested, &new, entry::WRITE)?;
+    return entry::link(&source, &dest);
+  }
   fs::hard_link(old, new).map_err(FsError::io)
 }
 
@@ -1041,14 +1089,25 @@ pub(super) fn symlink(
   new: &Path,
   kind: LinkKind,
 ) -> Result<(), FsError> {
+  let requested = new;
   let new = path::ensure_mutable(new, Link::Entry)?;
+  let parent = if sandboxed() {
+    Some(entry::open_parent(requested, &new, entry::WRITE)?)
+  } else {
+    None
+  };
   #[cfg(unix)]
   {
     let _ = kind;
+    if let Some(parent) = &parent {
+      return entry::symlink(old, parent);
+    }
     std::os::unix::fs::symlink(old, new).map_err(FsError::io)
   }
   #[cfg(windows)]
   {
+    // The parent stays open, so its final path still names this entry.
+    let new = parent.as_ref().map_or(new, entry::Parent::real_path);
     match kind {
       LinkKind::File => {
         std::os::windows::fs::symlink_file(old, &new).map_err(FsError::io)

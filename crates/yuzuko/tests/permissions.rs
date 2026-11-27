@@ -987,6 +987,82 @@ fn a_symlink_swap_does_not_return_the_other_file() {
   assert_eq!(fs::read_to_string(&secret).unwrap(), "OUTSIDE\n");
 }
 
+/// remove, rename, mkdir, link, and symlink act on an opened parent
+/// directory. A parent swapped for a symlink after the check must not move
+/// the change outside the write grant.
+#[cfg(unix)]
+#[test]
+fn a_parent_swap_does_not_move_an_entry_change_outside() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let root = scratch("parent-swap");
+  let work = root.join("work");
+  let protected = root.join("protected");
+  fs::create_dir_all(work.join("sub")).unwrap();
+  fs::create_dir_all(&protected).unwrap();
+  let keep = protected.join("f");
+  fs::write(&keep, "keep\n").unwrap();
+
+  let stop = Arc::new(AtomicBool::new(false));
+  let swapping = Arc::clone(&stop);
+  let (sub, real) = (work.join("sub"), work.join("real"));
+  let target = protected.clone();
+  let swapper = std::thread::spawn(move || {
+    while !swapping.load(Ordering::Relaxed) {
+      if fs::rename(&sub, &real).is_ok() {
+        let _ = std::os::unix::fs::symlink(&target, &sub);
+        let _ = fs::remove_file(&sub);
+        let _ = fs::rename(&real, &sub);
+      }
+    }
+  });
+  write(
+    &root.join("race.ts"),
+    r#"const [work] = Yuzuko.args;
+for (let i = 0; i < 4000; i++) {
+  for (const step of [
+    () => Yuzuko.removeSync(work + "/sub/f"),
+    () => Yuzuko.mkdirSync(work + "/sub/d"),
+    () => Yuzuko.removeSync(work + "/sub/d"),
+    () => Yuzuko.mkdirSync(work + "/sub/p/q", { recursive: true }),
+    () => Yuzuko.removeSync(work + "/sub/p", { recursive: true }),
+    () => Yuzuko.symlinkSync("x", work + "/sub/l"),
+    () => Yuzuko.removeSync(work + "/sub/l"),
+  ]) {
+    try {
+      step();
+    } catch {}
+  }
+}
+console.log("done");
+"#,
+  );
+  let allow = format!("--allow-write={}", work.display());
+  let work_arg = work.display().to_string();
+  let raced = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read",
+      &allow,
+      "race.ts",
+      &work_arg,
+    ],
+  );
+  stop.store(true, Ordering::Relaxed);
+  let _ = swapper.join();
+  assert_eq!(raced.status.code(), Some(0), "{}", text(&raced.stderr));
+  assert_eq!(fs::read_to_string(&keep).unwrap(), "keep\n");
+  let leaked: Vec<_> = fs::read_dir(&protected)
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name())
+    .collect();
+  assert_eq!(leaked, vec![std::ffi::OsString::from("f")], "{leaked:?}");
+  let _ = fs::remove_dir_all(&root);
+}
+
 /// A module import checks the path, then reads the file it opened. A symlink
 /// swapped between the two must not supply a file the check would refuse.
 #[cfg(unix)]
