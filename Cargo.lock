@@ -9035,6 +9035,7 @@ dependencies = [
  "oxc_semantic",
  "oxc_span",
  "oxc_transformer",
+ "percent-encoding",
  "rustls",
  "unicode-width",
  "url",

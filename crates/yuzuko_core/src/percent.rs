@@ -5,33 +5,7 @@
 /// becomes that byte. Every other byte, including a `%` without two hex
 /// digits after it, is kept.
 pub fn decode(input: &str) -> Vec<u8> {
-  let bytes = input.as_bytes();
-  let mut out = Vec::with_capacity(bytes.len());
-  let mut index = 0;
-  while index < bytes.len() {
-    if bytes[index] == b'%'
-      && index + 2 < bytes.len()
-      && let (Some(high), Some(low)) =
-        (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2]))
-    {
-      out.push((high << 4) | low);
-      index += 3;
-      continue;
-    }
-    out.push(bytes[index]);
-    index += 1;
-  }
-  out
-}
-
-#[inline]
-fn hex_digit(byte: u8) -> Option<u8> {
-  match byte {
-    b'0'..=b'9' => Some(byte - b'0'),
-    b'a'..=b'f' => Some(byte - b'a' + 10),
-    b'A'..=b'F' => Some(byte - b'A' + 10),
-    _ => None,
-  }
+  percent_encoding::percent_decode_str(input).collect()
 }
 
 #[cfg(test)]
