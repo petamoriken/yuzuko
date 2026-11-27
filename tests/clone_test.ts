@@ -1679,3 +1679,26 @@ Yuzuko.test("a received SharedArrayBuffer keeps the intrinsic prototype", async 
     channel.port2.close();
   }
 });
+
+Yuzuko.test("readAsText reads charset from the parsed MIME type", async () => {
+  const bytes = new Uint8Array([0x68, 0x00, 0x69, 0x00]);
+  const quoted = new Blob([bytes], { type: 'text/plain;x="y;charset=utf-16le"' });
+  // The charset text sits inside a quoted value, so the type has no charset.
+  const read = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsText(quoted);
+  });
+  if (read !== "h\0i\0") {
+    throw new Error(JSON.stringify(read));
+  }
+  const declared = new Blob([bytes], { type: "text/plain;charset=utf-16le" });
+  const decoded = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsText(declared);
+  });
+  if (decoded !== "hi") {
+    throw new Error(JSON.stringify(decoded));
+  }
+});

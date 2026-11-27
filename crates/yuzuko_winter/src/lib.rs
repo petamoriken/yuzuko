@@ -44,7 +44,9 @@ pub use stream::{
   export_transform, export_writable, prepare_cross_readable,
   prepare_cross_writable, shell_transform, transfer_status,
 };
-pub use text::mime::{is_javascript_mime, is_mime_type, serialized_mime};
+pub use text::mime::{
+  is_javascript_mime, is_mime_type, mime_essence, serialized_mime,
+};
 
 pub fn register() {
   static ONCE: Once = Once::new();

@@ -36,6 +36,10 @@ Yuzuko.test("isTypeSupported knows the still-image decoders", async () => {
     "gif parameters",
   );
   assert(await ImageDecoder.isTypeSupported("image/bmp"), "bmp");
+  assert(await ImageDecoder.isTypeSupported(" Image/PNG "), "trimmed, any case");
+  // The type is a parsed MIME type, so text after the subtype is not ignored.
+  assert(!(await ImageDecoder.isTypeSupported("image/png x")), "png x");
+  assert(!(await ImageDecoder.isTypeSupported("image/png,")), "png,");
   assert(
     await ImageDecoder.isTypeSupported("image/bmp;charset=utf-8"),
     "bmp parameters",

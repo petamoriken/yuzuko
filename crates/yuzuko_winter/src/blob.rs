@@ -1483,7 +1483,9 @@ pub fn decode_blob_text(
   mime: &str,
   encoding: Option<&str>,
 ) -> String {
-  let label = encoding.or_else(|| charset_label(mime));
+  // The File API reads the charset parameter of the parsed MIME type.
+  let charset = crate::text::mime::mime_charset(mime);
+  let label = encoding.or(charset.as_deref());
   if let Some(label) = label
     && let Some(encoding) =
       encoding_rs::Encoding::for_label_no_replacement(label.as_bytes())
@@ -1505,21 +1507,6 @@ pub fn data_url(bytes: &[u8], mime: &str) -> String {
     mime
   };
   format!("data:{mime};base64,{}", crate::text::base64::encode(bytes))
-}
-
-fn charset_label(mime: &str) -> Option<&str> {
-  for part in mime.split(';').skip(1) {
-    let Some((name, value)) = part.split_once('=') else {
-      continue;
-    };
-    if name.trim().eq_ignore_ascii_case("charset") {
-      let value = value.trim().trim_matches('"');
-      if !value.is_empty() {
-        return Some(value);
-      }
-    }
-  }
-  None
 }
 
 fn decode_with(

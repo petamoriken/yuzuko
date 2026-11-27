@@ -950,8 +950,9 @@ fn scale_sequence(
 }
 
 fn supported_type(mime: &str) -> bool {
+  let essence = yuzuko_winter::mime_essence(mime).unwrap_or_default();
   matches!(
-    essence(mime).as_str(),
+    essence.as_str(),
     "image/png"
       | "image/jpeg"
       | "image/webp"
@@ -960,11 +961,6 @@ fn supported_type(mime: &str) -> bool {
       | "image/gif"
       | "image/bmp"
   )
-}
-
-fn essence(mime: &str) -> String {
-  let mime = mime.trim().to_ascii_lowercase();
-  mime.split([';', ' ']).next().unwrap_or("").to_string()
 }
 
 fn defer(

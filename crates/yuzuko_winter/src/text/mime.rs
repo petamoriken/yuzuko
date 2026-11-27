@@ -105,6 +105,18 @@ pub fn is_mime_type(input: &str) -> bool {
   parse(input).is_some()
 }
 
+/// The essence (`type/subtype`, lowercase) of a parsed MIME type, or `None`
+/// when `input` does not parse.
+pub fn mime_essence(input: &str) -> Option<String> {
+  parse(input).map(|mime| format!("{}/{}", mime.type_, mime.subtype))
+}
+
+/// The `charset` parameter of a parsed MIME type.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+pub(crate) fn mime_charset(input: &str) -> Option<String> {
+  parse(input)?.parameter("charset").map(str::to_owned)
+}
+
 /// Serialized MIME type, or `None` when `input` does not parse.
 pub fn serialized_mime(input: &str) -> Option<String> {
   parse(input).map(|mime| serialize(&mime))

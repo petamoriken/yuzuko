@@ -2929,55 +2929,20 @@ fn is_language_byte(byte: u8) -> bool {
     || matches!(byte, b' ' | b'*' | b',' | b'-' | b'.' | b';' | b'=')
 }
 
+/// Fetch's CORS-safelisted `Content-Type`: no CORS-unsafe byte, and the
+/// essence of the parsed MIME type is one of the three form types.
 fn safelisted_content_type(value: &str) -> bool {
   if value.bytes().any(cors_unsafe_byte) {
     return false;
   }
-  let Some(essence) = value.split(';').next() else {
-    return false;
-  };
-  let essence = essence.trim();
-  let mut parts = essence.split('/');
-  let Some(type_) = parts.next() else {
-    return false;
-  };
-  let Some(subtype) = parts.next() else {
-    return false;
-  };
-  if parts.next().is_some()
-    || type_.is_empty()
-    || subtype.is_empty()
-    || !type_.bytes().all(is_token_byte)
-    || !subtype.bytes().all(is_token_byte)
-  {
-    return false;
-  }
   matches!(
-    essence.to_ascii_lowercase().as_str(),
-    "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain"
-  )
-}
-
-fn is_token_byte(byte: u8) -> bool {
-  byte.is_ascii_alphanumeric()
-    || matches!(
-      byte,
-      b'!'
-        | b'#'
-        | b'$'
-        | b'%'
-        | b'&'
-        | b'\''
-        | b'*'
-        | b'+'
-        | b'-'
-        | b'.'
-        | b'^'
-        | b'_'
-        | b'`'
-        | b'|'
-        | b'~'
+    crate::text::mime::mime_essence(value).as_deref(),
+    Some(
+      "application/x-www-form-urlencoded"
+        | "multipart/form-data"
+        | "text/plain"
     )
+  )
 }
 
 fn is_http_whitespace(ch: char) -> bool {
