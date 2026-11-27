@@ -2211,6 +2211,15 @@ fn ctr_crypt(
       "The AES-CTR counter must be 16 bytes",
     ));
   }
+  // The low `bits` of the counter take 2^bits values. A longer input would
+  // reuse a keystream block, so it fails as it does in Chromium and Firefox.
+  let blocks = data.len().div_ceil(16) as u128;
+  if bits < 128 && blocks > 1u128 << bits {
+    return Err(OpError::dom(
+      "OperationError",
+      "The AES-CTR counter would wrap around",
+    ));
+  }
   let mut counter: [u8; 16] = counter.try_into().expect("16 bytes");
   let mut out = vec![0u8; data.len()];
   let mut offset = 0;

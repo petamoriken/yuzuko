@@ -415,3 +415,25 @@ Yuzuko.test("PBKDF2 and HKDF require every parameter", async () => {
   );
   assert(bits.byteLength === 32, "complete HKDF params derive");
 });
+
+Yuzuko.test("AES-CTR rejects an input that wraps the counter", async () => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    "AES-CTR",
+    false,
+    ["encrypt", "decrypt"],
+  );
+  const params = { name: "AES-CTR", counter: new Uint8Array(16), length: 2 };
+  const fits = await crypto.subtle.encrypt(params, key, new Uint8Array(64));
+  assert(fits.byteLength === 64, "four blocks fit a 2-bit counter");
+  for (const operation of ["encrypt", "decrypt"] as const) {
+    let name = "";
+    try {
+      await crypto.subtle[operation](params, key, new Uint8Array(65));
+    } catch (error) {
+      name = (error as Error).name;
+    }
+    assert(name === "OperationError", `${operation}: ${name}`);
+  }
+});
