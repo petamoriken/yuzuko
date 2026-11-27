@@ -6,12 +6,19 @@ use std::io::Cursor;
 ///
 /// 16-bit samples are reduced to 8-bit and a palette is expanded. A file that
 /// is not a PNG, or whose pixels do not cover `width * height`, is `None`.
+/// So is one whose header declares more than 16384 pixels on an edge or
+/// 100 million pixels in total, the image limits, before any pixel buffer
+/// is allocated.
 pub(crate) fn decode(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
   let mut decoder = png::Decoder::new(Cursor::new(bytes));
   decoder.set_transformations(
     png::Transformations::EXPAND | png::Transformations::STRIP_16,
   );
   let mut reader = decoder.read_info().ok()?;
+  let info = reader.info();
+  if !within_limits(info.width, info.height) {
+    return None;
+  }
   let size = reader.output_buffer_size()?;
   let mut buffer = vec![0; size];
   let frame = reader.next_frame(&mut buffer).ok()?;
@@ -49,6 +56,17 @@ pub(crate) fn decode(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
   Some((rgba, width, height))
 }
 
+const MAX_EDGE: u32 = 16_384;
+const MAX_PIXELS: u64 = 100_000_000;
+
+fn within_limits(width: u32, height: u32) -> bool {
+  width > 0
+    && height > 0
+    && width <= MAX_EDGE
+    && height <= MAX_EDGE
+    && u64::from(width) * u64::from(height) <= MAX_PIXELS
+}
+
 #[cfg(test)]
 mod tests {
   use super::decode;
@@ -76,6 +94,48 @@ mod tests {
     writer.write_image_data(samples).unwrap();
     writer.finish().unwrap();
     bytes
+  }
+
+  fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for byte in bytes {
+      crc ^= u32::from(*byte);
+      for _ in 0..8 {
+        crc = if crc & 1 == 1 {
+          (crc >> 1) ^ 0xedb8_8320
+        } else {
+          crc >> 1
+        };
+      }
+    }
+    !crc
+  }
+
+  /// A valid 1x1 PNG whose IHDR then claims `width` by `height`.
+  fn claiming(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = png(
+      1,
+      1,
+      png::ColorType::Rgba,
+      png::BitDepth::Eight,
+      &[1, 2, 3, 4],
+      None,
+      None,
+    );
+    // Signature 8, length 4, then `IHDR` and its 13 data bytes.
+    bytes[16..20].copy_from_slice(&width.to_be_bytes());
+    bytes[20..24].copy_from_slice(&height.to_be_bytes());
+    let crc = crc32(&bytes[12..29]);
+    bytes[29..33].copy_from_slice(&crc.to_be_bytes());
+    bytes
+  }
+
+  #[test]
+  fn a_header_past_the_image_limits_is_rejected_before_decoding() {
+    assert_eq!(decode(&claiming(1, 1)), Some((vec![1, 2, 3, 4], 1, 1)));
+    assert_eq!(decode(&claiming(0x40_0000, 0x7fff_ffff)), None);
+    assert_eq!(decode(&claiming(16_385, 1)), None);
+    assert_eq!(decode(&claiming(10_001, 10_000)), None);
   }
 
   #[test]
