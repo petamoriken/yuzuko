@@ -284,7 +284,7 @@ fn parse(input: &str) -> Query {
     parts.push(parse_media_query(&mut parser));
   }
   parser.skip();
-  if !parser.eof() {
+  if !parser.eof() || parser.too_deep {
     return Query::False;
   }
   if parts.len() == 1 {
@@ -355,15 +355,21 @@ fn parse_condition(parser: &mut Parser) -> Query {
 
 fn parse_in_parens(parser: &mut Parser) -> Query {
   parser.skip();
+  if parser.depth >= MAX_DEPTH {
+    parser.too_deep = true;
+    return Query::False;
+  }
   if !parser.eat("(") {
     return Query::False;
   }
+  parser.depth += 1;
   parser.skip();
   let query = if parser.starts_keyword("not") || parser.starts_with('(') {
     parse_condition(parser)
   } else {
     parse_feature(parser)
   };
+  parser.depth -= 1;
   parser.skip();
   if !parser.eat(")") {
     return Query::False;
@@ -638,11 +644,24 @@ impl Value {
 struct Parser<'a> {
   input: &'a str,
   index: usize,
+  /// Open parentheses around the current position.
+  depth: usize,
+  /// The nesting passed [`MAX_DEPTH`], so the whole list is `not all`.
+  too_deep: bool,
 }
+
+/// The deepest parenthesized condition. The parser, evaluation, and drop
+/// all recurse once per level.
+const MAX_DEPTH: usize = 256;
 
 impl<'a> Parser<'a> {
   fn new(input: &'a str) -> Self {
-    Self { input, index: 0 }
+    Self {
+      input,
+      index: 0,
+      depth: 0,
+      too_deep: false,
+    }
   }
 
   fn eof(&self) -> bool {
@@ -995,6 +1014,18 @@ mod tests {
 
   fn matches(query: &str) -> bool {
     evaluate(&parse(query), &desktop())
+  }
+
+  #[test]
+  fn deep_nesting_is_not_all() {
+    let nested = |depth: usize| {
+      format!("{}min-width: 1px{}", "(".repeat(depth), ")".repeat(depth))
+    };
+    assert!(matches(&nested(super::MAX_DEPTH)));
+    assert!(!matches(&nested(super::MAX_DEPTH + 1)));
+    // Deep enough to overflow a recursive parser.
+    assert!(!matches(&nested(200_000)));
+    assert!(!matches(&format!("{}, screen", nested(200_000))));
   }
 
   #[test]
