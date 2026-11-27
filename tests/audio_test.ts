@@ -1479,3 +1479,19 @@ Yuzuko.test("createIIRFilter accepts a Float64Array", async () => {
     assertClose(right[index]!, left[index]!, `iir sample ${index}`);
   }
 });
+
+Yuzuko.test("ConvolverNode rejects a buffer that resamples past the length limit", () => {
+  const context = new OfflineAudioContext(1, 128, 768000);
+  const convolver = context.createConvolver();
+  const long = new AudioBuffer({ length: 100000, sampleRate: 3000 });
+  let name = "";
+  try {
+    convolver.buffer = long;
+  } catch (error) {
+    name = (error as DOMException).name;
+  }
+  assert(name === "NotSupportedError", `long ${name}`);
+  assert(convolver.buffer === null, "the buffer is unchanged");
+  convolver.buffer = new AudioBuffer({ length: 1000, sampleRate: 3000 });
+  assert(convolver.buffer?.length === 1000, "a short buffer is kept");
+});

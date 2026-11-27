@@ -15396,7 +15396,16 @@ interface PannerOptions extends AudioNodeOptions {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode)
  */
 interface ConvolverNode extends AudioNode {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/buffer) */
+  /**
+   * A buffer whose sample rate differs from the context is linearly
+   * resampled to the context rate.
+   *
+   * @throws {@link DOMException} `NotSupportedError` when the resampled
+   * buffer would be longer than 20000000 frames, or the buffer does not have
+   * 1, 2, or 4 channels.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/buffer)
+   */
   buffer: AudioBuffer | null;
 
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ConvolverNode/normalize) */

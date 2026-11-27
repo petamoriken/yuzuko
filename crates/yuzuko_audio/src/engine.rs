@@ -5941,6 +5941,15 @@ pub fn set_convolver_buffer(
   }
   let scale = process::convolver_scale(&channels, rate, normalize);
   let target = context_of(id).and_then(context_rate).unwrap_or(rate);
+  // The resampled kernel is held for the life of the node, so it has the
+  // length limit of an `AudioBuffer`.
+  let longest = channels.iter().map(Vec::len).max().unwrap_or(0);
+  if (longest as f64) * target / rate > f64::from(MAX_FRAMES) {
+    return Err(Fault::dom(
+      "NotSupportedError",
+      "The resampled impulse response is too long",
+    ));
+  }
   let kernels = channels
     .iter()
     .map(|channel| process::resample_linear(channel, rate, target))
