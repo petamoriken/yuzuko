@@ -24,6 +24,11 @@ const STEP_LIMIT: usize = 128 * 1024 * 1024;
 /// checked before a slice can expand much past it.
 const SLICE: usize = 16 * 1024;
 
+/// The most codings one response may stack. Each one holds a decoder's
+/// state from the start, so a long `gzip,gzip,...` header must not build one
+/// per item. A longer list is left undecoded, like an unknown coding.
+const MAX_CODINGS: usize = 8;
+
 const INVALID: &str = "The content encoding is invalid";
 const TOO_LARGE: &str = "The decoded body is too large";
 
@@ -48,6 +53,9 @@ pub fn prepare(headers: &mut Vec<(String, String)>) -> Option<ContentDecoder> {
       let part = part.trim();
       if part.is_empty() || part.eq_ignore_ascii_case("identity") {
         continue;
+      }
+      if codings.len() == MAX_CODINGS {
+        return None;
       }
       codings.push(part.to_ascii_lowercase());
     }
@@ -232,6 +240,22 @@ mod tests {
   use flate2::Compression;
   use flate2::write::GzEncoder;
   use std::io::Write;
+
+  #[test]
+  fn a_long_coding_list_is_left_undecoded() {
+    let stacked = |count: usize| {
+      let mut headers = vec![(
+        "content-encoding".to_string(),
+        vec!["gzip"; count].join(","),
+      )];
+      let decoded = prepare(&mut headers).is_some();
+      (decoded, headers.len())
+    };
+    assert_eq!(stacked(super::MAX_CODINGS), (true, 0));
+    // The header stays, and no decoder state is built for any item.
+    assert_eq!(stacked(super::MAX_CODINGS + 1), (false, 1));
+    assert_eq!(stacked(200_000), (false, 1));
+  }
 
   #[test]
   fn gzip_round_trip() {
