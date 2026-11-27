@@ -899,7 +899,7 @@ fn import_oct_key(
     "HMAC" => {
       let hash = algorithm_hash(scope, algorithm)?
         .unwrap_or_else(|| "SHA-256".to_string());
-      let length = (bytes.len() * 8) as u32;
+      let length = hmac_import_length(scope, algorithm, bytes.len())?;
       Ok(secret_key(
         "HMAC",
         extractable,
@@ -1019,6 +1019,29 @@ fn import_jwk(
     return modern_api::import_secret(name, bytes, extractable, usages);
   }
   import_oct_key(scope, name, algorithm, extractable, usages, bytes)
+}
+
+/// The HMAC import key steps: empty data is a DataError, and a `length`
+/// must name a bit count inside the last byte of the data.
+fn hmac_import_length(
+  scope: &mut v8::PinScope,
+  algorithm: v8::Local<v8::Value>,
+  bytes: usize,
+) -> Result<u32, OpError> {
+  let mismatch =
+    || OpError::dom("DataError", "The HMAC key length does not match the data");
+  let bits = bytes as u64 * 8;
+  if bits == 0 {
+    return Err(OpError::dom("DataError", "The HMAC key data is empty"));
+  }
+  let Some(length) = algorithm_number(scope, algorithm, "length") else {
+    return u32::try_from(bits).map_err(|_| mismatch());
+  };
+  let length = u64::from(enforce_unsigned_long(length, "length")?);
+  if length > bits || length + 8 <= bits {
+    return Err(mismatch());
+  }
+  Ok(length as u32)
 }
 
 fn hmac_alg(hash: &str, alg: Option<&str>) -> Result<(), OpError> {

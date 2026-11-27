@@ -437,3 +437,48 @@ Yuzuko.test("AES-CTR rejects an input that wraps the counter", async () => {
     assert(name === "OperationError", `${operation}: ${name}`);
   }
 });
+
+Yuzuko.test("HMAC import checks the data length", async () => {
+  const usages: KeyUsage[] = ["sign"];
+  const hmac = (length?: number) =>
+    length === undefined
+      ? { name: "HMAC", hash: "SHA-256" }
+      : { name: "HMAC", hash: "SHA-256", length };
+  const imported = async (
+    data: Uint8Array<ArrayBuffer>,
+    length?: number,
+  ): Promise<number | string> => {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        data,
+        hmac(length),
+        true,
+        usages,
+      );
+      return (key.algorithm as KeyAlgorithm & { length: number }).length;
+    } catch (error) {
+      return (error as Error).name;
+    }
+  };
+  const data = new Uint8Array(4);
+  assert(await imported(data) === 32, "default length");
+  assert(await imported(data, 32) === 32, "full length");
+  assert(await imported(data, 25) === 25, "partial last byte");
+  assert(await imported(data, 24) === "DataError", "a whole byte too long");
+  assert(await imported(data, 33) === "DataError", "longer than the data");
+  assert(await imported(new Uint8Array()) === "DataError", "empty raw");
+  let jwk = "";
+  try {
+    await crypto.subtle.importKey(
+      "jwk",
+      { kty: "oct", k: "" },
+      hmac(),
+      true,
+      usages,
+    );
+  } catch (error) {
+    jwk = (error as Error).name;
+  }
+  assert(jwk === "DataError", `empty jwk: ${jwk}`);
+});
