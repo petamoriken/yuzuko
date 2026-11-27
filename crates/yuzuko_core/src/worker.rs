@@ -855,25 +855,12 @@ fn load_blob_script(url: &str) -> Result<String, String> {
   loader(url)
 }
 
+/// Runs the Fetch `data:` URL processor from the `data-url` crate, the
+/// same one `fetch` uses, and decodes the body as UTF-8 with U+FFFD.
 fn decode_data_url(url: &str) -> Result<String, String> {
-  // Fetch's data: URL processor serializes the URL without its fragment.
-  // A serialized URL starts its fragment at the first `#`.
-  let url = url.split_once('#').map_or(url, |(before, _)| before);
-  let rest = url
-    .strip_prefix("data:")
-    .ok_or_else(|| "The data URL is invalid".to_string())?;
-  let (meta, data) = rest
-    .split_once(',')
-    .ok_or_else(|| "The data URL has no payload".to_string())?;
-  let decoded = crate::percent::decode(data);
-  if !meta_is_base64(meta) {
-    return Ok(String::from_utf8_lossy(&decoded).into_owned());
-  }
-  // Fetch data URLs percent-decode, then forgiving-base64-decode the
-  // isomorphic decoding. A non-ASCII byte is not base64 either way.
-  let decoded: String = decoded.iter().copied().map(char::from).collect();
-  let bytes = crate::base64::decode_forgiving(&decoded)
-    .map_err(|_| "The data URL is invalid".to_string())?;
+  let invalid = || "The data URL is invalid".to_string();
+  let processed = data_url::DataUrl::process(url).map_err(|_| invalid())?;
+  let (bytes, _) = processed.decode_to_vec().map_err(|_| invalid())?;
   Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -900,13 +887,6 @@ fn read_granted_script(path: &Path) -> Result<String, WorkerLoadError> {
     .read_to_end(&mut bytes)
     .map_err(|error| error.to_string())?;
   Ok(String::from_utf8_lossy(&bytes).into_owned())
-}
-
-fn meta_is_base64(meta: &str) -> bool {
-  meta
-    .rsplit(';')
-    .next()
-    .is_some_and(|part| part.trim().eq_ignore_ascii_case("base64"))
 }
 
 fn sandbox_file(url: &Url, sandbox: &Path) -> Option<PathBuf> {
@@ -1019,6 +999,16 @@ mod tests {
   #[test]
   fn invalid_base64_data_url_fails() {
     assert!(decode_data_url("data:;base64,****").is_err());
+  }
+
+  #[test]
+  fn base64_marker_follows_the_fetch_data_url_rule() {
+    // `base64` must follow a `;`, and only U+0020 may sit between them, as
+    // in `fetch`.
+    let spaced = decode_data_url("data:text/javascript;  base64,aGk=").unwrap();
+    assert_eq!(spaced, "hi");
+    let bare = decode_data_url("data:base64,aGk=").unwrap();
+    assert_eq!(bare, "aGk=");
   }
 
   #[test]

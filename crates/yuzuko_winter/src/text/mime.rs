@@ -179,33 +179,15 @@ pub(crate) fn file_type(input: &str) -> String {
   }
 }
 
-/// The `data:` URL processor. `input` is the URL serialization with the
-/// leading `data:` and the fragment removed. `None` is a network error.
+/// The Fetch `data:` URL processor, from the `data-url` crate. `input` is
+/// the URL serialization after `data:`. A fragment is ignored. `None` is a
+/// network error.
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub(crate) fn process_data_url(input: &str) -> Option<(Vec<u8>, String)> {
-  let chars: Vec<char> = input.chars().collect();
-  let mut index = 0;
-  while index < chars.len() && chars[index] != ',' {
-    index += 1;
-  }
-  if index >= chars.len() {
-    return None;
-  }
-  let mut mime: String = chars[..index].iter().collect();
-  index += 1;
-  mime = trim_ascii_whitespace(&mime).to_string();
-  let encoded: String = chars[index..].iter().collect();
-  let mut body = percent_decode(&encoded);
-  if let Some(stripped) = strip_base64_suffix(&mime) {
-    let text: String = body.iter().copied().map(char::from).collect();
-    body = crate::text::base64::decode_forgiving(&text).ok()?;
-    mime = stripped;
-  }
-  if mime.starts_with(';') {
-    mime.insert_str(0, "text/plain");
-  }
-  let record = parse(&mime).unwrap_or_else(default_data_mime);
-  Some((body, serialize(&record)))
+  let url = format!("data:{input}");
+  let processed = data_url::DataUrl::process(&url).ok()?;
+  let (body, _) = processed.decode_to_vec().ok()?;
+  Some((body, processed.mime_type().to_string()))
 }
 
 /// Run the processor on a parsed URL, excluding the fragment.
@@ -214,45 +196,8 @@ pub(crate) fn data_url(url: &url::Url) -> Option<(Vec<u8>, String)> {
   if url.scheme() != "data" {
     return None;
   }
-  let mut copy = url.clone();
-  copy.set_fragment(None);
-  let serialized = copy.as_str();
-  let input = serialized.strip_prefix("data:")?;
+  let input = url.as_str().strip_prefix("data:")?;
   process_data_url(input)
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn default_data_mime() -> Mime {
-  Mime {
-    type_: "text".to_string(),
-    subtype: "plain".to_string(),
-    parameters: vec![("charset".to_string(), "US-ASCII".to_string())],
-  }
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn strip_base64_suffix(mime: &str) -> Option<String> {
-  let chars: Vec<char> = mime.chars().collect();
-  if chars.len() < 6 {
-    return None;
-  }
-  let tail: String = chars[chars.len() - 6..].iter().collect();
-  if !tail.eq_ignore_ascii_case("base64") {
-    return None;
-  }
-  let mut index = chars.len() - 6;
-  while index > 0 && chars[index - 1] == ' ' {
-    index -= 1;
-  }
-  if index == 0 || chars[index - 1] != ';' {
-    return None;
-  }
-  Some(chars[..index - 1].iter().collect())
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn trim_ascii_whitespace(value: &str) -> &str {
-  value.trim_matches(|ch| matches!(ch, '\t' | '\n' | '\u{000c}' | '\r' | ' '))
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(unused_imports))]

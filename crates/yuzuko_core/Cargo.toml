@@ -22,6 +22,7 @@ rustls = { workspace = true, optional = true }
 unicode-width = "0.2"
 webpki-roots = { workspace = true, optional = true }
 url.workspace = true
+data-url.workspace = true
 percent-encoding.workspace = true
 httparse = { workspace = true, optional = true }
 icu_normalizer = "2.3"
