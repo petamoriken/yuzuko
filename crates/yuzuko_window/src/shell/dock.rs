@@ -4,7 +4,6 @@ use yuzuko_core::op::{OpError, OpException};
 
 use crate::shell::menu::{self, MenuOwner};
 
-#[cfg(target_os = "macos")]
 use std::cell::RefCell;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +14,9 @@ use yuzuko_dom::Event;
 std::thread_local! {
   static DOCK_MENU: RefCell<Option<muda::Menu>> = const { RefCell::new(None) };
   static REOPEN: RefCell<Option<bool>> = const { RefCell::new(None) };
+}
+
+std::thread_local! {
   /// `Yuzuko.dock` as installed. Events go to this object even when user
   /// code replaces or deletes the property.
   static TARGET: RefCell<Option<v8::Global<v8::Object>>> =
