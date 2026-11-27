@@ -507,3 +507,14 @@ Yuzuko.test("a dash list past a million dashes strokes solid", () => {
   const elapsed = performance.now() - started;
   assert(elapsed < 10_000, `took ${elapsed} ms`);
 });
+
+Yuzuko.test("text layout is linear in the string length", () => {
+  const ctx = new OffscreenCanvas(8, 8).getContext("2d")!;
+  const started = performance.now();
+  // A quadratic layout takes minutes here in a debug build.
+  const metrics = ctx.measureText("a".repeat(60000));
+  ctx.fillText("a ".repeat(30000), 0, 4);
+  const elapsed = performance.now() - started;
+  assert(metrics.width > 0, "measured");
+  assert(elapsed < 30_000, `took ${elapsed} ms`);
+});

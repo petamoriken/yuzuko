@@ -372,6 +372,7 @@ fn layout(
   } else {
     format!("\u{2066}{text}\u{2069}")
   };
+  let utf16_at = utf16_offsets(text);
   TEXT.with(|env| {
     let mut env = env.borrow_mut();
     let named = match font.family {
@@ -481,7 +482,7 @@ fn layout(
             });
             pen += glyph.advance;
           }
-          if let Some((start, end)) = original_span(text, range) {
+          if let Some((start, end)) = original_span(text, &utf16_at, range) {
             clusters.push(ShapedCluster {
               start,
               end,
@@ -786,8 +787,22 @@ pub fn spacing_px(css: &str, font_size: f32) -> f64 {
 
 /// UTF-16 span of `range` in `original`. The shaped string is wrapped in one
 /// bidi isolate on each side.
+/// The UTF-16 offset of each byte offset of `text` that starts a character,
+/// and of its end. Other entries are unused.
+fn utf16_offsets(text: &str) -> Vec<u32> {
+  let mut offsets = vec![0u32; text.len() + 1];
+  let mut utf16 = 0u32;
+  for (byte, ch) in text.char_indices() {
+    offsets[byte] = utf16;
+    utf16 += ch.len_utf16() as u32;
+  }
+  offsets[text.len()] = utf16;
+  offsets
+}
+
 fn original_span(
   original: &str,
+  utf16_at: &[u32],
   range: std::ops::Range<usize>,
 ) -> Option<(u32, u32)> {
   let prefix = "\u{2066}".len();
@@ -802,19 +817,17 @@ fn original_span(
   if start >= end {
     return None;
   }
-  Some((utf16_len(&original[..start]), utf16_len(&original[..end])))
+  Some((utf16_at[start], utf16_at[end]))
 }
 
+/// A UTF-8 character is at most four bytes, so a boundary is at most three
+/// bytes back.
 fn floor_boundary(text: &str, byte: usize) -> usize {
   let byte = byte.min(text.len());
-  if text.is_char_boundary(byte) {
-    byte
-  } else {
-    (0..byte)
-      .rev()
-      .find(|index| text.is_char_boundary(*index))
-      .unwrap_or(0)
-  }
+  (byte.saturating_sub(3)..=byte)
+    .rev()
+    .find(|index| text.is_char_boundary(*index))
+    .unwrap_or(0)
 }
 
 fn utf16_len(text: &str) -> u32 {
@@ -835,12 +848,24 @@ fn merge_graphemes(
     graphemes.push((utf16, utf16 + len));
     utf16 += len;
   }
+  // Clusters in text order, so each grapheme takes the next run of them.
+  // A grapheme's parts stay in their visual order.
+  let mut order: Vec<usize> = (0..clusters.len()).collect();
+  order.sort_by_key(|&index| clusters[index].start);
+  let mut next = 0;
   let mut merged = Vec::new();
   for (start, end) in graphemes {
-    let parts: Vec<&ShapedCluster> = clusters
-      .iter()
-      .filter(|cluster| cluster.start >= start && cluster.start < end)
-      .collect();
+    while next < order.len() && clusters[order[next]].start < start {
+      next += 1;
+    }
+    let mut group = Vec::new();
+    while next < order.len() && clusters[order[next]].start < end {
+      group.push(order[next]);
+      next += 1;
+    }
+    group.sort_unstable();
+    let parts: Vec<&ShapedCluster> =
+      group.iter().map(|&index| &clusters[index]).collect();
     let Some(first) = parts.first() else {
       continue;
     };
