@@ -321,6 +321,60 @@ console.log(Yuzuko.readTextFileSync("/System/Volumes/Data" + main).length > 0);
   assert_eq!(text(&scoped.stdout), "true\n");
 }
 
+/// An async metadata change acts on the file it checked. A symlink swapped
+/// after the permission check must not reach a file outside the grant.
+#[cfg(unix)]
+#[test]
+fn a_swapped_symlink_does_not_reach_another_file() {
+  use std::os::unix::fs::PermissionsExt;
+  let root = scratch("swap");
+  let granted = root.join("w");
+  let secret = root.join("secret");
+  write(&granted.join("ok"), "ok\n");
+  write(&secret, "secret\n");
+  fs::set_permissions(&secret, fs::Permissions::from_mode(0o600)).unwrap();
+  write(
+    &root.join("main.ts"),
+    r#"const [dir, secret] = Yuzuko.args;
+const pending = [];
+for (let i = 0; i < 3000; i++) {
+  try {
+    Yuzuko.removeSync(dir + "/l");
+  } catch {}
+  Yuzuko.symlinkSync(dir + "/ok", dir + "/l");
+  for (let k = 0; k < 4; k++) {
+    pending.push(Yuzuko.chmod(dir + "/l", 0o777).catch(() => {}));
+  }
+  pending.push(Yuzuko.utime(dir + "/l", 1, 1).catch(() => {}));
+  Yuzuko.removeSync(dir + "/l");
+  Yuzuko.symlinkSync(secret, dir + "/l");
+}
+await Promise.all(pending);
+"#,
+  );
+  let dir = granted.display().to_string();
+  let secret_arg = secret.display().to_string();
+  let allow_write = format!("--allow-write={dir}");
+  let output = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read",
+      &allow_write,
+      "main.ts",
+      &dir,
+      &secret_arg,
+    ],
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  let meta = fs::metadata(&secret).unwrap();
+  assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+  assert!(
+    meta.modified().unwrap() > std::time::UNIX_EPOCH + Duration::from_secs(10)
+  );
+}
+
 /// Unix ignores the link type, so a `"junction"` is a symbolic link resolved
 /// from the link directory and is checked from there.
 #[cfg(unix)]

@@ -224,15 +224,26 @@ fn permit_opened(
     Ok(real) => real,
     Err(_) => return Err(host_denial(write, path)),
   };
+  permit_real(path, &real, read, write)
+}
+
+/// Checks `real`, the path the operating system reports for the file the
+/// call opened. A denial names the requested `path`.
+fn permit_real(
+  path: &Path,
+  real: &Path,
+  read: bool,
+  write: bool,
+) -> Result<(), FsError> {
   if read {
-    match crate::permissions::path_is_granted(false, &real) {
+    match crate::permissions::path_is_granted(false, real) {
       Ok(true) => {}
       Ok(false) => return Err(host_denial(false, path)),
       Err(error) => return Err(host_error(error)),
     }
   }
   if write {
-    match crate::permissions::path_is_granted(true, &real) {
+    match crate::permissions::path_is_granted(true, real) {
       Ok(true) => {}
       Ok(false) => return Err(host_denial(true, path)),
       Err(error) => return Err(host_error(error)),
@@ -370,6 +381,20 @@ pub(super) fn stat_file(file: &File) -> Result<Info, FsError> {
 }
 
 pub(super) fn read_directory(path: &Path) -> Result<Vec<Entry>, FsError> {
+  // A sandboxed listing reads the directory it opened and checked, so a
+  // symlink swapped after the permission check cannot name another one.
+  let out = if crate::permissions::permissions_are_open() {
+    read_directory_path(path)?
+  } else {
+    read_directory_checked(path)?
+  };
+  if out.len() > i32::MAX as usize {
+    return Err(FsError::failed());
+  }
+  Ok(out)
+}
+
+fn read_directory_path(path: &Path) -> Result<Vec<Entry>, FsError> {
   let entries = fs::read_dir(path).map_err(FsError::io)?;
   let mut out = Vec::new();
   for entry in entries {
@@ -382,10 +407,115 @@ pub(super) fn read_directory(path: &Path) -> Result<Vec<Entry>, FsError> {
       is_symlink: file_type.is_symlink(),
     });
   }
-  if out.len() > i32::MAX as usize {
-    return Err(FsError::failed());
+  Ok(out)
+}
+
+#[cfg(target_os = "linux")]
+fn read_directory_checked(path: &Path) -> Result<Vec<Entry>, FsError> {
+  use std::os::fd::AsRawFd;
+  use std::os::unix::fs::OpenOptionsExt;
+  let dir = OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_DIRECTORY)
+    .open(path)
+    .map_err(FsError::io)?;
+  permit_opened(path, &dir, true, false)?;
+  // `/proc/self/fd/N` names the opened directory itself.
+  read_directory_path(Path::new(&format!("/proc/self/fd/{}", dir.as_raw_fd())))
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn read_directory_checked(path: &Path) -> Result<Vec<Entry>, FsError> {
+  use std::os::fd::{AsRawFd, IntoRawFd};
+  use std::os::unix::ffi::OsStrExt;
+  use std::os::unix::fs::OpenOptionsExt;
+  let dir = OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_DIRECTORY)
+    .open(path)
+    .map_err(FsError::io)?;
+  permit_opened(path, &dir, true, false)?;
+  let fd = dir.as_raw_fd();
+  let stream_fd = dir.try_clone().map_err(FsError::io)?.into_raw_fd();
+  let stream = unsafe { libc::fdopendir(stream_fd) };
+  if stream.is_null() {
+    let error = io::Error::last_os_error();
+    unsafe { libc::close(stream_fd) };
+    return Err(FsError::io(error));
+  }
+  struct Stream(*mut libc::DIR);
+  impl Drop for Stream {
+    fn drop(&mut self) {
+      unsafe { libc::closedir(self.0) };
+    }
+  }
+  let stream = Stream(stream);
+  let mut out = Vec::new();
+  loop {
+    unsafe { *libc::__error() = 0 };
+    let entry = unsafe { libc::readdir(stream.0) };
+    if entry.is_null() {
+      let error = io::Error::last_os_error();
+      if error.raw_os_error().unwrap_or(0) != 0 {
+        return Err(FsError::io(error));
+      }
+      break;
+    }
+    let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+    let bytes = name.to_bytes();
+    if bytes == b"." || bytes == b".." {
+      continue;
+    }
+    let mut kind = unsafe { (*entry).d_type };
+    if kind == libc::DT_UNKNOWN {
+      let mut stat = unsafe { std::mem::zeroed::<libc::stat>() };
+      let rc = unsafe {
+        libc::fstatat(fd, name.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW)
+      };
+      if rc != 0 {
+        return Err(FsError::io(io::Error::last_os_error()));
+      }
+      kind = match stat.st_mode & libc::S_IFMT {
+        libc::S_IFREG => libc::DT_REG,
+        libc::S_IFDIR => libc::DT_DIR,
+        libc::S_IFLNK => libc::DT_LNK,
+        _ => libc::DT_UNKNOWN,
+      };
+    }
+    out.push(Entry {
+      name: std::ffi::OsStr::from_bytes(bytes)
+        .to_string_lossy()
+        .into_owned(),
+      is_file: kind == libc::DT_REG,
+      is_directory: kind == libc::DT_DIR,
+      is_symlink: kind == libc::DT_LNK,
+    });
   }
   Ok(out)
+}
+
+#[cfg(windows)]
+fn read_directory_checked(path: &Path) -> Result<Vec<Entry>, FsError> {
+  use std::os::windows::fs::OpenOptionsExt;
+  use windows_sys::Win32::Storage::FileSystem::{
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ, FILE_SHARE_WRITE,
+  };
+  // Without `FILE_SHARE_DELETE` the directory cannot be renamed or removed
+  // while this handle is open, so its final path stays this directory.
+  let dir = OpenOptions::new()
+    .read(true)
+    .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+    .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+    .open(path)
+    .map_err(FsError::io)?;
+  permit_opened(path, &dir, true, false)?;
+  let real = crate::fd_path::fd_path(&dir).map_err(FsError::io)?;
+  read_directory_path(&real)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn read_directory_checked(path: &Path) -> Result<Vec<Entry>, FsError> {
+  read_directory_path(path)
 }
 
 pub(super) fn make_temp(
@@ -675,18 +805,47 @@ pub(super) fn chmod(path: &Path, mode: u32) -> Result<(), FsError> {
   let path = path::ensure_mutable(path, Link::Follow)?;
   #[cfg(unix)]
   {
-    use std::os::unix::fs::PermissionsExt;
-    let meta = fs::metadata(&path).map_err(FsError::io)?;
-    let mut permissions = meta.permissions();
-    permissions.set_mode(mode);
-    fs::set_permissions(&path, permissions).map_err(FsError::io)
+    match metadata_target(&path)? {
+      Target::Path(path) => {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+          .map_err(FsError::io)
+      }
+      #[cfg(target_os = "linux")]
+      Target::Fd(file) => {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(proc_path(&file), fs::Permissions::from_mode(mode))
+          .map_err(FsError::io)
+      }
+      #[cfg(not(target_os = "linux"))]
+      Target::Fd(file) => {
+        use std::os::unix::fs::PermissionsExt;
+        file
+          .set_permissions(fs::Permissions::from_mode(mode))
+          .map_err(FsError::io)
+      }
+      #[cfg(not(target_os = "linux"))]
+      Target::Entry { dir, name } => {
+        use std::os::fd::AsRawFd;
+        let rc = unsafe {
+          libc::fchmodat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            mode as libc::mode_t,
+            libc::AT_SYMLINK_NOFOLLOW,
+          )
+        };
+        last_result(rc)
+      }
+    }
   }
   #[cfg(windows)]
   {
-    let meta = fs::metadata(&path).map_err(FsError::io)?;
+    let file = checked_attributes(&path)?;
+    let meta = file.metadata().map_err(FsError::io)?;
     let mut permissions = meta.permissions();
     permissions.set_readonly(mode & 0o200 == 0);
-    fs::set_permissions(&path, permissions).map_err(FsError::io)
+    file.set_permissions(permissions).map_err(FsError::io)
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -695,6 +854,99 @@ pub(super) fn chmod(path: &Path, mode: u32) -> Result<(), FsError> {
       "chmod is not supported on this operating system.",
     ))
   }
+}
+
+/// The file a metadata change acts on. A sandboxed call opens the file
+/// before the change and checks the path of that descriptor, so a symlink
+/// swapped after the permission check cannot name another file.
+#[cfg(unix)]
+enum Target {
+  /// No policy is installed. The path is used as given.
+  Path(PathBuf),
+  Fd(File),
+  /// The file could not be opened without read access. The change uses this
+  /// entry of the opened directory and does not follow a symlink there.
+  #[cfg(not(target_os = "linux"))]
+  Entry {
+    dir: File,
+    name: std::ffi::CString,
+  },
+}
+
+#[cfg(target_os = "linux")]
+fn metadata_target(path: &Path) -> Result<Target, FsError> {
+  use std::os::unix::fs::OpenOptionsExt;
+  if crate::permissions::permissions_are_open() {
+    return Ok(Target::Path(path.to_path_buf()));
+  }
+  // `O_PATH` needs no read access to the file.
+  let file = OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_PATH)
+    .open(path)
+    .map_err(FsError::io)?;
+  permit_opened(path, &file, false, true)?;
+  Ok(Target::Fd(file))
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn metadata_target(path: &Path) -> Result<Target, FsError> {
+  use std::os::unix::ffi::OsStrExt;
+  use std::os::unix::fs::OpenOptionsExt;
+  if crate::permissions::permissions_are_open() {
+    return Ok(Target::Path(path.to_path_buf()));
+  }
+  let opened = OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+    .open(path);
+  let denied = match opened {
+    Ok(file) => {
+      permit_opened(path, &file, false, true)?;
+      return Ok(Target::Fd(file));
+    }
+    Err(error) if error.kind() == io::ErrorKind::PermissionDenied => error,
+    Err(error) => return Err(FsError::io(error)),
+  };
+  let real = fs::canonicalize(path).map_err(FsError::io)?;
+  let (Some(parent), Some(name)) = (real.parent(), real.file_name()) else {
+    return Err(FsError::io(denied));
+  };
+  let dir = OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_DIRECTORY)
+    .open(parent)
+    .map_err(|_| FsError::io(denied))?;
+  let opened_dir =
+    crate::fd_path::fd_path(&dir).map_err(|_| host_denial(true, path))?;
+  permit_real(path, &opened_dir.join(name), false, true)?;
+  let name = std::ffi::CString::new(name.as_bytes())
+    .map_err(|_| FsError::io(io::Error::from(io::ErrorKind::InvalidInput)))?;
+  Ok(Target::Entry { dir, name })
+}
+
+/// `/proc/self/fd/N` names the opened file itself.
+#[cfg(target_os = "linux")]
+fn proc_path(file: &File) -> PathBuf {
+  use std::os::fd::AsRawFd;
+  PathBuf::from(format!("/proc/self/fd/{}", file.as_raw_fd()))
+}
+
+#[cfg(unix)]
+fn last_result(rc: libc::c_int) -> Result<(), FsError> {
+  if rc == 0 {
+    Ok(())
+  } else {
+    Err(FsError::io(io::Error::last_os_error()))
+  }
+}
+
+/// Opens `path` for an attribute change and checks the opened file.
+#[cfg(windows)]
+fn checked_attributes(path: &Path) -> Result<File, FsError> {
+  let file = File::from(open_attributes(path)?);
+  permit_opened(path, &file, false, true)?;
+  Ok(file)
 }
 
 pub(super) fn chown(
@@ -712,17 +964,38 @@ pub(super) fn chown(
   #[cfg(unix)]
   {
     let path = path::ensure_mutable(path, Link::Follow)?;
-    let uid = uid.unwrap_or(u32::MAX);
-    let gid = gid.unwrap_or(u32::MAX);
-    let path = path_cstring(&path)?;
-    let rc = unsafe {
-      libc::chown(path.as_ptr(), uid as libc::uid_t, gid as libc::gid_t)
+    let uid = uid.unwrap_or(u32::MAX) as libc::uid_t;
+    let gid = gid.unwrap_or(u32::MAX) as libc::gid_t;
+    let rc = match metadata_target(&path)? {
+      Target::Path(path) => {
+        let path = path_cstring(&path)?;
+        unsafe { libc::chown(path.as_ptr(), uid, gid) }
+      }
+      #[cfg(target_os = "linux")]
+      Target::Fd(file) => {
+        let path = path_cstring(&proc_path(&file))?;
+        unsafe { libc::chown(path.as_ptr(), uid, gid) }
+      }
+      #[cfg(not(target_os = "linux"))]
+      Target::Fd(file) => {
+        use std::os::fd::AsRawFd;
+        unsafe { libc::fchown(file.as_raw_fd(), uid, gid) }
+      }
+      #[cfg(not(target_os = "linux"))]
+      Target::Entry { dir, name } => {
+        use std::os::fd::AsRawFd;
+        unsafe {
+          libc::fchownat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            uid,
+            gid,
+            libc::AT_SYMLINK_NOFOLLOW,
+          )
+        }
+      }
     };
-    if rc == 0 {
-      Ok(())
-    } else {
-      Err(FsError::io(io::Error::last_os_error()))
-    }
+    last_result(rc)
   }
   #[cfg(not(any(unix, windows)))]
   {
@@ -1050,15 +1323,39 @@ fn set_times_path(
   mtime: FileTime,
 ) -> Result<(), FsError> {
   let times = [time_spec(atime)?, time_spec(mtime)?];
-  let path = path_cstring(path)?;
-  let rc = unsafe {
-    libc::utimensat(libc::AT_FDCWD, path.as_ptr(), times.as_ptr(), 0)
+  let rc = match metadata_target(path)? {
+    Target::Path(path) => {
+      let path = path_cstring(&path)?;
+      unsafe {
+        libc::utimensat(libc::AT_FDCWD, path.as_ptr(), times.as_ptr(), 0)
+      }
+    }
+    #[cfg(target_os = "linux")]
+    Target::Fd(file) => {
+      let path = path_cstring(&proc_path(&file))?;
+      unsafe {
+        libc::utimensat(libc::AT_FDCWD, path.as_ptr(), times.as_ptr(), 0)
+      }
+    }
+    #[cfg(not(target_os = "linux"))]
+    Target::Fd(file) => {
+      use std::os::fd::AsRawFd;
+      unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) }
+    }
+    #[cfg(not(target_os = "linux"))]
+    Target::Entry { dir, name } => {
+      use std::os::fd::AsRawFd;
+      unsafe {
+        libc::utimensat(
+          dir.as_raw_fd(),
+          name.as_ptr(),
+          times.as_ptr(),
+          libc::AT_SYMLINK_NOFOLLOW,
+        )
+      }
+    }
   };
-  if rc == 0 {
-    Ok(())
-  } else {
-    Err(FsError::io(io::Error::last_os_error()))
-  }
+  last_result(rc)
 }
 
 #[cfg(unix)]
@@ -1166,8 +1463,8 @@ fn set_times_path(
   mtime: FileTime,
 ) -> Result<(), FsError> {
   use std::os::windows::io::AsRawHandle;
-  let handle = open_attributes(path)?;
-  set_handle_times(handle.as_raw_handle(), atime, mtime)
+  let file = checked_attributes(path)?;
+  set_handle_times(file.as_raw_handle(), atime, mtime)
 }
 
 #[cfg(windows)]
@@ -1236,14 +1533,15 @@ fn open_attributes(
   path: &Path,
 ) -> Result<std::os::windows::io::OwnedHandle, FsError> {
   use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, OPEN_EXISTING,
+    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FILE_WRITE_ATTRIBUTES, OPEN_EXISTING,
   };
   let wide = wide_null(path);
   let handle = unsafe {
     CreateFileW(
       wide.as_ptr(),
-      FILE_WRITE_ATTRIBUTES,
+      FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       std::ptr::null(),
       OPEN_EXISTING,
