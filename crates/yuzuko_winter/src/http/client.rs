@@ -401,13 +401,7 @@ async fn exchange(
             })?;
           authorize_redirect(&next)?;
           drop_cross_origin_credentials(&mut headers, &url, &next);
-          if matches!(status, 303)
-            || (matches!(status, 301 | 302)
-              && method.eq_ignore_ascii_case("POST"))
-          {
-            method = "GET".to_string();
-            body.clear();
-          }
+          redirect_method(status, &mut method, &mut body, &mut headers);
           url = next.to_string();
           redirected = true;
           continue;
@@ -589,6 +583,35 @@ fn authorize_redirect(next: &url::Url) -> Result<(), HttpFailure> {
 /// `Authorization`. Forbidden request headers are not enforced, so a
 /// caller's `Cookie` and `Proxy-Authorization` are removed the same way.
 /// An `https:` to `http:` hop is another origin.
+/// HTTP-redirect fetch step 12: a 301 or 302 after `POST`, or a 303 after
+/// anything but `GET` or `HEAD`, becomes a `GET` without a body or the
+/// request-body headers.
+pub(super) fn redirect_method(
+  status: u16,
+  method: &mut String,
+  body: &mut Vec<u8>,
+  headers: &mut Vec<(String, String)>,
+) {
+  let post = method.eq_ignore_ascii_case("POST");
+  let kept =
+    method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD");
+  if !((matches!(status, 301 | 302) && post) || (status == 303 && !kept)) {
+    return;
+  }
+  *method = "GET".to_string();
+  body.clear();
+  headers.retain(|(name, _)| {
+    ![
+      "content-encoding",
+      "content-language",
+      "content-location",
+      "content-type",
+    ]
+    .iter()
+    .any(|body_header| name.eq_ignore_ascii_case(body_header))
+  });
+}
+
 fn drop_cross_origin_credentials(
   headers: &mut Vec<(String, String)>,
   from: &str,
@@ -762,13 +785,7 @@ fn finish_exchange(
         })?;
       authorize_redirect(&next)?;
       drop_cross_origin_credentials(cursor.headers, cursor.url, &next);
-      if matches!(raw.status, 303)
-        || (matches!(raw.status, 301 | 302)
-          && cursor.method.eq_ignore_ascii_case("POST"))
-      {
-        *cursor.method = "GET".to_string();
-        cursor.body.clear();
-      }
+      redirect_method(raw.status, cursor.method, cursor.body, cursor.headers);
       *cursor.url = next.to_string();
       *cursor.redirected = true;
       Ok(false)
@@ -954,13 +971,7 @@ async fn exchange_http1(
         })?;
     authorize_redirect(&next)?;
     drop_cross_origin_credentials(headers, url, &next);
-    if matches!(parsed_head.status, 303)
-      || (matches!(parsed_head.status, 301 | 302)
-        && method.eq_ignore_ascii_case("POST"))
-    {
-      *method = "GET".to_string();
-      body.clear();
-    }
+    redirect_method(parsed_head.status, method, body, headers);
     *url = next.to_string();
     *redirected = true;
     drop(stream);

@@ -125,3 +125,84 @@ console.log("same " + same.status + " " + same.redirected);
   assert!(kept.contains("proxy-authorization: basic secret"), "{kept}");
   let _ = fs::remove_dir_all(&dir);
 }
+
+/// Reads the request body that a `content-length` header announced.
+fn drain_body(stream: &mut TcpStream, head: &str) {
+  let length = head
+    .lines()
+    .find_map(|line| line.strip_prefix("content-length: "))
+    .and_then(|value| value.trim().parse::<usize>().ok())
+    .unwrap_or(0);
+  let mut body = vec![0u8; length];
+  let _ = stream.read_exact(&mut body);
+}
+
+#[test]
+fn a_redirect_rewrites_only_the_methods_fetch_names() {
+  let server = TcpListener::bind("127.0.0.1:0").unwrap();
+  let port = server.local_addr().unwrap().port();
+  let recorder = thread::spawn(move || {
+    let mut heads = Vec::new();
+    for _ in 0..4 {
+      let (mut stream, _) = server.accept().unwrap();
+      let head = read_head(&mut stream);
+      drain_body(&mut stream, &head);
+      if head.starts_with("head /see ") {
+        reply(&mut stream, "303 See Other", Some("/seen"));
+      } else if head.starts_with("post /moved ") {
+        reply(&mut stream, "302 Found", Some("/landed"));
+      } else {
+        reply(&mut stream, "200 OK", None);
+      }
+      heads.push(head);
+    }
+    heads
+  });
+
+  let dir = scratch("method");
+  fs::write(
+    dir.join("main.ts"),
+    format!(
+      r#"const head = await fetch("http://127.0.0.1:{port}/see", {{ method: "HEAD" }});
+console.log("head " + head.status + " " + head.redirected);
+const post = await fetch("http://127.0.0.1:{port}/moved", {{
+  method: "POST",
+  body: "payload",
+  headers: {{
+    "content-type": "text/plain",
+    "content-language": "en",
+    "x-kept": "yes",
+  }},
+}});
+console.log("post " + post.status + " " + post.redirected);
+"#
+    ),
+  )
+  .unwrap();
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(&dir)
+    .args(["run", "-A", "main.ts"])
+    .env("YUZUKO_HEADLESS", "1")
+    .stdin(Stdio::null())
+    .output()
+    .unwrap();
+  let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+  let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+  assert!(output.status.success(), "{stdout}\n{stderr}");
+  assert!(stdout.contains("head 200 true"), "{stdout}\n{stderr}");
+  assert!(stdout.contains("post 200 true"), "{stdout}\n{stderr}");
+
+  let heads = recorder.join().unwrap();
+  assert!(
+    heads.iter().any(|head| head.starts_with("head /seen ")),
+    "a 303 keeps HEAD: {heads:?}"
+  );
+  let landed = heads
+    .iter()
+    .find(|head| head.starts_with("get /landed "))
+    .expect("the POST became a GET");
+  assert!(landed.contains("x-kept: yes"), "{landed}");
+  assert!(!landed.contains("content-type:"), "{landed}");
+  assert!(!landed.contains("content-language:"), "{landed}");
+  let _ = fs::remove_dir_all(&dir);
+}

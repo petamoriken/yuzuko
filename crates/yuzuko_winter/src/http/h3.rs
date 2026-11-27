@@ -290,13 +290,12 @@ async fn redirect(
         })?;
       super::authorize_redirect(&next)?;
       super::drop_cross_origin_credentials(attempt.headers, attempt.url, &next);
-      if matches!(status, 303)
-        || (matches!(status, 301 | 302)
-          && attempt.method.eq_ignore_ascii_case("POST"))
-      {
-        *attempt.method = "GET".to_string();
-        attempt.body.clear();
-      }
+      super::redirect_method(
+        status,
+        attempt.method,
+        attempt.body,
+        attempt.headers,
+      );
       *attempt.url = next.to_string();
       *attempt.redirected = true;
       Ok(Step::Redirected)
