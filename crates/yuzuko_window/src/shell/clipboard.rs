@@ -1513,7 +1513,7 @@ fn frozen_strings(
 fn platform_sequence() -> Option<u64> {
   #[cfg(target_os = "macos")]
   {
-    Some(macos_change_count())
+    macos_change_count()
   }
   #[cfg(target_os = "windows")]
   {
@@ -1540,10 +1540,20 @@ fn platform_mime_types() -> Vec<String> {
   }
 }
 
+/// Returns the general pasteboard, or `None` where the process has no
+/// pasteboard server, such as a launchd daemon or a sandboxed process.
+/// `NSPasteboard::generalPasteboard()` panics on that NULL.
 #[cfg(target_os = "macos")]
-fn macos_change_count() -> u64 {
-  let board = objc2_app_kit::NSPasteboard::generalPasteboard();
-  u64::try_from(board.changeCount()).unwrap_or(0)
+fn macos_pasteboard() -> Option<objc2::rc::Retained<objc2_app_kit::NSPasteboard>>
+{
+  use objc2::{ClassType, msg_send};
+  unsafe { msg_send![objc2_app_kit::NSPasteboard::class(), generalPasteboard] }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_change_count() -> Option<u64> {
+  let board = macos_pasteboard()?;
+  Some(u64::try_from(board.changeCount()).unwrap_or(0))
 }
 
 #[cfg(target_os = "macos")]
@@ -1551,7 +1561,9 @@ fn macos_mime_types() -> Vec<String> {
   use objc2_app_kit::{
     NSPasteboardTypeHTML, NSPasteboardTypePNG, NSPasteboardTypeString,
   };
-  let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+  let Some(board) = macos_pasteboard() else {
+    return Vec::new();
+  };
   let Some(types) = board.types() else {
     return Vec::new();
   };
