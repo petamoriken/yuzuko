@@ -12,7 +12,6 @@ use yuzuko_image::{ColorSpace, Raster};
 
 use crate::color::packed_to_rgba;
 use crate::error::DecodeError;
-use crate::h264::take_nal;
 
 const BGRA: u32 = fourcc(b"BGRA");
 const RGBA: u32 = fourcc(b"RGBA");
@@ -253,7 +252,7 @@ pub fn open_avc(description: &[u8]) -> Result<Session, DecodeError> {
   if !supports_avc() {
     return Err(DecodeError::Unsupported);
   }
-  let sets = parse_avcc(description)?;
+  let sets = crate::h264::avcc_nals(description)?;
   let pointers: Vec<*const u8> = sets.iter().map(|set| set.as_ptr()).collect();
   let sizes: Vec<usize> = sets.iter().map(Vec::len).collect();
   let mut format = null_mut();
@@ -485,35 +484,6 @@ fn hardware_status(status: i32) -> DecodeError {
   } else {
     DecodeError::Hardware(status)
   }
-}
-
-fn parse_avcc(bytes: &[u8]) -> Result<Vec<Vec<u8>>, DecodeError> {
-  if bytes.len() < 7 || bytes[0] != 1 {
-    return Err(DecodeError::Rejected);
-  }
-  let nal_length = usize::from(bytes[4] & 0x03) + 1;
-  if nal_length != 4 {
-    return Err(DecodeError::Rejected);
-  }
-  let mut offset = 5;
-  let sps_count = usize::from(bytes[offset] & 0x1f);
-  offset += 1;
-  let mut sets = Vec::new();
-  for _ in 0..sps_count {
-    sets.push(take_nal(bytes, &mut offset)?);
-  }
-  if offset >= bytes.len() {
-    return Err(DecodeError::Rejected);
-  }
-  let pps_count = usize::from(bytes[offset]);
-  offset += 1;
-  for _ in 0..pps_count {
-    sets.push(take_nal(bytes, &mut offset)?);
-  }
-  if sets.len() < 2 {
-    return Err(DecodeError::Rejected);
-  }
-  Ok(sets)
 }
 
 fn block_buffer(sample: &[u8]) -> Result<*mut c_void, DecodeError> {
