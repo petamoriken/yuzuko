@@ -230,6 +230,43 @@ fn clear_timer(
   });
 }
 
+/// Takes the next timer number. `sign` is 1 for an id that script sees and
+/// -1 for a host id. After the counter passes `i32::MAX` it starts again at 1
+/// and skips a number whose timer is still live, so an id stays positive and
+/// unique among live timers as HTML requires.
+fn allocate_id(state: &mut host::HostState, sign: i32) -> i32 {
+  let timers = &state.timers;
+  let firing = &state.firing_timers;
+  let (next, number) = next_number(state.next_timer_id, |number| {
+    let id = sign * number;
+    timers.iter().any(|timer| timer.id == id) || firing.contains(&id)
+  });
+  state.next_timer_id = next;
+  number
+}
+
+/// Returns the new counter and the number to use. `live` reports whether a
+/// number is taken. It is only asked after the counter has wrapped, because
+/// numbers below the counter were all handed out in order before that.
+fn next_number(current: i32, live: impl Fn(i32) -> bool) -> (i32, i32) {
+  // A negative counter records that the numbers have wrapped once.
+  let mut wrapped = current < 0;
+  let mut counter = current.abs();
+  // At most i32::MAX numbers exist, and fewer timers than that can be live.
+  loop {
+    if counter == i32::MAX {
+      counter = 1;
+      wrapped = true;
+    } else {
+      counter += 1;
+    }
+    if !wrapped || !live(counter) {
+      let stored = if wrapped { -counter } else { counter };
+      return (stored, counter);
+    }
+  }
+}
+
 /// Runs `finish` on the isolate thread after `delay`.
 ///
 /// The returned id is negative. `clearTimeout` only cancels ids JavaScript
@@ -239,8 +276,7 @@ pub fn schedule_host(
   finish: impl FnOnce(&mut v8::PinScope) + 'static,
 ) -> i32 {
   host::with_mut(|state| {
-    state.next_timer_id += 1;
-    let id = -state.next_timer_id;
+    let id = -allocate_id(state, -1);
     state.timers.push(Timer {
       id,
       generation: 0,
@@ -321,8 +357,7 @@ pub fn schedule_rejection_flush() {
       return;
     }
     state.rejection_notify_queued = true;
-    state.next_timer_id += 1;
-    let id = state.next_timer_id;
+    let id = allocate_id(state, 1);
     let generation = state.timer_generation.get(&id).copied().unwrap_or(0);
     state.timers.push(Timer {
       id,
@@ -383,8 +418,7 @@ fn enqueue_function(
     .collect();
   let owner = crate::js::caller_module_url(scope);
   host::with_mut(|state| {
-    state.next_timer_id += 1;
-    let id = state.next_timer_id;
+    let id = allocate_id(state, 1);
     let generation = state.timer_generation.get(&id).copied().unwrap_or(0);
     state.timers.push(Timer {
       id,
@@ -420,8 +454,7 @@ fn schedule(
     .collect();
   let owner = crate::js::caller_module_url(scope);
   let id = host::with_mut(|state| {
-    state.next_timer_id += 1;
-    let id = state.next_timer_id;
+    let id = allocate_id(state, 1);
     let generation = state.timer_generation.get(&id).copied().unwrap_or(0);
     state.timers.push(Timer {
       id,
@@ -487,4 +520,21 @@ fn clamp_delay(delay: f64, nesting: u32) -> f64 {
 
 fn duration_from_ms(delay: f64) -> Duration {
   Duration::from_secs_f64((delay / 1000.0).max(0.0))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::next_number;
+
+  #[test]
+  fn timer_numbers_wrap_and_skip_live_ones() {
+    assert_eq!(next_number(0, |_| unreachable!()), (1, 1));
+    assert_eq!(next_number(41, |_| unreachable!()), (42, 42));
+    let (stored, number) = next_number(i32::MAX - 1, |_| unreachable!());
+    assert_eq!((stored, number), (i32::MAX, i32::MAX));
+    let (stored, number) = next_number(i32::MAX, |n| n == 1 || n == 2);
+    assert_eq!((stored, number), (-3, 3));
+    let (stored, number) = next_number(stored, |n| n == 4);
+    assert_eq!((stored, number), (-5, 5));
+  }
 }
