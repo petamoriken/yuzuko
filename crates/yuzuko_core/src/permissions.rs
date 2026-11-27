@@ -1418,10 +1418,92 @@ fn path_candidates(
     paths.push(resolved.clone());
   }
   push_canonical(&mut paths, &resolved, link);
-  Ok(PathCandidates {
-    paths,
-    resolved: true,
+  // `/.vol/<device>/<inode>` names a file by number, so no rule can match it.
+  let resolved = !paths.iter().any(|item| is_volfs(item));
+  Ok(PathCandidates { paths, resolved })
+}
+
+#[cfg(target_os = "macos")]
+fn is_volfs(path: &Path) -> bool {
+  path_covers(Path::new("/.vol"), path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_volfs(_path: &Path) -> bool {
+  false
+}
+
+/// The data volume of macOS is mounted at `/System/Volumes/Data` and joined
+/// to the root by firmlinks, so `/Users/a` and `/System/Volumes/Data/Users/a`
+/// are one file. `realpath` keeps either spelling, so the comparison maps the
+/// data volume spelling to the root one.
+#[cfg(target_os = "macos")]
+fn root_spelling(path: PathBuf) -> PathBuf {
+  let data = Path::new("/System/Volumes/Data");
+  let Some(inner) = strip_components(data, &path) else {
+    return path;
+  };
+  for (root, relative) in firmlinks() {
+    if let Some(rest) = strip_components(relative, &inner) {
+      let mut mapped = root.clone();
+      mapped.extend(rest.components());
+      return mapped;
+    }
+  }
+  path
+}
+
+#[cfg(not(target_os = "macos"))]
+fn root_spelling(path: PathBuf) -> PathBuf {
+  path
+}
+
+/// The rest of `path` after `prefix`, compared component by component.
+#[cfg(target_os = "macos")]
+fn strip_components(prefix: &Path, path: &Path) -> Option<PathBuf> {
+  let mut rest = path.components();
+  for part in prefix.components() {
+    if !component_eq(part, rest.next()?) {
+      return None;
+    }
+  }
+  Some(rest.as_path().to_path_buf())
+}
+
+/// Pairs of a root path and its relative path on the data volume, from
+/// `/usr/share/firmlinks`.
+#[cfg(target_os = "macos")]
+fn firmlinks() -> &'static [(PathBuf, PathBuf)] {
+  static LINKS: std::sync::OnceLock<Vec<(PathBuf, PathBuf)>> =
+    std::sync::OnceLock::new();
+  LINKS.get_or_init(|| {
+    let text =
+      std::fs::read_to_string("/usr/share/firmlinks").unwrap_or_default();
+    let mut links = parse_firmlinks(&text);
+    if links.is_empty() {
+      links = parse_firmlinks(DEFAULT_FIRMLINKS);
+    }
+    links
   })
+}
+
+#[cfg(target_os = "macos")]
+const DEFAULT_FIRMLINKS: &str = "/Applications\tApplications\n\
+/Library\tLibrary\n/Users\tUsers\n/Volumes\tVolumes\n/cores\tcores\n\
+/opt\topt\n/private\tprivate\n/usr/local\tusr/local\n";
+
+#[cfg(any(target_os = "macos", test))]
+fn parse_firmlinks(text: &str) -> Vec<(PathBuf, PathBuf)> {
+  text
+    .lines()
+    .filter_map(|line| {
+      let (root, data) = line.split_once('\t')?;
+      let root = root.trim();
+      let data = data.trim().trim_start_matches('/');
+      (root.starts_with('/') && root.len() > 1 && !data.is_empty())
+        .then(|| (PathBuf::from(root), PathBuf::from(data)))
+    })
+    .collect()
 }
 
 /// The file a prompt yes or a dialog grant names. This is the lexical path
@@ -1688,8 +1770,8 @@ fn strip_verbatim(path: PathBuf) -> PathBuf {
 }
 
 fn paths_equal(left: &Path, right: &Path) -> bool {
-  let left = strip_verbatim(left.to_path_buf());
-  let right = strip_verbatim(right.to_path_buf());
+  let left = root_spelling(strip_verbatim(left.to_path_buf()));
+  let right = root_spelling(strip_verbatim(right.to_path_buf()));
   let mut left = left.components();
   let mut right = right.components();
   loop {
@@ -1703,8 +1785,8 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
 
 fn path_covers(grant: &Path, request: &Path) -> bool {
   // `\\?\` and `\\?\UNC\` are two spellings of one Windows path.
-  let grant = strip_verbatim(grant.to_path_buf());
-  let request = strip_verbatim(request.to_path_buf());
+  let grant = root_spelling(strip_verbatim(grant.to_path_buf()));
+  let request = root_spelling(strip_verbatim(request.to_path_buf()));
   let mut grant = grant.components();
   let mut request = request.components();
   loop {
@@ -2488,6 +2570,36 @@ fn resolved<'s>(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn firmlinks_parse_a_tab_separated_root_and_data_path() {
+    let links =
+      parse_firmlinks("/Users\tUsers\n/usr/local\tusr/local\nbad\n/\tx\n");
+    assert_eq!(
+      links,
+      vec![
+        (PathBuf::from("/Users"), PathBuf::from("Users")),
+        (PathBuf::from("/usr/local"), PathBuf::from("usr/local")),
+      ]
+    );
+  }
+
+  #[cfg(target_os = "macos")]
+  #[test]
+  fn a_data_volume_spelling_compares_as_the_root_spelling() {
+    assert!(paths_equal(
+      Path::new("/System/Volumes/Data/Users/a/b"),
+      Path::new("/Users/a/b"),
+    ));
+    assert!(path_covers(
+      Path::new("/Users/a"),
+      Path::new("/System/Volumes/Data/Users/a/b"),
+    ));
+    assert!(!paths_equal(
+      Path::new("/System/Volumes/Data/bin/ls"),
+      Path::new("/bin/ls"),
+    ));
+  }
 
   #[test]
   fn an_open_process_has_no_path_policy() {

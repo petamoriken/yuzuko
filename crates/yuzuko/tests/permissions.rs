@@ -251,6 +251,76 @@ try {
   assert_eq!(fs::read_to_string(&secret).unwrap(), "changed\n");
 }
 
+/// `/System/Volumes/Data/Users/a` is `/Users/a` through a firmlink, and
+/// `/.vol/<device>/<inode>` names a file by number.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_data_volume_spelling_matches_a_deny() {
+  let root = scratch("firmlink");
+  let denied = root.join("denied");
+  write(&denied.join("sub/f.txt"), "secret\n");
+  write(
+    &root.join("main.ts"),
+    r#"const [dir, main] = Yuzuko.args;
+const alias = "/System/Volumes/Data" + dir;
+const steps = [
+  () => Yuzuko.readDirSync(alias),
+  () => Yuzuko.readTextFileSync(alias + "/sub/f.txt"),
+  () => Yuzuko.chmodSync(alias + "/sub/f.txt", 0o666),
+  () => Yuzuko.removeSync(alias, { recursive: true }),
+  () => {
+    const info = Yuzuko.statSync(main);
+    Yuzuko.readTextFileSync(`/.vol/${info.dev}/${info.ino}`);
+  },
+];
+for (const step of steps) {
+  try {
+    step();
+    console.log("allowed");
+  } catch (error) {
+    console.log(error.name);
+  }
+}
+"#,
+  );
+  let dir = denied.display().to_string();
+  let deny_read = format!("--deny-read={dir}");
+  let deny_write = format!("--deny-write={dir}");
+  let main = root.join("main.ts").display().to_string();
+  let output = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read",
+      "--allow-write",
+      &deny_read,
+      &deny_write,
+      "main.ts",
+      &dir,
+      &main,
+    ],
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert_eq!(text(&output.stdout), "NotCapable\n".repeat(5));
+  assert!(denied.join("sub/f.txt").exists());
+
+  // A scoped grant covers the data volume spelling of the same file.
+  write(
+    &root.join("alias.ts"),
+    r#"const [main] = Yuzuko.args;
+console.log(Yuzuko.readTextFileSync("/System/Volumes/Data" + main).length > 0);
+"#,
+  );
+  let allow_root = format!("--allow-read={}", root.display());
+  let scoped = run(
+    &root,
+    &["run", "--no-prompt", &allow_root, "alias.ts", &main],
+  );
+  assert_eq!(scoped.status.code(), Some(0), "{}", text(&scoped.stderr));
+  assert_eq!(text(&scoped.stdout), "true\n");
+}
+
 /// Unix ignores the link type, so a `"junction"` is a symbolic link resolved
 /// from the link directory and is checked from there.
 #[cfg(unix)]
