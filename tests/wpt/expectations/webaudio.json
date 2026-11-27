@@ -650,11 +650,7 @@
   },
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/ctor-offlineaudiocontext.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/current-time-block-size.html": true,
-  "webaudio/the-audio-api/the-offlineaudiocontext-interface/decodeAudioData-oversized-resample.html": {
-    "expectedFailures": [
-      "decodeAudioData rejects when the resampled length exceeds AudioBuffer.length"
-    ]
-  },
+  "webaudio/the-audio-api/the-offlineaudiocontext-interface/decodeAudioData-oversized-resample.html": true,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-close.html": false,
   "webaudio/the-audio-api/the-offlineaudiocontext-interface/offlineaudiocontext-detached-execution-context.html": {
     "ignore": "The file needs a document."

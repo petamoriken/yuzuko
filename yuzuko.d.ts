@@ -14274,6 +14274,10 @@ interface BaseAudioContext extends EventTarget {
    * Decodes WAV, FLAC, MP3, Ogg Vorbis, or Ogg Opus. Ogg Opus becomes an
    * `AudioBuffer` at 48000 Hz. The channel count comes from the Opus header. The
    * `ArrayBuffer` is detached. A panic rejects `InvalidStateError`.
+   * The buffer keeps the file's sample rate and is not resampled. A file
+   * with more than 32 channels, a rate outside 3000 through 768000 Hz, more
+   * than 20000000 frames, or more than 160000000 samples rejects
+   * `EncodingError`.
    *
    * @throws {@link TypeError} When `audioData` is not an `ArrayBuffer`.
    *

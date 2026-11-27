@@ -18,6 +18,51 @@ pub enum DecodeFailure {
   Panic,
 }
 
+/// The channel count `AudioBuffer` accepts.
+const MAX_CHANNELS: usize = 32;
+/// The frame count `AudioBuffer` accepts.
+const MAX_FRAMES: usize = 20_000_000;
+/// Samples across every channel. A small compressed file can describe far
+/// more audio than this, so decoding stops here.
+const MAX_SAMPLES: usize = 160_000_000;
+
+/// The channel count and rate of `AudioBuffer`.
+fn check_format(channels: usize, rate: f64) -> Result<(), ()> {
+  if (1..=MAX_CHANNELS).contains(&channels)
+    && (3000.0..=768000.0).contains(&rate)
+  {
+    Ok(())
+  } else {
+    Err(())
+  }
+}
+
+/// Fails once a decoder has produced more samples than an `AudioBuffer`
+/// may hold.
+struct Budget {
+  channels: usize,
+  samples: usize,
+}
+
+impl Budget {
+  fn new(channels: usize) -> Self {
+    Self {
+      channels,
+      samples: 0,
+    }
+  }
+
+  fn take(&mut self, samples: usize) -> Result<(), ()> {
+    self.samples = self.samples.checked_add(samples).ok_or(())?;
+    if self.samples > MAX_SAMPLES
+      || self.samples / self.channels.max(1) > MAX_FRAMES
+    {
+      return Err(());
+    }
+    Ok(())
+  }
+}
+
 pub fn decode(bytes: &[u8]) -> Result<Pcm, DecodeFailure> {
   let owned = bytes.to_vec();
   let decoded = catch_unwind(AssertUnwindSafe(|| decode_inner(&owned)));
@@ -58,10 +103,9 @@ fn decode_wav(bytes: &[u8]) -> Result<Pcm, ()> {
   let reader = hound::WavReader::new(Cursor::new(bytes)).map_err(|_| ())?;
   let spec = reader.spec();
   let channels = spec.channels as usize;
-  if channels == 0 {
-    return Err(());
-  }
   let rate = spec.sample_rate as f64;
+  check_format(channels, rate)?;
+  Budget::new(channels).take(reader.len() as usize)?;
   let interleaved = match spec.sample_format {
     hound::SampleFormat::Float => reader
       .into_samples::<f32>()
@@ -86,14 +130,14 @@ fn decode_flac(bytes: &[u8]) -> Result<Pcm, ()> {
   let info = reader.streaminfo();
   let channels = info.channels as usize;
   let rate = info.sample_rate as f64;
-  if channels == 0 {
-    return Err(());
-  }
+  check_format(channels, rate)?;
   let shift = info.bits_per_sample.saturating_sub(1).min(62);
   let scale = (1i64 << shift) as f32;
   let mut channels_pcm = vec![Vec::new(); channels];
+  let mut budget = Budget::new(channels);
   for (index, sample) in reader.samples().enumerate() {
     let sample = sample.map_err(|_| ())?;
+    budget.take(1)?;
     channels_pcm[index % channels].push(sample as f32 / scale);
   }
   Ok(Pcm {
@@ -108,13 +152,30 @@ fn looks_like_opus(bytes: &[u8]) -> bool {
 }
 
 fn decode_opus(bytes: &[u8]) -> Result<Pcm, ()> {
+  opus_fits(bytes)?;
   let (interleaved, head) = ruopus::decode_ogg_opus(bytes).map_err(|_| ())?;
   let channels = usize::from(head.channel_count);
-  if channels == 0 || channels > 32 {
-    return Err(());
-  }
+  check_format(channels, 48_000.0)?;
   // Opus playback is 48 kHz. `input_sample_rate` is original-file metadata.
   Ok(deinterleave(interleaved, channels, 48_000.0))
+}
+
+/// `decode_ogg_opus` decodes the whole stream at once. The packet headers
+/// give each packet's duration, so the output size is checked first.
+fn opus_fits(bytes: &[u8]) -> Result<(), ()> {
+  let mut reader = ruopus::ogg::OggOpusReader::new(bytes).map_err(|_| ())?;
+  let channels = usize::from(reader.head().channel_count);
+  check_format(channels, 48_000.0)?;
+  let mut budget = Budget::new(channels);
+  while let Some(packet) = reader.next() {
+    let Ok(parsed) = ruopus::Packet::parse(&packet.data) else {
+      continue;
+    };
+    let frames = parsed.duration().as_micros() * 48 / 1000;
+    let samples = usize::try_from(frames).map_err(|_| ())?;
+    budget.take(samples.checked_mul(channels).ok_or(())?)?;
+  }
+  Ok(())
 }
 
 fn decode_vorbis(bytes: &[u8]) -> Result<Pcm, ()> {
@@ -122,11 +183,11 @@ fn decode_vorbis(bytes: &[u8]) -> Result<Pcm, ()> {
     .map_err(|_| ())?;
   let channels = reader.ident_hdr.audio_channels as usize;
   let rate = reader.ident_hdr.audio_sample_rate as f64;
-  if channels == 0 {
-    return Err(());
-  }
+  check_format(channels, rate)?;
   let mut channels_pcm = vec![Vec::new(); channels];
+  let mut budget = Budget::new(channels);
   while let Some(packet) = reader.read_dec_packet_itl().map_err(|_| ())? {
+    budget.take(packet.len())?;
     for (index, sample) in packet.into_iter().enumerate() {
       channels_pcm[index % channels].push(sample as f32 / 32768.0);
     }
@@ -166,12 +227,14 @@ fn decode_mp3(bytes: &[u8]) -> Result<Pcm, ()> {
     .and_then(|params| params.audio())
     .ok_or(())?;
   let rate = audio.sample_rate.ok_or(())? as f64;
+  check_format(1, rate)?;
   let params = audio.clone();
   let mut decoder = symphonia::default::get_codecs()
     .make_audio_decoder(&params, &AudioDecoderOptions::default())
     .map_err(|_| ())?;
   let mut channels = 0usize;
   let mut interleaved = Vec::new();
+  let mut budget = Budget::new(1);
   while let Ok(Some(packet)) = format.next_packet() {
     if packet.track_id != track_id {
       continue;
@@ -183,9 +246,12 @@ fn decode_mp3(bytes: &[u8]) -> Result<Pcm, ()> {
     };
     if channels == 0 {
       channels = decoded.spec().channels().count();
+      check_format(channels, rate)?;
+      budget = Budget::new(channels);
     }
     let mut samples = Vec::<f32>::new();
     decoded.copy_to_vec_interleaved(&mut samples);
+    budget.take(samples.len())?;
     interleaved.extend(samples);
   }
   if channels == 0 {
@@ -215,6 +281,54 @@ fn sine_sample(frequency: f64, sample_rate: f64, frame: u64) -> f32 {
 #[cfg(test)]
 mod tests {
   use super::{decode, sine_sample};
+
+  /// A 16-bit PCM WAV header that claims `data_len` bytes of samples,
+  /// followed by `body`.
+  fn wav(channels: u16, rate: u32, data_len: u32, body: &[u8]) -> Vec<u8> {
+    let block = channels.saturating_mul(2);
+    let mut out = Vec::new();
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&channels.to_le_bytes());
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * u32::from(block)).to_le_bytes());
+    out.extend_from_slice(&block.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    out.extend_from_slice(body);
+    out
+  }
+
+  #[test]
+  fn a_format_audio_buffer_rejects_is_an_encoding_error() {
+    let ok = wav(2, 44100, 8, &[0; 8]);
+    assert!(decode(&ok).is_ok());
+    for (label, bytes) in [
+      ("33 channels", wav(33, 44100, 66, &[0; 66])),
+      ("1 Hz", wav(1, 1, 2, &[0; 2])),
+      ("800 kHz", wav(1, 800_000, 2, &[0; 2])),
+      ("too many frames", wav(1, 44100, 50_000_000, &[0; 16])),
+    ] {
+      assert!(
+        matches!(decode(&bytes), Err(super::DecodeFailure::Encoding)),
+        "{label}"
+      );
+    }
+  }
+
+  #[test]
+  fn the_budget_stops_at_the_audio_buffer_limits() {
+    let mut budget = super::Budget::new(1);
+    assert!(budget.take(super::MAX_FRAMES).is_ok());
+    assert!(budget.take(1).is_err());
+    let mut budget = super::Budget::new(32);
+    assert!(budget.take(super::MAX_SAMPLES).is_ok());
+    assert!(budget.take(1).is_err());
+  }
 
   fn fixture(name: &str) -> Vec<u8> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
