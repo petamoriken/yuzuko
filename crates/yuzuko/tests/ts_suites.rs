@@ -112,6 +112,11 @@ fn image() {
 }
 
 #[test]
+fn idle() {
+  simple("idle_test.ts", 1);
+}
+
+#[test]
 fn intl() {
   simple("intl_test.ts", 1);
 }

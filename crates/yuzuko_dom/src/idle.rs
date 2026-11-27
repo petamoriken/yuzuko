@@ -398,9 +398,10 @@ fn unsigned_long(
   value: v8::Local<v8::Value>,
 ) -> Option<u32> {
   let number = value.number_value(scope)?;
+  // WebIDL `unsigned long` without [EnforceRange] maps NaN and the
+  // infinities to 0.
   if !number.is_finite() {
-    yuzuko_core::throw_type(scope, "The timeout is not a finite number");
-    return None;
+    return Some(0);
   }
   let wrapped = number.trunc().rem_euclid(4_294_967_296.0);
   Some(wrapped as u32)
