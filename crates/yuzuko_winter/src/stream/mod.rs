@@ -109,7 +109,6 @@ enum Sink {
   Codec {
     // zlib-rs decoders are much larger than the other sink states.
     codec: Box<Codec>,
-    emitted: usize,
     readable: u64,
   },
 }
@@ -1987,7 +1986,6 @@ fn compression_sink(format: &str, compress: bool) -> Result<Sink, OpError> {
   };
   Ok(Sink::Codec {
     codec: Box::new(codec),
-    emitted: 0,
     readable: 0,
   })
 }
@@ -5560,16 +5558,16 @@ fn codec_sink<'s>(
   let produced = WRITES.with(|slot| {
     let mut states = slot.borrow_mut();
     let state = states.get_mut(&stream)?;
-    let Sink::Codec { codec, emitted, .. } = &mut state.sink else {
+    let Sink::Codec { codec, .. } = &mut state.sink else {
       return None;
     };
-    Some(codec_write(codec, emitted, &input, finish))
+    Some(codec_write(codec, &input, finish))
   });
   let Some(output) = produced else {
     return Err(OpError::type_("The stream is closed"));
   };
-  if !output.bytes.is_empty() {
-    let view = bytes::uint8_array(scope, output.bytes);
+  for chunk in output.chunks {
+    let view = bytes::uint8_array(scope, chunk);
     enqueue_chunk(scope, readable, view.into(), None)?;
   }
   if output.failed {
@@ -5583,72 +5581,146 @@ fn codec_sink<'s>(
   Ok(v8::undefined(scope).into())
 }
 
+/// Input bytes a codec consumes before its output is drained. A deflate
+/// stream expands at most about 1032 to 1, so one step holds about 1 MiB.
+const CODEC_INPUT_STEP: usize = 1024;
+/// Output is enqueued in chunks of at most this many bytes.
+const CODEC_CHUNK: usize = 64 * 1024;
+
 struct Produced {
-  bytes: Vec<u8>,
+  chunks: Vec<Vec<u8>>,
   failed: bool,
 }
 
-fn codec_write(
-  codec: &mut Codec,
-  emitted: &mut usize,
-  input: &[u8],
-  finish: bool,
-) -> Produced {
-  if matches!(
-    codec,
-    Codec::BrotliEnc(_) | Codec::BrotliDec(_) | Codec::BrotliFinished(_)
-  ) {
-    return brotli_write(codec, emitted, input, finish);
+#[cfg(test)]
+impl Produced {
+  fn bytes(&self) -> Vec<u8> {
+    self.chunks.concat()
   }
-  use std::io::Write;
-  let fed = match codec {
-    Codec::GzipEnc(encoder) => {
-      encoder.write_all(input).map(|()| false).map_err(|_| ())
+}
+
+#[derive(Default)]
+struct Chunker {
+  chunks: Vec<Vec<u8>>,
+  current: Vec<u8>,
+}
+
+impl Chunker {
+  /// Each chunk is its own allocation of its own length, so a chunk does
+  /// not keep the capacity of the step that produced it.
+  fn push(&mut self, mut data: &[u8]) {
+    while !data.is_empty() {
+      if self.current.capacity() == 0 {
+        self.current = Vec::with_capacity(CODEC_CHUNK);
+      }
+      let room = CODEC_CHUNK - self.current.len();
+      let take = room.min(data.len());
+      self.current.extend_from_slice(&data[..take]);
+      data = &data[take..];
+      if self.current.len() == CODEC_CHUNK {
+        self.chunks.push(std::mem::take(&mut self.current));
+      }
     }
-    Codec::ZlibEnc(encoder) => {
-      encoder.write_all(input).map(|()| false).map_err(|_| ())
+  }
+
+  fn finish(mut self) -> Vec<Vec<u8>> {
+    if !self.current.is_empty() {
+      self.current.shrink_to_fit();
+      self.chunks.push(self.current);
     }
-    Codec::RawEnc(encoder) => {
-      encoder.write_all(input).map(|()| false).map_err(|_| ())
+    self.chunks
+  }
+}
+
+/// Feeds `input` in steps and moves each step's output out of the codec, so
+/// the codec does not keep what it already produced.
+fn codec_write(codec: &mut Codec, input: &[u8], finish: bool) -> Produced {
+  let mut output = Chunker::default();
+  let mut failed = false;
+  for piece in input.chunks(CODEC_INPUT_STEP) {
+    failed = codec_step(codec, piece);
+    drain_into(codec, &mut output);
+    if failed {
+      break;
     }
-    Codec::GzipDec(decoder) => write_decoder(decoder, input),
-    Codec::ZlibDec(decoder) => write_decoder(decoder, input),
-    Codec::RawDec(decoder) => write_decoder(decoder, input),
-    _ => Err(()),
-  };
-  let mut failed = fed.unwrap_or(true);
+  }
   if finish {
-    let finished = match codec {
-      Codec::GzipEnc(encoder) => encoder.try_finish(),
-      Codec::ZlibEnc(encoder) => encoder.try_finish(),
-      Codec::RawEnc(encoder) => encoder.try_finish(),
-      Codec::GzipDec(decoder) => decoder.try_finish(),
-      Codec::ZlibDec(decoder) => finish_zlib_decoder(decoder, &mut failed),
-      Codec::RawDec(decoder) => decoder.try_finish(),
-      _ => Err(std::io::Error::other("unused")),
-    };
-    if finished.is_err() {
-      failed = true;
-    }
+    failed = codec_finish(codec, failed);
+    drain_into(codec, &mut output);
   }
-  let Some(buf) = (match codec {
-    Codec::GzipEnc(encoder) => Some(encoder.get_mut().as_slice()),
-    Codec::ZlibEnc(encoder) => Some(encoder.get_mut().as_slice()),
-    Codec::RawEnc(encoder) => Some(encoder.get_mut().as_slice()),
-    Codec::GzipDec(decoder) => Some(decoder.get_mut().as_slice()),
-    Codec::ZlibDec(decoder) => Some(decoder.get_mut().as_slice()),
-    Codec::RawDec(decoder) => Some(decoder.get_mut().as_slice()),
-    _ => None,
-  }) else {
-    return Produced {
-      bytes: Vec::new(),
-      failed: true,
-    };
-  };
   Produced {
-    bytes: take_emitted(buf, emitted),
+    chunks: output.finish(),
     failed,
   }
+}
+
+/// Writes one piece. `true` means the data failed, including a compressed
+/// stream that ended before the piece was consumed.
+fn codec_step(codec: &mut Codec, piece: &[u8]) -> bool {
+  use std::io::Write;
+  match codec {
+    Codec::GzipEnc(encoder) => encoder.write_all(piece).is_err(),
+    Codec::ZlibEnc(encoder) => encoder.write_all(piece).is_err(),
+    Codec::RawEnc(encoder) => encoder.write_all(piece).is_err(),
+    Codec::BrotliEnc(encoder) => encoder.write_all(piece).is_err(),
+    Codec::GzipDec(decoder) => write_decoder(decoder, piece).unwrap_or(true),
+    Codec::ZlibDec(decoder) => write_decoder(decoder, piece).unwrap_or(true),
+    Codec::RawDec(decoder) => write_decoder(decoder, piece).unwrap_or(true),
+    Codec::BrotliDec(decoder) => {
+      write_decoder(decoder.as_mut(), piece).unwrap_or(true)
+    }
+    Codec::BrotliFinished(_) => !piece.is_empty(),
+  }
+}
+
+fn codec_finish(codec: &mut Codec, mut failed: bool) -> bool {
+  let finished = match codec {
+    Codec::GzipEnc(encoder) => encoder.try_finish(),
+    Codec::ZlibEnc(encoder) => encoder.try_finish(),
+    Codec::RawEnc(encoder) => encoder.try_finish(),
+    Codec::GzipDec(decoder) => decoder.try_finish(),
+    Codec::ZlibDec(decoder) => finish_zlib_decoder(decoder, &mut failed),
+    Codec::RawDec(decoder) => decoder.try_finish(),
+    Codec::BrotliEnc(_) | Codec::BrotliDec(_) => {
+      let taken = std::mem::replace(codec, Codec::BrotliFinished(Vec::new()));
+      let rest = match taken {
+        Codec::BrotliEnc(encoder) => encoder.into_inner(),
+        Codec::BrotliDec(decoder) => {
+          decoder.into_inner().unwrap_or_else(|buf| {
+            failed = true;
+            buf
+          })
+        }
+        _ => Vec::new(),
+      };
+      *codec = Codec::BrotliFinished(rest);
+      Ok(())
+    }
+    Codec::BrotliFinished(_) => Ok(()),
+  };
+  failed || finished.is_err()
+}
+
+/// The codec's output buffer. The caller copies it out and clears it, so
+/// the codec keeps its capacity and not the bytes it produced.
+fn codec_output(codec: &mut Codec) -> &mut Vec<u8> {
+  match codec {
+    Codec::GzipEnc(encoder) => encoder.get_mut(),
+    Codec::ZlibEnc(encoder) => encoder.get_mut(),
+    Codec::RawEnc(encoder) => encoder.get_mut(),
+    Codec::GzipDec(decoder) => decoder.get_mut(),
+    Codec::ZlibDec(decoder) => decoder.get_mut(),
+    Codec::RawDec(decoder) => decoder.get_mut(),
+    Codec::BrotliEnc(encoder) => encoder.get_mut(),
+    Codec::BrotliDec(decoder) => decoder.get_mut(),
+    Codec::BrotliFinished(bytes) => bytes,
+  }
+}
+
+fn drain_into(codec: &mut Codec, output: &mut Chunker) {
+  let buf = codec_output(codec);
+  output.push(buf);
+  buf.clear();
 }
 
 /// zlib's `try_finish` accepts a stream that stopped before the Adler
@@ -5690,82 +5762,10 @@ fn write_decoder<W: std::io::Write>(
   Ok(false)
 }
 
-fn take_emitted(buf: &[u8], emitted: &mut usize) -> Vec<u8> {
-  let start = (*emitted).min(buf.len());
-  let output = buf[start..].to_vec();
-  *emitted = buf.len();
-  output
-}
-
-fn brotli_write(
-  codec: &mut Codec,
-  emitted: &mut usize,
-  input: &[u8],
-  finish: bool,
-) -> Produced {
-  use std::io::Write;
-  let mut failed = false;
-  match codec {
-    Codec::BrotliEnc(encoder) => {
-      if encoder.write_all(input).is_err() {
-        failed = true;
-      }
-    }
-    Codec::BrotliDec(decoder) => match write_decoder(decoder, input) {
-      Ok(trailing) => failed = trailing,
-      Err(()) => failed = true,
-    },
-    Codec::BrotliFinished(_) if input.is_empty() => {}
-    _ => {
-      return Produced {
-        bytes: Vec::new(),
-        failed: true,
-      };
-    }
-  }
-  if finish {
-    let taken = std::mem::replace(codec, Codec::BrotliFinished(Vec::new()));
-    let finished = match taken {
-      Codec::BrotliEnc(encoder) => encoder.into_inner(),
-      Codec::BrotliDec(decoder) => match decoder.into_inner() {
-        Ok(buf) => buf,
-        Err(buf) => {
-          failed = true;
-          buf
-        }
-      },
-      Codec::BrotliFinished(bytes) => bytes,
-      other => {
-        *codec = other;
-        return Produced {
-          bytes: Vec::new(),
-          failed: true,
-        };
-      }
-    };
-    *codec = Codec::BrotliFinished(finished);
-  }
-  let Some(buf) = (match codec {
-    Codec::BrotliEnc(encoder) => Some(encoder.get_mut().as_slice()),
-    Codec::BrotliDec(decoder) => Some(decoder.get_mut().as_slice()),
-    Codec::BrotliFinished(bytes) => Some(bytes.as_slice()),
-    _ => None,
-  }) else {
-    return Produced {
-      bytes: Vec::new(),
-      failed: true,
-    };
-  };
-  Produced {
-    bytes: take_emitted(buf, emitted),
-    failed,
-  }
-}
-
 #[cfg(test)]
 mod brotli_tests {
   use super::Codec;
-  use super::brotli_write;
+  use super::codec_write;
 
   #[test]
   fn large_window_hello_world() {
@@ -5775,19 +5775,49 @@ mod brotli_tests {
     let mut codec = Codec::BrotliDec(Box::new(
       brotli::DecompressorWriter::new(Vec::new(), 4096),
     ));
-    let mut emitted = 0usize;
-    let first = brotli_write(&mut codec, &mut emitted, &chunk, false);
-    let second = brotli_write(&mut codec, &mut emitted, &[], true);
+    let first = codec_write(&mut codec, &chunk, false);
+    let second = codec_write(&mut codec, &[], true);
     assert!(!first.failed);
     assert!(!second.failed);
-    let mut output = first.bytes;
-    output.extend(second.bytes);
+    let mut output = first.bytes();
+    output.extend(second.bytes());
     assert_eq!(output, b"Hello World");
   }
 
   #[test]
+  fn output_is_drained_and_split_into_bounded_chunks() {
+    use std::io::Write;
+    let mut encoder = flate2::write::DeflateEncoder::new(
+      Vec::new(),
+      flate2::Compression::best(),
+    );
+    encoder.write_all(&vec![0u8; 1 << 20]).unwrap();
+    let compressed = encoder.finish().unwrap();
+    let mut codec =
+      Codec::RawDec(flate2::write::DeflateDecoder::new(Vec::new()));
+    let produced = codec_write(&mut codec, &compressed, false);
+    assert!(!produced.failed);
+    assert!(produced.chunks.len() >= 16, "{}", produced.chunks.len());
+    assert!(
+      produced
+        .chunks
+        .iter()
+        .all(|chunk| chunk.len() <= super::CODEC_CHUNK)
+    );
+    assert_eq!(produced.chunks.iter().map(Vec::len).sum::<usize>(), 1 << 20);
+    let Codec::RawDec(decoder) = &mut codec else {
+      unreachable!();
+    };
+    assert!(decoder.get_mut().is_empty(), "the codec kept its output");
+    let largest = produced.chunks.iter().map(Vec::capacity).max().unwrap_or(0);
+    assert!(
+      largest <= super::CODEC_CHUNK,
+      "a chunk kept {largest} bytes"
+    );
+  }
+
+  #[test]
   fn complete_chunk_emits_before_close() {
-    use super::codec_write;
     let expected = b"expected output";
     let cases: &[(&str, &[u8])] = &[
       (
@@ -5831,16 +5861,14 @@ mod brotli_tests {
         )),
         _ => unreachable!(),
       };
-      let mut emitted = 0usize;
-      let produced = codec_write(&mut codec, &mut emitted, chunk, false);
+      let produced = codec_write(&mut codec, chunk, false);
       assert!(!produced.failed, "{name}");
-      assert_eq!(produced.bytes, expected, "{name}");
+      assert_eq!(produced.bytes(), expected, "{name}");
     }
   }
 
   #[test]
   fn trailing_byte_outputs_then_fails() {
-    use super::codec_write;
     let expected = b"expected output";
     let cases: &[(&str, &[u8])] = &[
       (
@@ -5886,16 +5914,14 @@ mod brotli_tests {
         )),
         _ => unreachable!(),
       };
-      let mut emitted = 0usize;
-      let produced = codec_write(&mut codec, &mut emitted, &input, false);
+      let produced = codec_write(&mut codec, &input, false);
       assert!(produced.failed, "{name}");
-      assert_eq!(produced.bytes, expected, "{name}");
+      assert_eq!(produced.bytes(), expected, "{name}");
     }
   }
 
   #[test]
   fn deflate_truncated_and_data_byte_five_fail() {
-    use super::codec_write;
     let chunk = [
       120, 156, 75, 173, 40, 72, 77, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45,
       1, 0, 48, 173, 6, 36,
@@ -5903,26 +5929,23 @@ mod brotli_tests {
     let mut truncated = chunk.to_vec();
     truncated.pop();
     let mut codec = Codec::ZlibDec(flate2::write::ZlibDecoder::new(Vec::new()));
-    let mut emitted = 0usize;
-    let _ = codec_write(&mut codec, &mut emitted, &truncated, false);
-    let closed = codec_write(&mut codec, &mut emitted, &[], true);
+    let _ = codec_write(&mut codec, &truncated, false);
+    let closed = codec_write(&mut codec, &[], true);
     assert!(closed.failed, "truncated deflate");
 
     let mut corrupt = chunk;
     corrupt[18] = 5;
     let mut codec = Codec::ZlibDec(flate2::write::ZlibDecoder::new(Vec::new()));
-    let mut emitted = 0usize;
-    let wrote = codec_write(&mut codec, &mut emitted, &corrupt, false);
+    let wrote = codec_write(&mut codec, &corrupt, false);
     assert!(wrote.failed, "deflate data byte 5");
 
     let mut ok = chunk;
     ok[18] = 4;
     let mut codec = Codec::ZlibDec(flate2::write::ZlibDecoder::new(Vec::new()));
-    let mut emitted = 0usize;
-    let wrote = codec_write(&mut codec, &mut emitted, &ok, false);
-    let closed = codec_write(&mut codec, &mut emitted, &[], true);
+    let wrote = codec_write(&mut codec, &ok, false);
+    let closed = codec_write(&mut codec, &[], true);
     assert!(!wrote.failed && !closed.failed, "deflate data byte 4");
-    assert_eq!(wrote.bytes, b"expected output");
+    assert_eq!(wrote.bytes(), b"expected output");
   }
 }
 
