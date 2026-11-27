@@ -11,6 +11,6 @@
   "dependencies": {
     "@types/web": "0.0.367",
     "@webgpu/types": "0.1.74",
-    "typescript": "7.1.0-dev.20261117.1"
+    "typescript": "7.1.0-dev.20261124.1"
   }
 }
