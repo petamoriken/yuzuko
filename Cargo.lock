@@ -8934,6 +8934,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "ed25519-dalek",
+ "httparse",
  "libc",
  "rcgen",
  "rustls",

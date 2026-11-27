@@ -1183,51 +1183,29 @@ fn read_response(
 ) -> Result<Vec<u8>, Failure> {
   let mut raw = Vec::new();
   let mut tmp = [0u8; 8192];
-  let header_at = loop {
-    if raw.len() > HEADER_LIMIT {
-      return Err(DOWNLOAD_FAILED);
+  let (start, code, content_length) = loop {
+    let mut headers = [httparse::EMPTY_HEADER; 64];
+    let mut response = httparse::Response::new(&mut headers);
+    match response.parse(&raw).map_err(|_| DOWNLOAD_FAILED)? {
+      httparse::Status::Complete(start) => {
+        let content_length = update_body_length(response.headers)?;
+        break (start, response.code, content_length);
+      }
+      httparse::Status::Partial if raw.len() > HEADER_LIMIT => {
+        return Err(DOWNLOAD_FAILED);
+      }
+      httparse::Status::Partial => {}
     }
     let count = read_some(stream, &mut tmp).map_err(|()| DOWNLOAD_FAILED)?;
     if count == 0 {
       return Err(DOWNLOAD_FAILED);
     }
     raw.extend_from_slice(&tmp[..count]);
-    if let Some(position) =
-      raw.windows(4).position(|window| window == b"\r\n\r\n")
-    {
-      break position;
-    }
   };
-  let header =
-    std::str::from_utf8(&raw[..header_at]).map_err(|_| DOWNLOAD_FAILED)?;
-  let mut body = raw[header_at + 4..].to_vec();
-  let mut lines = header.split("\r\n");
-  let status = lines.next().ok_or(DOWNLOAD_FAILED)?;
-  let code = status.split_whitespace().nth(1).ok_or(DOWNLOAD_FAILED)?;
-  if code != "200" {
+  if start > HEADER_LIMIT || code != Some(200) {
     return Err(DOWNLOAD_FAILED);
   }
-  let mut content_length = None;
-  for line in lines {
-    if line.is_empty() {
-      continue;
-    }
-    let Some((name, value)) = line.split_once(':') else {
-      return Err(DOWNLOAD_FAILED);
-    };
-    let value = value.trim();
-    if name.eq_ignore_ascii_case("content-length") {
-      if content_length.is_some() {
-        return Err(DOWNLOAD_FAILED);
-      }
-      let len: u64 = value.parse().map_err(|_| DOWNLOAD_FAILED)?;
-      content_length = Some(len);
-    } else if name.eq_ignore_ascii_case("transfer-encoding")
-      && value.to_ascii_lowercase().contains("chunked")
-    {
-      return Err(DOWNLOAD_FAILED);
-    }
-  }
+  let mut body = raw[start..].to_vec();
   if let Some(len) = content_length {
     let len = usize::try_from(len).map_err(|_| DOWNLOAD_FAILED)?;
     if len > max {
@@ -1258,6 +1236,33 @@ fn read_response(
     return Err(DOWNLOAD_FAILED);
   }
   Ok(body)
+}
+
+/// The `Content-Length` of an update response. A repeated length, a value
+/// that is not digits, and a chunked transfer coding fail the download.
+fn update_body_length(
+  headers: &[httparse::Header<'_>],
+) -> Result<Option<u64>, Failure> {
+  let mut content_length = None;
+  for header in headers {
+    let value = std::str::from_utf8(header.value)
+      .map_err(|_| DOWNLOAD_FAILED)?
+      .trim();
+    if header.name.eq_ignore_ascii_case("content-length") {
+      if content_length.is_some()
+        || value.is_empty()
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+      {
+        return Err(DOWNLOAD_FAILED);
+      }
+      content_length = Some(value.parse().map_err(|_| DOWNLOAD_FAILED)?);
+    } else if header.name.eq_ignore_ascii_case("transfer-encoding")
+      && value.to_ascii_lowercase().contains("chunked")
+    {
+      return Err(DOWNLOAD_FAILED);
+    }
+  }
+  Ok(content_length)
 }
 
 fn read_some(stream: &mut impl Read, buf: &mut [u8]) -> Result<usize, ()> {
@@ -1394,6 +1399,27 @@ mod tests {
     assert!(!absolute_http("https://"));
     assert!(!absolute_http("/game"));
     assert!(!absolute_http(""));
+  }
+
+  #[test]
+  fn read_response_parses_the_head_with_httparse() {
+    let read =
+      |bytes: &[u8]| read_response(&mut std::io::Cursor::new(bytes), 64);
+    assert_eq!(
+      read(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhiXX").unwrap(),
+      b"hi"
+    );
+    assert_eq!(read(b"HTTP/1.0 200 OK\r\n\r\nall").unwrap(), b"all");
+    for bad in [
+      &b"HTTP/1.1 200 OK\r\nContent-Length: +2\r\n\r\nhi"[..],
+      b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\nhi",
+      b"HTTP/1.1 2000 OK\r\n\r\n",
+      b"HTTP/1.1 404 200\r\n\r\n",
+      b"HTTP/1.1 200 OK\r\nBad Name: x\r\n\r\n",
+      b"HTTP/1.1 200 OK\r\n",
+    ] {
+      assert!(read(bad).is_err(), "{}", String::from_utf8_lossy(bad));
+    }
   }
 
   #[test]
