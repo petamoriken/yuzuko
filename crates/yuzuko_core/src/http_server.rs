@@ -326,31 +326,18 @@ fn read_request(
   deadline: std::time::Instant,
 ) -> Result<Incoming, Fail> {
   let mut buf = Vec::new();
-  let mut header_at: Option<usize> = None;
-  let mut head: Option<Head> = None;
+  let mut head: Option<(Head, usize)> = None;
   loop {
     if closed.load(Ordering::Acquire) {
       return Err(Fail::Closed);
     }
-    if header_at.is_none()
-      && let Some(at) = header_end(&buf)
-    {
-      if at > MAX_HEAD {
-        return Err(Fail::TooLarge);
-      }
-      let text = std::str::from_utf8(&buf[..at]).map_err(|_| Fail::Request)?;
-      head = Some(parse_head(text)?);
-      header_at = Some(at);
-    } else if header_at.is_none() && buf.len() > MAX_HEAD {
-      return Err(Fail::TooLarge);
+    if head.is_none() {
+      head = parse_head(&buf)?;
     }
-    let ready = head
-      .as_ref()
-      .map(|parsed| (header_at, parsed.content_length));
-    if let Some((Some(at), length)) = ready {
-      let start = at + 4;
+    if let Some((parsed, start)) = &head {
+      let (start, length) = (*start, parsed.content_length);
       if buf.len() >= start + length {
-        let owned = head.take().ok_or(Fail::Request)?;
+        let (owned, _) = head.take().ok_or(Fail::Request)?;
         return Ok(Incoming {
           method: owned.method,
           url: owned.url,
@@ -407,63 +394,56 @@ fn read_some(
   }
 }
 
-fn header_end(buf: &[u8]) -> Option<usize> {
-  buf.windows(4).position(|window| window == b"\r\n\r\n")
-}
-
-fn parse_head(head: &str) -> Result<Head, Fail> {
-  let mut lines = head.split("\r\n");
-  let Some(request) = lines.next() else {
-    return Err(Fail::Request);
+/// Parses the request head with httparse once `buf` holds all of it.
+/// Returns the head and the offset of the body, or `None` while the head is
+/// still incomplete.
+fn parse_head(buf: &[u8]) -> Result<Option<(Head, usize)>, Fail> {
+  // The shortest header line is `a:` and a line end, so this many slots
+  // cannot run out before the head reaches MAX_HEAD.
+  let mut headers = vec![httparse::EMPTY_HEADER; MAX_HEAD / 3];
+  let mut request = httparse::Request::new(&mut headers);
+  let start = match request.parse(buf) {
+    Ok(httparse::Status::Complete(start)) => start,
+    Ok(httparse::Status::Partial) if buf.len() > MAX_HEAD => {
+      return Err(Fail::TooLarge);
+    }
+    Ok(httparse::Status::Partial) => return Ok(None),
+    Err(httparse::Error::TooManyHeaders) => return Err(Fail::TooLarge),
+    Err(_) => return Err(Fail::Request),
   };
-  if request.is_empty() {
-    return Err(Fail::Request);
+  if start > MAX_HEAD {
+    return Err(Fail::TooLarge);
   }
-  let mut parts = request.split(' ');
-  let (Some(method), Some(target), Some(version)) =
-    (parts.next(), parts.next(), parts.next())
-  else {
+  let (Some(method), Some(target)) = (request.method, request.path) else {
     return Err(Fail::Request);
   };
-  if parts.next().is_some()
-    || !is_token(method)
-    || method.len() > 64
-    || !target.starts_with('/')
-    || target.len() > MAX_TARGET
-    || target.bytes().any(|byte| byte == 0)
-    || (version != "HTTP/1.0" && version != "HTTP/1.1")
+  if method.len() > 64 || !target.starts_with('/') || target.len() > MAX_TARGET
   {
     return Err(Fail::Request);
   }
   let mut content_length: Option<usize> = None;
-  for line in lines {
-    if line.is_empty() || line.starts_with(' ') || line.starts_with('\t') {
-      return Err(Fail::Request);
-    }
-    let Some((name, value)) = line.split_once(':') else {
-      return Err(Fail::Request);
-    };
-    if !is_token(name) {
-      return Err(Fail::Request);
-    }
-    let value = value.trim();
-    if name.eq_ignore_ascii_case("content-length") {
+  for header in request.headers.iter() {
+    let value = std::str::from_utf8(header.value)
+      .map_err(|_| Fail::Request)?
+      .trim();
+    if header.name.eq_ignore_ascii_case("content-length") {
       let parsed = parse_content_length(value)?;
       if content_length.is_some_and(|existing| existing != parsed) {
         return Err(Fail::Request);
       }
       content_length = Some(parsed);
-    } else if name.eq_ignore_ascii_case("transfer-encoding")
+    } else if header.name.eq_ignore_ascii_case("transfer-encoding")
       && !is_identity(value)
     {
       return Err(Fail::Request);
     }
   }
-  Ok(Head {
+  let head = Head {
     method: method.to_string(),
     url: target.to_string(),
     content_length: content_length.unwrap_or(0),
-  })
+  };
+  Ok(Some((head, start)))
 }
 
 fn parse_content_length(value: &str) -> Result<usize, Fail> {
@@ -1212,8 +1192,39 @@ mod tests {
 
   use super::{
     Fail, TEXT_TYPE, accept_request, accept_request_within, bind_http,
-    header_end, write_shared,
+    parse_head, write_shared,
   };
+
+  #[test]
+  fn request_heads_follow_http1_syntax() {
+    let (head, start) =
+      parse_head(b"POST /a?b HTTP/1.1\r\nContent-Length: 2\r\n\r\nhi")
+        .unwrap()
+        .unwrap();
+    assert_eq!((head.method.as_str(), head.url.as_str()), ("POST", "/a?b"));
+    assert_eq!((head.content_length, start), (2, 41));
+    assert!(parse_head(b"GET / HTTP/1.1\r\nHost: a").unwrap().is_none());
+    for bad in [
+      &b"GET / HTTP/2.0\r\n\r\n"[..],
+      b"GET http://a/ HTTP/1.1\r\n\r\n",
+      b"G(T / HTTP/1.1\r\n\r\n",
+      b"GET / HTTP/1.1\r\nBad Name: x\r\n\r\n",
+      b"GET / HTTP/1.1\r\nA: b\r\n folded\r\n\r\n",
+      b"GET / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n",
+      b"GET / HTTP/1.1\r\nContent-Length: -1\r\n\r\n",
+      b"GET / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n",
+    ] {
+      assert!(
+        matches!(parse_head(bad), Err(Fail::Request)),
+        "{}",
+        String::from_utf8_lossy(bad)
+      );
+    }
+  }
+
+  fn header_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4).position(|window| window == b"\r\n\r\n")
+  }
 
   fn exchange(port: u16, request: &[u8]) -> Vec<u8> {
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();

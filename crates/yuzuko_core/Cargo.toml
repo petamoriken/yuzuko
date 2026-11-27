@@ -23,6 +23,7 @@ unicode-width = "0.2"
 webpki-roots = { workspace = true, optional = true }
 url.workspace = true
 percent-encoding.workspace = true
+httparse = { workspace = true, optional = true }
 icu_normalizer = "2.3"
 v8.workspace = true
 yuzuko_macros.workspace = true
@@ -35,7 +36,7 @@ default = ["fs"]
 fs = []
 udp = []
 tcp = ["dep:rustls", "dep:webpki-roots"]
-http = []
+http = ["dep:httparse"]
 signal = []
 child = []
 ffi = []

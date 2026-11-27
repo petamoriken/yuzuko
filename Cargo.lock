@@ -9024,6 +9024,7 @@ dependencies = [
 name = "yuzuko_core"
 version = "0.3.0"
 dependencies = [
+ "httparse",
  "icu_normalizer",
  "libc",
  "oxc_allocator",
