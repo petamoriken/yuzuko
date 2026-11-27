@@ -420,7 +420,14 @@ fn pump(scope: &mut v8::PinScope, id: u64) {
   }
   if open && socket.ready.get() != CLOSED {
     arm(id, connection.notes);
+  } else if socket.ready.get() == CLOSED {
+    forget(id);
   }
+}
+
+/// A closed socket dispatches nothing more, so the realm stops holding it.
+fn forget(id: u64) {
+  LIVE.with(|slot| slot.borrow_mut().retain(|(stored, _)| *stored != id));
 }
 
 fn dispatch_message(

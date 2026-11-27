@@ -428,7 +428,7 @@ fn notes_for(id: u64) -> Arc<SourceQueue> {
       .iter()
       .find(|(stored, _)| *stored == id)
       .map(|(_, live)| Arc::clone(&live.notes))
-      .expect("event source")
+      .unwrap_or_else(|| Arc::new(SourceQueue::new()))
   })
 }
 
@@ -520,7 +520,14 @@ fn pump(scope: &mut v8::PinScope, id: u64) {
   }
   if source.ready.get() != CLOSED {
     arm(id);
+  } else {
+    forget(id);
   }
+}
+
+/// A closed source dispatches nothing more, so the realm stops holding it.
+fn forget(id: u64) {
+  LIVE.with(|slot| slot.borrow_mut().retain(|(stored, _)| *stored != id));
 }
 
 fn schedule_reconnect(id: u64, delay: u64) {
