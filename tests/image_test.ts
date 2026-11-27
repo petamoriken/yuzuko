@@ -107,15 +107,19 @@ Yuzuko.test("fetch reads file, blob, and data URLs", async () => {
     outside = error instanceof TypeError;
   }
   assert(outside, "outside entry");
-  let http = false;
-  try {
-    await fetch("https://example.test/hero.png");
-  } catch (error) {
-    // @ts-expect-error the rejection is a DOMException.
-    const rejected: DOMException = error;
-    http = rejected.name === "NotSupportedError";
+  // EventSource is present exactly when the build has the fetch feature,
+  // which sends http: and https: to the network.
+  if (typeof EventSource === "undefined") {
+    let http = false;
+    try {
+      await fetch("https://example.test/hero.png");
+    } catch (error) {
+      // @ts-expect-error the rejection is a DOMException.
+      const rejected: DOMException = error;
+      http = rejected.name === "NotSupportedError";
+    }
+    assert(http, "https");
   }
-  assert(http, "https");
 
   const blobUrl = URL.createObjectURL(await pngBlob());
   const fromBlob = await fetch(blobUrl);

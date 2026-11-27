@@ -283,12 +283,23 @@ Yuzuko.test("datagram arguments and close use the socket", async () => {
     let arity = "";
     let returned: unknown = "unset";
     try {
-      returned = socket.send(new Uint8Array([1]));
+      // @ts-expect-error data is required.
+      returned = socket.send();
     } catch (error) {
       arity = error instanceof TypeError ? error.message : "other";
     }
     assert(!(returned instanceof Promise), "short send returned a promise");
     assert(arity === "Not enough arguments", arity);
+
+    let unconnected = "";
+    returned = "unset";
+    try {
+      returned = socket.send(new Uint8Array([1]));
+    } catch (error) {
+      unconnected = error instanceof Yuzuko.errors.NotConnected ? error.message : "other";
+    }
+    assert(!(returned instanceof Promise), "unconnected send returned a promise");
+    assert(unconnected === "The socket is not connected.", unconnected);
 
     returned = "unset";
     let data = "";

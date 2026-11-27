@@ -48,7 +48,7 @@ function inkColumns(canvas: OffscreenCanvas): {
   return { minX, maxX, above, below };
 }
 
-Yuzuko.test("css filters parse and do not paint", () => {
+Yuzuko.test("css filters parse and paint", () => {
   const ctx = new OffscreenCanvas(8, 4).getContext("2d")!;
   assert(ctx.filter === "none", "default");
   ctx.filter = "blur(2px)";
@@ -77,16 +77,16 @@ Yuzuko.test("css filters parse and do not paint", () => {
   ctx.filter = "blur(4px)";
   ctx.fillStyle = "#ff0000";
   ctx.fillRect(2, 1, 2, 2);
-  assert(pixel(ctx, 2, 1).join() === "255,0,0,255", "sharp");
-  assert(pixel(ctx, 0, 0).join() === "0,0,0,0", "unblurred");
+  assert(pixel(ctx, 2, 1)[3] < 255, "blurred center");
+  assert(pixel(ctx, 0, 0)[3] > 0, "blurred spread");
 });
 
-Yuzuko.test("layers group alpha and keep filters unpainted", () => {
+Yuzuko.test("layers group alpha and restore state", () => {
   const ctx = new OffscreenCanvas(8, 4).getContext("2d")!;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, 8, 4);
   ctx.globalAlpha = 0.5;
-  ctx.filter = "blur(3px)";
+  ctx.filter = "opacity(100%)";
   ctx.beginLayer();
   assert(ctx.globalAlpha === 1, "alpha reset");
   assert(ctx.filter === "none", "filter reset");
@@ -94,16 +94,22 @@ Yuzuko.test("layers group alpha and keep filters unpainted", () => {
   ctx.fillRect(0, 0, 8, 4);
   ctx.fillStyle = "#00ff00";
   ctx.fillRect(0, 0, 8, 4);
-  assert(pixel(ctx, 1, 1).join() === "255,255,255,255", "open layer hidden");
+  let open = false;
+  try {
+    ctx.getImageData(0, 0, 1, 1);
+  } catch (error) {
+    open = error instanceof Error && error.name === "InvalidStateError";
+  }
+  assert(open, "open layer is not readable");
   ctx.endLayer();
   let restoredAlpha: number = ctx.globalAlpha;
   let restoredLayerFilter: string = ctx.filter;
   assert(restoredAlpha === 0.5, "alpha restored");
-  assert(restoredLayerFilter === "blur(3px)", "filter restored");
+  assert(restoredLayerFilter === "opacity(100%)", "filter restored");
   const [r, g, b, a] = pixel(ctx, 1, 1);
   assert(a === 255, "opaque canvas");
   assert(g > 240 && r > 100 && r < 160 && b > 100 && b < 160, `grouped ${r},${g},${b}`);
-  assert(pixel(ctx, 0, 0)[0] > 100, "edge stays sharp");
+  assert(pixel(ctx, 0, 0).join() === [r, g, b, a].join(), "edge matches");
 
   ctx.globalAlpha = 0.5;
   ctx.beginLayer();
@@ -170,8 +176,9 @@ Yuzuko.test("layer filters validate and clips do not leak", () => {
   ctx.fillStyle = "#00ff00";
   ctx.fillRect(2, 1, 2, 2);
   ctx.endLayer();
-  assert(pixel(ctx, 2, 1).join() === "0,255,0,255", "layer not blurred");
-  assert(pixel(ctx, 0, 0).join() === "0,0,0,0", "outside clear");
+  assert(pixel(ctx, 2, 1)[3] < 255, "layer blurred");
+  assert(pixel(ctx, 0, 0)[3] > 0, "blur spreads");
+  ctx.clearRect(0, 0, 8, 4);
 
   ctx.beginLayer();
   ctx.endLayer();
