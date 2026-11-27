@@ -308,7 +308,7 @@ impl Request {
     match self.take_body(scope) {
       Ok(bytes) => match crate::http::form::parse(&mime, &bytes) {
         Ok(form) => {
-          let object = unsafe { yuzuko_core::op::wrap_instance(scope, form) };
+          let object = crate::http::form::wrap(scope, form);
           let value: v8::Local<v8::Value> = object.into();
           resolve(scope, value)
         }

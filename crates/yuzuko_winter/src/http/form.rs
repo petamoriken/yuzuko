@@ -441,12 +441,30 @@ fn escape_quoted(text: &str) -> String {
     .replace('"', "%22")
 }
 
+/// Wraps a `FormData` the host built, such as a `formData()` result. The
+/// constructor's hook does not run for it, so this records the wrapper that
+/// iteration and `forEach` hand back to script.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+pub fn wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  form: FormData,
+) -> v8::Local<'s, v8::Object> {
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, form) };
+  if let Some(host) =
+    unsafe { yuzuko_core::op::host_ref::<FormData>(scope, object) }
+  {
+    *host.get().wrapper.borrow_mut() = Some(traced(scope, object));
+  }
+  object
+}
+
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 pub fn parse(mime: &str, body: &[u8]) -> Result<FormData, OpError> {
-  let mime = mime.to_ascii_lowercase();
-  let entries = if mime.starts_with("multipart/form-data") {
-    parse_multipart(&mime, body)?
-  } else if mime.starts_with("application/x-www-form-urlencoded") {
+  let lower = mime.to_ascii_lowercase();
+  // The boundary is compared byte for byte, so it keeps its case.
+  let entries = if lower.starts_with("multipart/form-data") {
+    parse_multipart(mime, body)?
+  } else if lower.starts_with("application/x-www-form-urlencoded") {
     parse_urlencoded(body)
   } else {
     return Err(OpError::type_("The response body is not form data"));
@@ -477,41 +495,61 @@ fn parse_urlencoded(body: &[u8]) -> Vec<Entry> {
 fn parse_multipart(mime: &str, body: &[u8]) -> Result<Vec<Entry>, OpError> {
   let boundary = mime
     .split(';')
-    .filter_map(|part| part.trim().strip_prefix("boundary="))
-    .next()
-    .map(|value| value.trim_matches('"').to_string())
+    .skip(1)
+    .filter_map(|part| part.split_once('='))
+    .find(|(key, _)| key.trim().eq_ignore_ascii_case("boundary"))
+    .map(|(_, value)| unquote(value.trim()))
+    .filter(|value| !value.is_empty())
     .ok_or_else(|| OpError::type_("The multipart body has no boundary"))?;
-  let marker = format!("--{boundary}");
-  let text = String::from_utf8_lossy(body);
-  if text.is_empty() {
+  if body.is_empty() {
     return Ok(Vec::new());
   }
-  let closing = format!("{marker}--");
-  if !text.contains(&closing) {
-    return Err(OpError::type_("The multipart body is incomplete"));
-  }
+  let incomplete = || OpError::type_("The multipart body is incomplete");
+  let marker = [b"--", boundary.as_bytes()].concat();
+  // Each later delimiter follows the CRLF that ends the previous part.
+  let delimiter = [b"\r\n", marker.as_slice()].concat();
+  let mut position = find(body, &marker, 0).ok_or_else(incomplete)?;
+  position += marker.len();
   let mut entries = Vec::new();
-  for part in text.split(&marker).skip(1) {
-    let part = part.trim_start_matches("\r\n");
-    if part.starts_with("--") || part.is_empty() {
-      continue;
+  loop {
+    if body[position..].starts_with(b"--") {
+      return Ok(entries);
     }
-    let Some((headers, content)) = part.split_once("\r\n\r\n") else {
+    // Transport padding after a delimiter is ignored.
+    while matches!(body.get(position), Some(b' ' | b'\t')) {
+      position += 1;
+    }
+    if !body[position..].starts_with(b"\r\n") {
+      return Err(incomplete());
+    }
+    position += 2;
+    let (headers, content_start) = if body[position..].starts_with(b"\r\n") {
+      (std::borrow::Cow::Borrowed(""), position + 2)
+    } else {
+      let head_end =
+        find(body, b"\r\n\r\n", position).ok_or_else(incomplete)?;
+      (
+        String::from_utf8_lossy(&body[position..head_end]),
+        head_end + 4,
+      )
+    };
+    let content_end =
+      find(body, &delimiter, content_start).ok_or_else(incomplete)?;
+    let content = &body[content_start..content_end];
+    position = content_end + delimiter.len();
+    let Some(disposition) = header_value(&headers, "content-disposition")
+    else {
       continue;
     };
-    let content = content.strip_suffix("\r\n").unwrap_or(content);
-    let name = header_param(headers, "name").unwrap_or_default();
-    if let Some(filename) = header_param(headers, "filename") {
-      let mime = headers
-        .lines()
-        .find(|line| line.to_ascii_lowercase().starts_with("content-type:"))
-        .and_then(|line| line.split_once(':'))
-        .map(|(_, value)| value.trim().to_string())
+    let name = disposition_param(disposition, "name").unwrap_or_default();
+    if let Some(filename) = disposition_param(disposition, "filename") {
+      let mime = header_value(&headers, "content-type")
+        .map(str::to_string)
         .unwrap_or_default();
       entries.push(Entry {
         name,
         value: Part::File {
-          bytes: content.as_bytes().to_vec(),
+          bytes: content.to_vec(),
           mime,
           filename,
         },
@@ -519,23 +557,65 @@ fn parse_multipart(mime: &str, body: &[u8]) -> Result<Vec<Entry>, OpError> {
     } else {
       entries.push(Entry {
         name,
-        value: Part::Text(content.to_string()),
+        value: Part::Text(String::from_utf8_lossy(content).into_owned()),
       });
     }
   }
-  Ok(entries)
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn header_param(headers: &str, name: &str) -> Option<String> {
-  let line = headers.lines().find(|line| {
-    line
-      .to_ascii_lowercase()
-      .starts_with("content-disposition:")
-  })?;
-  let needle = format!("{name}=\"");
-  let rest = line.split(&needle).nth(1)?;
-  Some(rest.split('"').next().unwrap_or("").to_string())
+fn find(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+  if needle.is_empty() || from > haystack.len() {
+    return None;
+  }
+  haystack[from..]
+    .windows(needle.len())
+    .position(|window| window == needle)
+    .map(|index| from + index)
+}
+
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+fn header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
+  headers.split("\r\n").find_map(|line| {
+    let (key, value) = line.split_once(':')?;
+    key.trim().eq_ignore_ascii_case(name).then(|| value.trim())
+  })
+}
+
+/// A `Content-Disposition` parameter. The value may be quoted, and a quoted
+/// value may contain `;`.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+fn disposition_param(value: &str, name: &str) -> Option<String> {
+  let mut rest = value.split_once(';')?.1;
+  loop {
+    let (key, after) = rest.split_once('=')?;
+    let after = after.trim_start();
+    let (raw, next) = if let Some(quoted) = after.strip_prefix('"') {
+      let end = quoted.find('"')?;
+      (&quoted[..end], &quoted[end + 1..])
+    } else {
+      match after.find(';') {
+        Some(end) => (&after[..end], &after[end..]),
+        None => (after, ""),
+      }
+    };
+    if key.trim().eq_ignore_ascii_case(name) {
+      return Some(raw.trim().to_string());
+    }
+    rest = next.split_once(';').map(|(_, rest)| rest).unwrap_or("");
+    if rest.is_empty() {
+      return None;
+    }
+  }
+}
+
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+fn unquote(value: &str) -> String {
+  value
+    .strip_prefix('"')
+    .and_then(|value| value.strip_suffix('"'))
+    .unwrap_or(value)
+    .to_string()
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]

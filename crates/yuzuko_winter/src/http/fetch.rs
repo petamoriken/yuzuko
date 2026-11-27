@@ -1055,7 +1055,7 @@ impl Response {
     self.consume_as(scope, move |scope, bytes, resolver| {
       match crate::http::form::parse(&mime, &bytes) {
         Ok(form) => {
-          let object = unsafe { yuzuko_core::op::wrap_instance(scope, form) };
+          let object = crate::http::form::wrap(scope, form);
           resolver.resolve(scope, object.into());
         }
         Err(error) => reject_op(scope, resolver, error),
