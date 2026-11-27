@@ -1422,31 +1422,93 @@ fn path_candidates(
   // `..` first would erase the link and allow a directory grant to escape.
   // `Entry` still follows a parent symlink. It leaves a final symlink as
   // that directory entry, so the grant covers the link and not its target.
-  let Some(resolved) = operating_path(&absolute, link) else {
-    return Ok(PathCandidates {
-      paths,
-      resolved: false,
-    });
-  };
-  let resolved = normalize(&strip_verbatim(resolved));
-  if !paths.iter().any(|item| paths_equal(item, &resolved)) {
-    paths.push(resolved.clone());
+  let walked = operating_path(&absolute, link);
+  if let Some(resolved) = &walked {
+    let resolved = normalize(&strip_verbatim(resolved.clone()));
+    if !paths.iter().any(|item| paths_equal(item, &resolved)) {
+      paths.push(resolved.clone());
+    }
+    push_canonical(&mut paths, &resolved, link);
   }
-  push_canonical(&mut paths, &resolved, link);
-  // `/.vol/<device>/<inode>` names a file by number, so no rule can match it.
-  let resolved = !paths.iter().any(|item| is_volfs(item));
+  push_drive_aliases(&mut paths);
+  let resolved = walked.is_some() && !paths.iter().any(|item| unnamed(item));
   Ok(PathCandidates { paths, resolved })
 }
 
+/// A path that names a file without a spelling the rules can match.
+/// `/.vol/<device>/<inode>` on macOS names a file by number.
 #[cfg(target_os = "macos")]
-fn is_volfs(path: &Path) -> bool {
+fn unnamed(path: &Path) -> bool {
   path_covers_with(Path::new("/.vol"), path, Fold::Exact)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn is_volfs(_path: &Path) -> bool {
+/// A Windows device path such as `\\.\HarddiskVolume1\` or
+/// `\\?\Volume{...}\` names a volume without its drive letter.
+#[cfg(windows)]
+fn unnamed(path: &Path) -> bool {
+  use std::path::Prefix;
+  match path.components().next() {
+    Some(Component::Prefix(prefix)) => match prefix.kind() {
+      Prefix::DeviceNS(name) => drive_letter(name).is_none(),
+      Prefix::Verbatim(_) => true,
+      _ => false,
+    },
+    _ => false,
+  }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn unnamed(_path: &Path) -> bool {
   false
 }
+
+/// `\\server\C$\x` and `\\.\C:\x` can name `C:\x` on this machine. Any
+/// server can be this machine under some name, so the drive spelling is an
+/// extra candidate: a deny of `C:\x` covers it, and a grant must cover both.
+#[cfg(windows)]
+fn push_drive_aliases(paths: &mut Vec<PathBuf>) {
+  use std::path::Prefix;
+  let mut aliases = Vec::new();
+  for path in paths.iter() {
+    let mut parts = path.components();
+    let Some(Component::Prefix(prefix)) = parts.next() else {
+      continue;
+    };
+    let letter = match prefix.kind() {
+      Prefix::UNC(_, share) | Prefix::VerbatimUNC(_, share) => {
+        let share = share.to_str().unwrap_or_default();
+        match share.as_bytes() {
+          [letter, b'$'] if letter.is_ascii_alphabetic() => Some(*letter),
+          _ => None,
+        }
+      }
+      Prefix::DeviceNS(name) => drive_letter(name),
+      _ => None,
+    };
+    let Some(letter) = letter else {
+      continue;
+    };
+    let mut alias = PathBuf::from(format!("{}:\\", letter as char));
+    alias.extend(parts.filter(|part| !matches!(part, Component::RootDir)));
+    aliases.push(alias);
+  }
+  for alias in aliases {
+    if !paths.iter().any(|item| paths_equal(item, &alias)) {
+      paths.push(alias);
+    }
+  }
+}
+
+#[cfg(windows)]
+fn drive_letter(name: &OsStr) -> Option<u8> {
+  match name.to_str()?.as_bytes() {
+    [letter, b':'] if letter.is_ascii_alphabetic() => Some(*letter),
+    _ => None,
+  }
+}
+
+#[cfg(not(windows))]
+fn push_drive_aliases(_paths: &mut Vec<PathBuf>) {}
 
 /// The data volume of macOS is mounted at `/System/Volumes/Data` and joined
 /// to the root by firmlinks, so `/Users/a` and `/System/Volumes/Data/Users/a`
@@ -2641,6 +2703,32 @@ mod tests {
       Path::new("/data/unew.txt"),
       Fold::Deny
     ));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn an_admin_share_and_a_device_path_alias_the_drive() {
+    for spelling in [
+      r"\\localhost\C$\secret\a.txt",
+      r"\\?\UNC\host\c$\secret\a.txt",
+      r"\\.\C:\secret\a.txt",
+    ] {
+      let mut paths = vec![PathBuf::from(spelling)];
+      push_drive_aliases(&mut paths);
+      assert!(
+        paths
+          .iter()
+          .any(|path| paths_equal(path, Path::new(r"C:\secret\a.txt"))),
+        "{spelling}: {paths:?}"
+      );
+    }
+    let mut paths = vec![PathBuf::from(r"\\host\share\a.txt")];
+    push_drive_aliases(&mut paths);
+    assert_eq!(paths.len(), 1);
+    assert!(unnamed(Path::new(r"\\.\HarddiskVolume1\a.txt")));
+    assert!(unnamed(Path::new(r"\\?\Volume{0}\a.txt")));
+    assert!(!unnamed(Path::new(r"\\.\C:\a.txt")));
+    assert!(!unnamed(Path::new(r"C:\a.txt")));
   }
 
   #[test]
