@@ -1122,7 +1122,7 @@ impl Context2D {
       .map_err(|_| OpError::type_("setLineDash requires a sequence"))?;
     let mut dash = Vec::new();
     for index in 0..array.length() {
-      let value = array.get_index(scope, index).unwrap();
+      let value = yuzuko_core::op::get_index(scope, array.into(), index)?;
       let number = objects::number(scope, value)?;
       if !number.is_finite() || number < 0.0 {
         return Err(OpError::dom(

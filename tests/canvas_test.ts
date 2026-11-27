@@ -407,3 +407,44 @@ Yuzuko.test("a canvas past the bitmap limit has no pixels", async () => {
   small.fillRect(0, 0, 2, 2);
   assert(pixel(small, 1, 1).join() === "0,0,0,255", "a small canvas still paints");
 });
+
+Yuzuko.test("a throwing element getter propagates from DOMMatrix and setLineDash", () => {
+  const thrown = new Error("element");
+  const matrix = [1, 0, 0, 1, 0, 0];
+  Object.defineProperty(matrix, 0, {
+    get() {
+      throw thrown;
+    },
+  });
+  let caught: unknown;
+  try {
+    new DOMMatrix(matrix);
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught === thrown, "DOMMatrix rethrows");
+  const dash = [1, 2];
+  Object.defineProperty(dash, 1, {
+    get() {
+      throw thrown;
+    },
+  });
+  caught = undefined;
+  const ctx = new OffscreenCanvas(1, 1).getContext("2d");
+  assert(ctx !== null, "context");
+  try {
+    ctx.setLineDash(dash);
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught === thrown, "setLineDash rethrows");
+  const long: number[] = [];
+  long.length = 2 ** 32 - 1;
+  caught = undefined;
+  try {
+    new DOMMatrix(long);
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught instanceof TypeError, "a long sequence is rejected");
+});

@@ -1274,26 +1274,28 @@ fn read_sequence(
   scope: &mut v8::PinScope,
   value: v8::Local<v8::Value>,
 ) -> Result<Option<Vec<f64>>, OpError> {
-  if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
-    let length = array.length();
-    let mut values = Vec::with_capacity(length as usize);
-    for index in 0..length {
-      let item = array.get_index(scope, index).unwrap();
-      values.push(number(scope, item)?);
-    }
-    return Ok(Some(values));
+  // A matrix sequence has 6 or 16 elements. A longer one is rejected
+  // before its elements are read.
+  const LONGEST: usize = 16;
+  let length = if let Ok(array) = v8::Local::<v8::Array>::try_from(value) {
+    array.length() as usize
+  } else if let Ok(typed) = v8::Local::<v8::TypedArray>::try_from(value) {
+    typed.length()
+  } else {
+    return Ok(None);
+  };
+  let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+    return Ok(None);
+  };
+  if length > LONGEST {
+    return Err(OpError::type_("The matrix sequence length is not 6 or 16"));
   }
-  if let Ok(typed) = v8::Local::<v8::TypedArray>::try_from(value) {
-    let length = typed.length();
-    let object = v8::Local::<v8::Object>::try_from(value).unwrap();
-    let mut values = Vec::with_capacity(length);
-    for index in 0..length {
-      let item = object.get_index(scope, index as u32).unwrap();
-      values.push(number(scope, item)?);
-    }
-    return Ok(Some(values));
+  let mut values = Vec::with_capacity(length);
+  for index in 0..length as u32 {
+    let item = yuzuko_core::op::get_index(scope, object, index)?;
+    values.push(number(scope, item)?);
   }
-  Ok(None)
+  Ok(Some(values))
 }
 
 fn readonly_from_floats(

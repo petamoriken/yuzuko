@@ -105,6 +105,26 @@ fn rethrow_exception(
   OpError::thrown(scope, exception)
 }
 
+/// `object[index]` with `[[Get]]`. An exception from a getter or a proxy
+/// trap becomes `OpError::Thrown` instead of an empty handle.
+pub fn get_index<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  object: v8::Local<v8::Object>,
+  index: u32,
+) -> Result<v8::Local<'s, v8::Value>, OpError> {
+  let captured = {
+    v8::tc_scope!(let tc, scope);
+    match object.get_index(tc, index) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => Err(caught_exception(tc)),
+    }
+  };
+  match captured {
+    Ok(value) => Ok(v8::Local::new(scope, value)),
+    Err(exception) => Err(rethrow_exception(scope, exception)),
+  }
+}
+
 impl FromV8 for String {
   #[inline]
   fn from_v8(
