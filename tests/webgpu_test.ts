@@ -2412,6 +2412,23 @@ Yuzuko.test("ImageData copies into a texture", async () => {
     }) === "InvalidStateError",
     "detached ImageData",
   );
+  const rectangles: [number[], number[]][] = [
+    [[0xffffffff, 0], [2, 1]],
+    [[0, 0], [200000, 200000]],
+    [[1, 0], [1, 1]],
+  ];
+  for (const [origin, size] of rectangles) {
+    assert(
+      throwName(() => {
+        device.queue.copyExternalImageToTexture(
+          { source: data, origin },
+          { texture },
+          size,
+        );
+      }) === "OperationError",
+      `source rectangle ${origin} ${size}`,
+    );
+  }
   device.destroy();
 });
 

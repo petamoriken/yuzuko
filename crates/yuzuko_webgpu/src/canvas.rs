@@ -833,6 +833,16 @@ pub fn copy_external_image(
   }
   let (width, height) = image_size(scope, size, raster.width, raster.height)?;
   let source_origin = origin_of(scope, source)?;
+  // The source rectangle is checked on the content timeline, before any
+  // pixel is read, as copyExternalImageToTexture specifies.
+  if u64::from(source_origin.0) + u64::from(width) > u64::from(raster.width)
+    || u64::from(source_origin.1) + u64::from(height) > u64::from(raster.height)
+  {
+    return Err(OpError::dom(
+      "OperationError",
+      "The copy extends past the source image",
+    ));
+  }
   let format = texture.format();
   let tight = texel_bytes(
     &raster,

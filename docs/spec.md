@@ -645,7 +645,7 @@ Level A is:
 
 ### WebGPU
 
-WebGPU is implemented on wgpu. The process has one default adapter. Canvas 2D uses the same `wgpu::Device`. Each `Window` has its own swapchain. `copyExternalImageToTexture` copies an `ImageBitmap`, an `ImageData`, an `OffscreenCanvas`, or a `VideoFrame`. Matching unorm8 bytes upload directly, and a float16 source, a color-space change, a sub-rectangle, or a `bgra8unorm` destination is converted on the CPU. The copy converts from the source color space into the destination `colorSpace`, `"srgb"` or `"display-p3"`. A float16 source is quantized to the destination texture format.
+WebGPU is implemented on wgpu. The process has one default adapter. Canvas 2D uses the same `wgpu::Device`. Each `Window` has its own swapchain. `copyExternalImageToTexture` copies an `ImageBitmap`, an `ImageData`, an `OffscreenCanvas`, or a `VideoFrame`. Matching unorm8 bytes upload directly, and a float16 source, a color-space change, a sub-rectangle, or a `bgra8unorm` destination is converted on the CPU. The copy converts from the source color space into the destination `colorSpace`, `"srgb"` or `"display-p3"`. A float16 source is quantized to the destination texture format. A source `origin` plus `copySize` past the source width or height throws `OperationError` before any pixel is read. A destination rectangle past the texture is a validation error on the device.
 
 Every wgpu call in v1 happens on the main thread. `YUZUKO_SKIP_GPU=1` makes `requestAdapter` resolve `null`.
 
