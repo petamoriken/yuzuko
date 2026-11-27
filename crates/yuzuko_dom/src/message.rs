@@ -1244,20 +1244,13 @@ fn set_shared_prototype(
   scope: &mut v8::PinScope,
   buffer: v8::Local<v8::SharedArrayBuffer>,
 ) {
-  let global = scope.get_current_context().global(scope);
-  let Some(name) = v8::String::new(scope, "SharedArrayBuffer") else {
+  // A fresh buffer made in this context carries the intrinsic
+  // %SharedArrayBuffer.prototype%, which script cannot replace the way it can
+  // replace `globalThis.SharedArrayBuffer`.
+  let Some(intrinsic) = v8::SharedArrayBuffer::new(scope, 0) else {
     return;
   };
-  let Some(ctor) = global.get(scope, name.into()) else {
-    return;
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return;
-  };
-  let Some(key) = v8::String::new(scope, "prototype") else {
-    return;
-  };
-  let Some(prototype) = ctor.get(scope, key.into()) else {
+  let Some(prototype) = intrinsic.get_prototype(scope) else {
     return;
   };
   let _ = buffer.set_prototype(scope, prototype);

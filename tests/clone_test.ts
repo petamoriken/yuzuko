@@ -1657,3 +1657,25 @@ Yuzuko.test("DataCloneError uses the realm's own DOMException", () => {
     throw new Error(`unexpected ${String(thrown)}`);
   }
 });
+
+Yuzuko.test("a received SharedArrayBuffer keeps the intrinsic prototype", async () => {
+  const original = globalThis.SharedArrayBuffer;
+  const channel = new MessageChannel();
+  try {
+    const decoy = { prototype: { decoy: true } };
+    // @ts-expect-error replace the global binding with a decoy.
+    globalThis.SharedArrayBuffer = decoy;
+    const received = new Promise<unknown>((resolve) => {
+      channel.port2.onmessage = (event) => resolve(event.data);
+    });
+    channel.port1.postMessage(new original(8));
+    const data = await received;
+    if (Object.getPrototypeOf(data) !== original.prototype) {
+      throw new Error("the buffer took the replaced global's prototype");
+    }
+  } finally {
+    globalThis.SharedArrayBuffer = original;
+    channel.port1.close();
+    channel.port2.close();
+  }
+});
