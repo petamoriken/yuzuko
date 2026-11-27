@@ -289,23 +289,65 @@ mod platform {
     child: Child,
   }
 
+  /// The first of `candidates` that exists. Script can change `PATH` and
+  /// write files, so a bare program name could run a file it planted.
+  fn system_program(candidates: &[&'static str]) -> Option<&'static str> {
+    candidates
+      .iter()
+      .copied()
+      .find(|path| std::path::Path::new(path).is_file())
+  }
+
+  /// `systemd-inhibit` holding the lock around `sleep infinity`. Both are
+  /// absolute paths, and the child gets an empty environment, so neither
+  /// `PATH` nor a loader variable set by script reaches it.
+  pub(super) fn inhibit_command() -> Option<Command> {
+    let inhibit =
+      system_program(&["/usr/bin/systemd-inhibit", "/bin/systemd-inhibit"])?;
+    let sleep = system_program(&["/usr/bin/sleep", "/bin/sleep"])?;
+    let mut command = Command::new(inhibit);
+    command
+      .env_clear()
+      .env("PATH", "/usr/bin:/bin")
+      .args([
+        "--what=idle:sleep",
+        "--who=Yuzuko",
+        "--why=screen wake lock",
+        "--mode=block",
+        sleep,
+        "infinity",
+      ])
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null());
+    Some(command)
+  }
+
   impl Hold {
     pub fn acquire() -> Result<Self, ()> {
-      let child = Command::new("systemd-inhibit")
-        .args([
-          "--what=idle:sleep",
-          "--who=Yuzuko",
-          "--why=screen wake lock",
-          "--mode=block",
-          "sleep",
-          "infinity",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| ())?;
+      let child = inhibit_command().ok_or(())?.spawn().map_err(|_| ())?;
       Ok(Self { child })
+    }
+  }
+
+  #[cfg(test)]
+  mod tests {
+    #[test]
+    fn inhibit_runs_absolute_programs_with_a_fixed_path() {
+      let Some(command) = super::inhibit_command() else {
+        return;
+      };
+      assert!(std::path::Path::new(command.get_program()).is_absolute());
+      let sleep = command.get_args().nth(4).unwrap();
+      assert!(std::path::Path::new(sleep).is_absolute(), "{sleep:?}");
+      let envs: Vec<_> = command.get_envs().collect();
+      assert_eq!(
+        envs,
+        vec![(
+          std::ffi::OsStr::new("PATH"),
+          Some(std::ffi::OsStr::new("/usr/bin:/bin"))
+        )]
+      );
     }
   }
 
