@@ -179,7 +179,7 @@ pub fn connect(url: url::Url, options: Options) -> Connection {
   let (commands, inbox) = tokio::sync::mpsc::unbounded_channel();
   COMMANDS.with(|slot| slot.borrow_mut().push(commands.clone()));
   let queued = notes.clone();
-  std::thread::spawn(move || {
+  let started = std::thread::Builder::new().spawn(move || {
     let runtime = match tokio::runtime::Builder::new_current_thread()
       .enable_all()
       .build()
@@ -192,6 +192,9 @@ pub fn connect(url: url::Url, options: Options) -> Connection {
     };
     runtime.block_on(session(url, options, inbox, queued));
   });
+  if let Err(error) = started {
+    fail(&notes, error.to_string());
+  }
   Connection { notes, commands }
 }
 

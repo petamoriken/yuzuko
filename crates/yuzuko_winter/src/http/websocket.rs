@@ -237,7 +237,7 @@ pub fn connect(
   let (commands, inbox) = tokio::sync::mpsc::unbounded_channel();
   COMMANDS.with(|slot| slot.borrow_mut().push(commands.clone()));
   let queued = notes.clone();
-  std::thread::spawn(move || {
+  let started = std::thread::Builder::new().spawn(move || {
     let runtime = match tokio::runtime::Builder::new_current_thread()
       .enable_all()
       .build()
@@ -251,6 +251,9 @@ pub fn connect(
     runtime
       .block_on(session(url, protocols, origin, target, pull, inbox, queued));
   });
+  if started.is_err() {
+    fail(&notes);
+  }
   Connection { notes, commands }
 }
 

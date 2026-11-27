@@ -236,9 +236,17 @@ fn begin(
 ) {
   let notes = notes_for(id);
   let done = Arc::clone(&closed);
-  std::thread::spawn(move || {
-    run_stream(url, last_id, done, generation, notes);
+  let queued = Arc::clone(&notes);
+  let started = std::thread::Builder::new().spawn(move || {
+    run_stream(url, last_id, done, generation, queued);
   });
+  // Without a thread the connection cannot be established. Fail it.
+  if started.is_err() {
+    notes.push(Tagged {
+      generation,
+      note: SourceNote::Fatal,
+    });
+  }
 }
 
 fn run_stream(
@@ -512,7 +520,8 @@ fn pump(scope: &mut v8::PinScope, id: u64) {
 }
 
 fn schedule_reconnect(id: u64, delay: u64) {
-  let listen = yuzuko_core::listen(move |scope| {
+  let delay = Duration::from_millis(delay.max(1));
+  yuzuko_core::schedule_host(delay, move |scope| {
     let Some(object) = live_object(scope, id) else {
       return;
     };
@@ -534,13 +543,6 @@ fn schedule_reconnect(id: u64, delay: u64) {
       Arc::clone(&source.closed),
       generation,
     );
-  });
-  std::thread::spawn(move || {
-    let steps = delay.div_ceil(50).max(1);
-    for _ in 0..steps {
-      std::thread::sleep(Duration::from_millis(50.min(delay.max(1))));
-    }
-    listen.notify();
   });
 }
 

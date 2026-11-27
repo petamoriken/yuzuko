@@ -394,6 +394,15 @@ fn host_arrays_define_their_elements() {
   assert!(stdout.contains("ok | 1 passed | 0 failed"), "{stdout}");
 }
 
+#[cfg(all(feature = "fetch", feature = "http"))]
+#[test]
+fn event_source_reconnects() {
+  let output = yuzuko(&["test", "-A", "tests/event_source_test.ts"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stdout));
+  let stdout = text(&output.stdout);
+  assert!(stdout.contains("ok | 1 passed | 0 failed"), "{stdout}");
+}
+
 #[test]
 fn microtask_runs_before_a_timer() {
   let output = yuzuko(&["test", "-A", "tests/order_test.ts"]);
