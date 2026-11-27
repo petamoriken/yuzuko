@@ -1470,7 +1470,20 @@ fn call_method<'s>(
   args: &[v8::Local<'_, v8::Value>],
 ) -> Result<v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>> {
   let key = v8::String::new(scope, name).unwrap();
-  let method = object.get(scope, key.into()).unwrap();
+  let method = {
+    v8::tc_scope!(let tc, scope);
+    match object.get(tc, key.into()) {
+      Some(value) => Ok(v8::Global::new(tc, value)),
+      None => Err(v8::Global::new(
+        tc,
+        tc.exception().unwrap_or_else(|| v8::undefined(tc).into()),
+      )),
+    }
+  };
+  let method = match method {
+    Ok(value) => v8::Local::new(scope, value),
+    Err(exception) => return Err(v8::Local::new(scope, exception)),
+  };
   let function = v8::Local::<v8::Function>::try_from(method).map_err(|_| {
     let message =
       v8::String::new(scope, "The stream method is missing").unwrap();

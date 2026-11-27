@@ -746,3 +746,25 @@ Yuzuko.test("ImageDecoder desired size scales every frame", async () => {
   assert(still.tracks[0]!.animated === false, "one track");
   still.close();
 });
+
+Yuzuko.test("a throwing getReader getter rejects the ImageDecoder", async () => {
+  const stream = new ReadableStream({
+    pull(controller) {
+      controller.close();
+    },
+  });
+  Object.defineProperty(stream, "getReader", {
+    get() {
+      throw new Error("getReader");
+    },
+  });
+  const decoder = new ImageDecoder({ data: stream, type: "image/png" });
+  decoder.completed.catch(() => {});
+  let name = "";
+  try {
+    await decoder.tracks.ready;
+  } catch (error) {
+    name = (error as DOMException).name;
+  }
+  assert(name === "EncodingError", `tracks.ready ${name}`);
+});
