@@ -620,54 +620,72 @@ fn synthetic_payload(hash: i32) -> Option<SyntheticSource> {
   host::with(|state| state.synthetic_sources.get(&hash).cloned())
 }
 
+/// The completion of a synthetic module's evaluation steps. V8 reads the
+/// value as a promise when a deferred namespace evaluates the module
+/// synchronously, so it must be a promise and not `undefined`.
+pub(crate) fn evaluated<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let resolver = v8::PromiseResolver::new(scope)?;
+  let undefined = v8::undefined(scope);
+  resolver.resolve(scope, undefined.into())?;
+  Some(resolver.get_promise(scope).into())
+}
+
 fn evaluate_json<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  v8::callback_scope!(unsafe scope, context);
-  let scope = &mut v8::ContextScope::new(scope, context);
-  let hash = module.get_identity_hash().get();
-  let text = match synthetic_payload(hash) {
-    Some(SyntheticSource::Json(text)) => text,
-    _ => "null".to_string(),
-  };
-  let source = v8::String::new(scope, &text)?;
-  let value = v8::json::parse(scope, source)?;
-  let name = v8::String::new(scope, "default")?;
-  module.set_synthetic_module_export(scope, name, value)?;
-  Some(v8::undefined(scope).into())
+  v8::callback_scope!(unsafe outer, context);
+  {
+    let scope = &mut v8::ContextScope::new(outer, context);
+    let hash = module.get_identity_hash().get();
+    let text = match synthetic_payload(hash) {
+      Some(SyntheticSource::Json(text)) => text,
+      _ => "null".to_string(),
+    };
+    let source = v8::String::new(scope, &text)?;
+    let value = v8::json::parse(scope, source)?;
+    let name = v8::String::new(scope, "default")?;
+    module.set_synthetic_module_export(scope, name, value)?;
+  }
+  evaluated(outer)
 }
 
 fn evaluate_text<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  v8::callback_scope!(unsafe scope, context);
-  let scope = &mut v8::ContextScope::new(scope, context);
-  let hash = module.get_identity_hash().get();
-  let SyntheticSource::Text(text) = synthetic_payload(hash)? else {
-    return None;
-  };
-  let value = v8::String::new(scope, &text)?;
-  let name = v8::String::new(scope, "default")?;
-  module.set_synthetic_module_export(scope, name, value.into())?;
-  Some(v8::undefined(scope).into())
+  v8::callback_scope!(unsafe outer, context);
+  {
+    let scope = &mut v8::ContextScope::new(outer, context);
+    let hash = module.get_identity_hash().get();
+    let SyntheticSource::Text(text) = synthetic_payload(hash)? else {
+      return None;
+    };
+    let value = v8::String::new(scope, &text)?;
+    let name = v8::String::new(scope, "default")?;
+    module.set_synthetic_module_export(scope, name, value.into())?;
+  }
+  evaluated(outer)
 }
 
 fn evaluate_bytes<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  v8::callback_scope!(unsafe scope, context);
-  let scope = &mut v8::ContextScope::new(scope, context);
-  let hash = module.get_identity_hash().get();
-  let SyntheticSource::Bytes(bytes) = synthetic_payload(hash)? else {
-    return None;
-  };
-  let view = immutable_uint8_array(scope, &bytes)?;
-  let name = v8::String::new(scope, "default")?;
-  module.set_synthetic_module_export(scope, name, view.into())?;
-  Some(v8::undefined(scope).into())
+  v8::callback_scope!(unsafe outer, context);
+  {
+    let scope = &mut v8::ContextScope::new(outer, context);
+    let hash = module.get_identity_hash().get();
+    let SyntheticSource::Bytes(bytes) = synthetic_payload(hash)? else {
+      return None;
+    };
+    let view = immutable_uint8_array(scope, &bytes)?;
+    let name = v8::String::new(scope, "default")?;
+    module.set_synthetic_module_export(scope, name, view.into())?;
+  }
+  evaluated(outer)
 }
 
 /// rusty_v8 does not expose `MakeImmutable`. `transferToImmutable` detaches
@@ -2903,5 +2921,97 @@ mod evaluation_tests {
       assert!(!error.message.contains("sk_live"), "{}", error.message);
     }
     let _ = fs::remove_dir_all(dir);
+  }
+}
+
+#[cfg(test)]
+mod synthetic_tests {
+  use std::path::Path;
+
+  use super::{
+    bind_synthetic, evaluate_bytes, evaluate_json, evaluate_text,
+    resolve_callback, source_callback,
+  };
+  use crate::host::{ModuleRecordKind, SyntheticSource};
+
+  fn names<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    url: &str,
+  ) -> (v8::Local<'s, v8::String>, v8::Local<'s, v8::String>) {
+    (
+      v8::String::new(scope, url).unwrap(),
+      v8::String::new(scope, "default").unwrap(),
+    )
+  }
+
+  fn assert_fulfilled<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    url: &str,
+    module: v8::Local<'s, v8::Module>,
+    kind: ModuleRecordKind,
+    payload: SyntheticSource,
+  ) {
+    let module = bind_synthetic(
+      scope,
+      url,
+      Path::new("/synthetic"),
+      kind,
+      module,
+      payload,
+    );
+    module
+      .instantiate_module2(scope, resolve_callback, source_callback)
+      .unwrap();
+    let result = module.evaluate(scope).unwrap();
+    let promise = v8::Local::<v8::Promise>::try_from(result)
+      .unwrap_or_else(|_| panic!("{url} did not return a promise"));
+    assert_eq!(promise.state(), v8::PromiseState::Fulfilled, "{url}");
+  }
+
+  #[test]
+  fn synthetic_evaluation_steps_return_a_fulfilled_promise() {
+    // A deferred namespace evaluates the module synchronously and reads the
+    // steps' completion as a promise.
+    crate::runtime::with_runtime(
+      false,
+      false,
+      |_| {},
+      |scope| {
+        let url = "file:///synthetic.json";
+        let (name, export) = names(scope, url);
+        let module = v8::Module::create_synthetic_module(
+          scope,
+          name,
+          &[export],
+          evaluate_json,
+        );
+        let json = SyntheticSource::Json("{}".to_string());
+        assert_fulfilled(scope, url, module, ModuleRecordKind::Json, json);
+
+        let url = "file:///synthetic.txt";
+        let (name, export) = names(scope, url);
+        let module = v8::Module::create_synthetic_module(
+          scope,
+          name,
+          &[export],
+          evaluate_text,
+        );
+        let text = SyntheticSource::Text("text".to_string());
+        assert_fulfilled(scope, url, module, ModuleRecordKind::Text, text);
+
+        let url = "file:///synthetic.bin";
+        let (name, export) = names(scope, url);
+        let module = v8::Module::create_synthetic_module(
+          scope,
+          name,
+          &[export],
+          evaluate_bytes,
+        );
+        let bytes = SyntheticSource::Bytes(vec![1, 2]);
+        assert_fulfilled(scope, url, module, ModuleRecordKind::Bytes, bytes);
+        Ok(())
+      },
+    )
+    .unwrap();
   }
 }

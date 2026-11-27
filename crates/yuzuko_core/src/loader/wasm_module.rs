@@ -54,17 +54,19 @@ fn evaluate_bridge<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  v8::callback_scope!(unsafe scope, context);
-  let scope = &mut v8::ContextScope::new(scope, context);
-  let note = v8::Function::new(scope, note_instance)?;
-  let note_name = v8::String::new(scope, "noteInstance")?;
-  note.set_name(note_name);
-  module.set_synthetic_module_export(scope, note_name, note.into())?;
-  let exports = v8::Function::new(scope, instance_exports)?;
-  let exports_name = v8::String::new(scope, "instanceExports")?;
-  exports.set_name(exports_name);
-  module.set_synthetic_module_export(scope, exports_name, exports.into())?;
-  Some(v8::undefined(scope).into())
+  v8::callback_scope!(unsafe outer, context);
+  {
+    let scope = &mut v8::ContextScope::new(outer, context);
+    let note = v8::Function::new(scope, note_instance)?;
+    let note_name = v8::String::new(scope, "noteInstance")?;
+    note.set_name(note_name);
+    module.set_synthetic_module_export(scope, note_name, note.into())?;
+    let exports = v8::Function::new(scope, instance_exports)?;
+    let exports_name = v8::String::new(scope, "instanceExports")?;
+    exports.set_name(exports_name);
+    module.set_synthetic_module_export(scope, exports_name, exports.into())?;
+  }
+  crate::loader::modules::evaluated(outer)
 }
 
 fn note_instance(
