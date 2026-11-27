@@ -374,12 +374,12 @@ pub fn encode(form: &FormData) -> (Vec<u8>, String) {
     body.extend_from_slice(b"--");
     body.extend_from_slice(boundary.as_bytes());
     body.extend_from_slice(b"\r\nContent-Disposition: form-data; name=\"");
-    body.extend_from_slice(entry.name.as_bytes());
+    body.extend_from_slice(escape_quoted(&crlf(&entry.name)).as_bytes());
     body.extend_from_slice(b"\"");
     match &entry.value {
       Part::Text(text) => {
         body.extend_from_slice(b"\r\n\r\n");
-        body.extend_from_slice(text.as_bytes());
+        body.extend_from_slice(crlf(text).as_bytes());
       }
       Part::File {
         bytes,
@@ -387,7 +387,7 @@ pub fn encode(form: &FormData) -> (Vec<u8>, String) {
         filename,
       } => {
         body.extend_from_slice(b"; filename=\"");
-        body.extend_from_slice(filename.as_bytes());
+        body.extend_from_slice(escape_quoted(filename).as_bytes());
         body.extend_from_slice(b"\"\r\nContent-Type: ");
         if mime.is_empty() {
           body.extend_from_slice(b"application/octet-stream");
@@ -404,6 +404,41 @@ pub fn encode(form: &FormData) -> (Vec<u8>, String) {
   body.extend_from_slice(boundary.as_bytes());
   body.extend_from_slice(b"--\r\n");
   (body, format!("multipart/form-data; boundary={boundary}"))
+}
+
+/// HTML's multipart/form-data encoding replaces a lone CR or LF in a name
+/// or a string value with CRLF.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+fn crlf(text: &str) -> std::borrow::Cow<'_, str> {
+  if !text.contains(['\r', '\n']) {
+    return std::borrow::Cow::Borrowed(text);
+  }
+  let mut out = String::with_capacity(text.len() + 8);
+  let mut chars = text.chars().peekable();
+  while let Some(ch) = chars.next() {
+    match ch {
+      '\r' => {
+        out.push_str("\r\n");
+        if chars.peek() == Some(&'\n') {
+          chars.next();
+        }
+      }
+      '\n' => out.push_str("\r\n"),
+      other => out.push(other),
+    }
+  }
+  std::borrow::Cow::Owned(out)
+}
+
+/// A name or file name inside a quoted `Content-Disposition` parameter
+/// escapes LF, CR, and `"` as `%0A`, `%0D`, and `%22`, so it cannot end the
+/// parameter or the header.
+#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
+fn escape_quoted(text: &str) -> String {
+  text
+    .replace('\n', "%0A")
+    .replace('\r', "%0D")
+    .replace('"', "%22")
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
