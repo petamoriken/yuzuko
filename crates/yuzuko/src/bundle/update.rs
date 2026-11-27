@@ -639,7 +639,10 @@ fn relative_path_ok(path: &str) -> bool {
   }
   let mut any = false;
   for segment in path.split('/') {
-    if segment.is_empty() || segment == "." || segment == ".." {
+    // Win32 drops a trailing dot or space, so `.. ` and `...` would name
+    // the parent there. Reject them on every target so a payload means the
+    // same tree everywhere.
+    if segment.is_empty() || segment.ends_with(['.', ' ']) {
       return false;
     }
     any = true;
@@ -1406,6 +1409,19 @@ mod tests {
       &[("../yuzuko.update-key", b"no")],
     );
     assert!(parse_payload(&escaped).is_err());
+    for path in [
+      ".. /key",
+      "a/... /key",
+      "a/.../key",
+      "a/b./c",
+      "a/b /c",
+      ".",
+    ] {
+      assert!(!relative_path_ok(path), "{path}");
+      let trimmed = encode_payload("1.1.0", "main.ts", &[(path, b"no")]);
+      assert!(parse_payload(&trimmed).is_err(), "{path}");
+    }
+    assert!(relative_path_ok("a/.hidden/b.txt"));
     let mut extra = good.clone();
     extra.push(b'x');
     assert!(parse_payload(&extra).is_err());

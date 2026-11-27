@@ -1393,7 +1393,7 @@ The feed document is JSON. Unknown fields are ignored.
 }
 ```
 
-`version` is a string in the form in the config table. `payload` is a relative path under `url`: no scheme, no leading slash, no empty, `.`, or `..` segment, no query, and no backslash. Each path is at most 1024 bytes. `signature` is standard base64, with padding, of the 64-byte Ed25519 signature of the exact payload bytes. A missing `signature`, a signature that is not that encoding, or a payload path that is not relative rejects the call and stages nothing.
+`version` is a string in the form in the config table. `payload` is a relative path under `url`: no scheme, no leading slash, no empty segment, no segment that ends in `.` or a space (which also excludes `.` and `..`), no query, and no backslash. Each path is at most 1024 bytes. `signature` is standard base64, with padding, of the 64-byte Ed25519 signature of the exact payload bytes. A missing `signature`, a signature that is not that encoding, or a payload path that is not relative rejects the call and stages nothing.
 
 `publicKey` is the trust anchor for that call. The feed cannot supply a key. The key that verifies a payload is written as 32 raw bytes to `Updates/public-key`, beside the payload and the signature. The next launch reads that file. It does not read a key from the config, from the feed, or from a file named `yuzuko.update-key`. A config that contains `release` fails `yuzuko package` before anything is written, because that name is not a field. A later version of the application, once its tree is applied, passes its own `publicKey`. That is how the trust anchor changes.
 
