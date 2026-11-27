@@ -24,6 +24,7 @@ mod host;
 mod http_server;
 mod idle;
 mod inspect;
+pub mod intrinsics;
 mod jobs;
 mod js;
 mod line;

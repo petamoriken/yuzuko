@@ -1124,17 +1124,11 @@ fn json_bytes(
   scope: &mut v8::PinScope,
   data: v8::Local<v8::Value>,
 ) -> Result<Vec<u8>, OpError> {
-  let global = scope.get_current_context().global(scope);
-  let json_key = v8::String::new(scope, "JSON").unwrap();
-  let stringify_key = v8::String::new(scope, "stringify").unwrap();
-  let json = global
-    .get(scope, json_key.into())
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-    .ok_or_else(|| OpError::type_("JSON.stringify is unavailable"))?;
-  let stringify = json
-    .get(scope, stringify_key.into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-    .ok_or_else(|| OpError::type_("JSON.stringify is unavailable"))?;
+  // %JSON.stringify% does not read its receiver.
+  let stringify =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "JSON.stringify")
+      .ok_or_else(|| OpError::type_("JSON.stringify is unavailable"))?;
+  let json: v8::Local<v8::Value> = v8::undefined(scope).into();
   let json = yuzuko_core::op::root(scope, json);
   let stringify = yuzuko_core::op::root(scope, stringify);
   let data = yuzuko_core::op::root(scope, data);
@@ -1143,7 +1137,7 @@ fn json_bytes(
     let json = v8::Local::new(tc, &json);
     let stringify = v8::Local::new(tc, &stringify);
     let data = v8::Local::new(tc, &data);
-    match stringify.call(tc, json.into(), &[data]) {
+    match stringify.call(tc, json, &[data]) {
       Some(value) => {
         if value.is_undefined() {
           Err(None)

@@ -117,6 +117,12 @@ fn idle() {
 }
 
 #[test]
+#[cfg(feature = "fetch")]
+fn intrinsics() {
+  simple("intrinsics_test.ts", 5);
+}
+
+#[test]
 fn intl() {
   simple("intl_test.ts", 1);
 }

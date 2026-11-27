@@ -17,6 +17,26 @@ pub use blob::{
   path_media_type, snapshot_blob,
 };
 pub use bytes::{array_buffer, buffer_source};
+
+/// Whether `value` is a `Headers` object, by its host brand.
+pub fn is_headers(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  #[cfg(feature = "fetch")]
+  {
+    let Ok(object) = v8::Local::<v8::Object>::try_from(value) else {
+      return false;
+    };
+    unsafe { yuzuko_core::op::host_ref::<http::fetch::Headers>(scope, object) }
+      .is_some()
+  }
+  #[cfg(not(feature = "fetch"))]
+  {
+    let _ = (scope, value);
+    false
+  }
+}
 #[cfg(feature = "fetch")]
 pub use http::sse::{SseError, SseItem, SseParser};
 #[cfg(feature = "socket")]

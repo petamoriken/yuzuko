@@ -144,6 +144,8 @@ pub struct HostState {
   pub time_origin_ms: f64,
   pub rejection_hook: Option<v8::Global<v8::Function>>,
   pub dom_exception: Option<v8::Global<v8::Function>>,
+  /// Built-ins captured before user code runs. See [`crate::intrinsics`].
+  pub intrinsics: HashMap<&'static str, v8::Global<v8::Value>>,
   /// Directory of the entry module. `file:` fetch may not leave it.
   pub entry_dir: Option<PathBuf>,
   /// Absolute `file:` URL of the entry module. Relative fetch resolves here.
@@ -199,6 +201,7 @@ impl HostState {
       time_origin_ms,
       rejection_hook: None,
       dom_exception: None,
+      intrinsics: HashMap::new(),
       entry_dir: None,
       entry_url: None,
       module_generation: 0,

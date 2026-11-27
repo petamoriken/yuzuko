@@ -3131,14 +3131,12 @@ fn resolve_bool(scope: &mut v8::PinScope, value: bool) -> Js {
 }
 
 fn quota_exceeded(scope: &mut v8::PinScope, message: &str) -> OpError {
-  let global = scope.get_current_context().global(scope);
-  let thrown = v8::String::new(scope, "QuotaExceededError")
-    .and_then(|key| global.get(scope, key.into()))
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-    .and_then(|constructor| {
-      let message = v8::String::new(scope, message)?;
-      constructor.new_instance(scope, &[message.into()])
-    });
+  let thrown =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "QuotaExceededError")
+      .and_then(|constructor| {
+        let message = v8::String::new(scope, message)?;
+        constructor.new_instance(scope, &[message.into()])
+      });
   if let Some(error) = thrown {
     return OpError::thrown(scope, error.into());
   }

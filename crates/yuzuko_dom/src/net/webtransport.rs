@@ -1742,7 +1742,7 @@ fn reject_headers(
   }
   let object = v8::Local::<v8::Object>::try_from(value)
     .map_err(|_| OpError::type_("headers must be a HeadersInit"))?;
-  if constructor_name(scope, object) == "Headers" {
+  if yuzuko_winter::is_headers(scope, object.into()) {
     return Err(OpError::dom(
       "NotSupportedError",
       "WebTransport headers are not supported",
@@ -2029,9 +2029,7 @@ fn construct<'s>(
   source: v8::Local<'_, v8::Object>,
   strategy: Option<v8::Local<'_, v8::Object>>,
 ) -> Option<v8::Local<'s, v8::Object>> {
-  let global = scope.get_current_context().global(scope);
-  let value = global.get(scope, key(scope, name).into())?;
-  let function = v8::Local::<v8::Function>::try_from(value).ok()?;
+  let function = yuzuko_core::intrinsics::intrinsic_function(scope, name)?;
   let source = yuzuko_core::op::root(scope, source);
   if let Some(strategy) = strategy {
     let strategy = yuzuko_core::op::root(scope, strategy);
@@ -2049,22 +2047,6 @@ fn property<'s>(
   object
     .get(scope, key(scope, name).into())
     .ok_or_else(|| OpError::type_("WebTransport options must be an object"))
-}
-
-fn constructor_name(
-  scope: &mut v8::PinScope,
-  object: v8::Local<v8::Object>,
-) -> String {
-  let Some(ctor) = object.get(scope, key(scope, "constructor").into()) else {
-    return String::new();
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return String::new();
-  };
-  let Some(name) = ctor.get(scope, key(scope, "name").into()) else {
-    return String::new();
-  };
-  yuzuko_core::rust_string(scope, name)
 }
 
 fn reason_code(scope: &mut v8::PinScope, reason: v8::Local<v8::Value>) -> u32 {

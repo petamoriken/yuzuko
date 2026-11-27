@@ -53,6 +53,7 @@ pub fn install(scope: &mut v8::PinScope) {
   for extension in extensions {
     extension(scope);
   }
+  crate::intrinsics::capture(scope);
 }
 
 pub fn cleanup() {

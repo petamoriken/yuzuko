@@ -1277,13 +1277,8 @@ fn coerce_request<'s>(
       .map_err(|_| OpError::type_("Cache.put requires a Request"))?;
     return Ok(yuzuko_core::op::root(scope, object));
   }
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "Request").unwrap();
-  let ctor = global
-    .get(scope, key.into())
+  let ctor = yuzuko_core::intrinsics::intrinsic_function(scope, "Request")
     .ok_or_else(|| OpError::type_("Cache.put requires a Request"))?;
-  let ctor = v8::Local::<v8::Function>::try_from(ctor)
-    .map_err(|_| OpError::type_("Cache.put requires a Request"))?;
   let created = {
     v8::tc_scope!(let tc, scope);
     match ctor.new_instance(tc, &[value]) {
@@ -1302,22 +1297,8 @@ fn call_fetch<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   request: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'s, v8::Promise>, OpError> {
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "fetch").unwrap();
-  let function = {
-    v8::tc_scope!(let tc, scope);
-    match global.get(tc, key.into()) {
-      Some(value) => Ok(v8::Global::new(tc, value)),
-      None => Err(tc.exception().map(|thrown| v8::Global::new(tc, thrown))),
-    }
-  };
-  let function = match function {
-    Ok(value) => v8::Local::new(scope, &value),
-    Err(Some(thrown)) => return Err(OpError::Thrown(Box::new(thrown))),
-    Err(None) => return Err(OpError::type_("fetch is not a function")),
-  };
-  let function = v8::Local::<v8::Function>::try_from(function)
-    .map_err(|_| OpError::type_("fetch is not a function"))?;
+  let function = yuzuko_core::intrinsics::intrinsic_function(scope, "fetch")
+    .ok_or_else(|| OpError::type_("fetch is not a function"))?;
   let called = {
     v8::tc_scope!(let tc, scope);
     let receiver = tc.get_current_context().global(tc);

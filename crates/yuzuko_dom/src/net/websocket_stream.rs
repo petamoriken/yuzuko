@@ -999,9 +999,7 @@ fn construct<'s>(
   name: &str,
   source: v8::Local<'_, v8::Object>,
 ) -> Option<v8::Local<'s, v8::Object>> {
-  let global = scope.get_current_context().global(scope);
-  let value = global.get(scope, key(scope, name).into())?;
-  let function = v8::Local::<v8::Function>::try_from(value).ok()?;
+  let function = yuzuko_core::intrinsics::intrinsic_function(scope, name)?;
   let source = yuzuko_core::op::root(scope, source);
   function.new_instance(scope, &[source.into()])
 }

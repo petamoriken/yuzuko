@@ -852,14 +852,9 @@ fn call_abort_signal_any<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   sources: &[v8::Local<'s, v8::Object>],
 ) -> Option<v8::Local<'s, v8::Object>> {
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "AbortSignal")?;
-  let ctor = global.get(scope, key.into())?;
-  let ctor = v8::Local::<v8::Function>::try_from(ctor).ok()?;
-  let name = v8::String::new(scope, "any")?;
-  let any = ctor
-    .get(scope, name.into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())?;
+  let ctor = yuzuko_core::intrinsics::intrinsic_function(scope, "AbortSignal")?;
+  let any =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "AbortSignal.any")?;
   let list = v8::Array::new(scope, sources.len() as i32);
   for (index, source) in sources.iter().enumerate() {
     let value: v8::Local<v8::Value> = (*source).into();

@@ -3317,11 +3317,8 @@ fn fail_close_write(
 fn fresh_abort_controller(
   scope: &mut v8::PinScope,
 ) -> Option<v8::Global<v8::Object>> {
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "AbortController")?;
-  let ctor = global
-    .get(scope, key.into())
-    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())?;
+  let ctor =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "AbortController")?;
   let controller = ctor.new_instance(scope, &[])?;
   Some(v8::Global::new(scope, controller))
 }
@@ -7472,14 +7469,12 @@ fn abort_signal<'s>(
   if !object.is_api_wrapper() {
     return Err(OpError::type_("The signal is not an AbortSignal"));
   }
-  let global = scope.get_current_context().global(scope);
-  let key = v8::String::new(scope, "AbortSignal").unwrap();
-  let Some(ctor) = global.get(scope, key.into()) else {
+  let Some(ctor) =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "AbortSignal")
+  else {
     return Err(OpError::type_("The signal is not an AbortSignal"));
   };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return Err(OpError::type_("The signal is not an AbortSignal"));
-  };
+  let ctor: v8::Local<v8::Object> = ctor.into();
   let object = yuzuko_core::op::root(scope, object);
   let ctor = yuzuko_core::op::root(scope, ctor);
   let probe: v8::Local<v8::Value> = object.into();
