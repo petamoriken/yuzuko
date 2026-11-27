@@ -18,7 +18,7 @@ fn tray_and_dock_pass_under_yuzuko_test() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   assert_eq!(output.status.code(), Some(0), "{stdout}\n{stderr}");
   assert!(
-    stdout.contains("ok | 1 passed | 0 failed | 0 ignored"),
+    stdout.contains("ok | 2 passed | 0 failed | 0 ignored"),
     "{stdout}\n{stderr}"
   );
 }

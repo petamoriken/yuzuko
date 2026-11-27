@@ -15,6 +15,10 @@ use yuzuko_dom::Event;
 std::thread_local! {
   static DOCK_MENU: RefCell<Option<muda::Menu>> = const { RefCell::new(None) };
   static REOPEN: RefCell<Option<bool>> = const { RefCell::new(None) };
+  /// `Yuzuko.dock` as installed. Events go to this object even when user
+  /// code replaces or deletes the property.
+  static TARGET: RefCell<Option<v8::Global<v8::Object>>> =
+    const { RefCell::new(None) };
 }
 
 #[cfg(target_os = "macos")]
@@ -32,6 +36,13 @@ pub fn install(scope: &mut v8::PinScope) {
   crate::handlers::define(scope, object, &["menuclick", "reopen"]);
   let key = v8::String::new(scope, "dock").unwrap();
   yuzuko.set(scope, key.into(), object.into());
+  let target = v8::Global::new(scope, object);
+  TARGET.with(|slot| *slot.borrow_mut() = Some(target));
+}
+
+/// Drops the installed dock object before the isolate goes away.
+pub fn release() {
+  TARGET.with(|slot| slot.borrow_mut().take());
 }
 
 pub fn clear() {
@@ -55,7 +66,9 @@ pub fn poll(scope: &mut v8::PinScope) {
 }
 
 pub fn dispatch_menu(scope: &mut v8::PinScope, action: &str) {
-  let target = dock_object(scope);
+  let Some(target) = dock_object(scope) else {
+    return;
+  };
   menu::emit_menuclick(scope, target, action);
 }
 
@@ -333,7 +346,9 @@ unsafe extern "C-unwind" fn reopen(
 
 #[cfg(target_os = "macos")]
 fn dispatch_reopen(scope: &mut v8::PinScope, has_visible: bool) {
-  let target = dock_object(scope);
+  let Some(target) = dock_object(scope) else {
+    return;
+  };
   let event = Event::new("reopen", false, false, false, true);
   let object = unsafe { yuzuko_core::op::wrap_instance(scope, event) };
   yuzuko_dom::define_is_trusted(scope, object);
@@ -345,11 +360,13 @@ fn dispatch_reopen(scope: &mut v8::PinScope, has_visible: bool) {
 
 fn dock_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-) -> v8::Local<'s, v8::Object> {
-  let yuzuko = menu::yuzuko_object(scope);
-  let key = v8::String::new(scope, "dock").unwrap();
-  let value = yuzuko.get(scope, key.into()).unwrap();
-  v8::Local::<v8::Object>::try_from(value).expect("Yuzuko.dock")
+) -> Option<v8::Local<'s, v8::Object>> {
+  TARGET.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .map(|target| v8::Local::new(scope, target))
+  })
 }
 
 fn unsupported(message: impl Into<String>) -> OpError {

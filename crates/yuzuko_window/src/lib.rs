@@ -106,6 +106,7 @@ fn install(scope: &mut v8::PinScope) {
 fn shutdown() {
   shell::tray::clear();
   shell::dock::clear();
+  shell::dock::release();
   shell::menu::clear();
   input::keyboard::clear();
   os::shutdown();

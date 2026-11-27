@@ -129,3 +129,33 @@ Yuzuko.test("tray and dock use methods and their own menuclick", () => {
   }
   assert(closed === "InvalidStateError", `closed tray: ${closed}`);
 });
+
+Yuzuko.test("a dock menuclick reaches the installed dock object", () => {
+  if (Yuzuko.build.os !== "darwin") {
+    return;
+  }
+  const dock = Yuzuko.dock;
+  const window = new Yuzuko.Window({ width: 80, height: 60, title: "dock" });
+  let action = "";
+  const onDock = (event: Event) => {
+    // @ts-expect-error The host event carries action.
+    action = event.action ?? "";
+  };
+  dock.addEventListener("menuclick", onDock);
+  const descriptor = Object.getOwnPropertyDescriptor(Yuzuko, "dock")!;
+  try {
+    dock.setMenu(new Yuzuko.Menu([{ label: "Quit", action: "dock.replaced" }]));
+    Object.defineProperty(Yuzuko, "dock", {
+      configurable: true,
+      get() {
+        throw new Error("dock getter");
+      },
+    });
+    Yuzuko.__test.inject(window, [{ kind: "menu", action: "dock.replaced" }]);
+    assert(action === "dock.replaced", `action ${action}`);
+  } finally {
+    Object.defineProperty(Yuzuko, "dock", descriptor);
+    dock.removeEventListener("menuclick", onDock);
+    window.close();
+  }
+});
