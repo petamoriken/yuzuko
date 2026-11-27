@@ -139,3 +139,19 @@ Yuzuko.test("fetch reads file, blob, and data URLs", async () => {
   const parsed = await json.json();
   assert(parsed.n === 1, "json");
 });
+
+Yuzuko.test("resize options take the integer part", async () => {
+  const source = new ImageData(4, 4);
+  const bitmap = await createImageBitmap(source, {
+    resizeWidth: 2.7,
+    resizeHeight: 3.5,
+  });
+  assert(bitmap.width === 2 && bitmap.height === 3, `${bitmap.width}x${bitmap.height}`);
+  let zero = "";
+  try {
+    await createImageBitmap(source, { resizeWidth: 0.9 });
+  } catch (error) {
+    zero = (error as Error).name;
+  }
+  assert(zero === "InvalidStateError", zero);
+});

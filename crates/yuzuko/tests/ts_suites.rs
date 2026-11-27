@@ -108,7 +108,7 @@ fn http() {
 #[test]
 #[cfg(all(feature = "image", feature = "canvas"))]
 fn image() {
-  simple("image_test.ts", 4);
+  simple("image_test.ts", 5);
 }
 
 #[test]

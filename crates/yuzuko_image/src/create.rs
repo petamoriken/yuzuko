@@ -563,11 +563,8 @@ fn enforce_unsigned_long(number: f64) -> Result<Option<u32>, Reject> {
       "The provided value cannot be converted to 'unsigned long'".to_string(),
     ));
   }
-  let rounded = if number == 0.0 {
-    0.0
-  } else {
-    number.round_ties_even()
-  };
+  // [EnforceRange] takes the integer part, so 2.7 is 2.
+  let rounded = if number == 0.0 { 0.0 } else { number.trunc() };
   if rounded < 0.0 || rounded > 4_294_967_295.0 {
     return Err(Reject::Type(
       "The provided value is outside the 'unsigned long' range".to_string(),
