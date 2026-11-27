@@ -47,6 +47,8 @@ Yuzuko.test("loaded FontFace families shape differently from sans-serif", async 
   await loadUrl("YuzukoWoffUrl", "YuzukoTest.woff");
   await loadBuffer("YuzukoWoff2Buf", "YuzukoTest.woff2");
   await loadUrl("YuzukoWoff2Url", "YuzukoTest.woff2");
+  // glyf and loca use the WOFF2 transform, as most WOFF2 files do.
+  await loadBuffer("YuzukoWoff2Glyf", "YuzukoTest-transformed.woff2");
 
   const generic = widthOf("sans-serif");
   for (const family of [
@@ -58,6 +60,7 @@ Yuzuko.test("loaded FontFace families shape differently from sans-serif", async 
     "YuzukoWoffUrl",
     "YuzukoWoff2Buf",
     "YuzukoWoff2Url",
+    "YuzukoWoff2Glyf",
   ]) {
     const width = widthOf(family);
     assert(Math.abs(width - generic) > 1, `${family} width ${width} vs ${generic}`);

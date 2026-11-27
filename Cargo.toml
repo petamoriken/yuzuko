@@ -34,6 +34,7 @@ encoding_rs = "0.8"
 url = "2"
 percent-encoding = "2.3"
 data-url = "0.3"
+wuff = { version = "0.2.10", default-features = false, features = ["brotli", "z"] }
 httparse = "1.10"
 v8 = "152"
 libc = "0.2"

@@ -1539,186 +1539,12 @@ fn decode_woff(bytes: &[u8]) -> Result<Vec<u8>, String> {
   Ok(out)
 }
 
-const WOFF2_TAGS: [&[u8; 4]; 63] = [
-  b"cmap", b"head", b"hhea", b"hmtx", b"maxp", b"name", b"OS/2", b"post",
-  b"cvt ", b"fpgm", b"glyf", b"loca", b"prep", b"CFF ", b"VORG", b"EBDT",
-  b"EBLC", b"gasp", b"hdmx", b"kern", b"LTSH", b"PCLT", b"VDMX", b"vhea",
-  b"vmtx", b"BASE", b"GDEF", b"GPOS", b"GSUB", b"EBSC", b"JSTF", b"MATH",
-  b"CBDT", b"CBLC", b"COLR", b"CPAL", b"SVG ", b"sbix", b"acnt", b"avar",
-  b"bdat", b"bloc", b"bsln", b"cvar", b"fdsc", b"feat", b"fmtx", b"fvar",
-  b"gvar", b"hsty", b"just", b"lcar", b"mort", b"morx", b"opbd", b"prop",
-  b"trak", b"Zapf", b"Silf", b"Glat", b"Gloc", b"Feat", b"Sill",
-];
-
+/// Decodes WOFF2 with `wuff`, a port of the reference decoder. It rebuilds
+/// transformed `glyf`, `loca`, and `hmtx` tables, and caps the output at
+/// 128 MiB and the compression ratio at 100.
 fn decode_woff2(bytes: &[u8]) -> Result<Vec<u8>, String> {
-  if bytes.len() < 48 {
-    return Err("The font data is invalid".to_string());
-  }
-  let flavor = read_u32(bytes, 4)?;
-  let num = read_u16(bytes, 12)?;
-  let compressed_size = read_u32(bytes, 20)? as usize;
-  let mut cursor = 48usize;
-  let mut tables = Vec::with_capacity(num as usize);
-  for _ in 0..num {
-    let flags = *bytes
-      .get(cursor)
-      .ok_or_else(|| "The font data is invalid".to_string())?;
-    cursor += 1;
-    let index = flags & 0x3F;
-    let version = flags & 0xC0;
-    let tag = if index == 0x3F {
-      let tag = read_u32(bytes, cursor)?;
-      cursor += 4;
-      tag
-    } else {
-      let known = WOFF2_TAGS
-        .get(index as usize)
-        .ok_or_else(|| "The font data is invalid".to_string())?;
-      u32::from_be_bytes(**known)
-    };
-    let orig = read_base128(bytes, &mut cursor)?;
-    let tag_bytes = tag.to_be_bytes();
-    let glyf_or_loca = tag_bytes == *b"glyf" || tag_bytes == *b"loca";
-    let transformed = if glyf_or_loca {
-      version != 0xC0
-    } else {
-      version != 0
-    };
-    if transformed {
-      return Err("The WOFF2 table transform is not supported".to_string());
-    }
-    tables.push((tag, orig as usize));
-  }
-  if cursor.saturating_add(compressed_size) > bytes.len() {
-    return Err("The font data is invalid".to_string());
-  }
-  let total = tables
-    .iter()
-    .try_fold(0usize, |sum, (_, length)| sum.checked_add(*length))
-    .filter(|total| *total <= MAX_SFNT)
-    .ok_or_else(|| "The font data is too large".to_string())?;
-  let mut plain = Vec::new();
-  // One byte past the declared tables is enough to reject extra data.
-  let mut decoder =
-    brotli::Decompressor::new(&bytes[cursor..cursor + compressed_size], 4096)
-      .take(total as u64 + 1);
-  decoder
-    .read_to_end(&mut plain)
-    .map_err(|_| "The font data is invalid".to_string())?;
-  let mut offset = 0usize;
-  let mut rebuilt = Vec::new();
-  for (tag, length) in tables {
-    let end = offset + length;
-    if end > plain.len() {
-      return Err("The font data is invalid".to_string());
-    }
-    rebuilt.push((tag, plain[offset..end].to_vec()));
-    offset = end;
-  }
-  if offset != plain.len() {
-    return Err("The font data is invalid".to_string());
-  }
-  rebuilt.sort_by_key(|(tag, _)| *tag);
-  write_sfnt(flavor, &mut rebuilt)
-}
-
-fn write_sfnt(
-  flavor: u32,
-  tables: &mut [(u32, Vec<u8>)],
-) -> Result<Vec<u8>, String> {
-  if let Some((_, head)) = tables
-    .iter_mut()
-    .find(|(tag, _)| tag.to_be_bytes() == *b"head")
-    && head.len() >= 12
-  {
-    head[8..12].copy_from_slice(&0u32.to_be_bytes());
-  }
-  let num = u16::try_from(tables.len())
-    .map_err(|_| "The font data is invalid".to_string())?;
-  let (search, entry, shift) = sfnt_search(num);
-  let mut directory = Vec::new();
-  let mut body = Vec::new();
-  let mut offset = 12u32 + u32::from(num) * 16;
-  for (tag, data) in tables.iter() {
-    let checksum = checksum(data);
-    directory.extend_from_slice(&tag.to_be_bytes());
-    directory.extend_from_slice(&checksum.to_be_bytes());
-    directory.extend_from_slice(&offset.to_be_bytes());
-    directory.extend_from_slice(&(data.len() as u32).to_be_bytes());
-    body.extend_from_slice(data);
-    let pad = (4 - data.len() % 4) % 4;
-    body.extend(std::iter::repeat_n(0, pad));
-    offset += (data.len() + pad) as u32;
-  }
-  let mut header = Vec::new();
-  header.extend_from_slice(&flavor.to_be_bytes());
-  header.extend_from_slice(&num.to_be_bytes());
-  header.extend_from_slice(&search.to_be_bytes());
-  header.extend_from_slice(&entry.to_be_bytes());
-  header.extend_from_slice(&shift.to_be_bytes());
-  let mut font = header;
-  font.extend_from_slice(&directory);
-  font.extend_from_slice(&body);
-  let adjustment = 0xB1B0_AFBA_u32.wrapping_sub(checksum(&font));
-  if let Some(index) = tables
-    .iter()
-    .position(|(tag, _)| tag.to_be_bytes() == *b"head")
-  {
-    let head_offset = 12 + tables.len() * 16;
-    let mut cursor = 0usize;
-    for (table_index, (_, data)) in tables.iter().enumerate() {
-      if table_index == index {
-        let at = head_offset + cursor + 8;
-        if at + 4 <= font.len() {
-          font[at..at + 4].copy_from_slice(&adjustment.to_be_bytes());
-        }
-        break;
-      }
-      cursor += data.len() + (4 - data.len() % 4) % 4;
-    }
-  }
-  Ok(font)
-}
-
-fn checksum(data: &[u8]) -> u32 {
-  let mut sum = 0u32;
-  let mut index = 0;
-  while index + 4 <= data.len() {
-    sum = sum.wrapping_add(u32::from_be_bytes([
-      data[index],
-      data[index + 1],
-      data[index + 2],
-      data[index + 3],
-    ]));
-    index += 4;
-  }
-  if index < data.len() {
-    let mut tail = [0u8; 4];
-    tail[..data.len() - index].copy_from_slice(&data[index..]);
-    sum = sum.wrapping_add(u32::from_be_bytes(tail));
-  }
-  sum
-}
-
-fn read_base128(bytes: &[u8], cursor: &mut usize) -> Result<u32, String> {
-  let mut result = 0u32;
-  for i in 0..5 {
-    let byte = *bytes
-      .get(*cursor)
-      .ok_or_else(|| "The font data is invalid".to_string())?;
-    *cursor += 1;
-    if i == 0 && byte == 0x80 {
-      return Err("The font data is invalid".to_string());
-    }
-    if result & 0xFE00_0000 != 0 {
-      return Err("The font data is invalid".to_string());
-    }
-    result = (result << 7) | u32::from(byte & 0x7F);
-    if byte & 0x80 == 0 {
-      return Ok(result);
-    }
-  }
-  Err("The font data is invalid".to_string())
+  wuff::decompress_woff2(bytes)
+    .map_err(|_| "The font data is invalid".to_string())
 }
 
 fn sfnt_search(num: u16) -> (u16, u16, u16) {
@@ -1790,7 +1616,11 @@ mod tests {
   fn the_woff_fixtures_still_decode() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
       .join("../../tests/fonts");
-    for name in ["YuzukoTest.woff", "YuzukoTest.woff2"] {
+    for name in [
+      "YuzukoTest.woff",
+      "YuzukoTest.woff2",
+      "YuzukoTest-transformed.woff2",
+    ] {
       let bytes = std::fs::read(dir.join(name)).unwrap();
       assert!(super::decode_sfnt(&bytes).is_ok(), "{name}");
     }
