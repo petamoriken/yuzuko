@@ -310,10 +310,12 @@ fn run_stream(
     match response.body.wait_note(Duration::from_millis(200)) {
       Some(BodyNote::Chunk(bytes)) => match parser.push(&bytes) {
         Ok(items) => emit_items(&notes, generation, items),
+        // An event past the size limit would arrive again on reconnect.
         Err(yuzuko_winter::SseError) => {
+          response.body.stop();
           notes.push(Tagged {
             generation,
-            note: SourceNote::Down,
+            note: SourceNote::Fatal,
           });
           return;
         }
@@ -486,7 +488,9 @@ fn pump(scope: &mut v8::PinScope, id: u64) {
         if !event_id.contains('\0') {
           *source.last_id.borrow_mut() = event_id.clone();
         }
-        let text = v8::String::new(scope, &data).unwrap();
+        let Some(text) = v8::String::new(scope, &data) else {
+          continue;
+        };
         let message = trusted_message(
           scope,
           &name,

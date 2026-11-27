@@ -28,12 +28,7 @@
   "eventsource/eventsource-url.any.js": true,
   "eventsource/format-bom-2.any.js": true,
   "eventsource/format-bom-split.any.js": true,
-  "eventsource/format-bom-utf-16.any.js": {
-    "expectedFailures": [
-      "EventSource: UTF-16BE byte order mark is not used",
-      "EventSource: UTF-16LE byte order mark is not used"
-    ]
-  },
+  "eventsource/format-bom-utf-16.any.js": true,
   "eventsource/format-bom.any.js": true,
   "eventsource/format-comments.any.js": true,
   "eventsource/format-data-before-final-empty-line.any.js": true,

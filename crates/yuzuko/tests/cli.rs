@@ -417,7 +417,7 @@ fn event_source_reconnects() {
   let output = yuzuko(&["test", "-A", "tests/event_source_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stdout));
   let stdout = text(&output.stdout);
-  assert!(stdout.contains("ok | 1 passed | 0 failed"), "{stdout}");
+  assert!(stdout.contains("ok | 2 passed | 0 failed"), "{stdout}");
 }
 
 #[test]

@@ -34,3 +34,25 @@ Yuzuko.test("EventSource reconnects after the retry delay", async () => {
     server.close();
   }
 });
+
+Yuzuko.test("EventSource decodes invalid UTF-8 with replacement characters", async () => {
+  const server = Yuzuko.listenHttp({ hostname: "127.0.0.1", port: 0 });
+  const source = new EventSource(`http://127.0.0.1:${server.addr.port}/`);
+  try {
+    const message = new Promise<string>((resolve) => {
+      source.onmessage = (event) => resolve(event.data);
+    });
+    const request = await server.accept();
+    const body = Uint8Array.from([
+      ...new TextEncoder().encode("data: a"),
+      0xff,
+      ...new TextEncoder().encode("b\n\n"),
+    ]);
+    await request.respond(body, 200, { "content-type": "text/event-stream" });
+    const data = await message;
+    assert(data === "a\uFFFDb", JSON.stringify(data));
+  } finally {
+    source.close();
+    server.close();
+  }
+});
