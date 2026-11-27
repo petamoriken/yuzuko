@@ -1466,10 +1466,15 @@ fn decode_sfnt_inner(bytes: &[u8]) -> Result<Vec<u8>, String> {
   }
 }
 
+/// The decompressed tables of one WOFF or WOFF2 file. A larger declared
+/// size is rejected before anything is inflated.
+const MAX_SFNT: usize = 128 * 1024 * 1024;
+
 fn decode_woff(bytes: &[u8]) -> Result<Vec<u8>, String> {
   if bytes.len() < 44 {
     return Err("The font data is invalid".to_string());
   }
+  let mut total = 0usize;
   let flavor = read_u32(bytes, 4)?;
   let num = read_u16(bytes, 12)?;
   let mut tables = Vec::with_capacity(num as usize);
@@ -1486,11 +1491,16 @@ fn decode_woff(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if offset.saturating_add(comp) > bytes.len() {
       return Err("The font data is invalid".to_string());
     }
+    total = total.saturating_add(orig);
+    if total > MAX_SFNT {
+      return Err("The font data is too large".to_string());
+    }
     let slice = &bytes[offset..offset + comp];
     let data = if comp == orig {
       slice.to_vec()
     } else {
-      let mut decoder = ZlibDecoder::new(slice);
+      // One byte past `orig` is enough to tell that the table is too long.
+      let mut decoder = ZlibDecoder::new(slice).take(orig as u64 + 1);
       let mut data = Vec::new();
       decoder
         .read_to_end(&mut data)
@@ -1579,12 +1589,19 @@ fn decode_woff2(bytes: &[u8]) -> Result<Vec<u8>, String> {
     }
     tables.push((tag, orig as usize));
   }
-  if cursor + compressed_size > bytes.len() {
+  if cursor.saturating_add(compressed_size) > bytes.len() {
     return Err("The font data is invalid".to_string());
   }
+  let total = tables
+    .iter()
+    .try_fold(0usize, |sum, (_, length)| sum.checked_add(*length))
+    .filter(|total| *total <= MAX_SFNT)
+    .ok_or_else(|| "The font data is too large".to_string())?;
   let mut plain = Vec::new();
+  // One byte past the declared tables is enough to reject extra data.
   let mut decoder =
-    brotli::Decompressor::new(&bytes[cursor..cursor + compressed_size], 4096);
+    brotli::Decompressor::new(&bytes[cursor..cursor + compressed_size], 4096)
+      .take(total as u64 + 1);
   decoder
     .read_to_end(&mut plain)
     .map_err(|_| "The font data is invalid".to_string())?;
@@ -1733,6 +1750,51 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
   use super::parse_variant;
+
+  /// A WOFF with one table whose directory entry declares `orig` bytes and
+  /// whose data is `inflated` zeros compressed with zlib.
+  fn woff(orig: u32, inflated: usize) -> Vec<u8> {
+    use std::io::Write;
+    let mut encoder =
+      flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder.write_all(&vec![0u8; inflated]).unwrap();
+    let data = encoder.finish().unwrap();
+    let mut out = vec![0u8; 44];
+    out[0..4].copy_from_slice(b"wOFF");
+    out[4..8].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+    out[12..14].copy_from_slice(&1u16.to_be_bytes());
+    let offset = 44 + 20;
+    out.extend_from_slice(b"head");
+    out.extend_from_slice(&(offset as u32).to_be_bytes());
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(&orig.to_be_bytes());
+    out.extend_from_slice(&0u32.to_be_bytes());
+    out.extend_from_slice(&data);
+    out
+  }
+
+  #[test]
+  fn a_woff_table_inflates_no_further_than_its_declared_length() {
+    assert!(super::decode_woff(&woff(16, 16)).is_ok());
+    // A table that inflates past its declared length stops one byte later.
+    assert!(super::decode_woff(&woff(16, 1 << 20)).is_err());
+    // A declared length past the limit is rejected before inflating.
+    let declared = (super::MAX_SFNT + 1) as u32;
+    assert_eq!(
+      super::decode_woff(&woff(declared, 16)).unwrap_err(),
+      "The font data is too large"
+    );
+  }
+
+  #[test]
+  fn the_woff_fixtures_still_decode() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+      .join("../../tests/fonts");
+    for name in ["YuzukoTest.woff", "YuzukoTest.woff2"] {
+      let bytes = std::fs::read(dir.join(name)).unwrap();
+      assert!(super::decode_sfnt(&bytes).is_ok(), "{name}");
+    }
+  }
 
   #[test]
   fn variant_parses_font_variant_keywords() {
