@@ -112,3 +112,17 @@ Yuzuko.test("urlencoded bodies percent-decode before UTF-8", async () => {
     throw new Error(JSON.stringify(entries));
   }
 });
+
+Yuzuko.test("append can be called again from a value's toString", () => {
+  const form = new FormData();
+  form.append("a", {
+    toString() {
+      form.append("b", "x");
+      return "v";
+    },
+  } as unknown as string);
+  const entries = [...form].map(([name, value]) => `${name}=${value}`);
+  if (entries.join("&") !== "b=x&a=v") {
+    throw new Error(entries.join("&"));
+  }
+});

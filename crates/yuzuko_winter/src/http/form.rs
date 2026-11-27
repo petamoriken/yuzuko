@@ -74,10 +74,10 @@ impl FormData {
     value: v8::Local<v8::Value>,
     filename: Option<String>,
   ) -> Result<(), OpError> {
-    self.entries.borrow_mut().push(Entry {
-      name,
-      value: read_part(scope, value, filename)?,
-    });
+    // `read_part` runs a user `toString`, which may call back into this
+    // FormData, so the entries are borrowed only after it returns.
+    let value = read_part(scope, value, filename)?;
+    self.entries.borrow_mut().push(Entry { name, value });
     Ok(())
   }
 
