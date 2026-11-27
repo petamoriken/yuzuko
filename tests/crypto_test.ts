@@ -368,3 +368,50 @@ Yuzuko.test("SubtleCrypto.supports accepts implemented suites and rejects the re
     SubtleCrypto.supports();
   });
 });
+
+Yuzuko.test("PBKDF2 and HKDF require every parameter", async () => {
+  const salt = new Uint8Array(16);
+  const pbkdf2 = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode("password"),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const hkdf = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(32),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  const cases: [string, CryptoKey, object][] = [
+    ["PBKDF2 iterations", pbkdf2, { name: "PBKDF2", hash: "SHA-256", salt }],
+    ["PBKDF2 hash", pbkdf2, { name: "PBKDF2", iterations: 1000, salt }],
+    ["PBKDF2 salt", pbkdf2, { name: "PBKDF2", hash: "SHA-256", iterations: 1000 }],
+    ["HKDF hash", hkdf, { name: "HKDF", salt, info: salt }],
+    ["HKDF salt", hkdf, { name: "HKDF", hash: "SHA-256", info: salt }],
+    ["HKDF info", hkdf, { name: "HKDF", hash: "SHA-256", salt }],
+  ];
+  for (const [label, key, algorithm] of cases) {
+    let name = "";
+    try {
+      await crypto.subtle.deriveBits(algorithm as Algorithm, key, 256);
+    } catch (error) {
+      name = (error as Error).name;
+    }
+    assert(name === "TypeError", `${label}: ${name}`);
+  }
+  const complete = {
+    name: "HKDF",
+    hash: "SHA-256",
+    salt,
+    info: new Uint8Array(),
+  };
+  const bits = await crypto.subtle.deriveBits(
+    complete,
+    hkdf,
+    256,
+  );
+  assert(bits.byteLength === 32, "complete HKDF params derive");
+});

@@ -394,6 +394,14 @@ fn host_arrays_define_their_elements() {
   assert!(stdout.contains("ok | 1 passed | 0 failed"), "{stdout}");
 }
 
+#[test]
+fn web_crypto_passes_under_yuzuko_test() {
+  let output = yuzuko(&["test", "-A", "tests/crypto_test.ts"]);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stdout));
+  let stdout = text(&output.stdout);
+  assert!(stdout.contains("ok | 8 passed | 0 failed"), "{stdout}");
+}
+
 #[cfg(feature = "fetch")]
 #[test]
 fn form_data_encodes_and_parses_multipart() {

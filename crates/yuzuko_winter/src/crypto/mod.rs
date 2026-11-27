@@ -2380,12 +2380,12 @@ fn derive_bits_len(
   let mut output = vec![0u8; (bits / 8) as usize];
   match name.as_str() {
     "PBKDF2" => {
-      let hash = algorithm_hash(scope, algorithm)?
-        .unwrap_or_else(|| "SHA-256".to_string());
-      let salt = algorithm_bytes(scope, algorithm, "salt")?;
-      let iterations =
-        algorithm_number(scope, algorithm, "iterations").unwrap_or(1.0);
+      // Pbkdf2Params members are read in IDL order and are all required.
+      let hash = required_hash(scope, algorithm)?;
+      let iterations = algorithm_number(scope, algorithm, "iterations")
+        .ok_or_else(|| OpError::type_("iterations is required"))?;
       let iterations = enforce_unsigned_long(iterations, "iteration count")?;
+      let salt = algorithm_bytes(scope, algorithm, "salt")?;
       if iterations == 0 {
         return Err(OpError::dom(
           "OperationError",
@@ -2395,10 +2395,10 @@ fn derive_bits_len(
       pbkdf2_fill(&hash, &key.bytes, &salt, iterations, &mut output)?;
     }
     "HKDF" => {
-      let hash = algorithm_hash(scope, algorithm)?
-        .unwrap_or_else(|| "SHA-256".to_string());
-      let salt = optional_algorithm_bytes(scope, algorithm, "salt")?;
-      let info = optional_algorithm_bytes(scope, algorithm, "info")?;
+      // HkdfParams members are read in IDL order and are all required.
+      let hash = required_hash(scope, algorithm)?;
+      let info = algorithm_bytes(scope, algorithm, "info")?;
+      let salt = algorithm_bytes(scope, algorithm, "salt")?;
       hkdf_fill(&hash, &key.bytes, &salt, &info, &mut output)?;
     }
     _ => {
@@ -2971,6 +2971,14 @@ fn algorithm_hash(
     return Ok(None);
   }
   Ok(Some(algorithm_name(scope, hash)?))
+}
+
+fn required_hash(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+) -> Result<String, OpError> {
+  algorithm_hash(scope, value)?
+    .ok_or_else(|| OpError::type_("hash is required"))
 }
 
 fn algorithm_number(
