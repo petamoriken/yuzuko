@@ -92,6 +92,7 @@ pub fn package(
   // before creating the output parent or copying the runtime.
   validate_bundle(config)?;
   check_output(config, output)?;
+  reject_reserved_executable(target, &config.name)?;
   let parent = output.parent().filter(|path| !path.as_os_str().is_empty());
   if let Some(parent) = parent {
     fs::create_dir_all(parent).map_err(|error| {
@@ -118,6 +119,24 @@ pub fn package(
     let _ = remove_path(&temp);
     ConfigError::new(format!("cannot replace {}: {error}", output.display()))
   })
+}
+
+/// `app` and `icons` are directories in a Linux bundle. The executable is
+/// the slug of `name` and sits next to them, so those slugs cannot be used.
+fn reject_reserved_executable(
+  target: Target,
+  name: &str,
+) -> Result<(), ConfigError> {
+  if !matches!(target, Target::Linux) {
+    return Ok(());
+  }
+  let exe_name = crate::bundle::config::slug(name)?;
+  if matches!(exe_name.as_str(), "app" | "icons") {
+    return Err(ConfigError::new(format!(
+      "the Linux bundle executable name \"{exe_name}\" is reserved."
+    )));
+  }
+  Ok(())
 }
 
 /// The output is replaced as a whole, so it must not hold the project, and
@@ -718,6 +737,25 @@ impl From<std::io::Error> for ConfigError {
 #[cfg(test)]
 mod tests {
   use super::{gui_subsystem, pe_offsets};
+
+  #[test]
+  fn linux_rejects_an_executable_named_app_or_icons() {
+    let error = super::reject_reserved_executable(super::Target::Linux, "App")
+      .unwrap_err();
+    assert!(error.to_string().contains("reserved"), "{error}");
+    assert!(
+      super::reject_reserved_executable(super::Target::Linux, "Icons").is_err()
+    );
+    assert!(
+      super::reject_reserved_executable(super::Target::Linux, "Sample").is_ok()
+    );
+    assert!(
+      super::reject_reserved_executable(super::Target::Windows, "App").is_ok()
+    );
+    assert!(
+      super::reject_reserved_executable(super::Target::Macos, "App").is_ok()
+    );
+  }
 
   // Creating a symlink on Windows needs Developer Mode or an elevated token.
   #[cfg(unix)]

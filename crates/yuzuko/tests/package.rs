@@ -129,7 +129,7 @@ fn package_does_not_replace_the_project_or_a_foreign_path() {
   // An unrelated directory at the output path is kept.
   let app = dir.join("app");
   write(&app.join("main.ts"), "console.log(1)\n");
-  write(&app.join("yuzuko.json"), r#"{ "name": "App" }"#);
+  write(&app.join("yuzuko.json"), r#"{ "name": "Sample" }"#);
   let foreign = dir.join(output("foreign"));
   write(&foreign.join("keep.txt"), "keep\n");
   let target = foreign.to_str().unwrap();
@@ -463,6 +463,26 @@ fn refusals_write_nothing_and_do_not_panic() {
   );
   assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
   assert!(!dest.exists());
+
+  // `app` is the resource directory next to a Linux executable.
+  if cfg!(target_os = "linux") {
+    let root = dir.join("reserved-name");
+    write(&root.join("yuzuko.json"), r#"{ "name": "App" }"#);
+    write(&root.join("main.ts"), "console.log(1)\n");
+    let dest = dir.join("reserved-name-out");
+    let output = run(
+      &root,
+      &["package", "main.ts", "--output", dest.to_str().unwrap()],
+    );
+    assert_ne!(output.status.code(), Some(0), "{}", text(&output.stderr));
+    assert!(
+      text(&output.stderr).contains("reserved"),
+      "{}",
+      text(&output.stderr)
+    );
+    assert!(!dest.exists());
+    assert!(!dir.join(".reserved-name-out.partial").exists());
+  }
 
   // Creating a symlink on Windows needs Developer Mode or an elevated token.
   #[cfg(unix)]
