@@ -475,18 +475,15 @@ pub fn parse(mime: &str, body: &[u8]) -> Result<FormData, OpError> {
   })
 }
 
+/// The URL Standard `application/x-www-form-urlencoded` parser. It
+/// percent-decodes bytes before the UTF-8 decode, so an escape can complete
+/// a sequence that starts with a raw byte.
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
 fn parse_urlencoded(body: &[u8]) -> Vec<Entry> {
-  let text = String::from_utf8_lossy(body);
-  text
-    .split('&')
-    .filter(|pair| !pair.is_empty())
-    .map(|pair| {
-      let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-      Entry {
-        name: decode_component(name),
-        value: Part::Text(decode_component(value)),
-      }
+  url::form_urlencoded::parse(body)
+    .map(|(name, value)| Entry {
+      name: name.into_owned(),
+      value: Part::Text(value.into_owned()),
     })
     .collect()
 }
@@ -619,17 +616,6 @@ fn unquote(value: &str) -> String {
 }
 
 #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn decode_component(value: &str) -> String {
-  let value = value.replace('+', " ");
-  percent_decode(&value)
-}
-
-#[cfg_attr(not(feature = "fetch"), allow(dead_code))]
-fn percent_decode(input: &str) -> String {
-  String::from_utf8_lossy(&crate::text::mime::percent_decode(input))
-    .into_owned()
-}
-
 pub fn install(scope: &mut v8::PinScope) {
   FormData::install(scope);
   let iterator = FormIter::template(scope);

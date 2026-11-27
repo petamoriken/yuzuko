@@ -100,3 +100,15 @@ Yuzuko.test("FormData and URLSearchParams iterators inherit %IteratorPrototype%"
   assert([...form.keys()].join() === "a", "FormData keys");
   assert([...params.values()].join() === "1", "URLSearchParams values");
 });
+
+Yuzuko.test("urlencoded bodies percent-decode before UTF-8", async () => {
+  // A raw lead byte followed by escaped continuation bytes is one character.
+  const body = Uint8Array.from([0x61, 0x3d, 0xe3, ...new TextEncoder().encode("%81%82&&b+c=%zz")]);
+  const form = await new Response(body, {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  }).formData();
+  const entries = [...form].map(([name, value]) => `${name}:${value}`);
+  if (entries.join("|") !== "a:\u3042|b c:%zz") {
+    throw new Error(JSON.stringify(entries));
+  }
+});

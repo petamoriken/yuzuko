@@ -408,7 +408,7 @@ fn form_data_encodes_and_parses_multipart() {
   let output = yuzuko(&["test", "-A", "tests/form_data_test.ts"]);
   assert_eq!(output.status.code(), Some(0), "{}", text(&output.stdout));
   let stdout = text(&output.stdout);
-  assert!(stdout.contains("ok | 3 passed | 0 failed"), "{stdout}");
+  assert!(stdout.contains("ok | 4 passed | 0 failed"), "{stdout}");
 }
 
 #[cfg(all(feature = "fetch", feature = "http"))]
