@@ -406,7 +406,8 @@ impl Sandbox {
       .any(|deny| {
         same_entry_spellings(deny).iter().any(|form| {
           candidates.iter().any(|candidate| {
-            path_covers(candidate, form) && !paths_equal(candidate, form)
+            path_covers_with(candidate, form, Fold::Deny)
+              && !paths_equal(candidate, form)
           })
         })
       })
@@ -421,6 +422,7 @@ impl Sandbox {
         &gate.deny_nets,
         &gate.deny_names,
         resource,
+        Fold::Deny,
       )
     {
       return State::Denied;
@@ -432,6 +434,7 @@ impl Sandbox {
         &gate.session_deny_nets,
         &gate.session_deny_names,
         resource,
+        Fold::Deny,
       )
     {
       return State::Denied;
@@ -443,6 +446,7 @@ impl Sandbox {
         &gate.session_allow_nets,
         &gate.session_allow_names,
         resource,
+        Fold::Exact,
       )
     {
       return State::Granted;
@@ -455,6 +459,7 @@ impl Sandbox {
           &gate.allow_nets,
           &gate.allow_names,
           resource,
+          Fold::Exact,
         ))
     {
       return State::Granted;
@@ -569,7 +574,14 @@ impl Sandbox {
       return Ok(());
     }
     for candidate in &candidates {
-      if hits(kind, &gate.deny_paths, &[], &[], &Resource::Path(candidate)) {
+      if hits(
+        kind,
+        &gate.deny_paths,
+        &[],
+        &[],
+        &Resource::Path(candidate),
+        Fold::Deny,
+      ) {
         return Ok(());
       }
     }
@@ -655,9 +667,12 @@ fn hits(
   nets: &[NetRule],
   names: &[String],
   resource: &Resource<'_>,
+  fold: Fold,
 ) -> bool {
   match resource {
-    Resource::Path(path) => paths.iter().any(|grant| path_covers(grant, path)),
+    Resource::Path(path) => paths
+      .iter()
+      .any(|grant| path_covers_with(grant, path, fold)),
     Resource::Net { host, port } => {
       nets.iter().any(|rule| net_covers(rule, host, *port))
     }
@@ -1425,7 +1440,7 @@ fn path_candidates(
 
 #[cfg(target_os = "macos")]
 fn is_volfs(path: &Path) -> bool {
-  path_covers(Path::new("/.vol"), path)
+  path_covers_with(Path::new("/.vol"), path, Fold::Exact)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1783,7 +1798,19 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
   }
 }
 
-fn path_covers(grant: &Path, request: &Path) -> bool {
+/// How a rule compares a file name with a request.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fold {
+  /// ASCII case on macOS and Windows, bytes on Linux. A grant matches
+  /// only a spelling it is sure names the same file.
+  Exact,
+  /// A deny also matches a name that differs in Unicode case, and on macOS
+  /// in Unicode normalization. A file system that folds such names would
+  /// open the denied file. One that does not is denied a little more.
+  Deny,
+}
+
+fn path_covers_with(grant: &Path, request: &Path, fold: Fold) -> bool {
   // `\\?\` and `\\?\UNC\` are two spellings of one Windows path.
   let grant = root_spelling(strip_verbatim(grant.to_path_buf()));
   let request = root_spelling(strip_verbatim(request.to_path_buf()));
@@ -1793,13 +1820,21 @@ fn path_covers(grant: &Path, request: &Path) -> bool {
     match (grant.next(), request.next()) {
       (None, _) => return true,
       (Some(_), None) => return false,
-      (Some(left), Some(right)) if component_eq(left, right) => {}
+      (Some(left), Some(right)) if component_eq_with(left, right, fold) => {}
       _ => return false,
     }
   }
 }
 
 fn component_eq(left: Component<'_>, right: Component<'_>) -> bool {
+  component_eq_with(left, right, Fold::Exact)
+}
+
+fn component_eq_with(
+  left: Component<'_>,
+  right: Component<'_>,
+  fold: Fold,
+) -> bool {
   match (left, right) {
     (Component::Prefix(left), Component::Prefix(right)) => {
       os_eq(left.as_os_str(), right.as_os_str())
@@ -1808,10 +1843,31 @@ fn component_eq(left: Component<'_>, right: Component<'_>) -> bool {
     | (Component::CurDir, Component::CurDir)
     | (Component::ParentDir, Component::ParentDir) => true,
     (Component::Normal(left), Component::Normal(right)) => {
-      os_eq(compared_name(left).as_ref(), compared_name(right).as_ref())
+      let left = compared_name(left);
+      let right = compared_name(right);
+      os_eq(left.as_ref(), right.as_ref())
+        || (fold == Fold::Deny && unicode_eq(left.as_ref(), right.as_ref()))
     }
     _ => false,
   }
+}
+
+/// APFS and NTFS fold case beyond ASCII, and APFS ignores the Unicode
+/// normalization form. Linux compares bytes.
+fn unicode_eq(left: &OsStr, right: &OsStr) -> bool {
+  if !cfg!(any(windows, target_os = "macos")) {
+    return false;
+  }
+  let (Some(left), Some(right)) = (left.to_str(), right.to_str()) else {
+    return false;
+  };
+  folded_name(left) == folded_name(right)
+}
+
+fn folded_name(name: &str) -> String {
+  let nfd = icu_normalizer::DecomposingNormalizerBorrowed::new_nfd();
+  let lower = nfd.normalize(name).to_lowercase();
+  nfd.normalize(&lower).into_owned()
 }
 
 fn compared_name(name: &OsStr) -> Cow<'_, OsStr> {
@@ -2571,6 +2627,22 @@ fn resolved<'s>(
 mod tests {
   use super::*;
 
+  #[cfg(any(windows, target_os = "macos"))]
+  #[test]
+  fn a_deny_folds_unicode_case_and_a_grant_does_not() {
+    let rule = Path::new("/data/\u{dc}new.txt");
+    for request in ["/data/\u{fc}new.txt", "/data/U\u{308}NEW.txt"] {
+      let request = Path::new(request);
+      assert!(path_covers_with(rule, request, Fold::Deny), "{request:?}");
+      assert!(!path_covers_with(rule, request, Fold::Exact), "{request:?}");
+    }
+    assert!(!path_covers_with(
+      rule,
+      Path::new("/data/unew.txt"),
+      Fold::Deny
+    ));
+  }
+
   #[test]
   fn firmlinks_parse_a_tab_separated_root_and_data_path() {
     let links =
@@ -2591,9 +2663,10 @@ mod tests {
       Path::new("/System/Volumes/Data/Users/a/b"),
       Path::new("/Users/a/b"),
     ));
-    assert!(path_covers(
+    assert!(path_covers_with(
       Path::new("/Users/a"),
       Path::new("/System/Volumes/Data/Users/a/b"),
+      Fold::Exact,
     ));
     assert!(!paths_equal(
       Path::new("/System/Volumes/Data/bin/ls"),

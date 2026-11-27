@@ -375,6 +375,55 @@ await Promise.all(pending);
   );
 }
 
+/// APFS and NTFS fold case beyond ASCII, so a deny of a name that does not
+/// exist yet also covers its other Unicode spellings.
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn a_deny_covers_a_unicode_case_spelling() {
+  let root = scratch("unicode");
+  let data = root.join("data");
+  fs::create_dir_all(&data).unwrap();
+  write(
+    &root.join("main.ts"),
+    r#"const [dir] = Yuzuko.args;
+for (const name of ["\u00fcnew.txt", "U\u0308NEW.txt", "\u00e4dir/x.txt", "other.txt"]) {
+  try {
+    if (name.includes("/")) {
+      await Yuzuko.mkdir(dir + "/\u00e4dir");
+    }
+    await Yuzuko.writeTextFile(dir + "/" + name, "x");
+    console.log("allowed");
+  } catch (error) {
+    console.log(error.name);
+  }
+}
+"#,
+  );
+  let dir = data.display().to_string();
+  let allow = format!("--allow-write={dir}");
+  let deny_file =
+    format!("--deny-write={}", data.join("\u{dc}new.txt").display());
+  let deny_dir = format!("--deny-write={}", data.join("\u{c4}dir").display());
+  let output = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-read",
+      &allow,
+      &deny_file,
+      &deny_dir,
+      "main.ts",
+      &dir,
+    ],
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert_eq!(
+    text(&output.stdout),
+    "NotCapable\nNotCapable\nNotCapable\nallowed\n"
+  );
+}
+
 /// Unix ignores the link type, so a `"junction"` is a symbolic link resolved
 /// from the link directory and is checked from there.
 #[cfg(unix)]
