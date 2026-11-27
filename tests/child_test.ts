@@ -446,8 +446,16 @@ Yuzuko.test("spawn rejects bad streams, env, and cwd", () => {
   const looked = throws(() =>
     spawn("sh", { cwd: "https://example.invalid/dir" }),
   );
-  assert(looked instanceof Yuzuko.errors.NotFound, `cwd string url ${text(looked)}`);
-  assert(text(looked) === DIR_MISSING, text(looked));
+  // On Windows `https:` is not a file name the OS can resolve, and a path the
+  // OS cannot name is denied by the permission check.
+  const expected =
+    Yuzuko.build.os === "windows"
+      ? Yuzuko.errors.NotCapable
+      : Yuzuko.errors.NotFound;
+  assert(looked instanceof expected, `cwd string url ${text(looked)}`);
+  if (Yuzuko.build.os !== "windows") {
+    assert(text(looked) === DIR_MISSING, text(looked));
+  }
   const absent = throws(() => spawn("sh", { cwd: "/no/such/yuzuko-child-dir" }));
   assert(absent instanceof Yuzuko.errors.NotFound, `cwd missing ${text(absent)}`);
   assert(absent.code === "ENOENT", "cwd code");

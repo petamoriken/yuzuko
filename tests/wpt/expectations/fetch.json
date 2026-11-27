@@ -1435,18 +1435,8 @@
   "fetch/api/response/response-form-data.html": {
     "expectedFailures": [
       "Empty form data",
-      "Validate buggy form data - cr1",
-      "Validate buggy form data - cr2",
       "Validate buggy form data - cr3",
-      "Validate buggy form data - cr_",
-      "Validate buggy form data - dashes",
-      "Validate buggy form data - empty",
-      "Validate form data - onePartWithEpilogue",
-      "Validate form data - onePartWithTransportPadding",
-      "Validate form data - onePartWithoutEpilogue",
-      "Validate form data - twoPartsWithEpilogue",
-      "Validate form data - twoPartsWithTransportPadding",
-      "Validate form data - twoPartsWithoutEpilogue"
+      "Validate buggy form data - empty"
     ]
   },
   "fetch/api/response/response-from-stream.any.js": true,
@@ -1661,11 +1651,7 @@
   },
   "fetch/content-length/too-long.window.js": true,
   "fetch/content-type/multipart-malformed.any.js": true,
-  "fetch/content-type/multipart.window.js": {
-    "expectedFailures": [
-      "multipart"
-    ]
-  },
+  "fetch/content-type/multipart.window.js": true,
   "fetch/content-type/response.window.js": {
     "expectedFailures": [
       "<iframe>: combined response Content-Type:  text/plain",

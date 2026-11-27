@@ -133,8 +133,10 @@ fn proto() {
   simple("proto_test.ts", 2);
 }
 
+// A Windows runner process has no console, so `GenerateConsoleCtrlEvent`
+// cannot deliver Ctrl+C or Ctrl+Break to it.
 #[test]
-#[cfg(feature = "signal")]
+#[cfg(all(feature = "signal", unix))]
 fn signal() {
   simple("signal_test.ts", 2);
 }

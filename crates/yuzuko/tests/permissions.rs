@@ -386,12 +386,14 @@ fn a_deny_covers_a_unicode_case_spelling() {
   write(
     &root.join("main.ts"),
     r#"const [dir] = Yuzuko.args;
-for (const name of ["\u00fcnew.txt", "U\u0308NEW.txt", "\u00e4dir/x.txt", "other.txt"]) {
+// A Windows `\\?\` path does not treat `/` as a separator.
+const sep = Yuzuko.build.os === "windows" ? "\\" : "/";
+for (const name of ["\u00fcnew.txt", "U\u0308NEW.txt", "\u00e4dir" + sep + "x.txt", "other.txt"]) {
   try {
-    if (name.includes("/")) {
-      await Yuzuko.mkdir(dir + "/\u00e4dir");
+    if (name.includes(sep)) {
+      await Yuzuko.mkdir(dir + sep + "\u00e4dir");
     }
-    await Yuzuko.writeTextFile(dir + "/" + name, "x");
+    await Yuzuko.writeTextFile(dir + sep + name, "x");
     console.log("allowed");
   } catch (error) {
     console.log(error.name);
