@@ -277,7 +277,8 @@ fn compile_path<'a>(
   // `type` selects a raw module, including `{ type: "json" }` on a file
   // that is then parsed as a script. JavaScript and WebAssembly evaluation
   // imports stay ungated when every resolved form is that kind of file.
-  if matches!(attributes, Some("text" | "bytes" | "json")) {
+  let granted = matches!(attributes, Some("text" | "bytes" | "json"));
+  if granted {
     permit_module_read(gate)?;
   }
   if let Some(existing) = existing_module(scope, url, kind) {
@@ -285,11 +286,17 @@ fn compile_path<'a>(
   }
   // `type` wins over the extension, so `file.wasm` with `{ type: "text" }`
   // is the file text and `file.json` with `{ type: "bytes" }` is the raw bytes.
+  let raw = ModuleRead {
+    granted: true,
+    kind: None,
+  };
   if kind == ModuleRecordKind::Text {
-    return synthetic_text(scope, url, path);
+    let bytes = read_module(path, gate, raw)?;
+    return synthetic_text(scope, url, path, bytes);
   }
   if kind == ModuleRecordKind::Bytes {
-    return synthetic_bytes(scope, url, path);
+    let bytes = read_module(path, gate, raw)?;
+    return synthetic_bytes(scope, url, path, bytes);
   }
   // `{ type: "json" }` on a non-json file is a script after the read check.
   // A `.wasm` file stays WebAssembly. A declaration file is not executed.
@@ -297,13 +304,23 @@ fn compile_path<'a>(
     if file_forms(gate).iter().any(|form| is_declaration(form)) {
       return Err(declaration_error(gate));
     }
+    let bytes = read_module(path, gate, raw)?;
     if extension == "wasm" {
-      return compile_wasm(scope, url, path);
+      return compile_wasm(scope, url, path, bytes);
     }
-    return compile_script(scope, url, path);
+    return compile_script(scope, url, path, bytes);
   }
-  match evaluation_kind(gate)? {
-    EvalKind::Wasm => compile_wasm(scope, url, path),
+  let eval = evaluation_kind(gate)?;
+  let bytes = read_module(
+    path,
+    gate,
+    ModuleRead {
+      granted,
+      kind: Some(eval),
+    },
+  )?;
+  match eval {
+    EvalKind::Wasm => compile_wasm(scope, url, path, bytes),
     EvalKind::Json => {
       if attributes != Some("json") {
         return Err(RuntimeError::message(format!(
@@ -311,23 +328,69 @@ fn compile_path<'a>(
           gate.display()
         )));
       }
-      let text = fs::read_to_string(path).map_err(|err| {
-        RuntimeError::message(format!("{}: {err}", path.display()))
+      let text = String::from_utf8(bytes).map_err(|_| {
+        RuntimeError::message(format!("{} is not valid UTF-8", path.display()))
       })?;
       synthetic_json(scope, url, path, &text)
     }
-    EvalKind::Script => compile_script(scope, url, path),
+    EvalKind::Script => compile_script(scope, url, path, bytes),
   }
+}
+
+/// What the opened module file must still be. The check before the open
+/// looked at the path, and a symlink can change between that check and the
+/// open, so the file the descriptor names is checked again.
+#[derive(Clone, Copy)]
+struct ModuleRead {
+  /// The import needs read permission for the file.
+  granted: bool,
+  /// An ungated evaluation import needs the file to be this kind.
+  kind: Option<EvalKind>,
+}
+
+/// Opens `path` once, checks the opened file, and reads it from that
+/// descriptor. `gate` is the path the importer named, used in errors.
+fn read_module(
+  path: &Path,
+  gate: &Path,
+  check: ModuleRead,
+) -> Result<Vec<u8>, RuntimeError> {
+  use std::io::Read;
+  let read_error = |err: std::io::Error| {
+    RuntimeError::message(format!("{}: {err}", path.display()))
+  };
+  let mut file = fs::File::open(path).map_err(read_error)?;
+  let open = crate::permissions::permissions_are_open();
+  let real = crate::fd_path::fd_path(&file);
+  let denied = || op_error(crate::permissions::path_not_allowed(false, gate));
+  if let Some(kind) = check.kind {
+    match &real {
+      Ok(real) if eval_kind_of(real) != Some(kind) => {
+        return Err(kind_error(gate));
+      }
+      Err(_) if !open => return Err(denied()),
+      _ => {}
+    }
+  }
+  if check.granted && !open {
+    let real = real.as_ref().map_err(|_| denied())?;
+    match crate::permissions::path_is_granted(false, real) {
+      Ok(true) => {}
+      Ok(false) => return Err(denied()),
+      Err(error) => return Err(op_error(error)),
+    }
+  }
+  let mut bytes = Vec::new();
+  file.read_to_end(&mut bytes).map_err(read_error)?;
+  Ok(bytes)
 }
 
 fn compile_wasm<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
   path: &Path,
+  bytes: Vec<u8>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
-  let bytes = fs::read(path).map_err(|err| {
-    RuntimeError::message(format!("{}: {err}", path.display()))
-  })?;
   let source = crate::loader::wasm_module::wrapper_source(scope, url, &bytes)?;
   compile_prepared(scope, url, path, &source)
 }
@@ -336,10 +399,8 @@ fn compile_script<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
   path: &Path,
+  bytes: Vec<u8>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
-  let bytes = fs::read(path).map_err(|err| {
-    RuntimeError::message(format!("{}: {err}", path.display()))
-  })?;
   let source = String::from_utf8(bytes).map_err(|_| {
     RuntimeError::message(format!("{} is not valid UTF-8", path.display()))
   })?;
@@ -357,12 +418,7 @@ fn evaluation_kind(path: &Path) -> Result<EvalKind, RuntimeError> {
   }
   let kinds = forms
     .iter()
-    .map(|form| match form.extension().and_then(|ext| ext.to_str()) {
-      Some("js" | "mjs" | "cjs" | "ts" | "mts") => Some(EvalKind::Script),
-      Some("wasm") => Some(EvalKind::Wasm),
-      Some("json") => Some(EvalKind::Json),
-      _ => None,
-    })
+    .map(|form| eval_kind_of(form))
     .collect::<Vec<_>>();
   if kinds.iter().all(|kind| *kind == Some(EvalKind::Script)) {
     return Ok(EvalKind::Script);
@@ -373,10 +429,26 @@ fn evaluation_kind(path: &Path) -> Result<EvalKind, RuntimeError> {
   if kinds.iter().all(|kind| *kind == Some(EvalKind::Json)) {
     return Ok(EvalKind::Json);
   }
-  Err(RuntimeError::message(format!(
+  Err(kind_error(path))
+}
+
+fn eval_kind_of(path: &Path) -> Option<EvalKind> {
+  if is_declaration(path) {
+    return None;
+  }
+  match path.extension().and_then(|ext| ext.to_str()) {
+    Some("js" | "mjs" | "cjs" | "ts" | "mts") => Some(EvalKind::Script),
+    Some("wasm") => Some(EvalKind::Wasm),
+    Some("json") => Some(EvalKind::Json),
+    _ => None,
+  }
+}
+
+fn kind_error(path: &Path) -> RuntimeError {
+  RuntimeError::message(format!(
     "{} must be imported with {{ type: \"text\" }} or {{ type: \"bytes\" }}",
     path.display()
-  )))
+  ))
 }
 
 fn declaration_error(path: &Path) -> RuntimeError {
@@ -457,17 +529,20 @@ fn lexical_normalize(path: &Path) -> PathBuf {
 }
 
 fn permit_module_read(path: &Path) -> Result<(), RuntimeError> {
-  match crate::permissions::check_read(path) {
-    Ok(()) => Ok(()),
-    Err(crate::op::OpError::Dom { name, message }) => {
-      Err(RuntimeError::dom(name, message))
+  crate::permissions::check_read(path).map_err(op_error)
+}
+
+fn op_error(error: crate::op::OpError) -> RuntimeError {
+  match error {
+    crate::op::OpError::Dom { name, message } => {
+      RuntimeError::dom(name, message)
     }
-    Err(
-      crate::op::OpError::Type(message) | crate::op::OpError::Range(message),
-    ) => Err(RuntimeError::message(message)),
-    Err(crate::op::OpError::Thrown(_)) => Err(RuntimeError::message(
-      "The file could not be read.".to_string(),
-    )),
+    crate::op::OpError::Type(message) | crate::op::OpError::Range(message) => {
+      RuntimeError::message(message)
+    }
+    crate::op::OpError::Thrown(_) => {
+      RuntimeError::message("The file could not be read.".to_string())
+    }
   }
 }
 
@@ -550,8 +625,8 @@ fn synthetic_text<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
   path: &Path,
+  bytes: Vec<u8>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
-  let bytes = read_bytes(path)?;
   let text = String::from_utf8_lossy(&bytes).into_owned();
   let name = v8::String::new(scope, url).expect("module url");
   let export_name = v8::String::new(scope, "default").expect("default");
@@ -575,8 +650,8 @@ fn synthetic_bytes<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   url: &str,
   path: &Path,
+  bytes: Vec<u8>,
 ) -> Result<v8::Local<'a, v8::Module>, RuntimeError> {
-  let bytes = read_bytes(path)?;
   let name = v8::String::new(scope, url).expect("module url");
   let export_name = v8::String::new(scope, "default").expect("default");
   let module = v8::Module::create_synthetic_module(
@@ -593,11 +668,6 @@ fn synthetic_bytes<'a>(
     module,
     SyntheticSource::Bytes(bytes),
   ))
-}
-
-fn read_bytes(path: &Path) -> Result<Vec<u8>, RuntimeError> {
-  fs::read(path)
-    .map_err(|err| RuntimeError::message(format!("{}: {err}", path.display())))
 }
 
 fn bind_synthetic<'a>(
@@ -804,9 +874,11 @@ fn load_source<'a>(
     // the target is not read.
     return match evaluation_kind(&path)? {
       EvalKind::Wasm => {
-        let bytes = fs::read(&path).map_err(|err| {
-          RuntimeError::message(format!("{}: {err}", path.display()))
-        })?;
+        let check = ModuleRead {
+          granted: false,
+          kind: Some(EvalKind::Wasm),
+        };
+        let bytes = read_module(&path, &path, check)?;
         crate::loader::wasm_module::source_object(scope, &url, &bytes)
       }
       EvalKind::Script => {

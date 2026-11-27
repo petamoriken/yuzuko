@@ -987,6 +987,83 @@ fn a_symlink_swap_does_not_return_the_other_file() {
   assert_eq!(fs::read_to_string(&secret).unwrap(), "OUTSIDE\n");
 }
 
+/// A module import checks the path, then reads the file it opened. A symlink
+/// swapped between the two must not supply a file the check would refuse.
+#[cfg(unix)]
+#[test]
+fn a_module_symlink_swap_does_not_load_another_file() {
+  use std::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let root = scratch("module-swap");
+  let proj = root.join("proj");
+  let outside = root.join("outside");
+  fs::create_dir_all(&proj).unwrap();
+  fs::create_dir_all(&outside).unwrap();
+  // A script import is ungated for a script file, so the swap target is a
+  // text file. A text import needs read, so that swap target is outside.
+  let script = proj.join("inside.js");
+  let not_script = proj.join("notes.txt");
+  let text_inside = proj.join("inside.txt");
+  let secret = outside.join("secret.txt");
+  fs::write(&script, "export default 'INSIDE';\n").unwrap();
+  fs::write(&not_script, "export default 'NOT_SCRIPT';\n").unwrap();
+  fs::write(&text_inside, "INSIDE").unwrap();
+  fs::write(&secret, "OUTSIDE").unwrap();
+  let script_link = proj.join("link.js");
+  let text_link = proj.join("link.txt");
+  std::os::unix::fs::symlink(&script, &script_link).unwrap();
+  std::os::unix::fs::symlink(&text_inside, &text_link).unwrap();
+
+  let stop = Arc::new(AtomicBool::new(false));
+  let swapping = Arc::clone(&stop);
+  let swapper = std::thread::spawn(move || {
+    let mut away = true;
+    while !swapping.load(Ordering::Relaxed) {
+      for (link, inside, other) in [
+        (&script_link, &script, &not_script),
+        (&text_link, &text_inside, &secret),
+      ] {
+        let target = if away { other } else { inside };
+        let temporary = link.with_extension("tmp");
+        let _ = fs::remove_file(&temporary);
+        if std::os::unix::fs::symlink(target, &temporary).is_ok() {
+          let _ = fs::rename(&temporary, link);
+        }
+      }
+      away = !away;
+    }
+  });
+  write(
+    &proj.join("race.ts"),
+    r#"const base = new URL("./", import.meta.url).href;
+for (let i = 0; i < 300; i++) {
+  try {
+    const module = await import(base + "link.js#" + i);
+    console.log("S " + module.default);
+  } catch {
+    console.log("S refused");
+  }
+  try {
+    const module = await import(base + "link.txt#" + i, { with: { type: "text" } });
+    console.log("T " + module.default);
+  } catch {
+    console.log("T refused");
+  }
+}
+"#,
+  );
+  let raced = run(&proj, &["run", "--no-prompt", "--allow-read=.", "race.ts"]);
+  stop.store(true, Ordering::Relaxed);
+  let _ = swapper.join();
+  assert_eq!(raced.status.code(), Some(0), "{}", text(&raced.stderr));
+  let stdout = text(&raced.stdout);
+  assert!(!stdout.contains("NOT_SCRIPT"), "{stdout}");
+  assert!(!stdout.contains("OUTSIDE"), "{stdout}");
+  assert!(stdout.contains("S INSIDE"), "{stdout}");
+  assert!(stdout.contains("T INSIDE"), "{stdout}");
+}
+
 #[cfg(unix)]
 #[test]
 fn a_worker_script_symlink_swap_does_not_load_another_file() {
