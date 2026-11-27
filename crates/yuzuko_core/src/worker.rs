@@ -225,6 +225,7 @@ fn worker_tree(id: u64) -> Vec<u64> {
 }
 
 pub fn spawn_worker(parent: u64, script: WorkerScript) -> Result<u64, String> {
+  reap_finished_workers();
   let id = NEXT_AGENT.fetch_add(1, Ordering::Relaxed);
   let queue = TaskQueue::new();
   let agent = Arc::new(Agent {
@@ -255,10 +256,64 @@ pub fn spawn_worker(parent: u64, script: WorkerScript) -> Result<u64, String> {
     .name(format!("yuzuko-worker-{id}"))
     .spawn(move || {
       crate::runtime::run_worker_isolate(id, queue, script);
-    })
-    .map_err(|error| error.to_string())?;
+    });
+  let thread = match thread {
+    Ok(thread) => thread,
+    Err(error) => {
+      // No thread runs this agent, so it must not keep its parent alive.
+      agent.alive.store(false, Ordering::SeqCst);
+      forget_agent(id);
+      return Err(error.to_string());
+    }
+  };
   agent.thread.lock().expect("worker thread").replace(thread);
   Ok(id)
+}
+
+/// Joins and drops each worker whose thread has ended, including its
+/// thread-local destructors, so terminated workers do not accumulate.
+fn reap_finished_workers() {
+  let finished: Vec<(u64, std::thread::JoinHandle<()>)> = {
+    let agents = agents();
+    let Some(map) = agents.as_ref() else {
+      return;
+    };
+    map
+      .iter()
+      .filter(|(id, _)| **id != MAIN_AGENT)
+      .filter_map(|(id, agent)| {
+        let mut slot = agent.thread.lock().expect("worker thread");
+        if slot
+          .as_ref()
+          .is_some_and(std::thread::JoinHandle::is_finished)
+        {
+          slot.take().map(|handle| (*id, handle))
+        } else {
+          None
+        }
+      })
+      .collect()
+  };
+  for (id, handle) in finished {
+    let _ = handle.join();
+    forget_agent(id);
+  }
+}
+
+fn forget_agent(id: u64) {
+  let mut agents = agents();
+  let Some(map) = agents.as_mut() else {
+    return;
+  };
+  if let Some(agent) = map.remove(&id)
+    && let Some(parent) = map.get(&agent.parent)
+  {
+    parent
+      .children
+      .lock()
+      .expect("worker children")
+      .retain(|child| *child != id);
+  }
 }
 
 /// Stops every agent, including the main realm, without marking the main

@@ -56,17 +56,26 @@ struct TextEnv {
 }
 
 std::thread_local! {
-  static TEXT: RefCell<TextEnv> = RefCell::new(TextEnv {
-    fonts: FontContext::new(),
-    layout: LayoutContext::new(),
-    names: Vec::new(),
-    ready: Vec::new(),
-    registered: Vec::new(),
-  });
+  static TEXT: RefCell<TextEnv> = {
+    STARTED.with(|started| started.set(true));
+    RefCell::new(TextEnv {
+      fonts: FontContext::new(),
+      layout: LayoutContext::new(),
+      names: Vec::new(),
+      ready: Vec::new(),
+      registered: Vec::new(),
+    })
+  };
+  /// Whether `TEXT` exists on this thread. Creating it scans the system
+  /// fonts, which clearing an unused realm must not do.
+  static STARTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Replace the loaded faces the Canvas 2D `font` property can name.
 pub fn set_loaded_faces(faces: &[(String, Vec<u8>)]) {
+  if faces.is_empty() && !STARTED.with(std::cell::Cell::get) {
+    return;
+  }
   TEXT.with(|slot| {
     let mut env = slot.borrow_mut();
     let registered = std::mem::take(&mut env.registered);
@@ -1063,5 +1072,18 @@ mod tests {
     assert!((words.advance() - plain_words.advance() - 10.0).abs() < 1e-9);
     let nul = shape("\u{0000}", &font, false, "inherit", &TextShape::default());
     assert_eq!(nul.advance(), 0.0);
+  }
+}
+
+#[cfg(test)]
+mod started_tests {
+  #[test]
+  fn clearing_faces_on_an_unused_thread_does_not_scan_fonts() {
+    std::thread::spawn(|| {
+      super::set_loaded_faces(&[]);
+      assert!(!super::STARTED.with(std::cell::Cell::get));
+    })
+    .join()
+    .unwrap();
   }
 }
