@@ -89,11 +89,6 @@ struct Parts {
   remote: SocketAddr,
 }
 
-enum ReadOut {
-  Eof,
-  Bytes(Vec<u8>),
-}
-
 pub struct TlsConn {
   shared: Arc<Shared>,
 }
@@ -507,119 +502,92 @@ fn install_ring() {
   let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-fn read_tls(shared: &Shared, max: usize) -> Result<Deliver, crate::tcp::Fail> {
+/// Runs one attempt on the stream while holding its lock. The socket has a
+/// 50 ms timeout, so a read waiting for data holds the lock for at most that
+/// long, and a write on another thread runs between two read attempts.
+fn attempt<R>(
+  shared: &Shared,
+  body: impl FnOnce(&mut StreamOwned<ClientConnection, TcpStream>) -> R,
+) -> Result<R, crate::tcp::Fail> {
+  let mut slot = lock(&shared.stream);
   if shared.is_closed() {
     return Err(crate::tcp::Fail::Closed);
   }
-  let mut stream = {
-    let mut slot = lock(&shared.stream);
-    let Some(stream) = slot.take() else {
-      return Err(crate::tcp::Fail::Closed);
-    };
-    stream
+  let Some(stream) = slot.as_mut() else {
+    return Err(crate::tcp::Fail::Closed);
   };
+  Ok(body(stream))
+}
+
+fn read_tls(shared: &Shared, max: usize) -> Result<Deliver, crate::tcp::Fail> {
   let mut buf = vec![0u8; max];
-  let outcome = loop {
-    if shared.is_closed() {
-      break Err(crate::tcp::Fail::Closed);
-    }
-    match stream.read(&mut buf) {
-      Ok(0) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Ok(0) => break Ok(ReadOut::Eof),
-      Ok(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
+  loop {
+    match attempt(shared, |stream| stream.read(&mut buf))? {
+      Ok(0) if shared.is_closed() => return Err(crate::tcp::Fail::Closed),
+      Ok(0) => return Ok(Deliver::Eof),
+      Ok(_) if shared.is_closed() => return Err(crate::tcp::Fail::Closed),
       Ok(count) => {
         buf.truncate(count);
-        break Ok(ReadOut::Bytes(buf));
+        return Ok(Deliver::Bytes(buf));
       }
       Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
-          break Err(crate::tcp::Fail::Closed);
+          return Err(crate::tcp::Fail::Closed);
         }
         if error.kind() == ErrorKind::WouldBlock {
           std::thread::sleep(IO_WAIT);
         }
+        // Let a waiting write take the lock before the next read attempt.
+        if shared.writing.load(Ordering::Acquire) {
+          std::thread::sleep(Duration::from_millis(1));
+        }
       }
-      Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
+      Err(_) if shared.is_closed() => return Err(crate::tcp::Fail::Closed),
       Err(error) => {
-        break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Read));
+        return Err(crate::tcp::io_fail(error, crate::tcp::Fail::Read));
       }
     }
-  };
-  restore(shared, stream);
-  outcome.map(|value| match value {
-    ReadOut::Eof => Deliver::Eof,
-    ReadOut::Bytes(bytes) => Deliver::Bytes(bytes),
-  })
+  }
 }
 
 fn write_tls(shared: &Shared, bytes: &[u8]) -> Result<usize, crate::tcp::Fail> {
-  if shared.is_closed() {
-    return Err(crate::tcp::Fail::Closed);
-  }
-  let mut stream = {
-    let mut slot = lock(&shared.stream);
-    let Some(stream) = slot.take() else {
-      return Err(crate::tcp::Fail::Closed);
-    };
-    stream
-  };
   let mut offset = 0;
-  let outcome = loop {
-    if offset == bytes.len() {
-      match stream.flush() {
-        Ok(()) => break Ok(offset),
-        Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
-          if shared.is_closed() {
-            break Err(crate::tcp::Fail::Closed);
-          }
-          if error.kind() == ErrorKind::WouldBlock {
-            std::thread::sleep(IO_WAIT);
-          }
-          continue;
-        }
-        Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-        Err(error) => {
-          break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Write));
-        }
+  loop {
+    let step = attempt(shared, |stream| {
+      if offset == bytes.len() {
+        stream.flush().map(|()| None)
+      } else {
+        stream.write(&bytes[offset..]).map(Some)
       }
-    }
-    if shared.is_closed() {
-      break Err(crate::tcp::Fail::Closed);
-    }
-    match stream.write(&bytes[offset..]) {
-      Ok(0) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Ok(0) => {
-        break Err(crate::tcp::Fail::Class {
+    })?;
+    match step {
+      Ok(None) => return Ok(offset),
+      Ok(Some(0)) if shared.is_closed() => {
+        return Err(crate::tcp::Fail::Closed);
+      }
+      Ok(Some(0)) => {
+        return Err(crate::tcp::Fail::Class {
           class: crate::socket_error::Class::WriteZero,
           code: None,
         });
       }
-      Ok(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
-      Ok(count) => offset += count,
+      Ok(Some(_)) if shared.is_closed() => {
+        return Err(crate::tcp::Fail::Closed);
+      }
+      Ok(Some(count)) => offset += count,
       Err(error) if crate::socket_endpoint::is_io_retry(error.kind()) => {
         if shared.is_closed() {
-          break Err(crate::tcp::Fail::Closed);
+          return Err(crate::tcp::Fail::Closed);
         }
         if error.kind() == ErrorKind::WouldBlock {
           std::thread::sleep(IO_WAIT);
         }
       }
-      Err(_) if shared.is_closed() => break Err(crate::tcp::Fail::Closed),
+      Err(_) if shared.is_closed() => return Err(crate::tcp::Fail::Closed),
       Err(error) => {
-        break Err(crate::tcp::io_fail(error, crate::tcp::Fail::Write));
+        return Err(crate::tcp::io_fail(error, crate::tcp::Fail::Write));
       }
     }
-  };
-  restore(shared, stream);
-  outcome
-}
-
-fn restore(shared: &Shared, stream: StreamOwned<ClientConnection, TcpStream>) {
-  let mut slot = lock(&shared.stream);
-  if shared.is_closed() {
-    let _ = stream.sock.shutdown(Shutdown::Both);
-  } else {
-    *slot = Some(stream);
   }
 }
 

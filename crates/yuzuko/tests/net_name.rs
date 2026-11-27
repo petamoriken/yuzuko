@@ -497,8 +497,10 @@ const direct = await Yuzuko.connectTls({
   port,
   caCerts: [ca],
 });
+// The read is pending while the write runs, as in a full-duplex protocol.
+const directReading = readAll(direct);
 await direct.write(enc.encode("tls-ping"));
-const directText = await readAll(direct);
+const directText = await directReading;
 const directRemote = direct.remoteAddr.hostname;
 direct.close();
 const tcp = await Yuzuko.connectTcp({ hostname: "127.0.0.1", port });
