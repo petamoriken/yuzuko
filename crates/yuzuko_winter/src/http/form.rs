@@ -195,11 +195,11 @@ unsafe impl v8::cppgc::GarbageCollected for FormIter {
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
-    c"FormDataIterator"
+    c"FormData Iterator"
   }
 }
 
-#[op]
+#[op(name = "FormData Iterator")]
 impl FormIter {
   fn next(&self, scope: &mut v8::PinScope) -> Result<Js, OpError> {
     let form = traced_local(scope, &self.form)
@@ -632,7 +632,8 @@ fn percent_decode(input: &str) -> String {
 
 pub fn install(scope: &mut v8::PinScope) {
   FormData::install(scope);
-  let _ = FormIter::template(scope);
+  let iterator = FormIter::template(scope);
+  crate::util::adopt_iterator_prototype(scope, iterator);
   let templ = FormData::template(scope);
   let ctor = templ.get_function(scope).unwrap();
   let key = v8::String::new(scope, "prototype").unwrap();

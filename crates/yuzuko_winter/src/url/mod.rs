@@ -495,6 +495,8 @@ impl UrlSearchParams {
 pub fn install(scope: &mut v8::PinScope) {
   Url::install(scope);
   UrlSearchParams::install(scope);
+  let iterator = SearchIter::template(scope);
+  crate::util::adopt_iterator_prototype(scope, iterator);
   let constructor = UrlSearchParams::template(scope)
     .get_function(scope)
     .expect("URLSearchParams");
@@ -939,22 +941,6 @@ fn iterator_object(
       },
     )
   };
-  let symbol = v8::Symbol::get_iterator(scope);
-  let function = v8::Function::new(scope, iterate_self).unwrap();
-  let _ = iter.create_data_property(scope, symbol.into(), function.into());
   let value: v8::Local<v8::Value> = iter.into();
   Js(v8::Global::new(scope, value))
-}
-
-fn iterate_self(
-  scope: &mut v8::PinScope,
-  args: v8::FunctionCallbackArguments,
-  mut ret: v8::ReturnValue,
-) {
-  let object = args.this();
-  if unsafe { host_ref::<SearchIter>(scope, object) }.is_none() {
-    OpException::throw(OpError::type_("Illegal invocation"), scope);
-    return;
-  }
-  ret.set(object.into());
 }

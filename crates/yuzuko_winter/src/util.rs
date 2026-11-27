@@ -90,3 +90,41 @@ pub(crate) fn global_attribute(
     scope,
   );
 }
+
+/// Sets the `[[Prototype]]` of a WebIDL iterator prototype object to
+/// `%IteratorPrototype%`, which supplies `[Symbol.iterator]` and the iterator
+/// helpers. Called once while the realm is still pristine.
+pub(crate) fn adopt_iterator_prototype(
+  scope: &mut v8::PinScope,
+  template: v8::Local<v8::FunctionTemplate>,
+) {
+  let Some(constructor) = template.get_function(scope) else {
+    return;
+  };
+  let key = v8::String::new(scope, "prototype").unwrap();
+  let Some(prototype) = constructor
+    .get(scope, key.into())
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(intrinsic) = intrinsic_iterator_prototype(scope) else {
+    return;
+  };
+  let _ = prototype.set_prototype(scope, intrinsic.into());
+}
+
+fn intrinsic_iterator_prototype<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let array = v8::Array::new(scope, 0);
+  let symbol = v8::Symbol::get_iterator(scope);
+  let function = array.get(scope, symbol.into())?;
+  let function = v8::Local::<v8::Function>::try_from(function).ok()?;
+  let iterator = function.call(scope, array.into(), &[])?;
+  let iterator = iterator.to_object(scope)?;
+  let proto = iterator.get_prototype(scope)?;
+  let proto = v8::Local::<v8::Object>::try_from(proto).ok()?;
+  let intrinsic = proto.get_prototype(scope)?;
+  v8::Local::<v8::Object>::try_from(intrinsic).ok()
+}

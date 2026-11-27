@@ -79,3 +79,24 @@ Yuzuko.test("formData parses a mixed-case boundary and binary parts", async () =
   }
   assert(failed === "TypeError", `truncated ${failed}`);
 });
+
+Yuzuko.test("FormData and URLSearchParams iterators inherit %IteratorPrototype%", () => {
+  const intrinsic = Object.getPrototypeOf(
+    Object.getPrototypeOf([][Symbol.iterator]()),
+  );
+  const form = new FormData();
+  form.append("a", "1");
+  const params = new URLSearchParams("a=1");
+  for (const [label, iterator, tag] of [
+    ["FormData", form.entries(), "FormData Iterator"],
+    ["URLSearchParams", params.entries(), "URLSearchParams Iterator"],
+  ] as const) {
+    const prototype = Object.getPrototypeOf(iterator);
+    assert(Object.getPrototypeOf(prototype) === intrinsic, `${label} chain`);
+    assert(iterator[Symbol.iterator]() === iterator, `${label} @@iterator`);
+    assert(Object.prototype.toString.call(iterator) === `[object ${tag}]`, tag);
+    assert(!Object.hasOwn(iterator, Symbol.iterator), `${label} own @@iterator`);
+  }
+  assert([...form.keys()].join() === "a", "FormData keys");
+  assert([...params.values()].join() === "1", "URLSearchParams values");
+});
