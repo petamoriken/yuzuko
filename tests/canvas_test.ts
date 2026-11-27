@@ -482,3 +482,28 @@ Yuzuko.test("a huge arc radius builds a bounded path", () => {
     throw new Error(`took ${elapsed} ms`);
   }
 });
+
+Yuzuko.test("a dash list past a million dashes strokes solid", () => {
+  const started = performance.now();
+  const ctx = new OffscreenCanvas(16, 4).getContext("2d")!;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#00ff00";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, 1);
+  ctx.lineTo(16, 1);
+  ctx.stroke();
+  assert(pixel(ctx, 1, 1)[3] === 255, "dash drawn");
+  assert(pixel(ctx, 5, 1)[3] === 0, "gap left");
+  ctx.setLineDash([1e-10, 1e-10]);
+  ctx.beginPath();
+  ctx.moveTo(0, 3);
+  ctx.lineTo(16, 3);
+  ctx.stroke();
+  assert(pixel(ctx, 5, 3)[3] === 255, "dense dashes stroke solid");
+  ctx.isPointInStroke(5, 3);
+  ctx.font = "20px sans-serif";
+  ctx.strokeText("AB", 0, 4);
+  const elapsed = performance.now() - started;
+  assert(elapsed < 10_000, `took ${elapsed} ms`);
+});

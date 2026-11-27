@@ -44,6 +44,10 @@ use crate::paint::record::{self};
 use crate::paint::replay;
 use crate::text;
 
+/// An upper bound on one glyph's outline length, in em. It sizes the dash
+/// limit for stroked text, whose outlines are built only at paint time.
+const GLYPH_OUTLINE_EMS: f64 = 16.0;
+
 pub struct Context2D {
   id: u64,
   canvas: RefCell<v8::TracedReference<v8::Object>>,
@@ -267,7 +271,7 @@ fn paint_stroke(
     };
     path.apply_affine(inverse);
   }
-  let stroke = drawing.state.stroke();
+  let stroke = drawing.state.stroke_for(&path);
   let alpha = drawing.state.alpha;
   let filter = drawing.state.paint_filter(drawing.width, drawing.height);
   let clips = drawing.state.clips();
@@ -1466,7 +1470,7 @@ impl Context2D {
   ) -> Result<bool, OpError> {
     self.update(|drawing| {
       let (path, x, y, _, user_space) = point_args(scope, args, &drawing.path)?;
-      let stroke = drawing.state.stroke();
+      let stroke = drawing.state.stroke_for(&path);
       if user_space {
         return Ok(path::hit_stroke(
           &path,
@@ -2185,6 +2189,7 @@ impl Context2D {
         * Affine::scale_non_uniform(scale, 1.0);
       for run in shaped.runs {
         let glyphs: Arc<[(u32, f32, f32)]> = Arc::from(run.glyphs.as_slice());
+        let glyph_count = glyphs.len();
         if stroke {
           let Some(brush) = record::resolve_style(
             &drawing.state.stroke_style,
@@ -2199,7 +2204,11 @@ impl Context2D {
             brush,
             transform,
             alpha: drawing.state.alpha,
-            stroke: Some(drawing.state.stroke()),
+            // A glyph outline is at most a few em long, so this bounds the
+            // run's outline length without building it.
+            stroke: Some(drawing.state.stroke_within(
+              glyph_count as f64 * f64::from(run.size) * GLYPH_OUTLINE_EMS,
+            )),
             shade,
             filter: drawing.state.paint_filter(drawing.width, drawing.height),
             clips: drawing.state.clips(),

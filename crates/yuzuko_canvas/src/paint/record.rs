@@ -615,7 +615,35 @@ impl Default for State {
   }
 }
 
+/// The most dashes one stroke may produce. Past it the stroke is drawn
+/// solid, as Skia does, so a tiny dash length cannot keep the dasher running
+/// for hours.
+const MAX_DASHES: f64 = 1_000_000.0;
+
 impl State {
+  /// The stroke for a path of about `length` user units. A dash list that
+  /// would cut it into more than [`MAX_DASHES`] pieces is dropped.
+  pub fn stroke_within(&self, length: f64) -> Stroke {
+    let mut stroke = self.stroke();
+    let period: f64 = stroke.dash_pattern.iter().sum();
+    // NaN counts as too many, so an unmeasurable path strokes solid.
+    let within = period > 0.0 && length / period <= MAX_DASHES;
+    if !stroke.dash_pattern.is_empty() && !within {
+      stroke.dash_pattern.clear();
+      stroke.dash_offset = 0.0;
+    }
+    stroke
+  }
+
+  /// The stroke for `path`, measured in its own units.
+  pub fn stroke_for(&self, path: &BezPath) -> Stroke {
+    use kurbo::Shape;
+    if self.dash.is_empty() {
+      return self.stroke();
+    }
+    self.stroke_within(path.perimeter(1.0))
+  }
+
   pub fn stroke(&self) -> Stroke {
     let mut dash = self.dash.clone();
     if dash.len() % 2 == 1 {
