@@ -99,6 +99,63 @@ fn base_config(extra: &str) -> String {
 }
 
 #[test]
+fn package_does_not_replace_the_project_or_a_foreign_path() {
+  let dir = scratch("output-guard");
+  let output = |name: &str| {
+    if cfg!(target_os = "macos") {
+      format!("{name}.app")
+    } else {
+      name.to_string()
+    }
+  };
+  // The project directory itself is the output.
+  let project = dir.join(output("proj"));
+  write(&project.join("main.ts"), "console.log(1)\n");
+  write(&project.join("notes.txt"), "precious\n");
+  write(&project.join("yuzuko.json"), r#"{ "name": "Proj" }"#);
+  let target = format!("../{}", output("proj"));
+  let refused = run(&project, &["package", "main.ts", "--output", &target]);
+  assert_ne!(refused.status.code(), Some(0), "{}", text(&refused.stderr));
+  assert!(
+    text(&refused.stderr).contains("contains the project"),
+    "{}",
+    text(&refused.stderr)
+  );
+  assert_eq!(
+    fs::read_to_string(project.join("notes.txt")).unwrap(),
+    "precious\n"
+  );
+
+  // An unrelated directory at the output path is kept.
+  let app = dir.join("app");
+  write(&app.join("main.ts"), "console.log(1)\n");
+  write(&app.join("yuzuko.json"), r#"{ "name": "App" }"#);
+  let foreign = dir.join(output("foreign"));
+  write(&foreign.join("keep.txt"), "keep\n");
+  let target = foreign.to_str().unwrap();
+  let refused = run(&app, &["package", "main.ts", "--output", target]);
+  assert_ne!(refused.status.code(), Some(0), "{}", text(&refused.stderr));
+  assert!(
+    text(&refused.stderr).contains("not a Yuzuko bundle"),
+    "{}",
+    text(&refused.stderr)
+  );
+  assert_eq!(
+    fs::read_to_string(foreign.join("keep.txt")).unwrap(),
+    "keep\n"
+  );
+
+  // An earlier bundle is replaced.
+  let bundle = dir.join(output("bundle"));
+  let target = bundle.to_str().unwrap();
+  let first = run(&app, &["package", "main.ts", "--output", target]);
+  assert_eq!(first.status.code(), Some(0), "{}", text(&first.stderr));
+  let again = run(&app, &["package", "main.ts", "--output", target]);
+  assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn refusals_write_nothing_and_do_not_panic() {
   let dir = scratch("refuse");
   let missing_icon = dir.join("missing-icon.app");

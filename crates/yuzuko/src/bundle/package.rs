@@ -91,6 +91,7 @@ pub fn package(
   // Reject a graph, asset, or symlink that leaves the config directory
   // before creating the output parent or copying the runtime.
   validate_bundle(config)?;
+  check_output(config, output)?;
   let parent = output.parent().filter(|path| !path.as_os_str().is_empty());
   if let Some(parent) = parent {
     fs::create_dir_all(parent).map_err(|error| {
@@ -117,6 +118,54 @@ pub fn package(
     let _ = remove_path(&temp);
     ConfigError::new(format!("cannot replace {}: {error}", output.display()))
   })
+}
+
+/// The output is replaced as a whole, so it must not hold the project, and
+/// an existing path must be a bundle that `yuzuko package` wrote.
+fn check_output(config: &Config, output: &Path) -> Result<(), ConfigError> {
+  let project = fs::canonicalize(&config.directory)
+    .unwrap_or_else(|_| config.directory.clone());
+  let target = canonical_output(output);
+  if project.starts_with(&target) {
+    return Err(ConfigError::new(format!(
+      "the output contains the project directory: {}",
+      output.display()
+    )));
+  }
+  if fs::symlink_metadata(output).is_ok() && !is_bundle(output) {
+    return Err(ConfigError::new(format!(
+      "the output exists and is not a Yuzuko bundle: {}",
+      output.display()
+    )));
+  }
+  Ok(())
+}
+
+/// `output` with its parent resolved, so `..` and a symlinked parent name
+/// the directory that would be replaced.
+fn canonical_output(output: &Path) -> PathBuf {
+  let absolute =
+    std::path::absolute(output).unwrap_or_else(|_| output.to_path_buf());
+  if let Ok(real) = fs::canonicalize(&absolute) {
+    return real;
+  }
+  match (absolute.parent(), absolute.file_name()) {
+    (Some(parent), Some(name)) => fs::canonicalize(parent)
+      .map(|parent| parent.join(name))
+      .unwrap_or(absolute.clone()),
+    _ => absolute,
+  }
+}
+
+/// A macOS `.app` or a Windows or Linux directory with the bundle manifest.
+fn is_bundle(path: &Path) -> bool {
+  let meta = match fs::symlink_metadata(path) {
+    Ok(meta) => meta,
+    Err(_) => return false,
+  };
+  meta.is_dir()
+    && (path.join("Contents/Resources/yuzuko.bundle.json").is_file()
+      || path.join("yuzuko.bundle.json").is_file())
 }
 
 fn temp_output(output: &Path) -> PathBuf {
