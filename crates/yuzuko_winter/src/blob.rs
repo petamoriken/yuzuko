@@ -1330,7 +1330,13 @@ fn finish_read(
   let value: v8::Local<v8::Value> = match job.kind {
     ReadKind::Text => {
       let text = decode_utf8(&job.bytes);
-      v8::String::new(scope, &text).unwrap().into()
+      match yuzuko_core::op::string_or_range_error(scope, &text) {
+        Ok(text) => text.into(),
+        Err(error) => {
+          resolver.reject(scope, error);
+          return;
+        }
+      }
     }
     ReadKind::Buffer => bytes::array_buffer(scope, job.bytes).into(),
     ReadKind::Bytes => bytes::uint8_array(scope, job.bytes).into(),

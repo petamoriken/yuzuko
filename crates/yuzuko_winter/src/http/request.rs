@@ -927,8 +927,10 @@ fn follow_request_text(
     match result {
       Ok(bytes) => {
         let text = crate::blob::decode_utf8(&bytes);
-        let text = v8::String::new(scope, &text).unwrap();
-        resolver.resolve(scope, text.into());
+        match yuzuko_core::op::string_or_range_error(scope, &text) {
+          Ok(text) => resolver.resolve(scope, text.into()),
+          Err(error) => resolver.reject(scope, error),
+        };
       }
       Err(error) => {
         let error = v8::Local::new(scope, &error);
@@ -942,9 +944,10 @@ fn follow_request_text(
 
 fn resolve_text(scope: &mut v8::PinScope, bytes: Vec<u8>) -> Js {
   let text = crate::blob::decode_utf8(&bytes);
-  let text = v8::String::new(scope, &text).unwrap();
-  let value: v8::Local<v8::Value> = text.into();
-  resolve(scope, value)
+  match yuzuko_core::op::string_or_range_error(scope, &text) {
+    Ok(text) => resolve(scope, text.into()),
+    Err(_) => reject(scope, OpError::range("Invalid string length")),
+  }
 }
 
 fn reject_syntax(scope: &mut v8::PinScope) -> Js {

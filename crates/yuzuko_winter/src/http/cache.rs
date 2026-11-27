@@ -1520,7 +1520,7 @@ fn new_get_request<'s>(
   let Ok(ctor) = v8::Local::<v8::Function>::try_from(ctor) else {
     return Err(());
   };
-  let url = v8::String::new(scope, url).unwrap();
+  let url = v8::String::new(scope, url).ok_or(())?;
   ctor.new_instance(scope, &[url.into()]).ok_or(())
 }
 

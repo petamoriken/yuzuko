@@ -162,7 +162,7 @@ impl UrlPattern {
       } else {
         None
       };
-    Ok(result_object(scope, &result, Some(recorded), recorded_base))
+    result_object(scope, &result, Some(recorded), recorded_base)
   }
 
   #[static_method]
@@ -382,16 +382,16 @@ fn result_object(
   result: &urlpattern::UrlPatternResult,
   input: Option<v8::Local<v8::Value>>,
   base: Option<v8::Local<v8::Value>>,
-) -> Js {
+) -> Result<Js, OpError> {
   let object = v8::Object::new(scope);
-  set_component(scope, object, "protocol", &result.protocol);
-  set_component(scope, object, "username", &result.username);
-  set_component(scope, object, "password", &result.password);
-  set_component(scope, object, "hostname", &result.hostname);
-  set_component(scope, object, "port", &result.port);
-  set_component(scope, object, "pathname", &result.pathname);
-  set_component(scope, object, "search", &result.search);
-  set_component(scope, object, "hash", &result.hash);
+  set_component(scope, object, "protocol", &result.protocol)?;
+  set_component(scope, object, "username", &result.username)?;
+  set_component(scope, object, "password", &result.password)?;
+  set_component(scope, object, "hostname", &result.hostname)?;
+  set_component(scope, object, "port", &result.port)?;
+  set_component(scope, object, "pathname", &result.pathname)?;
+  set_component(scope, object, "search", &result.search)?;
+  set_component(scope, object, "hash", &result.hash)?;
   let input = input.filter(|value| !value.is_null_or_undefined());
   let base = base.filter(|value| !value.is_null_or_undefined());
   let inputs = v8::Array::new(
@@ -409,7 +409,16 @@ fn result_object(
   let key = v8::String::new(scope, "inputs").unwrap();
   let _ = object.create_data_property(scope, key.into(), inputs.into());
   let value: v8::Local<v8::Value> = object.into();
-  Js(v8::Global::new(scope, value))
+  Ok(Js(v8::Global::new(scope, value)))
+}
+
+/// A component string. Percent-encoding can make one longer than V8 allows.
+fn component_string<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  text: &str,
+) -> Result<v8::Local<'s, v8::String>, OpError> {
+  v8::String::new(scope, text)
+    .ok_or_else(|| OpError::range("Invalid string length"))
 }
 
 fn set_component(
@@ -417,9 +426,9 @@ fn set_component(
   object: v8::Local<v8::Object>,
   name: &str,
   component: &urlpattern::UrlPatternComponentResult,
-) {
+) -> Result<(), OpError> {
   let record = v8::Object::new(scope);
-  let input = v8::String::new(scope, &component.input).unwrap();
+  let input = component_string(scope, &component.input)?;
   let input_key = v8::String::new(scope, "input").unwrap();
   let _ = record.create_data_property(scope, input_key.into(), input.into());
   let groups = v8::Object::new(scope);
@@ -427,7 +436,7 @@ fn set_component(
     let key = v8::String::new(scope, name).unwrap();
     let value = match value {
       Some(value) => {
-        let text = v8::String::new(scope, value).unwrap();
+        let text = component_string(scope, value)?;
         let value: v8::Local<v8::Value> = text.into();
         value
       }
@@ -439,6 +448,7 @@ fn set_component(
   let _ = record.create_data_property(scope, groups_key.into(), groups.into());
   let key = v8::String::new(scope, name).unwrap();
   let _ = object.create_data_property(scope, key.into(), record.into());
+  Ok(())
 }
 
 pub fn install(scope: &mut v8::PinScope) {

@@ -219,10 +219,27 @@ impl ToV8 for () {
 impl ToV8 for String {
   #[inline]
   fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {
-    if let Some(value) = v8::String::new(scope, &self) {
-      ret.set(value.into());
+    match string_or_range_error(scope, &self) {
+      Ok(value) => ret.set(value.into()),
+      Err(error) => {
+        scope.throw_exception(error);
+      }
     }
   }
+}
+
+/// `text` as a V8 string, or the `RangeError` V8 throws for a string longer
+/// than its limit. A body or URL can decode past that limit.
+pub fn string_or_range_error<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  text: &str,
+) -> Result<v8::Local<'s, v8::String>, v8::Local<'s, v8::Value>> {
+  if let Some(value) = v8::String::new(scope, text) {
+    return Ok(value);
+  }
+  let message = v8::String::new(scope, "Invalid string length")
+    .unwrap_or_else(|| v8::String::empty(scope));
+  Err(v8::Exception::range_error(scope, message))
 }
 
 impl ToV8 for &'static str {

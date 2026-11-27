@@ -1338,6 +1338,31 @@ fn property_text(
 }
 
 #[test]
+fn a_string_past_the_v8_limit_is_a_range_error() {
+  crate::runtime::with_runtime(
+    false,
+    false,
+    |_| {},
+    |scope| {
+      let short = crate::op::string_or_range_error(scope, "ok").unwrap();
+      assert_eq!(short.length(), 2);
+      // V8 limits a string to 2^29 - 24 characters on 64-bit targets.
+      let long = "a".repeat(1 << 29);
+      let error = crate::op::string_or_range_error(scope, &long).unwrap_err();
+      let error = v8::Local::<v8::Object>::try_from(error).unwrap();
+      let message = v8::String::new(scope, "message").unwrap();
+      let message = error.get(scope, message.into()).unwrap();
+      assert_eq!(
+        crate::js::rust_string(scope, message),
+        "Invalid string length"
+      );
+      Ok(())
+    },
+  )
+  .unwrap();
+}
+
+#[test]
 fn host_binding_helpers_follow_their_contract() {
   crate::runtime::with_runtime(
     false,

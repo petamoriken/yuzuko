@@ -499,10 +499,7 @@ impl yuzuko_core::op::ToV8 for JsPending {
   fn to_v8(self, scope: &mut v8::PinScope, ret: &mut v8::ReturnValue) {
     match self {
       Self::Null => ret.set(v8::null(scope).into()),
-      Self::Text(text) => {
-        let text = v8::String::new(scope, &text).unwrap();
-        ret.set(text.into());
-      }
+      Self::Text(text) => text.to_v8(scope, ret),
     }
   }
 }
@@ -973,8 +970,10 @@ impl Response {
   fn text(&self, scope: &mut v8::PinScope) -> ResponsePromise {
     self.consume_as(scope, |scope, bytes, resolver| {
       let text = crate::blob::decode_utf8(&bytes);
-      let text = v8::String::new(scope, &text).unwrap();
-      resolver.resolve(scope, text.into());
+      match yuzuko_core::op::string_or_range_error(scope, &text) {
+        Ok(text) => resolver.resolve(scope, text.into()),
+        Err(error) => resolver.reject(scope, error),
+      };
     })
   }
 
