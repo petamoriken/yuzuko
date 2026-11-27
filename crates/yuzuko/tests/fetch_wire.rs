@@ -261,3 +261,82 @@ fn endless_interim_responses_reject_the_fetch() {
   assert!(stdout.contains("many TypeError"), "{stdout}\n{stderr}");
   assert!(stdout.contains("few ok"), "{stdout}\n{stderr}");
 }
+
+/// A caller's framing headers do not reach the wire. The body the client
+/// sends is described by the client's own Content-Length.
+#[test]
+fn caller_framing_headers_do_not_reach_the_wire() {
+  let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+  let port = listener.local_addr().unwrap().port();
+  let server = thread::spawn(move || {
+    let (mut stream, _) = listener.accept().unwrap();
+    stream
+      .set_read_timeout(Some(Duration::from_secs(10)))
+      .unwrap();
+    let mut received = Vec::new();
+    let mut buffer = [0u8; 4096];
+    while !received.windows(4).any(|window| window == b"\r\n\r\n") {
+      match stream.read(&mut buffer) {
+        Ok(0) | Err(_) => break,
+        Ok(count) => received.extend_from_slice(&buffer[..count]),
+      }
+    }
+    let head_end = received
+      .windows(4)
+      .position(|window| window == b"\r\n\r\n")
+      .map_or(received.len(), |at| at + 4);
+    let head =
+      String::from_utf8_lossy(&received[..head_end]).to_ascii_lowercase();
+    let _ = stream.write_all(
+      b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+    );
+    head
+  });
+  let dir = scratch("framing");
+  fs::write(
+    dir.join("main.ts"),
+    format!(
+      r#"const body = "GET /admin HTTP/1.1\r\nHost: x\r\n\r\n";
+const response = await fetch("http://127.0.0.1:{port}/", {{
+  method: "POST",
+  body,
+  headers: {{
+    "Content-Length": "0",
+    "Transfer-Encoding": "identity",
+    "Connection": "keep-alive",
+    "Keep-Alive": "timeout=5",
+    "X-Kept": "yes",
+  }},
+}});
+console.log("status " + response.status);
+"#
+    ),
+  )
+  .unwrap();
+  let output = Command::new(env!("CARGO_BIN_EXE_yuzuko"))
+    .current_dir(&dir)
+    .args(["run", "-A", "main.ts"])
+    .env("YUZUKO_HEADLESS", "1")
+    .stdin(Stdio::null())
+    .output()
+    .unwrap();
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    stdout.contains("status 200"),
+    "{stdout}\n{}",
+    String::from_utf8_lossy(&output.stderr)
+  );
+  let head = server.join().unwrap();
+  let body_length = "GET /admin HTTP/1.1\r\nHost: x\r\n\r\n".len();
+  assert!(
+    head.contains(&format!("content-length: {body_length}\r\n")),
+    "{head}"
+  );
+  assert_eq!(head.matches("content-length:").count(), 1, "{head}");
+  assert_eq!(head.matches("connection:").count(), 1, "{head}");
+  assert!(head.contains("connection: close\r\n"), "{head}");
+  assert!(!head.contains("transfer-encoding"), "{head}");
+  assert!(!head.contains("keep-alive"), "{head}");
+  assert!(head.contains("x-kept: yes"), "{head}");
+  let _ = fs::remove_dir_all(&dir);
+}

@@ -1001,13 +1001,12 @@ fn raw_request(
   message.extend(path.as_bytes());
   message.extend(b" HTTP/1.1\r\n");
   let mut saw_host = false;
-  let mut saw_length = false;
   for (name, value) in headers {
     if name.eq_ignore_ascii_case("host") {
       saw_host = true;
     }
-    if name.eq_ignore_ascii_case("content-length") {
-      saw_length = true;
+    if is_framing_header(name) {
+      continue;
     }
     message.extend(name.as_bytes());
     message.extend(b": ");
@@ -1024,12 +1023,25 @@ fn raw_request(
     };
     message.extend(format!("Host: {host_value}\r\n").into_bytes());
   }
-  if !saw_length {
-    message.extend(format!("Content-Length: {}\r\n", body.len()).into_bytes());
-  }
+  message.extend(format!("Content-Length: {}\r\n", body.len()).into_bytes());
   message.extend(b"Connection: close\r\n\r\n");
   message.extend(body);
   message
+}
+
+/// Headers that frame the message on the connection. The client writes its
+/// own `Content-Length` and `Connection: close` for the body it sends, so a
+/// caller's value cannot describe a different message and let the rest of
+/// the body be read as a second request.
+fn is_framing_header(name: &str) -> bool {
+  [
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+  ]
+  .iter()
+  .any(|framing| name.eq_ignore_ascii_case(framing))
 }
 
 /// The largest response head, and the largest chunk trailer section.
@@ -1481,13 +1493,12 @@ async fn raw_http1_exchange(
   message.extend(path.as_bytes());
   message.extend(b" HTTP/1.1\r\n");
   let mut saw_host = false;
-  let mut saw_length = false;
   for (name, value) in headers {
     if name.eq_ignore_ascii_case("host") {
       saw_host = true;
     }
-    if name.eq_ignore_ascii_case("content-length") {
-      saw_length = true;
+    if is_framing_header(name) {
+      continue;
     }
     message.extend(name.as_bytes());
     message.extend(b": ");
@@ -1501,9 +1512,7 @@ async fn raw_http1_exchange(
     };
     message.extend(format!("Host: {host_value}\r\n").into_bytes());
   }
-  if !saw_length {
-    message.extend(format!("Content-Length: {}\r\n", body.len()).into_bytes());
-  }
+  message.extend(format!("Content-Length: {}\r\n", body.len()).into_bytes());
   message.extend(b"Connection: close\r\n\r\n");
   message.extend(body);
   stream
