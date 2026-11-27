@@ -1,5 +1,6 @@
 //! Application bundles for macOS, Windows, and Linux.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -403,7 +404,7 @@ fn walk_glob(
   let rest = &parts[1..];
   if head == "**" {
     if rest.is_empty() {
-      collect_files(root, dir, files)?;
+      collect_files(root, dir, files, &mut HashSet::new())?;
       return Ok(());
     }
     walk_glob(root, dir, rest, files)?;
@@ -432,15 +433,23 @@ fn walk_glob(
   Ok(())
 }
 
+/// Collects every file under `dir`. A symlink can name a directory that is
+/// already being walked, so each canonical directory is walked once.
 fn collect_files(
   root: &Path,
   dir: &Path,
   files: &mut Vec<PathBuf>,
+  walked: &mut HashSet<PathBuf>,
 ) -> Result<(), ConfigError> {
+  let canonical =
+    yuzuko_core::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+  if !walked.insert(canonical) {
+    return Ok(());
+  }
   for entry in read_sorted(dir)? {
     let path = contained(root, &entry.path())?;
     if path.is_dir() {
-      collect_files(root, &path, files)?;
+      collect_files(root, &path, files, walked)?;
     } else if path.is_file() {
       files.push(path);
     }
@@ -660,6 +669,24 @@ impl From<std::io::Error> for ConfigError {
 #[cfg(test)]
 mod tests {
   use super::{gui_subsystem, pe_offsets};
+
+  // Creating a symlink on Windows needs Developer Mode or an elevated token.
+  #[cfg(unix)]
+  #[test]
+  fn asset_symlink_loop_is_walked_once() {
+    let root = std::env::temp_dir()
+      .join(format!("yuzuko-asset-loop-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("assets/inner")).unwrap();
+    std::fs::write(root.join("assets/keep.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink("..", root.join("assets/inner/up")).unwrap();
+    std::os::unix::fs::symlink(".", root.join("assets/self")).unwrap();
+    let files = super::expand_assets(&root, &["assets/**".to_string()]);
+    let _ = std::fs::remove_dir_all(&root);
+    let files = files.unwrap();
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert!(files[0].ends_with("assets/keep.txt"), "{files:?}");
+  }
 
   fn image(magic: u16, subsystem: u16) -> Vec<u8> {
     let mut image = vec![0u8; 0x200];

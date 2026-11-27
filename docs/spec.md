@@ -1358,7 +1358,7 @@ Unknown keys are errors. There is no `exports` key. Paths are relative to the co
 | `icons.macos` | An `.icns` path, or an array of `{ "path", "size" }` PNGs assembled at package time. A missing file is an error. No entry means the bundle has no custom icon |
 | `icons.windows` | An `.ico` path. PNGs are not assembled. It becomes the executable's icon resource, which Explorer, taskbar pins, and shortcuts show, and is copied as `AppIcon.ico` for the window icon. A file that is not a valid icon directory fails `yuzuko package` |
 | `icons.linux` | A `.png` path, or the same PNG array as macOS |
-| `assets` | Globs copied into the bundle, relative to the config file. The module graph is included without being listed. Paths that escape the config directory are errors |
+| `assets` | Globs copied into the bundle, relative to the config file. The module graph is included without being listed. Paths that escape the config directory are errors. `**` follows a symlink to a directory and walks each directory once, so a symlink loop ends |
 | `output.macos` | A path ending in `.app` |
 | `output.windows` | A directory path. `.msi` is not produced |
 | `output.linux` | A directory path. `.deb`, `.rpm`, and `.AppImage` are not produced |
