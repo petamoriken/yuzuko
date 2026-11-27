@@ -1638,3 +1638,22 @@ Yuzuko.test("MessagePort.postMessage lists transferred ports", async () => {
   event.ports[0].close();
   carried.port2.close();
 });
+
+Yuzuko.test("DataCloneError uses the realm's own DOMException", () => {
+  const realm = globalThis as unknown as { DOMException: unknown };
+  const original = realm.DOMException;
+  let thrown: unknown;
+  try {
+    realm.DOMException = function decoy() {
+      throw new Error("the decoy constructor ran");
+    };
+    structuredClone(() => {});
+  } catch (error) {
+    thrown = error;
+  } finally {
+    realm.DOMException = original;
+  }
+  if (!(thrown instanceof DOMException) || thrown.name !== "DataCloneError") {
+    throw new Error(`unexpected ${String(thrown)}`);
+  }
+});

@@ -17,8 +17,6 @@
 
 use std::sync::Mutex;
 
-use crate::js;
-
 pub enum WriteResult {
   Skip,
   Wrote,
@@ -822,21 +820,7 @@ pub(crate) fn throw_data_clone(scope: &mut v8::PinScope, message: &str) {
     note_deferred_clone_error(message);
     return;
   }
-  let global = js::global(scope);
-  let key = v8::String::new(scope, "DOMException").unwrap();
-  if let Some(ctor) = global.get(scope, key.into())
-    && let Ok(ctor) = v8::Local::<v8::Function>::try_from(ctor)
-  {
-    let message = v8::String::new(scope, message).unwrap();
-    let name = v8::String::new(scope, "DataCloneError").unwrap();
-    if let Some(error) =
-      ctor.new_instance(scope, &[message.into(), name.into()])
-    {
-      scope.throw_exception(error.into());
-      return;
-    }
-  }
-  js::throw_type(scope, message);
+  crate::op::throw_dom(scope, "DataCloneError", message);
 }
 
 pub fn write_bytes(helper: &dyn v8::ValueSerializerHelper, bytes: &[u8]) {
