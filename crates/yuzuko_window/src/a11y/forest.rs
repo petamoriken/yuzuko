@@ -762,13 +762,16 @@ fn walk(
   nodes: &mut Vec<(NodeId, Node)>,
   published: &mut HashSet<u64>,
 ) {
-  if !forest.nodes.contains_key(&id) || !published.insert(id) {
-    return;
-  }
-  let children = child_ids(forest, id);
-  nodes.push((NodeId(id), fill(forest, id, scale, &children)));
-  for child in children {
-    walk(forest, child, scale, nodes, published);
+  // An explicit stack keeps a deep tree from overflowing the thread stack.
+  // Children go on in reverse so the nodes still come out in preorder.
+  let mut stack = vec![id];
+  while let Some(id) = stack.pop() {
+    if !forest.nodes.contains_key(&id) || !published.insert(id) {
+      continue;
+    }
+    let children = child_ids(forest, id);
+    nodes.push((NodeId(id), fill(forest, id, scale, &children)));
+    stack.extend(children.into_iter().rev());
   }
 }
 
@@ -1147,13 +1150,14 @@ fn fill_computed(
   nodes: &mut HashMap<u64, ComputedNode>,
   published: &mut HashSet<u64>,
 ) {
-  if !forest.nodes.contains_key(&id) || !published.insert(id) {
-    return;
-  }
-  let children = child_ids(forest, id);
-  nodes.insert(id, computed_author(forest, id, parent, &children));
-  for child in children {
-    fill_computed(forest, child, id, nodes, published);
+  let mut stack = vec![(id, parent)];
+  while let Some((id, parent)) = stack.pop() {
+    if !forest.nodes.contains_key(&id) || !published.insert(id) {
+      continue;
+    }
+    let children = child_ids(forest, id);
+    nodes.insert(id, computed_author(forest, id, parent, &children));
+    stack.extend(children.into_iter().rev().map(|child| (child, id)));
   }
 }
 
@@ -1369,8 +1373,7 @@ fn phys(css: f64, scale: f64) -> f64 {
 }
 
 fn bounds_of(forest: &Forest, id: u64, scale: f64) -> Rect {
-  let mut seen = HashSet::new();
-  let (x, y) = origin_of(forest, id, &mut seen);
+  let (x, y) = origin_of(forest, id);
   let (width, height) = forest
     .nodes
     .get(&id)
@@ -1389,31 +1392,41 @@ fn bounds_of(forest: &Forest, id: u64, scale: f64) -> Rect {
   )
 }
 
-fn origin_of(forest: &Forest, id: u64, seen: &mut HashSet<u64>) -> (f64, f64) {
-  if !seen.insert(id) {
-    return (0.0, 0.0);
-  }
-  let Some(author) = forest.nodes.get(&id) else {
-    return (0.0, 0.0);
-  };
-  let left = finite_or_zero(author.offset_left.unwrap_or(0.0));
-  let top = finite_or_zero(author.offset_top.unwrap_or(0.0));
-  let offset_parent = author.offset_parent;
-  let parent = author.parent;
-  let (base_x, base_y) = if let Some(ancestor) = offset_parent {
-    if is_strict_ancestor(forest, ancestor, id) {
-      origin_of(forest, ancestor, seen)
-    } else if let Some(parent) = parent {
-      origin_of(forest, parent, seen)
-    } else {
-      (0.0, 0.0)
+/// The node's offset plus its base's origin. The base is `offsetParent` when
+/// that is a strict ancestor, and otherwise the parent. Both are on the
+/// parent chain, so the chain is read once and walked without recursion.
+fn origin_of(forest: &Forest, id: u64) -> (f64, f64) {
+  let mut chain = Vec::new();
+  let mut place = HashMap::new();
+  let mut current = Some(id);
+  while let Some(node) = current {
+    let Some(author) = forest.nodes.get(&node) else {
+      break;
+    };
+    if place.insert(node, chain.len()).is_some() {
+      break;
     }
-  } else if let Some(parent) = parent {
-    origin_of(forest, parent, seen)
-  } else {
-    (0.0, 0.0)
-  };
-  (base_x + left, base_y + top)
+    chain.push(author);
+    current = author.parent;
+  }
+  let mut offsets = Vec::new();
+  let mut at = 0;
+  while let Some(author) = chain.get(at) {
+    offsets.push((
+      finite_or_zero(author.offset_left.unwrap_or(0.0)),
+      finite_or_zero(author.offset_top.unwrap_or(0.0)),
+    ));
+    let above = author
+      .offset_parent
+      .and_then(|ancestor| place.get(&ancestor).copied())
+      .filter(|index| *index > at);
+    at = above.unwrap_or(at + 1);
+  }
+  // Add from the top down, the order the nested sums used.
+  offsets
+    .iter()
+    .rev()
+    .fold((0.0, 0.0), |(x, y), (left, top)| (x + left, y + top))
 }
 
 #[cfg(test)]
@@ -1430,6 +1443,7 @@ mod tests {
   const WINDOW: u64 = 9_000_000_001;
   const WINDOW_B: u64 = 9_000_000_002;
   const WINDOW_C: u64 = 9_000_000_003;
+  const WINDOW_DEEP: u64 = 9_000_000_004;
 
   struct ReleaseGuard(u64);
 
@@ -1446,6 +1460,46 @@ mod tests {
       .find(|(node_id, _)| node_id.0 == id)
       .map(|(_, node)| node)
       .unwrap_or_else(|| panic!("missing node {id}"))
+  }
+
+  #[test]
+  fn a_deep_tree_does_not_recurse() {
+    // A small stack makes a recursive walk fail at this depth.
+    const DEPTH: usize = 1_500;
+    let deep = std::thread::Builder::new()
+      .stack_size(64 * 1024)
+      .spawn(|| {
+        let _window = ReleaseGuard(WINDOW_DEEP);
+        note_viewport(WINDOW_DEEP, "Deep".to_string(), 100.0, 50.0, 1.0);
+        let root = create();
+        attach_root(WINDOW_DEEP, root).unwrap();
+        let mut ids = vec![root];
+        for _ in 1..DEPTH {
+          let child = create();
+          append_child(*ids.last().unwrap(), child).unwrap();
+          update(child, |author| author.offset_left = Some(1.0));
+          ids.push(child);
+        }
+        let leaf = *ids.last().unwrap();
+        let middle = ids[DEPTH / 2];
+        let tree = full_tree(WINDOW_DEEP);
+        assert_eq!(
+          published(&tree, leaf).bounds().unwrap().x0,
+          (DEPTH - 1) as f64
+        );
+        set_offset_parent(leaf, Some(middle)).unwrap();
+        let tree = full_tree(WINDOW_DEEP);
+        // The leaf's offset is now relative to the middle node.
+        assert_eq!(
+          published(&tree, leaf).bounds().unwrap().x0,
+          (DEPTH / 2 + 1) as f64
+        );
+        let computed = snapshot(WINDOW_DEEP);
+        assert_eq!(computed[&leaf].parent, Some(ids[DEPTH - 2]));
+        assert!(computed.contains_key(&root));
+      })
+      .unwrap();
+    deep.join().unwrap();
   }
 
   #[test]
