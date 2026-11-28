@@ -5,6 +5,7 @@ use std::cell::{Cell, RefCell};
 
 use yuzuko_core::op::Bytes;
 use yuzuko_core::op::OpError;
+use yuzuko_core::op::Wtf16;
 use yuzuko_macros::op;
 
 use crate::bytes;
@@ -36,27 +37,18 @@ impl TextEncoder {
     "utf-8".to_string()
   }
 
-  fn encode(&self, input: Option<String>) -> Bytes {
-    Bytes(input.unwrap_or_default().into_bytes())
+  fn encode(&self, input: Option<Wtf16>) -> Bytes {
+    Bytes(input.unwrap_or_default().to_utf8_lossy().into_bytes())
   }
 
   #[rename("encodeInto")]
   fn encode_into(
     &self,
-    source: String,
+    source: Wtf16,
     destination: v8::Local<v8::Uint8Array>,
   ) -> EncodeIntoResult {
-    let mut encoded = Vec::new();
-    let mut read = 0usize;
-    for ch in source.chars() {
-      let mut buf = [0u8; 4];
-      let piece = ch.encode_utf8(&mut buf);
-      if encoded.len() + piece.len() > destination.byte_length() {
-        break;
-      }
-      encoded.extend_from_slice(piece.as_bytes());
-      read += ch.len_utf16();
-    }
+    let (read, encoded) =
+      encode_into_units(source.as_units(), destination.byte_length());
     let written = encoded.len();
     let ptr = destination.data();
     if !ptr.is_null() {
@@ -66,6 +58,26 @@ impl TextEncoder {
     }
     EncodeIntoResult { read, written }
   }
+}
+
+/// UTF-8 of `units` that fits in `limit` bytes. `read` is the WTF-16 code
+/// units consumed. An unpaired surrogate is U+FFFD and counts as one unit.
+fn encode_into_units(units: &[u16], limit: usize) -> (usize, Vec<u8>) {
+  let mut encoded = Vec::new();
+  let mut read = 0usize;
+  let mut index = 0usize;
+  while index < units.len() {
+    let (ch, width) = Wtf16::decode_at(units, index);
+    let mut buf = [0u8; 4];
+    let piece = ch.encode_utf8(&mut buf);
+    if encoded.len() + piece.len() > limit {
+      break;
+    }
+    encoded.extend_from_slice(piece.as_bytes());
+    index += width;
+    read += width;
+  }
+  (read, encoded)
 }
 
 struct EncodeIntoResult {
@@ -332,4 +344,25 @@ fn stream_option(
   object
     .get(scope, key.into())
     .is_some_and(|value| value.boolean_value(scope))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::encode_into_units;
+
+  #[test]
+  fn encode_into_counts_code_units() {
+    let hi: Vec<u16> = "hi".encode_utf16().collect();
+    assert_eq!(encode_into_units(&hi, 1), (1, vec![b'h']));
+    let emoji: Vec<u16> = "😀".encode_utf16().collect();
+    assert_eq!(encode_into_units(&emoji, 3), (0, vec![]));
+    let (read, bytes) = encode_into_units(&emoji, 4);
+    assert_eq!(read, 2);
+    assert_eq!(bytes, "😀".as_bytes());
+    assert_eq!(
+      encode_into_units(&[0xD800], 3),
+      (1, "\u{FFFD}".as_bytes().to_vec())
+    );
+    assert_eq!(encode_into_units(&[0xD800], 2), (0, vec![]));
+  }
 }
