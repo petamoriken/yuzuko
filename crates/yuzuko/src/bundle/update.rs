@@ -431,17 +431,11 @@ fn read_feed_url(
 }
 
 fn url_instance(scope: &mut v8::PinScope, value: v8::Local<v8::Value>) -> bool {
-  let global = scope.get_current_context().global(scope);
-  let Some(key) = v8::String::new(scope, "URL") else {
+  let Some(ctor) = yuzuko_core::intrinsics::intrinsic_function(scope, "URL")
+  else {
     return false;
   };
-  let Some(ctor) = global.get(scope, key.into()) else {
-    return false;
-  };
-  let Ok(ctor) = v8::Local::<v8::Object>::try_from(ctor) else {
-    return false;
-  };
-  value.instance_of(scope, ctor) == Some(true)
+  value.instance_of(scope, ctor.into()) == Some(true)
 }
 
 fn absolute_http(text: &str) -> bool {

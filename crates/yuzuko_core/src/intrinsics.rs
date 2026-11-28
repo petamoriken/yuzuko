@@ -11,11 +11,14 @@ const NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
   "AbortSignal.any",
+  "Array.prototype.values",
   "JSON.stringify",
   "QuotaExceededError",
   "ReadableStream",
   "Request",
+  "URL",
   "WritableStream",
+  "Yuzuko",
   "fetch",
 ];
 

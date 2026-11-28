@@ -545,9 +545,16 @@ fn next_id() -> String {
   format!("yuzuko-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
 }
 
+/// The `Yuzuko` object. After realm setup this is the object captured then,
+/// so an event still reaches it when script replaces `globalThis.Yuzuko`.
 pub(crate) fn yuzuko_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
+  if let Some(value) = yuzuko_core::intrinsics::intrinsic(scope, "Yuzuko")
+    && let Ok(object) = v8::Local::<v8::Object>::try_from(value)
+  {
+    return object;
+  }
   let global = scope.get_current_context().global(scope);
   let key = v8::String::new(scope, "Yuzuko").unwrap();
   if let Some(value) = global.get(scope, key.into())

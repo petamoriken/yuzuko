@@ -681,9 +681,10 @@ fn return_array_iterator(
   array: v8::Local<v8::Array>,
   ret: &mut v8::ReturnValue,
 ) {
-  let symbol = v8::Symbol::get_iterator(scope);
-  if let Some(next) = array.get(scope, symbol.into())
-    && let Ok(next) = v8::Local::<v8::Function>::try_from(next)
+  // %Array.prototype.values%, captured before script could replace
+  // Array.prototype[Symbol.iterator].
+  if let Some(next) =
+    yuzuko_core::intrinsics::intrinsic_function(scope, "Array.prototype.values")
     && let Some(iterator) = next.call(scope, array.into(), &[])
   {
     ret.set(iterator);

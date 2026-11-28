@@ -70,6 +70,19 @@ Yuzuko.test({
       ]);
       assert(action === "file.export.png", action);
 
+      // A replaced globalThis.Yuzuko does not take the event.
+      const realm = globalThis as unknown as { Yuzuko: unknown };
+      const original = realm.Yuzuko;
+      const test = Yuzuko.__test;
+      realm.Yuzuko = {};
+      try {
+        test.inject(window, [{ kind: "menu", action: "file.save" }]);
+      } finally {
+        realm.Yuzuko = original;
+      }
+      const replaced: string = action;
+      assert(replaced === "file.save", `after replace: ${replaced}`);
+
       let name = "";
       try {
         Yuzuko.__test.inject(window, [{ kind: "menu", action: "missing" }]);

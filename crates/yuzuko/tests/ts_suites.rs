@@ -95,7 +95,7 @@ fn file_drag() {
     file: "file_drag_test.ts",
     flags: &["--allow-write"],
     env: &[("YUZUKO_TEST_INPUT", "1")],
-    passed: 5,
+    passed: 6,
   });
 }
 

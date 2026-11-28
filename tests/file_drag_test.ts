@@ -539,3 +539,20 @@ Yuzuko.test("DataTransfer items and files follow the drag data store", async () 
   transfer.items.clear();
   assert(transfer.types === empty, "clear of an empty list");
 });
+
+Yuzuko.test("DataTransfer lists iterate with the built-in array iterator", () => {
+  const transfer = new DataTransfer();
+  transfer.items.add(new File(["a"], "a.txt"));
+  const proto = Array.prototype as unknown as Record<symbol, unknown>;
+  const original = proto[Symbol.iterator];
+  proto[Symbol.iterator] = function* () {};
+  let items = 0;
+  let files = 0;
+  try {
+    items = [...transfer.items].length;
+    files = [...transfer.files].length;
+  } finally {
+    proto[Symbol.iterator] = original;
+  }
+  assert(items === 1 && files === 1, `items ${items} files ${files}`);
+});
