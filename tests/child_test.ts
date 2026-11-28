@@ -712,6 +712,67 @@ Yuzuko.test("a piped standard input is collected with output()", async () => {
   }
 });
 
+Yuzuko.test(
+  "waiting children do not block writes to their standard input",
+  async () => {
+    const launched = stdinCommand();
+    const children: Yuzuko.Child[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              "stdin writes did not finish while children waited to exit",
+            ),
+          ),
+        10000,
+      );
+    });
+    try {
+      for (let index = 0; index < 8; index += 1) {
+        children.push(
+          Yuzuko.spawn(launched.command, {
+            args: launched.args,
+            stdin: "piped",
+          }),
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const line = new TextEncoder().encode("pool\n");
+      const writes = Promise.all(
+        children.map(async (child) => {
+          const writer = child.stdin?.getWriter();
+          assert(writer !== undefined, "stdin writer");
+          await writer.write(line);
+          await writer.close();
+        }),
+      );
+      await Promise.race([writes, timeout]);
+      const outputs = await Promise.race([
+        Promise.all(children.map((child) => child.output())),
+        timeout,
+      ]);
+      for (const collected of outputs) {
+        assert(collected.code === 0, `code ${collected.code}`);
+        const stdout = decode(collected.stdout);
+        assert(stdout.includes("pool-ok"), stdout);
+      }
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      for (const child of children) {
+        try {
+          child.kill();
+        } catch {
+          // The child may already have exited.
+        }
+      }
+    }
+  },
+);
+
 Yuzuko.test("piped output is a stream and stderr can be read", async () => {
   const launched = shell(
     Yuzuko.build.os === "windows"

@@ -1477,7 +1477,7 @@ main thread
 
 The main realm's isolate stays on the main thread. A dedicated worker runs on its own thread and enters only its own isolate. winit stays on the main thread. wgpu stays on the thread that created the device. Other background completions are posted to a task queue and wake that realm's event loop. Only the main thread touches winit.
 
-There is one V8 platform per process. Posting a foreground task always hits the waker. Timer delays do not spawn an OS thread per timer. Asynchronous file, socket, DNS, TLS, child-process, and HTTP server calls share one process-wide pool of 8 threads. A call that blocks in the operating system holds its pool thread until it returns. Further calls wait until a pool thread is free. The promise still settles on that realm's event loop. A call the pool cannot accept rejects, and its work does not run. `watchFs`, workers, and image decoding keep their own threads.
+There is one V8 platform per process. Posting a foreground task always hits the waker. Timer delays do not spawn an OS thread per timer. Asynchronous file, socket, DNS, TLS, child-process, and HTTP server calls share one process-wide pool of 8 threads. Waiting for a child to exit runs on its own thread and does not hold a pool thread, so a write to that child's standard input can run while the child is still alive. Any other call that blocks in the operating system holds its pool thread until it returns. Further calls wait until a pool thread is free. The promise still settles on that realm's event loop. A call the pool cannot accept rejects, and its work does not run. `watchFs`, workers, and image decoding keep their own threads.
 
 Crates:
 

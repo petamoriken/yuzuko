@@ -2,8 +2,10 @@
 //!
 //! The `child` feature installs `spawn` and `Child` on the main realm and on
 //! a dedicated worker. The operating-system process is created on the caller
-//! thread. Collected output, waiting for exit, and piped reads and writes run
-//! in the background. Their promises settle on that realm's event loop.
+//! thread. Collected output and piped reads and writes use the host pool.
+//! Waiting for the child to exit uses its own thread, so a full pool of
+//! children that are blocked on standard input does not stop the writes that
+//! would let them exit. Promises settle on that realm's event loop.
 //!
 //! A pipe that fills, or a piped standard input left open while the child
 //! reads until the end, blocks the child. `status` and `output` then wait
@@ -506,16 +508,41 @@ fn spawn_op<'s>(
   });
   OPEN.with(|open| open.borrow_mut().insert(id, Arc::downgrade(&shared)));
   let collect_shared = Arc::clone(&shared);
-  crate::jobs::spawn(
-    move || collect(child, stdout_pipe, stderr_pipe, collect_shared),
-    move |scope, result| {
-      let outcome = match result {
+  // `wait` must not occupy a host-pool thread. Stdin writes use that pool,
+  // and a child that has not exited is often waiting for those bytes.
+  let outcome = Arc::new(Mutex::new(None::<Result<Collected, OutputError>>));
+  let stored = Arc::clone(&outcome);
+  let listen = crate::jobs::listen(move |scope| {
+    let outcome = outcome
+      .lock()
+      .unwrap_or_else(|error| error.into_inner())
+      .take()
+      .unwrap_or(Err(OutputError::Failed));
+    finish_output(scope, id, outcome);
+  });
+  let started = std::thread::Builder::new()
+    .name("yuzuko-child-wait".to_string())
+    .spawn(move || {
+      let value =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+          collect(child, stdout_pipe, stderr_pipe, collect_shared)
+        }));
+      let value = match value {
         Ok(value) => value,
-        Err(()) => Err(OutputError::Failed),
+        Err(_) => Err(OutputError::Failed),
       };
-      finish_output(scope, id, outcome);
-    },
-  );
+      *stored.lock().unwrap_or_else(|error| error.into_inner()) = Some(value);
+      listen.notify();
+    });
+  if started.is_err() {
+    OPEN.with(|open| {
+      open.borrow_mut().remove(&id);
+    });
+    PENDING.with(|slots| {
+      slots.borrow_mut().remove(&id);
+    });
+    return Err(OpError::type_(SPAWN_FAIL));
+  }
   if let Some(signal) = request.signal.as_ref() {
     ABORTS.with(|table| {
       table.borrow_mut().insert(id, Arc::downgrade(&shared));

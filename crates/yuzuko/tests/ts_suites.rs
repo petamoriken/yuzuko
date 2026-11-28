@@ -62,7 +62,7 @@ fn canvas_metrics() {
 #[test]
 #[cfg(all(feature = "child", feature = "fs"))]
 fn child() {
-  simple("child_test.ts", 9);
+  simple("child_test.ts", 10);
 }
 
 #[test]
