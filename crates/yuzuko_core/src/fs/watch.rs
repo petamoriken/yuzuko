@@ -5,7 +5,7 @@
 //! calls [`crate::jobs::Listen::notify`]. Promise resolvers stay in a
 //! thread-local map and are never stored on the cppgc object.
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::collections::HashSet;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -486,7 +486,7 @@ fn display_path(path: &Path) -> String {
     .replace('\0', "\u{FFFD}")
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn dedup_key(path: &Path) -> PathBuf {
   std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
@@ -936,7 +936,6 @@ fn prepare(
     reader,
     recursive,
     wds: HashMap::new(),
-    seen: HashSet::new(),
     cap_announced: false,
   };
   for path in paths {
@@ -959,7 +958,6 @@ struct LinuxBackend {
   reader: std::io::PipeReader,
   recursive: bool,
   wds: HashMap<i32, PathBuf>,
-  seen: HashSet<PathBuf>,
   cap_announced: bool,
 }
 
@@ -999,15 +997,11 @@ impl LinuxBackend {
       return Ok(false);
     }
     let report = absolute_path(path);
-    let key = dedup_key(&report);
-    if self.seen.contains(&key) {
-      return Ok(false);
-    }
     if self.wds.len() >= WATCH_CAP {
       self.note_cap(shared);
       return Ok(false);
     }
-    let mut mask = linux_mask();
+    let mut mask = linux_mask() | libc::IN_MASK_ADD;
     if !access {
       mask &= !libc::IN_ACCESS;
     }
@@ -1022,7 +1016,9 @@ impl LinuxBackend {
       }
       return Err(FsError::io(error));
     }
-    self.seen.insert(key);
+    if self.wds.get(&wd) == Some(&report) {
+      return Ok(false);
+    }
     self.wds.insert(wd, report);
     Ok(true)
   }

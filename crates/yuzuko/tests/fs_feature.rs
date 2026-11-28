@@ -464,6 +464,27 @@ try {
   watcher.close();
 }
 
+if (Yuzuko.build.os === "linux") {
+  Yuzuko.mkdirSync("watched/sub");
+  const tree = Yuzuko.watchFs("watched");
+  try {
+    async function untilNamed(name) {
+      for (;;) {
+        const { value } = await nextEvent(tree);
+        if (value.paths.some(path => path.endsWith(name))) return;
+      }
+    }
+    Yuzuko.removeSync("watched/sub", { recursive: true });
+    Yuzuko.mkdirSync("watched/sub");
+    Yuzuko.writeTextFileSync("watched/recreated", "");
+    await untilNamed("recreated");
+    Yuzuko.writeTextFileSync("watched/sub/replacement-entry", "");
+    await untilNamed("replacement-entry");
+  } finally {
+    tree.close();
+  }
+}
+
 const quiet = Yuzuko.watchFs("watched");
 try {
   const done = await quiet.return();
