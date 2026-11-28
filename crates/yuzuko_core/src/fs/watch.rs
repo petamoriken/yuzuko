@@ -17,7 +17,6 @@ use yuzuko_macros::op;
 
 use super::error::{self, FsError};
 
-#[cfg(unix)]
 const WATCH_CAP: usize = 4096;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -78,7 +77,7 @@ enum Outcome {
 type StopHandle = std::io::PipeWriter;
 
 #[cfg(windows)]
-struct StopHandle(usize);
+struct StopHandle(Arc<std::os::windows::io::OwnedHandle>);
 
 #[cfg(not(any(unix, windows)))]
 struct StopHandle;
@@ -506,15 +505,21 @@ fn signal_stop(stop: &mut StopHandle) {
 
 #[cfg(windows)]
 fn signal_stop(stop: &mut StopHandle) {
+  use std::os::windows::io::AsRawHandle;
   unsafe {
-    windows_sys::Win32::System::Threading::SetEvent(stop.0 as _);
+    windows_sys::Win32::System::IO::PostQueuedCompletionStatus(
+      stop.0.as_raw_handle() as _,
+      0,
+      0,
+      std::ptr::null(),
+    );
   }
 }
 
 #[cfg(not(any(unix, windows)))]
 fn signal_stop(_stop: &mut StopHandle) {}
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", windows))]
 fn child_dirs(path: &Path, later: bool) -> Result<Vec<PathBuf>, FsError> {
   let entries = match std::fs::read_dir(path) {
     Ok(entries) => entries,
@@ -544,6 +549,10 @@ fn child_dirs(path: &Path, later: bool) -> Result<Vec<PathBuf>, FsError> {
     }
     // A read-denied directory is not watched, so its entries are not seen.
     if !readable(&entry.path()) {
+      continue;
+    }
+    #[cfg(windows)]
+    if !watchable_directory(&entry.path()) {
       continue;
     }
     children.push(entry.path());
@@ -1328,51 +1337,132 @@ fn inotify_name(bytes: &[u8]) -> String {
 
 #[cfg(windows)]
 fn prepare(
-  _shared: &Arc<WatchShared>,
+  shared: &Arc<WatchShared>,
   paths: &[PathBuf],
   recursive: bool,
 ) -> Result<Prepared<WinBackend>, FsError> {
-  use std::os::windows::io::AsRawHandle;
-  let stop = create_event(true)?;
-  let raw = stop.as_raw_handle() as usize;
-  let mut dirs = Vec::with_capacity(paths.len());
+  use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+  use windows_sys::Win32::System::IO::CreateIoCompletionPort;
+  let port = Arc::new(owned_from(unsafe {
+    CreateIoCompletionPort(INVALID_HANDLE_VALUE, std::ptr::null_mut(), 0, 1)
+  })?);
+  let mut backend = WinBackend {
+    port: Arc::clone(&port),
+    dirs: HashMap::new(),
+    by_path: HashMap::new(),
+    next_key: 1,
+    cap_announced: false,
+  };
   for path in paths {
-    let meta = std::fs::metadata(path).map_err(FsError::io)?;
     let report = absolute_path(path);
-    let (directory, filter, subtree) = if meta.is_dir() {
-      (report.clone(), None, recursive)
-    } else {
-      let Some(parent) = report.parent() else {
-        return Err(FsError::not_supported(
-          "The path has no parent directory.",
-        ));
-      };
-      let Some(name) = report.file_name() else {
-        return Err(FsError::not_supported(
-          "The path has no parent directory.",
-        ));
-      };
-      (
-        parent.to_path_buf(),
-        Some(name.to_string_lossy().replace('\0', "\u{FFFD}")),
-        false,
-      )
-    };
-    dirs.push(WinDir::open(report, directory, filter, subtree)?);
-  }
-  for dir in &mut dirs {
-    issue_read(dir)?;
+    let meta = std::fs::metadata(&report).map_err(FsError::io)?;
+    backend.add_tree(shared, report, meta.is_dir(), recursive, false)?;
   }
   Ok(Prepared {
-    backend: WinBackend { dirs, stop },
-    stop: StopHandle(raw),
+    backend,
+    stop: StopHandle(port),
   })
 }
 
 #[cfg(windows)]
 struct WinBackend {
-  dirs: Vec<WinDir>,
-  stop: std::os::windows::io::OwnedHandle,
+  port: Arc<std::os::windows::io::OwnedHandle>,
+  dirs: HashMap<usize, WinDir>,
+  by_path: HashMap<PathBuf, usize>,
+  next_key: usize,
+  cap_announced: bool,
+}
+
+#[cfg(windows)]
+impl WinBackend {
+  fn add_tree(
+    &mut self,
+    shared: &WatchShared,
+    root: PathBuf,
+    is_dir: bool,
+    recursive: bool,
+    later: bool,
+  ) -> Result<(), FsError> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::IO::CreateIoCompletionPort;
+    let mut pending = vec![(root, is_dir)];
+    while let Some((report, is_dir)) = pending.pop() {
+      if self.cap_announced
+        || self.by_path.contains_key(&report)
+        || !readable(&report)
+      {
+        continue;
+      }
+      if self.dirs.len() >= WATCH_CAP {
+        self.cap_announced = true;
+        push_event(shared, FsEvent::rescan());
+        break;
+      }
+      let (directory, filter) = if is_dir {
+        (report.clone(), None)
+      } else {
+        let parent = report.parent().ok_or_else(|| {
+          FsError::not_supported("The path has no parent directory.")
+        })?;
+        let name = report.file_name().ok_or_else(|| {
+          FsError::not_supported("The path has no parent directory.")
+        })?;
+        (
+          parent.to_path_buf(),
+          Some(name.to_string_lossy().into_owned()),
+        )
+      };
+      let mut dir = match WinDir::open(
+        report.clone(),
+        directory,
+        filter,
+        recursive && is_dir,
+      ) {
+        Ok(dir) => dir,
+        Err(_) if later => continue,
+        Err(error) => return Err(error),
+      };
+      if !dir.current() {
+        continue;
+      }
+      let key = self.next_key;
+      self.next_key += 1;
+      if unsafe {
+        CreateIoCompletionPort(
+          dir.handle.as_raw_handle() as _,
+          self.port.as_raw_handle() as _,
+          key,
+          1,
+        )
+      }
+      .is_null()
+      {
+        return Err(FsError::io(std::io::Error::last_os_error()));
+      }
+      issue_read(&mut dir)?;
+      self.by_path.insert(report.clone(), key);
+      self.dirs.insert(key, dir);
+      if recursive && is_dir {
+        pending.extend(
+          child_dirs(&report, later)?
+            .into_iter()
+            .map(|child| (child, true)),
+        );
+      }
+    }
+    Ok(())
+  }
+
+  fn remove_tree(&mut self, path: &Path) {
+    self.by_path.retain(|report, key| {
+      if report.starts_with(path) {
+        self.dirs.remove(key);
+        false
+      } else {
+        true
+      }
+    });
+  }
 }
 
 #[cfg(windows)]
@@ -1381,12 +1471,11 @@ struct WinDir {
   directory: PathBuf,
   filter: Option<String>,
   recursive: bool,
-  handle: std::os::windows::io::OwnedHandle,
+  handle: std::fs::File,
   event: std::os::windows::io::OwnedHandle,
   overlapped: Box<windows_sys::Win32::System::IO::OVERLAPPED>,
   buffer: Vec<u8>,
-  returned: u32,
-  dead: bool,
+  pending: bool,
 }
 
 #[cfg(windows)]
@@ -1402,7 +1491,6 @@ impl WinDir {
     filter: Option<String>,
     recursive: bool,
   ) -> Result<Self, FsError> {
-    use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
       CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OVERLAPPED,
       FILE_LIST_DIRECTORY, FILE_SHARE_DELETE, FILE_SHARE_READ,
@@ -1422,21 +1510,58 @@ impl WinDir {
     };
     let handle = owned_from(handle)?;
     let event = create_event(false)?;
-    let mut overlapped =
-      Box::new(windows_sys::Win32::System::IO::OVERLAPPED::default());
-    overlapped.hEvent = event.as_raw_handle() as _;
+    let overlapped = Box::default();
     Ok(Self {
       report,
       directory,
       filter,
       recursive,
-      handle,
+      handle: handle.into(),
       event,
       overlapped,
       buffer: vec![0u8; 64 * 1024],
-      returned: 0,
-      dead: false,
+      pending: false,
     })
+  }
+}
+
+#[cfg(windows)]
+impl WinDir {
+  fn current(&self) -> bool {
+    let Ok(real) = crate::fd_path::fd_path(&self.handle) else {
+      return false;
+    };
+    let path = match &self.filter {
+      Some(name) => real.join(name),
+      None => real.clone(),
+    };
+    readable(&path)
+      && std::fs::canonicalize(&self.directory)
+        .ok()
+        .zip(std::fs::canonicalize(real).ok())
+        .is_some_and(|(a, b)| a == b)
+  }
+}
+
+#[cfg(windows)]
+impl Drop for WinDir {
+  fn drop(&mut self) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult};
+    if self.pending {
+      let handle = self.handle.as_raw_handle() as _;
+      let mut transferred = 0;
+      // The kernel owns the buffer and OVERLAPPED until cancellation finishes.
+      unsafe {
+        CancelIoEx(handle, self.overlapped.as_ref());
+        GetOverlappedResult(
+          handle,
+          self.overlapped.as_ref(),
+          &mut transferred,
+          1,
+        );
+      }
+    }
   }
 }
 
@@ -1444,58 +1569,83 @@ impl WinDir {
 impl Backend for WinBackend {
   fn run(mut self, shared: Arc<WatchShared>) {
     use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
-    use windows_sys::Win32::System::Threading::{
-      INFINITE, WaitForMultipleObjects,
-    };
-    let mut handles = Vec::with_capacity(self.dirs.len() + 1);
-    handles.push(self.stop.as_raw_handle() as _);
-    for dir in &self.dirs {
-      handles.push(dir.event.as_raw_handle() as _);
-    }
+    use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
     loop {
-      let status = unsafe {
-        WaitForMultipleObjects(
-          handles.len() as u32,
-          handles.as_ptr(),
-          0,
-          INFINITE,
+      let mut transferred = 0;
+      let mut key = 0;
+      let mut request = std::ptr::null_mut();
+      let ok = unsafe {
+        GetQueuedCompletionStatus(
+          self.port.as_raw_handle() as _,
+          &mut transferred,
+          &mut key,
+          &mut request,
+          u32::MAX,
         )
       };
-      if status == WAIT_OBJECT_0 {
+      if request.is_null() {
         break;
       }
-      let index = status.wrapping_sub(WAIT_OBJECT_0) as usize;
-      if index == 0 || index > self.dirs.len() {
-        break;
-      }
-      let dir = &mut self.dirs[index - 1];
-      if dir.dead {
+      let Some(dir) = self.dirs.get_mut(&key) else {
+        continue;
+      };
+      dir.pending = false;
+      let report = dir.report.clone();
+      if !dir.current() {
+        self.remove_tree(&report);
         continue;
       }
-      let mut transferred = 0u32;
-      let ok = unsafe {
-        windows_sys::Win32::System::IO::GetOverlappedResult(
-          dir.handle.as_raw_handle() as _,
-          dir.overlapped.as_ref(),
-          &mut transferred,
-          0,
-        )
-      };
-      if ok == 0 {
-        let code = last_error_code();
-        if code == windows_sys::Win32::Foundation::ERROR_NOTIFY_ENUM_DIR {
-          push_event(&shared, FsEvent::rescan());
+      let mut changes = Vec::new();
+      let mut events = Vec::new();
+      if ok == 0 || transferred == 0 {
+        push_event(&shared, FsEvent::rescan());
+        if dir.recursive {
+          changes.extend(
+            child_dirs(&report, true)
+              .unwrap_or_default()
+              .into_iter()
+              .map(|path| (true, path)),
+          );
         }
       } else {
-        parse_notifications(dir, &shared, transferred);
+        parse_notifications(dir, transferred, &mut changes, &mut events);
       }
       if issue_read(dir).is_err() {
-        dir.dead = true;
+        self.remove_tree(&report);
         push_event(&shared, FsEvent::rescan());
+        continue;
+      }
+      for (added, path) in changes {
+        if !added {
+          if self
+            .by_path
+            .get(&path)
+            .and_then(|key| self.dirs.get(key))
+            .is_none_or(|dir| dir.filter.is_none())
+          {
+            self.remove_tree(&path);
+          }
+        } else if readable(&path)
+          && watchable_directory(&path)
+          && self.add_tree(&shared, path, true, true, true).is_err()
+        {
+          push_event(&shared, FsEvent::rescan());
+        }
+      }
+      for event in events {
+        push_event(&shared, event);
       }
     }
   }
+}
+
+#[cfg(windows)]
+fn watchable_directory(path: &Path) -> bool {
+  use std::os::windows::fs::MetadataExt;
+  use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+  std::fs::symlink_metadata(path).is_ok_and(|meta| {
+    meta.is_dir() && meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0
+  })
 }
 
 #[cfg(windows)]
@@ -1508,45 +1658,46 @@ fn issue_read(dir: &mut WinDir) -> Result<(), FsError> {
     FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
     ReadDirectoryChangesW,
   };
-  let event = dir.overlapped.hEvent;
+  let event = dir.event.as_raw_handle() as _;
   *dir.overlapped = windows_sys::Win32::System::IO::OVERLAPPED::default();
   dir.overlapped.hEvent = event;
   let handle = dir.handle.as_raw_handle() as _;
   let buffer = dir.buffer.as_mut_ptr().cast();
   let length = dir.buffer.len() as u32;
-  let returned = &mut dir.returned as *mut u32;
+
   let overlapped = dir.overlapped.as_mut() as *mut _;
   let ok = unsafe {
     ReadDirectoryChangesW(
       handle,
       buffer,
       length,
-      if dir.recursive { 1 } else { 0 },
+      0,
       FILE_NOTIFY_CHANGE_FILE_NAME
         | FILE_NOTIFY_CHANGE_DIR_NAME
         | FILE_NOTIFY_CHANGE_ATTRIBUTES
         | FILE_NOTIFY_CHANGE_SIZE
         | FILE_NOTIFY_CHANGE_LAST_WRITE
         | FILE_NOTIFY_CHANGE_LAST_ACCESS,
-      returned,
+      std::ptr::null_mut(),
       overlapped,
       None,
     )
   };
-  if ok != 0 {
-    return Ok(());
-  }
   let code = last_error_code();
-  if code == ERROR_IO_PENDING
-    || code == windows_sys::Win32::Foundation::ERROR_NOTIFY_ENUM_DIR
-  {
+  if ok != 0 || code == ERROR_IO_PENDING {
+    dir.pending = true;
     return Ok(());
   }
   Err(FsError::io(std::io::Error::from_raw_os_error(code as i32)))
 }
 
 #[cfg(windows)]
-fn parse_notifications(dir: &WinDir, shared: &WatchShared, transferred: u32) {
+fn parse_notifications(
+  dir: &WinDir,
+  transferred: u32,
+  changes: &mut Vec<(bool, PathBuf)>,
+  events: &mut Vec<FsEvent>,
+) {
   use windows_sys::Win32::Storage::FileSystem::{
     FILE_ACTION_ADDED, FILE_ACTION_MODIFIED, FILE_ACTION_REMOVED,
     FILE_ACTION_RENAMED_NEW_NAME, FILE_ACTION_RENAMED_OLD_NAME,
@@ -1587,9 +1738,20 @@ fn parse_notifications(dir: &WinDir, shared: &WatchShared, transferred: u32) {
     } else {
       display_path(&dir.directory.join(&relative))
     };
+    if dir.recursive {
+      match action {
+        FILE_ACTION_ADDED | FILE_ACTION_RENAMED_NEW_NAME => {
+          changes.push((true, dir.directory.join(&relative)))
+        }
+        FILE_ACTION_REMOVED | FILE_ACTION_RENAMED_OLD_NAME => {
+          changes.push((false, dir.directory.join(&relative)))
+        }
+        _ => {}
+      }
+    }
     if action == FILE_ACTION_RENAMED_OLD_NAME {
       if let Some(previous) = old_name.take() {
-        push_event(shared, FsEvent::kind("rename", vec![previous]));
+        events.push(FsEvent::kind("rename", vec![previous]));
       }
       old_name = Some(path);
     } else if action == FILE_ACTION_RENAMED_NEW_NAME {
@@ -1597,10 +1759,10 @@ fn parse_notifications(dir: &WinDir, shared: &WatchShared, transferred: u32) {
         Some(previous) => vec![previous, path],
         None => vec![path],
       };
-      push_event(shared, FsEvent::kind("rename", paths));
+      events.push(FsEvent::kind("rename", paths));
     } else {
       if let Some(previous) = old_name.take() {
-        push_event(shared, FsEvent::kind("rename", vec![previous]));
+        events.push(FsEvent::kind("rename", vec![previous]));
       }
       let kind = if action == FILE_ACTION_ADDED {
         "create"
@@ -1611,14 +1773,14 @@ fn parse_notifications(dir: &WinDir, shared: &WatchShared, transferred: u32) {
       } else {
         "other"
       };
-      push_event(shared, FsEvent::kind(kind, vec![path]));
+      events.push(FsEvent::kind(kind, vec![path]));
     }
     if next == 0 {
       break;
     }
   }
   if let Some(previous) = old_name {
-    push_event(shared, FsEvent::kind("rename", vec![previous]));
+    events.push(FsEvent::kind("rename", vec![previous]));
   }
 }
 

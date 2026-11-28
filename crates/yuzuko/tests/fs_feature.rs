@@ -464,7 +464,7 @@ try {
   watcher.close();
 }
 
-if (Yuzuko.build.os === "linux") {
+if (Yuzuko.build.os === "linux" || Yuzuko.build.os === "windows") {
   Yuzuko.mkdirSync("watched/sub");
   const tree = Yuzuko.watchFs("watched");
   try {
