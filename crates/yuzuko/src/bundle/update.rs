@@ -851,6 +851,24 @@ pub(crate) fn read_bundle(resources: &Path) -> Result<BundleMeta, ()> {
 }
 
 pub(crate) fn apply_pending(resources: &Path) {
+  if ![
+    "Updates",
+    ".updates.lock",
+    ".updates.previous",
+    ".app.previous",
+    ".app.updating",
+  ]
+  .iter()
+  .any(|name| resources.join(name).exists())
+  {
+    return;
+  }
+  let Ok(_guard) = lock_stage(resources) else {
+    return;
+  };
+  if recover_stage(resources).is_err() {
+    return;
+  }
   heal_app_dir(resources);
   let _ = remove_any(&resources.join(".app.updating"));
   if try_apply(resources).is_err() {
@@ -896,43 +914,64 @@ fn publish_stage(
   signature: &[u8; 64],
   key: &[u8; 32],
 ) -> Result<(), Failure> {
-  let updates = resources.join("Updates");
-  fs::create_dir_all(&updates).map_err(|_| INVALID_PAYLOAD)?;
-  let payload_partial = updates.join("payload.partial");
-  let signature_partial = updates.join("signature.partial");
-  let key_partial = updates.join("public-key.partial");
-  if fs::write(&payload_partial, payload).is_err()
-    || fs::write(&signature_partial, signature).is_err()
-    || fs::write(&key_partial, key).is_err()
-  {
-    let _ = fs::remove_file(&payload_partial);
-    let _ = fs::remove_file(&signature_partial);
-    let _ = fs::remove_file(&key_partial);
-    return Err(INVALID_PAYLOAD);
+  let _guard = lock_stage(resources).map_err(|_| INVALID_PAYLOAD)?;
+  recover_stage(resources).map_err(|_| INVALID_PAYLOAD)?;
+  let pending = resources.join(".updates.pending");
+  fs::create_dir(&pending).map_err(|_| INVALID_PAYLOAD)?;
+  let result = (|| {
+    fs::write(pending.join("payload"), payload)?;
+    fs::write(pending.join("signature"), signature)?;
+    fs::write(pending.join("public-key"), key)?;
+    commit_stage(resources, &pending)
+  })();
+  if result.is_err() {
+    let _ = remove_any(&pending);
   }
-  let payload_final = updates.join("payload");
-  let signature_final = updates.join("signature");
-  let key_final = updates.join("public-key");
-  let _ = fs::remove_file(&payload_final);
-  if fs::rename(&payload_partial, &payload_final).is_err() {
-    let _ = fs::remove_file(&payload_partial);
-    let _ = fs::remove_file(&signature_partial);
-    let _ = fs::remove_file(&key_partial);
-    return Err(INVALID_PAYLOAD);
+  result.map_err(|_| INVALID_PAYLOAD)
+}
+
+// Keep the lock file across launches. Removing it while another process is
+// waiting would allow two different files to serve as the lock.
+fn lock_stage(resources: &Path) -> std::io::Result<File> {
+  let file = File::options()
+    .read(true)
+    .write(true)
+    .create(true)
+    .truncate(false)
+    .open(resources.join(".updates.lock"))?;
+  file.lock()?;
+  Ok(file)
+}
+
+fn recover_stage(resources: &Path) -> Result<(), ()> {
+  let previous = resources.join(".updates.previous");
+  let active = resources.join("Updates");
+  if previous.exists() {
+    if active.exists() {
+      remove_any(&previous)?;
+    } else {
+      fs::rename(&previous, &active).map_err(|_| ())?;
+    }
   }
-  let _ = fs::remove_file(&signature_final);
-  if fs::rename(&signature_partial, &signature_final).is_err() {
-    let _ = fs::remove_file(&payload_final);
-    let _ = fs::remove_file(&signature_partial);
-    let _ = fs::remove_file(&key_partial);
-    return Err(INVALID_PAYLOAD);
+  remove_any(&resources.join(".updates.pending"))
+}
+
+fn commit_stage(resources: &Path, pending: &Path) -> std::io::Result<()> {
+  let active = resources.join("Updates");
+  let previous = resources.join(".updates.previous");
+  let replacing = active.try_exists()?;
+  if replacing {
+    fs::rename(&active, &previous)?;
   }
-  let _ = fs::remove_file(&key_final);
-  if fs::rename(&key_partial, &key_final).is_err() {
-    let _ = fs::remove_file(&payload_final);
-    let _ = fs::remove_file(&signature_final);
-    let _ = fs::remove_file(&key_partial);
-    return Err(INVALID_PAYLOAD);
+  if let Err(error) = fs::rename(pending, &active) {
+    if replacing {
+      fs::rename(&previous, &active)?;
+    }
+    return Err(error);
+  }
+  // Publication succeeded. A leftover backup is cleaned on the next launch.
+  if replacing {
+    let _ = remove_any(&previous);
   }
   Ok(())
 }
@@ -1416,6 +1455,23 @@ mod tests {
       out.extend_from_slice(bytes);
     }
     out
+  }
+
+  #[test]
+  fn interrupted_publication_preserves_the_complete_old_stage() {
+    let dir = temp_dir("stage-rollback");
+    let active = dir.join("Updates");
+    fs::create_dir(&active).unwrap();
+    for name in ["payload", "signature", "public-key"] {
+      fs::write(active.join(name), name).unwrap();
+    }
+    assert!(commit_stage(&dir, &dir.join("missing")).is_err());
+    fs::rename(&active, dir.join(".updates.previous")).unwrap();
+    recover_stage(&dir).unwrap();
+    for name in ["payload", "signature", "public-key"] {
+      assert_eq!(fs::read(active.join(name)).unwrap(), name.as_bytes());
+    }
+    fs::remove_dir_all(dir).unwrap();
   }
 
   #[test]
