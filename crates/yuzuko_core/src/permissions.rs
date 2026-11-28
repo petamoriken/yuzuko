@@ -1967,12 +1967,12 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
 /// How a rule compares a file name with a request.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fold {
-  /// ASCII case on macOS and Windows, bytes on Linux. A grant matches
-  /// only a spelling it is sure names the same file.
+  /// Bytes. A grant of `Note.txt` does not cover `note.txt`, including on a
+  /// volume that treats those names as one file.
   Exact,
   /// A deny also matches a name that differs in Unicode case, and on macOS
-  /// in Unicode normalization. A file system that folds such names would
-  /// open the denied file. One that does not is denied a little more.
+  /// and Windows in Unicode normalization. A case-insensitive volume would
+  /// open the denied file. A case-sensitive volume is denied a little more.
   Deny,
 }
 
@@ -2003,7 +2003,12 @@ fn component_eq_with(
 ) -> bool {
   match (left, right) {
     (Component::Prefix(left), Component::Prefix(right)) => {
-      os_eq(left.as_os_str(), right.as_os_str())
+      // `C:` and `c:` are one Windows drive. The file name is not folded.
+      if cfg!(windows) {
+        left.as_os_str().eq_ignore_ascii_case(right.as_os_str())
+      } else {
+        left.as_os_str() == right.as_os_str()
+      }
     }
     (Component::RootDir, Component::RootDir)
     | (Component::CurDir, Component::CurDir)
@@ -2011,8 +2016,9 @@ fn component_eq_with(
     (Component::Normal(left), Component::Normal(right)) => {
       let left = compared_name(left);
       let right = compared_name(right);
-      os_eq(left.as_ref(), right.as_ref())
-        || (fold == Fold::Deny && unicode_eq(left.as_ref(), right.as_ref()))
+      let left: &OsStr = left.as_ref();
+      let right: &OsStr = right.as_ref();
+      left == right || (fold == Fold::Deny && unicode_eq(left, right))
     }
     _ => false,
   }
@@ -2087,14 +2093,6 @@ fn interpret_normal(name: &OsStr) -> Interpreted {
     return Interpreted::Parent;
   }
   Interpreted::Name(std::ffi::OsString::from_wide(&units))
-}
-
-fn os_eq(left: &std::ffi::OsStr, right: &std::ffi::OsStr) -> bool {
-  if cfg!(any(windows, target_os = "macos")) {
-    left.eq_ignore_ascii_case(right)
-  } else {
-    left == right
-  }
 }
 
 fn resolve_path(
@@ -2806,6 +2804,49 @@ mod tests {
       rule,
       Path::new("/data/unew.txt"),
       Fold::Deny
+    ));
+    let note = Path::new("/data/Note.txt");
+    assert!(path_covers_with(note, note, Fold::Exact));
+    assert!(!path_covers_with(
+      note,
+      Path::new("/data/note.txt"),
+      Fold::Exact
+    ));
+    assert!(path_covers_with(
+      note,
+      Path::new("/data/note.txt"),
+      Fold::Deny
+    ));
+  }
+
+  #[test]
+  fn an_allow_matches_the_file_name_by_bytes() {
+    let note = Path::new("/data/Note.txt");
+    assert!(path_covers_with(note, note, Fold::Exact));
+    assert!(!path_covers_with(
+      note,
+      Path::new("/data/note.txt"),
+      Fold::Exact
+    ));
+    assert!(!path_covers_with(
+      note,
+      Path::new("/data/NOTE.TXT"),
+      Fold::Exact
+    ));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn a_drive_prefix_folds_ascii_case_and_the_file_name_does_not() {
+    assert!(path_covers_with(
+      Path::new(r"C:\Note.txt"),
+      Path::new(r"c:\Note.txt"),
+      Fold::Exact
+    ));
+    assert!(!path_covers_with(
+      Path::new(r"C:\Note.txt"),
+      Path::new(r"C:\note.txt"),
+      Fold::Exact
     ));
   }
 
