@@ -880,8 +880,20 @@ fn try_apply(resources: &Path) -> Result<(), ()> {
   let updates = resources.join("Updates");
   let payload_path = updates.join("payload");
   let signature_path = updates.join("signature");
-  if !payload_path.is_file() || !signature_path.is_file() {
+  let key_path = updates.join("public-key");
+  let ready = [
+    payload_path.is_file(),
+    signature_path.is_file(),
+    key_path.is_file(),
+  ];
+  // An empty stage directory is not an update. A partial set of the three
+  // files cannot be applied, and leaving it would retry the same files on
+  // every later launch.
+  if ready == [false, false, false] {
     return Ok(());
+  }
+  if ready.contains(&false) {
+    return Err(());
   }
   let key = staged_key(&updates)?;
   let payload = read_limited(&payload_path, PAYLOAD_LIMIT)?;
@@ -1711,6 +1723,41 @@ mod tests {
     assert!(!dir.join("Updates/payload").exists());
     assert!(!dir.join("Updates/public-key").exists());
     assert_eq!(fs::read(dir.join("yuzuko.update-key")).unwrap(), key);
+  }
+
+  #[test]
+  fn apply_drops_an_incomplete_stage() {
+    let dir = temp_dir("apply-incomplete");
+    fs::write(
+      dir.join("yuzuko.bundle.json"),
+      r#"{"name":"Game","version":"1.0.0","entry":"src/main.ts"}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("app/src")).unwrap();
+    fs::write(dir.join("app/src/main.ts"), "token-old\n").unwrap();
+
+    for name in ["payload", "signature", "public-key"] {
+      fs::create_dir_all(dir.join("Updates")).unwrap();
+      fs::write(dir.join("Updates").join(name), b"partial").unwrap();
+      apply_pending(&dir);
+      assert_eq!(
+        fs::read(dir.join("app/src/main.ts")).unwrap(),
+        b"token-old\n",
+        "{name}"
+      );
+      assert!(!dir.join("Updates").exists(), "{name}");
+    }
+
+    fs::create_dir_all(dir.join("Updates")).unwrap();
+    apply_pending(&dir);
+    assert!(dir.join("Updates").is_dir());
+    assert!(!dir.join("Updates/payload").exists());
+    assert!(!dir.join("Updates/signature").exists());
+    assert!(!dir.join("Updates/public-key").exists());
+    assert_eq!(
+      fs::read(dir.join("app/src/main.ts")).unwrap(),
+      b"token-old\n"
+    );
   }
 
   #[test]
