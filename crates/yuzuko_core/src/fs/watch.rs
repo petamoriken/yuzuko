@@ -441,7 +441,21 @@ fn v8_string<'s>(
   v8::String::new(scope, text).ok_or_else(FsError::failed)
 }
 
-fn push_event(shared: &WatchShared, event: FsEvent) {
+/// Whether the watcher may report `path`. This does not ask.
+fn readable(path: &Path) -> bool {
+  crate::permissions::permissions_are_open()
+    || crate::permissions::path_is_granted(false, path).unwrap_or(false)
+}
+
+fn push_event(shared: &WatchShared, mut event: FsEvent) {
+  // A recursive watch reports a path below the root only when it may be
+  // read, so a denied subdirectory does not reveal its entry names.
+  if !event.paths.is_empty() {
+    event.paths.retain(|path| readable(Path::new(path)));
+    if event.paths.is_empty() {
+      return;
+    }
+  }
   let waiter = {
     let mut state = lock(shared);
     if state.closed {
@@ -526,6 +540,10 @@ fn child_dirs(path: &Path, later: bool) -> Result<Vec<PathBuf>, FsError> {
       Err(error) => return Err(FsError::io(error)),
     };
     if file_type.is_symlink() || !file_type.is_dir() {
+      continue;
+    }
+    // A read-denied directory is not watched, so its entries are not seen.
+    if !readable(&entry.path()) {
       continue;
     }
     children.push(entry.path());

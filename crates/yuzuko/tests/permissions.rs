@@ -2884,6 +2884,72 @@ console.log("query " + Yuzuko.permissions.querySync({{ name: "read", path: "keep
   let _ = fs::remove_dir_all(&outside);
 }
 
+/// A recursive watch does not report entries inside a read-denied
+/// subdirectory.
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[test]
+fn a_recursive_watch_skips_a_denied_subdirectory() {
+  let root = scratch("watch-deny");
+  let watched = root.join("w");
+  fs::create_dir_all(watched.join("secret")).unwrap();
+  fs::create_dir_all(watched.join("open")).unwrap();
+  write(
+    &root.join("main.ts"),
+    r#"const [dir] = Yuzuko.args;
+const sep = Yuzuko.build.os === "windows" ? "\\" : "/";
+const watcher = Yuzuko.watchFs(dir, { recursive: true });
+// macOS reports the changed directory, and Linux and Windows the file.
+const isVisible = (path: string) =>
+  path.endsWith(sep + "open") || path.endsWith("visible.txt");
+const seen: string[] = [];
+const done = (async () => {
+  for await (const event of watcher) {
+    seen.push(...event.paths);
+    if (seen.some(isVisible)) {
+      return;
+    }
+  }
+})();
+const timeout = new Promise((resolve) => setTimeout(resolve, 10000));
+await new Promise((resolve) => setTimeout(resolve, 300));
+// Write access covers the denied directory, so the writes still happen.
+Yuzuko.mkdirSync(dir + sep + "secret" + sep + "inner");
+Yuzuko.writeTextFileSync(dir + sep + "secret" + sep + "inner" + sep + "hidden.txt", "x");
+Yuzuko.writeTextFileSync(dir + sep + "secret" + sep + "hidden.txt", "x");
+await new Promise((resolve) => setTimeout(resolve, 300));
+Yuzuko.writeTextFileSync(dir + sep + "open" + sep + "visible.txt", "x");
+await Promise.race([done, timeout]);
+try {
+  watcher.close();
+} catch {}
+const visible = seen.some(isVisible);
+const leaked = seen.some((path) => path.includes("secret"));
+console.log(visible ? (leaked ? "LEAK " + seen.join(",") : "clean") : "no events");
+Yuzuko.exit(0);
+"#,
+  );
+  let deny = format!("--deny-read={}", watched.join("secret").display());
+  let allow = format!("--allow-read={}", root.display());
+  let allow_write = format!("--allow-write={}", root.display());
+  let watched_arg = watched.display().to_string();
+  let output = run(
+    &root,
+    &[
+      "run",
+      "--no-prompt",
+      &allow,
+      &allow_write,
+      &deny,
+      "main.ts",
+      &watched_arg,
+    ],
+  );
+  let stdout = text(&output.stdout);
+  assert_eq!(output.status.code(), Some(0), "{}", text(&output.stderr));
+  assert!(stdout.contains("clean"), "{stdout}");
+  let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn rename_stops_at_a_denied_descendant() {
   let entry = scratch("rename-deny");
