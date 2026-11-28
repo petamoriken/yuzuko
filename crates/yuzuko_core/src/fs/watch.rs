@@ -957,8 +957,15 @@ struct LinuxBackend {
   fd: std::os::fd::OwnedFd,
   reader: std::io::PipeReader,
   recursive: bool,
-  wds: HashMap<i32, PathBuf>,
+  wds: HashMap<i32, LinuxWatch>,
   cap_announced: bool,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxWatch {
+  path: PathBuf,
+  device: u64,
+  inode: u64,
 }
 
 #[cfg(target_os = "linux")]
@@ -972,16 +979,16 @@ impl LinuxBackend {
   ) -> Result<(), FsError> {
     // The listing below reads the directory. `IN_ACCESS` is added after that
     // read so the scan itself is not an event.
-    let added = self.add_path(shared, path, required, later, false)?;
-    if !added {
+    let Some(file) = self.add_path(shared, path, required, later, false)?
+    else {
       return Ok(());
-    }
+    };
     if self.recursive && !self.cap_announced {
       for child in child_dirs(path, later)? {
         self.watch_tree(shared, &child, false, later)?;
       }
     }
-    self.enable_access(path)
+    self.enable_access(&file)
   }
 
   fn add_path(
@@ -991,41 +998,79 @@ impl LinuxBackend {
     required: bool,
     later: bool,
     access: bool,
-  ) -> Result<bool, FsError> {
+  ) -> Result<Option<std::fs::File>, FsError> {
     use std::os::fd::AsRawFd;
-    if self.cap_announced {
-      return Ok(false);
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    if self.cap_announced || !readable(path) {
+      return Ok(None);
     }
     let report = absolute_path(path);
+    // Pin the inode while installing both masks, including across the scan.
+    let file = match std::fs::OpenOptions::new()
+      .read(true)
+      .custom_flags(libc::O_PATH)
+      .open(&report)
+    {
+      Ok(file) => file,
+      Err(_) if !required && later => return Ok(None),
+      Err(error)
+        if !required && error.kind() == std::io::ErrorKind::NotFound =>
+      {
+        return Ok(None);
+      }
+      Err(error) => return Err(FsError::io(error)),
+    };
+    let meta = file.metadata().map_err(FsError::io)?;
+    let real = crate::fd_path::fd_path(&file).map_err(FsError::io)?;
+    if !readable(&real) {
+      return Ok(None);
+    }
     if self.wds.len() >= WATCH_CAP {
       self.note_cap(shared);
-      return Ok(false);
+      return Ok(None);
     }
     let mut mask = linux_mask() | libc::IN_MASK_ADD;
     if !access {
       mask &= !libc::IN_ACCESS;
     }
-    let text = super::io::path_cstring(&report)?;
+    let text = super::io::path_cstring(Path::new(&format!(
+      "/proc/self/fd/{}",
+      file.as_raw_fd()
+    )))?;
     let wd = unsafe {
       libc::inotify_add_watch(self.fd.as_raw_fd(), text.as_ptr(), mask)
     };
     if wd < 0 {
       let error = std::io::Error::last_os_error();
       if !required && (later || error.kind() == std::io::ErrorKind::NotFound) {
-        return Ok(false);
+        return Ok(None);
       }
       return Err(FsError::io(error));
     }
-    if self.wds.get(&wd) == Some(&report) {
-      return Ok(false);
+    if self.wds.get(&wd).is_some_and(|watch| {
+      watch.device == meta.dev()
+        && watch.inode == meta.ino()
+        && watch.path == report
+    }) {
+      return Ok(None);
     }
-    self.wds.insert(wd, report);
-    Ok(true)
+    self.wds.insert(
+      wd,
+      LinuxWatch {
+        path: report,
+        device: meta.dev(),
+        inode: meta.ino(),
+      },
+    );
+    Ok(Some(file))
   }
 
-  fn enable_access(&self, path: &Path) -> Result<(), FsError> {
+  fn enable_access(&self, file: &std::fs::File) -> Result<(), FsError> {
     use std::os::fd::AsRawFd;
-    let text = super::io::path_cstring(&absolute_path(path))?;
+    let text = super::io::path_cstring(Path::new(&format!(
+      "/proc/self/fd/{}",
+      file.as_raw_fd()
+    )))?;
     let wd = unsafe {
       libc::inotify_add_watch(
         self.fd.as_raw_fd(),
@@ -1090,6 +1135,20 @@ impl Backend for LinuxBackend {
 
 #[cfg(target_os = "linux")]
 impl LinuxBackend {
+  fn remove_tree(&mut self, path: &Path) {
+    use std::os::fd::AsRawFd;
+    self.wds.retain(|wd, watch| {
+      if watch.path.starts_with(path) {
+        unsafe {
+          libc::inotify_rm_watch(self.fd.as_raw_fd(), *wd);
+        }
+        false
+      } else {
+        true
+      }
+    });
+  }
+
   fn drain(&mut self, shared: &WatchShared, buf: &mut [u8]) {
     use std::os::fd::AsRawFd;
     loop {
@@ -1111,6 +1170,7 @@ impl LinuxBackend {
   }
 
   fn parse(&mut self, shared: &WatchShared, buf: &[u8]) {
+    use std::os::unix::fs::MetadataExt;
     let mut index = 0usize;
     let mut pending: HashMap<u32, String> = HashMap::new();
     while index + 16 <= buf.len() {
@@ -1138,17 +1198,42 @@ impl LinuxBackend {
         self.wds.remove(&wd);
         continue;
       }
-      let Some(base) = self.wds.get(&wd).cloned() else {
+      let Some(watch) = self.wds.get(&wd) else {
         if ignored {
           self.wds.remove(&wd);
         }
         continue;
       };
+      // inotify follows the inode across renames. Only attribute child
+      // names to this path while it still identifies the watched inode.
+      if mask & libc::IN_MOVE_SELF != 0
+        || (mask & (libc::IN_DELETE_SELF | libc::IN_IGNORED) == 0
+          && !std::fs::metadata(&watch.path).is_ok_and(|meta| {
+            meta.dev() == watch.device && meta.ino() == watch.inode
+          }))
+      {
+        self.remove_tree(&watch.path.clone());
+        continue;
+      }
+      let base = watch.path.clone();
+      if mask & (libc::IN_MOVED_FROM | libc::IN_DELETE) != 0
+        && mask & libc::IN_ISDIR != 0
+      {
+        self.remove_tree(&base.join(&name));
+      }
       let path = if name.is_empty() {
         display_path(&base)
       } else {
         display_path(&base.join(&name))
       };
+      if self.recursive
+        && mask & libc::IN_ISDIR != 0
+        && mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0
+        && !name.is_empty()
+      {
+        let child = base.join(&name);
+        let _ = self.watch_tree(shared, &child, false, true);
+      }
       match linux_class(mask) {
         LinuxClass::From if cookie != 0 => {
           pending.insert(cookie, path);
@@ -1163,14 +1248,6 @@ impl LinuxBackend {
         class => {
           push_event(shared, FsEvent::kind(class.kind(), vec![path]));
         }
-      }
-      if self.recursive
-        && mask & libc::IN_ISDIR != 0
-        && mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0
-        && !name.is_empty()
-      {
-        let child = base.join(&name);
-        let _ = self.watch_tree(shared, &child, false, true);
       }
       if ignored {
         self.wds.remove(&wd);
@@ -1232,6 +1309,7 @@ fn linux_mask() -> u32 {
     | libc::IN_DELETE
     | libc::IN_DELETE_SELF
     | libc::IN_MODIFY
+    | libc::IN_MOVE_SELF
     | libc::IN_MOVED_FROM
     | libc::IN_MOVED_TO
     | libc::IN_ATTRIB

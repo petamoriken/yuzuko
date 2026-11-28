@@ -468,12 +468,22 @@ if (Yuzuko.build.os === "linux") {
   Yuzuko.mkdirSync("watched/sub");
   const tree = Yuzuko.watchFs("watched");
   try {
+    Yuzuko.renameSync("watched/sub", "moved");
+    Yuzuko.mkdirSync("watched/sub");
+    // A later event on the root separates the topology change from writes
+    // to the replacement directory.
+    Yuzuko.writeTextFileSync("watched/ready", "");
     async function untilNamed(name) {
       for (;;) {
         const { value } = await nextEvent(tree);
+        check(!value.paths.some(path => path.endsWith("old-entry")), "stale directory watch");
         if (value.paths.some(path => path.endsWith(name))) return;
       }
     }
+    await untilNamed("ready");
+    Yuzuko.writeTextFileSync("moved/old-entry", "");
+    Yuzuko.writeTextFileSync("watched/sub/new-entry", "");
+    await untilNamed("new-entry");
     Yuzuko.removeSync("watched/sub", { recursive: true });
     Yuzuko.mkdirSync("watched/sub");
     Yuzuko.writeTextFileSync("watched/recreated", "");
