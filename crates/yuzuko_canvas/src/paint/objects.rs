@@ -763,8 +763,9 @@ mod tests {
       size: 80.0,
       ..FontDesc::default()
     };
+    let units: Vec<u16> = text.encode_utf16().collect();
     let shaped = shape(
-      text,
+      &units,
       &font,
       false,
       "inherit",

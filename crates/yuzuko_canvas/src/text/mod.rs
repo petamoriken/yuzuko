@@ -206,6 +206,7 @@ pub struct Ink {
 /// One extended grapheme cluster, in visual order.
 #[derive(Clone)]
 pub struct ShapedCluster {
+  /// Start and end as WTF-16 code unit offsets.
   pub start: u32,
   pub end: u32,
   /// Visual left edge in unscaled advance space.
@@ -332,19 +333,17 @@ fn shaping_language(lang: &str) -> Option<Language> {
 }
 
 pub fn shape(
-  text: &str,
+  text: &[u16],
   font: &FontDesc,
   rtl: bool,
   lang: &str,
   shaping: &TextShape,
 ) -> ShapedText {
-  // Canvas converts those four controls to U+0020 and does not collapse
-  // them. U+000B stays. U+0000 is dropped before shaping.
   let text = prepare_text(text);
   if text.is_empty() {
     return empty_shaped(font.size);
   }
-  let shaped = layout(&text, font, rtl, lang, shaping);
+  let shaped = layout(text.as_ref(), font, rtl, lang, shaping);
   // `smcp` is a no-op when the face has no small-cap glyphs. Draw lowercase
   // at 0.7 of the font size instead of applying the feature a second time.
   if !shaping.features.contains("\"smcp\"") {
@@ -352,27 +351,26 @@ pub fn shape(
   }
   let mut plain = shaping.clone();
   plain.features = without_caps(&shaping.features);
-  let plain_shaped = layout(&text, font, rtl, lang, &plain);
+  let plain_shaped = layout(text.as_ref(), font, rtl, lang, &plain);
   if glyph_ids(&shaped) != glyph_ids(&plain_shaped) {
     return shaped;
   }
   plain.synthetic_small_caps = true;
-  layout(&text, font, rtl, lang, &plain)
+  layout(text.as_ref(), font, rtl, lang, &plain)
 }
 
 fn layout(
-  text: &str,
+  text: &[u16],
   font: &FontDesc,
   rtl: bool,
   lang: &str,
   shaping: &TextShape,
 ) -> ShapedText {
-  let wrapped = if rtl {
-    format!("\u{2067}{text}\u{2069}")
-  } else {
-    format!("\u{2066}{text}\u{2069}")
-  };
-  let utf16_at = utf16_offsets(text);
+  let encoded = encode_units(text);
+  let mut wrapped = String::with_capacity(encoded.utf8.len() + 6);
+  wrapped.push(if rtl { '\u{2067}' } else { '\u{2066}' });
+  wrapped.push_str(&encoded.utf8);
+  wrapped.push('\u{2069}');
   TEXT.with(|env| {
     let mut env = env.borrow_mut();
     let named = match font.family {
@@ -482,7 +480,7 @@ fn layout(
             });
             pen += glyph.advance;
           }
-          if let Some((start, end)) = original_span(text, &utf16_at, range) {
+          if let Some((start, end)) = original_span(&encoded, range) {
             clusters.push(ShapedCluster {
               start,
               end,
@@ -516,7 +514,7 @@ fn layout(
         shaped.hanging = shaped.ascent * 0.8;
         shaped.ideographic = -shaped.descent;
       }
-      shaped.clusters = merge_graphemes(text, clusters);
+      shaped.clusters = merge_graphemes(&encoded, clusters);
       shaped.spacing = apply_spacing(
         text,
         &mut shaped.clusters,
@@ -594,16 +592,57 @@ fn push_lowercase_size(
   }
 }
 
-fn prepare_text(text: &str) -> String {
-  let mut prepared = String::with_capacity(text.len());
-  for ch in text.chars() {
-    match ch {
-      '\u{0000}' => {}
-      '\u{0009}' | '\u{000A}' | '\u{000C}' | '\u{000D}' => prepared.push(' '),
+/// Canvas converts those four controls to U+0020 and does not collapse
+/// them. U+000B stays. U+0000 is dropped before shaping.
+fn prepare_text(units: &[u16]) -> Cow<'_, [u16]> {
+  if !units
+    .iter()
+    .any(|unit| matches!(*unit, 0x0000 | 0x0009 | 0x000A | 0x000C | 0x000D))
+  {
+    return Cow::Borrowed(units);
+  }
+  let mut prepared = Vec::with_capacity(units.len());
+  for &unit in units {
+    match unit {
+      0x0000 => {}
+      0x0009 | 0x000A | 0x000C | 0x000D => prepared.push(0x0020),
       other => prepared.push(other),
     }
   }
-  prepared
+  Cow::Owned(prepared)
+}
+
+/// UTF-8 for parley, plus the byte offset of each code unit.
+///
+/// Parley reports byte ranges. The low half of a surrogate pair stores the
+/// scalar's end, so a byte inside that scalar maps to its first code unit.
+struct Encoded {
+  utf8: String,
+  byte_at: Vec<u32>,
+}
+
+fn encode_units(units: &[u16]) -> Encoded {
+  let mut utf8 = String::with_capacity(units.len());
+  let mut byte_at = Vec::with_capacity(units.len() + 1);
+  let mut index = 0;
+  while index < units.len() {
+    let (ch, width) = yuzuko_core::op::Wtf16::decode_at(units, index);
+    byte_at.push(utf8.len() as u32);
+    utf8.push(ch);
+    if width == 2 {
+      byte_at.push(utf8.len() as u32);
+    }
+    index += width;
+  }
+  byte_at.push(utf8.len() as u32);
+  Encoded { utf8, byte_at }
+}
+
+fn unit_index(byte_at: &[u32], byte: usize) -> u32 {
+  let byte = u32::try_from(byte).unwrap_or(u32::MAX);
+  byte_at
+    .partition_point(|offset| *offset <= byte)
+    .saturating_sub(1) as u32
 }
 
 fn empty_shaped(size: f32) -> ShapedText {
@@ -671,7 +710,7 @@ fn base_offsets(
 /// Shift clusters by the spacing of every scalar that ends at or before the
 /// cluster. The returned total includes the gap after the last scalar.
 fn apply_spacing(
-  text: &str,
+  units: &[u16],
   clusters: &mut [ShapedCluster],
   letter_px: f64,
   word_px: f64,
@@ -681,14 +720,15 @@ fn apply_spacing(
   }
   let mut ends = Vec::new();
   let mut acc = 0.0f64;
-  let mut index = 0u32;
-  for ch in text.chars() {
-    index += ch.len_utf16() as u32;
+  let mut index = 0usize;
+  while index < units.len() {
+    let (ch, width) = yuzuko_core::op::Wtf16::decode_at(units, index);
+    index += width;
     acc += letter_px;
     if ch == ' ' {
       acc += word_px;
     }
-    ends.push((index, acc));
+    ends.push((index as u32, acc));
   }
   for cluster in clusters.iter_mut() {
     let mut shift = 0.0f64;
@@ -785,68 +825,41 @@ pub fn spacing_px(css: &str, font_size: f32) -> f64 {
   }
 }
 
-/// UTF-16 span of `range` in `original`. The shaped string is wrapped in one
-/// bidi isolate on each side.
-/// The UTF-16 offset of each byte offset of `text` that starts a character,
-/// and of its end. Other entries are unused.
-fn utf16_offsets(text: &str) -> Vec<u32> {
-  let mut offsets = vec![0u32; text.len() + 1];
-  let mut utf16 = 0u32;
-  for (byte, ch) in text.char_indices() {
-    offsets[byte] = utf16;
-    utf16 += ch.len_utf16() as u32;
-  }
-  offsets[text.len()] = utf16;
-  offsets
-}
-
+/// Code-unit span of `range`. The shaped string is wrapped in one bidi
+/// isolate on each side. U+2066 and U+2067 are each three UTF-8 bytes.
 fn original_span(
-  original: &str,
-  utf16_at: &[u32],
+  encoded: &Encoded,
   range: std::ops::Range<usize>,
 ) -> Option<(u32, u32)> {
   let prefix = "\u{2066}".len();
-  let end_limit = prefix + original.len();
+  let end_limit = prefix + encoded.utf8.len();
   if range.end <= prefix || range.start >= end_limit {
     return None;
   }
   let start = range.start.max(prefix) - prefix;
   let end = range.end.min(end_limit) - prefix;
-  let start = floor_boundary(original, start);
-  let end = floor_boundary(original, end);
+  let start = unit_index(&encoded.byte_at, start);
+  let end = unit_index(&encoded.byte_at, end);
   if start >= end {
     return None;
   }
-  Some((utf16_at[start], utf16_at[end]))
-}
-
-/// A UTF-8 character is at most four bytes, so a boundary is at most three
-/// bytes back.
-fn floor_boundary(text: &str, byte: usize) -> usize {
-  let byte = byte.min(text.len());
-  (byte.saturating_sub(3)..=byte)
-    .rev()
-    .find(|index| text.is_char_boundary(*index))
-    .unwrap_or(0)
-}
-
-fn utf16_len(text: &str) -> u32 {
-  text.encode_utf16().count() as u32
+  Some((start, end))
 }
 
 fn merge_graphemes(
-  text: &str,
+  encoded: &Encoded,
   clusters: Vec<ShapedCluster>,
 ) -> Vec<ShapedCluster> {
   if clusters.is_empty() {
     return clusters;
   }
   let mut graphemes = Vec::new();
-  let mut utf16 = 0u32;
-  for grapheme in text.graphemes(true) {
-    let len = utf16_len(grapheme);
-    graphemes.push((utf16, utf16 + len));
-    utf16 += len;
+  let mut byte = 0usize;
+  for grapheme in encoded.utf8.graphemes(true) {
+    let start = unit_index(&encoded.byte_at, byte);
+    byte += grapheme.len();
+    let end = unit_index(&encoded.byte_at, byte);
+    graphemes.push((start, end));
   }
   // Clusters in text order, so each grapheme takes the next run of them.
   // A grapheme's parts stay in their visual order.
@@ -945,8 +958,18 @@ fn union_ink(ink: &mut Option<Ink>, bounds: (f32, f32, f32, f32)) {
 mod tests {
   use super::TextShape;
   use super::parse_spacing;
-  use super::shape;
   use crate::paint::record::FontDesc;
+
+  fn shape(
+    text: &str,
+    font: &FontDesc,
+    rtl: bool,
+    lang: &str,
+    shaping: &TextShape,
+  ) -> super::ShapedText {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    super::shape(&units, font, rtl, lang, shaping)
+  }
 
   fn glyph_ids(lang: &str) -> Vec<u32> {
     shape(
@@ -997,6 +1020,15 @@ mod tests {
     );
     assert_eq!(accent.clusters.len(), 1);
     assert_eq!(accent.clusters[0].end, 2);
+    let emoji = shape(
+      "😀",
+      &FontDesc::default(),
+      false,
+      "inherit",
+      &TextShape::default(),
+    );
+    assert_eq!(emoji.clusters.len(), 1);
+    assert_eq!(emoji.clusters[0].end, 2);
     let runs_x: Vec<f32> = shaped
       .runs
       .iter()
@@ -1097,6 +1129,53 @@ mod tests {
     assert!((words.advance() - plain_words.advance() - 10.0).abs() < 1e-9);
     let nul = shape("\u{0000}", &font, false, "inherit", &TextShape::default());
     assert_eq!(nul.advance(), 0.0);
+    let emoji = shape("😀", &font, false, "inherit", &TextShape::default());
+    let emoji_gap = shape(
+      "😀",
+      &font,
+      false,
+      "inherit",
+      &TextShape {
+        letter_px: 4.0,
+        ..TextShape::default()
+      },
+    );
+    assert!((emoji_gap.advance() - emoji.advance() - 4.0).abs() < 1e-9);
+    let lone =
+      super::shape(&[0xD800], &font, false, "inherit", &TextShape::default());
+    let replacement =
+      shape("\u{FFFD}", &font, false, "inherit", &TextShape::default());
+    assert!((lone.advance() - replacement.advance()).abs() < 1e-6);
+    assert_eq!(
+      lone
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.start, cluster.end))
+        .collect::<Vec<_>>(),
+      replacement
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.start, cluster.end))
+        .collect::<Vec<_>>()
+    );
+  }
+
+  #[test]
+  fn code_unit_offsets_follow_the_wtf16_buffer() {
+    let encoded = super::encode_units(&[0x41, 0xD83D, 0xDE00, 0x42]);
+    assert_eq!(encoded.utf8, "A😀B");
+    assert_eq!(super::unit_index(&encoded.byte_at, 0), 0);
+    assert_eq!(super::unit_index(&encoded.byte_at, 1), 1);
+    assert_eq!(super::unit_index(&encoded.byte_at, 3), 1);
+    assert_eq!(super::unit_index(&encoded.byte_at, 5), 3);
+    assert_eq!(super::unit_index(&encoded.byte_at, encoded.utf8.len()), 4);
+    let lone = super::encode_units(&[0xD800]);
+    assert_eq!(lone.utf8, "\u{FFFD}");
+    assert_eq!(super::unit_index(&lone.byte_at, lone.utf8.len()), 1);
+    assert_eq!(
+      super::prepare_text(&[0x41, 0x0000, 0x0009, 0x000B]).as_ref(),
+      &[0x41, 0x0020, 0x000B]
+    );
   }
 }
 

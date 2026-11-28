@@ -10,7 +10,7 @@ use kurbo::Cap;
 use kurbo::Join;
 use kurbo::Rect;
 use vello_cpu::peniko::Fill;
-use yuzuko_core::op::{FromV8, Js, New, OpError};
+use yuzuko_core::op::{FromV8, Js, New, OpError, Wtf16};
 use yuzuko_image::ImageBitmap;
 use yuzuko_image::ImageData;
 use yuzuko_image::Raster;
@@ -2012,11 +2012,11 @@ impl Context2D {
     })
   }
 
-  fn measure_text(&self, text: String) -> Result<New<TextMetrics>, OpError> {
+  fn measure_text(&self, text: Wtf16) -> Result<New<TextMetrics>, OpError> {
     self.update(|drawing| {
       let shaping = text_shape(&drawing.state);
       let shaped = text::shape(
-        &text,
+        text.as_units(),
         &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
@@ -2135,7 +2135,7 @@ impl Context2D {
     if args.length() < 3 {
       return Err(OpError::type_("The text position is missing"));
     }
-    let text = yuzuko_core::rust_string_or(scope, args.get(0), "");
+    let text = yuzuko_core::wtf16_or(scope, args.get(0), "");
     let x = objects::number(scope, args.get(1))?;
     let y = objects::number(scope, args.get(2))?;
     let max_width = if args.length() >= 4 && !args.get(3).is_undefined() {
@@ -2154,7 +2154,7 @@ impl Context2D {
       let shade = drawing.state.shade();
       let shaping = text_shape(&drawing.state);
       let shaped = text::shape(
-        &text,
+        text.as_units(),
         &drawing.state.font,
         drawing.state.direction.is_rtl(),
         &drawing.state.lang,
