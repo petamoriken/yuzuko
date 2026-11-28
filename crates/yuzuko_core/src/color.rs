@@ -188,31 +188,34 @@ fn lex_line(line: &str) -> Vec<Lexed> {
 }
 
 fn lex_incomplete(allocator: &Allocator, line: &str) -> Vec<Lexed> {
-  let mut lexer = oxc_parser::lexer::Lexer::new_for_benchmarks(
+  // The lexer lifetime is branded, so the token walk stays inside `scope`.
+  oxc_parser::lexer::Lexer::scope(
     allocator,
     line,
     SourceType::ts(),
     oxc_parser::config::TokensLexerConfig,
-  );
-  let mut out = Vec::new();
-  let mut token = lexer.first_token();
-  let mut previous = 0usize;
-  for _ in 0..=line.len() {
-    if token.kind().is_eof() {
-      break;
-    }
-    let Some(lexed) = lexed(token.start(), token.end(), token.kind(), line)
-    else {
-      break;
-    };
-    if lexed.start < previous {
-      break;
-    }
-    previous = lexed.end;
-    out.push(lexed);
-    token = lexer.next_token();
-  }
-  out
+    |mut lexer| {
+      let mut out = Vec::new();
+      let mut token = lexer.first_token();
+      let mut previous = 0usize;
+      for _ in 0..=line.len() {
+        if token.kind().is_eof() {
+          break;
+        }
+        let Some(lexed) = lexed(token.start(), token.end(), token.kind(), line)
+        else {
+          break;
+        };
+        if lexed.start < previous {
+          break;
+        }
+        previous = lexed.end;
+        out.push(lexed);
+        token = lexer.next_token();
+      }
+      out
+    },
+  )
 }
 
 fn lexed(start: u32, end: u32, kind: Kind, line: &str) -> Option<Lexed> {

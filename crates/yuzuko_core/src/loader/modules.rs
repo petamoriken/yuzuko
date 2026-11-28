@@ -2130,7 +2130,7 @@ mod graph {
         return;
       }
       self.edges.push(Edge {
-        specifier: source.value.to_string(),
+        specifier: literal_text(source),
         dynamic: false,
         parse: !clause_is_raw(with_clause),
       });
@@ -2200,11 +2200,13 @@ mod graph {
       .find_map(|entry| {
         let key = match &entry.key {
           ImportAttributeKey::Identifier(name) => name.name.as_str(),
-          ImportAttributeKey::StringLiteral(literal) => literal.value.as_str(),
+          ImportAttributeKey::StringLiteral(literal) => {
+            literal.value.as_str()?
+          }
         };
-        (key == "type").then_some(entry.value.value.as_str())
+        (key == "type").then_some(entry.value.value)
       })
-      .is_some_and(|value| matches!(value, "text" | "bytes"))
+      .is_some_and(|value| value == "text" || value == "bytes")
   }
 
   /// `import(specifier, { with: { type: "text" | "bytes" } })` when the
@@ -2222,7 +2224,7 @@ mod graph {
     let Expression::StringLiteral(literal) = type_value else {
       return false;
     };
-    matches!(literal.value.as_str(), "text" | "bytes")
+    literal.value == "text" || literal.value == "bytes"
   }
 
   /// The value of the first property named `name` in an object literal.
@@ -2238,12 +2240,17 @@ mod graph {
       let ObjectPropertyKind::ObjectProperty(property) = property else {
         return None;
       };
-      if property.computed {
+      if property.key.is_computed() {
         return None;
       }
       let key = match &property.key {
         PropertyKey::StaticIdentifier(ident) => ident.name.as_str(),
-        PropertyKey::StringLiteral(literal) => literal.value.as_str(),
+        PropertyKey::StaticStringLiteral(literal) => {
+          match literal.value.as_str() {
+            Some(text) => text,
+            None => continue,
+          }
+        }
         _ => return None,
       };
       if key != name {
@@ -2263,7 +2270,7 @@ mod graph {
   /// One specifier an `import()` argument can name without execution.
   fn concrete_specifier(expression: &Expression<'_>) -> Option<String> {
     match peel(expression) {
-      Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+      Expression::StringLiteral(literal) => Some(literal_text(literal)),
       Expression::TemplateLiteral(literal) => template_specifier(literal),
       Expression::BinaryExpression(binary)
         if binary.operator == BinaryOperator::Addition =>
@@ -2301,9 +2308,27 @@ mod graph {
     }
     let mut specifier = String::new();
     for quasi in &literal.quasis {
-      specifier.push_str(quasi.value.cooked.as_ref()?.as_str());
+      push_js(&mut specifier, quasi.value.cooked?);
     }
     Some(specifier)
+  }
+
+  /// The specifier text the host resolver sees. A lone surrogate becomes
+  /// U+FFFD, matching `to_rust_string_lossy` on the V8 string.
+  fn literal_text(literal: &StringLiteral<'_>) -> String {
+    let mut text = String::new();
+    push_js(&mut text, literal.value);
+    text
+  }
+
+  fn push_js(out: &mut String, value: oxc_str::JSStr<'_>) {
+    if let Some(text) = value.as_str() {
+      out.push_str(text);
+      return;
+    }
+    for ch in value.chars() {
+      out.push(ch.to_char().unwrap_or('\u{FFFD}'));
+    }
   }
 
   fn call_specifier(call: &CallExpression<'_>) -> Option<String> {
