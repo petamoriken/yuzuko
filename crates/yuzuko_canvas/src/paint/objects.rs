@@ -309,13 +309,11 @@ impl CanvasGradient {
       ));
     };
     record::with_gradient(self.id, |gradient| {
-      gradient.stops.push((offset as f32, color));
-      gradient.stops.sort_by(|left, right| {
-        left
-          .0
-          .partial_cmp(&right.0)
-          .unwrap_or(std::cmp::Ordering::Equal)
-      });
+      // Stops stay sorted. A stop goes after the stops at its offset, so
+      // equal offsets keep the order they were added in.
+      let offset = offset as f32;
+      let at = gradient.stops.partition_point(|stop| stop.0 <= offset);
+      gradient.stops.insert(at, (offset, color));
     });
     Ok(())
   }

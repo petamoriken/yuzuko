@@ -908,10 +908,11 @@ pub fn set_value_curve_at_time(
     return Err(Fault::range("The duration must be positive"));
   }
   with_param(id, |param| {
+    let after = param.events.partition_point(|event| event.time <= time);
     if param
       .events
-      .iter()
-      .any(|event| event.time > time && event.time < time + duration)
+      .get(after)
+      .is_some_and(|event| event.time < time + duration)
     {
       return Err(Fault::dom(
         "InvalidStateError",
@@ -1038,7 +1039,17 @@ fn reject_inside_curve(
   events: &[AutomationEvent],
   time: f64,
 ) -> Result<(), Fault> {
-  for event in events {
+  // `events` is sorted by time, and no event starts inside a value curve.
+  // A curve that holds `time` is therefore at the latest time before it.
+  let before = events.partition_point(|event| event.time < time);
+  let Some(latest) = before.checked_sub(1).map(|index| events[index].time)
+  else {
+    return Ok(());
+  };
+  for event in events[..before].iter().rev() {
+    if event.time != latest {
+      break;
+    }
     let EventKind::SetValueCurve { duration, .. } = &event.kind else {
       continue;
     };
@@ -1053,21 +1064,18 @@ fn reject_inside_curve(
 }
 
 fn insert_event(events: &mut Vec<AutomationEvent>, event: AutomationEvent) {
-  // A later call replaces an event only when the time and the kind match.
-  // `setValueAtTime` and a ramp may share an end time, and both stay.
-  if let Some(index) = events.iter().position(|found| {
-    found.time == event.time
-      && std::mem::discriminant(&found.kind)
-        == std::mem::discriminant(&event.kind)
+  // `events` is sorted by time. A later call replaces an event only when
+  // the time and the kind match. `setValueAtTime` and a ramp may share an
+  // end time, and both stay.
+  let start = events.partition_point(|found| found.time < event.time);
+  let end = events.partition_point(|found| found.time <= event.time);
+  if let Some(offset) = events[start..end].iter().position(|found| {
+    std::mem::discriminant(&found.kind) == std::mem::discriminant(&event.kind)
   }) {
-    events[index] = event;
+    events[start + offset] = event;
     return;
   }
-  let index = events
-    .iter()
-    .position(|found| found.time > event.time)
-    .unwrap_or(events.len());
-  events.insert(index, event);
+  events.insert(end, event);
 }
 
 fn ramp_start(events: &[AutomationEvent], end: f64) -> Result<f64, Fault> {

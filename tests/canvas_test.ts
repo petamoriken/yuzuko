@@ -518,3 +518,24 @@ Yuzuko.test("text layout is linear in the string length", () => {
   assert(metrics.width > 0, "measured");
   assert(elapsed < 30_000, `took ${elapsed} ms`);
 });
+
+Yuzuko.test("color stops keep insertion order at equal offsets", () => {
+  const ctx = new OffscreenCanvas(3, 1).getContext("2d")!;
+  const gradient = ctx.createLinearGradient(0, 0, 3, 0);
+  // Equal offsets make a hard edge in the order they were added.
+  gradient.addColorStop(0.5, "#ff0000");
+  gradient.addColorStop(0, "#ff0000");
+  gradient.addColorStop(0.5, "#0000ff");
+  gradient.addColorStop(1, "#0000ff");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 3, 1);
+  assert(pixel(ctx, 0, 0)[0] === 255, "left red");
+  assert(pixel(ctx, 2, 0)[2] === 255, "right blue");
+  const many = ctx.createLinearGradient(0, 0, 1, 0);
+  const started = performance.now();
+  for (let i = 0; i < 20000; i++) {
+    many.addColorStop((i * 7919) % 20000 / 20000, "blue");
+  }
+  const elapsed = performance.now() - started;
+  assert(elapsed < 10_000, `took ${elapsed} ms`);
+});

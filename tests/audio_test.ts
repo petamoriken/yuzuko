@@ -1495,3 +1495,24 @@ Yuzuko.test("ConvolverNode rejects a buffer that resamples past the length limit
   convolver.buffer = new AudioBuffer({ length: 1000, sampleRate: 3000 });
   assert(convolver.buffer?.length === 1000, "a short buffer is kept");
 });
+
+Yuzuko.test("automation events insert in sorted order without a rescan", () => {
+  const context = new OfflineAudioContext(1, 128, 44100);
+  const param = context.createGain().gain;
+  const started = performance.now();
+  for (let i = 0; i < 20000; i++) {
+    param.setValueAtTime(i, (i * 7919) % 20000 / 1000);
+  }
+  // The same time and kind replaces, and a curve still rejects a later time.
+  param.setValueAtTime(1, 0);
+  param.setValueCurveAtTime(new Float32Array([0, 1]), 30, 1);
+  let inside = "";
+  try {
+    param.setValueAtTime(0, 30.5);
+  } catch (error) {
+    inside = (error as Error).name;
+  }
+  assert(inside === "InvalidStateError", inside);
+  const elapsed = performance.now() - started;
+  assert(elapsed < 10_000, `took ${elapsed} ms`);
+});
