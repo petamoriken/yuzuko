@@ -3,6 +3,7 @@
 //! is still alive.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use yuzuko_core::op::{OpError, OpException, host_ref, traced};
 use yuzuko_macros::op;
@@ -31,7 +32,9 @@ struct EventHandler {
 }
 
 pub struct EventTarget {
-  listeners: RefCell<Vec<Listener>>,
+  /// Shared so an owner can tell from its GC trace whether anything
+  /// listens. See [`EventTarget::listening`].
+  listeners: Rc<RefCell<Vec<Listener>>>,
   handlers: RefCell<Vec<EventHandler>>,
   next_id: Cell<u64>,
 }
@@ -64,7 +67,7 @@ impl Default for EventTarget {
 impl EventTarget {
   pub fn new() -> Self {
     Self {
-      listeners: RefCell::new(Vec::new()),
+      listeners: Rc::new(RefCell::new(Vec::new())),
       handlers: RefCell::new(Vec::new()),
       next_id: Cell::new(1),
     }
@@ -231,12 +234,34 @@ impl EventTarget {
       .any(|listener| listener.id == id)
   }
 
+  /// A handle that reports whether this target has any listener, including
+  /// an `on*` handler. It stays valid without a scope, so a GC trace can
+  /// keep a target alive only while something listens to it.
+  pub fn listening(&self) -> Listening {
+    Listening(Rc::clone(&self.listeners))
+  }
+
   pub(crate) fn listens_for(&self, type_name: &str) -> bool {
     self
       .listeners
       .borrow()
       .iter()
       .any(|listener| listener.type_name == type_name)
+  }
+}
+
+/// See [`EventTarget::listening`].
+#[derive(Clone)]
+pub struct Listening(Rc<RefCell<Vec<Listener>>>);
+
+impl Listening {
+  /// True while a listener is registered. A borrow in progress counts as
+  /// listening, so a trace during a change keeps the target.
+  pub fn any(&self) -> bool {
+    self
+      .0
+      .try_borrow()
+      .map_or(true, |listeners| !listeners.is_empty())
   }
 }
 

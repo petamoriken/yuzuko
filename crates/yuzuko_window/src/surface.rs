@@ -335,7 +335,10 @@ pub struct Window {
   css_height: Cell<f64>,
   next_frame: Cell<i32>,
   frames: RefCell<Vec<Frame>>,
-  queries: RefCell<Vec<v8::TracedReference<v8::Object>>>,
+  /// Each `MediaQueryList` this window made. One is traced only while it
+  /// can observe a change, so an unobserved list is collected.
+  queries: RefCell<Vec<crate::media::WindowList>>,
+  query_prune_at: Cell<usize>,
   pointers: PointerState,
   closing: Cell<bool>,
   ime: Cell<bool>,
@@ -372,8 +375,10 @@ unsafe impl v8::cppgc::GarbageCollected for Window {
       }
     }
     if let Ok(queries) = self.queries.try_borrow() {
-      for query in queries.iter() {
-        visitor.trace(query);
+      for list in queries.iter() {
+        if list.observed.any() {
+          visitor.trace(&list.reference);
+        }
       }
     }
   }
@@ -513,9 +518,7 @@ impl Window {
     &self.pointers
   }
 
-  pub(crate) fn media_lists(
-    &self,
-  ) -> &RefCell<Vec<v8::TracedReference<v8::Object>>> {
+  pub(crate) fn media_lists(&self) -> &RefCell<Vec<crate::media::WindowList>> {
     &self.queries
   }
 
@@ -1093,6 +1096,7 @@ impl Window {
       next_frame: Cell::new(0),
       frames: RefCell::new(Vec::new()),
       queries: RefCell::new(Vec::new()),
+      query_prune_at: Cell::new(64),
       pointers: PointerState::new(),
       closing: Cell::new(false),
       ime: Cell::new(false),
@@ -1450,8 +1454,22 @@ impl Window {
     query: String,
   ) -> Result<Js, OpError> {
     self.require_open()?;
-    let object = crate::media::open(scope, self.id, query);
-    self.queries.borrow_mut().push(traced(scope, object));
+    let (object, list) = crate::media::open(scope, self.id, query);
+    let mut queries = self.queries.borrow_mut();
+    // Drop the lists already collected once the vector has doubled, so the
+    // pruning costs constant time per call.
+    if queries.len() >= self.query_prune_at.get() {
+      queries.retain(|list| {
+        let alive = crate::media::list_local(scope, list.id).is_some();
+        if !alive {
+          crate::media::forget_list(list.id);
+        }
+        alive
+      });
+      self.query_prune_at.set((queries.len() * 2).max(64));
+    }
+    queries.push(list);
+    drop(queries);
     let value: v8::Local<v8::Value> = object.into();
     Ok(Js(v8::Global::new(scope, value)))
   }

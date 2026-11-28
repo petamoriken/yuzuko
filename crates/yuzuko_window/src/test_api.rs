@@ -16,9 +16,48 @@ pub fn install(scope: &mut v8::PinScope) {
   let inject = v8::Function::new(scope, inject).expect("inject");
   let name = v8::String::new(scope, "inject").unwrap();
   api.set(scope, name.into(), inject.into());
+  let collect = v8::Function::new(scope, collect_garbage).expect("collect");
+  let name = v8::String::new(scope, "collectGarbage").unwrap();
+  api.set(scope, name.into(), collect.into());
+  let count = v8::Function::new(scope, media_list_count).expect("count");
+  let name = v8::String::new(scope, "mediaListCount").unwrap();
+  api.set(scope, name.into(), count.into());
   gamepad::install_test(scope, api);
   let key = v8::String::new(scope, "__test").unwrap();
   yuzuko.set(scope, key.into(), api.into());
+}
+
+/// A full collection of the V8 and cppgc heaps.
+fn collect_garbage(
+  scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  _ret: v8::ReturnValue,
+) {
+  scope.low_memory_notification();
+}
+
+/// The `MediaQueryList`s `window` still holds and that are still alive.
+fn media_list_count(
+  scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(args.get(0)) else {
+    OpException::throw(OpError::type_("The window is invalid"), scope);
+    return;
+  };
+  let Some(window) = (unsafe { host_ref::<Window>(scope, object) }) else {
+    OpException::throw(OpError::type_("The window is invalid"), scope);
+    return;
+  };
+  let count = {
+    let lists = window.get().media_lists().borrow();
+    lists
+      .iter()
+      .filter(|list| crate::media::list_local(scope, list.id).is_some())
+      .count()
+  };
+  ret.set_uint32(count as u32);
 }
 
 fn inject(

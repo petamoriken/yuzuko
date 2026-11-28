@@ -417,7 +417,7 @@ When the connection to the window system ends, for example because the Wayland c
 
 ### Headless mode
 
-`YUZUKO_HEADLESS=1` makes `Window` skip OS window creation. The drawing buffer and animation frames (60 Hz) still run on the object. `yuzuko test` creates windows headless. Input injection is `Yuzuko.__test`. That command installs it only when `YUZUKO_TEST_INPUT=1`. `yuzuko run` and `yuzuko repl` do not install it. Web-platform tests run under `cargo test`, not under a `yuzuko` subcommand.
+`YUZUKO_HEADLESS=1` makes `Window` skip OS window creation. The drawing buffer and animation frames (60 Hz) still run on the object. `yuzuko test` creates windows headless. Input injection is `Yuzuko.__test`. `Yuzuko.__test.collectGarbage()` runs a full collection of the JavaScript and host-object heaps, and `Yuzuko.__test.mediaListCount(window)` returns how many `MediaQueryList`s that window still holds. A window holds a `MediaQueryList` alive only while it has a listener, an `onchange` handler, or a legacy `addListener` callback. A list without one is collected once script drops it. That command installs it only when `YUZUKO_TEST_INPUT=1`. `yuzuko run` and `yuzuko repl` do not install it. Web-platform tests run under `cargo test`, not under a `yuzuko` subcommand.
 
 ## Input
 

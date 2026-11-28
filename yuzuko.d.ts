@@ -5248,6 +5248,19 @@ declare namespace Yuzuko {
      * Replaces the gamepad snapshot used by `yuzuko test`.
      */
     function gamepad(devices: unknown): void;
+
+    /**
+     * Runs a full collection of the JavaScript and host-object heaps.
+     */
+    function collectGarbage(): void;
+
+    /**
+     * The number of `MediaQueryList` objects that `window` still holds and
+     * that have not been collected.
+     *
+     * @throws {@link TypeError} When `window` is not a {@link Window}.
+     */
+    function mediaListCount(window: Window): number;
   }
 
   /**

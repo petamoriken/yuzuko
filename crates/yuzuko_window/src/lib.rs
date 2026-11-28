@@ -115,6 +115,7 @@ fn shutdown() {
   inbox::clear();
   input::gamepad::clear();
   wake::clear();
+  media::clear();
 }
 
 /// Drops shell and input state for a hot reload. Open windows stay.

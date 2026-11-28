@@ -1031,3 +1031,24 @@ function describe(events: readonly Event[]): string {
   }
   return lines.join("\n");
 }
+
+Yuzuko.test("an unobserved MediaQueryList is collected", () => {
+  const window = new Yuzuko.Window({ width: 80, height: 60, title: "media" });
+  try {
+    for (let i = 0; i < 1000; i++) {
+      window.matchMedia("(min-width: 10px)").matches;
+    }
+    let changes = 0;
+    window.matchMedia("(min-width: 100px)").addEventListener("change", () => {
+      changes += 1;
+    });
+    Yuzuko.__test.collectGarbage();
+    // Only the list with a listener stays, and it still hears a change.
+    const count = Yuzuko.__test.mediaListCount(window);
+    assert(count === 1, `lists ${count}`);
+    window.resizeTo(120, 60);
+    assert(changes === 1, `changes ${changes}`);
+  } finally {
+    window.close();
+  }
+});

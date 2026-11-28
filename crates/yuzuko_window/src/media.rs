@@ -1,6 +1,8 @@
 //! `Window.matchMedia` and a Media Queries Level 4 subset.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use yuzuko_core::op::{OpError, host_ref, traced, traced_local};
 use yuzuko_dom::{
@@ -119,6 +121,18 @@ fn list_roots(
     };
     host.get().media_lists().borrow().len()
   };
+  // A collected list has nothing left to notify.
+  if let Some(host) =
+    unsafe { host_ref::<crate::surface::Window>(scope, window) }
+  {
+    host.get().media_lists().borrow_mut().retain(|list| {
+      let alive = list_local(scope, list.id).is_some();
+      if !alive {
+        forget_list(list.id);
+      }
+      alive
+    });
+  }
   let mut locals = Vec::new();
   for index in 0..count {
     let Some(host) =
@@ -126,13 +140,11 @@ fn list_roots(
     else {
       break;
     };
-    let local = {
+    let id = {
       let lists = host.get().media_lists().borrow();
-      lists
-        .get(index)
-        .and_then(|reference| traced_local(scope, reference))
+      lists.get(index).map(|list| list.id)
     };
-    if let Some(local) = local {
+    if let Some(local) = id.and_then(|id| list_local(scope, id)) {
       locals.push(local);
     }
   }
@@ -861,7 +873,54 @@ struct MediaQueryList {
   media: RefCell<String>,
   query: Query,
   matches: Cell<bool>,
-  legacy: RefCell<Vec<v8::TracedReference<v8::Function>>>,
+  legacy: Rc<RefCell<Vec<v8::TracedReference<v8::Function>>>>,
+}
+
+std::thread_local! {
+  /// Each live `MediaQueryList` by id. The window traces a list only while
+  /// it is observed, and an untraced `TracedReference` must not be read once
+  /// its object is gone, so liveness and access go through this weak handle.
+  static LISTS: RefCell<HashMap<u64, v8::Weak<v8::Object>>> =
+    RefCell::new(HashMap::new());
+  static NEXT_LIST: Cell<u64> = const { Cell::new(1) };
+}
+
+/// The list `id` while it is alive.
+pub(crate) fn list_local<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  id: u64,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let weak = LISTS.with(|slot| slot.borrow().get(&id).cloned())?;
+  let view: &v8::PinScope<'s, '_, ()> = scope;
+  weak.to_local(view)
+}
+
+/// Forgets list `id`. A window calls this for a list that was collected.
+pub(crate) fn forget_list(id: u64) {
+  LISTS.with(|slot| slot.borrow_mut().remove(&id));
+}
+
+pub(crate) fn clear() {
+  LISTS.with(|slot| slot.borrow_mut().clear());
+}
+
+/// Whether a `MediaQueryList` can still observe a change. The window keeps a
+/// list alive only while this is true. A list with no listener cannot see a
+/// change, so once script drops it the list is collected.
+#[derive(Clone)]
+pub(crate) struct Observed {
+  listening: yuzuko_dom::Listening,
+  legacy: Rc<RefCell<Vec<v8::TracedReference<v8::Function>>>>,
+}
+
+impl Observed {
+  pub(crate) fn any(&self) -> bool {
+    self.listening.any()
+      || self
+        .legacy
+        .try_borrow()
+        .map_or(true, |legacy| !legacy.is_empty())
+  }
 }
 
 unsafe impl v8::cppgc::GarbageCollected for MediaQueryList {
@@ -975,11 +1034,19 @@ pub fn install(scope: &mut v8::PinScope) {
   yuzuko_dom::define_prototype_event_handlers(scope, constructor, &["change"]);
 }
 
+/// One `MediaQueryList` a window made. `reference` is traced only while
+/// `observed` reports a listener, and is read only through [`list_local`].
+pub(crate) struct WindowList {
+  pub(crate) id: u64,
+  pub(crate) reference: v8::TracedReference<v8::Object>,
+  pub(crate) observed: Observed,
+}
+
 pub fn open<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   window_id: u64,
   query: String,
-) -> v8::Local<'s, v8::Object> {
+) -> (v8::Local<'s, v8::Object>, WindowList) {
   let parsed = parse(&query);
   let matches = snapshot(window_id)
     .map(|state| evaluate(&parsed, &state))
@@ -990,9 +1057,33 @@ pub fn open<'s>(
     media: RefCell::new(query),
     query: parsed,
     matches: Cell::new(matches),
-    legacy: RefCell::new(Vec::new()),
+    legacy: Rc::new(RefCell::new(Vec::new())),
   };
-  unsafe { yuzuko_core::op::wrap_instance(scope, list) }
+  let observed = Observed {
+    listening: list.base.listening(),
+    legacy: Rc::clone(&list.legacy),
+  };
+  let object = unsafe { yuzuko_core::op::wrap_instance(scope, list) };
+  let id = NEXT_LIST.with(|next| {
+    let id = next.get();
+    next.set(id + 1);
+    id
+  });
+  let weak = {
+    let unit: &mut v8::PinScope<'_, '_, ()> = &mut *scope;
+    let isolate: &mut v8::Isolate = &mut *unit;
+    v8::Weak::new(isolate, object)
+  };
+  LISTS.with(|slot| slot.borrow_mut().insert(id, weak));
+  let reference = traced(scope, object);
+  (
+    object,
+    WindowList {
+      id,
+      reference,
+      observed,
+    },
+  )
 }
 
 #[cfg(test)]

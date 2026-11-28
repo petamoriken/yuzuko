@@ -23,6 +23,7 @@ pub use event::{
 pub use message::entangled_ports;
 pub use report::report_error;
 pub use target::EventTarget;
+pub use target::Listening;
 pub use target::define_event_handlers;
 pub use target::define_prototype_event_handlers;
 pub use target::dispatch;
