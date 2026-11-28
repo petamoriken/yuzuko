@@ -145,6 +145,96 @@ impl FromV8 for String {
   }
 }
 
+/// A JavaScript string as WTF-16 code units. Unpaired surrogates stay.
+///
+/// `FromV8` applies `ToString`, the same conversion as `String`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Wtf16 {
+  units: Vec<u16>,
+}
+
+impl From<&str> for Wtf16 {
+  /// A Rust string has no unpaired surrogates.
+  fn from(text: &str) -> Self {
+    Self {
+      units: text.encode_utf16().collect(),
+    }
+  }
+}
+
+impl Wtf16 {
+  #[inline]
+  pub fn as_units(&self) -> &[u16] {
+    &self.units
+  }
+
+  /// One scalar at `index`, or U+FFFD for an unpaired surrogate. The width is
+  /// the number of code units consumed.
+  pub fn decode_at(units: &[u16], index: usize) -> (char, usize) {
+    let unit = units[index];
+    if (0xD800..=0xDBFF).contains(&unit)
+      && let Some(&low) = units.get(index + 1)
+      && (0xDC00..=0xDFFF).contains(&low)
+    {
+      let value = 0x10000
+        + (((u32::from(unit) - 0xD800) << 10) | (u32::from(low) - 0xDC00));
+      return (char::from_u32(value).unwrap(), 2);
+    }
+    if (0xDC00..=0xDFFF).contains(&unit) || (0xD800..=0xDBFF).contains(&unit) {
+      return ('\u{FFFD}', 1);
+    }
+    (char::from_u32(u32::from(unit)).unwrap(), 1)
+  }
+
+  /// UTF-8. An unpaired surrogate becomes U+FFFD.
+  pub fn to_utf8_lossy(&self) -> String {
+    let mut utf8 = String::with_capacity(self.units.len());
+    let mut index = 0;
+    while index < self.units.len() {
+      let (ch, width) = Self::decode_at(&self.units, index);
+      utf8.push(ch);
+      index += width;
+    }
+    utf8
+  }
+
+  /// Copy `text` without transcoding. The view borrows V8 heap data, so the
+  /// units are copied before this returns and before another V8 call.
+  pub fn from_v8_string(
+    scope: &mut v8::Isolate,
+    text: v8::Local<'_, v8::String>,
+  ) -> Self {
+    let view = v8::ValueView::new(scope, text);
+    let units = match view.data() {
+      v8::ValueViewData::OneByte(bytes) => {
+        bytes.iter().copied().map(u16::from).collect()
+      }
+      v8::ValueViewData::TwoByte(units) => units.to_vec(),
+    };
+    Self { units }
+  }
+}
+
+impl FromV8 for Wtf16 {
+  #[inline]
+  fn from_v8(
+    scope: &mut v8::PinScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, OpError> {
+    let captured = {
+      v8::tc_scope!(let tc, scope);
+      match value.to_string(tc) {
+        Some(text) => Ok(Wtf16::from_v8_string(tc, text)),
+        None => Err(caught_exception(tc)),
+      }
+    };
+    match captured {
+      Ok(text) => Ok(text),
+      Err(exception) => Err(rethrow_exception(scope, exception)),
+    }
+  }
+}
+
 impl FromV8 for f64 {
   #[inline]
   fn from_v8(
@@ -694,4 +784,70 @@ pub(crate) fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
     return;
   }
   throw_builtin(scope, format!("{name}: {message}"), false);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::FromV8;
+  use super::Wtf16;
+
+  fn eval<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    source: &str,
+  ) -> v8::Local<'s, v8::Value> {
+    let source = v8::String::new(scope, source).unwrap();
+    let script = v8::Script::compile(scope, source, None).unwrap();
+    script.run(scope).unwrap()
+  }
+
+  #[test]
+  fn wtf16_keeps_v8_code_units() {
+    crate::runtime::with_runtime(
+      false,
+      false,
+      |_| {},
+      |scope| {
+        let source = eval(scope, r#""\u00E9""#);
+        let latin = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(latin.as_units(), &[0x00E9]);
+        let source = eval(scope, r#""\u3042""#);
+        let kana = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(kana.as_units(), &[0x3042]);
+        let source = eval(scope, r#""\uD83D\uDE00""#);
+        let pair = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(pair.as_units(), &[0xD83D, 0xDE00]);
+        let source = eval(scope, r#""\uD800""#);
+        let lone = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(lone.as_units(), &[0xD800]);
+        let source = eval(scope, r#""A\uD800\uD83D\uDE00""#);
+        let mixed = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(mixed.as_units(), &[0x41, 0xD800, 0xD83D, 0xDE00]);
+        let source = eval(scope, "1");
+        let number = Wtf16::from_v8(scope, source).unwrap();
+        assert_eq!(number.as_units(), &[u16::from(b'1')]);
+        let throwing =
+          eval(scope, "({ toString() { throw new TypeError('nope'); } })");
+        assert!(matches!(
+          Wtf16::from_v8(scope, throwing),
+          Err(super::OpError::Thrown(_))
+        ));
+        Ok(())
+      },
+    )
+    .unwrap();
+  }
+
+  #[test]
+  fn lossy_utf8_keeps_pairs_and_replaces_lone_surrogates() {
+    let pair = Wtf16 {
+      units: vec![0xD83D, 0xDE00],
+    };
+    assert_eq!(pair.to_utf8_lossy(), "😀");
+    let lone = Wtf16 {
+      units: vec![0xD800],
+    };
+    assert_eq!(lone.to_utf8_lossy(), "\u{FFFD}");
+    assert_eq!(Wtf16::decode_at(&[0x41], 0), ('A', 1));
+    assert_eq!(Wtf16::from("あ").as_units(), &[0x3042]);
+  }
 }

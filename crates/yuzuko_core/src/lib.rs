@@ -97,7 +97,7 @@ pub use js::{
   exception_value, finite_number, float32_array, float64_array, global,
   modulo_i64, modulo_u32, modulo_u64, namespace, rust_string, rust_string_or,
   set_function, set_value, throw_type, to_number, try_define_function,
-  uint8_array, uint8_clamped_array,
+  uint8_array, uint8_clamped_array, wtf16_or,
 };
 pub use loader::module_source::url_of as module_source_url;
 pub use loader::modules::{canonicalize, file_url, module_graph};

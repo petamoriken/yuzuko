@@ -116,6 +116,19 @@ pub fn rust_string_or(
     .unwrap_or_else(|| fallback.to_string())
 }
 
+/// `ToString` as WTF-16 code units. `fallback` is used when the conversion fails.
+#[inline]
+pub fn wtf16_or(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::Value>,
+  fallback: &str,
+) -> crate::op::Wtf16 {
+  value
+    .to_string(scope)
+    .map(|text| crate::op::Wtf16::from_v8_string(scope, text))
+    .unwrap_or_else(|| crate::op::Wtf16::from(fallback))
+}
+
 /// How a host-function installer reports an allocation failure.
 enum InstallFailure {
   /// Panic with `create function {name}`.
