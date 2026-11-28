@@ -1702,3 +1702,18 @@ Yuzuko.test("readAsText reads charset from the parsed MIME type", async () => {
     throw new Error(JSON.stringify(decoded));
   }
 });
+
+Yuzuko.test("a port cannot transfer itself", () => {
+  const channel = new MessageChannel();
+  let name = "";
+  try {
+    channel.port1.postMessage("hi", [channel.port1]);
+  } catch (error) {
+    name = (error as Error).name;
+  }
+  channel.port1.close();
+  channel.port2.close();
+  if (name !== "DataCloneError") {
+    throw new Error(name);
+  }
+});

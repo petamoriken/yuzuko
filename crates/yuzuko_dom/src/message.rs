@@ -531,6 +531,18 @@ impl MessagePort {
         .and_then(|state| state.peer)
     });
     let (objects, buffers) = transfer_parts(scope, transfer)?;
+    // HTML: a transfer list that contains this port throws DataCloneError.
+    let listed_self = objects.iter().any(|object| {
+      let object = v8::Local::new(scope, object);
+      unsafe { yuzuko_core::op::host_ref::<MessagePort>(scope, object) }
+        .is_some_and(|port| port.get().id == self.id)
+    });
+    if listed_self {
+      return Err(OpError::dom(
+        "DataCloneError",
+        "The transfer list contains the source port.",
+      ));
+    }
     if let Some(peer) = peer
       && port_agent(peer) != yuzuko_core::agent_id()
     {
