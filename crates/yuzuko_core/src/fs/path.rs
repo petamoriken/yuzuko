@@ -4,6 +4,7 @@
 //! without changing process state. Callers that serve JavaScript read the
 //! root recorded for this process.
 
+use std::fs::File;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
@@ -84,17 +85,19 @@ fn inside(root: &Path, path: &Path) -> bool {
   path == root || path.starts_with(&root)
 }
 
-/// Rejects `path` when a bundle root is set and the path is inside it.
+/// Rejects `file` when that descriptor is inside the packaged bundle.
 ///
-/// A path that cannot be canonicalized is rejected too. With no bundle root
-/// this is a no-op, so callers that already know the root is absent can skip
-/// the call.
-pub(super) fn ensure_outside_bundle(path: &Path) -> Result<(), FsError> {
+/// The path is the one the operating system reports for this descriptor.
+/// Checking the caller's path and then opening it again can follow a
+/// different file. With no bundle root this is a no-op. A descriptor whose
+/// path cannot be read is rejected, because the write cannot be shown to
+/// stay outside the bundle.
+pub(super) fn reject_opened_bundle(file: &File) -> Result<(), FsError> {
   let Some(root) = super::bundle_root() else {
     return Ok(());
   };
-  let canonical = crate::canonicalize(path).map_err(|_| FsError::bundle())?;
-  if inside(&root, &canonical) {
+  let real = crate::fd_path::fd_path(file).map_err(|_| FsError::bundle())?;
+  if inside(&root, &real) {
     return Err(FsError::bundle());
   }
   Ok(())

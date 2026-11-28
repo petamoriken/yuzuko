@@ -213,6 +213,11 @@ fn permit_opened(
   read: bool,
   write: bool,
 ) -> Result<(), FsError> {
+  // Bundle membership is not a permission grant. An open policy still must
+  // not truncate a packaged file that was swapped in after the path check.
+  if write {
+    path::reject_opened_bundle(file)?;
+  }
   if !read && !write {
     return Ok(());
   }
@@ -1170,11 +1175,7 @@ pub(super) fn utime_file(
   }
   #[cfg(any(unix, windows))]
   {
-    if super::bundle_root().is_some() {
-      let path =
-        crate::fd_path::fd_path(file).map_err(|_| FsError::bundle())?;
-      path::ensure_outside_bundle(&path)?;
-    }
+    path::reject_opened_bundle(file)?;
     set_times_file(file, atime, mtime)
   }
 }
@@ -1945,6 +1946,58 @@ mod tests {
     assert_eq!(fs::read(&from).unwrap(), b"he");
     super::copy_path(&from, &to).unwrap();
     assert_eq!(fs::read(&to).unwrap(), b"he");
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn an_opened_bundle_file_is_not_written() {
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-fs-bundle-{}-{}",
+      std::process::id(),
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let bundle = root.join("Bundle.app");
+    let inside = bundle.join("secret.txt");
+    let outside = root.join("outside.txt");
+    fs::create_dir_all(&bundle).unwrap();
+    fs::write(&inside, b"secret").unwrap();
+    fs::write(&outside, b"out").unwrap();
+    let _guard = super::super::replace_bundle_root(Some(&bundle));
+    let error =
+      super::write_bytes(&inside, b"nope", super::WriteFlags::default())
+        .unwrap_err();
+    assert!(
+      matches!(
+        error,
+        super::FsError::Os {
+          class: super::super::error::Class::NotSupported,
+          ..
+        }
+      ),
+      "{error:?}"
+    );
+    assert_eq!(fs::read(&inside).unwrap(), b"secret");
+    let opened = fs::File::open(&inside).unwrap();
+    let error = super::path::reject_opened_bundle(&opened).unwrap_err();
+    assert!(
+      matches!(
+        error,
+        super::FsError::Os {
+          class: super::super::error::Class::NotSupported,
+          ..
+        }
+      ),
+      "{error:?}"
+    );
+    super::path::reject_opened_bundle(&fs::File::open(&outside).unwrap())
+      .unwrap();
+    super::write_bytes(&outside, b"yes", super::WriteFlags::default()).unwrap();
+    assert_eq!(fs::read(&outside).unwrap(), b"yes");
+    drop(_guard);
     let _ = fs::remove_dir_all(&root);
   }
 }

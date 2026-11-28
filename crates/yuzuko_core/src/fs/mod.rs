@@ -39,6 +39,30 @@ pub(super) fn bundle_root() -> Option<PathBuf> {
     .clone()
 }
 
+/// Installs a bundle root for one test and restores the previous root.
+#[cfg(test)]
+pub(super) struct BundleRootGuard {
+  previous: Option<PathBuf>,
+}
+
+#[cfg(test)]
+pub(super) fn replace_bundle_root(path: Option<&Path>) -> BundleRootGuard {
+  let previous = bundle_root();
+  let next = path.map(|path| {
+    crate::canonicalize(path).unwrap_or_else(|_| path::lexical_absolute(path))
+  });
+  *BUNDLE.lock().unwrap_or_else(|error| error.into_inner()) = next;
+  BundleRootGuard { previous }
+}
+
+#[cfg(test)]
+impl Drop for BundleRootGuard {
+  fn drop(&mut self) {
+    *BUNDLE.lock().unwrap_or_else(|error| error.into_inner()) =
+      self.previous.take();
+  }
+}
+
 pub(crate) fn install(scope: &mut v8::PinScope) {
   publish_class(scope, "FsFile", file::FsFile::install);
   publish_class(scope, "FsWatcher", watch::FsWatcher::install);
