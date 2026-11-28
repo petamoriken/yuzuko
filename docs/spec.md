@@ -855,7 +855,7 @@ A path string is a file-system path. A relative path is joined to the process cu
 
 For a packaged app, the process current directory is the directory from which the user launched the app. `Yuzuko.chdir` may name a directory inside the bundle and does not modify the bundle. A write through a `file:` URL under `import.meta.url` is inside the bundle and fails. A save file is an absolute path outside the bundle.
 
-A synchronous call blocks the calling thread, including the main event loop. An asynchronous call runs the operating-system call on a background thread and settles the promise on that realm's event loop. A bad argument throws `TypeError` before the call. An operating-system failure rejects the promise, or throws from the synchronous form.
+A synchronous call blocks the calling thread, including the main event loop. An asynchronous call runs the operating-system call on the process-wide host pool of 8 threads and settles the promise on that realm's event loop. A bad argument throws `TypeError` before the call. An operating-system failure rejects the promise, or throws from the synchronous form.
 
 The functions are `open`, `create`, `readFile`, `readTextFile`, `writeFile`, `writeTextFile`, `mkdir`, `remove`, `rename`, `stat`, `lstat`, `readDir`, `copyFile`, `realPath`, `truncate`, `makeTempDir`, `makeTempFile`, `chmod`, `chown`, `link`, `symlink`, `readLink`, and `utime`. Each of those has a synchronous twin whose name ends in `Sync`. `umask` is synchronous and has no twin. `watchFs` returns an `FsWatcher` immediately. `create` and `createSync` take only a path and open it for write, with create and truncate, and without read. `readDir` returns an array of `{ name, isFile, isDirectory, isSymlink }`. The array is not sorted and is not an iterator. Directory entry types do not follow a symlink.
 
@@ -1477,7 +1477,7 @@ main thread
 
 The main realm's isolate stays on the main thread. A dedicated worker runs on its own thread and enters only its own isolate. winit stays on the main thread. wgpu stays on the thread that created the device. Other background completions are posted to a task queue and wake that realm's event loop. Only the main thread touches winit.
 
-There is one V8 platform per process. Posting a foreground task always hits the waker. Timer delays do not spawn an OS thread per timer.
+There is one V8 platform per process. Posting a foreground task always hits the waker. Timer delays do not spawn an OS thread per timer. Asynchronous file, socket, DNS, TLS, child-process, and HTTP server calls share one process-wide pool of 8 threads. A call that blocks in the operating system holds its pool thread until it returns. Further calls wait until a pool thread is free. The promise still settles on that realm's event loop. A call the pool cannot accept rejects, and its work does not run. `watchFs`, workers, and image decoding keep their own threads.
 
 Crates:
 
