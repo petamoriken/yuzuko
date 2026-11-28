@@ -695,12 +695,28 @@ fn an_allowed_name_cannot_open_a_socket_to_a_loopback_address() {
 
   let hits = Arc::new(AtomicUsize::new(0));
   let stop = Arc::new(AtomicBool::new(false));
-  let v4 = TcpListener::bind("127.0.0.1:0").unwrap();
-  let port = v4.local_addr().unwrap().port();
-  let mut listeners = vec![v4];
-  if let Ok(v6) = TcpListener::bind(format!("[::1]:{port}")) {
-    listeners.push(v6);
+  // Windows can hand `bind(0)` a port in a Hyper-V excluded range. The TCP
+  // listen accepts it and the UDP bind then fails with WSAEACCES (10013).
+  let mut chosen = None;
+  for _ in 0..32 {
+    let v4 = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = v4.local_addr().unwrap().port();
+    let mut listeners = vec![v4];
+    if let Ok(v6) = TcpListener::bind(format!("[::1]:{port}")) {
+      listeners.push(v6);
+    }
+    let Ok(v4_udp) = UdpSocket::bind(("127.0.0.1", port)) else {
+      continue;
+    };
+    let mut udp = vec![v4_udp];
+    if let Ok(v6) = UdpSocket::bind(format!("[::1]:{port}")) {
+      udp.push(v6);
+    }
+    chosen = Some((listeners, udp, port));
+    break;
   }
+  let (listeners, udp, port) =
+    chosen.expect("no loopback port accepted both TCP and UDP");
   let mut threads: Vec<JoinHandle<()>> = Vec::new();
   for listener in listeners {
     listener.set_nonblocking(true).unwrap();
@@ -720,10 +736,6 @@ fn an_allowed_name_cannot_open_a_socket_to_a_loopback_address() {
         }
       }
     }));
-  }
-  let mut udp = vec![UdpSocket::bind(("127.0.0.1", port)).unwrap()];
-  if let Ok(v6) = UdpSocket::bind(format!("[::1]:{port}")) {
-    udp.push(v6);
   }
   for socket in &udp {
     socket.set_nonblocking(true).unwrap();
