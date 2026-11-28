@@ -402,6 +402,11 @@ pub(super) fn copy_path(from: &Path, to: &Path) -> Result<(), FsError> {
     .open(to)
     .map_err(FsError::io)?;
   permit_opened(to, &dest, false, true)?;
+  // Truncating first would empty the file when both descriptors name it,
+  // including two hard links.
+  if same_file(&source, &dest)? {
+    return Ok(());
+  }
   dest.set_len(0).map_err(FsError::io)?;
   io::copy(&mut source, &mut dest).map_err(FsError::io)?;
   #[cfg(unix)]
@@ -411,6 +416,38 @@ pub(super) fn copy_path(from: &Path, to: &Path) -> Result<(), FsError> {
       .map_err(FsError::io)?;
   }
   Ok(())
+}
+
+/// Whether both descriptors name one file. A hard link counts.
+fn same_file(left: &File, right: &File) -> Result<bool, FsError> {
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::MetadataExt;
+    let left = left.metadata().map_err(FsError::io)?;
+    let right = right.metadata().map_err(FsError::io)?;
+    return Ok(left.dev() == right.dev() && left.ino() == right.ino());
+  }
+  #[cfg(windows)]
+  {
+    use std::os::windows::fs::MetadataExt;
+    let left = left.metadata().map_err(FsError::io)?;
+    let right = right.metadata().map_err(FsError::io)?;
+    return Ok(matches!(
+      (
+        left.volume_serial_number(),
+        left.file_index(),
+        right.volume_serial_number(),
+        right.file_index(),
+      ),
+      (Some(left_volume), Some(left_index), Some(right_volume), Some(right_index))
+        if left_volume == right_volume && left_index == right_index
+    ));
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (left, right);
+    Ok(false)
+  }
 }
 
 pub(super) fn real_path(path: &Path) -> Result<String, FsError> {
@@ -1963,6 +2000,13 @@ mod tests {
     assert_eq!(fs::read(&from).unwrap(), b"he");
     super::copy_path(&from, &to).unwrap();
     assert_eq!(fs::read(&to).unwrap(), b"he");
+    super::copy_path(&from, &from).unwrap();
+    assert_eq!(fs::read(&from).unwrap(), b"he");
+    let alias = root.join("alias.txt");
+    fs::hard_link(&from, &alias).unwrap();
+    super::copy_path(&alias, &from).unwrap();
+    assert_eq!(fs::read(&from).unwrap(), b"he");
+    assert_eq!(fs::read(&alias).unwrap(), b"he");
     let _ = fs::remove_dir_all(&root);
   }
 

@@ -6155,6 +6155,9 @@ declare namespace Yuzuko {
   /**
    * Copies `from` onto `to`, overwriting `to`.
    *
+   * When the opened source and destination are the same file, including two
+   * hard links, the file is left unchanged.
+   *
    * @throws {@link TypeError} When either path is not a string or a file URL.
    * @throws {@link errors.NotSupported} When `to` resolves inside the
    * application bundle.
