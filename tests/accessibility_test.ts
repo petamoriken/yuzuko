@@ -466,28 +466,37 @@ function abandonAccessibleWindow(): void {
   window.close();
 }
 
+// Counts taken before the window in the next test is abandoned. Windows
+// keeps that window reachable until the allocating frame returns, so the
+// following test is what observes the collection.
+let abandonedWindows = 0;
+let abandonedNodes = 0;
+
+Yuzuko.test("a closed window stays recorded until its frame returns", () => {
+  Yuzuko.__test.collectGarbage();
+  Yuzuko.__test.collectGarbage();
+  abandonedWindows = Yuzuko.__test.accessibleWindowCount();
+  abandonedNodes = Yuzuko.__test.accessibleNodeCount();
+  abandonAccessibleWindow();
+  assert(
+    Yuzuko.__test.accessibleWindowCount() === abandonedWindows + 1,
+    `windows ${abandonedWindows} -> ${Yuzuko.__test.accessibleWindowCount()}`,
+  );
+  assert(
+    Yuzuko.__test.accessibleNodeCount() === abandonedNodes + 2,
+    `nodes ${abandonedNodes} -> ${Yuzuko.__test.accessibleNodeCount()}`,
+  );
+});
+
 Yuzuko.test("a closed window is dropped after its root is collected", () => {
   Yuzuko.__test.collectGarbage();
   Yuzuko.__test.collectGarbage();
-  const windows = Yuzuko.__test.accessibleWindowCount();
-  const nodes = Yuzuko.__test.accessibleNodeCount();
-  abandonAccessibleWindow();
   assert(
-    Yuzuko.__test.accessibleWindowCount() === windows + 1,
-    `windows ${windows} -> ${Yuzuko.__test.accessibleWindowCount()}`,
-  );
-  assert(
-    Yuzuko.__test.accessibleNodeCount() === nodes + 2,
-    `nodes ${nodes} -> ${Yuzuko.__test.accessibleNodeCount()}`,
-  );
-  Yuzuko.__test.collectGarbage();
-  Yuzuko.__test.collectGarbage();
-  assert(
-    Yuzuko.__test.accessibleWindowCount() === windows,
+    Yuzuko.__test.accessibleWindowCount() === abandonedWindows,
     `windows left ${Yuzuko.__test.accessibleWindowCount()}`,
   );
   assert(
-    Yuzuko.__test.accessibleNodeCount() === nodes,
+    Yuzuko.__test.accessibleNodeCount() === abandonedNodes,
     `nodes left ${Yuzuko.__test.accessibleNodeCount()}`,
   );
 });
