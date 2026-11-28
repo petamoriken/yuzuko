@@ -1,8 +1,10 @@
-//! Bind a listening socket with `SO_REUSEPORT` set before `bind`.
+//! Bind a listening socket before the operating system chooses its defaults.
 //!
 //! `std::net` sets `SO_REUSEADDR` on some platforms and does not expose
-//! `SO_REUSEPORT`. The ordinary path stays on `TcpListener::bind` and
-//! `UdpSocket::bind`.
+//! `SO_REUSEPORT`. An ordinary IPv4 bind stays on `TcpListener::bind` and
+//! `UdpSocket::bind`. An IPv6 bind is created here so `IPV6_V6ONLY` is set
+//! before `bind`: the Unix default is dual-stack, and `[::]` would accept
+//! IPv4. `IPV6_V6ONLY` cannot be changed after `bind` on macOS.
 
 use std::io;
 use std::net::SocketAddr;
@@ -56,8 +58,24 @@ const LISTEN_BACKLOG: libc::c_int = 128;
 pub(crate) fn tcp_listener(
   addr: SocketAddr,
 ) -> io::Result<std::net::TcpListener> {
+  let fd = open_bound(addr, libc::SOCK_STREAM, true, false)?;
+  tcp_from_fd(fd)
+}
+
+/// An ordinary IPv6 TCP bind. `SO_REUSEADDR` matches `std`, and the socket
+/// does not accept IPv4.
+#[cfg_attr(not(any(feature = "tcp", feature = "http")), allow(dead_code))]
+#[cfg(unix)]
+pub(crate) fn tcp_listener_ipv6(
+  addr: SocketAddr,
+) -> io::Result<std::net::TcpListener> {
+  let fd = open_bound(addr, libc::SOCK_STREAM, false, true)?;
+  tcp_from_fd(fd)
+}
+
+#[cfg(unix)]
+fn tcp_from_fd(fd: libc::c_int) -> io::Result<std::net::TcpListener> {
   use std::os::fd::FromRawFd;
-  let fd = open_bound(addr, libc::SOCK_STREAM)?;
   let rc = unsafe { libc::listen(fd, LISTEN_BACKLOG) };
   if rc != 0 {
     let error = io::Error::last_os_error();
@@ -71,7 +89,18 @@ pub(crate) fn tcp_listener(
 #[cfg(unix)]
 pub(crate) fn udp_socket(addr: SocketAddr) -> io::Result<std::net::UdpSocket> {
   use std::os::fd::FromRawFd;
-  let fd = open_bound(addr, libc::SOCK_DGRAM)?;
+  let fd = open_bound(addr, libc::SOCK_DGRAM, true, false)?;
+  Ok(unsafe { std::net::UdpSocket::from_raw_fd(fd) })
+}
+
+/// An ordinary IPv6 UDP bind. The socket does not accept IPv4.
+#[cfg_attr(not(feature = "udp"), allow(dead_code))]
+#[cfg(unix)]
+pub(crate) fn udp_socket_ipv6(
+  addr: SocketAddr,
+) -> io::Result<std::net::UdpSocket> {
+  use std::os::fd::FromRawFd;
+  let fd = open_bound(addr, libc::SOCK_DGRAM, false, false)?;
   Ok(unsafe { std::net::UdpSocket::from_raw_fd(fd) })
 }
 
@@ -84,6 +113,15 @@ pub(crate) fn tcp_listener(
   Err(io::Error::new(io::ErrorKind::Unsupported, WINDOWS_REUSE))
 }
 
+/// Windows defaults `IPV6_V6ONLY` to 1, so `std` already refuses IPv4.
+#[cfg_attr(not(any(feature = "tcp", feature = "http")), allow(dead_code))]
+#[cfg(not(unix))]
+pub(crate) fn tcp_listener_ipv6(
+  addr: SocketAddr,
+) -> io::Result<std::net::TcpListener> {
+  std::net::TcpListener::bind(addr)
+}
+
 #[cfg_attr(not(feature = "udp"), allow(dead_code))]
 #[cfg(not(unix))]
 pub(crate) fn udp_socket(addr: SocketAddr) -> io::Result<std::net::UdpSocket> {
@@ -91,8 +129,22 @@ pub(crate) fn udp_socket(addr: SocketAddr) -> io::Result<std::net::UdpSocket> {
   Err(io::Error::new(io::ErrorKind::Unsupported, WINDOWS_REUSE))
 }
 
+/// Windows defaults `IPV6_V6ONLY` to 1, so `std` already refuses IPv4.
+#[cfg_attr(not(feature = "udp"), allow(dead_code))]
+#[cfg(not(unix))]
+pub(crate) fn udp_socket_ipv6(
+  addr: SocketAddr,
+) -> io::Result<std::net::UdpSocket> {
+  std::net::UdpSocket::bind(addr)
+}
+
 #[cfg(unix)]
-fn open_bound(addr: SocketAddr, kind: libc::c_int) -> io::Result<libc::c_int> {
+fn open_bound(
+  addr: SocketAddr,
+  kind: libc::c_int,
+  reuse_port: bool,
+  reuse_addr: bool,
+) -> io::Result<libc::c_int> {
   let domain = match addr {
     SocketAddr::V4(_) => libc::AF_INET,
     SocketAddr::V6(_) => libc::AF_INET6,
@@ -103,7 +155,12 @@ fn open_bound(addr: SocketAddr, kind: libc::c_int) -> io::Result<libc::c_int> {
   }
   let bound = (|| {
     set_cloexec(fd)?;
-    set_int(fd, libc::SOL_SOCKET, libc::SO_REUSEPORT, 1)?;
+    if reuse_addr {
+      set_int(fd, libc::SOL_SOCKET, libc::SO_REUSEADDR, 1)?;
+    }
+    if reuse_port {
+      set_int(fd, libc::SOL_SOCKET, libc::SO_REUSEPORT, 1)?;
+    }
     if addr.is_ipv6() {
       set_int(fd, libc::IPPROTO_IPV6, libc::IPV6_V6ONLY, 1)?;
     }
@@ -251,9 +308,11 @@ fn set_sin6_len(_sa: &mut libc::sockaddr_in6) {}
 
 #[cfg(all(test, unix))]
 mod tests {
-  use std::net::UdpSocket;
+  use std::net::{Ipv6Addr, SocketAddr, TcpStream, UdpSocket};
+  use std::os::fd::AsRawFd;
+  use std::time::Duration;
 
-  use super::udp_socket;
+  use super::{tcp_listener_ipv6, udp_socket, udp_socket_ipv6};
 
   #[test]
   fn two_udp_sockets_share_an_ephemeral_port() {
@@ -264,5 +323,59 @@ mod tests {
     let second = udp_socket(format!("127.0.0.1:{port}").parse().unwrap())
       .expect("second bind");
     assert_eq!(second.local_addr().unwrap().port(), port);
+  }
+
+  #[test]
+  fn an_ipv6_tcp_listener_rejects_ipv4() {
+    let listener = tcp_listener_ipv6("[::]:0".parse().unwrap()).unwrap();
+    assert_eq!(only_v6(listener.as_raw_fd()), 1);
+    let port = listener.local_addr().unwrap().port();
+    let ipv4 = TcpStream::connect_timeout(
+      &SocketAddr::from(([127, 0, 0, 1], port)),
+      Duration::from_millis(500),
+    );
+    assert!(ipv4.is_err(), "{ipv4:?}");
+    let ipv6 = TcpStream::connect_timeout(
+      &SocketAddr::from((Ipv6Addr::LOCALHOST, port)),
+      Duration::from_millis(500),
+    );
+    assert!(ipv6.is_ok(), "{ipv6:?}");
+  }
+
+  #[test]
+  fn an_ipv6_udp_socket_rejects_ipv4() {
+    let socket = udp_socket_ipv6("[::]:0".parse().unwrap()).unwrap();
+    assert_eq!(only_v6(socket.as_raw_fd()), 1);
+    let port = socket.local_addr().unwrap().port();
+    socket
+      .set_read_timeout(Some(Duration::from_millis(200)))
+      .unwrap();
+    let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+    sender
+      .send_to(b"v4", SocketAddr::from(([127, 0, 0, 1], port)))
+      .unwrap();
+    let mut buf = [0u8; 16];
+    assert!(socket.recv_from(&mut buf).is_err());
+    let v6 = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0)).unwrap();
+    v6.send_to(b"v6", SocketAddr::from((Ipv6Addr::LOCALHOST, port)))
+      .unwrap();
+    let (count, _) = socket.recv_from(&mut buf).unwrap();
+    assert_eq!(&buf[..count], b"v6");
+  }
+
+  fn only_v6(fd: libc::c_int) -> libc::c_int {
+    let mut value: libc::c_int = -1;
+    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+    let rc = unsafe {
+      libc::getsockopt(
+        fd,
+        libc::IPPROTO_IPV6,
+        libc::IPV6_V6ONLY,
+        &mut value as *mut libc::c_int as *mut libc::c_void,
+        &mut len,
+      )
+    };
+    assert_eq!(rc, 0);
+    value
   }
 }

@@ -236,7 +236,12 @@ pub(crate) fn clear() {
 }
 
 fn bind_tcp(addr: SocketAddr) -> io::Result<Arc<ListenerShared>> {
-  finish_tcp(StdListener::bind(addr)?)
+  let listener = if addr.is_ipv6() {
+    crate::socket_bind::tcp_listener_ipv6(addr)?
+  } else {
+    StdListener::bind(addr)?
+  };
+  finish_tcp(listener)
 }
 
 fn bind_tcp_reuse(addr: SocketAddr) -> io::Result<Arc<ListenerShared>> {

@@ -184,7 +184,12 @@ pub(crate) fn clear() {
 }
 
 fn bind_udp(addr: SocketAddr) -> io::Result<Arc<Shared>> {
-  finish_udp(UdpSocket::bind(addr)?)
+  let socket = if addr.is_ipv6() {
+    crate::socket_bind::udp_socket_ipv6(addr)?
+  } else {
+    UdpSocket::bind(addr)?
+  };
+  finish_udp(socket)
 }
 
 fn bind_udp_reuse(addr: SocketAddr) -> io::Result<Arc<Shared>> {

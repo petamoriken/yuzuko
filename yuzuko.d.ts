@@ -3504,7 +3504,8 @@ declare namespace Yuzuko {
    * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
    * that address. Any other hostname must be an IP address without brackets.
    * There is no DNS lookup. `port` defaults to `0`. The call blocks the
-   * caller for the bind.
+   * caller for the bind. An IPv6 bind is IPv6-only, so `::` does not
+   * accept IPv4.
    *
    * @throws {@link TypeError} `Options must be an object.` when `options` is
    * not an object, `null`, or `undefined`.
@@ -3721,7 +3722,8 @@ declare namespace Yuzuko {
    * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
    * that address. Any other hostname must be an IP address without brackets.
    * There is no DNS lookup. `port` defaults to `0`. The call blocks the
-   * caller for the bind.
+   * caller for the bind. An IPv6 bind is IPv6-only, so `::` does not
+   * accept IPv4.
    *
    * @throws {@link TypeError} `Options must be an object.` when `options` is
    * not an object, `null`, or `undefined`.
@@ -4184,7 +4186,8 @@ declare namespace Yuzuko {
    * ephemeral port. `hostname` defaults to `"127.0.0.1"`. `localhost` means
    * that address. Any other hostname must be an IP address without brackets.
    * There is no DNS lookup. `port` defaults to `0`. The call blocks the
-   * caller for the bind.
+   * caller for the bind. An IPv6 bind is IPv6-only, so `::` does not
+   * accept IPv4.
    *
    * @throws {@link TypeError} `Options must be an object.` when `options` is
    * not an object, `null`, or `undefined`.
