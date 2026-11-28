@@ -773,6 +773,37 @@ pub fn path_is_granted(write: bool, path: &Path) -> Result<bool, OpError> {
   )
 }
 
+/// Open a regular file for deferred reads, then verify its descriptor against
+/// the read policy and the root of the entry module.
+pub fn open_fetch_file(
+  path: &Path,
+  root: &Path,
+) -> Result<std::fs::File, OpError> {
+  let unreadable = || OpError::type_("The file could not be read");
+  let mut options = std::fs::OpenOptions::new();
+  options.read(true);
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_NONBLOCK);
+  }
+  let file = options.open(path).map_err(|_| unreadable())?;
+  let real = crate::fd_path::fd_path(&file).map_err(|_| unreadable())?;
+  if !root_spelling(real.clone()).starts_with(root_spelling(root.to_path_buf()))
+  {
+    return Err(OpError::type_(
+      "The file URL is outside the entry directory",
+    ));
+  }
+  if !path_is_granted(false, &real)? {
+    return Err(path_not_allowed(false, path));
+  }
+  if !file.metadata().map_err(|_| unreadable())?.is_file() {
+    return Err(unreadable());
+  }
+  Ok(file)
+}
+
 /// Whether the directory entry `path` is granted. A final symlink is not
 /// resolved. With `tree`, a deny of a descendant also refuses it. This does
 /// not ask.

@@ -108,7 +108,7 @@ pub use permissions::{
   PermissionRules, PermissionSpec, authorize_url, check_env, check_env_all,
   check_ffi, check_net, check_net_host, check_read, check_run, check_write,
   check_write_all, grant_read, grant_write, install_permissions,
-  retain_resolved_addresses, validate_permissions,
+  open_fetch_file, retain_resolved_addresses, validate_permissions,
 };
 pub use process::{set_args, with_env};
 pub use reach::walk_objects;

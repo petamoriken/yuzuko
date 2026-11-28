@@ -1974,20 +1974,20 @@ fn spawn_file<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   url: url::Url,
 ) -> v8::Local<'s, v8::Value> {
-  let path = match file_inside_entry(&url) {
+  let (root, path) = match file_inside_entry(&url) {
     Ok(path) => path,
     Err(error) => return rejected(scope, error),
   };
   let href = url.to_string();
   let mime = mime_from_path(&path);
   promise_task(scope, move || {
-    let meta = std::fs::metadata(&path)
-      .map_err(|_| Reject::Type("The file could not be read".to_string()))?;
-    if !meta.is_file() {
-      return Err(Reject::Type("The file could not be read".to_string()));
-    }
+    let file =
+      yuzuko_core::open_fetch_file(&path, &root).map_err(op_to_reject)?;
+    let meta = file
+      .metadata()
+      .map_err(|_| Reject::Type("The file could not be read".into()))?;
     Ok(Loaded::new(
-      crate::blob::BlobSource::file(path, meta.len()),
+      crate::blob::BlobSource::opened(file, meta.len()),
       mime,
       href,
     ))
@@ -2189,7 +2189,9 @@ fn spawn_data<'s>(
   })
 }
 
-fn file_inside_entry(url: &url::Url) -> Result<std::path::PathBuf, Reject> {
+fn file_inside_entry(
+  url: &url::Url,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), Reject> {
   let path = url
     .to_file_path()
     .map_err(|()| Reject::Type("The file URL is invalid".to_string()))?;
@@ -2202,11 +2204,11 @@ fn file_inside_entry(url: &url::Url) -> Result<std::path::PathBuf, Reject> {
     ));
   }
   match yuzuko_core::canonicalize(&path) {
-    Ok(canonical) if canonical.starts_with(&root) => Ok(canonical),
+    Ok(canonical) if canonical.starts_with(&root) => Ok((root, path)),
     Ok(_) => Err(Reject::Type(
       "The file URL is outside the entry directory".to_string(),
     )),
-    Err(_) => Ok(normalized),
+    Err(_) => Ok((root, path)),
   }
 }
 

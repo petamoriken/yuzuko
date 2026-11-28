@@ -27,8 +27,8 @@ pub(crate) fn fd_path(file: &File) -> io::Result<PathBuf> {
     return Err(io::Error::last_os_error());
   }
   let end = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
-  let text = String::from_utf8_lossy(&buf[..end]).replace('\0', "\u{FFFD}");
-  Ok(PathBuf::from(text))
+  use std::os::unix::ffi::OsStrExt;
+  Ok(PathBuf::from(std::ffi::OsStr::from_bytes(&buf[..end])))
 }
 
 #[cfg(target_os = "linux")]

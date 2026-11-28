@@ -339,10 +339,17 @@ pub(crate) struct BlobSource {
   size: u64,
 }
 
+#[derive(Clone)]
+enum FileSource {
+  Path(PathBuf),
+  #[cfg(feature = "fetch")]
+  Opened(Arc<Mutex<std::fs::File>>),
+}
+
 enum SourceInner {
   Chunks(Vec<::bytes::Bytes>),
   File {
-    path: PathBuf,
+    source: FileSource,
     offset: u64,
     len: u64,
   },
@@ -365,12 +372,21 @@ impl BlobSource {
 
   #[cfg_attr(not(feature = "fetch"), allow(dead_code))]
   pub(crate) fn file(path: PathBuf, len: u64) -> Self {
-    Self::file_span(path, 0, len)
+    Self::file_span(FileSource::Path(path), 0, len)
   }
 
-  fn file_span(path: PathBuf, offset: u64, len: u64) -> Self {
+  #[cfg(feature = "fetch")]
+  pub(crate) fn opened(file: std::fs::File, len: u64) -> Self {
+    Self::file_span(FileSource::Opened(Arc::new(Mutex::new(file))), 0, len)
+  }
+
+  fn file_span(source: FileSource, offset: u64, len: u64) -> Self {
     Self {
-      inner: Arc::new(SourceInner::File { path, offset, len }),
+      inner: Arc::new(SourceInner::File {
+        source,
+        offset,
+        len,
+      }),
       size: len,
     }
   }
@@ -412,9 +428,25 @@ impl BlobSource {
     let max = max.min((self.size - cursor) as usize);
     match &*self.inner {
       SourceInner::Chunks(chunks) => Ok(slice_chunks(chunks, cursor, max)),
-      SourceInner::File { path, offset, len } => {
+      SourceInner::File {
+        source,
+        offset,
+        len,
+      } => {
         let remain = (*len - cursor) as usize;
-        read_file(path, offset + cursor, max.min(remain)).map(Some)
+        let len = max.min(remain);
+        match source {
+          FileSource::Path(path) => {
+            read_file(&mut std::fs::File::open(path)?, offset + cursor, len)
+          }
+          #[cfg(feature = "fetch")]
+          FileSource::Opened(file) => read_file(
+            &mut file.lock().unwrap_or_else(|p| p.into_inner()),
+            offset + cursor,
+            len,
+          ),
+        }
+        .map(Some)
       }
       SourceInner::Parts(parts) => {
         let mut skip = cursor;
@@ -438,8 +470,8 @@ impl BlobSource {
       return self.clone();
     }
     match &*self.inner {
-      SourceInner::File { path, offset, .. } => {
-        Self::file_span(path.clone(), offset + start, len)
+      SourceInner::File { source, offset, .. } => {
+        Self::file_span(source.clone(), offset + start, len)
       }
       SourceInner::Chunks(chunks) => Self {
         inner: Arc::new(SourceInner::Chunks(slice_chunk_list(
@@ -544,11 +576,10 @@ pub(crate) fn exception_for_read<'s>(
 }
 
 fn read_file(
-  path: &PathBuf,
+  file: &mut std::fs::File,
   offset: u64,
   len: usize,
 ) -> std::io::Result<::bytes::Bytes> {
-  let mut file = std::fs::File::open(path)?;
   file.seek(std::io::SeekFrom::Start(offset))?;
   let mut buf = vec![0u8; len];
   file.read_exact(&mut buf)?;
@@ -1532,6 +1563,22 @@ fn decode_with(
 #[cfg(test)]
 mod source_tests {
   use super::BlobSource;
+
+  #[cfg(feature = "fetch")]
+  #[test]
+  fn opened_blob_keeps_the_file_across_a_rename() {
+    let path = std::env::temp_dir()
+      .join(format!("yuzuko-opened-{}", std::process::id()));
+    let moved = path.with_extension("moved");
+    std::fs::write(&path, b"abcd").unwrap();
+    let blob = BlobSource::opened(std::fs::File::open(&path).unwrap(), 4);
+    std::fs::rename(&path, &moved).unwrap();
+    std::fs::write(&path, b"1234").unwrap();
+    assert_eq!(blob.slice(1, 3).read_all().unwrap(), b"bc");
+    drop(blob);
+    std::fs::remove_file(moved).unwrap();
+    std::fs::remove_file(path).unwrap();
+  }
 
   #[test]
   fn a_file_blob_reads_one_chunk_without_loading_the_rest() {
