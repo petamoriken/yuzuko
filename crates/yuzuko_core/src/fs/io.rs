@@ -571,9 +571,11 @@ pub(super) fn make_temp(
     let candidate = dir.join(name);
     let candidate = path::ensure_mutable(&candidate, Link::Entry)?;
     let created = if directory {
-      fs::create_dir(&candidate)
+      create_dir(&candidate, Some(0o700))
     } else {
-      OpenOptions::new()
+      let mut options = OpenOptions::new();
+      apply_file_mode(&mut options, Some(0o600));
+      options
         .write(true)
         .create_new(true)
         .open(&candidate)
@@ -1894,6 +1896,32 @@ fn set_times_path(
 mod tests {
   use std::fs;
   use std::time::{SystemTime, UNIX_EPOCH};
+
+  #[cfg(unix)]
+  #[test]
+  fn temporary_entries_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+    for directory in [false, true] {
+      let path = super::make_temp(
+        directory,
+        super::TempSpec {
+          dir: None,
+          prefix: "yuzuko-mode-".into(),
+          suffix: String::new(),
+        },
+      )
+      .unwrap();
+      assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o077,
+        0
+      );
+      if directory {
+        std::fs::remove_dir(path).unwrap();
+      } else {
+        std::fs::remove_file(path).unwrap();
+      }
+    }
+  }
 
   #[test]
   fn copy_and_truncate_use_the_opened_file() {

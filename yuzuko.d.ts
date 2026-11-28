@@ -6191,6 +6191,7 @@ declare namespace Yuzuko {
 
   /**
    * Creates an empty directory with a new name and returns its absolute path.
+   * On Unix, creation requests mode `0700` subject to the process umask.
    *
    * @throws {@link TypeError} When `options` is not an object, or when
    * `prefix` or `suffix` is not a string or contains a path separator or NUL.
@@ -6203,6 +6204,7 @@ declare namespace Yuzuko {
 
   /**
    * Creates an empty file with a new name and returns its absolute path.
+   * On Unix, creation requests mode `0600` subject to the process umask.
    *
    * @throws {@link TypeError} When `options` is not an object, or when
    * `prefix` or `suffix` is not a string or contains a path separator or NUL.
