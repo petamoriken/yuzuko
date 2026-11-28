@@ -332,6 +332,7 @@ pub(super) fn remove_path(
   if sandboxed() {
     let need = entry::Need {
       read: false,
+      read_tree: false,
       tree: flags.recursive,
     };
     let parent = entry::open_parent(requested, &path, need)?;
@@ -357,12 +358,27 @@ pub(super) fn rename_path(from: &Path, to: &Path) -> Result<(), FsError> {
   let from = path::ensure_mutable(from, Link::Entry)?;
   let to = path::ensure_mutable(to, Link::Entry)?;
   if sandboxed() {
-    let tree = entry::Need {
-      read: false,
-      tree: true,
-    };
-    let source = entry::open_parent(from_requested, &from, tree)?;
-    let dest = entry::open_parent(to_requested, &to, tree)?;
+    // The opened parent can name a different directory than the first check.
+    // The source moves its descendants, so read and write both cover the
+    // tree. The destination needs read of that entry and write of its tree.
+    let source = entry::open_parent(
+      from_requested,
+      &from,
+      entry::Need {
+        read: true,
+        read_tree: true,
+        tree: true,
+      },
+    )?;
+    let dest = entry::open_parent(
+      to_requested,
+      &to,
+      entry::Need {
+        read: true,
+        read_tree: false,
+        tree: true,
+      },
+    )?;
     return entry::rename(&source, &dest);
   }
   fs::rename(from, to).map_err(FsError::io)
@@ -1082,6 +1098,7 @@ pub(super) fn link(old: &Path, new: &Path) -> Result<(), FsError> {
     // A hard link needs read and write access to the old file.
     let read_write = entry::Need {
       read: true,
+      read_tree: false,
       tree: false,
     };
     let source = entry::open_parent(old_requested, &old, read_write)?;
@@ -1998,6 +2015,81 @@ mod tests {
     super::write_bytes(&outside, b"yes", super::WriteFlags::default()).unwrap();
     assert_eq!(fs::read(&outside).unwrap(), b"yes");
     drop(_guard);
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn rename_rechecks_read_on_the_opened_parent() {
+    if std::env::var_os("YUZUKO_RENAME_RECHECK").is_some() {
+      rename_recheck_child();
+      return;
+    }
+    let marker = std::env::temp_dir().join(format!(
+      "yuzuko-rename-recheck-{}-{}",
+      std::process::id(),
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = fs::remove_file(&marker);
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+      .env("YUZUKO_RENAME_RECHECK", &marker)
+      .args([
+        "--exact",
+        "fs::io::tests::rename_rechecks_read_on_the_opened_parent",
+        "--test-threads",
+        "1",
+      ])
+      .status()
+      .unwrap();
+    assert!(status.success(), "{status}");
+    assert!(marker.is_file(), "the recheck child did not run");
+    let _ = fs::remove_file(&marker);
+  }
+
+  fn rename_recheck_child() {
+    let marker = std::env::var_os("YUZUKO_RENAME_RECHECK").unwrap();
+    let root = std::env::temp_dir().join(format!(
+      "yuzuko-rename-read-{}-{}",
+      std::process::id(),
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let project = root.join("project");
+    let source = project.join("src");
+    fs::create_dir_all(source.join("keep")).unwrap();
+    fs::write(source.join("secret"), b"hidden").unwrap();
+    fs::write(source.join("keep").join("note"), b"n").unwrap();
+    fs::create_dir_all(project.join("dst")).unwrap();
+    let project = fs::canonicalize(&project).unwrap();
+    let source = project.join("src");
+    let dest = project.join("dst").join("moved");
+    let mut spec = crate::permissions::PermissionSpec::default();
+    spec
+      .allow("read", Some(vec![project.display().to_string()]))
+      .unwrap();
+    spec
+      .allow("write", Some(vec![project.display().to_string()]))
+      .unwrap();
+    spec
+      .deny(
+        "read",
+        Some(vec![source.join("secret").display().to_string()]),
+      )
+      .unwrap();
+    crate::permissions::install_permissions(&spec, &project).unwrap();
+    let error = super::rename_path(&source, &dest).unwrap_err();
+    assert!(
+      matches!(error, super::FsError::Host { ref name, .. } if name == "NotCapable"),
+      "{error:?}"
+    );
+    assert_eq!(fs::read(source.join("secret")).unwrap(), b"hidden");
+    assert!(!dest.exists());
+    fs::write(&marker, b"ok").unwrap();
     let _ = fs::remove_dir_all(&root);
   }
 }

@@ -43,13 +43,17 @@ fn invalid() -> FsError {
 pub(super) struct Need {
   /// Read as well as write, as a hard link needs for the old file.
   pub read: bool,
-  /// A deny of a descendant refuses the change, as for a recursive remove
-  /// or the source of a rename.
+  /// A read deny of a descendant refuses the change. Used for the source of
+  /// a rename, whose descendants move with it.
+  pub read_tree: bool,
+  /// A write deny of a descendant refuses the change, as for a recursive
+  /// remove or either path of a rename.
   pub tree: bool,
 }
 
 pub(super) const WRITE: Need = Need {
   read: false,
+  read_tree: false,
   tree: false,
 };
 
@@ -60,15 +64,18 @@ fn permit_entry(
   real: &Path,
   need: Need,
 ) -> Result<(), FsError> {
-  let kinds: &[bool] = if need.read { &[false, true] } else { &[true] };
-  for &write in kinds {
-    match crate::permissions::entry_is_granted(write, real, need.tree) {
+  if need.read {
+    match crate::permissions::entry_is_granted(false, real, need.read_tree) {
       Ok(true) => {}
-      Ok(false) => return Err(host_denial(write, requested)),
+      Ok(false) => return Err(host_denial(false, requested)),
       Err(error) => return Err(host_error(error)),
     }
   }
-  Ok(())
+  match crate::permissions::entry_is_granted(true, real, need.tree) {
+    Ok(true) => Ok(()),
+    Ok(false) => Err(host_denial(true, requested)),
+    Err(error) => Err(host_error(error)),
+  }
 }
 
 /// Opens the parent of `path` and checks the entry. A denial names
