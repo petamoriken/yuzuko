@@ -418,6 +418,7 @@ fn spawn_op<'s>(
     &program,
     request.cwd.as_deref(),
     &overlay,
+    request.clear_env,
   )?;
   for change in &request.env {
     crate::permissions::check_env(&change.name)?;

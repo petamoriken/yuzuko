@@ -2234,6 +2234,24 @@ Yuzuko.env.delete("LD_PRELOAD");
 await probe("restored", {{}});
 Yuzuko.env.set("DYLD_INSERT_LIBRARIES", "x");
 await probe("removed", {{ DYLD_INSERT_LIBRARIES: null }});
+try {{
+  const child = Yuzuko.spawn({command:?}, {{ args: {args}, clearEnv: true }});
+  const output = await child.output();
+  console.log("cleared OK " + new TextDecoder().decode(output.stdout).trim());
+}} catch (error) {{
+  console.log("cleared " + error.name + " " + error.message);
+}}
+try {{
+  const child = Yuzuko.spawn({command:?}, {{
+    args: {args},
+    clearEnv: true,
+    env: {{ LD_PRELOAD: "" }},
+  }});
+  const output = await child.output();
+  console.log("cleared-empty OK " + new TextDecoder().decode(output.stdout).trim());
+}} catch (error) {{
+  console.log("cleared-empty " + error.name + " " + error.message);
+}}
 "#,
       command = command,
       args = args,
@@ -2262,12 +2280,25 @@ await probe("removed", {{ DYLD_INSERT_LIBRARIES: null }});
   }
   let denied =
     "NotCapable Requires run access, run again with the --allow-run flag";
-  for label in ["preload", "dyld", "lower", "inherited"] {
+  for label in ["preload", "dyld", "lower", "inherited", "cleared-empty"] {
     assert!(
       stdout
         .lines()
         .any(|line| line == format!("{label} {denied}")),
       "missing {label}\n{stdout}\n{stderr}"
+    );
+  }
+  if cfg!(unix) {
+    assert!(
+      stdout.lines().any(|line| line == "cleared OK SAFE"),
+      "missing cleared\n{stdout}\n{stderr}"
+    );
+  } else {
+    assert!(
+      stdout.lines().any(|line| {
+        line.starts_with("cleared ") && !line.contains("NotCapable")
+      }),
+      "missing cleared\n{stdout}\n{stderr}"
     );
   }
   assert!(!stdout.contains("PWNED"), "{stdout}");

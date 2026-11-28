@@ -921,12 +921,15 @@ pub(crate) struct SpawnEnv<'a> {
 /// that file is the one the name found on `PATH` at installation. A path is
 /// the absolute file the run check accepted. When `run` is granted as a
 /// whole, the returned path is the caller's command and loader variables are
-/// left in place. Otherwise an `LD_` or `DYLD_` variable rejects the child.
+/// left in place. Otherwise an `LD_` or `DYLD_` variable in the environment
+/// the child will receive rejects the child. `clear` drops inherited
+/// variables before that check.
 #[cfg(feature = "child")]
 pub(crate) fn resolve_spawn(
   command: &str,
   cwd: Option<&Path>,
   env: &[SpawnEnv<'_>],
+  clear: bool,
 ) -> Result<PathBuf, OpError> {
   if is_command_path(command) {
     // Resolve once and check that file. Resolving again for `exec` would let
@@ -940,7 +943,7 @@ pub(crate) fn resolve_spawn(
     if run_is_whole() {
       return Ok(PathBuf::from(command));
     }
-    if loader_env_present(env) {
+    if loader_env_present(env, clear) {
       return Err(denied(Kind::Run, &Detail::Any)?);
     }
     return Ok(executed);
@@ -949,7 +952,7 @@ pub(crate) fn resolve_spawn(
   if run_is_whole() {
     return Ok(PathBuf::from(command));
   }
-  if loader_env_present(env) {
+  if loader_env_present(env, clear) {
     return Err(denied(Kind::Run, &Detail::Any)?);
   }
   let base = match cwd {
@@ -1093,9 +1096,14 @@ fn command_file_executable(_meta: &std::fs::Metadata) -> bool {
 }
 
 #[cfg(feature = "child")]
-fn loader_env_present(env: &[SpawnEnv<'_>]) -> bool {
-  let mut present: Vec<OsString> =
-    std::env::vars_os().map(|(name, _)| name).collect();
+fn loader_env_present(env: &[SpawnEnv<'_>], clear: bool) -> bool {
+  // `clearEnv` starts from an empty environment. An inherited `LD_*` or
+  // `DYLD_*` variable is not one the child receives.
+  let mut present: Vec<OsString> = if clear {
+    Vec::new()
+  } else {
+    std::env::vars_os().map(|(name, _)| name).collect()
+  };
   for change in env {
     if change.value.is_none() {
       present.retain(|name| !env_os_eq(name, change.name));
