@@ -132,6 +132,7 @@ impl Query {
 }
 
 pub(crate) fn clear() {
+  JOBS.with(|slot| slot.borrow_mut().clear());
   STORAGE.with(|slot| {
     let mut storage = slot.borrow_mut();
     storage.generation = storage.generation.saturating_add(1);
@@ -1533,4 +1534,37 @@ fn reject_op(scope: &mut v8::PinScope, error: OpError) -> Js {
   }
   let promise: v8::Local<v8::Value> = promise.into();
   Js(v8::Global::new(scope, promise))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn realm_cleanup_releases_pending_jobs() {
+    // Initialize the process-wide V8 platform before creating a test isolate.
+    yuzuko_core::run_scripts(&[]).unwrap();
+    let mut isolate = v8::Isolate::new(Default::default());
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Context::new(scope, Default::default());
+    let scope = &mut v8::ContextScope::new(scope, context);
+    let (resolver, _) = promise_pair(scope);
+    JOBS.with(|slot| {
+      slot.borrow_mut().insert(
+        1,
+        Job::Add(AddJob {
+          storage_generation: 0,
+          name: String::new(),
+          cache_generation: 0,
+          current_url: String::new(),
+          rest: Vec::new(),
+          done: Vec::new(),
+          waiting: None,
+          resolver,
+        }),
+      );
+    });
+    clear();
+    JOBS.with(|slot| assert!(slot.borrow().is_empty()));
+  }
 }
