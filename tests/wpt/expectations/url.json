@@ -3006,7 +3006,6 @@
       "Parsing: <#> against <test:test>",
       "Parsing: <#> against <test:test?test>",
       "Parsing: <..> against <abc://x/y/z/C:/>",
-      "Parsing: <..> against <file://x/C:/>",
       "Parsing: </..//localhost//pig> against <file://lion/>",
       "Parsing: </////mouse> against <file:///elephant>",
       "Parsing: <////one/two> against <file:///>",
@@ -3042,10 +3041,7 @@
       "Parsing: <file:////foo> without base",
       "Parsing: <file:////one/two> against <file:///>",
       "Parsing: <file:///w|/m> without base",
-      "Parsing: <file://1.2.3.4/C:/> without base",
-      "Parsing: <file://[1::8]/C:/> without base",
       "Parsing: <file://\\/localhost//cat> without base",
-      "Parsing: <file://example.net/C:/> without base",
       "Parsing: <file://localhost////foo> without base",
       "Parsing: <file://localhost//a//../..//> without base",
       "Parsing: <file://localhost//a//../..//foo> without base",
@@ -3058,7 +3054,6 @@
       "Parsing: <file:\\\\\\\\> without base",
       "Parsing: <file:\\\\\\\\?fox> without base",
       "Parsing: <file:\\\\localhost//> without base",
-      "Parsing: <foo://host/ !\"$%&'()*+,-./:;<=>@[\\]^_`{|}~> without base",
       "Parsing: <http://10.0.0.XN--pokxncvks> without base",
       "Parsing: <http://10.0.0.xN--pokxncvks> without base",
       "Parsing: <http://10.0.0.xn--pokxncvks> without base",
@@ -3073,16 +3068,11 @@
       "Parsing: <non-special:x/?#\u0000y> without base",
       "Parsing: <non-special:x/?#￿y> without base",
       "Parsing: <sc://#> without base",
-      "Parsing: <sc://?> without base",
-      "Parsing: <wss://host/ !\"$%&'()*+,-./:;<=>@[\\]^_`{|}~> without base"
+      "Parsing: <sc://?> without base"
     ]
   },
   "url/url-origin.any.js": {
     "expectedFailures": [
-      "Origin parsing: <blob:blob:https://example.org/> without base",
-      "Origin parsing: <blob:ftp://host/path> without base",
-      "Origin parsing: <blob:ws://example.org/> without base",
-      "Origin parsing: <blob:wss://example.org/> without base",
       "Origin parsing: <http://10.0.0.XN--pokxncvks> without base",
       "Origin parsing: <http://10.0.0.xN--pokxncvks> without base",
       "Origin parsing: <http://10.0.0.xn--pokxncvks> without base",
@@ -3669,7 +3659,6 @@
   "url/url-setters-stripping.any.js": true,
   "url/url-setters.any.js": {
     "expectedFailures": [
-      "URL: Setting <a:/>.pathname = '\u0000\u0001\t\n\r\u001f !\"#$%&'()*+,-./09:;<=>?@AZ[\\]^_`az{|}~Éé' UTF-8 percent encoding with the default encode set. Tabs and newlines are removed.",
       "URL: Setting <data:original>.pathname = 'new value'",
       "URL: Setting <data:text/html,<p>Test>.protocol = 'view-source+data:foo : bar' Stuff after the first ':' is ignored",
       "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
