@@ -557,6 +557,9 @@ impl Window {
       surface.apply_size(size);
     }
     forget_fit(surface.canvas_id.get());
+    for list in surface.queries.borrow_mut().drain(..) {
+      crate::media::forget_list(list.id);
+    }
     unbind_window(surface.id);
     surface.frames.borrow_mut().clear();
     surface.locked.set(false);

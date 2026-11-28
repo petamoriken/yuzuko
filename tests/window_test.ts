@@ -1052,3 +1052,11 @@ Yuzuko.test("an unobserved MediaQueryList is collected", () => {
     window.close();
   }
 });
+
+Yuzuko.test("closing a window releases its media query registrations", () => {
+  const window = new Yuzuko.Window();
+  const list = window.matchMedia("screen");
+  list.addEventListener("change", () => {});
+  window.close();
+  assert(Yuzuko.__test.mediaListCount(window) === 0, "closed window retained a list");
+});
