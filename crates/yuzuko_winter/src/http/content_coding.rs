@@ -217,19 +217,41 @@ fn feed_brotli(
 
 fn decode_zstd(compressed: &[u8]) -> Result<Vec<u8>, String> {
   use std::io::Read;
-  let cursor = std::io::Cursor::new(compressed);
-  let decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(
-    cursor,
-    ZSTD_MAX_WINDOW,
-  )
-  .map_err(|_| INVALID.to_string())?;
+  let invalid = || INVALID.to_string();
+  if compressed.is_empty() {
+    return Err(invalid());
+  }
+  let mut input = compressed;
   let mut output = Vec::new();
-  decoder
-    .take(STEP_LIMIT as u64 + 1)
-    .read_to_end(&mut output)
-    .map_err(|_| INVALID.to_string())?;
-  if output.len() > STEP_LIMIT {
-    return Err(TOO_LARGE.to_string());
+  while !input.is_empty() {
+    let magic = u32::from_le_bytes(
+      input
+        .get(..4)
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(invalid)?,
+    );
+    if (0x184d2a50..=0x184d2a5f).contains(&magic) {
+      let size = u32::from_le_bytes(
+        input
+          .get(4..8)
+          .and_then(|b| b.try_into().ok())
+          .ok_or_else(invalid)?,
+      );
+      input = input[8..].get(size as usize..).ok_or_else(invalid)?;
+      continue;
+    }
+    let decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(
+      &mut input,
+      ZSTD_MAX_WINDOW,
+    )
+    .map_err(|_| invalid())?;
+    decoder
+      .take((STEP_LIMIT - output.len()) as u64 + 1)
+      .read_to_end(&mut output)
+      .map_err(|_| invalid())?;
+    if output.len() > STEP_LIMIT {
+      return Err(TOO_LARGE.to_string());
+    }
   }
   Ok(output)
 }
@@ -240,6 +262,17 @@ mod tests {
   use flate2::Compression;
   use flate2::write::GzEncoder;
   use std::io::Write;
+
+  #[test]
+  fn zstd_decodes_every_frame_and_checks_the_tail() {
+    use ruzstd::encoding::{CompressionLevel, compress_to_vec};
+    let mut input = compress_to_vec(&b"first"[..], CompressionLevel::Fastest);
+    input.extend_from_slice(&[0x50, 0x2a, 0x4d, 0x18, 1, 0, 0, 0, 0]);
+    input.extend(compress_to_vec(&b"second"[..], CompressionLevel::Fastest));
+    assert_eq!(super::decode_zstd(&input).unwrap(), b"firstsecond");
+    input.push(0);
+    assert!(super::decode_zstd(&input).is_err());
+  }
 
   #[test]
   fn a_long_coding_list_is_left_undecoded() {
