@@ -13,7 +13,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, Once, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -1067,42 +1067,129 @@ fn http_get(url_text: &str, max: usize) -> Result<Vec<u8>, Failure> {
   if yuzuko_core::check_net(&host, port).is_err() {
     return Err(NET_DENIED);
   }
-  let stream = tcp_connect(&host, port)?;
-  match url.scheme() {
+  let deadline = Instant::now() + TIMEOUT;
+  let stream = tcp_connect(&host, port, deadline)?;
+  let response = match url.scheme() {
     "http" => exchange(stream, &url, max),
     "https" => {
       let stream = tls_handshake(stream, &host)?;
       exchange(stream, &url, max)
     }
     _ => Err(DOWNLOAD_FAILED),
-  }
+  }?;
+  remaining(deadline).map_err(|_| DOWNLOAD_FAILED)?;
+  Ok(response)
 }
 
 /// Connects only to resolved addresses the net policy allows.
 ///
 /// The feed names the payload URL, so its host can resolve to a loopback or
 /// private address. Each such address is checked again, as `fetch` does.
-fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, Failure> {
-  let addresses: Vec<_> =
-    yuzuko_core::with_env(|| (host, port).to_socket_addrs())
-      .map_err(|_| DOWNLOAD_FAILED)?
-      .collect();
+fn tcp_connect(
+  host: &str,
+  port: u16,
+  deadline: Instant,
+) -> Result<DeadlineStream, Failure> {
+  let addresses = resolve_before(host, port, deadline)?;
   let addresses = yuzuko_core::retain_resolved_addresses(addresses)
     .map_err(|_| NET_DENIED)?;
   for address in addresses {
-    if let Ok(stream) = TcpStream::connect_timeout(&address, TIMEOUT) {
-      let _ = stream.set_read_timeout(Some(TIMEOUT));
-      let _ = stream.set_write_timeout(Some(TIMEOUT));
-      return Ok(stream);
+    let timeout = remaining(deadline).map_err(|_| DOWNLOAD_FAILED)?;
+    if let Ok(stream) = TcpStream::connect_timeout(&address, timeout) {
+      return Ok(DeadlineStream { stream, deadline });
     }
   }
   Err(DOWNLOAD_FAILED)
 }
 
-fn tls_handshake(
-  stream: TcpStream,
+fn remaining(deadline: Instant) -> std::io::Result<Duration> {
+  deadline
+    .checked_duration_since(Instant::now())
+    .filter(|d| !d.is_zero())
+    .ok_or_else(|| std::io::ErrorKind::TimedOut.into())
+}
+
+// getaddrinfo has no deadline. Keep at most one lookup running and one
+// queued, even if an OS resolver stops responding.
+fn resolve_before(
   host: &str,
-) -> Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>, Failure> {
+  port: u16,
+  deadline: Instant,
+) -> Result<Vec<std::net::SocketAddr>, Failure> {
+  // Literal addresses require no resolver thread or DNS queue slot.
+  if let Ok(address) = host
+    .trim_start_matches('[')
+    .trim_end_matches(']')
+    .parse::<std::net::IpAddr>()
+  {
+    return Ok(vec![std::net::SocketAddr::new(address, port)]);
+  }
+  use std::sync::mpsc;
+  type Lookup = (
+    String,
+    u16,
+    mpsc::Sender<std::io::Result<Vec<std::net::SocketAddr>>>,
+  );
+  static RESOLVER: OnceLock<mpsc::SyncSender<Lookup>> = OnceLock::new();
+  let worker = RESOLVER.get_or_init(|| {
+    let (tx, rx) = mpsc::sync_channel::<Lookup>(1);
+    let _ = std::thread::Builder::new()
+      .name("yuzuko-update-dns".into())
+      .spawn(move || {
+        for (host, port, reply) in rx {
+          let result = yuzuko_core::with_env(|| {
+            (host.as_str(), port)
+              .to_socket_addrs()
+              .map(Iterator::collect)
+          });
+          let _ = reply.send(result);
+        }
+      });
+    tx
+  });
+  let (tx, rx) = mpsc::channel();
+  worker
+    .try_send((host.to_owned(), port, tx))
+    .map_err(|_| DOWNLOAD_FAILED)?;
+  rx.recv_timeout(remaining(deadline).map_err(|_| DOWNLOAD_FAILED)?)
+    .map_err(|_| DOWNLOAD_FAILED)?
+    .map_err(|_| DOWNLOAD_FAILED)
+}
+
+struct DeadlineStream {
+  stream: TcpStream,
+  deadline: Instant,
+}
+
+impl Read for DeadlineStream {
+  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    self
+      .stream
+      .set_read_timeout(Some(remaining(self.deadline)?))?;
+    self.stream.read(buf)
+  }
+}
+
+impl Write for DeadlineStream {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    self
+      .stream
+      .set_write_timeout(Some(remaining(self.deadline)?))?;
+    self.stream.write(buf)
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    self.stream.flush()
+  }
+}
+
+fn tls_handshake(
+  stream: DeadlineStream,
+  host: &str,
+) -> Result<
+  rustls::StreamOwned<rustls::ClientConnection, DeadlineStream>,
+  Failure,
+> {
   let name = rustls::pki_types::ServerName::try_from(host)
     .map_err(|_| DOWNLOAD_FAILED)?
     .to_owned();
@@ -1329,6 +1416,26 @@ mod tests {
       out.extend_from_slice(bytes);
     }
     out
+  }
+
+  #[test]
+  fn expired_update_deadline_applies_to_reads_and_writes() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let (mut peer, _) = listener.accept().unwrap();
+    peer.write_all(b"ready").unwrap();
+    let mut stream = DeadlineStream {
+      stream,
+      deadline: Instant::now(),
+    };
+    assert_eq!(
+      stream.read(&mut [0]).unwrap_err().kind(),
+      std::io::ErrorKind::TimedOut
+    );
+    assert_eq!(
+      stream.write(b"x").unwrap_err().kind(),
+      std::io::ErrorKind::TimedOut
+    );
   }
 
   #[test]
