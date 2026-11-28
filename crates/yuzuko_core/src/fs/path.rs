@@ -77,7 +77,11 @@ pub(super) fn ensure_mutable(
 }
 
 fn inside(root: &Path, path: &Path) -> bool {
-  path == root || path.starts_with(root)
+  // `realpath` keeps a firmlink's root spelling and its
+  // `/System/Volumes/Data` spelling. Both name one directory.
+  let root = crate::permissions::root_spelling(root.to_path_buf());
+  let path = crate::permissions::root_spelling(path.to_path_buf());
+  path == root || path.starts_with(&root)
 }
 
 /// Rejects `path` when a bundle root is set and the path is inside it.
@@ -381,5 +385,67 @@ mod tests {
     let loop_path = outside.join("loop");
     std::os::unix::fs::symlink("loop", &loop_path).unwrap();
     assert!(targets_bundle(&fixture.root, &loop_path, Link::Follow).is_err());
+  }
+
+  /// `/Users/a` and `/System/Volumes/Data/Users/a` are one directory, and
+  /// `realpath` keeps whichever spelling was passed.
+  #[cfg(target_os = "macos")]
+  #[test]
+  fn bundle_membership_folds_a_data_volume_spelling() {
+    use std::os::unix::fs::MetadataExt;
+
+    let fixture = Fixture::new();
+    let data = data_volume_spelling(&fixture.root)
+      .expect("the bundle fixture is not on a firmlink");
+    let root_meta = std::fs::metadata(&fixture.root).unwrap();
+    let data_meta = std::fs::metadata(&data).unwrap();
+    assert_eq!(root_meta.dev(), data_meta.dev());
+    assert_eq!(root_meta.ino(), data_meta.ino());
+    assert_ne!(fixture.root, data);
+
+    assert!(targets_bundle(&fixture.root, &data, Link::Follow).unwrap());
+    assert!(targets_bundle(&fixture.root, &data, Link::Entry).unwrap());
+    assert!(targets_bundle(&data, &fixture.root, Link::Follow).unwrap());
+    assert!(targets_bundle(&data, &fixture.root, Link::Entry).unwrap());
+
+    let save = data.join("save.json");
+    assert!(targets_bundle(&fixture.root, &save, Link::Follow).unwrap());
+    assert!(targets_bundle(&fixture.root, &save, Link::Entry).unwrap());
+    assert!(
+      targets_bundle(&data, &fixture.root.join("save.json"), Link::Entry)
+        .unwrap()
+    );
+
+    let mut cousin_name = data.file_name().unwrap().to_os_string();
+    cousin_name.push("-extra");
+    let cousin = data.parent().unwrap().join(cousin_name);
+    assert!(!targets_bundle(&fixture.root, &cousin, Link::Follow).unwrap());
+  }
+
+  /// The `/System/Volumes/Data` spelling of a firmlink path.
+  #[cfg(target_os = "macos")]
+  fn data_volume_spelling(path: &std::path::Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string("/usr/share/firmlinks").ok()?;
+    let mut best: Option<(usize, PathBuf)> = None;
+    for line in text.lines() {
+      let Some((root, relative)) = line.split_once('\t') else {
+        continue;
+      };
+      let root = std::path::Path::new(root.trim());
+      let Ok(rest) = path.strip_prefix(root) else {
+        continue;
+      };
+      let len = root.as_os_str().len();
+      if len <= best.as_ref().map(|(best_len, _)| *best_len).unwrap_or(0) {
+        continue;
+      }
+      let mut data = PathBuf::from("/System/Volumes/Data");
+      data.push(relative.trim().trim_start_matches('/'));
+      if !rest.as_os_str().is_empty() {
+        data.push(rest);
+      }
+      best = Some((len, data));
+    }
+    best.map(|(_, data)| data)
   }
 }

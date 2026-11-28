@@ -1530,10 +1530,10 @@ fn push_drive_aliases(_paths: &mut Vec<PathBuf>) {}
 
 /// The data volume of macOS is mounted at `/System/Volumes/Data` and joined
 /// to the root by firmlinks, so `/Users/a` and `/System/Volumes/Data/Users/a`
-/// are one file. `realpath` keeps either spelling, so the comparison maps the
-/// data volume spelling to the root one.
+/// are one file. `realpath` keeps either spelling, so permission checks and
+/// the packaged-bundle guard both map the data volume spelling to the root one.
 #[cfg(target_os = "macos")]
-fn root_spelling(path: PathBuf) -> PathBuf {
+pub(crate) fn root_spelling(path: PathBuf) -> PathBuf {
   let data = Path::new("/System/Volumes/Data");
   let Some(inner) = strip_components(data, &path) else {
     return path;
@@ -1549,7 +1549,7 @@ fn root_spelling(path: PathBuf) -> PathBuf {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn root_spelling(path: PathBuf) -> PathBuf {
+pub(crate) fn root_spelling(path: PathBuf) -> PathBuf {
   path
 }
 
