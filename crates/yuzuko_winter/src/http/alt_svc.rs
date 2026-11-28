@@ -18,6 +18,24 @@ struct Record {
 
 static CACHE: Mutex<Option<HashMap<String, Record>>> = Mutex::new(None);
 
+fn cache() -> std::sync::MutexGuard<'static, Option<HashMap<String, Record>>> {
+  // A panic while the lock is held must not make every later HTTPS fetch
+  // die on a poisoned mutex.
+  CACHE.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// When `ma` does not fit in `Instant`, keep a finite expiry.
+///
+/// Adding `u64::MAX` seconds panics on macOS and poisons `CACHE`.
+fn expires_at(max_age: Duration) -> Instant {
+  let now = Instant::now();
+  now.checked_add(max_age).unwrap_or_else(|| {
+    now
+      .checked_add(Duration::from_secs(60 * 60 * 24 * 365 * 10))
+      .unwrap_or(now)
+  })
+}
+
 /// `https://host:port`, with brackets around an IPv6 address.
 pub(super) fn origin_key(url: &str) -> Option<String> {
   let url = url::Url::parse(url).ok()?;
@@ -52,7 +70,7 @@ fn lookup_if(
 /// The cached alternative, without a permission check.
 fn cached(url: &str) -> Option<(String, u16)> {
   let key = origin_key(url)?;
-  let mut cache = CACHE.lock().expect("alt-svc");
+  let mut cache = cache();
   let map = cache.get_or_insert_with(HashMap::new);
   let record = map.get(&key)?;
   if record.expires <= Instant::now() {
@@ -73,7 +91,7 @@ pub(super) fn invalidate(url: &str) {
   let Some(key) = origin_key(url) else {
     return;
   };
-  if let Some(map) = CACHE.lock().expect("alt-svc").as_mut() {
+  if let Some(map) = cache().as_mut() {
     map.remove(&key);
   }
 }
@@ -106,7 +124,7 @@ pub(super) fn record(url: &str, header: &str) {
   let Some(origin_host) = origin_host(&parsed) else {
     return;
   };
-  let mut cache = CACHE.lock().expect("alt-svc");
+  let mut cache = cache();
   let map = cache.get_or_insert_with(HashMap::new);
   if header_clears(header) {
     map.remove(&key);
@@ -125,7 +143,7 @@ pub(super) fn record(url: &str, header: &str) {
     Record {
       host,
       port: alternative.port,
-      expires: Instant::now() + alternative.max_age,
+      expires: expires_at(alternative.max_age),
     },
   );
 }
@@ -351,6 +369,16 @@ mod tests {
       lookup_if(url, allow_origin_443).unwrap(),
       ("alt-svc-perm.example".to_string(), 443)
     );
+  }
+
+  #[test]
+  fn a_huge_max_age_stays_cached() {
+    let url = "https://alt-svc-huge.example/path";
+    let _clear = Clear(url);
+    for ma in ["9223372036854775807", "18446744073709551615"] {
+      record(url, &format!(r#"h3=":443"; ma={ma}"#));
+      assert_eq!(cached(url).map(|record| record.1), Some(443), "ma={ma}");
+    }
   }
 
   struct Clear(&'static str);
