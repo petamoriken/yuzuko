@@ -921,6 +921,9 @@ fn aead_with(
   }
 }
 
+/// The most Argon2 memory, in KiB.
+const MAX_ARGON_MEMORY_KIB: u32 = 2 * 1024 * 1024;
+
 pub(crate) fn argon_bits(
   scope: &mut v8::PinScope,
   name: &str,
@@ -943,6 +946,14 @@ pub(crate) fn argon_bits(
         "The Argon2 version is not supported",
       ));
     }
+  }
+  // The derivation fills `memory` KiB before it returns, so a value near
+  // 2^32 would ask for terabytes. 2 GiB is RFC 9106's first recommendation.
+  if memory > MAX_ARGON_MEMORY_KIB {
+    return Err(OpError::dom(
+      "OperationError",
+      "The Argon2 memory is larger than 2 GiB",
+    ));
   }
   modern::argon2(&modern::ArgonInput {
     algorithm: name,

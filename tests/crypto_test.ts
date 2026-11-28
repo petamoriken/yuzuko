@@ -482,3 +482,30 @@ Yuzuko.test("HMAC import checks the data length", async () => {
   }
   assert(jwk === "DataError", `empty jwk: ${jwk}`);
 });
+
+Yuzuko.test("Argon2 memory above 2 GiB is an OperationError", async () => {
+  const key = await crypto.subtle.importKey(
+    "raw-secret",
+    new Uint8Array(8),
+    "Argon2id",
+    false,
+    ["deriveBits"],
+  );
+  let name = "";
+  try {
+    await crypto.subtle.deriveBits(
+      {
+        name: "Argon2id",
+        nonce: new Uint8Array(16),
+        memory: 2 * 1024 * 1024 + 1,
+        passes: 1,
+        parallelism: 1,
+      } as Algorithm,
+      key,
+      256,
+    );
+  } catch (error) {
+    name = (error as Error).name;
+  }
+  assert(name === "OperationError", name);
+});
