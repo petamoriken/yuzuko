@@ -969,7 +969,8 @@ pub(crate) fn resolve_spawn(
   command: &str,
   cwd: Option<&Path>,
   env: &[SpawnEnv<'_>],
-  clear: bool,
+  inherited: &[(OsString, OsString)],
+  search_path: Option<OsString>,
 ) -> Result<PathBuf, OpError> {
   if is_command_path(command) {
     // Resolve once and check that file. Resolving again for `exec` would let
@@ -983,7 +984,7 @@ pub(crate) fn resolve_spawn(
     if run_is_whole() {
       return Ok(PathBuf::from(command));
     }
-    if loader_env_present(env, clear) {
+    if loader_env_present(env, inherited) {
       return Err(denied(Kind::Run, &Detail::Any)?);
     }
     return Ok(executed);
@@ -992,7 +993,7 @@ pub(crate) fn resolve_spawn(
   if run_is_whole() {
     return Ok(PathBuf::from(command));
   }
-  if loader_env_present(env, clear) {
+  if loader_env_present(env, inherited) {
     return Err(denied(Kind::Run, &Detail::Any)?);
   }
   let base = match cwd {
@@ -1000,7 +1001,8 @@ pub(crate) fn resolve_spawn(
     None => current_dir()?,
   };
   let trusted = pinned_command(command);
-  let executed = find_command(command, &effective_command_path(env, &base));
+  let executed =
+    find_command(command, &effective_command_path(env, &base, search_path));
   match (trusted, executed) {
     (Some(trusted), Some(executed)) if paths_equal(&trusted, &executed) => {
       Ok(executed)
@@ -1059,8 +1061,11 @@ fn capture_command_path() -> Vec<PathBuf> {
 }
 
 #[cfg(feature = "child")]
-fn effective_command_path(env: &[SpawnEnv<'_>], base: &Path) -> Vec<PathBuf> {
-  let mut raw = std::env::var_os("PATH");
+fn effective_command_path(
+  env: &[SpawnEnv<'_>],
+  base: &Path,
+  mut raw: Option<OsString>,
+) -> Vec<PathBuf> {
   for change in env {
     if change.value.is_none() && env_eq(change.name, "PATH") {
       raw = None;
@@ -1140,14 +1145,12 @@ fn command_file_executable(_meta: &std::fs::Metadata) -> bool {
 }
 
 #[cfg(feature = "child")]
-fn loader_env_present(env: &[SpawnEnv<'_>], clear: bool) -> bool {
-  // `clearEnv` starts from an empty environment. An inherited `LD_*` or
-  // `DYLD_*` variable is not one the child receives.
-  let mut present: Vec<OsString> = if clear {
-    Vec::new()
-  } else {
-    std::env::vars_os().map(|(name, _)| name).collect()
-  };
+fn loader_env_present(
+  env: &[SpawnEnv<'_>],
+  inherited: &[(OsString, OsString)],
+) -> bool {
+  let mut present: Vec<&OsString> =
+    inherited.iter().map(|(name, _)| name).collect();
   for change in env {
     if change.value.is_none() {
       present.retain(|name| !env_os_eq(name, change.name));

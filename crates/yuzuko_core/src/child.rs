@@ -414,11 +414,20 @@ fn spawn_op<'s>(
       value: change.value.as_deref(),
     })
     .collect();
+  let (inherited, search_path) = crate::with_env(|| {
+    let inherited = if request.clear_env {
+      Vec::new()
+    } else {
+      std::env::vars_os().collect()
+    };
+    (inherited, std::env::var_os("PATH"))
+  });
   let program = crate::permissions::resolve_spawn(
     &program,
     request.cwd.as_deref(),
     &overlay,
-    request.clear_env,
+    &inherited,
+    search_path,
   )?;
   for change in &request.env {
     crate::permissions::check_env(&change.name)?;
@@ -436,7 +445,7 @@ fn spawn_op<'s>(
   command.stdin(request.stdin.as_stdio());
   command.stdout(request.stdout.as_stdio());
   command.stderr(request.stderr.as_stdio());
-  apply_env(&mut command, &request.env, request.clear_env);
+  apply_env(&mut command, &request.env, inherited);
   if let Some(dir) = &request.cwd {
     command.current_dir(dir);
   }
@@ -1704,10 +1713,12 @@ fn read_env(
   Ok(changes)
 }
 
-fn apply_env(command: &mut Command, env: &[EnvChange], clear: bool) {
-  if clear {
-    command.env_clear();
-  }
+fn apply_env(
+  command: &mut Command,
+  env: &[EnvChange],
+  inherited: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) {
+  command.env_clear().envs(inherited);
   for change in env {
     if change.value.is_none() {
       command.env_remove(&change.name);
@@ -2063,3 +2074,36 @@ const STREAMS: &str = r#"(function () {
     },
   });
 })()"#;
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn spawn_materializes_the_checked_environment() {
+    let mut command = Command::new("unused");
+    let inherited = vec![
+      ("VISIBLE".into(), "snapshot".into()),
+      ("REMOVED".into(), "old".into()),
+    ];
+    apply_env(
+      &mut command,
+      &[EnvChange {
+        name: "REMOVED".into(),
+        value: None,
+      }],
+      inherited,
+    );
+    let entries: Vec<_> = command
+      .get_envs()
+      .filter_map(|(k, v)| v.map(|v| (k, v)))
+      .collect();
+    assert_eq!(
+      entries,
+      [(
+        std::ffi::OsStr::new("VISIBLE"),
+        std::ffi::OsStr::new("snapshot")
+      )]
+    );
+  }
+}
