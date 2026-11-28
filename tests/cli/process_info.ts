@@ -58,7 +58,7 @@ if (mode === "chdir") {
         Yuzuko.env.set.length,
         Yuzuko.env.delete.length,
         Yuzuko.env.has.length,
-        Yuzuko.env.toObject.length,
+        Yuzuko.env[Symbol.iterator].length,
         Yuzuko.cwd.length,
         Yuzuko.chdir.length,
         Yuzuko.exit.length,
@@ -67,8 +67,13 @@ if (mode === "chdir") {
   Yuzuko.env.set("YuzukoEnvRoundTrip", "round");
   console.log("has:" + Yuzuko.env.has("YuzukoEnvRoundTrip"));
   console.log("get:" + Yuzuko.env.get("YuzukoEnvRoundTrip"));
-  const snap = Yuzuko.env.toObject();
+  const iterator = Yuzuko.env[Symbol.iterator]();
+  if (iterator === Yuzuko.env[Symbol.iterator]() || iterator[Symbol.iterator]() !== iterator ||
+      iterator.constructor.name !== "EnvIterator" || "toObject" in Yuzuko.env) {
+    throw new Error("Invalid environment iterator");
+  }
   Yuzuko.env.delete("YuzukoEnvRoundTrip");
+  const snap = Object.fromEntries(iterator);
   console.log("snap:" + snap["YuzukoEnvRoundTrip"]);
   console.log("after:" + String(Yuzuko.env.get("YuzukoEnvRoundTrip")));
   Yuzuko.env.set("YuzukoEnvEmpty", "");
@@ -101,7 +106,7 @@ if (mode === "chdir") {
   Yuzuko.env.delete("YuzukoCaseProbe");
   Yuzuko.env.delete("yuzukocaseprobe");
   Yuzuko.env.set("__proto__", "proto-value");
-  const proto = Yuzuko.env.toObject();
+  const proto = Object.fromEntries(Yuzuko.env);
   console.log(
     "proto-own:" + Object.prototype.hasOwnProperty.call(proto, "__proto__"),
   );

@@ -2089,6 +2089,34 @@ fn spawn_requires_the_whole_environment_and_a_path_grant() {
   assert!(stdout.contains("--allow-env"), "{stdout}");
   assert!(!stdout.contains("started"), "{stdout}");
 
+  let excluded = run(
+    &dir,
+    &[
+      "run",
+      "--no-prompt",
+      "--allow-run",
+      "--allow-env",
+      "--deny-env=YUZUKO_PRIVATE",
+      "deny-env.ts",
+    ],
+  );
+  assert!(text(&excluded.stdout).contains("NotCapable:"));
+  write(
+    &dir.join("entries.ts"),
+    "console.log(Array.from(Yuzuko.env).some(([name]) => name === 'YUZUKO_PRIVATE'));",
+  );
+  let entries = run_env(
+    &dir,
+    &[
+      "run",
+      "--allow-env",
+      "--deny-env=YUZUKO_PRIVATE",
+      "entries.ts",
+    ],
+    &[("YUZUKO_PRIVATE", "fixture")],
+  );
+  assert_eq!(text(&entries.stdout).trim(), "false");
+
   let program = dir.join(if cfg!(windows) {
     "printenv.exe"
   } else {

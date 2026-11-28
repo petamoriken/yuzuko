@@ -2881,7 +2881,7 @@ declare namespace Yuzuko {
   /**
    * Environment variables of this process.
    *
-   * The methods do not read `this`. `get`, `has`, and `toObject` may run
+   * The methods do not read `this`. `get`, `has`, and iteration may run
    * while a host lookup is inside `getaddrinfo`. Host lookups may overlap.
    * `set` and `delete` wait until those reads and lookups finish, and they
    * do not run at the same time as each other or as {@link chdir}. A change
@@ -2890,7 +2890,7 @@ declare namespace Yuzuko {
    * of a name that differs only by that case updates the existing variable.
    * On the other targets the name is case-sensitive. Bytes that are not
    * UTF-8 become U+FFFD. `get`, `delete`, and `has` have length 1. `set` has
-   * length 2. `toObject` has length 0.
+   * length 2. `[Symbol.iterator]` has length 0.
    */
   interface Env {
     /**
@@ -2935,20 +2935,13 @@ declare namespace Yuzuko {
      */
     has(name: string): boolean;
 
-    /**
-     * Returns a plain object snapshot of the environment at this call.
-     *
-     * Later {@link Env.set} and {@link Env.delete} calls leave the object
-     * unchanged. Property names use the spelling the operating system stores.
-     * A key `__proto__` is an own property and does not change the prototype.
-     * A list of names does not grant this call. The kind must be allowed
-     * as a whole.
-     *
-     * @throws {@link errors.NotCapable} with
-     * `Requires env access, run again with the --allow-env flag` when
-     * {@link permissions} does not grant env access for every variable.
-     */
-    toObject(): { [key: string]: string };
+    /** Returns a new iterator over a snapshot of permitted environment entries. */
+    [Symbol.iterator](): EnvIterator;
+  }
+
+  /** An iterator over process environment entries in operating-system order. */
+  interface EnvIterator extends IteratorObject<[string, string], undefined> {
+    [Symbol.iterator](): EnvIterator;
   }
 
   /** The process environment. See {@link Env}. */

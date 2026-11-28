@@ -900,8 +900,24 @@ pub fn check_env(name: &str) -> Result<(), OpError> {
   require(Kind::Env, &Detail::Name(name.to_string()))
 }
 
+pub(crate) fn env_is_granted(name: &str) -> bool {
+  match &*lock() {
+    Mode::Open => true,
+    Mode::Sandbox(sandbox) => {
+      sandbox.resource(Kind::Env, &Resource::Name(name)) == State::Granted
+    }
+  }
+}
+
 pub fn check_env_all() -> Result<(), OpError> {
-  require(Kind::Env, &Detail::Any)
+  require(Kind::Env, &Detail::Any)?;
+  if let Mode::Sandbox(sandbox) = &*lock() {
+    let gate = &sandbox.gates[Kind::Env as usize];
+    if !gate.deny_names.is_empty() || !gate.session_deny_names.is_empty() {
+      return Err(denied(Kind::Env, &Detail::Any)?);
+    }
+  }
+  Ok(())
 }
 
 pub fn check_run(command: &str) -> Result<(), OpError> {

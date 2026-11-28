@@ -74,7 +74,33 @@ pub(crate) fn install(scope: &mut v8::PinScope, yuzuko: v8::Local<v8::Object>) {
   define_fn(scope, env, "set", 2, env_set);
   define_fn(scope, env, "delete", 1, env_delete);
   define_fn(scope, env, "has", 1, env_has);
-  define_fn(scope, env, "toObject", 0, env_to_object);
+  let snapshot = v8::Function::new(scope, env_snapshot).expect("env snapshot");
+  let source = v8::String::new(scope, r#"(function(env, snapshot) {
+    class EnvIterator extends Iterator {
+      #entries = snapshot();
+      #index = 0;
+      next() {
+        if (this.#index === this.#entries.length) return { done: true, value: undefined };
+        return { done: false, value: this.#entries[this.#index++] };
+      }
+    }
+    Object.defineProperty(env, Symbol.iterator, {
+      value: { [Symbol.iterator]() { return new EnvIterator(); } }[Symbol.iterator],
+      configurable: true, writable: true
+    });
+  })"#).expect("env iterator");
+  let script = v8::Script::compile(scope, source, None).expect("env iterator");
+  let install = script
+    .run(scope)
+    .and_then(|v| v8::Local::<v8::Function>::try_from(v).ok())
+    .expect("env iterator");
+  install
+    .call(
+      scope,
+      v8::undefined(scope).into(),
+      &[env.into(), snapshot.into()],
+    )
+    .expect("install env iterator");
   let env_key = v8::String::new(scope, "env").expect("env");
   yuzuko.set(scope, env_key.into(), env.into());
   define_fn(scope, yuzuko, "cwd", 0, cwd);
@@ -243,46 +269,33 @@ fn env_has(
   ret.set(v8::Boolean::new(scope, present).into());
 }
 
-fn env_to_object(
+fn env_snapshot(
   scope: &mut v8::PinScope,
   _args: v8::FunctionCallbackArguments,
   mut ret: v8::ReturnValue,
 ) {
-  if let Err(error) = crate::permissions::check_env_all() {
-    error.throw(scope);
-    return;
-  }
-  let pairs = {
-    let _guard = io_read();
-    std::env::vars_os()
-      .map(|(key, value)| {
-        (
-          key.to_string_lossy().into_owned(),
-          value.to_string_lossy().into_owned(),
-        )
-      })
-      .collect::<Vec<_>>()
-  };
-  let object = v8::Object::new(scope);
-  for (key, value) in pairs {
-    let Some(key) = v8::String::new(scope, &key) else {
+  let pairs = with_env(|| std::env::vars_os().collect::<Vec<_>>());
+  let entries = v8::Array::new(scope, 0);
+  let mut index = 0;
+  for (name, value) in pairs {
+    let name = name.to_string_lossy();
+    if !crate::permissions::env_is_granted(&name) {
+      continue;
+    }
+    let Some(name) = v8::String::new(scope, &name) else {
+      throw_dom(scope, "OperationError", "The name could not be read.");
+      return;
+    };
+    let Some(value) = v8::String::new(scope, &value.to_string_lossy()) else {
       throw_dom(scope, "OperationError", "The value could not be read.");
       return;
     };
-    let Some(value) = v8::String::new(scope, &value) else {
-      throw_dom(scope, "OperationError", "The value could not be read.");
-      return;
-    };
-    // `define_own_property` keeps a key named `__proto__` as an own data
-    // property. `Object::set` would change the prototype instead.
-    let _ = object.define_own_property(
-      scope,
-      key.into(),
-      value.into(),
-      v8::PropertyAttribute::NONE,
-    );
+    let entry =
+      v8::Array::new_with_elements(scope, &[name.into(), value.into()]);
+    crate::define_element(scope, entries.into(), index, entry.into());
+    index += 1;
   }
-  ret.set(object.into());
+  ret.set(entries.into());
 }
 
 fn permitted_env_name(
@@ -846,7 +859,7 @@ mod tests {
         Yuzuko.env.set.length,
         Yuzuko.env.delete.length,
         Yuzuko.env.has.length,
-        Yuzuko.env.toObject.length,
+        Yuzuko.env[Symbol.iterator].length,
         Yuzuko.cwd.length,
         Yuzuko.chdir.length,
         Yuzuko.exit.length,
