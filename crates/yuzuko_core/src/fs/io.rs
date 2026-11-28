@@ -425,29 +425,43 @@ fn same_file(left: &File, right: &File) -> Result<bool, FsError> {
     use std::os::unix::fs::MetadataExt;
     let left = left.metadata().map_err(FsError::io)?;
     let right = right.metadata().map_err(FsError::io)?;
-    return Ok(left.dev() == right.dev() && left.ino() == right.ino());
+    Ok(left.dev() == right.dev() && left.ino() == right.ino())
   }
   #[cfg(windows)]
   {
-    use std::os::windows::fs::MetadataExt;
-    let left = left.metadata().map_err(FsError::io)?;
-    let right = right.metadata().map_err(FsError::io)?;
-    return Ok(matches!(
-      (
-        left.volume_serial_number(),
-        left.file_index(),
-        right.volume_serial_number(),
-        right.file_index(),
-      ),
-      (Some(left_volume), Some(left_index), Some(right_volume), Some(right_index))
-        if left_volume == right_volume && left_index == right_index
-    ));
+    // `MetadataExt::file_index` is still unstable. A failed query is not
+    // treated as the same file, so the copy proceeds.
+    Ok(
+      windows_file_id(left)
+        .is_some_and(|id| windows_file_id(right) == Some(id)),
+    )
   }
   #[cfg(not(any(unix, windows)))]
   {
     let _ = (left, right);
     Ok(false)
   }
+}
+
+#[cfg(windows)]
+fn windows_file_id(file: &File) -> Option<(u32, u64)> {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::Storage::FileSystem::{
+    BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+  };
+  let mut info = BY_HANDLE_FILE_INFORMATION::default();
+  let ok = unsafe {
+    GetFileInformationByHandle(
+      file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+      &mut info,
+    )
+  };
+  if ok == 0 {
+    return None;
+  }
+  let index =
+    (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+  Some((info.dwVolumeSerialNumber, index))
 }
 
 pub(super) fn real_path(path: &Path) -> Result<String, FsError> {
