@@ -77,6 +77,10 @@ pub(crate) fn is_closed(id: u64) -> bool {
   forest::is_closed(id)
 }
 
+pub(crate) fn window_records() -> usize {
+  forest::window_records()
+}
+
 pub(crate) fn enqueue(request: accesskit::ActionRequest) {
   forest::enqueue(request);
 }
@@ -189,14 +193,25 @@ pub(super) fn register_weak(
 ) {
   let unit: &mut v8::PinScope<'_, '_, ()> = &mut *scope;
   let isolate: &mut v8::Isolate = &mut *unit;
+  // Dropping this `Weak` before the callback runs cancels the finalizer, so
+  // the map entry is removed here, after V8 has taken the callback.
   let weak = v8::Weak::with_guaranteed_finalizer(
     isolate,
     object,
-    Box::new(move || forest::forget_author(id)),
+    Box::new(move || {
+      WEAKS.with(|slot| {
+        slot.borrow_mut().remove(&id);
+      });
+      forest::forget_author(id);
+    }),
   );
   WEAKS.with(|slot| {
     slot.borrow_mut().insert(id, weak);
   });
+}
+
+pub(crate) fn weak_count() -> usize {
+  WEAKS.with(|slot| slot.borrow().len())
 }
 
 pub(super) fn object_local<'s>(

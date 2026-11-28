@@ -5264,6 +5264,17 @@ declare namespace Yuzuko {
      * @throws {@link TypeError} When `window` is not a {@link Window}.
      */
     function mediaListCount(window: Window): number;
+
+    /**
+     * The number of `AccessibleNode` objects whose weak handles this realm
+     * still holds.
+     */
+    function accessibleNodeCount(): number;
+
+    /**
+     * The number of window accessibility records still stored.
+     */
+    function accessibleWindowCount(): number;
   }
 
   /**

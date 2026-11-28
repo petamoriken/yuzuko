@@ -101,6 +101,12 @@ pub(super) struct Pending {
 struct Forest {
   nodes: HashMap<u64, Author>,
   windows: HashMap<u64, WindowRec>,
+  /// Window ids whose records were dropped after close.
+  closed: HashSet<u64>,
+  /// Author nodes whose `offset_parent` is this id.
+  offset_children: HashMap<u64, HashSet<u64>>,
+  /// Window id whose accessible root is this node.
+  root_window: HashMap<u64, u64>,
   pending: Vec<Pending>,
 }
 
@@ -108,6 +114,9 @@ static FOREST: LazyLock<Mutex<Forest>> = LazyLock::new(|| {
   Mutex::new(Forest {
     nodes: HashMap::new(),
     windows: HashMap::new(),
+    closed: HashSet::new(),
+    offset_children: HashMap::new(),
+    root_window: HashMap::new(),
     pending: Vec::new(),
   })
 });
@@ -148,7 +157,7 @@ fn fresh_window(chrome: u64) -> WindowRec {
 }
 
 fn ensure_record(forest: &mut Forest, id: u64) {
-  if forest.windows.contains_key(&id) {
+  if forest.windows.contains_key(&id) || forest.closed.contains(&id) {
     return;
   }
   let chrome = allocate(forest);
@@ -163,6 +172,9 @@ pub(super) fn note_viewport(
   scale: f64,
 ) {
   let mut forest = lock();
+  if forest.closed.contains(&id) {
+    return;
+  }
   ensure_record(&mut forest, id);
   let Some(window) = forest.windows.get_mut(&id) else {
     return;
@@ -202,6 +214,9 @@ pub(super) fn clear() {
   let mut forest = lock();
   forest.nodes.clear();
   forest.windows.clear();
+  forest.closed.clear();
+  forest.offset_children.clear();
+  forest.root_window.clear();
   forest.pending.clear();
 }
 
@@ -230,17 +245,82 @@ pub(super) fn forget_author(id: u64) {
       author.parent = None;
     }
   }
-  for record in forest.windows.values_mut() {
-    if record.root == Some(id) {
-      record.root = None;
-    }
+  if let Some(offset_parent) = forest
+    .nodes
+    .get(&id)
+    .and_then(|author| author.offset_parent)
+  {
+    unlink_offset(&mut forest, offset_parent, id);
   }
-  for author in forest.nodes.values_mut() {
-    if author.offset_parent == Some(id) {
+  let dependents = forest.offset_children.remove(&id).unwrap_or_default();
+  for dependent in dependents {
+    if let Some(author) = forest.nodes.get_mut(&dependent) {
       author.offset_parent = None;
     }
   }
+  retire_root(&mut forest, id);
   forest.nodes.remove(&id);
+}
+
+fn unlink_offset(forest: &mut Forest, parent: u64, node: u64) {
+  let Some(children) = forest.offset_children.get_mut(&parent) else {
+    return;
+  };
+  children.remove(&node);
+  if children.is_empty() {
+    forest.offset_children.remove(&parent);
+  }
+}
+
+fn assign_offset(forest: &mut Forest, node: u64, parent: Option<u64>) {
+  let old = forest
+    .nodes
+    .get(&node)
+    .and_then(|author| author.offset_parent);
+  if old == parent {
+    return;
+  }
+  if let Some(old) = old {
+    unlink_offset(forest, old, node);
+  }
+  if let Some(parent) = parent {
+    forest
+      .offset_children
+      .entry(parent)
+      .or_default()
+      .insert(node);
+  }
+  if let Some(author) = forest.nodes.get_mut(&node) {
+    author.offset_parent = parent;
+  }
+}
+
+/// Drops a closed window once its root author is gone.
+fn retire_root(forest: &mut Forest, id: u64) {
+  let Some(window) = forest.root_window.remove(&id) else {
+    return;
+  };
+  let closed = forest
+    .windows
+    .get(&window)
+    .is_some_and(|record| record.closed);
+  if let Some(record) = forest.windows.get_mut(&window)
+    && record.root == Some(id)
+  {
+    record.root = None;
+  }
+  if closed {
+    retire_window(forest, window);
+  }
+}
+
+fn retire_window(forest: &mut Forest, id: u64) {
+  if let Some(record) = forest.windows.remove(&id)
+    && let Some(root) = record.root
+  {
+    forest.root_window.remove(&root);
+  }
+  forest.closed.insert(id);
 }
 
 pub(super) fn has_root(id: u64) -> bool {
@@ -255,20 +335,36 @@ pub(super) fn root_id(id: u64) -> Option<u64> {
 }
 
 pub(super) fn is_closed(id: u64) -> bool {
-  lock().windows.get(&id).is_some_and(|window| window.closed)
+  let forest = lock();
+  forest.closed.contains(&id)
+    || forest.windows.get(&id).is_some_and(|window| window.closed)
+}
+
+pub(super) fn window_records() -> usize {
+  lock().windows.len()
 }
 
 pub(super) fn release_window(id: u64) {
   let mut forest = lock();
+  if forest.closed.contains(&id) {
+    return;
+  }
   let Some(window) = forest.windows.get_mut(&id) else {
     return;
   };
   window.closed = true;
   window.focus = None;
+  let rooted = window.root.is_some();
+  if !rooted {
+    retire_window(&mut forest, id);
+  }
 }
 
 pub(super) fn attach_root(window: u64, node: u64) -> Result<(), Fail> {
   let mut forest = lock();
+  if forest.closed.contains(&window) {
+    return Err(Fail::Closed);
+  }
   ensure_record(&mut forest, window);
   if forest
     .windows
@@ -300,6 +396,7 @@ pub(super) fn attach_root(window: u64, node: u64) -> Result<(), Fail> {
   if let Some(record) = forest.windows.get_mut(&window) {
     record.root = Some(node);
   }
+  forest.root_window.insert(node, window);
   Ok(())
 }
 
@@ -419,9 +516,7 @@ pub(super) fn set_offset_parent(
       return Err(Fail::OffsetParent);
     }
   }
-  if let Some(author) = forest.nodes.get_mut(&node) {
-    author.offset_parent = parent;
-  }
+  assign_offset(&mut forest, node, parent);
   Ok(window_of(&forest, node, false))
 }
 
@@ -568,11 +663,14 @@ pub(super) fn take_pending() -> Vec<Pending> {
 pub(super) fn full_tree(window_id: u64) -> TreeUpdate {
   let mut forest = lock();
   ensure_record(&mut forest, window_id);
-  let record = forest
-    .windows
-    .get(&window_id)
-    .expect("window record")
-    .clone();
+  let Some(record) = forest.windows.get(&window_id).cloned() else {
+    return TreeUpdate {
+      nodes: Vec::new(),
+      tree: None,
+      tree_id: TreeId::ROOT,
+      focus: NodeId(0),
+    };
+  };
   let mut chrome = Node::new(Role::Window);
   chrome.set_label(record.title.clone());
   chrome.set_bounds(Rect::new(
@@ -648,10 +746,7 @@ fn pre_insert(
 }
 
 fn is_root(forest: &Forest, id: u64) -> bool {
-  forest
-    .windows
-    .values()
-    .any(|window| window.root == Some(id))
+  forest.root_window.contains_key(&id)
 }
 
 fn is_child(forest: &Forest, parent: u64, node: u64) -> bool {
@@ -749,10 +844,9 @@ fn top_of(forest: &Forest, id: u64) -> Option<u64> {
 
 fn window_of(forest: &Forest, id: u64, closed_ok: bool) -> Option<u64> {
   let top = top_of(forest, id)?;
-  forest.windows.iter().find_map(|(window, record)| {
-    (record.root == Some(top) && (closed_ok || !record.closed))
-      .then_some(*window)
-  })
+  let window = *forest.root_window.get(&top)?;
+  let record = forest.windows.get(&window)?;
+  (closed_ok || !record.closed).then_some(window)
 }
 
 fn walk(
@@ -1126,11 +1220,9 @@ pub(super) struct ComputedNode {
 pub(super) fn snapshot(window_id: u64) -> HashMap<u64, ComputedNode> {
   let mut forest = lock();
   ensure_record(&mut forest, window_id);
-  let record = forest
-    .windows
-    .get(&window_id)
-    .expect("window record")
-    .clone();
+  let Some(record) = forest.windows.get(&window_id).cloned() else {
+    return HashMap::new();
+  };
   let mut nodes = HashMap::new();
   let mut published = HashSet::new();
   if let Some(root) = record.root
@@ -1767,5 +1859,97 @@ mod tests {
     assert_eq!(nodes[&row].offset_width, 0.0);
     let loose = create();
     assert!(!snapshot(WINDOW_C).contains_key(&loose));
+  }
+
+  fn contains_node(id: u64) -> bool {
+    super::lock().nodes.contains_key(&id)
+  }
+
+  fn retains_window(id: u64) -> bool {
+    super::lock().windows.contains_key(&id)
+  }
+
+  #[test]
+  fn a_closed_window_without_a_root_is_dropped() {
+    const ID: u64 = 9_000_000_090;
+    note_viewport(ID, "Temp".to_string(), 10.0, 10.0, 1.0);
+    assert!(retains_window(ID));
+    release_window(ID);
+    assert!(is_closed(ID));
+    assert!(!retains_window(ID));
+    note_viewport(ID, "Again".to_string(), 20.0, 20.0, 2.0);
+    note_size(ID, 30.0, 30.0, 2.0);
+    assert!(!retains_window(ID));
+    let node = create();
+    assert!(matches!(attach_root(ID, node), Err(Fail::Closed)));
+    assert!(full_tree(ID).nodes.is_empty());
+    assert!(snapshot(ID).is_empty());
+    assert!(is_closed(ID));
+  }
+
+  #[test]
+  fn a_closed_window_stays_until_its_root_is_collected() {
+    const ID: u64 = 9_000_000_091;
+    note_viewport(ID, "Held".to_string(), 10.0, 10.0, 1.0);
+    let root = create();
+    let child = create();
+    attach_root(ID, root).unwrap();
+    append_child(root, child).unwrap();
+    set_offset_parent(child, Some(root)).unwrap();
+    release_window(ID);
+    assert!(retains_window(ID));
+    assert_eq!(connected_window(root), Some(ID));
+    assert_eq!(open_window(root), None);
+    update(child, |author| author.name = Some("still".to_string()));
+    super::forget_author(root);
+    assert!(!contains_node(root));
+    assert!(contains_node(child));
+    assert!(super::map(child, |author| author.offset_parent.is_none()));
+    assert!(super::map(child, |author| author.parent.is_none()));
+    assert!(!retains_window(ID));
+    assert!(is_closed(ID));
+    assert!(matches!(attach_root(ID, child), Err(Fail::Closed)));
+    assert!(full_tree(ID).nodes.is_empty());
+  }
+
+  #[test]
+  fn dropping_the_root_of_an_open_window_keeps_the_window() {
+    const ID: u64 = 9_000_000_092;
+    let _window = ReleaseGuard(ID);
+    note_viewport(ID, "Open".to_string(), 8.0, 8.0, 1.0);
+    let root = create();
+    attach_root(ID, root).unwrap();
+    super::forget_author(root);
+    assert!(retains_window(ID));
+    assert!(!is_closed(ID));
+    let next = create();
+    attach_root(ID, next).unwrap();
+    assert_eq!(open_window(next), Some(ID));
+  }
+
+  #[test]
+  fn one_collected_node_clears_every_offset_child() {
+    let parent = create();
+    let mid = create();
+    let leaf = create();
+    append_child(parent, mid).unwrap();
+    append_child(mid, leaf).unwrap();
+    set_offset_parent(leaf, Some(parent)).unwrap();
+    set_offset_parent(leaf, Some(mid)).unwrap();
+    let mut children = Vec::new();
+    for _ in 0..32 {
+      let child = create();
+      append_child(parent, child).unwrap();
+      set_offset_parent(child, Some(parent)).unwrap();
+      children.push(child);
+    }
+    super::forget_author(parent);
+    assert_eq!(super::map(leaf, |author| author.offset_parent), Some(mid));
+    for child in children {
+      assert!(contains_node(child));
+      assert!(super::map(child, |author| author.offset_parent.is_none()));
+    }
+    super::forget_author(mid);
+    assert!(super::map(leaf, |author| author.offset_parent.is_none()));
   }
 }

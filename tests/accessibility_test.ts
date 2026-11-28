@@ -429,3 +429,65 @@ Yuzuko.test("a dedicated worker has no AccessibleNode", async () => {
     worker.terminate();
   }
 });
+
+Yuzuko.test("a collected AccessibleNode drops its weak handle", () => {
+  Yuzuko.__test.collectGarbage();
+  const before = Yuzuko.__test.accessibleNodeCount();
+  for (let i = 0; i < 32; i++) {
+    new Yuzuko.AccessibleNode().role = "button";
+  }
+  Yuzuko.__test.collectGarbage();
+  const after = Yuzuko.__test.accessibleNodeCount();
+  assert(after === before, `nodes ${before} -> ${after}`);
+});
+
+Yuzuko.test("closing a window keeps the root until it is collected", () => {
+  const window = new Yuzuko.Window({ width: 40, height: 30, title: "keep" });
+  try {
+    const root = window.surface.attachAccessibleRoot();
+    const before = Yuzuko.__test.accessibleWindowCount();
+    window.close();
+    Yuzuko.__test.collectGarbage();
+    assert(
+      Yuzuko.__test.accessibleWindowCount() === before,
+      "closed root was dropped",
+    );
+    const child = new Yuzuko.AccessibleNode();
+    root.appendChild(child);
+    assert(root.firstChild === child, "edit after close");
+  } finally {
+    window.close();
+  }
+});
+
+function abandonAccessibleWindow(): void {
+  const window = new Yuzuko.Window({ width: 40, height: 30, title: "drop" });
+  window.surface.attachAccessibleRoot().appendChild(new Yuzuko.AccessibleNode());
+  window.close();
+}
+
+Yuzuko.test("a closed window is dropped after its root is collected", () => {
+  Yuzuko.__test.collectGarbage();
+  Yuzuko.__test.collectGarbage();
+  const windows = Yuzuko.__test.accessibleWindowCount();
+  const nodes = Yuzuko.__test.accessibleNodeCount();
+  abandonAccessibleWindow();
+  assert(
+    Yuzuko.__test.accessibleWindowCount() === windows + 1,
+    `windows ${windows} -> ${Yuzuko.__test.accessibleWindowCount()}`,
+  );
+  assert(
+    Yuzuko.__test.accessibleNodeCount() === nodes + 2,
+    `nodes ${nodes} -> ${Yuzuko.__test.accessibleNodeCount()}`,
+  );
+  Yuzuko.__test.collectGarbage();
+  Yuzuko.__test.collectGarbage();
+  assert(
+    Yuzuko.__test.accessibleWindowCount() === windows,
+    `windows left ${Yuzuko.__test.accessibleWindowCount()}`,
+  );
+  assert(
+    Yuzuko.__test.accessibleNodeCount() === nodes,
+    `nodes left ${Yuzuko.__test.accessibleNodeCount()}`,
+  );
+});

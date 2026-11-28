@@ -22,6 +22,16 @@ pub fn install(scope: &mut v8::PinScope) {
   let count = v8::Function::new(scope, media_list_count).expect("count");
   let name = v8::String::new(scope, "mediaListCount").unwrap();
   api.set(scope, name.into(), count.into());
+  #[cfg(feature = "accessibility")]
+  {
+    let nodes = v8::Function::new(scope, accessible_node_count).expect("nodes");
+    let name = v8::String::new(scope, "accessibleNodeCount").unwrap();
+    api.set(scope, name.into(), nodes.into());
+    let windows =
+      v8::Function::new(scope, accessible_window_count).expect("windows");
+    let name = v8::String::new(scope, "accessibleWindowCount").unwrap();
+    api.set(scope, name.into(), windows.into());
+  }
   gamepad::install_test(scope, api);
   let key = v8::String::new(scope, "__test").unwrap();
   yuzuko.set(scope, key.into(), api.into());
@@ -58,6 +68,26 @@ fn media_list_count(
       .count()
   };
   ret.set_uint32(count as u32);
+}
+
+#[cfg(feature = "accessibility")]
+fn accessible_node_count(
+  _scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let count = u32::try_from(crate::a11y::weak_count()).unwrap_or(u32::MAX);
+  ret.set_uint32(count);
+}
+
+#[cfg(feature = "accessibility")]
+fn accessible_window_count(
+  _scope: &mut v8::PinScope,
+  _args: v8::FunctionCallbackArguments,
+  mut ret: v8::ReturnValue,
+) {
+  let count = u32::try_from(crate::a11y::window_records()).unwrap_or(u32::MAX);
+  ret.set_uint32(count);
 }
 
 fn inject(
