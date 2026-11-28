@@ -86,7 +86,7 @@ static NEXT: AtomicU64 = AtomicU64::new(1);
 thread_local! {
   static PENDING: RefCell<HashMap<u64, Pending>> =
     RefCell::new(HashMap::new());
-  static OPEN: RefCell<Vec<Weak<Shared>>> = const { RefCell::new(Vec::new()) };
+  static OPEN: RefCell<HashMap<u64, Weak<Shared>>> = RefCell::new(HashMap::new());
   static ABORTS: RefCell<HashMap<u64, Weak<Shared>>> =
     RefCell::new(HashMap::new());
 }
@@ -249,7 +249,22 @@ unsafe impl v8::cppgc::GarbageCollected for Child {
 impl Drop for Child {
   fn drop(&mut self) {
     release_stdin(&self.shared);
+    forget_child(self.id);
   }
+}
+
+// A promise already returned to JS can outlive its Child.
+fn forget_child(id: u64) {
+  let _ = PENDING.try_with(|table| {
+    let mut table = table.borrow_mut();
+    if let Some(slot) = table.get_mut(&id) {
+      slot.output_done |= slot.output_waiter.is_none();
+      slot.status_done |= slot.status_waiter.is_none();
+      if slot.output_done && slot.status_done {
+        table.remove(&id);
+      }
+    }
+  });
 }
 
 #[op(name = "Child")]
@@ -359,7 +374,7 @@ pub(crate) fn clear() {
   PENDING.with(|slots| slots.borrow_mut().clear());
   ABORTS.with(|table| table.borrow_mut().clear());
   let open = OPEN.with(|open| std::mem::take(&mut *open.borrow_mut()));
-  for weak in open {
+  for weak in open.into_values() {
     if let Some(shared) = weak.upgrade() {
       signal_live(&shared);
       release_stdin(&shared);
@@ -489,7 +504,7 @@ fn spawn_op<'s>(
       },
     );
   });
-  OPEN.with(|open| open.borrow_mut().push(Arc::downgrade(&shared)));
+  OPEN.with(|open| open.borrow_mut().insert(id, Arc::downgrade(&shared)));
   let collect_shared = Arc::clone(&shared);
   crate::jobs::spawn(
     move || collect(child, stdout_pipe, stderr_pipe, collect_shared),
@@ -618,6 +633,7 @@ fn finish_output(
   id: u64,
   outcome: Result<Collected, OutputError>,
 ) {
+  OPEN.with(|open| open.borrow_mut().remove(&id));
   ABORTS.with(|table| {
     table.borrow_mut().remove(&id);
   });
@@ -2078,6 +2094,30 @@ const STREAMS: &str = r#"(function () {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn collected_child_drops_unrequested_output() {
+    let id = 123;
+    PENDING.with(|table| {
+      table.borrow_mut().insert(
+        id,
+        Pending {
+          result: Some(Ok(Collected {
+            code: Some(0),
+            signal: None,
+            stdout: vec![1],
+            stderr: Vec::new(),
+          })),
+          output_waiter: None,
+          status_waiter: None,
+          output_done: false,
+          status_done: true,
+        },
+      );
+    });
+    forget_child(id);
+    PENDING.with(|table| assert!(!table.borrow().contains_key(&id)));
+  }
 
   #[test]
   fn spawn_materializes_the_checked_environment() {
