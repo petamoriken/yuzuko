@@ -242,6 +242,8 @@ struct Sandbox {
   /// grant is the executable found here, not a `PATH` the script sets later.
   #[cfg(feature = "child")]
   command_path: Vec<PathBuf>,
+  #[cfg(feature = "child")]
+  pinned_commands: Vec<(String, PathBuf)>,
 }
 
 impl Sandbox {
@@ -251,6 +253,8 @@ impl Sandbox {
       prompt,
       #[cfg(feature = "child")]
       command_path: Vec::new(),
+      #[cfg(feature = "child")]
+      pinned_commands: Vec::new(),
     }
   }
 
@@ -304,6 +308,13 @@ impl Sandbox {
     #[cfg(feature = "child")]
     {
       sandbox.command_path = capture_command_path();
+      for name in &sandbox.gates[Kind::Run as usize].allow_names {
+        if !is_command_path(name)
+          && let Some(path) = find_command(name, &sandbox.command_path)
+        {
+          sandbox.pinned_commands.push((name.clone(), path));
+        }
+      }
     }
     Ok(sandbox)
   }
@@ -473,6 +484,19 @@ impl Sandbox {
     detail: &Detail,
     answer: Answer,
   ) -> Result<(), OpError> {
+    #[cfg(feature = "child")]
+    if kind == Kind::Run
+      && answer == Answer::Once
+      && let Detail::Name(name) = detail
+      && !is_command_path(name)
+      && !self
+        .pinned_commands
+        .iter()
+        .any(|(rule, _)| command_names_equal(rule, name))
+      && let Some(path) = find_command(name, &self.command_path)
+    {
+      self.pinned_commands.push((name.clone(), path));
+    }
     let gate = &mut self.gates[kind as usize];
     match answer {
       Answer::All => {
@@ -975,7 +999,7 @@ pub(crate) fn resolve_spawn(
     Some(path) => path.to_path_buf(),
     None => current_dir()?,
   };
-  let trusted = find_command(command, &startup_command_path());
+  let trusted = pinned_command(command);
   let executed = find_command(command, &effective_command_path(env, &base));
   match (trusted, executed) {
     (Some(trusted), Some(executed)) if paths_equal(&trusted, &executed) => {
@@ -1011,11 +1035,15 @@ fn run_is_whole() -> bool {
 }
 
 #[cfg(feature = "child")]
-fn startup_command_path() -> Vec<PathBuf> {
+fn pinned_command(command: &str) -> Option<PathBuf> {
   let guard = lock();
   match &*guard {
-    Mode::Sandbox(sandbox) => sandbox.command_path.clone(),
-    Mode::Open => Vec::new(),
+    Mode::Sandbox(sandbox) => sandbox
+      .pinned_commands
+      .iter()
+      .find(|(name, _)| command_names_equal(name, command))
+      .map(|(_, path)| path.clone()),
+    Mode::Open => None,
   }
 }
 

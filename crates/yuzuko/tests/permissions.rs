@@ -2445,6 +2445,34 @@ await probe("assigned", {{}});
   }
   assert!(!stdout.contains("PWNED"), "{stdout}");
   assert!(!stderr.contains("PWNED"), "{stderr}");
+  #[cfg(feature = "fs")]
+  {
+    // Changing directory contents must not change the executable selected by a grant.
+    let early = dir.join("early");
+    fs::create_dir(&early).unwrap();
+    let search =
+      std::env::join_paths([early.as_path(), evil.as_path()]).unwrap();
+    write(
+      &dir.join("moved.ts"),
+      r#"
+Yuzuko.renameSync("evil-bin/echo", "early/echo");
+try { Yuzuko.spawn("echo"); } catch (error) { console.log(error.name); }
+"#,
+    );
+    let moved = run_env(
+      &dir,
+      &[
+        "run",
+        "--allow-read",
+        "--allow-write",
+        "--allow-env",
+        "--allow-run=echo",
+        "moved.ts",
+      ],
+      &[("PATH", search.to_str().unwrap())],
+    );
+    assert_eq!(text(&moved.stdout).trim(), "NotCapable");
+  }
   let _ = fs::remove_dir_all(&dir);
 }
 
